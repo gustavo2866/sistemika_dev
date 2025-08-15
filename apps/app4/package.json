@@ -8,9 +8,11 @@
     "start": "next start"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@workspace/ui": "workspace:*",
+    "@workspace/core": "workspace:*",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest",
-    "@workspace/ui": "workspace:*"
+    "react-dom": "latest"
   }
 }

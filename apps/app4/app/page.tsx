@@ -1,15 +1,20 @@
-import { Button } from "@workspace/ui/components/button";
-import type { FC } from "react";
+"use client";
 
-const Page: FC = () => {
+import { CoreDialog } from "@workspace/core";
+import { Button } from "@workspace/ui/components/button";
+
+export default function Page() {
   return (
     <div className="flex items-center justify-center min-h-svh">
-      <div className="flex flex-col items-center justify-center gap-4">
-        <h1 className="text-2xl font-bold">¡Bienvenido a app4!</h1>
-        <Button size="sm">Botón UI</Button>
-      </div>
+      <CoreDialog
+        trigger={<Button size="sm">Abrir diálogo</Button>}
+        title="Confirmar acción"
+        description="¿Desea continuar?"
+        acceptLabel="Aceptar"
+        cancelLabel="Cancelar"
+        onAccept={() => alert("Aceptado")}
+        onCancel={() => alert("Cancelado")}
+      />
     </div>
   );
-};
-
-export default Page;
+}
