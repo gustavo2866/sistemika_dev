@@ -5,5 +5,9 @@
   "license": "PROPRIETARY",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "react-hook-form": "^7.62.0",
+    "zod": "^3.25.76"
   }
 }

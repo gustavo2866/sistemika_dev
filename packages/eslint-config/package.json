@@ -21,5 +21,9 @@
     "globals": "^15.15.0",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.0"
+  },
+  "dependencies": {
+    "react-hook-form": "^7.62.0",
+    "zod": "^3.25.76"
   }
 }

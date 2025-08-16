@@ -7,6 +7,7 @@
     "noEmit": true,
     "paths": {
       "@workspace/ui/*": ["../../packages/ui/src/*"],
+      "@ui/components": ["../../packages/ui/src/index.ts"],
       "@/*": ["./src/*"]
     }
   },
