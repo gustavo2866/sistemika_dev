@@ -6,5 +6,6 @@ module.exports = {
     './app/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     '../../packages/ui/**/*.{ts,tsx}',
+     '../../packages/core/src/**/*.{ts,tsx}',
   ],
 };

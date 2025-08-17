@@ -1,34 +1,49 @@
 import { Checkbox } from "@workspace/ui/components/checkbox";
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from "./FormWrappers.tsx";
 import { CoreFormField, useForm_Field } from "./useForm_Field.tsx";
-import { FieldValues, Path } from "react-hook-form";
+import { FieldValues, Path, Control, RegisterOptions } from "react-hook-form";
 
 export interface CoreCheckboxProps<T extends FieldValues = any> {
   name: Path<T>;
   label?: string;
-  control?: any;
-  rules?: any;
+  control?: Control<T>;
+  rules?: RegisterOptions<T, Path<T>>;
 }
 
-export function FormCheckbox<T extends FieldValues = any>({ name, label, control, rules }: CoreCheckboxProps<T>) {
+export function FormCheckbox<T extends FieldValues = any>({
+  name,
+  label,
+  control,
+  rules,
+}: CoreCheckboxProps<T>) {
   const methods = useForm_Field<T>();
+  const isRequired = !!rules?.required;
+  const safeId = String(name).replace(/\./g, "__");
+
   return (
     <CoreFormField<T>
       name={name}
       control={control || methods.control}
       rules={rules}
       render={(field, fieldState) => (
-        <FormField>
-          <FormItem>
-            <div className="flex items-center gap-2">
-              <FormControl>
-                <Checkbox checked={field.value} onCheckedChange={field.onChange} id={name} />
-              </FormControl>
-              {label && <FormLabel>{label}</FormLabel>}
-            </div>
-            {fieldState?.error && <FormMessage>{fieldState.error.message}</FormMessage>}
-          </FormItem>
-        </FormField>
+        <div>
+          <div className="flex items-center gap-2">
+            <FormControl>
+              <Checkbox
+                id={safeId}
+                checked={!!field.value}
+                onCheckedChange={(v) => field.onChange(v === true)}
+                ref={field.ref}
+                onBlur={field.onBlur}
+                name={field.name}
+              />
+            </FormControl>
+            <FormLabel htmlFor={safeId} required={isRequired}>
+              {label}
+            </FormLabel>
+          </div>
+          <FormMessage id={`${safeId}-error`} error={fieldState?.error?.message} />
+        </div>
       )}
     />
   );

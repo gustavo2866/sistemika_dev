@@ -51,7 +51,8 @@ const fields = [
   },
 ];
 
-const defaultValues = { role: "user" };
+// Valores por defecto para el formulario
+const defaultValues = { name: "", email: "", role: "user", subscribe: false, notes: "" };
 
 export default function FormExample({ onClose }: { onClose?: () => void }) {
   return (
@@ -61,7 +62,7 @@ export default function FormExample({ onClose }: { onClose?: () => void }) {
       defaultValues={defaultValues}
       onSubmit={(data: any) => { alert(JSON.stringify(data)); onClose?.(); }}
       onExit={onClose}
-      footer={<span>Todos los campos son gestionados por CoreForm_Base</span>}
+      // footer={<span>Ejemplo de footer</span>}
     />
   );
 }

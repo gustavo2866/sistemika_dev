@@ -1,11 +1,10 @@
-import React from "react";
+import { useForm, UseFormProps } from "react-hook-form";
 import { FormInput } from "./FormInput.tsx";
 import { FormSelect } from "./FormSelect.tsx";
 import { FormCheckbox } from "./FormCheckbox.tsx";
 import { FormTextarea } from "./FormTextarea.tsx";
-import { useForm, UseFormProps, } from "react-hook-form";
 
-// Tipos para campos dinámicos
+// Tipos para campos dinámicos (sin romper tu API actual)
 export type FormFieldDef = {
   name: string;
   label?: string;
@@ -13,7 +12,7 @@ export type FormFieldDef = {
   required?: boolean;
   placeholder?: string;
   options?: { value: string; label: string }[];
-  rules?: any;
+  rules?: any; // si quieres tiparlo: RegisterOptions<FieldValues, any>
 };
 
 export interface FormBaseOptions {
@@ -21,16 +20,26 @@ export interface FormBaseOptions {
   defaultValues?: Record<string, any>;
   onSubmit?: (data: any) => void;
   mode?: UseFormProps<any>["mode"];
+  resolver?: UseFormProps<any>["resolver"];  
 }
 
 export function useForm_Base(options: FormBaseOptions) {
   const form = useForm({
     defaultValues: options.defaultValues,
-    mode: "all",
+    mode: options.mode ?? "onSubmit",
+    resolver: options.resolver,  
   });
 
   // Renderiza un solo campo
   function renderField(field: FormFieldDef) {
+    // Combina required del JSON con rules del campo
+    const mergedRules = {
+      ...(field.rules || {}),
+      ...(field.required
+        ? { required: field?.rules?.required ?? "Campo obligatorio" }
+        : {}),
+    };
+
     if (field.type === "text" || field.type === "email") {
       return (
         <FormInput
@@ -38,11 +47,12 @@ export function useForm_Base(options: FormBaseOptions) {
           name={field.name}
           label={field.label}
           control={form.control}
-          rules={field.rules}
+          rules={mergedRules}
           placeholder={field.placeholder}
         />
       );
     }
+
     if (field.type === "select") {
       return (
         <FormSelect
@@ -51,10 +61,13 @@ export function useForm_Base(options: FormBaseOptions) {
           label={field.label}
           control={form.control}
           options={field.options || []}
-          rules={field.rules}
+          rules={mergedRules}
+          // mejor placeholder explícito, no reutilizar label
+          placeholder={field.placeholder || "Selecciona una opción"}
         />
       );
     }
+
     if (field.type === "checkbox") {
       return (
         <FormCheckbox
@@ -62,10 +75,11 @@ export function useForm_Base(options: FormBaseOptions) {
           name={field.name}
           label={field.label}
           control={form.control}
-          rules={field.rules}
+          rules={mergedRules}
         />
       );
     }
+
     if (field.type === "textarea") {
       return (
         <FormTextarea
@@ -73,16 +87,15 @@ export function useForm_Base(options: FormBaseOptions) {
           name={field.name}
           label={field.label}
           control={form.control}
-          rules={field.rules}
+          rules={mergedRules}
           placeholder={field.placeholder}
         />
       );
     }
+
     return null;
   }
 
   // Solo expone la lógica y el método renderField
   return { ...form, renderField };
 }
-
-// ...existing code...
