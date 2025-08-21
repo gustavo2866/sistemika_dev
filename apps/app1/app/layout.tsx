@@ -1,18 +1,23 @@
-import "@workspace/ui/globals.css";
+import "@workspace/ui/styles/globals.css";
+import { ThemeProvider } from "@workspace/ui/components/theme-provider";
+import RootShellClient from "../components/RootShellClient"; // wrapper cliente
+import { sidebarData } from "../components/Navigation";
 
-export const metadata = {
-  title: 'app1',
-  description: 'App1 - Monorepo',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <body>{children}</body>
+    <html lang="es" suppressHydrationWarning>
+      <body>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <RootShellClient sidebarData={sidebarData}>
+            {children}
+          </RootShellClient>
+        </ThemeProvider>
+      </body>
     </html>
-  )
+  );
 }

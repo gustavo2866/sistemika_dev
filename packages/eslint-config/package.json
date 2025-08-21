@@ -23,6 +23,9 @@
     "typescript-eslint": "^8.39.0"
   },
   "dependencies": {
+    "@types/next": "^9.0.0",
+    "lucide-react": "^0.475.0",
+    "next": "^15.4.7",
     "react-hook-form": "^7.62.0",
     "zod": "^3.25.76"
   }

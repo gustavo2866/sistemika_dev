@@ -1,15 +1,16 @@
-import { Button } from "@workspace/ui/components/button";
-import type { FC } from "react";
+// apps/app1/app/page.tsx
+export const metadata = {
+  title: "Home",
+  description: "Bienvenido",
+};
 
-const Page: FC = () => {
+export default function HomePage() {
   return (
-    <div className="flex items-center justify-center min-h-svh">
-      <div className="flex flex-col items-center justify-center gap-4">
-        <h1 className="text-2xl font-bold">¡Bienvenido a app1!</h1>
-        <Button size="sm">Botón UI</Button>
-      </div>
+    <div className="container mx-auto py-10">
+      <h1 className="text-2xl font-bold">Bienvenido</h1>
+      <p className="text-muted-foreground mt-2">
+        Esta es la portada. Usá el menú para navegar la documentación.
+      </p>
     </div>
   );
 }
-
-export default Page;

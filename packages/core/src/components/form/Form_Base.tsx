@@ -35,7 +35,7 @@ export function Form_Base(props: FormBaseProps) {
 
       <form onSubmit={form.handleSubmit(props.onSubmit || (() => {}))} noValidate>
 
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             {props.fields.map((f) => form.renderField(f))}
           </CardContent>
 

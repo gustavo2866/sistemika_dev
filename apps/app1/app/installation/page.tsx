@@ -1,11 +1,11 @@
 "use client";
+
 import React, { useState } from "react";
-import FormExample from "./form-example";
 import { Button } from "@workspace/ui/components/button";
+import { Dialog, DialogTrigger, DialogContent, DialogTitle } from "@workspace/ui/components/dialog";
+import FormExample from "../../components/form-example";
 
-
-
-export default function Page() {
+export default function InstallationPage() {
   const [open, setOpen] = useState(false);
   const [openSimple, setOpenSimple] = useState(false);
 
@@ -26,4 +26,5 @@ export default function Page() {
     </div>
      
   );
+
 }

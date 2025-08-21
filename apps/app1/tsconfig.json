@@ -4,7 +4,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@workspace/ui/*": ["../../packages/ui/src/*"]
+      "@workspace/ui": ["../../packages/ui/src/index.ts"],
+      "@workspace/ui/*": ["../../packages/ui/src/*"],
+      "@workspace/core": ["../../packages/core/src/index.ts"],
+      "@workspace/core/*": ["../../packages/core/src/*"]
     },
     "outDir": "build"
   },
