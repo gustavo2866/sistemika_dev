@@ -1,7 +1,7 @@
 import "@workspace/ui/styles/globals.css";
 import { ThemeProvider } from "@workspace/ui/components/theme-provider";
-import RootShellClient from "../components/RootShellClient"; // wrapper cliente
-import { sidebarData } from "../components/Navigation";
+import RootShellClient from "../layout-config/RootShellClient"; // wrapper cliente
+import { sidebarData } from "../layout-config/Navigation";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

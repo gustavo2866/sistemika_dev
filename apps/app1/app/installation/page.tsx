@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Button } from "@workspace/ui/components/button";
-import { Dialog, DialogTrigger, DialogContent, DialogTitle } from "@workspace/ui/components/dialog";
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from "@workspace/ui/components/dialog";
 import FormExample from "../../components/form-example";
 
 export default function InstallationPage() {
@@ -13,16 +13,16 @@ export default function InstallationPage() {
   return (
      
     <div className="p-8 space-y-6">
-      <Button onClick={() => setOpen(true)}>Abrir Formulario</Button>
-      {open && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 min-w-[350px]">
-            <FormExample onClose={() => setOpen(false)} />
-          </div>
-        </div>
-      )}
-
-
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button>Abrir Formulario</Button>
+        </DialogTrigger>
+        <DialogContent className="min-w-[350px]">
+          <DialogTitle>Formulario de ejemplo</DialogTitle>
+          <DialogDescription>Completa los campos y envía el formulario. Todos los datos son requeridos salvo donde se indique lo contrario.</DialogDescription>
+          <FormExample onClose={() => setOpen(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
      
   );

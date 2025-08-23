@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import LandingPage from "../components/LandingPage"; // ojo: misma mayúscula que el archivo
+import LandingPage from "../layout-config/LandingPage"; // ojo: misma mayúscula que el archivo
 import type { SidebarData, Crumb } from "@workspace/ui/types/navigation";
 
 function deriveCrumbs(pathname: string): Crumb[] {
