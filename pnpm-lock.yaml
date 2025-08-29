@@ -238,8 +238,6 @@ importers:
         specifier: ^8.39.0
         version: 8.39.1(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2)
 
-  packages/landing: {}
-
   packages/typescript-config:
     dependencies:
       '@types/next':
