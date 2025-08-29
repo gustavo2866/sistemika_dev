@@ -193,27 +193,11 @@ Con estos pasos, la nueva app funcionará igual que `web` y tendrá acceso a los
 
 ## Ejemplo de personalización de color por app usando variables CSS
 
-Para personalizar el color de los botones (o cualquier componente shadcn/ui) en una app específica, sobreescribe la variable CSS correspondiente en el layout de la app. Por ejemplo, para que el botón sea rojo en app2:
-
-```tsx
-// apps/app2/app/layout.tsx
-import "@workspace/ui/globals.css";
-
-export const metadata = {
-  title: 'app2',
-  description: 'App2 - Monorepo',
-}
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="es">
-      <body style={{ ['--primary' as any]: 'oklch(0.6 0.2 30)' }}>{children}</body>
-    </html>
-  );
-}
-```
-
-Esto hará que el botón y cualquier componente que use la variable `--primary` se muestre en rojo solo en esa app.
+> Nota: las apps `app2` y `app3` han sido eliminadas del repositorio.
+>
+> Fecha de eliminación: 29/08/2025
+>
+> Se han limpiado también los artefactos de compilación (.next, .turbo) y se actualizó el lockfile. Si necesitas restaurar estas apps, recupéralas desde el historial de Git.
 
 ---
 
