@@ -1,0 +1,241 @@
+from __future__ import annotations
+import json
+from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple
+from datetime import datetime
+from sqlmodel import SQLModel, Session, select, func, and_, or_
+from app.models.base import campos_editables
+
+M = TypeVar("M", bound=SQLModel)
+
+class FilterOperator:
+    """Operadores de filtro soportados"""
+    EQ = "eq"          # igualdad
+    IN = "in"          # conjunto
+    GTE = "gte"        # mayor o igual
+    GT = "gt"          # mayor que
+    LTE = "lte"        # menor o igual
+    LT = "lt"          # menor que
+    IS = "is"          # para null checks
+    LIKE = "like"      # texto (case insensitive)
+
+class GenericCRUD(Generic[M]):
+    def __init__(self, model: Type[M]):
+        self.model: Type[M] = model
+        # Campos de texto donde aplicar búsqueda por defecto con "q"
+        self.searchable_fields = ["name", "title", "description", "sku"]
+
+    # --- helpers ---
+    def _clean_create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        allowed = campos_editables(self.model)
+        return {k: v for k, v in data.items() if k in allowed}
+
+    def _extract_update(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        allowed = campos_editables(self.model)
+        # Excluir version del update normal (se maneja por separado)
+        return {k: v for k, v in data.items() if k in allowed and k != "version"}
+
+    def _apply_filters(self, stmt, filters: Dict[str, Any]):
+        """Aplica filtros al statement SQL"""
+        for field_name, filter_value in filters.items():
+            if field_name == "q":
+                # Búsqueda de texto en campos searchable
+                stmt = self._apply_text_search(stmt, filter_value)
+                continue
+                
+            if not hasattr(self.model, field_name):
+                continue
+                
+            column = getattr(self.model, field_name)
+            
+            if isinstance(filter_value, dict):
+                # Filtros complejos: {"gte": 10, "lt": 100}
+                for operator, value in filter_value.items():
+                    stmt = self._apply_operator_filter(stmt, column, operator, value)
+            else:
+                # Filtro simple: igualdad
+                stmt = stmt.where(column == filter_value)
+                
+        return stmt
+
+    def _apply_text_search(self, stmt, search_text: str):
+        """Aplica búsqueda de texto en campos searchable"""
+        conditions = []
+        for field_name in self.searchable_fields:
+            if hasattr(self.model, field_name):
+                column = getattr(self.model, field_name)
+                try:
+                    conditions.append(column.ilike(f"%{search_text}%"))
+                except:
+                    conditions.append(column.like(f"%{search_text}%"))
+        
+        if conditions:
+            stmt = stmt.where(or_(*conditions))
+        return stmt
+
+    def _apply_operator_filter(self, stmt, column, operator: str, value):
+        """Aplica un operador específico a una columna"""
+        if operator == FilterOperator.GTE:
+            return stmt.where(column >= value)
+        elif operator == FilterOperator.GT:
+            return stmt.where(column > value)
+        elif operator == FilterOperator.LTE:
+            return stmt.where(column <= value)
+        elif operator == FilterOperator.LT:
+            return stmt.where(column < value)
+        elif operator == FilterOperator.IN:
+            return stmt.where(column.in_(value))
+        elif operator == FilterOperator.IS:
+            if value is None:
+                return stmt.where(column.is_(None))
+            else:
+                return stmt.where(column.is_not(None))
+        elif operator == FilterOperator.LIKE:
+            return stmt.where(column.ilike(f"%{value}%"))
+        else:
+            # Fallback a igualdad
+            return stmt.where(column == value)
+
+    def _apply_soft_delete_filter(self, stmt, deleted: str = "exclude"):
+        """Aplica filtro de soft delete"""
+        if not hasattr(self.model, "deleted_at"):
+            return stmt
+            
+        if deleted == "exclude":
+            return stmt.where(self.model.deleted_at.is_(None))
+        elif deleted == "only":
+            return stmt.where(self.model.deleted_at.is_not(None))
+        # "include" no aplica filtro
+        return stmt
+
+    # --- CRUD ---
+    def create(self, session: Session, data: Dict[str, Any]) -> M:
+        """Create: ignora id/stamps y campos no válidos"""
+        cleaned = self._clean_create(data)
+        obj = self.model(**cleaned)
+        session.add(obj)
+        session.commit()
+        session.refresh(obj)
+        return obj
+
+    def get(self, session: Session, obj_id: Any, deleted: str = "exclude") -> Optional[M]:
+        """Get by ID con soporte para soft delete"""
+        stmt = select(self.model).where(self.model.id == obj_id)
+        stmt = self._apply_soft_delete_filter(stmt, deleted)
+        return session.exec(stmt).first()
+
+    def list(
+        self,
+        session: Session,
+        *,
+        page: int = 1,
+        per_page: int = 25,
+        sort_by: str = "created_at",
+        sort_dir: str = "asc",
+        filters: Optional[Dict[str, Any]] = None,
+        deleted: str = "exclude",
+        fields: Optional[str] = None,
+        include: Optional[str] = None,
+    ) -> Tuple[Sequence[M], int]:
+        """
+        List con paginación y filtros
+        Returns: (items, total_count)
+        """
+        # Base query
+        stmt = select(self.model)
+        
+        # Aplicar filtros
+        if filters:
+            stmt = self._apply_filters(stmt, filters)
+        
+        # Aplicar soft delete
+        stmt = self._apply_soft_delete_filter(stmt, deleted)
+        
+        # Contar total (antes de paginación)
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = session.exec(count_stmt).one()
+        
+        # Aplicar ordenamiento
+        if hasattr(self.model, sort_by):
+            order_column = getattr(self.model, sort_by)
+            if sort_dir.lower() == "desc":
+                stmt = stmt.order_by(order_column.desc())
+            else:
+                stmt = stmt.order_by(order_column.asc())
+        
+        # Aplicar paginación
+        offset = (page - 1) * per_page
+        stmt = stmt.offset(offset).limit(per_page)
+        
+        items = session.exec(stmt).all()
+        return items, total
+
+    def update(
+        self, 
+        session: Session, 
+        obj_id: Any, 
+        data: Dict[str, Any],
+        check_version: bool = True
+    ) -> Optional[M]:
+        """
+        Update completo con lock optimista
+        """
+        obj = self.get(session, obj_id)
+        if not obj:
+            return None
+
+        # Verificar version para lock optimista
+        if check_version and "version" in data:
+            if hasattr(obj, "version") and obj.version != data["version"]:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "CONFLICT",
+                        "message": "La versión del recurso ha cambiado",
+                        "details": {
+                            "current_version": obj.version,
+                            "provided_version": data["version"]
+                        }
+                    }
+                )
+
+        # Aplicar cambios
+        cambios = self._extract_update(data)
+        for k, v in cambios.items():
+            setattr(obj, k, v)
+
+        # Actualizar timestamps y version
+        if hasattr(obj, "updated_at"):
+            setattr(obj, "updated_at", datetime.utcnow())
+        if hasattr(obj, "version"):
+            setattr(obj, "version", obj.version + 1)
+
+        session.add(obj)
+        session.commit()
+        session.refresh(obj)
+        return obj
+
+    def update_partial(self, session: Session, obj_id: Any, data: Dict[str, Any]) -> Optional[M]:
+        """Update parcial: sólo aplica los campos recibidos"""
+        return self.update(session, obj_id, data, check_version=False)
+
+    def delete(self, session: Session, obj_id: Any, hard: bool = False) -> bool:
+        """
+        Delete con soporte para soft delete
+        """
+        obj = self.get(session, obj_id)
+        if not obj:
+            return False
+            
+        if hard or not hasattr(obj, "deleted_at"):
+            # Hard delete
+            session.delete(obj)
+        else:
+            # Soft delete
+            setattr(obj, "deleted_at", datetime.utcnow())
+            if hasattr(obj, "updated_at"):
+                setattr(obj, "updated_at", datetime.utcnow())
+            session.add(obj)
+            
+        session.commit()
+        return True
