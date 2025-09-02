@@ -4,6 +4,7 @@ import {
   useResourceContext,
   FieldTitle,
 } from "ra-core";
+import { sanitizeInputRestProps } from "@/lib/sanitizeInputRestProps";
 import {
   FormControl,
   FormError,
@@ -21,15 +22,7 @@ export type TextInputProps = InputProps & {
 
 export const TextInput = (props: TextInputProps) => {
   const resource = useResourceContext(props);
-  const {
-    label,
-    source,
-    multiline,
-    className,
-    validate: _validateProp,
-    format: _formatProp,
-    ...rest
-  } = props;
+  const { label, source, multiline, className, ...rest } = props;
   const { id, field, isRequired } = useInput(props);
 
   return (
@@ -46,9 +39,9 @@ export const TextInput = (props: TextInputProps) => {
       )}
       <FormControl>
         {multiline ? (
-          <Textarea {...rest} {...field} />
+          <Textarea {...sanitizeInputRestProps(rest)} {...field} />
         ) : (
-          <Input {...rest} {...field} />
+          <Input {...sanitizeInputRestProps(rest)} {...field} />
         )}
       </FormControl>
       <InputHelperText helperText={props.helperText} />

@@ -82,16 +82,23 @@ export const CreateView = ({
       </Breadcrumb>
       <div
         className={cn(
-          "flex justify-between items-start flex-wrap gap-2 my-2",
+          "flex justify-between items-start flex-wrap gap-4 my-6 pb-4 border-b border-border",
           className,
         )}
       >
-        <h2 className="text-2xl font-bold tracking-tight">
-          {title !== undefined ? title : context.defaultTitle}
-        </h2>
-        {actions}
+        <div className="space-y-1">
+          <h2 className="text-3xl font-bold tracking-tight">
+            {title !== undefined ? title : context.defaultTitle}
+          </h2>
+          <p className="text-muted-foreground">
+            <Translate i18nKey="ra.message.create_description">
+              Crear un nuevo registro
+            </Translate>
+          </p>
+        </div>
+        {actions && <div className="flex gap-2">{actions}</div>}
       </div>
-      <div className="my-2">{children}</div>
+      <div className="pb-8">{children}</div>
     </>
   );
 };

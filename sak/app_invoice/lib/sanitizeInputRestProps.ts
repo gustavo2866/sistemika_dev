@@ -1,3 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Función que remueve props específicos de React Admin para evitar que lleguen al DOM.
+ * Los props extraídos son internos de React Admin y no deben pasarse a elementos HTML nativos.
+ */
 export const sanitizeInputRestProps = ({
   afterSubmit,
   allowNull,
@@ -9,6 +16,7 @@ export const sanitizeInputRestProps = ({
   error,
   format,
   formatOnBlur,
+  helperText,
   initializeForm,
   input,
   isEqual,

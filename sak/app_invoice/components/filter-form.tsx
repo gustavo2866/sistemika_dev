@@ -484,6 +484,8 @@ export const FilterButtonMenuItem = React.forwardRef<
   );
 });
 
+FilterButtonMenuItem.displayName = 'FilterButtonMenuItem';
+
 export interface FilterButtonMenuItemProps {
   filter: React.ReactElement<FilterElementProps>;
   displayed: boolean;

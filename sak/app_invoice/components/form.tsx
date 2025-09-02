@@ -155,7 +155,6 @@ const SaveButton = <RecordType extends RaRecord = RaRecord>(
 ) => {
   const {
     className,
-    icon = defaultIcon,
     label = "ra.action.save",
     onClick,
     mutationOptions,
@@ -234,6 +233,7 @@ const SaveButton = <RecordType extends RaRecord = RaRecord>(
     <Button
       variant={variant}
       type={type}
+      size="default"
       disabled={disabled}
       onClick={handleClick}
       className={cn(
@@ -242,13 +242,15 @@ const SaveButton = <RecordType extends RaRecord = RaRecord>(
       )}
       {...rest}
     >
-      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : icon}
-      {displayedLabel}
+      {isSubmitting ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      ) : (
+        <Save className="h-4 w-4 mr-2" />
+      )}
+      {displayedLabel || (isSubmitting ? "Guardando..." : "Guardar")}
     </Button>
   );
 };
-
-const defaultIcon = <Save className="h-4 w-4" />;
 
 interface Props<
   RecordType extends RaRecord = RaRecord,
@@ -284,7 +286,6 @@ const valueOrDefault = (value: any, defaultValue: any) =>
   typeof value === "undefined" ? defaultValue : value;
 
 export {
-  // eslint-disable-next-line react-refresh/only-export-components
   useFormField,
   Form,
   FormField,

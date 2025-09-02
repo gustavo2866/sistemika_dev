@@ -1,7 +1,13 @@
 from sqlmodel import create_engine, Session, SQLModel
 from typing import Generator
+import os
 
-DATABASE_URL = "sqlite:///./test.db"
+# Configuración de base de datos
+# Usando dev.db en la carpeta data para separar entornos
+DATABASE_URL = "sqlite:///./data/dev.db"
+
+# Crear directorio data si no existe
+os.makedirs("data", exist_ok=True)
 
 engine = create_engine(DATABASE_URL, echo=False)
 

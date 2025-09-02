@@ -1,20 +1,20 @@
-// DataProvider estándar siguiendo EXACTAMENTE el tutorial oficial
-import { fetchUtils, DataProvider } from 'react-admin';
-import jsonServerProvider from 'ra-data-json-server';
+// DataProvider para API REST estándar (FastAPI)
+import { fetchUtils, DataProvider } from 'ra-core';
+import simpleRestProvider from 'ra-data-simple-rest';
 
 const httpClient = fetchUtils.fetchJson;
 
-// Crear el dataProvider base estándar
-const baseDataProvider = jsonServerProvider(
+// Crear el dataProvider base para REST estándar
+const baseDataProvider = simpleRestProvider(
   process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000',
   httpClient
 );
 
-// Extender siguiendo EXACTAMENTE el patrón del tutorial oficial
+// Extender para operaciones específicas solamente
 export const dataProvider: DataProvider = {
   ...baseDataProvider,
   
-  // deleteMany siguiendo EXACTAMENTE el tutorial oficial
+  // deleteMany siguiendo el patrón estándar
   deleteMany: (resource, params) => {
     const query = {
       filter: JSON.stringify({ id: params.ids }),
@@ -30,7 +30,6 @@ export const dataProvider: DataProvider = {
     }).then(({ json }) => {
       console.log('✅ DELETE Response del backend:', json);
       
-      // CRÍTICO: React-admin espera los IDs eliminados, NO los objetos
       return { 
         data: params.ids  // Devolver SIEMPRE los IDs que se enviaron
       };

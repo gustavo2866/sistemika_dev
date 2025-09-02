@@ -21,8 +21,8 @@ class FilterOperator:
 class GenericCRUD(Generic[M]):
     def __init__(self, model: Type[M]):
         self.model: Type[M] = model
-        # Campos de texto donde aplicar búsqueda por defecto con "q"
-        self.searchable_fields = ["name", "title", "description", "sku"]
+        # Obtener campos de búsqueda desde metadata del modelo
+        self.searchable_fields = getattr(model, '__searchable_fields__', [])
 
     # --- helpers ---
     def _clean_create(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -41,7 +41,8 @@ class GenericCRUD(Generic[M]):
                 # Búsqueda de texto en campos searchable
                 stmt = self._apply_text_search(stmt, filter_value)
                 continue
-                
+            
+            # Verificar que el campo exista en el modelo
             if not hasattr(self.model, field_name):
                 continue
                 
@@ -51,9 +52,25 @@ class GenericCRUD(Generic[M]):
                 # Filtros complejos: {"gte": 10, "lt": 100}
                 for operator, value in filter_value.items():
                     stmt = self._apply_operator_filter(stmt, column, operator, value)
+            elif isinstance(filter_value, list):
+                # Filtro de array: usar operador IN para múltiples valores
+                stmt = stmt.where(column.in_(filter_value))
             else:
-                # Filtro simple: igualdad
-                stmt = stmt.where(column == filter_value)
+                # Filtro simple: intentar LIKE para búsqueda de texto, fallback a igualdad
+                try:
+                    # Para campos conocidos de texto, usar LIKE
+                    if field_name in ['nombre', 'email', 'telefono', 'descripcion', 'description', 'title', 'name']:
+                        stmt = stmt.where(column.ilike(f"%{filter_value}%"))
+                    else:
+                        # Para otros campos, intentar igualdad exacta
+                        stmt = stmt.where(column == filter_value)
+                except Exception as e:
+                    # Si falla, intentar igualdad exacta como fallback
+                    try:
+                        stmt = stmt.where(column == filter_value)
+                    except Exception:
+                        # Si todo falla, ignorar este filtro para evitar que se caiga el servidor
+                        continue
                 
         return stmt
 
