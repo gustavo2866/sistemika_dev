@@ -2,8 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.db import init_db
-from app.routers.item_router import router as item_router
+from app.routers.item_router import item_router
 from app.routers.user_router import user_router
+from app.routers.pais_router import pais_router
+from app.routers.tarea_router import tarea_router
 from app.api.upload import router as upload_router
 import os
 
@@ -28,6 +30,8 @@ app.add_middleware(
 app.include_router(item_router)
 app.include_router(user_router)
 app.include_router(upload_router, prefix="/api")
+app.include_router(pais_router)
+app.include_router(tarea_router)
 
 # Servir archivos estáticos (uploads)
 uploads_dir = "uploads"

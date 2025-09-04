@@ -41,6 +41,24 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display") -> Dict[str, Any]
         campos_validos = campos_respuesta(type(obj), include_id=True)
     
     obj_dict = obj.model_dump()
-    return {k: v for k, v in obj_dict.items() if k in campos_validos} 
+    
+    # Incluir relaciones si están cargadas
+    for attr_name in dir(obj):
+        if not attr_name.startswith('_') and hasattr(obj, attr_name):
+            attr_value = getattr(obj, attr_name)
+            # Si es una relación cargada (tiene model_fields y no es un campo regular)
+            if (hasattr(attr_value, 'model_fields') and 
+                attr_name not in obj.model_fields and 
+                attr_name not in STAMP_FIELDS):
+                # Incluir la relación en la respuesta, procesándola recursivamente
+                obj_dict[attr_name] = filtrar_respuesta(attr_value, context)
+    
+    # Filtrar campos válidos más las relaciones
+    result = {}
+    for k, v in obj_dict.items():
+        if k in campos_validos or (not k.startswith('_') and k not in STAMP_FIELDS):
+            result[k] = v
+    
+    return result 
 
 

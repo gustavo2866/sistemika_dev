@@ -1,15 +1,13 @@
 "use client";
 
-import { ResourceCreateWrapper } from "@/components/wrappers/resource-crud-wrapper";
-import { itemFormConfig } from "./item-config";
-
-const itemCRUDConfig = {
-  entityName: "Item",
-  entityNamePlural: "Items",
-  form: itemFormConfig,
-  createTitle: "Crear Item",
-};
+import { Create } from "@/components/create";
+import { SimpleForm } from "@/components/simple-form";
+import { ItemFields } from "./form";
 
 export const ItemCreate = () => (
-  <ResourceCreateWrapper config={itemCRUDConfig} />
+  <Create redirect="list" title="Crear Item">
+    <SimpleForm>
+      <ItemFields mode="create" />
+    </SimpleForm>
+  </Create>
 );

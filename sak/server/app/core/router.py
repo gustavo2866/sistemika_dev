@@ -1,12 +1,35 @@
 import json
 import json
-from typing import Dict, List, Type, Optional
+from typing import Dict, List, Type, Optional, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, Request
 from sqlmodel import SQLModel, Session
 from app.db import get_session
 from app.core.generic_crud import GenericCRUD
 from app.core.responses import DataResponse, ListResponse, DeleteResponse, ErrorResponse, ErrorCodes
 from app.models.base import filtrar_respuesta
+
+def flatten_nested_filters(nested_dict: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+    """
+    Convierte filtros anidados {"user": {"pais_id": "2"}} 
+    a formato plano {"user.pais_id": 2}
+    """
+    flat_dict = {}
+    
+    for key, value in nested_dict.items():
+        # Construir la clave con prefijo
+        new_key = f"{prefix}.{key}" if prefix else key
+        
+        if isinstance(value, dict):
+            # Recursivamente aplanar objetos anidados
+            flat_dict.update(flatten_nested_filters(value, new_key))
+        else:
+            # Convertir strings numéricos a int si terminan en _id
+            if new_key.endswith('_id') and isinstance(value, str) and value.isdigit():
+                flat_dict[new_key] = int(value)
+            else:
+                flat_dict[new_key] = value
+    
+    return flat_dict
 
 def create_generic_router(
     model: Type[SQLModel],
@@ -67,6 +90,11 @@ def create_generic_router(
     ):
         """Listar recursos con paginación y filtros - Soporte ra-data-simple-rest y json-server"""
         try:
+            # Debug: log toda la request recibida
+            print(f"DEBUG Router: Request URL: {request.url}")
+            print(f"DEBUG Router: Query params: {dict(request.query_params)}")
+            print(f"DEBUG Router: Method: {request.method}")
+            
             # Detectar formato y procesar parámetros
             if sort is not None or range is not None:
                 # Usar parámetros ra-data-simple-rest
@@ -123,18 +151,30 @@ def create_generic_router(
             # Agregar cualquier parámetro como filtro (excepto los reservados)
             for param_name, param_value in query_params.items():
                 if param_name not in reserved_params and param_value:
-                    # Convertir tipos apropiados para foreign keys
+                    # Debug: log todos los parámetros que se procesan
+                    print(f"DEBUG Router: Processing param {param_name}={param_value}")
+                    
+                    # Convertir tipos apropiados para foreign keys (incluyendo campos anidados)
                     if param_name.endswith('_id') and param_value.isdigit():
                         filters[param_name] = int(param_value)
+                        print(f"DEBUG Router: Converted {param_name} to int: {param_value}")
                     else:
                         filters[param_name] = param_value
+                        print(f"DEBUG Router: Added {param_name} as string: {param_value}")
             
             # Luego parsear filtros JSON si existen
             if filter:
                 try:
                     json_filters = json.loads(filter)
-                    filters.update(json_filters)
+                    print(f"DEBUG Router: JSON filters parsed: {json_filters}")
+                    
+                    # Convertir filtros anidados a formato plano
+                    flat_filters = flatten_nested_filters(json_filters)
+                    print(f"DEBUG Router: Flattened filters: {flat_filters}")
+                    
+                    filters.update(flat_filters)
                 except json.JSONDecodeError:
+                    print(f"DEBUG Router: Invalid JSON filter: {filter}")
                     raise HTTPException(
                         status_code=400,
                         detail={
@@ -145,6 +185,8 @@ def create_generic_router(
                             }
                         }
                     )
+            
+            print(f"DEBUG Router: Final filters dict: {filters}")
             
             items, total = crud.list(
                 session,

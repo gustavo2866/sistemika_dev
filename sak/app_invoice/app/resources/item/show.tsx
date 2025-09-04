@@ -17,6 +17,8 @@ export const ItemShow = () => (
       >
         <TextField source="nombre" />
       </ReferenceField>
+      {/* Mostrar país del usuario usando la relación anidada */}
+      <TextField source="user.pais.name" />
     </SimpleShowLayout>
   </Show>
 );

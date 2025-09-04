@@ -2,18 +2,15 @@
 
 import { Admin } from "@/components/admin";
 import { Resource } from "ra-core";
-import { ShowGuesser } from "@/components/show-guesser";
 import { dataProvider } from "@/lib/dataProvider";
 import type { DataProvider } from "ra-core";
 
-import { UserCreate } from "../resources/users/create";
-import { UserEdit } from "../resources/users/edit";
-import { UserList } from "../resources/users/list";
-
-import { ItemList } from "../resources/item/list";
-import { ItemCreate } from "../resources/item/create";
-import { ItemEdit } from "../resources/item/edit";
-import { ItemShow } from "../resources/item/show";
+import {
+  UserCreate, UserEdit, UserList, UserShow,
+  ItemList, ItemCreate, ItemEdit, ItemShow,
+  PaisList, PaisEdit, PaisCreate, PaisShow,
+  TareaList, TareaCreate, TareaEdit, TareaShow
+} from "../resources";
 
 const AdminApp = () => (
   <Admin dataProvider={dataProvider as DataProvider}>
@@ -23,7 +20,7 @@ const AdminApp = () => (
       list={UserList}
       edit={UserEdit}
       create={UserCreate}
-      show={ShowGuesser}
+      show={UserShow}
       recordRepresentation="nombre"
     />
     
@@ -34,6 +31,25 @@ const AdminApp = () => (
       edit={ItemEdit}
       create={ItemCreate}
       show={ItemShow}
+    />
+
+    {/* Resource para Paises */}
+    <Resource 
+      name="paises" 
+      list={PaisList}
+      edit={PaisEdit}
+      create={PaisCreate}
+      show={PaisShow}
+    />
+
+    {/* Resource para Tareas */}
+    <Resource 
+      name="tareas" 
+      list={TareaList}
+      edit={TareaEdit}
+      create={TareaCreate}
+      show={TareaShow}
+      recordRepresentation="titulo"
     />
   </Admin>
 );

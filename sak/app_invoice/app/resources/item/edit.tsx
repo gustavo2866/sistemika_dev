@@ -1,15 +1,13 @@
 "use client";
 
-import { ResourceEditWrapper } from "@/components/wrappers/resource-crud-wrapper";
-import { itemFormConfig } from "./item-config";
-
-const itemCRUDConfig = {
-  entityName: "Item",
-  entityNamePlural: "Items",
-  form: itemFormConfig,
-  editTitle: "Editar Item",
-};
+import { Edit } from "@/components/edit";
+import { SimpleForm } from "@/components/simple-form";
+import { ItemFields } from "./form";
 
 export const ItemEdit = () => (
-  <ResourceEditWrapper config={itemCRUDConfig} />
+  <Edit redirect="list" mutationMode="pessimistic" title="Editar Item">
+    <SimpleForm>
+      <ItemFields mode="edit" />
+    </SimpleForm>
+  </Edit>
 );

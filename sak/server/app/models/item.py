@@ -6,6 +6,8 @@ if TYPE_CHECKING:
     from .user import User
 
 class Item(Base, table=True):
+    __tablename__ = "item"  # Mantener consistencia con la tabla actual
+    
     name: str
     description: Optional[str] = None
     

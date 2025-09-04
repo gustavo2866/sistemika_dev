@@ -4,6 +4,8 @@ import { TextInput } from "@/components/text-input";
 import { ImageUploadInput } from "@/components/inputs/image-upload";
 import { uploadUserPhoto } from "@/lib/upload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReferenceInput } from "@/components/reference-input";
+import { AutocompleteInput } from "@/components/autocomplete-input";
 
 type Mode = "create" | "edit";
 type UserValues = {
@@ -11,6 +13,7 @@ type UserValues = {
   email: string;
   telefono?: string;
   url_foto?: string;
+  pais_id?: number;
 };
 
 // Campos que querés bloquear en Edit
@@ -64,6 +67,14 @@ export function UserFields({ mode }: { mode: Mode }) {
             placeholder="+54 9 11 1234-5678"
             helperText="Número de contacto (opcional)"
           />
+          <ReferenceInput
+            source="pais_id"
+            reference="paises"
+            label="País"
+            helperText="Selecciona el país del usuario"
+          >
+            <AutocompleteInput optionText="name" />
+          </ReferenceInput>
         </CardContent>
       </Card>
 

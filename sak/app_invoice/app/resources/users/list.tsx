@@ -10,11 +10,17 @@ import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
+import { ReferenceInput } from "@/components/reference-input";
+import { SelectInput } from "@/components/select-input";
+import { ReferenceField } from "@/components/reference-field";
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar usuarios..." alwaysOn />,
   <TextInput key="email" source="email" label="Email" placeholder="Filtrar por email" />,
   <TextInput key="telefono" source="telefono" label="Teléfono" placeholder="Filtrar por teléfono" />,
+  <ReferenceInput key="pais_id" source="pais_id" reference="paises" label="País">
+    <SelectInput emptyText="Seleccionar país" optionText="name" />
+  </ReferenceInput>,
 ];
 
 const ListActions = () => (
@@ -40,6 +46,11 @@ export const UserList = () => (
       <DataTable.Col source="nombre">   <TextField source="nombre" />   </DataTable.Col>
       <DataTable.Col source="telefono"> <TextField source="telefono" /> </DataTable.Col>
       <DataTable.Col source="email">    <TextField source="email" />    </DataTable.Col>
+      <DataTable.Col label="País">
+        <ReferenceField source="pais_id" reference="paises">
+          <TextField source="name" />
+        </ReferenceField>
+      </DataTable.Col>
 
       {/* Botón extra por si preferís editar desde la última columna */}
       <DataTable.Col> <EditButton /> </DataTable.Col>

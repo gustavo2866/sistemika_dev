@@ -1,0 +1,10 @@
+import sqlite3
+conn = sqlite3.connect('data/dev.db')
+cursor = conn.cursor()
+cursor.execute("INSERT OR IGNORE INTO paises (name) VALUES ('Argentina')")
+cursor.execute("INSERT OR IGNORE INTO paises (name) VALUES ('Brasil')")
+conn.commit()
+cursor.execute('SELECT * FROM paises')
+results = cursor.fetchall()
+print(results)
+conn.close()

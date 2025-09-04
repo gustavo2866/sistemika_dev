@@ -1,8 +1,9 @@
 from __future__ import annotations
 import json
-from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple
+from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List
 from datetime import datetime
 from sqlmodel import SQLModel, Session, select, func, and_, or_
+from sqlalchemy.orm import selectinload
 from app.models.base import campos_editables
 
 M = TypeVar("M", bound=SQLModel)
@@ -42,6 +43,11 @@ class GenericCRUD(Generic[M]):
                 stmt = self._apply_text_search(stmt, filter_value)
                 continue
             
+            # Verificar si es un campo anidado (contiene punto)
+            if "." in field_name:
+                stmt = self._apply_nested_filter(stmt, field_name, filter_value)
+                continue
+            
             # Verificar que el campo exista en el modelo
             if not hasattr(self.model, field_name):
                 continue
@@ -72,6 +78,53 @@ class GenericCRUD(Generic[M]):
                         # Si todo falla, ignorar este filtro para evitar que se caiga el servidor
                         continue
                 
+        return stmt
+
+    def _apply_nested_filter(self, stmt, field_path: str, filter_value):
+        """Aplica filtros para campos anidados como user.pais_id o user.company.country.name"""
+        try:
+            parts = field_path.split('.')
+            current_model = self.model
+            
+            print(f"DEBUG: Aplicando filtro anidado {field_path} = {filter_value}")
+            print(f"DEBUG: Partes: {parts}")
+            print(f"DEBUG: Modelo inicial: {current_model.__name__}")
+            
+            # Navegar a través de todas las relaciones excepto la última parte
+            for i, relation_name in enumerate(parts[:-1]):
+                print(f"DEBUG: Procesando relación {i+1}/{len(parts)-1}: {relation_name}")
+                if hasattr(current_model, relation_name):
+                    relation = getattr(current_model, relation_name)
+                    related_model = relation.property.mapper.class_
+                    print(f"DEBUG: Join {current_model.__name__} -> {related_model.__name__}")
+                    
+                    # Realizar el join
+                    stmt = stmt.join(related_model)
+                    # Actualizar el modelo actual
+                    current_model = related_model
+                else:
+                    print(f"ERROR: Relación {relation_name} no encontrada en {current_model.__name__}")
+                    return stmt
+            
+            # Aplicar filtro en el campo final
+            field_name = parts[-1]
+            print(f"DEBUG: Aplicando filtro final en campo {field_name} del modelo {current_model.__name__}")
+            
+            if hasattr(current_model, field_name):
+                final_column = getattr(current_model, field_name)
+                if isinstance(filter_value, list):
+                    stmt = stmt.where(final_column.in_(filter_value))
+                    print(f"DEBUG: Filtro IN aplicado: {field_name} IN {filter_value}")
+                else:
+                    stmt = stmt.where(final_column == filter_value)
+                    print(f"DEBUG: Filtro igualdad aplicado: {field_name} = {filter_value}")
+            else:
+                print(f"ERROR: Campo {field_name} no encontrado en {current_model.__name__}")
+                
+        except Exception as e:
+            print(f"ERROR: No se pudo aplicar filtro anidado {field_path}: {e}")
+            import traceback
+            traceback.print_exc()
         return stmt
 
     def _apply_text_search(self, stmt, search_text: str):
@@ -136,8 +189,13 @@ class GenericCRUD(Generic[M]):
 
     def get(self, session: Session, obj_id: Any, deleted: str = "exclude") -> Optional[M]:
         """Get by ID con soporte para soft delete"""
+        print(f"DEBUG: GenericCRUD.get called for {self.model.__name__} with id {obj_id}")
         stmt = select(self.model).where(self.model.id == obj_id)
         stmt = self._apply_soft_delete_filter(stmt, deleted)
+        
+        # Apply auto-includes (including nested relationships)
+        stmt = self._apply_auto_includes(stmt)
+        
         return session.exec(stmt).first()
 
     def list(
@@ -159,6 +217,21 @@ class GenericCRUD(Generic[M]):
         """
         # Base query
         stmt = select(self.model)
+        
+        # Apply auto-includes (including nested relationships)
+        stmt = self._apply_auto_includes(stmt)
+        
+        # Aplicar joins para relaciones incluidas
+        if include:
+            include_list = [rel.strip() for rel in include.split(",")]
+            for relation in include_list:
+                try:
+                    if hasattr(self.model, relation):
+                        stmt = stmt.options(selectinload(getattr(self.model, relation)))
+                except Exception as e:
+                    # Log the error but don't fail the entire query
+                    print(f"Warning: Could not load relationship {relation} for {self.model.__name__}: {e}")
+                    pass
         
         # Aplicar filtros
         if filters:
@@ -185,6 +258,39 @@ class GenericCRUD(Generic[M]):
         
         items = session.exec(stmt).all()
         return items, total
+
+    def _get_auto_include(self) -> List[str]:
+        """Get auto-include relationships for specific models"""
+        try:
+            if self.model.__name__ == "Item":
+                return ["user"]  # Always include user for Item
+            elif self.model.__name__ == "User":
+                return ["pais"]  # Always include pais for User
+            elif self.model.__name__ == "Tarea":
+                return ["user"]  # Always include user for Tarea
+        except Exception:
+            pass
+        return []
+
+    def _apply_auto_includes(self, stmt):
+        """Apply auto-include relationships with nested support"""
+        try:
+            print(f"DEBUG: Applying auto-includes for model: {self.model.__name__}")
+            if self.model.__name__ == "Item":
+                print("DEBUG: Adding selectinload for Item.user.pais")
+                # Import models locally to avoid circular imports
+                from app.models.user import User
+                stmt = stmt.options(
+                    selectinload(self.model.user).selectinload(User.pais)
+                )
+            elif self.model.__name__ == "User":
+                print("DEBUG: Adding selectinload for User.pais")
+                stmt = stmt.options(selectinload(self.model.pais))
+        except Exception as e:
+            print(f"ERROR: Could not apply auto-includes for {self.model.__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+        return stmt
 
     def update(
         self, 
