@@ -1,9 +1,11 @@
 from __future__ import annotations
 import json
+import inspect
 from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List
 from datetime import datetime
 from sqlmodel import SQLModel, Session, select, func, and_, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 from app.models.base import campos_editables
 
 M = TypeVar("M", bound=SQLModel)
@@ -259,37 +261,123 @@ class GenericCRUD(Generic[M]):
         items = session.exec(stmt).all()
         return items, total
 
-    def _get_auto_include(self) -> List[str]:
-        """Get auto-include relationships for specific models"""
+    def _discover_relations(self, model_class: Type[SQLModel], max_depth: int = 2, current_depth: int = 0) -> Dict[str, Any]:
+        """
+        Auto-descubre relaciones SQLAlchemy en un modelo
+        
+        Args:
+            model_class: Clase del modelo a inspeccionar
+            max_depth: Máxima profundidad de relaciones anidadas
+            current_depth: Profundidad actual (para recursión)
+            
+        Returns:
+            Dict con los selectinload options para las relaciones encontradas
+        """
+        if current_depth >= max_depth:
+            return {}
+            
+        relations = {}
+        
         try:
-            if self.model.__name__ == "Item":
-                return ["user"]  # Always include user for Item
-            elif self.model.__name__ == "User":
-                return ["pais"]  # Always include pais for User
-            elif self.model.__name__ == "Tarea":
-                return ["user"]  # Always include user for Tarea
-        except Exception:
-            pass
-        return []
+            # Usar SQLAlchemy inspector para obtener relaciones reales
+            mapper = sqlalchemy_inspect(model_class)
+            
+            # Iterar sobre todas las relaciones del modelo
+            for relationship_name, relationship in mapper.relationships.items():
+                try:
+                    # Obtener el modelo relacionado
+                    related_model = relationship.mapper.class_
+                    
+                    # Crear el selectinload para esta relación
+                    relation_attr = getattr(model_class, relationship_name)
+                    
+                    # Solo procesar relaciones de nivel 1 para evitar conflictos
+                    if current_depth == 0:
+                        # Para relaciones de primer nivel, incluir sin anidamiento por ahora
+                        relations[relationship_name] = selectinload(relation_attr)
+                        
+                        # Auto-descubrir relaciones anidadas solo para casos específicos
+                        if current_depth < max_depth - 1:
+                            try:
+                                nested_relations = self._discover_relations(
+                                    related_model, max_depth, current_depth + 1
+                                )
+                                
+                                # Solo añadir relaciones anidadas si es seguro
+                                if nested_relations and len(nested_relations) <= 2:
+                                    # Buscar relaciones específicas conocidas como seguras
+                                    for nested_name, _ in nested_relations.items():
+                                        if nested_name in ['pais', 'categoria', 'tipo']:  # Relaciones "seguras"
+                                            try:
+                                                nested_attr = getattr(related_model, nested_name)
+                                                relations[relationship_name] = selectinload(relation_attr).selectinload(nested_attr)
+                                                break  # Solo una relación anidada por simplicidad
+                                            except:
+                                                continue
+                            except:
+                                # Si hay error con relaciones anidadas, mantener solo la de primer nivel
+                                pass
+                        
+                except Exception as e:
+                    print(f"WARNING: Could not process relationship '{relationship_name}' in {model_class.__name__}: {e}")
+                    continue
+                    
+        except Exception as e:
+            print(f"ERROR: Could not discover relations for {model_class.__name__}: {e}")
+            
+        return relations
+
+    def _get_auto_include_options(self) -> List[Any]:
+        """
+        Obtiene automáticamente las opciones de include para el modelo actual
+        
+        Returns:
+            Lista de selectinload options para usar en la query
+        """
+        relations = self._discover_relations(self.model, max_depth=2)
+        options = []
+        
+        for relation_name, loader in relations.items():
+            options.append(loader)
+            
+        print(f"DEBUG: Auto-discovered {len(options)} relations for {self.model.__name__}: {list(relations.keys())}")
+        return options
+
+    def _get_auto_include(self) -> List[str]:
+        """
+        DEPRECATED: Mantener por compatibilidad
+        Retorna nombres de relaciones descubiertas automáticamente
+        """
+        relations = self._discover_relations(self.model, max_depth=1)
+        return list(relations.keys())
 
     def _apply_auto_includes(self, stmt):
-        """Apply auto-include relationships with nested support"""
+        """
+        Aplica automáticamente las relaciones descubiertas al statement SQL
+        
+        Args:
+            stmt: SQLAlchemy statement
+            
+        Returns:
+            Statement con las opciones de include aplicadas
+        """
         try:
-            print(f"DEBUG: Applying auto-includes for model: {self.model.__name__}")
-            if self.model.__name__ == "Item":
-                print("DEBUG: Adding selectinload for Item.user.pais")
-                # Import models locally to avoid circular imports
-                from app.models.user import User
-                stmt = stmt.options(
-                    selectinload(self.model.user).selectinload(User.pais)
-                )
-            elif self.model.__name__ == "User":
-                print("DEBUG: Adding selectinload for User.pais")
-                stmt = stmt.options(selectinload(self.model.pais))
+            print(f"DEBUG: Auto-discovering includes for model: {self.model.__name__}")
+            
+            # Obtener las opciones de include automáticamente
+            include_options = self._get_auto_include_options()
+            
+            if include_options:
+                print(f"DEBUG: Applying {len(include_options)} auto-discovered includes")
+                stmt = stmt.options(*include_options)
+            else:
+                print(f"DEBUG: No auto-includes found for {self.model.__name__}")
+                
         except Exception as e:
             print(f"ERROR: Could not apply auto-includes for {self.model.__name__}: {e}")
             import traceback
             traceback.print_exc()
+            
         return stmt
 
     def update(
