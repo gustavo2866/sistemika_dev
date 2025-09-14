@@ -11,11 +11,13 @@ router = APIRouter()
 
 # Configuración de upload
 UPLOAD_DIR = Path("uploads")
+IMAGES_DIR = UPLOAD_DIR / "images"
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
-# Crear directorio de uploads si no existe
+# Crear directorios de uploads si no existen
 UPLOAD_DIR.mkdir(exist_ok=True)
+IMAGES_DIR.mkdir(exist_ok=True)
 
 
 def get_file_extension(filename: str) -> str:
@@ -60,7 +62,7 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, str]:
         
         # Generar nombre único
         unique_filename = generate_unique_filename(file.filename)
-        file_path = UPLOAD_DIR / unique_filename
+        file_path = IMAGES_DIR / unique_filename
         
         # Guardar archivo
         async with aiofiles.open(file_path, 'wb') as f:
@@ -69,7 +71,7 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, str]:
         
         # Construir URL del archivo
         # En desarrollo, la URL será relativa al servidor
-        file_url = f"/uploads/{unique_filename}"
+        file_url = f"/uploads/images/{unique_filename}"
         
         return {
             "url": file_url,

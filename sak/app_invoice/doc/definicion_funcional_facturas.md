@@ -137,7 +137,7 @@ Digitalizar y estandarizar el ingreso de comprobantes (facturas/NC/ND) a partir 
 ---
 
 ## 6) API (contratos sugeridos)
-- `POST /api/invoices/extract` → sube PDF, devuelve JSON preliminar.  
+- `POST /api/invoices/extract` → sube PDF, devuelve JSON preliminar. reutilizar funcion de upload en server. 
 - `GET /api/providers/{cuit}` → ficha proveedor (impuestos obligatorios, defaults).  
 - `GET /api/operations/types` → metadatos de tipos de operación, conceptos, CC, condiciones de pago.  
 - `POST /api/invoices/validate` → valida estructura + reglas de negocio.  
@@ -148,7 +148,7 @@ Digitalizar y estandarizar el ingreso de comprobantes (facturas/NC/ND) a partir 
 
 ## 7) UI – Moc final (texto exacto)
 
-### 📂 Subir comprobante
+### 📂 Subir comprobante (reutilizar componente de image-upload )
 ```
 [ + Subir Factura PDF ]
 (arrastrar y soltar o seleccionar archivo)

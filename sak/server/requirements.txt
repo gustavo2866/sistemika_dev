@@ -3,3 +3,14 @@ uvicorn[standard]
 sqlmodel
 aiofiles
 python-multipart
+python-dotenv
+
+# PDF Processing
+pdfplumber
+pytesseract
+PyMuPDF
+Pillow
+pdf2image
+
+# AI/LLM
+openai
