@@ -64,13 +64,32 @@ function FormField({ className, id, name, ...props }: FormItemProps) {
     [id, name],
   );
 
+  // Extract only valid DOM props for the div element
+  const { 
+    isRequired,
+    label,
+    source,
+    resource,
+    validate,
+    helperText,
+    ...validDOMProps 
+  } = props;
+
+  // Mark these as intentionally unused (they're extracted to filter them out)
+  void isRequired;
+  void label;
+  void source;
+  void resource;
+  void validate;
+  void helperText;
+
   return (
     <FormItemContext.Provider value={contextValue}>
       <div
         data-slot="form-item"
         className={cn("grid gap-2", className)}
         role="group"
-        {...props}
+        {...validDOMProps}
       />
     </FormItemContext.Provider>
   );
@@ -79,6 +98,13 @@ function FormField({ className, id, name, ...props }: FormItemProps) {
 type FormItemProps = Omit<React.ComponentProps<"div">, "id"> & {
   id: string;
   name: string;
+  // Optional React Admin props that may be passed but should not reach DOM
+  isRequired?: boolean;
+  label?: string;
+  source?: string;
+  resource?: string;
+  validate?: ((value: unknown) => string | undefined) | ((value: unknown) => string | undefined)[];
+  helperText?: string;
 };
 
 function FormLabel({

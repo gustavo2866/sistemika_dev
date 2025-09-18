@@ -64,7 +64,6 @@ export const SelectInput = (props: SelectInputProps) => {
     className,
     emptyText = "",
     emptyValue = "",
-    filter: _filter,
     create,
     createLabel,
     onCreate,
@@ -135,6 +134,9 @@ export const SelectInput = (props: SelectInputProps) => {
     readOnly,
     disabled,
   });
+  const showRequired =
+    isRequired || !!(props as { isRequired?: boolean }).isRequired || !!(props as { required?: boolean }).required;
+  const isLabelVisible = !(label === "" || (label as unknown as boolean) === false);
 
   const renderEmptyItemOption = useCallback(() => {
     return typeof emptyText === "string"
@@ -181,18 +183,18 @@ export const SelectInput = (props: SelectInputProps) => {
 
   if (isPending) {
     return (
-      <FormField
+  <FormField
         id={id}
         name={field.name}
         className={cn("w-full min-w-20", className)}
       >
-        {label !== "" && label !== false && (
+    {isLabelVisible && (
           <FormLabel>
             <FieldTitle
               label={label}
               source={source}
               resource={resourceProp}
-              isRequired={isRequired}
+      isRequired={showRequired}
             />
           </FormLabel>
         )}
@@ -225,13 +227,13 @@ export const SelectInput = (props: SelectInputProps) => {
         className={cn("w-full min-w-20", className)}
         {...rest}
       >
-        {label !== "" && label !== false && (
+    {isLabelVisible && (
           <FormLabel>
             <FieldTitle
               label={label}
               source={source}
               resource={resourceProp}
-              isRequired={isRequired}
+      isRequired={showRequired}
             />
           </FormLabel>
         )}

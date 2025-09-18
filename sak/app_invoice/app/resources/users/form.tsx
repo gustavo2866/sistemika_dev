@@ -1,7 +1,7 @@
 "use client";
 
 import { TextInput } from "@/components/text-input";
-import { ImageUploadInput } from "@/components/inputs/image-upload";
+import { ImageUploadInput } from "@/app/admin/components/inputs/image-upload";
 import { uploadUserPhoto } from "@/lib/upload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ReferenceInput } from "@/components/reference-input";

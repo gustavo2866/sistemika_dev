@@ -5,6 +5,9 @@ aiofiles
 python-multipart
 python-dotenv
 
+# Authentication
+PyJWT
+
 # PDF Processing
 pdfplumber
 pytesseract

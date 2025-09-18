@@ -40,12 +40,12 @@ export const AutocompleteInput = (
     ChoicesProps & {
       className?: string;
       disableValue?: string;
-      filterToQuery?: (searchText: string) => any;
+      filterToQuery?: (searchText: string) => Record<string, unknown>;
       translateChoice?: boolean;
       placeholder?: string;
       inputText?:
         | React.ReactNode
-        | ((option: any | undefined) => React.ReactNode);
+        | ((option: unknown | undefined) => React.ReactNode);
     },
 ) => {
   const { filterToQuery = DefaultFilterToQuery, inputText } = props;
@@ -57,6 +57,8 @@ export const AutocompleteInput = (
     setFilters,
   } = useChoicesContext(props);
   const { id, field, isRequired } = useInput({ ...props, source });
+  const showRequired =
+    isRequired || !!(props as { isRequired?: boolean }).isRequired || !!(props as { required?: boolean }).required;
   const translate = useTranslate();
   const { placeholder = translate("ra.action.search", { _: "Search..." }) } =
     props;
@@ -78,7 +80,7 @@ export const AutocompleteInput = (
   );
 
   const getInputText = useCallback(
-    (selectedChoice: any) => {
+    (selectedChoice: unknown) => {
       if (typeof inputText === "function") {
         return inputText(selectedChoice);
       }
@@ -106,7 +108,7 @@ export const AutocompleteInput = (
             label={props.label}
             source={props.source ?? source}
             resource={resource}
-            isRequired={isRequired}
+            isRequired={showRequired}
           />
         </FormLabel>
       )}

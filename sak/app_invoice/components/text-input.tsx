@@ -22,8 +22,11 @@ export type TextInputProps = InputProps & {
 
 export const TextInput = (props: TextInputProps) => {
   const resource = useResourceContext(props);
-  const { label, source, multiline, className, ...rest } = props;
+  const { label, source, multiline, className, helperText, placeholder, ...rest } = props;
   const { id, field, isRequired } = useInput(props);
+  // Mostrar asterisco si viene de RA (validate/isRequired), del prop isRequired explícito o del prop HTML required
+  const showRequired =
+    isRequired || !!(props as { isRequired?: boolean }).isRequired || !!(props as { required?: boolean }).required;
 
   return (
     <FormField id={id} className={className} name={field.name}>
@@ -33,18 +36,28 @@ export const TextInput = (props: TextInputProps) => {
             label={label}
             source={source}
             resource={resource}
-            isRequired={isRequired}
+            isRequired={showRequired}
           />
         </FormLabel>
       )}
       <FormControl>
         {multiline ? (
-          <Textarea {...sanitizeInputRestProps(rest)} {...field} />
+          <Textarea 
+            placeholder={placeholder}
+            {...sanitizeInputRestProps(rest)} 
+            {...field} 
+            required={!!(props as { required?: boolean }).required}
+          />
         ) : (
-          <Input {...sanitizeInputRestProps(rest)} {...field} />
+          <Input 
+            placeholder={placeholder}
+            {...sanitizeInputRestProps(rest)} 
+            {...field}
+            required={!!(props as { required?: boolean }).required}
+          />
         )}
       </FormControl>
-      <InputHelperText helperText={props.helperText} />
+      <InputHelperText helperText={helperText} />
       <FormError />
     </FormField>
   );

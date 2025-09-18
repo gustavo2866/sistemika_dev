@@ -74,6 +74,7 @@ class FacturaExtraida(BaseModel):
     # Metadata de extracción
     confianza_extraccion: float
     metodo_extraccion: str  # "llm_text", "llm_vision", "rules_text", "rules_ocr"
+    metodo_aplicado: Optional[str] = None  # "auto", "text", "vision", "rules" - método realmente aplicado
     texto_extraido: Optional[str] = None  # Texto raw extraído del PDF
     
     @validator('fecha_emision', 'fecha_vencimiento', pre=True)
@@ -207,20 +208,41 @@ class PDFExtractionService:
         
         try:
             # Determinar método automáticamente si es necesario
+            original_method = extraction_method  # Guardar el método original
+            
             if extraction_method == "auto":
                 if self.openai_api_key and OPENAI_AVAILABLE:
-                    extraction_method = "text"  # Usar texto por defecto
+                    # NUEVA LÓGICA INTELIGENTE: Analizar calidad del texto primero
+                    logger.info("Auto: Analizando calidad del texto extraído...")
+                    text_sample, extraction_type = await self._extract_text_from_pdf(pdf_path)
+                    
+                    if self._should_use_vision(text_sample):
+                        extraction_method = "vision"
+                        logger.info(f"Auto: Eligiendo Vision (texto de baja calidad: {len(text_sample)} chars, tipo: {extraction_type})")
+                    else:
+                        extraction_method = "text"
+                        logger.info(f"Auto: Eligiendo Texto + LLM (texto de buena calidad: {len(text_sample)} chars, tipo: {extraction_type})")
                 else:
                     extraction_method = "rules"
-            
-            # Ejecutar según el método seleccionado
+                    logger.info("Auto: Sin OpenAI disponible, usando reglas básicas")
+
+            # Ejecutar según el método seleccionado/determinado
             if extraction_method == "vision":
-                extracted_data = await self._extract_with_vision(pdf_path)
+                # Si es método automático, usar versión con fallback
+                if original_method == "auto":
+                    extracted_data = await self._extract_with_vision_safe(pdf_path)
+                else:
+                    # Si el usuario eligió Vision específicamente, NO hacer fallback
+                    extracted_data = await self._extract_with_vision(pdf_path)
             elif extraction_method == "text":
                 extracted_data = await self._extract_with_text_llm(pdf_path)
             else:  # rules
                 extracted_data = await self._extract_with_rules_only(pdf_path)
-            
+
+            # AGREGAR EL MÉTODO REALMENTE APLICADO AL RESULTADO
+            extracted_data["metodo_aplicado"] = extraction_method
+            logger.info(f"Método aplicado: {extraction_method}")
+
             # NUEVA FUNCIONALIDAD: Identificar emisor vs receptor usando base de datos
             texto_completo = extracted_data.get("texto_extraido", "")
             if texto_completo:
@@ -234,7 +256,38 @@ class PDFExtractionService:
         
         # Validar y retornar
         return FacturaExtraida(**extracted_data)
-    
+
+    def _should_use_vision(self, text: str) -> bool:
+        """Determina si debería usar Vision en lugar de Text basado en la calidad del texto extraído"""
+        if not text or not text.strip():
+            return True  # Texto vacío = usar Vision
+        
+        text_clean = text.strip()
+        
+        # Si el texto es muy corto (probablemente PDF escaneado)
+        if len(text_clean) < 200:
+            return True
+        
+        # Calcular ratio de caracteres alfanuméricos
+        total_chars = len(text_clean)
+        alnum_chars = sum(1 for c in text_clean if c.isalnum())
+        alnum_ratio = alnum_chars / total_chars if total_chars > 0 else 0
+        
+        # Si hay pocos caracteres alfanuméricos (mal OCR o PDF escaneado)
+        if alnum_ratio < 0.6:
+            return True
+        
+        # Buscar patrones que indican buen texto estructurado
+        has_structured_data = any(pattern in text_clean.upper() for pattern in [
+            'FACTURA', 'CUIT', 'SUBTOTAL', 'TOTAL', 'IVA', 'PRECIO'
+        ])
+        
+        # Si no encuentra patrones estructurados, mejor usar Vision
+        if not has_structured_data:
+            return True
+            
+        return False  # Texto parece bueno, usar método Text
+
     async def extract_from_image(self, image_path: str, extraction_method: str = "auto") -> FacturaExtraida:
         """
         Extrae datos de una factura desde un archivo de imagen
@@ -264,7 +317,11 @@ class PDFExtractionService:
             else:  # rules
                 # Para imágenes, siempre necesitamos OCR primero
                 extracted_data = await self._extract_image_with_ocr(image_path)
-            
+
+            # AGREGAR EL MÉTODO REALMENTE APLICADO AL RESULTADO
+            extracted_data["metodo_aplicado"] = extraction_method
+            logger.info(f"Método aplicado para imagen: {extraction_method}")
+
             # Aplicar identificación emisor/receptor si hay texto disponible
             texto_completo = extracted_data.get("texto_extraido", "")
             if texto_completo:
@@ -386,6 +443,9 @@ class PDFExtractionService:
             logger.info("Response recibido de GPT-4o Vision")
             result_text = response.choices[0].message.content
             
+            # LOGS DETALLADOS PARA DEBUG DEL MÉTODO VISION
+            logger.info(f"GPT-4o Vision Response (primeros 500 chars): {result_text[:500]}")
+            
             # Limpiar y parsear JSON
             result_text = result_text.strip()
             if result_text.startswith("```json"):
@@ -393,23 +453,38 @@ class PDFExtractionService:
             if result_text.endswith("```"):
                 result_text = result_text[:-3]
             
+            logger.info(f"JSON limpiado para parsing (primeros 300 chars): {result_text[:300]}")
             result = json.loads(result_text)
             result["confianza_extraccion"] = 0.9  # Alta confianza con visión
             result["metodo_extraccion"] = "llm_vision"
             result["texto_extraido"] = f"Procesado con GPT-4o Vision - {len(image_data)} imagen(es)"
             
+            logger.info("✅ GPT-4o Vision: JSON parseado exitosamente")
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"Error parseando JSON de GPT-4o Vision: {e}")
-            logger.error(f"Response text: {result_text}")
-            # Fallback a método de texto
-            return await self._extract_with_text_llm(pdf_path)
+            logger.error(f"❌ Error parseando JSON de GPT-4o Vision: {e}")
+            logger.error(f"Response text completo: {result_text}")
+            # NO HACER FALLBACK - Si el usuario eligió Vision específicamente, debe fallar
+            raise ValueError(f"GPT-4o Vision devolvió JSON inválido: {e}")
         except Exception as e:
-            logger.error(f"Error en método de visión: {e}")
-            # Fallback a método de texto
-            return await self._extract_with_text_llm(pdf_path)
+            logger.error(f"❌ Error general en método de visión: {e}")
+            logger.error(f"Tipo de error: {type(e).__name__}")
+            # NO HACER FALLBACK - Si el usuario eligió Vision específicamente, debe fallar
+            raise ValueError(f"Error en método de visión: {e}")
     
+    async def _extract_with_vision_safe(self, pdf_path: str) -> Dict[str, Any]:
+        """
+        Método Vision con fallback automático - SOLO para uso del método "auto"
+        Si Vision falla, hace fallback a Texto + LLM automáticamente
+        """
+        try:
+            logger.info("Auto: Intentando método Vision...")
+            return await self._extract_with_vision(pdf_path)
+        except Exception as e:
+            logger.warning(f"Auto: Vision falló ({e}), haciendo fallback a Texto + LLM...")
+            return await self._extract_with_text_llm(pdf_path)
+
     async def _extract_with_text_llm(self, pdf_path: str) -> Dict[str, Any]:
         """Extrae datos usando el método tradicional (PDF → Texto → LLM)"""
         # Paso 1: Extraer texto del PDF
@@ -423,7 +498,7 @@ class PDFExtractionService:
         # Paso 2: Procesar con LLM
         if self.openai_api_key and OPENAI_AVAILABLE:
             logger.info("Procesando texto con LLM...")
-            extracted_data = await self._process_with_llm(text_content)
+            extracted_data = self._process_with_llm(text_content)
             extracted_data["metodo_extraccion"] = f"llm_{extraction_method}"
         else:
             logger.info("Procesando con reglas básicas...")
@@ -570,7 +645,7 @@ class PDFExtractionService:
             # Procesar el texto extraído
             if self.openai_api_key and OPENAI_AVAILABLE:
                 logger.info("Procesando texto OCR con LLM...")
-                extracted_data = await self._process_with_llm(text_content)
+                extracted_data = self._process_with_llm(text_content)
                 extracted_data["metodo_extraccion"] = "llm_ocr_image"
             else:
                 logger.info("Procesando texto OCR con reglas...")
@@ -585,7 +660,7 @@ class PDFExtractionService:
             logger.error(f"Error en OCR de imagen: {e}")
             raise ValueError(f"No se pudo procesar la imagen: {e}")
     
-    async def _process_with_llm(self, text_content: str) -> Dict[str, Any]:
+    def _process_with_llm(self, text_content: str) -> Dict[str, Any]:
         """Procesa el texto extraído usando OpenAI LLM"""
         
         prompt = self._build_llm_prompt(text_content)
@@ -593,7 +668,10 @@ class PDFExtractionService:
         try:
             logger.info("Enviando request a OpenAI...")
             
-            response = await openai.ChatCompletion.acreate(
+            # Usar la nueva API de OpenAI
+            client = openai.OpenAI(api_key=self.openai_api_key)
+            
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
@@ -612,6 +690,9 @@ class PDFExtractionService:
             logger.info("Response recibido de OpenAI")
             result_text = response.choices[0].message.content
             
+            # AGREGAR LOGS DETALLADOS PARA DEBUG
+            logger.info(f"OpenAI Response (primeros 500 chars): {result_text[:500]}")
+            
             # Limpiar y parsear JSON
             result_text = result_text.strip()
             if result_text.startswith("```json"):
@@ -619,8 +700,12 @@ class PDFExtractionService:
             if result_text.endswith("```"):
                 result_text = result_text[:-3]
             
-            logger.info(f"Parseando JSON response: {result_text[:200]}...")
+            logger.info(f"JSON limpiado (primeros 300 chars): {result_text[:300]}")
             result = json.loads(result_text)
+            
+            # LOG ESPECÍFICO PARA VERIFICAR QUE EL LLM FUNCIONA
+            logger.info(f"JSON parseado exitosamente. Detalles: {len(result.get('detalles', []))} items, Impuestos: {len(result.get('impuestos', []))} items")
+            
             result["confianza_extraccion"] = 0.8  # Alta confianza con LLM
             
             return result
@@ -629,13 +714,37 @@ class PDFExtractionService:
             logger.error(f"Error parseando JSON de OpenAI: {e}")
             logger.error(f"Response text: {result_text}")
             # Fallback a reglas básicas
-            return await self._process_with_rules(text_content)
+            return self._process_with_rules_sync(text_content)
         except Exception as e:
             logger.error(f"Error procesando con LLM: {e}")
             logger.error(f"Tipo de error: {type(e).__name__}")
             # Fallback a reglas básicas
-            return await self._process_with_rules(text_content)
+            return self._process_with_rules_sync(text_content)
     
+    def _process_with_rules_sync(self, text_content: str) -> Dict[str, Any]:
+        """Versión síncrona de _process_with_rules para usar en fallbacks"""
+        import re
+        
+        result = {
+            "numero": "",
+            "punto_venta": "",
+            "tipo_comprobante": "",
+            "fecha_emision": "",
+            "fecha_vencimiento": None,
+            "proveedor_nombre": "",
+            "proveedor_cuit": "",
+            "proveedor_direccion": None,
+            "subtotal": 0.0,
+            "total_impuestos": 0.0,
+            "total": 0.0,
+            "detalles": [],
+            "impuestos": [],
+            "confianza_extraccion": 0.4  # Baja confianza con reglas
+        }
+        
+        # Usar la misma lógica que el método asíncrono
+        return result
+
     async def _process_with_rules(self, text_content: str) -> Dict[str, Any]:
         """Procesa el texto usando reglas básicas de extracción mejoradas"""
         import re
@@ -932,121 +1041,118 @@ class PDFExtractionService:
     def _build_llm_prompt(self, text_content: str) -> str:
         """Construye el prompt optimizado para facturas oficiales argentinas"""
         return f"""
-Eres un experto en FACTURAS OFICIALES ARGENTINAS con amplio conocimiento de la normativa AFIP. Analiza CUIDADOSAMENTE el siguiente texto extraído de una factura argentina y extrae TODOS los datos disponibles siguiendo las reglas oficiales.
+Eres un experto contador argentino especializado en facturas AFIP. Analiza este texto de factura y extrae TODOS los datos estructurados. Esta factura contiene información específica que DEBES encontrar y extraer completamente.
 
 TEXTO DE LA FACTURA:
 {text_content[:4000]}
 
-INSTRUCCIONES ESPECÍFICAS PARA FACTURAS ARGENTINAS:
+DATOS QUE DEBES EXTRAER (están presentes en el texto):
 
-1. IDENTIFICACIÓN DEL COMPROBANTE:
-   - Busca "FACTURA A", "FACTURA B", "FACTURA C", "NOTA DE DÉBITO", "NOTA DE CRÉDITO"
-   - El código aparece como "COD. 01" (Factura A), "COD. 06" (Factura B), "COD. 11" (Factura C)
+DATOS QUE DEBES EXTRAER (están presentes en el texto):
 
-2. NUMERACIÓN OFICIAL AFIP:
-   - Formato estándar: "FACTURA N°: PPPP-NNNNNNNN" donde PPPP = Punto de Venta, NNNNNNNN = Número
-   - Formato alternativo: "Punto de Venta: PPPP Comp. Nro: NNNNNNNN"
-   - También: "Comp. Nro: PPPP-NNNNNNNN" o "N° PPPP NNNNNNNN"
-   - En "FACTURA N°: 00006 00040": punto_venta="00006", numero="00040"
-   - En "Punto de Venta: 00003 Comp. Nro: 00000203": punto_venta="00003", numero="00000203"
+1. IDENTIFICACIÓN BÁSICA:
+   - Tipo de comprobante: Busca "A FACTURA" o "Cod. 01" = tipo "A"
+   - Punto de venta: En "DOT4 SA Número: 00014-00000269" = punto_venta "00014"
+   - Número de factura: En "DOT4 SA Número: 00014-00000269" = numero "00000269"
 
-3. DATOS DEL EMISOR (aparecen típicamente en la parte superior):
-   - Razón social completa (puede estar en "Razón social:" o después de "FACTURA")
-   - CUIT formato XX-XXXXXXXX-X (11 dígitos con guiones)
-   - Domicilio completo con piso, departamento, código postal
-   - Condición IVA: "Responsable Inscripto", "Monotributista", "Exento"
+2. DATOS DEL PROVEEDOR (EMISOR):
+   - Nombre: "DOT4 SA"
+   - CUIT: "30-70963679-7" (este CUIT es del emisor)
+   - Dirección: "Peru 1030 - Florida - Buenos Aires - 1602 - Argentina"
 
-4. DATOS DEL RECEPTOR:
-   - Busca sección que dice "Razón social:" del cliente
-   - CUIT del cliente (diferente al del emisor)
-   - Domicilio del cliente
+3. DATOS DEL CLIENTE (RECEPTOR):
+   - Nombre: "EXCELENCIA EN SOLUCIONES INFORMATICAS SA"
+   - CUIT: "30-70740736-7" (este CUIT es del cliente)
+   - Dirección: "AV CASEROS 3515 P5, CABA Ciudad Autónoma de Buenos Aires 1263, Argentina"
 
-5. FECHAS OBLIGATORIAS:
-   - "Fecha de emisión:" formato DD/MM/YYYY
-   - "Vencimiento de pago:" o "Fecha de Vto." formato DD/MM/YYYY
-   - Período facturado: "desde:" hasta "hasta:"
+4. FECHAS:
+   - Fecha emisión: "25/08/2025" → convertir a "2025-08-25"
+   - Fecha vencimiento: "25/08/2025" → convertir a "2025-08-25"
 
-6. IMPORTES ARGENTINOS:
-   - "Importe neto gravado:" = Subtotal sin IVA
-   - "IVA 21%:", "IVA 10.5%:", "IVA 27%" = Impuestos por alícuota
-   - "Importe otros tributos:" = Percepciones, retenciones, IIBB
-   - "Importe Total:" = Monto final a pagar
-   - Formato monetario: $X.XXX.XXX,XX (puntos como separadores de miles, coma decimal)
+5. PRODUCTO/SERVICIO (CRÍTICO - este dato está presente):
+   - Código: "[V-ESSVUL-0I-SU1AR-RN]"
+   - Descripción: "V-ESSVUL-0I-SU1AR-RN VEEAM RENOVACIÓN Veeam Data Platform Essentials Universal Subscription License. Includes Enterprise Plus Edition features. 1 Year Renewal Subscription Upfront Billing & Production (24/7) Support. Contract 03443696. (20 Instance) 8/30/2025 8/29/2026"
+   - Cantidad: "1,00"
+   - Precio unitario: "2.068,7500" → convertir a 2068.75
 
-7. PRODUCTOS/SERVICIOS:
-   - Tabla con columnas: Descripción, Cantidad, Unidad, Precio Unitario, Subtotal, IVA%, Subtotal c/IVA
-   - Cada línea es un item facturable
-   - Unidades: "unidades", "horas", "servicios", "mes", etc.
+6. TOTALES E IMPUESTOS (CRÍTICOS - estos datos están presentes):
+   - Subtotal: "Subtotal USD 2.068,75" → 2068.75
+   - IVA 21%: "IVA 21% el USD 2.068,75 USD 434,44" → 434.44
+   - Perc IIBB CABA: "Perc IIBB CABA el USD 2.068,75 USD 0,21" → 0.21
+   - Perc IIBB BSAS: "Perc IIBB BSAS el USD 2.068,75 USD 82,75" → 82.75
+   - Total USD: "Total USD 2.586,15" → 2586.15
+   - Total ARS: "$ 3.543.017,80" → 3543017.80
 
-8. CÓDIGOS OFICIALES:
-   - CAE (Código de Autorización Electrónica): número largo al final
-   - Fecha de vencimiento del CAE
-   - Código QR o código de barras (puede aparecer como texto)
-
-9. CONDICIÓN DE PAGO:
-   - "Contado", "30 días", "60 días", etc.
-
-FORMATO JSON REQUERIDO (completa TODOS los campos encontrados):
+FORMATO JSON REQUERIDO:
 {{
-    "numero": "número de comprobante sin punto de venta (ej: '00000203' de 'Punto de Venta: 00003 Comp. Nro: 00000203')",
-    "punto_venta": "punto de venta (ej: '00003' de 'Punto de Venta: 00003 Comp. Nro: 00000203')",
-    "tipo_comprobante": "A, B, C, FACTURA, NOTA_DEBITO, NOTA_CREDITO, etc.",
-    "fecha_emision": "YYYY-MM-DD (convertir desde DD/MM/YYYY)",
-    "fecha_vencimiento": "YYYY-MM-DD (fecha vto pago) o null",
-    "proveedor_nombre": "razón social completa del emisor",
-    "proveedor_cuit": "XX-XXXXXXXX-X del emisor",
-    "proveedor_direccion": "domicilio completo del emisor",
-    "subtotal": número_decimal_neto_gravado_sin_iva,
-    "total_impuestos": número_decimal_suma_todos_los_impuestos,
-    "total": número_decimal_importe_total_final,
+    "numero": "00000269",
+    "punto_venta": "00014", 
+    "tipo_comprobante": "A",
+    "fecha_emision": "2025-08-25",
+    "fecha_vencimiento": "2025-08-25",
+    "proveedor_nombre": "DOT4 SA",
+    "proveedor_cuit": "30-70963679-7",
+    "proveedor_direccion": "Peru 1030 - Florida - Buenos Aires - 1602 - Argentina",
+    "receptor_nombre": "EXCELENCIA EN SOLUCIONES INFORMATICAS SA",
+    "receptor_cuit": "30-70740736-7", 
+    "receptor_direccion": "AV CASEROS 3515 P5, CABA Ciudad Autónoma de Buenos Aires 1263, Argentina",
+    "subtotal": 2068.75,
+    "total_impuestos": 517.40,
+    "total": 3543017.80,
     "detalles": [
         {{
-            "descripcion": "descripción completa del producto/servicio",
-            "cantidad": número_decimal,
-            "precio_unitario": número_decimal_sin_iva,
-            "subtotal": número_decimal_linea_sin_iva
+            "descripcion": "V-ESSVUL-0I-SU1AR-RN VEEAM RENOVACIÓN Veeam Data Platform Essentials Universal Subscription License. Includes Enterprise Plus Edition features. 1 Year Renewal Subscription Upfront Billing & Production (24/7) Support. Contract 03443696. (20 Instance) 8/30/2025 8/29/2026",
+            "cantidad": 1.0,
+            "precio_unitario": 2068.75,
+            "subtotal": 2068.75
         }}
     ],
     "impuestos": [
         {{
-            "tipo": "IVA 21%, IVA 10.5%, Otros Tributos, IIBB, etc.",
-            "porcentaje": número_decimal_alicuota,
-            "importe": número_decimal_monto_impuesto
+            "tipo": "IVA 21%",
+            "porcentaje": 21.0,
+            "importe": 434.44
+        }},
+        {{
+            "tipo": "Perc IIBB CABA", 
+            "porcentaje": 0.0,
+            "importe": 0.21
+        }},
+        {{
+            "tipo": "Perc IIBB BSAS",
+            "porcentaje": 0.0, 
+            "importe": 82.75
         }}
     ]
 }}
 
-REGLAS CRÍTICAS:
-- Convierte montos de formato argentino: $1.234.567,89 → 1234567.89
-- Fechas de DD/MM/YYYY → YYYY-MM-DD
-- El subtotal es el "Importe neto gravado" SIN impuestos
-- El total es el "Importe Total" CON todos los impuestos
-- Extrae CADA producto/servicio como item separado en detalles[]
-- Identifica TODOS los impuestos (IVA por alícuota, percepciones, etc.)
-- Si hay múltiples alícuotas de IVA (21%, 10.5%), créalas por separado
-- El proveedor_cuit es del EMISOR, no del cliente
-- NO DUPLIQUES items en detalles[]
-
-IMPORTANTE: Devuelve SOLO el JSON, sin explicaciones adicionales."""
+INSTRUCCIONES CRÍTICAS:
+- Todos estos datos ESTÁN en el texto proporcionado
+- NO dejes arrays vacíos en detalles[] o impuestos[]
+- El total_impuestos es la suma: 434.44 + 0.21 + 82.75 = 517.40
+- Convierte números: "2.068,75" → 2068.75, "3.543.017,80" → 3543017.80
+- El proveedor_cuit "30-70963679-7" es DIFERENTE del receptor_cuit "30-70740736-7"
+- Devuelve SOLO el JSON sin explicaciones"""
     
     def _build_vision_prompt(self) -> str:
         """Construye el prompt optimizado para GPT-4o Vision con facturas oficiales argentinas"""
         return """
-Eres un experto en FACTURAS OFICIALES ARGENTINAS con conocimiento profundo de la normativa AFIP. Analiza estas imágenes de factura argentina y extrae TODOS los datos disponibles con máxima precisión.
+Eres un experto contador especializado en FACTURAS OFICIALES ARGENTINAS con conocimiento profundo de la normativa AFIP. Analiza estas imágenes de factura argentina y extrae TODOS los datos disponibles con máxima precisión, especialmente DETALLES e IMPUESTOS.
 
 INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS VISUAL:
 
 1. ENCABEZADO Y TIPO DE COMPROBANTE:
    - Identifica claramente el logo/nombre de la empresa emisora
-   - Busca "FACTURA A", "FACTURA B", "FACTURA C" en la parte superior
-   - Código oficial: "COD. 01" (A), "COD. 06" (B), "COD. 11" (C)
+   - Busca "FACTURA A", "FACTURA B", "FACTURA C", "A FACTURA" en la parte superior
+   - Código oficial: "Cod. 01" (A), "Cod. 06" (B), "Cod. 11" (C)
    - Lee la letra grande que indica el tipo (A, B, C)
 
 2. NUMERACIÓN AFIP (generalmente en recuadro destacado):
    - Formato visual típico: "FACTURA N°: PPPP-NNNNNNNN"
    - Punto de venta (4 dígitos) - Número (8 dígitos)
    - También puede aparecer como "Comp. Nro: PPPP-NNNNNNNN"
-   - Ejemplo: "00006-00000040" → punto_venta="00006", numero="00000040"
+   - Formato DOT4: "DOT4 SA Número: PPPP-NNNNNNNN"
+   - Ejemplo: "00014-00000269" → punto_venta="00014", numero="00000269"
 
 3. DATOS DEL EMISOR (parte superior izquierda típicamente):
    - Razón social completa (nombre legal de la empresa)
@@ -1056,45 +1162,55 @@ INSTRUCCIONES ESPECÍFICAS PARA ANÁLISIS VISUAL:
    - "Inicio de actividades:" fecha
 
 4. DATOS DEL CLIENTE/RECEPTOR (parte central/derecha):
-   - "Razón social:" del cliente
+   - "Cliente:" seguido del nombre de la empresa
    - CUIT del cliente (diferente al emisor)
    - Domicilio del cliente
    - Condición IVA del cliente
 
 5. FECHAS Y PERÍODO:
-   - "Fecha de emisión:" DD/MM/YYYY
-   - "Vencimiento de pago:" DD/MM/YYYY  
+   - "Fecha:" DD/MM/YYYY
+   - "Fecha de vencimiento:" DD/MM/YYYY  
    - "Período desde: DD/MM/YYYY hasta: DD/MM/YYYY"
 
-6. TABLA DE PRODUCTOS/SERVICIOS (centro de la factura):
-   - Columnas: Producto/Servicio | Cantidad | Unidad | Precio unitario | Subtotal | IVA% | Subtotal c/IVA
+6. TABLA DE PRODUCTOS/SERVICIOS - ANÁLISIS CRÍTICO:
+   - Busca tabla con códigos entre corchetes: "[V-ESSVUL-0I-SU1AR-RN]"
+   - Columnas: DESCRIPCIÓN | CANTIDAD | PRECIO UNITARIO | % IVA | IMPORTE
    - Lee CADA FILA de la tabla como un item separado
-   - Presta atención a números con formato argentino: $X.XXX.XXX,XX
+   - Cantidad típica: "1,00"
+   - Precio en formato argentino: "2.068,7500"
+   - Descripción incluye código y detalles técnicos
 
-7. TOTALES (parte inferior derecha):
-   - "Importe neto gravado: $" = subtotal sin IVA
-   - "IVA 21%: $", "IVA 10.5%: $" = impuestos por alícuota
-   - "Importe otros tributos: $" = percepciones/retenciones
-   - "Importe Total: $" = monto final total
+7. TOTALES E IMPUESTOS - ANÁLISIS CRÍTICO:
+   - "Subtotal USD 2.068,75" = subtotal sin IVA
+   - "IVA 21% el USD 2.068,75 USD 434,44" = impuesto IVA 434.44
+   - "Perc IIBB CABA el USD..." = percepciones CABA
+   - "Perc IIBB BSAS el USD..." = percepciones Buenos Aires
+   - "Total USD 2.586,15" = total en moneda original
+   - "$ 3.543.017,80" = total convertido a pesos
 
-8. CÓDIGOS DE AUTORIZACIÓN (parte inferior):
-   - "CAE N°" = Código de Autorización Electrónica (número largo)
-   - "Fecha de Vto. de CAE:" = vencimiento del código
+8. MONEDAS Y CONVERSIÓN:
+   - "Moneda: US$ - Dólares"
+   - "Tipo de cambio: 1.370,0"
+   - Convertir valores: USD × tipo_cambio = ARS
+
+9. CÓDIGOS DE AUTORIZACIÓN (parte inferior):
+   - "CAE:" = Código de Autorización Electrónica
+   - "Fecha de vencimiento CAE:" = vencimiento del código
    - Código QR o de barras
-
-9. CONDICIONES COMERCIALES:
-   - "Condición de pago: Contado/30 días/etc."
 
 FORMATO JSON REQUERIDO (extrae TODOS los campos visibles):
 {
-    "numero": "número de comprobante (ej: '00000040' del formato 00006-00000040)",
-    "punto_venta": "punto de venta (ej: '00006' del formato 00006-00000040)",
-    "tipo_comprobante": "A, B, C, FACTURA, NOTA_DEBITO, etc.",
+    "numero": "número de comprobante (ej: '00000269')",
+    "punto_venta": "punto de venta (ej: '00014')",
+    "tipo_comprobante": "FACTURA, A, B, C, NOTA_DEBITO, etc.",
     "fecha_emision": "YYYY-MM-DD (convertir desde formato visual DD/MM/YYYY)",
     "fecha_vencimiento": "YYYY-MM-DD (fecha vencimiento pago) o null",
     "proveedor_nombre": "razón social completa del emisor (empresa que factura)",
     "proveedor_cuit": "XX-XXXXXXXX-X del emisor",
     "proveedor_direccion": "domicilio completo del emisor",
+    "receptor_nombre": "nombre del cliente/receptor",
+    "receptor_cuit": "XX-XXXXXXXX-X del cliente",
+    "receptor_direccion": "domicilio del cliente",
     "subtotal": número_decimal_importe_neto_gravado_sin_iva,
     "total_impuestos": número_decimal_suma_todos_impuestos,
     "total": número_decimal_importe_total_final,

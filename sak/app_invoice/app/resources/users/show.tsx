@@ -4,7 +4,7 @@ import { Show } from "@/components/show";
 import { SimpleShowLayout } from "@/components/simple-show-layout";
 import { TextField } from "@/components/text-field";
 import { ReferenceField } from "@/components/reference-field";
-import { AvatarCell } from "@/components/cells/avatar-cell";
+import { AvatarCell } from "@/app/admin/components/cells/avatar-cell";
 
 export const UserShow = () => (
   <Show>

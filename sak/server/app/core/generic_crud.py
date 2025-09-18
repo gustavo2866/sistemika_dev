@@ -364,7 +364,7 @@ class GenericCRUD(Generic[M]):
         try:
             print(f"DEBUG: Auto-discovering includes for model: {self.model.__name__}")
             
-            # Obtener las opciones de include automáticamente
+            # Rehabilitar auto-discovery ahora que el problema del enum está resuelto
             include_options = self._get_auto_include_options()
             
             if include_options:
@@ -373,10 +373,13 @@ class GenericCRUD(Generic[M]):
             else:
                 print(f"DEBUG: No auto-includes found for {self.model.__name__}")
                 
+            return stmt  # ¡IMPORTANTE! Agregamos el return que faltaba
+                
         except Exception as e:
             print(f"ERROR: Could not apply auto-includes for {self.model.__name__}: {e}")
             import traceback
             traceback.print_exc()
+            return stmt  # Retornar stmt original en caso de error
             
         return stmt
 

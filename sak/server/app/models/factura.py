@@ -11,11 +11,14 @@ if TYPE_CHECKING:
     from .tipo_operacion import TipoOperacion
     from .factura_detalle import FacturaDetalle
     from .factura_impuesto import FacturaImpuesto
+    from .user import User
 
 # Tipos para estado de factura
 class EstadoFactura(str, Enum):
     PENDIENTE = "pendiente"
     PROCESADA = "procesada"
+    APROBADA = "aprobada"
+    RECHAZADA = "rechazada"
     PAGADA = "pagada"
     ANULADA = "anulada"
 
@@ -42,7 +45,7 @@ class Factura(Base, table=True):
     total: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Total general")
     
     # Estado y procesamiento
-    estado: EstadoFactura = Field(default=EstadoFactura.PENDIENTE, description="Estado de la factura")
+    estado: str = Field(default="pendiente", description="Estado de la factura")
     observaciones: Optional[str] = Field(default=None, description="Observaciones")
     
     # Datos de archivo
@@ -57,10 +60,12 @@ class Factura(Base, table=True):
     # Foreign keys
     proveedor_id: int = Field(foreign_key="proveedores.id", description="ID del proveedor")
     tipo_operacion_id: int = Field(foreign_key="tipos_operacion.id", description="ID del tipo de operación")
+    usuario_responsable_id: int = Field(foreign_key="users.id", description="ID del usuario responsable del gasto")
     
     # Relaciones
     proveedor: "Proveedor" = Relationship(back_populates="facturas")
     tipo_operacion: "TipoOperacion" = Relationship(back_populates="facturas")
+    usuario_responsable: "User" = Relationship()
     detalles: List["FacturaDetalle"] = Relationship(back_populates="factura")
     impuestos: List["FacturaImpuesto"] = Relationship(back_populates="factura")
     

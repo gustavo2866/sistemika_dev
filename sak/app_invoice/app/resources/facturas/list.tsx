@@ -13,12 +13,47 @@ import { ReferenceField } from "@/components/reference-field";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
 import { BadgeField } from "@/components/badge-field";
+import { BulkExportButton } from "@/components/bulk-export-button";
+import { BulkDeleteButton } from "@/components/bulk-delete-button";
+import { BulkApproveButton } from "@/components/bulk-approve-button";
+import { BulkRejectButton } from "@/components/bulk-reject-button";
+import { useRecordContext } from "ra-core";
+import { FileText } from "lucide-react";
+
+// Componente simple para mostrar PDF con URL completa
+const PdfFileField = () => {
+  const record = useRecordContext();
+  
+  if (!record?.ruta_archivo_pdf) {
+    return <span className="text-gray-500">-</span>;
+  }
+  
+  const pdfUrl = `http://localhost:8000/uploads/facturas/${record.ruta_archivo_pdf}`;
+  const fileName = record.nombre_archivo_pdf || 'Ver PDF';
+  
+  return (
+    <a
+      href={pdfUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:text-blue-800"
+      onClick={(e) => e.stopPropagation()}
+      title={fileName}
+      aria-label={fileName}
+    >
+      <FileText className="w-5 h-5" />
+    </a>
+  );
+};
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar facturas..." alwaysOn />,
   <TextInput key="numero" source="numero" label="Número" placeholder="Filtrar por número" />,
   <ReferenceInput key="proveedor_id" source="proveedor_id" reference="proveedores" label="Proveedor">
     <SelectInput emptyText="Seleccionar proveedor" optionText="nombre" />
+  </ReferenceInput>,
+  <ReferenceInput key="usuario_responsable_id" source="usuario_responsable_id" reference="users" label="Usuario Responsable">
+    <SelectInput emptyText="Seleccionar usuario" optionText="nombre" />
   </ReferenceInput>,
   <SelectInput 
     key="estado" 
@@ -27,6 +62,8 @@ const filters = [
     choices={[
       { id: "pendiente", name: "Pendiente" },
       { id: "procesada", name: "Procesada" },
+      { id: "aprobada", name: "Aprobada" },
+      { id: "rechazada", name: "Rechazada" },
       { id: "pagada", name: "Pagada" },
       { id: "anulada", name: "Anulada" }
     ]}
@@ -54,10 +91,19 @@ const ListActions = () => (
   </div>
 );
 
+const FacturasBulkActionButtons = () => (
+  <>
+    <BulkApproveButton />
+    <BulkRejectButton />
+    <BulkExportButton />
+    <BulkDeleteButton />
+  </>
+);
+
 export default function FacturasList() {
   return (
     <List filters={filters} debounce={300} perPage={25} actions={<ListActions />}>
-      <DataTable rowClick="edit">
+      <DataTable rowClick="edit" bulkActionButtons={<FacturasBulkActionButtons />}>
         <DataTable.Col source="numero">
           <TextField source="numero" />
         </DataTable.Col>
@@ -68,6 +114,12 @@ export default function FacturasList() {
         
         <DataTable.Col label="Proveedor">
           <ReferenceField source="proveedor_id" reference="proveedores">
+            <TextField source="nombre" />
+          </ReferenceField>
+        </DataTable.Col>
+        
+        <DataTable.Col label="Usuario Responsable">
+          <ReferenceField source="usuario_responsable_id" reference="users">
             <TextField source="nombre" />
           </ReferenceField>
         </DataTable.Col>
@@ -86,6 +138,10 @@ export default function FacturasList() {
         
         <DataTable.Col label="Estado">
           <BadgeField source="estado" />
+        </DataTable.Col>
+
+        <DataTable.Col label="PDF">
+          <PdfFileField />
         </DataTable.Col>
 
         <DataTable.Col>

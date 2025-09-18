@@ -16,9 +16,8 @@ export const NumberInput = (props: NumberInputProps) => {
     label,
     source,
     className,
+    placeholder,
     resource: resourceProp,
-    validate: _validateProp,
-    format: _formatProp,
     parse = convertStringToNumber,
     onFocus,
     ...rest
@@ -26,6 +25,9 @@ export const NumberInput = (props: NumberInputProps) => {
   const resource = useResourceContext({ resource: resourceProp });
 
   const { id, field, isRequired } = useInput(props);
+  // Mostrar asterisco si viene de RA (validate/isRequired) o del prop HTML required
+  const showRequired =
+    isRequired || !!(props as { isRequired?: boolean }).isRequired || !!(props as { required?: boolean }).required;
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -66,12 +68,13 @@ export const NumberInput = (props: NumberInputProps) => {
             label={label}
             source={source}
             resource={resource}
-            isRequired={isRequired}
+            isRequired={showRequired}
           />
         </FormLabel>
       )}
       <FormControl>
         <Input
+          placeholder={placeholder}
           {...rest}
           {...field}
           type="number"
@@ -79,6 +82,7 @@ export const NumberInput = (props: NumberInputProps) => {
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          required={!!(props as { required?: boolean }).required}
         />
       </FormControl>
       <InputHelperText helperText={props.helperText} />

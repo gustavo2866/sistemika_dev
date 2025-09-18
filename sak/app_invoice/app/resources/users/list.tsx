@@ -5,7 +5,7 @@ import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
 import { EditButton } from "@/components/edit-button";
-import { AvatarCell } from "@/components/cells/avatar-cell";
+import { AvatarCell } from "@/app/admin/components/cells/avatar-cell";
 import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";

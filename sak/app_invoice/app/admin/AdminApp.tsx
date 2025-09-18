@@ -5,7 +5,9 @@ import { Resource, CustomRoutes } from "ra-core";
 import { Route } from "react-router";
 import { dataProvider } from "@/lib/dataProvider";
 import type { DataProvider } from "ra-core";
-import FacturaTestPage from "@/app/factura-test/page";
+import { authProvider } from "@/app/admin/auth/authProvider";
+import { LoginPage } from "@/app/admin/components/auth";
+import FacturaTestPage from "@/app/pages/factura-test/page";
 
 import {
   UserCreate, UserEdit, UserList, UserShow,
@@ -18,7 +20,12 @@ import {
 } from "../resources";
 
 const AdminApp = () => (
-  <Admin dataProvider={dataProvider as DataProvider}>
+  <Admin 
+    dataProvider={dataProvider as DataProvider}
+    authProvider={authProvider}
+    loginPage={LoginPage}
+    title="Sistema Administrativo"
+  >
     {/* Rutas personalizadas */}
     <CustomRoutes>
       <Route path="/factura-test" element={<FacturaTestPage />} />

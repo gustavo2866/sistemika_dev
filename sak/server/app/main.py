@@ -32,6 +32,7 @@ from app.routers.factura_impuesto_router import factura_impuesto_router
 from app.routers.cliente_router import router as cliente_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
+from app.api.auth import router as auth_router
 import os
 
 app = FastAPI(title="API genérica con FastAPI + SQLModel")
@@ -54,6 +55,7 @@ app.add_middleware(
 # Registrar routers
 app.include_router(item_router)
 app.include_router(user_router)
+app.include_router(auth_router, prefix="/api")  # Agregar router auth
 app.include_router(upload_router, prefix="/api")
 app.include_router(factura_processing_router, prefix="/api/v1")
 app.include_router(pais_router)

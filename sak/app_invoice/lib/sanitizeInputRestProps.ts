@@ -48,6 +48,5 @@ export const sanitizeInputRestProps = ({
   translateChoice,
   validate,
   validateFields,
-  value,
   ...rest
 }: any) => rest;

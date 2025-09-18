@@ -101,11 +101,6 @@ export const EditView = ({
           <h2 className="text-3xl font-bold tracking-tight">
             {title !== undefined ? title : context.defaultTitle}
           </h2>
-          <p className="text-muted-foreground">
-            <Translate i18nKey="ra.message.edit_description">
-              Editar registro: {recordRepresentation}
-            </Translate>
-          </p>
         </div>
         {actions ?? (
           <div className="flex justify-end items-center gap-2">

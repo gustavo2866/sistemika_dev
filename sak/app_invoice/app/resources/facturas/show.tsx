@@ -26,6 +26,10 @@ export const FacturaShow = () => (
         <TextField source="descripcion" />
       </ReferenceField>
       
+      <ReferenceField source="usuario_responsable_id" reference="users">
+        <TextField source="nombre" />
+      </ReferenceField>
+      
       <NumberField source="subtotal" options={{ style: 'currency', currency: 'ARS' }} />
       <NumberField source="total_impuestos" options={{ style: 'currency', currency: 'ARS' }} />
       <NumberField source="total" options={{ style: 'currency', currency: 'ARS' }} />
