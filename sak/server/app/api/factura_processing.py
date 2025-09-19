@@ -12,6 +12,9 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
 from app.services.factura_processing_service import FacturaProcessingService
+from app.db import get_session
+from sqlmodel import Session
+from app.models.factura_extraccion import FacturaExtraccion
 
 router = APIRouter(prefix="/facturas", tags=["facturas-procesamiento"])
 
@@ -299,7 +302,8 @@ async def parse_document_endpoint(
     file: UploadFile = File(...),
     proveedor_id: Optional[int] = Form(None),
     tipo_operacion_id: Optional[int] = Form(None),
-    extraction_method: str = Form(default="auto")
+    extraction_method: str = Form(default="auto"),
+    session: Session = Depends(get_session)
 ):
     """
     Procesa una factura desde PDF o imagen y extrae datos estructurados
@@ -440,6 +444,32 @@ async def parse_document_endpoint(
             "archivo_subido": safe_filename
         }
         
+        # Persistir histórico de extracción (no bloquear si falla)
+        try:
+            import json as _json
+            history = FacturaExtraccion(
+                factura_id=None,
+                archivo_nombre=file.filename,
+                archivo_guardado=safe_filename,
+                archivo_ruta=str(permanent_file_path),
+                file_type=("pdf" if is_pdf else "image"),
+                metodo_extraccion=extraction_method,
+                extractor_version=getattr(extraction_service, "version", None),
+                estado="exitoso",
+                proveedor_id=proveedor_id,
+                tipo_operacion_id=tipo_operacion_id,
+                is_pdf=is_pdf,
+                payload_json=_json.dumps(result, ensure_ascii=False),
+            )
+            session.add(history)
+            session.commit()
+        except Exception as _e:
+            try:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(f"No se pudo registrar histórico de extracción: {_e}")
+            except Exception:
+                pass
+
         return JSONResponse({
             "success": True,
             "message": f"{'PDF' if is_pdf else 'Imagen'} procesado exitosamente",

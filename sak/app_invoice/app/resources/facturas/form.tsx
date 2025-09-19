@@ -9,9 +9,11 @@ import { ReferenceInput } from "@/components/reference-input";
 import { AutocompleteInput } from "@/components/autocomplete-input";
 import { SelectInput } from "@/components/select-input";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload, Loader2, FileText, Braces } from "lucide-react";
 import { useInput } from "ra-core";
+import { useWatch, useFormContext } from "react-hook-form";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button as UIButton } from "@/components/ui/button";
 
 type Mode = "create" | "edit";
 type FacturaValues = {
@@ -32,6 +34,20 @@ type FacturaValues = {
   usuario_responsable_id: number;
 };
 
+// Estructura mínima del JSON extraído que nos interesa mapear
+type ExtractedFactura = Partial<{
+  numero: string | number;
+  punto_venta: string | number;
+  tipo_comprobante: string;
+  fecha_emision: string;
+  fecha_vencimiento: string;
+  subtotal: string | number;
+  total_impuestos: string | number;
+  total: string | number;
+  archivo_subido: string;
+  nombre_archivo_pdf: string;
+}>;
+
 const READ_ONLY_ON_EDIT = new Set<keyof FacturaValues>([
   "numero", // El número de factura no se puede cambiar
   "proveedor_id", // El proveedor no se puede cambiar una vez creada
@@ -45,6 +61,115 @@ export function FacturaFields({ mode }: { mode: Mode }) {
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const { field: archivoField } = useInput({ source: "ruta_archivo_pdf" });
   const { field: nombreArchivoField } = useInput({ source: "nombre_archivo_pdf" });
+
+  // Watch form values for subtitle
+  const numero = useWatch({ name: "numero" });
+  const puntoVenta = useWatch({ name: "punto_venta" });
+  const total = useWatch({ name: "total" });
+  const fechaVencimiento = useWatch({ name: "fecha_vencimiento" });
+  const estado = useWatch({ name: "estado" });
+  const facturaId = useWatch({ name: "id" });
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [jsonLoading, setJsonLoading] = useState(false);
+  const [jsonText, setJsonText] = useState<string | null>(null);
+  const [extractedJson, setExtractedJson] = useState<string | null>(null);
+  const formCtx = useFormContext();
+
+  // Aplica los valores extraídos al formulario
+  const applyDataToForm = (data: ExtractedFactura) => {
+    if (!data || !formCtx?.setValue) return;
+    const set = formCtx.setValue;
+    const toNum = (v: unknown): number | undefined => {
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const n = parseFloat(v.replace(/[\s$.A-Za-z]/g, '').replace(',', '.'));
+        return Number.isFinite(n) ? n : undefined;
+      }
+      return undefined;
+    };
+    const normDate = (v: unknown): string | undefined => {
+      if (typeof v !== 'string') return undefined;
+      // dd/mm/yyyy -> yyyy-mm-dd
+      const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      // yyyy-mm-dd passthrough
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+      return undefined;
+    };
+    try {
+      if (data.numero !== undefined) set("numero", String(data.numero ?? ""));
+      if (data.punto_venta !== undefined) set("punto_venta", String(data.punto_venta ?? ""));
+      if (data.tipo_comprobante !== undefined) set("tipo_comprobante", data.tipo_comprobante ?? "");
+      const emision = normDate(data.fecha_emision);
+      if (emision) set("fecha_emision", emision);
+      const venc = normDate(data.fecha_vencimiento);
+      if (venc) set("fecha_vencimiento", venc);
+      const s = toNum(data.subtotal);
+      if (s !== undefined) set("subtotal", s);
+      const ti = toNum(data.total_impuestos);
+      if (ti !== undefined) set("total_impuestos", ti);
+      const t = toNum(data.total);
+      if (t !== undefined) set("total", t);
+      // No intentamos setear proveedor_id/usuario_responsable_id porque requieren lookup
+      // Ruta y nombre de archivo si vienen en el payload
+      if (data.archivo_subido) {
+        set("ruta_archivo_pdf", data.archivo_subido);
+        set("nombre_archivo_pdf", data.nombre_archivo_pdf ?? data.archivo_subido);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchLatestJson = async () => {
+    // Si no hay ID aún, mostrar el JSON extraído o el estado actual del formulario
+    if (!facturaId) {
+      const fallback = extractedJson ?? (() => {
+        try {
+          const vals = formCtx?.getValues?.() ?? {};
+          return JSON.stringify(vals, null, 2);
+        } catch {
+          return '{}';
+        }
+      })();
+      setJsonText(fallback);
+      setJsonOpen(true);
+      // Si tenemos JSON extraído en memoria, aplicarlo al formulario
+      if (extractedJson) {
+        try {
+          const obj = JSON.parse(extractedJson);
+          applyDataToForm(obj);
+        } catch {
+          // ignore parse error
+        }
+      }
+      return;
+    }
+    setJsonLoading(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const res = await fetch(`${apiUrl}/facturas-extracciones?sort=["created_at","DESC"]&filter=${encodeURIComponent(JSON.stringify({ factura_id: facturaId }))}`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      const items = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : data; // router devuelve array directa
+      const first = Array.isArray(items) ? items[0] : undefined;
+      const payload = first?.payload_json;
+      const payloadText = typeof payload === 'string' ? payload : JSON.stringify(payload ?? {}, null, 2);
+      setJsonText(payloadText);
+      // Aplicar datos al formulario
+      try {
+        const obj = typeof payload === 'string' ? JSON.parse(payload) : (payload ?? {});
+        applyDataToForm(obj);
+      } catch {
+        // ignore
+      }
+      setJsonOpen(true);
+    } catch {
+      alert('No se pudo obtener el JSON almacenado');
+    } finally {
+      setJsonLoading(false);
+    }
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -84,15 +209,25 @@ export function FacturaFields({ mode }: { mode: Mode }) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      if (data.data?.archivo_subido) {
+    const resp = await response.json();
+      // Guardar JSON extraído para vista previa antes de grabar
+      if (resp?.data) {
+        try {
+          setExtractedJson(JSON.stringify(resp.data, null, 2));
+      // Aplicar inmediatamente al formulario
+      applyDataToForm(resp.data);
+        } catch {
+          // ignore
+        }
+      }
+      if (resp.data?.archivo_subido) {
         // Guardar solo el nombre del archivo, no la URL completa
-        archivoField.onChange(data.data.archivo_subido);
+        archivoField.onChange(resp.data.archivo_subido);
         nombreArchivoField.onChange(selectedFile.name);
         setUploadedFileName(selectedFile.name);
       }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al subir archivo');
+    } catch {
+      alert('Error al subir archivo');
     } finally {
       setUploading(false);
       e.target.value = ''; // Limpiar input para permitir reselección
@@ -126,15 +261,33 @@ export function FacturaFields({ mode }: { mode: Mode }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5" />
-            Subir Factura
+            Cabecera
           </CardTitle>
           <CardDescription>
-            Sube el archivo PDF de la factura
+            {(() => {
+              const numeroFormatted = numero ? numero.toString().padStart(8, '0') : '';
+              const puntoVentaFormatted = puntoVenta ? puntoVenta.toString().padStart(4, '0') : '';
+              const numeroCompleto = puntoVentaFormatted && numeroFormatted ? `${puntoVentaFormatted}-${numeroFormatted}` : '';
+              const totalFormatted = total ? new Intl.NumberFormat('es-AR', {
+                style: 'currency',
+                currency: 'ARS',
+                minimumFractionDigits: 2
+              }).format(total) : '';
+              const vencimiento = fechaVencimiento || '';
+              const estadoActual = estado || '';
+              
+              const parts = [];
+              if (numeroCompleto) parts.push(`Número: ${numeroCompleto}`);
+              if (totalFormatted) parts.push(`Total: ${totalFormatted}`);
+              if (vencimiento) parts.push(`Vencimiento: ${vencimiento}`);
+              if (estadoActual) parts.push(`Estado: ${estadoActual}`);
+              
+              return parts.length > 0 ? parts.join(' • ') : 'Datos básicos del comprobante';
+            })()}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Archivo PDF o Imagen</Label>
             <input
               id="file-upload"
               type="file"
@@ -150,17 +303,12 @@ export function FacturaFields({ mode }: { mode: Mode }) {
               type="button"
               onClick={triggerFileSelect} 
               disabled={uploading}
+              size="sm"
             >
               {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Subiendo...
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Subir Archivo
-                </>
+                <Upload className="h-4 w-4" />
               )}
             </Button>
 
@@ -168,14 +316,36 @@ export function FacturaFields({ mode }: { mode: Mode }) {
               <button
                 type="button"
                 onClick={openPDF}
-                className="text-blue-600 hover:text-blue-800 underline text-sm"
+                className="text-blue-600 hover:text-blue-800"
+                title={uploadedFileName}
               >
-                {uploadedFileName}
+                <FileText className="h-5 w-5" />
               </button>
             )}
+            <UIButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Ver JSON guardado"
+              onClick={fetchLatestJson}
+              disabled={jsonLoading}
+            >
+              {jsonLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Braces className="h-5 w-5" />}
+            </UIButton>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={jsonOpen} onOpenChange={setJsonOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>JSON de la Factura</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto rounded bg-muted p-3 text-sm">
+            <pre className="whitespace-pre-wrap break-words">{jsonText}</pre>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Información de la Factura - Siempre visible */}
       <Card>

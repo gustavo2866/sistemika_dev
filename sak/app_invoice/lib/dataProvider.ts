@@ -177,7 +177,34 @@ export const dataProvider: DataProvider = {
       method: 'PUT',
       headers: new Headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
-    }).then(({ json }) => ({ data: json }));
+    }).then(async ({ json }) => {
+      // Guardar JSON de la factura en la entidad histórica
+      try {
+        const facturaId = ((): number | undefined => {
+          const j = json as unknown;
+          if (j && typeof j === 'object' && 'id' in j) {
+            const idVal = (j as Record<string, unknown>).id;
+            return typeof idVal === 'number' ? idVal : undefined;
+          }
+          return undefined;
+        })();
+        const historyBody = {
+          factura_id: facturaId,
+          payload_json: JSON.stringify(json),
+          metodo_extraccion: 'manual',
+          estado: 'exitoso',
+        } as Record<string, unknown>;
+
+        await httpClient(`${apiUrl}/facturas-extracciones`, {
+          method: 'POST',
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(historyBody),
+        });
+      } catch (e) {
+        console.warn('No se pudo registrar el JSON de la factura (update):', e);
+      }
+      return { data: json };
+    });
   },
   
   // create personalizado para facturas: filtramos y normalizamos payload
@@ -253,7 +280,34 @@ export const dataProvider: DataProvider = {
       method: 'POST',
       headers: new Headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
-    }).then(({ json }) => ({ data: json }));
+    }).then(async ({ json }) => {
+      // Guardar JSON de la factura en la entidad histórica
+      try {
+        const facturaId = ((): number | undefined => {
+          const j = json as unknown;
+          if (j && typeof j === 'object' && 'id' in j) {
+            const idVal = (j as Record<string, unknown>).id;
+            return typeof idVal === 'number' ? idVal : undefined;
+          }
+          return undefined;
+        })();
+        const historyBody = {
+          factura_id: facturaId,
+          payload_json: JSON.stringify(json),
+          metodo_extraccion: 'manual',
+          estado: 'exitoso',
+        } as Record<string, unknown>;
+
+        await httpClient(`${apiUrl}/facturas-extracciones`, {
+          method: 'POST',
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(historyBody),
+        });
+      } catch (e) {
+        console.warn('No se pudo registrar el JSON de la factura (create):', e);
+      }
+      return { data: json };
+    });
   },
   
   // deleteMany siguiendo el patrón estándar

@@ -16,4 +16,9 @@ def get_session() -> Generator[Session, None, None]:
         yield session
 
 def init_db():
+    # Importar modelos para registrar todas las tablas antes de create_all
+    try:
+        import app.models  # noqa: F401
+    except Exception:
+        pass
     SQLModel.metadata.create_all(engine)
