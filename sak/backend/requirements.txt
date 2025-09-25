@@ -1,0 +1,24 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+alembic
+psycopg[binary]
+aiofiles
+python-multipart
+python-dotenv
+
+# Authentication
+PyJWT
+
+# PDF Processing
+pdfplumber
+pytesseract
+PyMuPDF
+Pillow
+pdf2image
+
+# AI/LLM
+openai
+
+# Testing
+pytest

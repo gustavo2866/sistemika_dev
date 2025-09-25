@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { CoreAdminContext } from "ra-core";
 import { LoginPage } from "@/app/admin/components/auth";
 import dataProvider from "@/lib/dataProvider";
@@ -39,17 +38,7 @@ const authProvider = {
   getPermissions: () => Promise.resolve(),
 };
 
-export default function Login() {
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isClient) {
-    return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
-  }
-
+export default function LoginClient() {
   return (
     <CoreAdminContext dataProvider={dataProvider} authProvider={authProvider}>
       <LoginPage />

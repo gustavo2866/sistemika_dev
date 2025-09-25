@@ -223,16 +223,14 @@ const SaveButton = <RecordType extends RaRecord = RaRecord>(
     async (values: any) => {
       let errors;
       if (saveContext?.save) {
-        errors = await saveContext.save(values, {
-          ...mutationOptions,
-          transform,
-        });
+        // Simplified save call to avoid type conflicts
+        errors = await saveContext.save(values, { transform });
       }
       if (errors != null) {
         setSubmissionErrors(errors, form.setError);
       }
     },
-    [form.setError, saveContext, mutationOptions, transform],
+    [form.setError, saveContext, transform],
   );
 
   const handleClick: MouseEventHandler<HTMLButtonElement> = useCallback(
