@@ -264,6 +264,14 @@ def create_generic_router(
     ):
         """Actualizar recurso completo con lock optimista"""
         try:
+            # Debug: imprimir payload entrante y tipos
+            try:
+                print(f"DEBUG Router.update_full: model={model.__name__} id={obj_id}")
+                preview = {k: (type(v).__name__, v) for k, v in list(payload.items())[:30]}
+                print(f"DEBUG Router.update_full: payload keys={list(payload.keys())}")
+                print(f"DEBUG Router.update_full: payload preview types/values={preview}")
+            except Exception as _log_e:
+                print(f"DEBUG Router.update_full: log error: {_log_e}")
             obj = crud.update(session, obj_id, payload, check_version=True)
             if not obj:
                 raise HTTPException(
@@ -282,6 +290,10 @@ def create_generic_router(
         except HTTPException:
             raise  # Re-lanzar HTTPExceptions (como CONFLICT)
         except Exception as e:
+            # Debug: imprimir error
+            import traceback
+            print(f"ERROR Router.update_full: {e}")
+            traceback.print_exc()
             raise HTTPException(
                 status_code=400,
                 detail={

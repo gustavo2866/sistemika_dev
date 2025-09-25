@@ -2,7 +2,8 @@ from __future__ import annotations
 import json
 import inspect
 from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from sqlmodel import SQLModel, Session, select, func, and_, or_
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
@@ -28,9 +29,91 @@ class GenericCRUD(Generic[M]):
         self.searchable_fields = getattr(model, '__searchable_fields__', [])
 
     # --- helpers ---
+    def _coerce_field_value(self, field_name: str, value: Any) -> Any:
+        """
+        Convierte valores entrantes (provenientes de JSON) al tipo Python esperado
+        según la anotación del modelo. Maneja casos comunes: datetime, date, bool,
+        enteros/decimales y strings vacíos.
+        """
+        if value is None:
+            return None
+
+        try:
+            field_info = getattr(self.model, "model_fields", {}).get(field_name)
+            expected_type = getattr(field_info, "annotation", None) if field_info else None
+
+            # Normalizar strings vacíos a None solo para tipos no-string
+            if isinstance(value, str) and value.strip() == "":
+                if expected_type is not str:
+                    return None
+                # Para campos string, mantener vacío
+                return value
+
+            # datetime
+            if expected_type is datetime:
+                if isinstance(value, str):
+                    s = value
+                    # Soportar sufijo 'Z'
+                    if s.endswith("Z"):
+                        s = s[:-1] + "+00:00"
+                    try:
+                        return datetime.fromisoformat(s)
+                    except Exception:
+                        # Intentar sólo fecha
+                        try:
+                            d = date.fromisoformat(s)
+                            return datetime(d.year, d.month, d.day)
+                        except Exception:
+                            return value  # dejar pasar y que SQLAlchemy falle si corresponde
+                return value
+
+            # date
+            if expected_type is date:
+                if isinstance(value, str):
+                    try:
+                        return date.fromisoformat(value)
+                    except Exception:
+                        return value
+                return value
+
+            # Decimal
+            if expected_type is Decimal:
+                if isinstance(value, (int, float, str)):
+                    try:
+                        return Decimal(str(value))
+                    except Exception:
+                        return value
+                return value
+
+            # int
+            if expected_type is int and isinstance(value, str) and value.isdigit():
+                try:
+                    return int(value)
+                except Exception:
+                    return value
+
+            # bool desde string
+            if expected_type is bool and isinstance(value, str):
+                s = value.strip().lower()
+                if s in ("true", "1", "yes", "on"):  # valores truthy comunes
+                    return True
+                if s in ("false", "0", "no", "off"):
+                    return False
+
+        except Exception:
+            # En caso de cualquier problema, devolver el valor original
+            return value
+
+        return value
+
     def _clean_create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         allowed = campos_editables(self.model)
-        return {k: v for k, v in data.items() if k in allowed}
+        # Aplicar coerción de tipos segura durante create
+        cleaned: Dict[str, Any] = {}
+        for k, v in data.items():
+            if k in allowed:
+                cleaned[k] = self._coerce_field_value(k, v)
+        return cleaned
 
     def _extract_update(self, data: Dict[str, Any]) -> Dict[str, Any]:
         allowed = campos_editables(self.model)
@@ -393,6 +476,11 @@ class GenericCRUD(Generic[M]):
         """
         Update completo con lock optimista
         """
+        try:
+            print(f"DEBUG CRUD.update<{self.model.__name__}> id={obj_id} incoming keys={list(data.keys())}")
+            print(f"DEBUG CRUD.update incoming sample={(list(data.items())[:10])}")
+        except Exception:
+            pass
         obj = self.get(session, obj_id)
         if not obj:
             return None
@@ -415,14 +503,27 @@ class GenericCRUD(Generic[M]):
 
         # Aplicar cambios
         cambios = self._extract_update(data)
+        try:
+            print(f"DEBUG CRUD.update extracted changes={cambios}")
+        except Exception:
+            pass
         for k, v in cambios.items():
-            setattr(obj, k, v)
+            coerced = self._coerce_field_value(k, v)
+            setattr(obj, k, coerced)
 
         # Actualizar timestamps y version
         if hasattr(obj, "updated_at"):
             setattr(obj, "updated_at", datetime.utcnow())
         if hasattr(obj, "version"):
             setattr(obj, "version", obj.version + 1)
+
+        try:
+            # Mostrar un preview de valores finales para campos comunes
+            preview_fields = list(cambios.keys())[:10]
+            final_preview = {f: getattr(obj, f, None) for f in preview_fields}
+            print(f"DEBUG CRUD.update final values preview={final_preview}")
+        except Exception:
+            pass
 
         session.add(obj)
         session.commit()

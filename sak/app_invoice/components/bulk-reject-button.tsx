@@ -21,14 +21,22 @@ export const BulkRejectButton = () => {
     setIsLoading(true);
     
     try {
-      // Update each selected factura to "rechazada" state
-      for (const id of selectedIds) {
-        await update("facturas", {
-          id,
-          data: { estado: "rechazada" },
-          previousData: {},
-        });
-      }
+      // Update selected facturas to "rechazada" and wait for all before refresh
+      const tasks = selectedIds.map((id) =>
+        update(
+          "facturas",
+          {
+            id,
+            data: { estado: "rechazada" },
+            previousData: {},
+          },
+          {
+            mutationMode: "pessimistic",
+            returnPromise: true,
+          }
+        )
+      );
+      await Promise.all(tasks);
 
       notify(`${selectedIds.length} facturas rechazadas exitosamente`, {
         type: "success",

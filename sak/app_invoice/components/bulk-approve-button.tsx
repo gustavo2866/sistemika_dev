@@ -21,14 +21,22 @@ export const BulkApproveButton = () => {
     setIsLoading(true);
     
     try {
-      // Update each selected factura to "aprobada" state
-      for (const id of selectedIds) {
-        await update("facturas", {
-          id,
-          data: { estado: "aprobada" },
-          previousData: {},
-        });
-      }
+      // Update selected facturas to "aprobada" and wait for all before refresh
+      const tasks = selectedIds.map((id) =>
+        update(
+          "facturas",
+          {
+            id,
+            data: { estado: "aprobada" },
+            previousData: {},
+          },
+          {
+            mutationMode: "pessimistic",
+            returnPromise: true,
+          }
+        )
+      );
+      await Promise.all(tasks);
 
       notify(`${selectedIds.length} facturas aprobadas exitosamente`, {
         type: "success",
