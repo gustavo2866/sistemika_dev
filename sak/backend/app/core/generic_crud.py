@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json
 import inspect
 from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List
@@ -25,15 +25,15 @@ class FilterOperator:
 class GenericCRUD(Generic[M]):
     def __init__(self, model: Type[M]):
         self.model: Type[M] = model
-        # Obtener campos de búsqueda desde metadata del modelo
+        # Obtener campos de bÃºsqueda desde metadata del modelo
         self.searchable_fields = getattr(model, '__searchable_fields__', [])
 
     # --- helpers ---
     def _coerce_field_value(self, field_name: str, value: Any) -> Any:
         """
         Convierte valores entrantes (provenientes de JSON) al tipo Python esperado
-        según la anotación del modelo. Maneja casos comunes: datetime, date, bool,
-        enteros/decimales y strings vacíos.
+        segÃºn la anotaciÃ³n del modelo. Maneja casos comunes: datetime, date, bool,
+        enteros/decimales y strings vacÃ­os.
         """
         if value is None:
             return None
@@ -42,11 +42,11 @@ class GenericCRUD(Generic[M]):
             field_info = getattr(self.model, "model_fields", {}).get(field_name)
             expected_type = getattr(field_info, "annotation", None) if field_info else None
 
-            # Normalizar strings vacíos a None solo para tipos no-string
+            # Normalizar strings vacÃ­os a None solo para tipos no-string
             if isinstance(value, str) and value.strip() == "":
                 if expected_type is not str:
                     return None
-                # Para campos string, mantener vacío
+                # Para campos string, mantener vacÃ­o
                 return value
 
             # datetime
@@ -59,7 +59,7 @@ class GenericCRUD(Generic[M]):
                     try:
                         return datetime.fromisoformat(s)
                     except Exception:
-                        # Intentar sólo fecha
+                        # Intentar sÃ³lo fecha
                         try:
                             d = date.fromisoformat(s)
                             return datetime(d.year, d.month, d.day)
@@ -106,9 +106,32 @@ class GenericCRUD(Generic[M]):
 
         return value
 
+    def _coerce_column_value(self, column, value):
+        """Intenta adaptar un valor al tipo Python asociado a una columna SQLAlchemy"""
+        if value is None:
+            return None
+        try:
+            python_type = column.type.python_type
+        except (AttributeError, NotImplementedError):
+            python_type = None
+        if python_type is not None:
+            if python_type is bool and isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in ("true", "1", "yes", "on"):
+                    return True
+                if lowered in ("false", "0", "no", "off"):
+                    return False
+            try:
+                return python_type(value)
+            except (TypeError, ValueError):
+                pass
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return value
+
     def _clean_create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         allowed = campos_editables(self.model)
-        # Aplicar coerción de tipos segura durante create
+        # Aplicar coerciÃ³n de tipos segura durante create
         cleaned: Dict[str, Any] = {}
         for k, v in data.items():
             if k in allowed:
@@ -124,7 +147,7 @@ class GenericCRUD(Generic[M]):
         """Aplica filtros al statement SQL"""
         for field_name, filter_value in filters.items():
             if field_name == "q":
-                # Búsqueda de texto en campos searchable
+                # BÃºsqueda de texto en campos searchable
                 stmt = self._apply_text_search(stmt, filter_value)
                 continue
             
@@ -144,21 +167,23 @@ class GenericCRUD(Generic[M]):
                 for operator, value in filter_value.items():
                     stmt = self._apply_operator_filter(stmt, column, operator, value)
             elif isinstance(filter_value, list):
-                # Filtro de array: usar operador IN para múltiples valores
-                stmt = stmt.where(column.in_(filter_value))
+                # Filtro de array: usar operador IN para mÃºltiples valores
+                coerced_values = [self._coerce_column_value(column, value) for value in filter_value]
+                stmt = stmt.where(column.in_(coerced_values))
             else:
-                # Filtro simple: intentar LIKE para búsqueda de texto, fallback a igualdad
+                # Filtro simple: intentar LIKE para bÃºsqueda de texto, fallback a igualdad
+                coerced_value = self._coerce_column_value(column, filter_value)
                 try:
                     # Para campos conocidos de texto, usar LIKE
                     if field_name in ['nombre', 'email', 'telefono', 'descripcion', 'description', 'title', 'name']:
-                        stmt = stmt.where(column.ilike(f"%{filter_value}%"))
+                        stmt = stmt.where(column.ilike(f"%{coerced_value}%"))
                     else:
                         # Para otros campos, intentar igualdad exacta
-                        stmt = stmt.where(column == filter_value)
+                        stmt = stmt.where(column == coerced_value)
                 except Exception as e:
                     # Si falla, intentar igualdad exacta como fallback
                     try:
-                        stmt = stmt.where(column == filter_value)
+                        stmt = stmt.where(column == coerced_value)
                     except Exception:
                         # Si todo falla, ignorar este filtro para evitar que se caiga el servidor
                         continue
@@ -175,9 +200,9 @@ class GenericCRUD(Generic[M]):
             print(f"DEBUG: Partes: {parts}")
             print(f"DEBUG: Modelo inicial: {current_model.__name__}")
             
-            # Navegar a través de todas las relaciones excepto la última parte
+            # Navegar a travÃ©s de todas las relaciones excepto la Ãºltima parte
             for i, relation_name in enumerate(parts[:-1]):
-                print(f"DEBUG: Procesando relación {i+1}/{len(parts)-1}: {relation_name}")
+                print(f"DEBUG: Procesando relaciÃ³n {i+1}/{len(parts)-1}: {relation_name}")
                 if hasattr(current_model, relation_name):
                     relation = getattr(current_model, relation_name)
                     related_model = relation.property.mapper.class_
@@ -188,7 +213,7 @@ class GenericCRUD(Generic[M]):
                     # Actualizar el modelo actual
                     current_model = related_model
                 else:
-                    print(f"ERROR: Relación {relation_name} no encontrada en {current_model.__name__}")
+                    print(f"ERROR: RelaciÃ³n {relation_name} no encontrada en {current_model.__name__}")
                     return stmt
             
             # Aplicar filtro en el campo final
@@ -198,11 +223,12 @@ class GenericCRUD(Generic[M]):
             if hasattr(current_model, field_name):
                 final_column = getattr(current_model, field_name)
                 if isinstance(filter_value, list):
-                    stmt = stmt.where(final_column.in_(filter_value))
-                    print(f"DEBUG: Filtro IN aplicado: {field_name} IN {filter_value}")
+                    coerced = [self._coerce_column_value(final_column, value) for value in filter_value]
+                    stmt = stmt.where(final_column.in_(coerced))
+                    print(f"DEBUG: Filtro IN aplicado: {field_name} IN {coerced}")
                 else:
-                    stmt = stmt.where(final_column == filter_value)
-                    print(f"DEBUG: Filtro igualdad aplicado: {field_name} = {filter_value}")
+                    stmt = stmt.where(final_column == coerced)
+                    print(f"DEBUG: Filtro igualdad aplicado: {field_name} = {coerced}")
             else:
                 print(f"ERROR: Campo {field_name} no encontrado en {current_model.__name__}")
                 
@@ -213,7 +239,7 @@ class GenericCRUD(Generic[M]):
         return stmt
 
     def _apply_text_search(self, stmt, search_text: str):
-        """Aplica búsqueda de texto en campos searchable"""
+        """Aplica bÃºsqueda de texto en campos searchable"""
         conditions = []
         for field_name in self.searchable_fields:
             if hasattr(self.model, field_name):
@@ -228,7 +254,7 @@ class GenericCRUD(Generic[M]):
         return stmt
 
     def _apply_operator_filter(self, stmt, column, operator: str, value):
-        """Aplica un operador específico a una columna"""
+        """Aplica un operador especÃ­fico a una columna"""
         if operator == FilterOperator.GTE:
             return stmt.where(column >= value)
         elif operator == FilterOperator.GT:
@@ -264,7 +290,7 @@ class GenericCRUD(Generic[M]):
 
     # --- CRUD ---
     def create(self, session: Session, data: Dict[str, Any]) -> M:
-        """Create: ignora id/stamps y campos no válidos"""
+        """Create: ignora id/stamps y campos no vÃ¡lidos"""
         cleaned = self._clean_create(data)
         obj = self.model(**cleaned)
         session.add(obj)
@@ -297,7 +323,7 @@ class GenericCRUD(Generic[M]):
         include: Optional[str] = None,
     ) -> Tuple[Sequence[M], int]:
         """
-        List con paginación y filtros
+        List con paginaciÃ³n y filtros
         Returns: (items, total_count)
         """
         # Base query
@@ -325,7 +351,7 @@ class GenericCRUD(Generic[M]):
         # Aplicar soft delete
         stmt = self._apply_soft_delete_filter(stmt, deleted)
         
-        # Contar total (antes de paginación)
+        # Contar total (antes de paginaciÃ³n)
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = session.exec(count_stmt).one()
         
@@ -337,7 +363,7 @@ class GenericCRUD(Generic[M]):
             else:
                 stmt = stmt.order_by(order_column.asc())
         
-        # Aplicar paginación
+        # Aplicar paginaciÃ³n
         offset = (page - 1) * per_page
         stmt = stmt.offset(offset).limit(per_page)
         
@@ -350,8 +376,8 @@ class GenericCRUD(Generic[M]):
         
         Args:
             model_class: Clase del modelo a inspeccionar
-            max_depth: Máxima profundidad de relaciones anidadas
-            current_depth: Profundidad actual (para recursión)
+            max_depth: MÃ¡xima profundidad de relaciones anidadas
+            current_depth: Profundidad actual (para recursiÃ³n)
             
         Returns:
             Dict con los selectinload options para las relaciones encontradas
@@ -371,7 +397,7 @@ class GenericCRUD(Generic[M]):
                     # Obtener el modelo relacionado
                     related_model = relationship.mapper.class_
                     
-                    # Crear el selectinload para esta relación
+                    # Crear el selectinload para esta relaciÃ³n
                     relation_attr = getattr(model_class, relationship_name)
                     
                     # Solo procesar relaciones de nivel 1 para evitar conflictos
@@ -379,22 +405,22 @@ class GenericCRUD(Generic[M]):
                         # Para relaciones de primer nivel, incluir sin anidamiento por ahora
                         relations[relationship_name] = selectinload(relation_attr)
                         
-                        # Auto-descubrir relaciones anidadas solo para casos específicos
+                        # Auto-descubrir relaciones anidadas solo para casos especÃ­ficos
                         if current_depth < max_depth - 1:
                             try:
                                 nested_relations = self._discover_relations(
                                     related_model, max_depth, current_depth + 1
                                 )
                                 
-                                # Solo añadir relaciones anidadas si es seguro
+                                # Solo aÃ±adir relaciones anidadas si es seguro
                                 if nested_relations and len(nested_relations) <= 2:
-                                    # Buscar relaciones específicas conocidas como seguras
+                                    # Buscar relaciones especÃ­ficas conocidas como seguras
                                     for nested_name, _ in nested_relations.items():
                                         if nested_name in ['pais', 'categoria', 'tipo']:  # Relaciones "seguras"
                                             try:
                                                 nested_attr = getattr(related_model, nested_name)
                                                 relations[relationship_name] = selectinload(relation_attr).selectinload(nested_attr)
-                                                break  # Solo una relación anidada por simplicidad
+                                                break  # Solo una relaciÃ³n anidada por simplicidad
                                             except:
                                                 continue
                             except:
@@ -412,7 +438,7 @@ class GenericCRUD(Generic[M]):
 
     def _get_auto_include_options(self) -> List[Any]:
         """
-        Obtiene automáticamente las opciones de include para el modelo actual
+        Obtiene automÃ¡ticamente las opciones de include para el modelo actual
         
         Returns:
             Lista de selectinload options para usar en la query
@@ -429,14 +455,14 @@ class GenericCRUD(Generic[M]):
     def _get_auto_include(self) -> List[str]:
         """
         DEPRECATED: Mantener por compatibilidad
-        Retorna nombres de relaciones descubiertas automáticamente
+        Retorna nombres de relaciones descubiertas automÃ¡ticamente
         """
         relations = self._discover_relations(self.model, max_depth=1)
         return list(relations.keys())
 
     def _apply_auto_includes(self, stmt):
         """
-        Aplica automáticamente las relaciones descubiertas al statement SQL
+        Aplica automÃ¡ticamente las relaciones descubiertas al statement SQL
         
         Args:
             stmt: SQLAlchemy statement
@@ -447,7 +473,7 @@ class GenericCRUD(Generic[M]):
         try:
             print(f"DEBUG: Auto-discovering includes for model: {self.model.__name__}")
             
-            # Rehabilitar auto-discovery ahora que el problema del enum está resuelto
+            # Rehabilitar auto-discovery ahora que el problema del enum estÃ¡ resuelto
             include_options = self._get_auto_include_options()
             
             if include_options:
@@ -456,7 +482,7 @@ class GenericCRUD(Generic[M]):
             else:
                 print(f"DEBUG: No auto-includes found for {self.model.__name__}")
                 
-            return stmt  # ¡IMPORTANTE! Agregamos el return que faltaba
+            return stmt  # Â¡IMPORTANTE! Agregamos el return que faltaba
                 
         except Exception as e:
             print(f"ERROR: Could not apply auto-includes for {self.model.__name__}: {e}")
@@ -493,7 +519,7 @@ class GenericCRUD(Generic[M]):
                     status_code=409,
                     detail={
                         "code": "CONFLICT",
-                        "message": "La versión del recurso ha cambiado",
+                        "message": "La versiÃ³n del recurso ha cambiado",
                         "details": {
                             "current_version": obj.version,
                             "provided_version": data["version"]
@@ -531,7 +557,7 @@ class GenericCRUD(Generic[M]):
         return obj
 
     def update_partial(self, session: Session, obj_id: Any, data: Dict[str, Any]) -> Optional[M]:
-        """Update parcial: sólo aplica los campos recibidos"""
+        """Update parcial: sÃ³lo aplica los campos recibidos"""
         return self.update(session, obj_id, data, check_version=False)
 
     def delete(self, session: Session, obj_id: Any, hard: bool = False) -> bool:
@@ -554,3 +580,5 @@ class GenericCRUD(Generic[M]):
             
         session.commit()
         return True
+
+
