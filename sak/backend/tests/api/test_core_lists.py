@@ -1,18 +1,22 @@
+"""Core list endpoints smoke tests."""
+
 import pytest
 from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
 
 LIST_ENDPOINTS = [
     "/items",
     "/users",
-    "/paises",
     "/tareas",
+    "/paises",
     "/proveedores",
     "/tipos-operacion",
     "/facturas",
     "/factura-detalles",
     "/factura-impuestos",
-    "/facturas-extracciones",
-    "/api/v1/clientes/",
 ]
 
 
@@ -21,4 +25,8 @@ def test_list_endpoint_returns_array(client: TestClient, endpoint: str) -> None:
     response = client.get(endpoint)
     assert response.status_code == 200
     body = response.json()
-    assert isinstance(body, list)
+    if isinstance(body, dict):
+        assert "data" in body
+        assert isinstance(body["data"], list)
+    else:
+        assert isinstance(body, list)

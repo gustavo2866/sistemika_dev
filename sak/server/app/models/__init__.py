@@ -9,7 +9,6 @@ from .tipo_operacion import TipoOperacion
 from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
-from .factura_extraccion import FacturaExtraccion
 
 __all__ = [
     "Base", 
@@ -22,5 +21,6 @@ __all__ = [
     "Factura",
     "FacturaDetalle",
     "FacturaImpuesto"
-    ,"FacturaExtraccion"
 ]
+
+

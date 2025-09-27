@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.api import factura_processing as fp
+from app.models.comprobante import Comprobante
 from app.models.proveedor import Proveedor
 from app.models.tipo_operacion import TipoOperacion
 from app.services import pdf_extraction_service as pdf_service
@@ -21,12 +22,47 @@ PDF_BYTES = (
 class DummyFacturaService:
     def __init__(self) -> None:
         self.uploads_dir = Path("uploads/facturas")
+        self.uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    async def process_uploaded_pdf(self, file_path: str, original_filename: str, proveedor_id: int, tipo_operacion_id: int):
-        return {"file_path": file_path, "original": original_filename, "proveedor_id": proveedor_id, "tipo_operacion_id": tipo_operacion_id}
+    async def process_uploaded_pdf(
+        self,
+        file_path: str,
+        original_filename: str,
+        proveedor_id: int,
+        tipo_operacion_id: int,
+    ) -> dict:
+        stored_name = Path(file_path).name
+        return {
+            "numero": "",
+            "punto_venta": "",
+            "tipo_comprobante": "B",
+            "fecha_emision": "2024-01-01",
+            "fecha_vencimiento": None,
+            "subtotal": 0.0,
+            "total_impuestos": 0.0,
+            "total": 0.0,
+            "estado": "pendiente",
+            "observaciones": f"Procesado desde: {original_filename}",
+            "nombre_archivo_pdf": original_filename,
+            "nombre_archivo_pdf_guardado": stored_name,
+            "ruta_archivo_pdf": file_path,
+            "stored_filename": stored_name,
+            "comprobante_id": None,
+            "proveedor_id": proveedor_id,
+            "tipo_operacion_id": tipo_operacion_id,
+        }
 
-    async def extract_basic_info(self, file_path: str):
-        return {"file_path": file_path}
+    async def extract_basic_info(self, file_path: str, original_filename: str | None = None) -> dict:
+        stored_name = Path(file_path).name
+        original = original_filename or stored_name
+        return {
+            "file_path": file_path,
+            "file_name": original,
+            "nombre_archivo_pdf": original,
+            "nombre_archivo_pdf_guardado": stored_name,
+            "ruta_archivo_pdf": file_path,
+            "stored_filename": stored_name,
+        }
 
     def validate_file(self, file_path: str) -> bool:
         return file_path.endswith(".pdf")
@@ -100,6 +136,19 @@ def test_upload_and_extract_factura_pdf(client: TestClient, db_session: Session,
     file_path = Path(upload_body["file_path"])
     assert file_path.exists()
 
+    template = upload_body["template_data"]
+    assert template["nombre_archivo_pdf"] == "factura.pdf"
+    assert template["nombre_archivo_pdf_guardado"].endswith(file_path.name)
+    assert template["ruta_archivo_pdf"] == str(file_path)
+
+    file_info = upload_body["file_info"]
+    assert file_info["nombre_archivo_pdf"] == "factura.pdf"
+    assert file_info["file_name"] == "factura.pdf"
+    assert file_info["nombre_archivo_pdf_guardado"].endswith(file_path.name)
+    assert file_info["stored_filename"] == file_path.name
+    assert file_info["ruta_archivo_pdf"] == str(file_path)
+    assert file_info["file_path"] == str(file_path)
+
     extract_data = {
         "file_path": str(file_path),
         "proveedor_id": str(proveedor_id),
@@ -107,11 +156,15 @@ def test_upload_and_extract_factura_pdf(client: TestClient, db_session: Session,
     }
     extract_response = client.post("/api/v1/facturas/extract-from-file", data=extract_data)
     assert extract_response.status_code == 200, extract_response.text
+    extract_body = extract_response.json()
+    assert extract_body["data"]["nombre_archivo_pdf"] == file_path.name
+    assert extract_body["data"]["nombre_archivo_pdf_guardado"].endswith(file_path.name)
+    assert extract_body["data"]["ruta_archivo_pdf"] == str(file_path)
 
     list_response = client.get("/api/v1/facturas/files/")
     assert list_response.status_code == 200
     files_list = list_response.json()["files"]
-    assert any(entry["filename"] == file_path.name for entry in files_list)
+    assert any(entry["filename"] == file_path.name and entry["url"].endswith(file_path.name) for entry in files_list)
 
     if file_path.exists():
         file_path.unlink()
@@ -133,6 +186,21 @@ def test_parse_pdf_endpoint(client: TestClient, db_session: Session, monkeypatch
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["success"] is True
+    assert body["file_path"].endswith(".pdf")
+    assert body["stored_filename"].endswith(".pdf")
+    assert body["data"]["archivo_subido"].endswith(".pdf")
+    assert body["data"]["nombre_archivo_pdf"] == "factura.pdf"
+    assert body["data"]["nombre_archivo_pdf_guardado"].endswith(".pdf")
+    assert body["data"]["ruta_archivo_pdf"] == body["file_path"]
+    assert body["comprobante_id"] is not None
+    assert body["data"]["comprobante_id"] == body["comprobante_id"]
+    assert body["ruta_archivo_pdf"] == body["file_path"]
+
+    comprobante = db_session.get(Comprobante, body["comprobante_id"])
+    assert comprobante is not None
+    assert comprobante.archivo_guardado == body["stored_filename"]
+    assert comprobante.archivo_ruta == body["ruta_archivo_pdf"]
+
     saved_path = Path(body["file_path"])
     if saved_path.exists():
         saved_path.unlink()
@@ -141,3 +209,4 @@ def test_parse_pdf_endpoint(client: TestClient, db_session: Session, monkeypatch
         for candidate in temp_path.iterdir():
             if candidate.is_file():
                 candidate.unlink()
+

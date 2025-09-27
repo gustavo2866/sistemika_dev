@@ -1,8 +1,28 @@
-import * as React from "react"
+import * as React from "react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+type InputProps = React.ComponentProps<"input"> & {
+  isRequired?: boolean;
+  fullWidth?: boolean;
+  alwaysOn?: boolean;
+  helperText?: React.ReactNode;
+};
+
+function Input({
+  className,
+  type,
+  isRequired: _isRequired,
+  fullWidth: _fullWidth,
+  alwaysOn: _alwaysOn,
+  helperText: _helperText,
+  ...props
+}: InputProps) {
+  void _isRequired;
+  void _fullWidth;
+  void _alwaysOn;
+  void _helperText;
+
   return (
     <input
       type={type}
@@ -15,7 +35,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       )}
       {...props}
     />
-  )
+  );
 }
 
-export { Input }
+export { Input };

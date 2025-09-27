@@ -25,6 +25,12 @@ import {
   FieldTitle,
   useEvent,
 } from "ra-core";
+
+import type { Identifier, RaRecord } from "ra-core";
+
+type Choice = RaRecord;
+type ChoiceId = Identifier;
+
 import { InputHelperText } from "./input-helper-text";
 import { useCallback } from "react";
 
@@ -34,12 +40,12 @@ export const AutocompleteArrayInput = (
     ChoicesProps & {
       className?: string;
       disableValue?: string;
-      filterToQuery?: (searchText: string) => any;
+      filterToQuery?: (searchText: string) => Record<string, unknown>;
       translateChoice?: boolean;
       placeholder?: string;
       inputText?:
         | React.ReactNode
-        | ((option: any | undefined) => React.ReactNode);
+        | ((option: Choice | undefined) => React.ReactNode);
     },
 ) => {
   const { filterToQuery = DefaultFilterToQuery, inputText } = props;
@@ -49,8 +55,13 @@ export const AutocompleteArrayInput = (
     resource,
     isFromReference,
     setFilters,
-  } = useChoicesContext(props);
+  } = useChoicesContext<Choice>(props);
   const { id, field, isRequired } = useInput({ ...props, source });
+  const getCurrentValues = () => (
+    Array.isArray(field.value) ? (field.value as ChoiceId[]) : []
+  );
+
+  const choiceIds = getCurrentValues();
   const translate = useTranslate();
   const { placeholder = translate("ra.action.search", { _: "Search..." }) } =
     props;
@@ -67,10 +78,10 @@ export const AutocompleteArrayInput = (
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [open, setOpen] = React.useState(false);
 
-  const handleUnselect = useEvent((choice: any) => {
-    field.onChange(
-      field.value.filter((v: any) => v !== getChoiceValue(choice)),
-    );
+  const handleUnselect = useEvent((choice: Choice) => {
+    const currentValues = getCurrentValues();
+    const targetId = getChoiceValue(choice) as ChoiceId;
+    field.onChange(currentValues.filter((value) => value !== targetId));
   });
 
   const handleKeyDown = useEvent((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -78,7 +89,7 @@ export const AutocompleteArrayInput = (
     if (input) {
       if (e.key === "Delete" || e.key === "Backspace") {
         if (input.value === "") {
-          field.onChange(field.value.slice(0, -1));
+          field.onChange(getCurrentValues().slice(0, -1));
         }
       }
       // This is not a default behavior of the <input /> field
@@ -89,15 +100,15 @@ export const AutocompleteArrayInput = (
   });
 
   const availableChoices = allChoices.filter(
-    (choice) => !field.value.includes(getChoiceValue(choice)),
+    (choice) => !choiceIds.includes(getChoiceValue(choice) as ChoiceId),
   );
   const selectedChoices = allChoices.filter((choice) =>
-    field.value.includes(getChoiceValue(choice)),
+    choiceIds.includes(getChoiceValue(choice) as ChoiceId),
   );
   const [filterValue, setFilterValue] = React.useState("");
 
   const getInputText = useCallback(
-    (selectedChoice: any) => {
+    (selectedChoice: Choice | undefined) => {
       if (typeof inputText === "function") {
         return inputText(selectedChoice);
       }

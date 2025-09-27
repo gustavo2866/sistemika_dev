@@ -1,5 +1,5 @@
-"""
-Router para procesamiento de facturas con extracción de PDFs
+﻿"""
+Router para procesamiento de facturas con extracciÃ³n de PDFs
 """
 
 import os
@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from app.services.factura_processing_service import FacturaProcessingService
 from app.db import get_session
 from sqlmodel import Session
-from app.models.factura_extraccion import FacturaExtraccion
+from app.models.comprobante import Comprobante
 
 router = APIRouter(prefix="/facturas", tags=["facturas-procesamiento"])
 
@@ -34,11 +34,11 @@ async def upload_factura_pdf(
     Args:
         file: Archivo PDF de la factura
         proveedor_id: ID del proveedor
-        tipo_operacion_id: ID del tipo de operación
-        auto_extract: Si debe intentar extraer datos automáticamente
+        tipo_operacion_id: ID del tipo de operaciÃ³n
+        auto_extract: Si debe intentar extraer datos automÃ¡ticamente
     
     Returns:
-        JSON con datos extraídos o template para completar
+        JSON con datos extraÃ­dos o template para completar
     """
     
     # Validar tipo de archivo
@@ -48,11 +48,11 @@ async def upload_factura_pdf(
             detail="Solo se permiten archivos PDF"
         )
     
-    # Validar tamaño (máximo 10MB)
+    # Validar tamaÃ±o (mÃ¡ximo 10MB)
     if file.size > 10 * 1024 * 1024:
         raise HTTPException(
             status_code=400,
-            detail="El archivo es demasiado grande (máximo 10MB)"
+            detail="El archivo es demasiado grande (mÃ¡ximo 10MB)"
         )
     
     try:
@@ -60,7 +60,7 @@ async def upload_factura_pdf(
         upload_dir = Path("uploads/facturas")
         upload_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generar nombre único para el archivo
+        # Generar nombre Ãºnico para el archivo
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_filename = f"{timestamp}_{file.filename}"
         file_path = upload_dir / safe_filename
@@ -71,7 +71,7 @@ async def upload_factura_pdf(
         
         # Procesar archivo
         if auto_extract:
-            # En el futuro aquí se llamará al PDFExtractionService
+            # En el futuro aquÃ­ se llamarÃ¡ al PDFExtractionService
             result_data = await factura_service.process_uploaded_pdf(
                 str(file_path),
                 file.filename,
@@ -87,8 +87,8 @@ async def upload_factura_pdf(
                 "data": result_data
             })
         else:
-            # Solo subir archivo, sin extracción
-            file_info = await factura_service.extract_basic_info(str(file_path))
+            # Solo subir archivo, sin extracciÃ³n
+            file_info = await factura_service.extract_basic_info(str(file_path), original_filename=file.filename)
             
             return JSONResponse({
                 "success": True,
@@ -100,7 +100,8 @@ async def upload_factura_pdf(
                     "proveedor_id": proveedor_id,
                     "tipo_operacion_id": tipo_operacion_id,
                     "nombre_archivo_pdf": file.filename,
-                    "ruta_archivo_pdf": str(file_path)
+                    "ruta_archivo_pdf": str(file_path),
+                    "nombre_archivo_pdf_guardado": safe_filename,
                 }
             })
             
@@ -126,10 +127,10 @@ async def extract_data_from_existing_file(
     Args:
         file_path: Ruta al archivo PDF existente
         proveedor_id: ID del proveedor
-        tipo_operacion_id: ID del tipo de operación
+        tipo_operacion_id: ID del tipo de operaciÃ³n
     
     Returns:
-        JSON con datos extraídos
+        JSON con datos extraÃ­dos
     """
     
     # Verificar que el archivo existe
@@ -143,11 +144,11 @@ async def extract_data_from_existing_file(
     if not factura_service.validate_file(file_path):
         raise HTTPException(
             status_code=400,
-            detail="El archivo no es un PDF válido"
+            detail="El archivo no es un PDF vÃ¡lido"
         )
     
     try:
-        # Procesar con extracción
+        # Procesar con extracciÃ³n
         result_data = await factura_service.process_uploaded_pdf(
             file_path,
             Path(file_path).name,
@@ -157,7 +158,7 @@ async def extract_data_from_existing_file(
         
         return JSONResponse({
             "success": True,
-            "message": "Datos extraídos exitosamente",
+            "message": "Datos extraÃ­dos exitosamente",
             "file_path": file_path,
             "data": result_data
         })
@@ -193,7 +194,7 @@ async def list_factura_files():
                 "url": f"/uploads/facturas/{file_path.name}"
             })
         
-        # Ordenar por fecha de creación (más recientes primero)
+        # Ordenar por fecha de creaciÃ³n (mÃ¡s recientes primero)
         files.sort(key=lambda x: x["created"], reverse=True)
         
         return JSONResponse({
@@ -234,11 +235,11 @@ async def delete_uploaded_file(file_id: str):
                 detail="Archivo no encontrado"
             )
         
-        # Verificar que está dentro del directorio permitido
+        # Verificar que estÃ¡ dentro del directorio permitido
         if not str(file_path.resolve()).startswith(str(Path("uploads/facturas").resolve())):
             raise HTTPException(
                 status_code=400,
-                detail="Ruta de archivo no válida"
+                detail="Ruta de archivo no vÃ¡lida"
             )
         
         os.remove(file_path)
@@ -267,20 +268,20 @@ async def test_pdf_endpoint():
         # Test 1: Importar PDFExtractionService
         logger.info("Test 1: Importando PDFExtractionService...")
         from app.services.pdf_extraction_service import PDFExtractionService
-        logger.info("✓ PDFExtractionService importado correctamente")
+        logger.info("âœ“ PDFExtractionService importado correctamente")
         
         # Test 2: Inicializar servicio
         logger.info("Test 2: Inicializando servicio...")
         service = PDFExtractionService()
-        logger.info("✓ Servicio inicializado correctamente")
+        logger.info("âœ“ Servicio inicializado correctamente")
         
         # Test 3: Verificar OpenAI
         import os
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            logger.info(f"✓ OpenAI API Key configurada: {'*' * (len(api_key) - 10)}{api_key[-10:]}")
+            logger.info(f"âœ“ OpenAI API Key configurada: {'*' * (len(api_key) - 10)}{api_key[-10:]}")
         else:
-            logger.info("⚠ OpenAI API Key no configurada")
+            logger.info("âš  OpenAI API Key no configurada")
         
         return JSONResponse({
             "success": True,
@@ -310,19 +311,19 @@ async def parse_document_endpoint(
     
     Tipos de archivo soportados:
     - PDFs: .pdf
-    - Imágenes: .jpg, .jpeg, .png, .gif, .webp, .bmp, .tiff
+    - ImÃ¡genes: .jpg, .jpeg, .png, .gif, .webp, .bmp, .tiff
     
     Args:
         file: Archivo PDF o imagen de la factura
         proveedor_id: ID del proveedor (opcional)
-        tipo_operacion_id: ID del tipo de operación (opcional)
-        extraction_method: Método de extracción ("auto", "text", "vision", "rules")
+        tipo_operacion_id: ID del tipo de operaciÃ³n (opcional)
+        extraction_method: MÃ©todo de extracciÃ³n ("auto", "text", "vision", "rules")
     
     Returns:
-        JSON con datos extraídos de la factura
+        JSON con datos extraÃ­dos de la factura
     """
     
-    # Detectar tipo de archivo por extensión y content-type
+    # Detectar tipo de archivo por extensiÃ³n y content-type
     file_extension = Path(file.filename).suffix.lower()
     
     # Tipos soportados
@@ -337,14 +338,14 @@ async def parse_document_endpoint(
             status_code=400, 
             detail=f"Tipo de archivo no soportado: {file_extension}. "
                    f"Soportados: PDF ({', '.join(pdf_extensions)}) o "
-                   f"Imágenes ({', '.join(image_extensions)})"
+                   f"ImÃ¡genes ({', '.join(image_extensions)})"
         )
     
-    # Validar tamaño (máximo 10MB)
+    # Validar tamaÃ±o (mÃ¡ximo 10MB)
     if file.size and file.size > 10 * 1024 * 1024:
         raise HTTPException(
             status_code=400,
-            detail="El archivo es demasiado grande (máximo 10MB)"
+            detail="El archivo es demasiado grande (mÃ¡ximo 10MB)"
         )
     
     try:
@@ -352,12 +353,12 @@ async def parse_document_endpoint(
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Procesando archivo: {file.filename}")
-        logger.info(f"Tamaño del archivo: {file.size if file.size else 'Unknown'}")
+        logger.info(f"TamaÃ±o del archivo: {file.size if file.size else 'Unknown'}")
         logger.info(f"Tipo de contenido: {file.content_type}")
-        logger.info(f"Método de extracción: {extraction_method}")
+        logger.info(f"MÃ©todo de extracciÃ³n: {extraction_method}")
         logger.info(f"Tipo detectado: {'PDF' if is_pdf else 'Imagen'}")
         
-        # Importar el servicio de extracción
+        # Importar el servicio de extracciÃ³n
         from app.services.pdf_extraction_service import PDFExtractionService
         
         # Crear directorios necesarios
@@ -366,7 +367,7 @@ async def parse_document_endpoint(
         temp_dir.mkdir(parents=True, exist_ok=True)
         facturas_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generar nombres únicos
+        # Generar nombres Ãºnicos
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_id = timestamp
         safe_filename = f"{unique_id}_{file.filename}"
@@ -383,7 +384,7 @@ async def parse_document_endpoint(
         
         logger.info(f"Archivo guardado temporalmente en: {temp_file_path}")
         
-        # Inicializar servicio de extracción
+        # Inicializar servicio de extracciÃ³n
         logger.info("Inicializando PDFExtractionService...")
         try:
             extraction_service = PDFExtractionService()
@@ -392,8 +393,8 @@ async def parse_document_endpoint(
             logger.error(f"Error inicializando PDFExtractionService: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error inicializando servicio: {str(e)}")
         
-        # Extraer datos según el tipo de archivo
-        logger.info(f"Iniciando extracción de datos con método: {extraction_method}")
+        # Extraer datos segÃºn el tipo de archivo
+        logger.info(f"Iniciando extracciÃ³n de datos con mÃ©todo: {extraction_method}")
         try:
             if is_pdf:
                 logger.info("Procesando como PDF...")
@@ -402,13 +403,13 @@ async def parse_document_endpoint(
                 logger.info("Procesando como imagen...")
                 extracted_data = await extraction_service.extract_from_image(str(temp_file_path), extraction_method)
             
-            logger.info("Extracción completada exitosamente")
+            logger.info("ExtracciÃ³n completada exitosamente")
         except Exception as e:
-            logger.error(f"Error en extracción: {str(e)}")
+            logger.error(f"Error en extracciÃ³n: {str(e)}")
             logger.error(f"Tipo de error: {type(e).__name__}")
             raise HTTPException(status_code=500, detail=f"Error extrayendo datos: {str(e)}")
         
-        # Si la extracción fue exitosa, guardar el archivo permanentemente
+        # Si la extracciÃ³n fue exitosa, guardar el archivo permanentemente
         import shutil
         shutil.copy2(temp_file_path, permanent_file_path)
         logger.info(f"Archivo guardado permanentemente en: {permanent_file_path}")
@@ -441,43 +442,61 @@ async def parse_document_endpoint(
             "confianza_extraccion": extracted_data.confianza_extraccion,
             "metodo_extraccion": extracted_data.metodo_extraccion,
             "texto_extraido": extracted_data.texto_extraido,
-            "archivo_subido": safe_filename
+            "archivo_subido": safe_filename,
+            "nombre_archivo_pdf": file.filename,
+            "nombre_archivo_pdf_guardado": safe_filename,
+            "ruta_archivo_pdf": str(permanent_file_path),
+            "nombre_archivo_pdf": file.filename,
+            "nombre_archivo_pdf_guardado": safe_filename,
+            "ruta_archivo_pdf": str(permanent_file_path)
         }
         
-        # Persistir histórico de extracción (no bloquear si falla)
+        # Registrar comprobante de extracción (no bloquear si falla)
+        comprobante_id: Optional[int] = None
         try:
             import json as _json
-            history = FacturaExtraccion(
-                factura_id=None,
+            comprobante = Comprobante(
                 archivo_nombre=file.filename,
                 archivo_guardado=safe_filename,
                 archivo_ruta=str(permanent_file_path),
-                file_type=("pdf" if is_pdf else "image"),
-                metodo_extraccion=extraction_method,
-                extractor_version=getattr(extraction_service, "version", None),
-                estado="exitoso",
+                file_type=('pdf' if is_pdf else 'image'),
+                is_pdf=is_pdf,
+                extraido_por_ocr=extraction_method in {'auto', 'ocr', 'rules_ocr'},
+                extraido_por_llm=extraction_method in {'auto', 'llm_text', 'llm_vision'},
+                confianza_extraccion=getattr(extracted_data, 'confianza_extraccion', None),
+                metodo_extraccion=getattr(extracted_data, 'metodo_extraccion', extraction_method),
+                extractor_version=getattr(extraction_service, 'version', None),
+                estado='exitoso',
                 proveedor_id=proveedor_id,
                 tipo_operacion_id=tipo_operacion_id,
-                is_pdf=is_pdf,
-                payload_json=_json.dumps(result, ensure_ascii=False),
+                raw_json=_json.dumps(result, ensure_ascii=False),
             )
-            session.add(history)
+            session.add(comprobante)
             session.commit()
+            session.refresh(comprobante)
+            comprobante_id = comprobante.id
         except Exception as _e:
+            session.rollback()
             try:
                 import logging as _logging
-                _logging.getLogger(__name__).warning(f"No se pudo registrar histórico de extracción: {_e}")
+                _logging.getLogger(__name__).warning(f'No se pudo registrar comprobante de extracción: {_e}')
             except Exception:
                 pass
+        result['comprobante_id'] = comprobante_id
 
         return JSONResponse({
             "success": True,
             "message": f"{'PDF' if is_pdf else 'Imagen'} procesado exitosamente",
             "data": result,
             "filename": file.filename,
+            "stored_filename": safe_filename,
             "file_url": f"/uploads/facturas/{safe_filename}",
             "file_path": str(permanent_file_path),
-            "file_type": "pdf" if is_pdf else "image"
+            "file_type": "pdf" if is_pdf else "image",
+            "comprobante_id": comprobante_id,
+            "nombre_archivo_pdf": file.filename,
+            "nombre_archivo_pdf_guardado": safe_filename,
+            "ruta_archivo_pdf": str(permanent_file_path)
         })
         
     except Exception as e:
@@ -492,3 +511,5 @@ async def parse_document_endpoint(
             status_code=500,
             detail=f"Error procesando PDF: {str(e)}"
         )
+
+

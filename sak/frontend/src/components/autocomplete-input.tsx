@@ -39,6 +39,10 @@ import {
   useSupportCreateSuggestion,
 } from "@/hooks/useSupportCreateSuggestion";
 
+import type { RaRecord } from "ra-core";
+
+type Choice = RaRecord;
+
 export const AutocompleteInput = (
   props: Omit<InputProps, "source"> &
     Omit<SupportCreateSuggestionOptions, "handleChange" | "filter"> &
@@ -46,12 +50,12 @@ export const AutocompleteInput = (
     ChoicesProps & {
       className?: string;
       disableValue?: string;
-      filterToQuery?: (searchText: string) => any;
+      filterToQuery?: (searchText: string) => Record<string, unknown>;
       translateChoice?: boolean;
       placeholder?: string;
       inputText?:
         | React.ReactNode
-        | ((option: any | undefined) => React.ReactNode);
+        | ((option: Choice | undefined) => React.ReactNode);
     },
 ) => {
   const {
@@ -71,7 +75,7 @@ export const AutocompleteInput = (
     resource,
     isFromReference,
     setFilters,
-  } = useChoicesContext(props);
+  } = useChoicesContext<Choice>(props);
   const { id, field, isRequired } = useInput({ ...props, source });
   const translate = useTranslate();
   const { placeholder = translate("ra.action.search", { _: "Search..." }) } =
@@ -94,7 +98,7 @@ export const AutocompleteInput = (
   );
 
   const getInputText = useCallback(
-    (selectedChoice: any) => {
+    (selectedChoice: Choice | undefined) => {
       if (typeof inputText === "function") {
         return inputText(selectedChoice);
       }
@@ -115,7 +119,7 @@ export const AutocompleteInput = (
   });
 
   const handleChange = useCallback(
-    (choice: any) => {
+    (choice: Choice) => {
       if (field.value === getChoiceValue(choice) && !isRequired) {
         field.onChange("");
         setFilterValue("");

@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from app.services.factura_processing_service import FacturaProcessingService
 from app.db import get_session
 from sqlmodel import Session
-from app.models.factura_extraccion import FacturaExtraccion
+from app.models.comprobante import Comprobante
 
 router = APIRouter(prefix="/facturas", tags=["facturas-procesamiento"])
 
@@ -88,7 +88,7 @@ async def upload_factura_pdf(
             })
         else:
             # Solo subir archivo, sin extracción
-            file_info = await factura_service.extract_basic_info(str(file_path))
+            file_info = await factura_service.extract_basic_info(str(file_path), original_filename=file.filename)
             
             return JSONResponse({
                 "success": True,
@@ -100,7 +100,8 @@ async def upload_factura_pdf(
                     "proveedor_id": proveedor_id,
                     "tipo_operacion_id": tipo_operacion_id,
                     "nombre_archivo_pdf": file.filename,
-                    "ruta_archivo_pdf": str(file_path)
+                    "ruta_archivo_pdf": str(file_path),
+                    "nombre_archivo_pdf_guardado": safe_filename,
                 }
             })
             
@@ -441,43 +442,58 @@ async def parse_document_endpoint(
             "confianza_extraccion": extracted_data.confianza_extraccion,
             "metodo_extraccion": extracted_data.metodo_extraccion,
             "texto_extraido": extracted_data.texto_extraido,
-            "archivo_subido": safe_filename
+            "archivo_subido": safe_filename,
+            "nombre_archivo_pdf": file.filename,
+            "nombre_archivo_pdf_guardado": safe_filename,
+            "ruta_archivo_pdf": str(permanent_file_path)
         }
         
-        # Persistir histórico de extracción (no bloquear si falla)
+        # Registrar comprobante de extracción (no bloquear si falla)
+        comprobante_id: Optional[int] = None
         try:
             import json as _json
-            history = FacturaExtraccion(
-                factura_id=None,
+            comprobante = Comprobante(
                 archivo_nombre=file.filename,
                 archivo_guardado=safe_filename,
                 archivo_ruta=str(permanent_file_path),
-                file_type=("pdf" if is_pdf else "image"),
-                metodo_extraccion=extraction_method,
-                extractor_version=getattr(extraction_service, "version", None),
-                estado="exitoso",
+                file_type=('pdf' if is_pdf else 'image'),
+                is_pdf=is_pdf,
+                extraido_por_ocr=extraction_method in {'auto', 'ocr', 'rules_ocr'},
+                extraido_por_llm=extraction_method in {'auto', 'llm_text', 'llm_vision'},
+                confianza_extraccion=getattr(extracted_data, 'confianza_extraccion', None),
+                metodo_extraccion=getattr(extracted_data, 'metodo_extraccion', extraction_method),
+                extractor_version=getattr(extraction_service, 'version', None),
+                estado='exitoso',
                 proveedor_id=proveedor_id,
                 tipo_operacion_id=tipo_operacion_id,
-                is_pdf=is_pdf,
-                payload_json=_json.dumps(result, ensure_ascii=False),
+                raw_json=_json.dumps(result, ensure_ascii=False),
             )
-            session.add(history)
+            session.add(comprobante)
             session.commit()
+            session.refresh(comprobante)
+            comprobante_id = comprobante.id
         except Exception as _e:
+            session.rollback()
             try:
                 import logging as _logging
-                _logging.getLogger(__name__).warning(f"No se pudo registrar histórico de extracción: {_e}")
+                _logging.getLogger(__name__).warning(f'No se pudo registrar comprobante de extracción: {_e}')
             except Exception:
                 pass
+        result['comprobante_id'] = comprobante_id
 
         return JSONResponse({
             "success": True,
             "message": f"{'PDF' if is_pdf else 'Imagen'} procesado exitosamente",
             "data": result,
             "filename": file.filename,
+            "stored_filename": safe_filename,
             "file_url": f"/uploads/facturas/{safe_filename}",
             "file_path": str(permanent_file_path),
-            "file_type": "pdf" if is_pdf else "image"
+            "file_type": "pdf" if is_pdf else "image",
+            "comprobante_id": comprobante_id,
+            "nombre_archivo_pdf": file.filename,
+            "nombre_archivo_pdf_guardado": safe_filename,
+            "ruta_archivo_pdf": str(permanent_file_path)
         })
         
     except Exception as e:
