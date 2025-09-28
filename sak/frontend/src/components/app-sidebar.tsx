@@ -34,10 +34,11 @@ import {
   Building2,
   Workflow,
   ChevronDown,
+  Home,
 } from "lucide-react";
 
-const CONFIG_RESOURCES = ["users", "proveedores", "tipos-operacion"] as const;
-const OPERATIONS_RESOURCES = ["facturas"] as const;
+const CONFIG_RESOURCES = ["users", "proveedores", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
+const OPERATIONS_RESOURCES = ["facturas", "propiedades"] as const;
 
 type ResourceName = string;
 
@@ -174,6 +175,8 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   users: Users,
   proveedores: Building2,
   "tipos-operacion": Workflow,
+  "metodos-pago": FileText,
+  propiedades: Home,
   facturas: FileText,
 };
 

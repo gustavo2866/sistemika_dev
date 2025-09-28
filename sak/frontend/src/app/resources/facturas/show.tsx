@@ -10,7 +10,9 @@ export const FacturaShow = () => (
     <div className="grid gap-4 md:grid-cols-2">
       <TextField source="numero" label="Numero" />
       <TextField source="punto_venta" label="Punto de venta" />
-      <TextField source="tipo_comprobante" label="Tipo" />
+      <ReferenceField source="id_tipocomprobante" reference="tipos-comprobante" label="Tipo">
+        <TextField source="name" />
+      </ReferenceField>
       <TextField source="estado" label="Estado" />
       <ReferenceField source="proveedor_id" reference="proveedores" label="Proveedor">
         <TextField source="nombre" />

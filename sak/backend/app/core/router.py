@@ -76,17 +76,17 @@ def create_generic_router(
         _start: int = Query(None, description="Start index ra-data-json-server"),
         _end: int = Query(None, description="End index ra-data-json-server"),
         _sort: str = Query(None, description="Sort field ra-data-json-server"),
-        _order: str = Query(None, regex="^(ASC|DESC)$", description="Sort direction ra-data-json-server"),
+        _order: str = Query(None, pattern="^(ASC|DESC)$", description="Sort direction ra-data-json-server"),
         # Filtro de búsqueda general
         q: Optional[str] = Query(None, description="Búsqueda de texto"),
         # Parámetros genéricos (fallback)
         page: int = Query(1, ge=1, description="Número de página"),
         perPage: int = Query(25, ge=1, le=100, description="Items por página"),
         sortBy: str = Query("created_at", description="Campo para ordenar"),
-        sortDir: str = Query("asc", regex="^(asc|desc)$", description="Dirección del ordenamiento"),
+        sortDir: str = Query("asc", pattern="^(asc|desc)$", description="Dirección del ordenamiento"),
         fields: Optional[str] = Query(None, description="Campos a incluir (CSV)"),
         include: Optional[str] = Query(None, description="Relaciones a incluir (CSV)"),
-        deleted: str = Query("exclude", regex="^(include|only|exclude)$", description="Manejo de elementos eliminados"),
+        deleted: str = Query("exclude", pattern="^(include|only|exclude)$", description="Manejo de elementos eliminados"),
     ):
         """Listar recursos con paginación y filtros - Soporte ra-data-simple-rest y json-server"""
         try:
@@ -236,7 +236,7 @@ def create_generic_router(
     def get_one(
         obj_id: int, 
         session: Session = Depends(get_session),
-        deleted: str = Query("exclude", regex="^(include|only|exclude)$"),
+        deleted: str = Query("exclude", pattern="^(include|only|exclude)$"),
     ):
         """Obtener recurso por ID"""
         obj = crud.get(session, obj_id, deleted=deleted)

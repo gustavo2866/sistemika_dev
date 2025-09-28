@@ -1,11 +1,14 @@
 from typing import Optional, Dict, Any, List, ClassVar
-from datetime import datetime
+from datetime import UTC, datetime
 from sqlmodel import SQLModel, Field
+
+def current_utc_time() -> datetime:
+    return datetime.now(UTC)
 
 class Base(SQLModel):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: datetime = Field(default_factory=current_utc_time, nullable=False)
+    updated_at: datetime = Field(default_factory=current_utc_time, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None, nullable=True)
     version: int = Field(default=1, nullable=False)
     

@@ -70,6 +70,9 @@ const estadoChoices = [
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar facturas" alwaysOn />,
   <TextInput key="numero" source="numero" label="Numero" />,
+  <ReferenceInput key="id_tipocomprobante" source="id_tipocomprobante" reference="tipos-comprobante" label="Tipo de comprobante">
+    <SelectInput optionText="name" emptyText="Todos" />
+  </ReferenceInput>,
   <ReferenceInput key="tipo_operacion_id" source="tipo_operacion_id" reference="tipos-operacion" label="Tipo de operacion">
     <SelectInput optionText="descripcion" emptyText="Todos" />
   </ReferenceInput>,
@@ -99,8 +102,10 @@ export const FacturaList = () => (
       <DataTable.Col source="numero">
         <TextField source="numero" />
       </DataTable.Col>
-      <DataTable.Col source="tipo_comprobante" label="Tipo">
-        <TextField source="tipo_comprobante" />
+      <DataTable.Col label="Tipo">
+        <ReferenceField source="id_tipocomprobante" reference="tipos-comprobante">
+          <TextField source="name" />
+        </ReferenceField>
       </DataTable.Col>
       <DataTable.Col label="Proveedor">
         <ReferenceField source="proveedor_id" reference="proveedores">

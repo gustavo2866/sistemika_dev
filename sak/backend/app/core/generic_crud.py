@@ -2,7 +2,7 @@
 import json
 import inspect
 from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List
-from datetime import datetime, date
+from datetime import UTC, datetime, date
 from decimal import Decimal
 from sqlmodel import SQLModel, Session, select, func, and_, or_
 from sqlalchemy.orm import selectinload, joinedload
@@ -539,7 +539,7 @@ class GenericCRUD(Generic[M]):
 
         # Actualizar timestamps y version
         if hasattr(obj, "updated_at"):
-            setattr(obj, "updated_at", datetime.utcnow())
+            setattr(obj, "updated_at", datetime.now(UTC))
         if hasattr(obj, "version"):
             setattr(obj, "version", obj.version + 1)
 
@@ -573,9 +573,9 @@ class GenericCRUD(Generic[M]):
             session.delete(obj)
         else:
             # Soft delete
-            setattr(obj, "deleted_at", datetime.utcnow())
+            setattr(obj, "deleted_at", datetime.now(UTC))
             if hasattr(obj, "updated_at"):
-                setattr(obj, "updated_at", datetime.utcnow())
+                setattr(obj, "updated_at", datetime.now(UTC))
             session.add(obj)
             
         session.commit()

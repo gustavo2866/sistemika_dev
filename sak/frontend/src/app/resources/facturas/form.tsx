@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useEffect } from "react";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 import { ReferenceInput } from "@/components/reference-input";
+import { useAuthState } from "ra-core";
 import { SelectInput } from "@/components/select-input";
 import { FormControl, FormError, FormField, FormLabel } from "@/components/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Upload, FileText, Loader2 } from "lucide-react";
-import { useNotify, useInput } from "ra-core";
+import { useNotify, useInput, useGetOne, required } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useFacturaExtraction } from "@/hooks/useFacturaExtraction";
 
@@ -144,6 +145,26 @@ const useFacturaFormExtraction = () => {
       const data = (result?.data ?? {}) as Record<string, unknown>;
 
       const numero = data.numero ?? data.numero_comprobante;
+      const metodoPagoId = data.metodo_pago_id ?? 1;
+      if (typeof metodoPagoId === "number") {
+        setValue("metodo_pago_id", metodoPagoId, { shouldDirty: true });
+      } else if (typeof metodoPagoId === "string" && metodoPagoId.trim()) {
+        const parsed = Number(metodoPagoId);
+        if (Number.isFinite(parsed)) {
+          setValue("metodo_pago_id", parsed, { shouldDirty: true });
+        }
+      }
+
+      const propiedadId = data.propiedad_id;
+      if (typeof propiedadId === "number" && Number.isFinite(propiedadId)) {
+        setValue("propiedad_id", propiedadId, { shouldDirty: true });
+      } else if (typeof propiedadId === "string" && propiedadId.trim()) {
+        const parsed = Number(propiedadId);
+        if (Number.isFinite(parsed)) {
+          setValue("propiedad_id", parsed, { shouldDirty: true });
+        }
+      }
+
       if (numero !== undefined) {
         setValue("numero", String(numero ?? ""), { shouldDirty: true });
       }
@@ -153,9 +174,27 @@ const useFacturaFormExtraction = () => {
         setValue("punto_venta", String(puntoVenta ?? ""), { shouldDirty: true });
       }
 
-      const tipoComprobante = data.tipo_comprobante ?? data.tipo;
-      if (typeof tipoComprobante === "string") {
-        setValue("tipo_comprobante", tipoComprobante, { shouldDirty: true });
+      const rawTipoComprobanteId = data.id_tipocomprobante ?? data.id_tipofactura ?? data.tipo_factura_id;
+      const rawRegistradoPor = data.registrado_por_id;
+      const parsedTipoComprobanteId =
+        typeof rawTipoComprobanteId === "number"
+          ? rawTipoComprobanteId
+          : typeof rawTipoComprobanteId === "string" && rawTipoComprobanteId.trim().length > 0
+            ? Number(rawTipoComprobanteId)
+            : undefined;
+      if (typeof parsedTipoComprobanteId === "number" && Number.isFinite(parsedTipoComprobanteId)) {
+        setValue("id_tipocomprobante", parsedTipoComprobanteId, { shouldDirty: true });
+      }
+
+      if (typeof rawRegistradoPor === "number" && Number.isFinite(rawRegistradoPor)) {
+        setValue("registrado_por_id", rawRegistradoPor, { shouldDirty: true });
+      } else if (typeof rawRegistradoPor === "string" && rawRegistradoPor.trim()) {
+        const parsed = Number(rawRegistradoPor);
+        if (Number.isFinite(parsed)) {
+          setValue("registrado_por_id", parsed, { shouldDirty: true });
+        }
+      } else if (authUser?.id) {
+        setValue("registrado_por_id", authUser.id, { shouldDirty: true });
       }
 
       const fechaEmision = toDateString(data.fecha_emision);
@@ -223,12 +262,34 @@ const useFacturaFormExtraction = () => {
 
 const FacturaFormFields = () => {
   const { handleExtract, isUploading } = useFacturaFormExtraction();
+  const { data: authUser } = useAuthState();
   const proveedorId = useWatch({ name: "proveedor_id" });
   const tipoOperacionId = useWatch({ name: "tipo_operacion_id" });
   const rutaArchivo = useWatch({ name: "ruta_archivo_pdf" });
+  const form = useFormContext();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const { data: tipoOperacion } = useGetOne(
+    "tipos-operacion",
+    { id: tipoOperacionId ? Number(tipoOperacionId) : undefined },
+    { enabled: Boolean(tipoOperacionId) }
+  );
+  const requierePropiedad = Boolean(tipoOperacion?.requiere_propiedad);
+  const propiedadValidators = useMemo(
+    () => (requierePropiedad ? [required()] : undefined),
+    [requierePropiedad]
+  );
+
   const downloadUrl = useMemo(() => normalizeFilePath(rutaArchivo), [rutaArchivo]);
+
+  useEffect(() => {
+    if (!form) {
+      return;
+    }
+    if (!requierePropiedad) {
+      form.setValue("propiedad_id", null, { shouldDirty: true });
+    }
+  }, [form, requierePropiedad]);
 
   const onUpload = useCallback(() => {
     fileInputRef.current?.click();
@@ -274,22 +335,43 @@ const FacturaFormFields = () => {
         <SelectInput source="estado" label="Estado" choices={facturaEstadoChoices} defaultValue="pendiente" className="w-full" />
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <ReferenceInput
+          source="metodo_pago_id"
+          reference="metodos-pago"
+          label="Metodo de Pago"
+          defaultValue={1}
+          isRequired
+        >
+          <SelectInput optionText="nombre" emptyText="Seleccionar metodo" className="w-full" />
+        </ReferenceInput>
+        <ReferenceInput
+          source="registrado_por_id"
+          reference="users"
+          label="Registrado por"
+          defaultValue={authUser?.id ?? 1}
+          isRequired
+        >
+          <SelectInput optionText="nombre" emptyText="Seleccionar usuario" className="w-full" />
+        </ReferenceInput>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
-        <TextInput source="numero" label="N\u00famero" isRequired className="w-full" />
+        <TextInput source="numero" label="Numero" isRequired className="w-full" />
         <TextInput source="punto_venta" label="Punto de Venta" isRequired className="w-full" />
-        <SelectInput
-          source="tipo_comprobante"
-          label="Tipo de Comprobante"
-          choices={[
-            { id: "A", name: "Factura A" },
-            { id: "B", name: "Factura B" },
-            { id: "C", name: "Factura C" },
-            { id: "M", name: "Factura M" },
-            { id: "NC", name: "Nota de Cr\u00e9dito" },
-            { id: "ND", name: "Nota de D\u00e9bito" },
-          ]}
-          className="w-full"
-        />
+        <ReferenceInput source="id_tipocomprobante" reference="tipos-comprobante" label="Tipo de Comprobante" isRequired>
+          <SelectInput optionText="name" emptyText="Seleccionar tipo" className="w-full" />
+        </ReferenceInput>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <ReferenceInput
+          source="propiedad_id"
+          reference="propiedades"
+          label="Propiedad"
+          disabled={!requierePropiedad}
+        >
+          <SelectInput optionText="nombre" emptyText="Seleccionar propiedad" className="w-full" validate={propiedadValidators} />
+        </ReferenceInput>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

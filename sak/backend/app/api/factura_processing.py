@@ -6,27 +6,59 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
 from app.services.factura_processing_service import FacturaProcessingService
+from app.services.tipo_comprobante_service import resolve_tipo_comprobante
 from app.db import get_session
 from sqlmodel import Session
 from app.models.comprobante import Comprobante
+from app.models.tipo_comprobante import TipoComprobante
 
 router = APIRouter(prefix="/facturas", tags=["facturas-procesamiento"])
 
 # Instancia del servicio
 factura_service = FacturaProcessingService()
 
+DEFAULT_TIPO_COMPROBANTE_NAME = 'Factura B'
+
+
+def _enrich_tipo_comprobante(payload: Dict[str, Any], session: Session, default_name: str | None = None) -> None:
+    if not isinstance(payload, dict):
+        return
+
+    tipo_id = payload.get('id_tipocomprobante') or payload.get('id_tipofactura')
+    if isinstance(tipo_id, int):
+        tipo = session.get(TipoComprobante, tipo_id)
+        if tipo:
+            payload.setdefault('tipo_comprobante_nombre', tipo.name)
+        payload.setdefault('id_tipocomprobante', tipo_id)
+        payload.pop('id_tipofactura', None)
+        payload.setdefault('metodo_pago_id', 1)
+        payload.setdefault('registrado_por_id', 1)
+        return
+
+    raw_value = payload.get('tipo_comprobante') or payload.get('tipo') or default_name
+    tipo = resolve_tipo_comprobante(session, raw_value, default_name=default_name)
+    if tipo:
+        payload['id_tipocomprobante'] = tipo.id
+        payload.pop('id_tipofactura', None)
+        payload['tipo_comprobante_nombre'] = tipo.name
+
+    payload.setdefault('metodo_pago_id', 1)
+    payload.setdefault('registrado_por_id', 1)
+
+
 @router.post("/upload-pdf")
 async def upload_factura_pdf(
     file: UploadFile = File(...),
     proveedor_id: int = Form(...),
     tipo_operacion_id: int = Form(...),
-    auto_extract: bool = Form(default=False)
+    auto_extract: bool = Form(default=False),
+    session: Session = Depends(get_session)
 ):
     """
     Endpoint para subir un PDF de factura y opcionalmente extraer datos
@@ -78,7 +110,8 @@ async def upload_factura_pdf(
                 proveedor_id,
                 tipo_operacion_id
             )
-            
+            _enrich_tipo_comprobante(result_data, session, default_name=DEFAULT_TIPO_COMPROBANTE_NAME)
+
             return JSONResponse({
                 "success": True,
                 "message": "Archivo procesado exitosamente",
@@ -119,7 +152,8 @@ async def upload_factura_pdf(
 async def extract_data_from_existing_file(
     file_path: str = Form(...),
     proveedor_id: int = Form(...),
-    tipo_operacion_id: int = Form(...)
+    tipo_operacion_id: int = Form(...),
+    session: Session = Depends(get_session)
 ):
     """
     Extrae datos de un archivo PDF ya subido
@@ -155,7 +189,8 @@ async def extract_data_from_existing_file(
             proveedor_id,
             tipo_operacion_id
         )
-        
+        _enrich_tipo_comprobante(result_data, session, default_name=DEFAULT_TIPO_COMPROBANTE_NAME)
+
         return JSONResponse({
             "success": True,
             "message": "Datos extraídos exitosamente",
@@ -445,7 +480,9 @@ async def parse_document_endpoint(
             "archivo_subido": safe_filename,
             "nombre_archivo_pdf": file.filename,
             "nombre_archivo_pdf_guardado": safe_filename,
-            "ruta_archivo_pdf": str(permanent_file_path)
+            "ruta_archivo_pdf": str(permanent_file_path),
+            "metodo_pago_id": 1,
+            "registrado_por_id": 1
         }
         
         # Registrar comprobante de extracción (no bloquear si falla)
@@ -480,6 +517,7 @@ async def parse_document_endpoint(
             except Exception:
                 pass
         result['comprobante_id'] = comprobante_id
+        _enrich_tipo_comprobante(result, session, default_name=DEFAULT_TIPO_COMPROBANTE_NAME)
 
         return JSONResponse({
             "success": True,

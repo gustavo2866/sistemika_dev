@@ -158,6 +158,10 @@ def test_upload_and_extract_factura_pdf(client: TestClient, db_session: Session,
     assert extract_response.status_code == 200, extract_response.text
     extract_body = extract_response.json()
     assert extract_body["data"]["nombre_archivo_pdf"] == file_path.name
+    assert isinstance(extract_body["data"].get("id_tipocomprobante"), int)
+    assert isinstance(extract_body["data"].get("metodo_pago_id"), int)
+    assert isinstance(extract_body["data"].get("registrado_por_id"), int)
+    assert extract_body["data"].get("tipo_comprobante_nombre")
     assert extract_body["data"]["nombre_archivo_pdf_guardado"].endswith(file_path.name)
     assert extract_body["data"]["ruta_archivo_pdf"] == str(file_path)
 
@@ -186,6 +190,10 @@ def test_parse_pdf_endpoint(client: TestClient, db_session: Session, monkeypatch
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["success"] is True
+    assert isinstance(body["data"].get("id_tipocomprobante"), int)
+    assert isinstance(body["data"].get("metodo_pago_id"), int)
+    assert isinstance(body["data"].get("registrado_por_id"), int)
+    assert body["data"].get("tipo_comprobante_nombre")
     assert body["file_path"].endswith(".pdf")
     assert body["stored_filename"].endswith(".pdf")
     assert body["data"]["archivo_subido"].endswith(".pdf")

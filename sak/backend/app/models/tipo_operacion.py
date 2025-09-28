@@ -18,6 +18,7 @@ class TipoOperacion(Base, table=True):
     
     # Configuración fiscal
     requiere_iva: bool = Field(default=True, description="Si aplica IVA")
+    requiere_propiedad: bool = Field(default=False, description="Indica si requiere asociar una propiedad")
     porcentaje_iva_default: Optional[float] = Field(default=21.0, description="Porcentaje de IVA por defecto")
     
     # Configuración contable

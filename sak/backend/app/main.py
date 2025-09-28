@@ -26,6 +26,9 @@ from app.routers.pais_router import pais_router
 from app.routers.tarea_router import tarea_router
 from app.routers.proveedor_router import proveedor_router
 from app.routers.tipo_operacion_router import tipo_operacion_router
+from app.routers.tipo_comprobante_router import tipo_comprobante_router
+from app.routers.metodo_pago_router import metodo_pago_router
+from app.routers.propiedad_router import propiedad_router
 from app.routers.factura_router import factura_router
 from app.routers.factura_detalle_router import factura_detalle_router
 from app.routers.factura_impuesto_router import factura_impuesto_router
@@ -61,6 +64,9 @@ app.include_router(pais_router)
 app.include_router(tarea_router)
 app.include_router(proveedor_router)
 app.include_router(tipo_operacion_router)
+app.include_router(tipo_comprobante_router)
+app.include_router(metodo_pago_router)
+app.include_router(propiedad_router)
 app.include_router(factura_router)
 app.include_router(factura_detalle_router)
 app.include_router(factura_impuesto_router)

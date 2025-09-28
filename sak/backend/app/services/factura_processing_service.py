@@ -36,6 +36,7 @@ class FacturaProcessingService:
             "numero": "",
             "punto_venta": "",
             "tipo_comprobante": "B",
+            "id_tipocomprobante": None,
             "fecha_emision": datetime.now().date().isoformat(),
             "fecha_vencimiento": None,
             "subtotal": 0.0,
@@ -50,6 +51,8 @@ class FacturaProcessingService:
             "comprobante_id": None,
             "proveedor_id": proveedor_id,
             "tipo_operacion_id": tipo_operacion_id,
+            "metodo_pago_id": 1,
+            "registrado_por_id": 1,
         }
 
         return template_data

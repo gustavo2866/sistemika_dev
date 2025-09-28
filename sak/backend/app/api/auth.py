@@ -12,7 +12,7 @@ from typing import Optional
 import hashlib
 import os
 import jwt
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.models.user import User
 from app.db import get_session
@@ -48,8 +48,8 @@ def create_token(user_id: int) -> str:
     """Crear JWT token para el usuario"""
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
-        "iat": datetime.utcnow()
+        "exp": datetime.now(UTC) + timedelta(hours=JWT_EXPIRATION_HOURS),
+        "iat": datetime.now(UTC)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 

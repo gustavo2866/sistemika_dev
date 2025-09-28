@@ -3,10 +3,13 @@
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource } from "ra-core";
-import { Users, FileText, Building2, Workflow } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
+import { TipoComprobanteList, TipoComprobanteCreate, TipoComprobanteEdit, TipoComprobanteShow } from "@/app/resources/tipos-comprobante";
+import { MetodoPagoList, MetodoPagoCreate, MetodoPagoEdit, MetodoPagoShow } from "@/app/resources/metodos-pago";
+import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
   FacturaList,
   FacturaCreate,
@@ -35,6 +38,7 @@ const AdminApp = () => {
 
   return (
     <Admin
+      requireAuth
       dataProvider={dataProvider as DataProvider}
       authProvider={authProvider}
       title="Admin Panel"
@@ -47,6 +51,15 @@ const AdminApp = () => {
         show={UserShow}
         recordRepresentation="nombre"
         icon={Users}
+      />
+      <Resource
+        name="tipos-comprobante"
+        list={TipoComprobanteList}
+        create={TipoComprobanteCreate}
+        edit={TipoComprobanteEdit}
+        show={TipoComprobanteShow}
+        recordRepresentation="name"
+        icon={Receipt}
       />
       <Resource
         name="facturas"
@@ -65,6 +78,24 @@ const AdminApp = () => {
         show={ProveedorShow}
         recordRepresentation="nombre"
         icon={Building2}
+      />
+      <Resource
+        name="metodos-pago"
+        list={MetodoPagoList}
+        create={MetodoPagoCreate}
+        edit={MetodoPagoEdit}
+        show={MetodoPagoShow}
+        recordRepresentation="nombre"
+        icon={CreditCard}
+      />
+      <Resource
+        name="propiedades"
+        list={PropiedadList}
+        create={PropiedadCreate}
+        edit={PropiedadEdit}
+        show={PropiedadShow}
+        recordRepresentation="nombre"
+        icon={Home}
       />
       <Resource
         name="tipos-operacion"

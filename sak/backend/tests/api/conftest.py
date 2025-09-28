@@ -18,6 +18,9 @@ os.environ.setdefault("JWT_SECRET", "test-secret")
 import_module("app.models")
 from app.main import app as fastapi_app
 from app.db import get_session
+from app.services.tipo_comprobante_service import seed_default_tipos
+from app.services.metodo_pago_service import seed_metodos_pago
+from app.services.propiedad_service import seed_propiedades
 
 APP_INSTANCE = fastapi_app
 
@@ -30,6 +33,10 @@ def test_engine() -> Iterator:
         poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
+    with Session(engine) as seed_session:
+        seed_default_tipos(seed_session)
+        seed_metodos_pago(seed_session)
+        seed_propiedades(seed_session)
     try:
         yield engine
     finally:
