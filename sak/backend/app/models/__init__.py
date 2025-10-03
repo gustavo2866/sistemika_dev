@@ -9,9 +9,12 @@ from .tipo_operacion import TipoOperacion
 from .tipo_comprobante import TipoComprobante
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
+from .articulo import Articulo
 from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
+from .solicitud import Solicitud
+from .solicitud_detalle import SolicitudDetalle
 
 __all__ = [
     "Base", 
@@ -24,9 +27,12 @@ __all__ = [
     "TipoComprobante", 
     "MetodoPago", 
     "Propiedad", 
+    "Articulo", 
     "Factura",
     "FacturaDetalle",
-    "FacturaImpuesto"
+    "FacturaImpuesto",
+    "Solicitud",
+    "SolicitudDetalle"
 ]
 
 

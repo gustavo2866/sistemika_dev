@@ -1,4 +1,5 @@
 from uuid import uuid4
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session
@@ -46,6 +47,22 @@ def test_create_user(client: TestClient) -> None:
     assert response.json()["email"] == payload["email"]
 
 
+
+def test_create_articulo(client: TestClient) -> None:
+    payload = {
+        "nombre": "Articulo Test",
+        "tipo_articulo": "Material",
+        "unidad_medida": "unidad",
+        "marca": "Marca Test",
+        "sku": f"ART-{uuid4().hex[:8]}",
+        "precio": 12345.67,
+        "proveedor_id": None,
+    }
+    response = client.post("/articulos", json=payload)
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert data["nombre"] == payload["nombre"]
+
 def test_create_proveedor(client: TestClient) -> None:
     payload = {
         "nombre": "Proveedor Test",
@@ -92,3 +109,58 @@ def test_create_cliente(client: TestClient) -> None:
     # DELETE (soft)
     delete_response = client.delete(f"/api/v1/clientes/{body['id']}")
     assert delete_response.status_code == 200
+
+def test_create_solicitud_with_detalle(client: TestClient, db_session: Session) -> None:
+    user = User(nombre="Solicitudes Test", email=f"sol-{uuid4().hex[:8]}@example.com")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    solicitud_payload = {
+        "tipo": "normal",
+        "fecha_necesidad": "2025-10-01",
+        "comentario": "Materiales para obra",
+        "solicitante_id": user.id,
+    }
+    solicitud_response = client.post("/solicitudes", json=solicitud_payload)
+    assert solicitud_response.status_code == 201, solicitud_response.text
+    solicitud_data = solicitud_response.json()
+    assert solicitud_data["solicitante_id"] == user.id
+    assert solicitud_data["tipo"] == "normal"
+
+    articulo_payload = {
+        "nombre": "Arena fina",
+        "tipo_articulo": "Material",
+        "unidad_medida": "m3",
+        "marca": "Generica",
+        "sku": f"ARE-{uuid4().hex[:6]}",
+        "precio": 1500.50,
+        "proveedor_id": None,
+    }
+    articulo_response = client.post("/articulos", json=articulo_payload)
+    assert articulo_response.status_code == 201, articulo_response.text
+    articulo_id = articulo_response.json()["id"]
+
+    detalle_payload = {
+        "solicitud_id": solicitud_data["id"],
+        "articulo_id": articulo_id,
+        "descripcion": "Arena fina para relleno",
+        "unidad_medida": "m3",
+        "cantidad": 2.5,
+    }
+    detalle_response = client.post("/solicitud-detalles", json=detalle_payload)
+    assert detalle_response.status_code == 201, detalle_response.text
+    detalle_data = detalle_response.json()
+    assert detalle_data["solicitud_id"] == solicitud_data["id"]
+    assert Decimal(str(detalle_data["cantidad"])) == Decimal("2.5")
+
+    fetched = client.get(f"/solicitudes/{solicitud_data['id']}")
+    assert fetched.status_code == 200, fetched.text
+    fetched_data = fetched.json()
+    assert fetched_data["id"] == solicitud_data["id"]
+
+    detalle_list = client.get(f"/solicitud-detalles?solicitud_id={solicitud_data['id']}")
+    assert detalle_list.status_code == 200, detalle_list.text
+    detalle_items = detalle_list.json()
+    assert any(item["id"] == detalle_data["id"] for item in detalle_items)
+    assert any(item["descripcion"] == detalle_payload["descripcion"] for item in detalle_items)

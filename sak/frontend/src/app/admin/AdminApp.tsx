@@ -3,12 +3,13 @@
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource } from "ra-core";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
 import { TipoComprobanteList, TipoComprobanteCreate, TipoComprobanteEdit, TipoComprobanteShow } from "@/app/resources/tipos-comprobante";
 import { MetodoPagoList, MetodoPagoCreate, MetodoPagoEdit, MetodoPagoShow } from "@/app/resources/metodos-pago";
+import { ArticuloList, ArticuloCreate, ArticuloEdit, ArticuloShow } from "@/app/resources/articulos";
 import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
   FacturaList,
@@ -28,6 +29,11 @@ import {
   TipoOperacionEdit,
   TipoOperacionShow,
 } from "@/app/resources/tipos-operacion";
+import {
+  SolicitudMbList,
+  SolicitudMbCreate,
+  SolicitudMbEdit,
+} from "@/app/resources/solicitudes_mb";
 
 declare const window: Window | undefined;
 
@@ -89,6 +95,15 @@ const AdminApp = () => {
         icon={CreditCard}
       />
       <Resource
+        name="articulos"
+        list={ArticuloList}
+        create={ArticuloCreate}
+        edit={ArticuloEdit}
+        show={ArticuloShow}
+        recordRepresentation="nombre"
+        icon={Package}
+      />
+      <Resource
         name="propiedades"
         list={PropiedadList}
         create={PropiedadCreate}
@@ -106,8 +121,18 @@ const AdminApp = () => {
         recordRepresentation="descripcion"
         icon={Workflow}
       />
+      <Resource
+        name="solicitudes"
+        list={SolicitudMbList}
+        create={SolicitudMbCreate}
+        edit={SolicitudMbEdit}
+        recordRepresentation="tipo"
+        icon={ClipboardList}
+        options={{ label: "Solicitudes MB" }}
+      />
     </Admin>
   );
 };
 
 export default AdminApp;
+

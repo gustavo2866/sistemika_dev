@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from app.models.item import Item
     from .pais import Paises
     from .tarea import Tarea
+    from .solicitud import Solicitud
 
 class User(Base, table=True):
     """Modelo para usuarios del sistema"""
@@ -23,6 +24,7 @@ class User(Base, table=True):
     # Relaciones
     items: List["Item"] = Relationship(back_populates="user")
     tareas: List["Tarea"] = Relationship(back_populates="user")
+    solicitudes: List["Solicitud"] = Relationship(back_populates="solicitante")
     pais_id: Optional[int] = Field(default=None, foreign_key="paises.id", description="ID del país")
     pais: Optional["Paises"] = Relationship(back_populates="users")
     

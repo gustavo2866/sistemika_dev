@@ -4,6 +4,7 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .factura import Factura
+    from .articulo import Articulo
 
 class Proveedor(Base, table=True):
     """Modelo para proveedores"""
@@ -31,6 +32,7 @@ class Proveedor(Base, table=True):
     
     # Relaciones
     facturas: List["Factura"] = Relationship(back_populates="proveedor")
+    articulos: List["Articulo"] = Relationship(back_populates="proveedor")
     
     def __str__(self) -> str:
         return f"Proveedor(id={self.id}, nombre='{self.nombre}', cuit='{self.cuit}')"

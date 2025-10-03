@@ -35,10 +35,12 @@ import {
   Workflow,
   ChevronDown,
   Home,
+  Package,
+  ClipboardList
 } from "lucide-react";
 
-const CONFIG_RESOURCES = ["users", "proveedores", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
-const OPERATIONS_RESOURCES = ["facturas", "propiedades"] as const;
+const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
+const OPERATIONS_RESOURCES = ["facturas", "propiedades", "proveedores", "articulos", "solicitudes"] as const;
 
 type ResourceName = string;
 
@@ -177,7 +179,9 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "tipos-operacion": Workflow,
   "metodos-pago": FileText,
   propiedades: Home,
+  articulos: Package,
   facturas: FileText,
+  solicitudes: ClipboardList,
 };
 
 export const ResourceMenuItem = ({

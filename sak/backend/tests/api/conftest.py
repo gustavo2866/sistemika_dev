@@ -21,6 +21,7 @@ from app.db import get_session
 from app.services.tipo_comprobante_service import seed_default_tipos
 from app.services.metodo_pago_service import seed_metodos_pago
 from app.services.propiedad_service import seed_propiedades
+from app.services.articulo_service import seed_articulos
 
 APP_INSTANCE = fastapi_app
 
@@ -37,6 +38,7 @@ def test_engine() -> Iterator:
         seed_default_tipos(seed_session)
         seed_metodos_pago(seed_session)
         seed_propiedades(seed_session)
+        seed_articulos(seed_session)
     try:
         yield engine
     finally:

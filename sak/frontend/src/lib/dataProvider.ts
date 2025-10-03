@@ -1,4 +1,4 @@
-﻿import simpleRestProvider from "ra-data-simple-rest";
+import simpleRestProvider from "ra-data-simple-rest";
 import { DataProvider, fetchUtils } from "ra-core";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -35,4 +35,3 @@ export const dataProvider: DataProvider = {
 };
 
 export default dataProvider;
-

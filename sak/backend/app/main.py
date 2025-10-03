@@ -29,9 +29,12 @@ from app.routers.tipo_operacion_router import tipo_operacion_router
 from app.routers.tipo_comprobante_router import tipo_comprobante_router
 from app.routers.metodo_pago_router import metodo_pago_router
 from app.routers.propiedad_router import propiedad_router
+from app.routers.articulo_router import articulo_router
 from app.routers.factura_router import factura_router
 from app.routers.factura_detalle_router import factura_detalle_router
 from app.routers.factura_impuesto_router import factura_impuesto_router
+from app.routers.solicitud_router import solicitud_router
+from app.routers.solicitud_detalle_router import solicitud_detalle_router
 from app.routers.cliente_router import router as cliente_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
@@ -67,9 +70,12 @@ app.include_router(tipo_operacion_router)
 app.include_router(tipo_comprobante_router)
 app.include_router(metodo_pago_router)
 app.include_router(propiedad_router)
+app.include_router(articulo_router)
 app.include_router(factura_router)
 app.include_router(factura_detalle_router)
 app.include_router(factura_impuesto_router)
+app.include_router(solicitud_router)
+app.include_router(solicitud_detalle_router)
 app.include_router(cliente_router)
 
 # Servir archivos estáticos (uploads)
