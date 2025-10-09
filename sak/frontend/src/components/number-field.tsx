@@ -9,6 +9,7 @@ export const NumberField = <
   source,
   record,
   empty,
+  label,
   transform = defaultTransform,
   locales,
   options,
@@ -46,6 +47,7 @@ export interface NumberFieldProps<
   RecordType extends Record<string, any> = Record<string, any>,
 > extends FieldProps<RecordType>,
     HTMLAttributes<HTMLSpanElement> {
+  label?: string;
   locales?: string | string[];
   options?: object;
   transform?: (value: any) => number;

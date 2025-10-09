@@ -201,7 +201,7 @@ const SaveButton = <RecordType extends RaRecord = RaRecord>(
         errors = await saveContext.save(values, {
           ...mutationOptions,
           transform,
-        });
+        } as any);
       }
       if (errors != null) {
         setSubmissionErrors(errors, form.setError);

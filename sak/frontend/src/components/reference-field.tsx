@@ -46,8 +46,8 @@ export interface ReferenceFieldProps<
   ReferenceRecordType extends RaRecord = RaRecord
 > extends Partial<ReferenceFieldViewProps<ReferenceRecordType>> {
   children?: ReactNode;
+  label?: string;
   queryOptions?: UseQueryOptions<RaRecord[], Error> & {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     meta?: any;
   };
   record?: RecordType;

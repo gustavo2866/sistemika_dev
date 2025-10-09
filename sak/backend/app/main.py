@@ -42,19 +42,29 @@ from app.api.auth import router as auth_router
 
 app = FastAPI(title="API genérica con FastAPI + SQLModel")
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# Configure CORS - Dynamic origins from environment or defaults
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+if cors_origins_env:
+    # Production: usar orígenes desde variable de entorno
+    allowed_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+    logger.info(f"CORS configurado para producción: {allowed_origins}")
+else:
+    # Development: usar localhost
+    allowed_origins = [
         "http://localhost:3000", 
         "http://127.0.0.1:3000",
         "http://localhost:3001", 
         "http://127.0.0.1:3001"
-    ],
+    ]
+    logger.info(f"CORS configurado para desarrollo: {allowed_origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Range"],  # Cambiado para ra-data-simple-rest
+    expose_headers=["Content-Range"],  # Para ra-data-simple-rest
 )
 
 # Registrar routers

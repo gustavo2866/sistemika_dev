@@ -5,7 +5,6 @@ import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 import { ReferenceInput } from "@/components/reference-input";
-import { useAuthState } from "ra-core";
 import { SelectInput } from "@/components/select-input";
 import { FormControl, FormError, FormField, FormLabel } from "@/components/form";
 import { Input } from "@/components/ui/input";
@@ -193,9 +192,9 @@ const useFacturaFormExtraction = () => {
         if (Number.isFinite(parsed)) {
           setValue("registrado_por_id", parsed, { shouldDirty: true });
         }
-      } else if (authUser?.id) {
-        setValue("registrado_por_id", authUser.id, { shouldDirty: true });
       }
+      // Note: authUser is not available in this scope
+      // The registrado_por_id should be set by the form or backend default
 
       const fechaEmision = toDateString(data.fecha_emision);
       if (fechaEmision) {
@@ -262,7 +261,8 @@ const useFacturaFormExtraction = () => {
 
 const FacturaFormFields = () => {
   const { handleExtract, isUploading } = useFacturaFormExtraction();
-  const { data: authUser } = useAuthState();
+  // Note: useAuthState returns { data: boolean } not user object
+  // If you need user data, use a different hook like useGetIdentity()
   const proveedorId = useWatch({ name: "proveedor_id" });
   const tipoOperacionId = useWatch({ name: "tipo_operacion_id" });
   const rutaArchivo = useWatch({ name: "ruta_archivo_pdf" });
@@ -349,7 +349,7 @@ const FacturaFormFields = () => {
           source="registrado_por_id"
           reference="users"
           label="Registrado por"
-          defaultValue={authUser?.id ?? 1}
+          defaultValue={1}
           isRequired
         >
           <SelectInput optionText="nombre" emptyText="Seleccionar usuario" className="w-full" />

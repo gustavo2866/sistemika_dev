@@ -9,6 +9,7 @@ export const TextField = <
   source,
   record,
   empty,
+  label,
   ...rest
 }: TextFieldProps<RecordType>) => {
   const value = useFieldValue({ defaultValue, source, record });
@@ -36,4 +37,6 @@ export const TextField = <
 export interface TextFieldProps<
   RecordType extends Record<string, any> = Record<string, any>,
 > extends FieldProps<RecordType>,
-    HTMLAttributes<HTMLSpanElement> {}
+    HTMLAttributes<HTMLSpanElement> {
+  label?: string;
+}

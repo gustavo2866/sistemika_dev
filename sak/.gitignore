@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.sqlite
+*.db
+.env
+.env.local
+.env.*.local
+*.log
+venv/
+ENV/
+.venv
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+uploads/
+temp/
+.pytest_cache/
+.coverage
+htmlcov/
+.app_invoice_old/
+invoice_system.db
+
+# Build outputs
+*.egg-info/
+dist/
+build/

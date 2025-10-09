@@ -10,6 +10,7 @@ export const BadgeField = <RecordType extends RaRecord = RaRecord>({
   source,
   record,
   empty,
+  label,
   variant = "outline",
   ...rest
 }: BadgeFieldProps<RecordType>) => {
@@ -32,5 +33,6 @@ export const BadgeField = <RecordType extends RaRecord = RaRecord>({
 export interface BadgeFieldProps<RecordType extends RaRecord = RaRecord>
   extends FieldProps<RecordType>,
     BadgeProps {
+  label?: string;
   variant?: "default" | "outline" | "secondary" | "destructive";
 }
