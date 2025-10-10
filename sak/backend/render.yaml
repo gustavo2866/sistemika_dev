@@ -12,9 +12,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.0
       - key: DATABASE_URL
-        fromDatabase:
-          name: sak-db
-          property: connectionString
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -25,9 +23,3 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
-
-databases:
-  - name: sak-db
-    plan: free
-    databaseName: sak_backend
-    user: sak_user
