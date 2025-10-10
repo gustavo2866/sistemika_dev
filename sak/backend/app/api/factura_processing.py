@@ -444,10 +444,22 @@ async def parse_document_endpoint(
             logger.error(f"Tipo de error: {type(e).__name__}")
             raise HTTPException(status_code=500, detail=f"Error extrayendo datos: {str(e)}")
         
-        # Si la extracción fue exitosa, guardar el archivo permanentemente
-        import shutil
-        shutil.copy2(temp_file_path, permanent_file_path)
-        logger.info(f"Archivo guardado permanentemente en: {permanent_file_path}")
+        # Si la extracción fue exitosa, subir a Cloudinary
+        from app.services.cloudinary_service import cloudinary_service
+        logger.info("Subiendo archivo a Cloudinary...")
+        try:
+            cloudinary_result = cloudinary_service.upload_invoice(
+                str(temp_file_path),
+                safe_filename
+            )
+            logger.info(f"Archivo subido a Cloudinary: {cloudinary_result['secure_url']}")
+            
+            # URL pública del archivo en Cloudinary
+            cloudinary_url = cloudinary_result['secure_url']
+            
+        except Exception as e:
+            logger.error(f"Error subiendo a Cloudinary: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error guardando archivo: {str(e)}")
         
         # Limpiar archivo temporal
         try:
@@ -480,7 +492,7 @@ async def parse_document_endpoint(
             "archivo_subido": safe_filename,
             "nombre_archivo_pdf": file.filename,
             "nombre_archivo_pdf_guardado": safe_filename,
-            "ruta_archivo_pdf": str(permanent_file_path),
+            "ruta_archivo_pdf": cloudinary_url,
             "metodo_pago_id": 1,
             "registrado_por_id": 1
         }
@@ -492,7 +504,7 @@ async def parse_document_endpoint(
             comprobante = Comprobante(
                 archivo_nombre=file.filename,
                 archivo_guardado=safe_filename,
-                archivo_ruta=str(permanent_file_path),
+                archivo_ruta=cloudinary_url,
                 file_type=('pdf' if is_pdf else 'image'),
                 is_pdf=is_pdf,
                 extraido_por_ocr=extraction_method in {'auto', 'ocr', 'rules_ocr'},
@@ -525,13 +537,13 @@ async def parse_document_endpoint(
             "data": result,
             "filename": file.filename,
             "stored_filename": safe_filename,
-            "file_url": f"/uploads/facturas/{safe_filename}",
-            "file_path": str(permanent_file_path),
+            "file_url": cloudinary_url,
+            "file_path": cloudinary_url,
             "file_type": "pdf" if is_pdf else "image",
             "comprobante_id": comprobante_id,
             "nombre_archivo_pdf": file.filename,
             "nombre_archivo_pdf_guardado": safe_filename,
-            "ruta_archivo_pdf": str(permanent_file_path)
+            "ruta_archivo_pdf": cloudinary_url
         })
         
     except Exception as e:

@@ -6,6 +6,7 @@ psycopg[binary]
 aiofiles
 python-multipart
 python-dotenv
+requests
 
 # Authentication
 PyJWT
@@ -19,6 +20,9 @@ pdf2image
 
 # AI/LLM
 openai
+
+# Cloud Storage
+cloudinary
 
 # Testing
 pytest
