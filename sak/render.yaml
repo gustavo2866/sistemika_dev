@@ -1,27 +1,25 @@
-# render.yaml - Configuración para Render.com
-
 services:
-  # Backend FastAPI
+  # Backend API
   - type: web
     name: sak-backend
-    runtime: python
+    env: python
     region: oregon
     plan: free
-    buildCommand: "cd backend && pip install -r requirements.txt"
-    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
-    healthCheckPath: /health
+    branch: v1
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
       - key: DATABASE_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
         sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: CORS_ORIGINS
         sync: false
-      - key: ADMIN_SECRET_KEY
-        generateValue: true
-    autoDeploy: true
-
-# Para configurar la base de datos PostgreSQL en Render:
-# 1. Ir a Dashboard → New → PostgreSQL
-# 2. Copiar la Internal Database URL
-# 3. Agregar como variable DATABASE_URL en el servicio web
