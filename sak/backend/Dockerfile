@@ -19,8 +19,8 @@ COPY . .
 # Crear directorio para uploads
 RUN mkdir -p uploads/facturas
 
-# Exponer puerto
-EXPOSE 8000
+# Exponer puerto (Cloud Run usa PORT env var)
+EXPOSE 8080
 
-# Comando de inicio
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando de inicio que usa la variable de entorno PORT (Cloud Run la setea en 8080)
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
