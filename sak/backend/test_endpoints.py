@@ -4,7 +4,8 @@ Test de endpoints con Neon PostgreSQL
 import requests
 import json
 
-BASE_URL = "http://localhost:8000"
+# BASE_URL = "http://localhost:8000"  # Desarrollo local
+BASE_URL = "https://sak-backend-94464199991.us-central1.run.app"  # Producción GCP
 
 print("="*60)
 print("🧪 TEST DE ENDPOINTS - Backend con Neon")
