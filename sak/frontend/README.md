@@ -1,20 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎨 Frontend - Sistema de Facturas
 
-## Getting Started
+Frontend de Next.js para el Sistema de Gestión de Facturas.
 
-First, run the development server:
+## 🚀 Inicio Rápido
 
+### **1. Instalar Dependencias**
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### **2. Configurar Variables de Entorno**
+
+**Opción A: Usar Scripts (Recomendado)**
+```powershell
+# Para trabajar contra backend en GCP
+.\switch-to-gcp.ps1
+
+# O para trabajar contra backend local
+.\switch-to-local.ps1
+```
+
+**Opción B: Manual**
+```bash
+# Crear .env.local desde el template
+cp .env.example .env.local
+
+# Editar .env.local con tu configuración preferida
+```
+
+### **3. Iniciar Servidor de Desarrollo**
+```bash
+npm run dev
+```
+
+Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
+
+---
+
+## 🔄 Cambiar entre Backend Local y GCP
+
+Ver documentación completa: **[SWITCH_BACKEND.md](SWITCH_BACKEND.md)**
+
+**Uso rápido:**
+```powershell
+# Backend Local
+.\switch-to-local.ps1
+npm run dev
+
+# Backend GCP
+.\switch-to-gcp.ps1
+npm run dev
+```
+
+---
+
+## 📁 Estructura de Variables de Entorno
+
+```
+.env.local       ← Tu configuración local (git ignora)
+.env.production  ← Documentación (Vercel usa Dashboard)
+.env.example     ← Template para el equipo
+```
+
+---
+
+## 🛠️ Scripts Disponibles
+
+```bash
+npm run dev      # Servidor de desarrollo
+npm run build    # Build para producción
+npm run start    # Servidor de producción
+npm run lint     # Linter
+```
+
+---
+
+## 🌐 URLs
+
+- **Desarrollo:** http://localhost:3000
+- **Producción:** https://wcl-seven.vercel.app
+- **Backend GCP:** https://sak-backend-94464199991.us-central1.run.app
+
+---
+
+## 📚 Documentación
+
+- **[SWITCH_BACKEND.md](SWITCH_BACKEND.md)** - Cómo cambiar entre backends
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
