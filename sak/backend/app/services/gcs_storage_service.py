@@ -43,13 +43,15 @@ class GCSStorageService:
             project_id = os.environ.get("GCS_PROJECT_ID")
             
             if credentials_path and os.path.exists(credentials_path):
-                # Usar credenciales del archivo JSON
+                # Local/Development: Usar credenciales del archivo JSON
+                print(f"🔑 Using explicit credentials from: {credentials_path}")
                 self._client = storage.Client.from_service_account_json(
                     credentials_path,
                     project=project_id
                 )
             else:
-                # Fallback a Application Default Credentials
+                # Production/GCP: Usar Application Default Credentials
+                print(f"☁️  Using Application Default Credentials for project: {project_id}")
                 self._client = storage.Client(project=project_id)
         return self._client
 

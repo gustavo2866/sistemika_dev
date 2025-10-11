@@ -1,6 +1,10 @@
 # Variables de entorno sensibles
 .env
 
+# Google Cloud Credentials
+gcp-credentials.json
+*.json
+
 # Python
 __pycache__/
 *.py[cod]

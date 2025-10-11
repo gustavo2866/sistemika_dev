@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Extracción básica de datos de factura replicando la lógica del backend en Node/TypeScript.
  *
@@ -66,26 +65,24 @@ function normaliseText(raw: string): string {
 }
 
 class NodeCanvasFactory {
-  private getCanvasModule() {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires -- node-canvas se carga en runtime
-    // eslint-disable-next-line global-require
-    const module = require("canvas") as typeof import("canvas");
+  private async getCanvasModule() {
+    const canvasModule = await import("canvas");
     if (typeof globalThis.Image === "undefined") {
-      globalThis.Image = module.Image as unknown as typeof globalThis.Image;
+      globalThis.Image = canvasModule.Image as unknown as typeof globalThis.Image;
     }
     if (typeof globalThis.ImageData === "undefined") {
-      globalThis.ImageData = module.ImageData as unknown as typeof globalThis.ImageData;
+      globalThis.ImageData = canvasModule.ImageData as unknown as typeof globalThis.ImageData;
     }
-    return module;
+    return canvasModule;
   }
 
-  create(width: number, height: number) {
+  async create(width: number, height: number) {
     const actualWidth = Math.ceil(width);
     const actualHeight = Math.ceil(height);
     if (!(actualWidth > 0 && actualHeight > 0)) {
       throw new Error(`Canvas width/height invalido: ${actualWidth}x${actualHeight}`);
     }
-    const { createCanvas } = this.getCanvasModule();
+    const { createCanvas } = await this.getCanvasModule();
     const canvas = createCanvas(actualWidth, actualHeight);
     const context = canvas.getContext("2d");
     return { canvas, context };
@@ -111,11 +108,11 @@ class NodeCanvasFactory {
 async function getPdfJsModule() {
   if (!pdfjsModulePromise) {
     pdfjsModulePromise = (async () => {
-      const module = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      if (module?.GlobalWorkerOptions) {
-        module.GlobalWorkerOptions.workerSrc = "pdfjs-dist/legacy/build/pdf.worker.mjs";
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      if (pdfjs?.GlobalWorkerOptions) {
+        pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs-dist/legacy/build/pdf.worker.mjs";
       }
-      return module;
+      return pdfjs;
     })();
   }
   return pdfjsModulePromise;
@@ -138,7 +135,7 @@ async function renderPdfToImages(pdfPath: string, maxPages: number = MAX_VISION_
   for (let pageNumber = 1; pageNumber <= pdf.numPages && buffers.length < maxPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale });
-    const { canvas, context } = factory.create(viewport.width, viewport.height);
+    const { canvas, context } = await factory.create(viewport.width, viewport.height);
     const renderContext = {
       canvasContext: context,
       viewport,
@@ -584,7 +581,7 @@ ${text.slice(0, 6000)}
   }
 }
 
-async function extractWithVisionStrategy(filePath: string, originalFilename: string): Promise<Partial<FacturaExtraida>> {
+async function extractWithVisionStrategy(filePath: string, _originalFilename: string): Promise<Partial<FacturaExtraida>> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY no configurada para estrategia de visión");
@@ -631,7 +628,7 @@ async function extractWithVisionStrategy(filePath: string, originalFilename: str
     typeof messageContent === "string"
       ? cleanModelJson(messageContent)
       : cleanModelJson(
-          messageContent
+          (Array.isArray(messageContent) ? messageContent : [])
             .map((segment: any) => ("text" in segment ? segment.text : segment))
             .filter(Boolean)
             .join("\n"),
