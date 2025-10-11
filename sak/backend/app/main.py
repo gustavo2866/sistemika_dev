@@ -47,7 +47,9 @@ app = FastAPI(title="API genérica con FastAPI + SQLModel")
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 if cors_origins_env:
     # Production: usar orígenes desde variable de entorno
-    allowed_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+    # Soportar tanto coma (,) como punto y coma (;) como separadores
+    separator = ";" if ";" in cors_origins_env else ","
+    allowed_origins = [origin.strip() for origin in cors_origins_env.split(separator)]
     logger.info(f"CORS configurado para producción: {allowed_origins}")
 else:
     # Development: usar localhost
