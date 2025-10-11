@@ -1,15 +1,37 @@
-# 🔄 Sincronización Automática de Branches
+# 🔄 Workflow de Desarrollo y Deploy Automático
 
-## ¿Qué hace el GitHub Action?
+Este documento explica el flujo completo de desarrollo, sincronización y deploy automático a producción.
 
-Cada vez que haces **push al branch `gcp`**, automáticamente:
+---
 
-1. ✅ Se ejecuta un workflow en GitHub
-2. ✅ Hace checkout del repositorio
-3. ✅ Mergea `gcp` a `master`
-4. ✅ Pushea los cambios a `master`
+## 📋 Flujo Completo
 
-**Resultado:** Ya no necesitas hacer el merge manualmente a `master`.
+```
+┌──────────────────────────────────────────────────────┐
+│           DESARROLLO (gcp branch)                    │
+│                                                      │
+│  1. Hacer cambios localmente                        │
+│  2. Probar localmente (backend + frontend)          │
+│  3. git commit && git push origin gcp               │
+│                                                      │
+│  ⚡ GitHub Actions: sync-master.yml                 │
+│     → Automáticamente mergea gcp → master           │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌──────────────────────────────────────────────────────┐
+│        DEPLOY A PRODUCCIÓN (master branch)          │
+│                                                      │
+│  Cuando estés listo:                                │
+│  4. .\deploy-to-production.ps1                      │
+│     → Confirma y pushea a master                    │
+│                                                      │
+│  ⚡ GitHub Actions: deploy-gcp-backend.yml          │
+│     → Despliega automáticamente a GCP Cloud Run     │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
 
 ---
 
