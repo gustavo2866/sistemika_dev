@@ -1,0 +1,45 @@
+{
+  "numero": "00000269",
+  "punto_venta": "00014",
+  "tipo_comprobante": "A",
+  "fecha_emision": "2025-08-25",
+  "fecha_vencimiento": "2025-08-25",
+  "proveedor_nombre": "DOT4 SA",
+  "proveedor_cuit": "30-70963679-7",
+  "proveedor_direccion": "Peru 1030 - Florida - Buenos Aires - 1602 - Argentina",
+  "receptor_nombre": "EXCELENCIA EN SOLUCIONES INFORMATICAS SA",
+  "receptor_cuit": "30-70740736-7",
+  "receptor_direccion": "AV CASEROS 3515 P5, CABA Ciudad Autónoma de Buenos Aires 1263, Argentina",
+  "subtotal": 2068.75,
+  "total_impuestos": 517.4,
+  "total": 3543017.8,
+  "detalles": [
+    {
+      "descripcion": "V-ESSVUL-0I-SU1AR-RN VEEAM RENOVACIÓN Veeam Data Platform Essentials Universal Subscription License. Includes Enterprise Plus Edition features. 1 Year Renewal Subscription Upfront Billing & Production (24/7) Support. Contract 03443696. (20 Instance) 8/30/2025 8/29/2026",
+      "cantidad": 1,
+      "precio_unitario": 2068.75,
+      "subtotal": 2068.75
+    }
+  ],
+  "impuestos": [
+    {
+      "tipo": "IVA 21%",
+      "porcentaje": 21,
+      "importe": 434.44
+    },
+    {
+      "tipo": "Perc IIBB CABA",
+      "porcentaje": 0,
+      "importe": 0.21
+    },
+    {
+      "tipo": "Perc IIBB BSAS",
+      "porcentaje": 0,
+      "importe": 82.75
+    }
+  ],
+  "texto_extraido": "A\nCod. 01\nFACTURA\nDOT4 SA\nPeru 1030 - Florida - Buenos Aires - 1602 - Argentina\n\nSubtotal\n \nUSD 2.068,75\nIVA 21%\n \nel\n \nUSD 2.068,75\n \nUSD 434,44\nPerc IIBB CABA\n \nel\n \nUSD 2.068,75\n \nUSD 0,21\nPerc IIBB BSAS\n \nel\n \nUSD 2.068,75\n \nUSD 82,75\nTotal\n \nUSD 2.586,15\nImporte total con letra:\nDos Mil Quinientos Ochenta Y Seis Dólares y Quince Cts\nCliente:\n \nEXCELENCIA EN SOLUCIONES INFORMATICAS SA\nAV CASEROS 3515\n \nP5, CABA Ciudad Autónoma de Buenos\nAires 1263, Argentina\nCond. IVA:\n \nIVA Responsable Inscripto\nCUIT:\n \n30-70740736-7\nFecha de vencimiento:\n \n25/08/2025\nPlazos de pago:\n \nPAGO CONTADO\nOrigen:\n \nS02450\nDESCRIPCIÓN\n \nCANTIDAD\n \nPRECIO\nUNITARIO\n% IVA\n \nIMPORTE\n[V-ESSVUL-0I-SU1AR-RN] V-ESSVUL-0I-SU1AR-RN\n \nVEEAM\nRENOVACIÓN\nVeeam Data Platform Essentials Universal\nSubscription License. Includes Enterprise Plus\nEdition features. 1 Year Renewal Subscription\nUpfront Billing & Production (24/7) Support.\nContract 03443696. (20 Instance) 8/30/2025\n8/29/2026\n1,00\n \n2.068,7500\n \nIVA\n21%\nUSD\n \n2.068,75\nMoneda:\n \nUS$ - Dólares\nTipo de cambio:\n \n1.370,0\nTérminos de pago: pago inmediato\nEl total de este comprobante expresado en moneda de curso legal\n- Pesos Argentinos - asciende a\n \n$\n \n3.543.017,80\n \n-\nTel: +541141390252 / 3 / 4\ndot4sa.com.ar - info@dot4sa.com\nNúmero:\n \n00014-00000269\nFecha:\n \n25/08/2025\nIVA Responsable Inscripto\n \n- CUIT:\n \n30-70963679-7\nIIBB:\n \n901-219767-3\n \n- Inicio de las actividades:\n \n12/05/2006\nCAE:\n \n75347532934154\nFecha de vencimiento CAE:\n \n04/09/2025\nPágina:\n \n1\n \n/\n \n1",
+  "confianza_extraccion": 0.8,
+  "metodo_extraccion": "llm_text",
+  "metodo_aplicado": "text"
+}

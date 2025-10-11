@@ -54,3 +54,8 @@ uvicorn app.main:app --reload
 ```
 
 Asegurate de que PostgreSQL este disponible antes de levantar la API en modo real.
+
+NEON
+DATABASE_URL=postgresql://neondb_owner:<NUEVA_PASS>@ep-steep-bird-acyo7x0e-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL_DIRECT=postgresql://neondb_owner:<NUEVA_PASS>@ep-steep-bird-acyo7x0e.sa-east-1.aws.neon.tech/neondb?sslmode=require
+

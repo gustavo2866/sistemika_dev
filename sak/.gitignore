@@ -45,3 +45,6 @@ invoice_system.db
 *.egg-info/
 dist/
 build/
+
+# Google Cloud Credentials
+gcp-credentials.json

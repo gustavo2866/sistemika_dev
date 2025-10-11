@@ -22,7 +22,7 @@ pdf2image
 openai
 
 # Cloud Storage
-cloudinary
+google-cloud-storage
 
 # Testing
 pytest

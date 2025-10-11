@@ -101,6 +101,27 @@ class DummyExtractionService:
         )
 
 
+class DummyStorageService:
+    def __init__(self) -> None:
+        self.uploads: list[str] = []
+
+    def upload_invoice(self, file_path: str, filename: str, *, content_type: str | None = None, **_: object) -> dict[str, str]:
+        blob_name = f"facturas/{filename}"
+        storage_uri = f"gs://mock-bucket/{blob_name}"
+        download_url = f"https://storage.googleapis.com/mock-bucket/{blob_name}?token=dummy"
+        self.uploads.append(blob_name)
+        return {
+            "storage_uri": storage_uri,
+            "download_url": download_url,
+            "blob_name": blob_name,
+        }
+
+    def generate_signed_url(self, blob_name: str, **_: object) -> str:
+        return f"https://storage.googleapis.com/mock-bucket/{blob_name}?token=dummy"
+
+
+
+
 def _create_catalog_entries(session: Session) -> tuple[int, int]:
     prov = Proveedor(
         nombre="Proveedor",
@@ -177,6 +198,10 @@ def test_upload_and_extract_factura_pdf(client: TestClient, db_session: Session,
 def test_parse_pdf_endpoint(client: TestClient, db_session: Session, monkeypatch) -> None:
     monkeypatch.setattr(fp, "factura_service", DummyFacturaService())
     monkeypatch.setattr(pdf_service, "PDFExtractionService", lambda: DummyExtractionService())
+    storage_dummy = DummyStorageService()
+    monkeypatch.setattr("app.services.gcs_storage_service.storage_service", storage_dummy)
+    monkeypatch.setattr("app.routers.comprobante_router.storage_service", storage_dummy)
+    monkeypatch.setattr("app.routers.file_proxy.storage_service", storage_dummy)
 
     proveedor_id, tipo_operacion_id = _create_catalog_entries(db_session)
 
@@ -194,24 +219,23 @@ def test_parse_pdf_endpoint(client: TestClient, db_session: Session, monkeypatch
     assert isinstance(body["data"].get("metodo_pago_id"), int)
     assert isinstance(body["data"].get("registrado_por_id"), int)
     assert body["data"].get("tipo_comprobante_nombre")
-    assert body["file_path"].endswith(".pdf")
+    assert body["file_path"].startswith("gs://")
     assert body["stored_filename"].endswith(".pdf")
     assert body["data"]["archivo_subido"].endswith(".pdf")
     assert body["data"]["nombre_archivo_pdf"] == "factura.pdf"
     assert body["data"]["nombre_archivo_pdf_guardado"].endswith(".pdf")
-    assert body["data"]["ruta_archivo_pdf"] == body["file_path"]
+    assert body["data"].get("storage_uri") == body["file_path"]
+    assert body["data"].get("gcs_blob_name", "").endswith(".pdf")
+    assert body["data"]["ruta_archivo_pdf"].startswith("https://")
     assert body["comprobante_id"] is not None
     assert body["data"]["comprobante_id"] == body["comprobante_id"]
-    assert body["ruta_archivo_pdf"] == body["file_path"]
+    assert body["ruta_archivo_pdf"].startswith("https://")
 
     comprobante = db_session.get(Comprobante, body["comprobante_id"])
     assert comprobante is not None
     assert comprobante.archivo_guardado == body["stored_filename"]
-    assert comprobante.archivo_ruta == body["ruta_archivo_pdf"]
+    assert comprobante.archivo_ruta == body["file_path"]
 
-    saved_path = Path(body["file_path"])
-    if saved_path.exists():
-        saved_path.unlink()
     temp_path = Path("uploads/temp")
     if temp_path.exists():
         for candidate in temp_path.iterdir():

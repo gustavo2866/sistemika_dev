@@ -28,14 +28,31 @@ def campos_respuesta(model_cls: type[SQLModel], include_id: bool = True) -> set[
         campos.add('id')
     return campos
 
-def filtrar_respuesta(obj: SQLModel, context: str = "display") -> Dict[str, Any]:
+def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, _visited: set = None) -> Dict[str, Any]:
     """
     Filtra un objeto para respuesta al frontend
     
     Args:
         obj: Objeto a filtrar
         context: 'display' (incluye id) o 'edit' (solo campos editables)
+        _depth: Profundidad actual de recursión (interno)
+        _visited: Set de objetos ya visitados para evitar ciclos (interno)
     """
+    # Inicializar visited en el primer nivel
+    if _visited is None:
+        _visited = set()
+    
+    # Evitar recursión infinita - máximo 2 niveles de profundidad
+    if _depth > 2:
+        return {"id": obj.id} if hasattr(obj, 'id') else {}
+    
+    # Evitar ciclos: si ya visitamos este objeto, solo devolver su id
+    obj_key = (type(obj).__name__, getattr(obj, 'id', id(obj)))
+    if obj_key in _visited:
+        return {"id": obj.id} if hasattr(obj, 'id') else {}
+    
+    _visited.add(obj_key)
+    
     if context == "edit":
         # Solo campos editables (para formularios)
         campos_validos = campos_editables(type(obj))
@@ -45,16 +62,21 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display") -> Dict[str, Any]
     
     obj_dict = obj.model_dump()
     
-    # Incluir relaciones si están cargadas
-    for attr_name in dir(obj):
-        if not attr_name.startswith('_') and hasattr(obj, attr_name):
-            attr_value = getattr(obj, attr_name)
-            # Si es una relación cargada (tiene model_fields y no es un campo regular)
-            if (hasattr(attr_value, 'model_fields') and 
-                attr_name not in obj.model_fields and 
-                attr_name not in STAMP_FIELDS):
-                # Incluir la relación en la respuesta, procesándola recursivamente
-                obj_dict[attr_name] = filtrar_respuesta(attr_value, context)
+    # Incluir relaciones si están cargadas (solo en el primer nivel)
+    if _depth < 1:
+        for attr_name in dir(obj):
+            if not attr_name.startswith('_') and hasattr(obj, attr_name):
+                attr_value = getattr(obj, attr_name)
+                # Si es una relación cargada (tiene model_fields y no es un campo regular)
+                if (hasattr(attr_value, 'model_fields') and 
+                    attr_name not in obj.model_fields and 
+                    attr_name not in STAMP_FIELDS):
+                    # Incluir la relación en la respuesta, procesándola recursivamente
+                    obj_dict[attr_name] = filtrar_respuesta(attr_value, context, _depth + 1, _visited)
+                # Si es una lista de relaciones (one-to-many)
+                elif isinstance(attr_value, list) and len(attr_value) > 0 and hasattr(attr_value[0], 'model_fields'):
+                    # Para listas, solo incluir IDs para evitar sobrecarga
+                    obj_dict[attr_name] = [{"id": item.id} if hasattr(item, 'id') else {} for item in attr_value]
     
     # Filtrar campos válidos más las relaciones
     result = {}

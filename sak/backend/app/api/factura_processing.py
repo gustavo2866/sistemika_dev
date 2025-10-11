@@ -445,20 +445,20 @@ async def parse_document_endpoint(
             raise HTTPException(status_code=500, detail=f"Error extrayendo datos: {str(e)}")
         
         # Si la extracción fue exitosa, subir a Cloudinary
-        from app.services.cloudinary_service import cloudinary_service
-        logger.info("Subiendo archivo a Cloudinary...")
+        from app.services.gcs_storage_service import storage_service
+        logger.info("Subiendo archivo a Google Cloud Storage...")
         try:
-            cloudinary_result = cloudinary_service.upload_invoice(
+            gcs_result = storage_service.upload_invoice(
                 str(temp_file_path),
-                safe_filename
+                safe_filename,
+                content_type=file.content_type or ("application/pdf" if is_pdf else None),
             )
-            logger.info(f"Archivo subido a Cloudinary: {cloudinary_result['secure_url']}")
-            
-            # URL pública del archivo en Cloudinary
-            cloudinary_url = cloudinary_result['secure_url']
-            
+            storage_uri = gcs_result["storage_uri"]
+            download_url = gcs_result["download_url"]
+            blob_name = gcs_result["blob_name"]
+            logger.info(f"Archivo subido a GCS: {storage_uri}")
         except Exception as e:
-            logger.error(f"Error subiendo a Cloudinary: {str(e)}")
+            logger.error(f"Error subiendo a GCS: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Error guardando archivo: {str(e)}")
         
         # Limpiar archivo temporal
@@ -492,7 +492,9 @@ async def parse_document_endpoint(
             "archivo_subido": safe_filename,
             "nombre_archivo_pdf": file.filename,
             "nombre_archivo_pdf_guardado": safe_filename,
-            "ruta_archivo_pdf": cloudinary_url,
+            "ruta_archivo_pdf": download_url,
+            "storage_uri": storage_uri,
+            "gcs_blob_name": blob_name,
             "metodo_pago_id": 1,
             "registrado_por_id": 1
         }
@@ -504,7 +506,7 @@ async def parse_document_endpoint(
             comprobante = Comprobante(
                 archivo_nombre=file.filename,
                 archivo_guardado=safe_filename,
-                archivo_ruta=cloudinary_url,
+                archivo_ruta=storage_uri,
                 file_type=('pdf' if is_pdf else 'image'),
                 is_pdf=is_pdf,
                 extraido_por_ocr=extraction_method in {'auto', 'ocr', 'rules_ocr'},
@@ -537,13 +539,15 @@ async def parse_document_endpoint(
             "data": result,
             "filename": file.filename,
             "stored_filename": safe_filename,
-            "file_url": cloudinary_url,
-            "file_path": cloudinary_url,
+            "file_url": download_url,
+            "file_path": storage_uri,
             "file_type": "pdf" if is_pdf else "image",
             "comprobante_id": comprobante_id,
             "nombre_archivo_pdf": file.filename,
             "nombre_archivo_pdf_guardado": safe_filename,
-            "ruta_archivo_pdf": cloudinary_url
+            "ruta_archivo_pdf": download_url,
+            "storage_uri": storage_uri,
+            "gcs_blob_name": blob_name
         })
         
     except Exception as e:

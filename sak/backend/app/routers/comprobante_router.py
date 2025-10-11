@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
 from pathlib import Path
 
 from app.models.comprobante import Comprobante
@@ -7,6 +8,7 @@ from app.core.generic_crud import GenericCRUD
 from app.core.router import create_generic_router
 from app.db import get_session
 from sqlmodel import Session
+from app.services.gcs_storage_service import storage_service
 
 
 # CRUD genérico
@@ -32,6 +34,17 @@ async def get_comprobante_file(comprobante_id: int, session: Session = Depends(g
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
     if not comp.archivo_ruta:
         raise HTTPException(status_code=404, detail="Comprobante sin archivo asociado")
+
+    if comp.archivo_ruta.startswith("gs://"):
+        try:
+            blob_name = storage_service.blob_name_from_uri(comp.archivo_ruta)
+            signed_url = storage_service.generate_signed_url(blob_name)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado en almacenamiento") from None
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Error obteniendo archivo: {exc}") from exc
+
+        return RedirectResponse(url=signed_url, status_code=307)
 
     path = Path(comp.archivo_ruta)
     if not path.exists():
