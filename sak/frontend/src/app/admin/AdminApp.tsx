@@ -3,7 +3,7 @@
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource } from "ra-core";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
@@ -29,6 +29,12 @@ import {
   TipoOperacionEdit,
   TipoOperacionShow,
 } from "@/app/resources/tipos-operacion";
+import {
+  ProyectoList,
+  ProyectoCreate,
+  ProyectoEdit,
+  ProyectoShow,
+} from "@/app/resources/proyectos";
 import {
   SolicitudMbList,
   SolicitudMbCreate,
@@ -93,6 +99,16 @@ const AdminApp = () => {
         show={MetodoPagoShow}
         recordRepresentation="nombre"
         icon={CreditCard}
+      />
+      <Resource
+        name="proyectos"
+        list={ProyectoList}
+        create={ProyectoCreate}
+        edit={ProyectoEdit}
+        show={ProyectoShow}
+        recordRepresentation="nombre"
+        icon={Kanban}
+        options={{ label: "Proyectos" }}
       />
       <Resource
         name="articulos"

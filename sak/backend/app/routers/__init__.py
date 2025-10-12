@@ -10,6 +10,7 @@ from .factura_detalle_router import factura_detalle_router
 from .factura_impuesto_router import factura_impuesto_router
 from .solicitud_router import solicitud_router
 from .solicitud_detalle_router import solicitud_detalle_router
+from .proyecto_router import proyecto_router
 
 __all__ = [
     "item_router",
@@ -22,5 +23,6 @@ __all__ = [
     "factura_detalle_router",
     "factura_impuesto_router",
     "solicitud_router",
-    "solicitud_detalle_router"
+    "solicitud_detalle_router",
+    "proyecto_router"
 ]

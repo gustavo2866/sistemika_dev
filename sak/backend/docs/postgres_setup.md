@@ -12,10 +12,12 @@ GRANT ALL PRIVILEGES ON DATABASE sak TO sak_user;
 
 Actualiza `.env` (o variables del sistema) con la cadena de conexion:
 
+db LOCAL
 ```
 DATABASE_URL=postgresql+psycopg://sak_user:cambia_esta_clave@localhost:5432/sak
 SQLALCHEMY_ECHO=0
 ```
+
 
 ## 3. Instalacion de dependencias
 
