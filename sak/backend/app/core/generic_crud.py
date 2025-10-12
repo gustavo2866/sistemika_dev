@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 import json
 import inspect
-from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List
+from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List, get_args, get_origin
 from datetime import UTC, datetime, date
 from decimal import Decimal
 from sqlmodel import SQLModel, Session, select, func, and_, or_
@@ -41,6 +41,14 @@ class GenericCRUD(Generic[M]):
         try:
             field_info = getattr(self.model, "model_fields", {}).get(field_name)
             expected_type = getattr(field_info, "annotation", None) if field_info else None
+
+            # Desempaquetar Optional[T] para permitir la coercion correcta
+            if expected_type is not None:
+                origin = get_origin(expected_type)
+                if origin is Union:
+                    args = [arg for arg in get_args(expected_type) if arg is not type(None)]
+                    if len(args) == 1:
+                        expected_type = args[0]
 
             # Normalizar strings vacÃ­os a None solo para tipos no-string
             if isinstance(value, str) and value.strip() == "":

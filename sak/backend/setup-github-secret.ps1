@@ -56,7 +56,7 @@ Write-Host "5️⃣  Configurar el secreto:" -ForegroundColor Cyan
 Write-Host "   Name:  " -NoNewline -ForegroundColor White
 Write-Host "GCP_SA_KEY" -ForegroundColor Yellow
 Write-Host "   Value: " -NoNewline -ForegroundColor White
-Write-Host "[Ctrl+V para pegar desde el portapapeles]" -ForegroundColor Green
+Write-Host "Ctrl+V para pegar desde el portapapeles" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "6️⃣  Click en 'Add secret'" -ForegroundColor Cyan
@@ -93,9 +93,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "✅ CONFIGURACIÓN COMPLETA" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "🎉 Ahora puedes ejecutar:" -ForegroundColor Cyan
+Write-Host "Ahora puedes ejecutar:" -ForegroundColor Cyan
 Write-Host "   .\deploy-to-production.ps1" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "El workflow de GitHub Actions desplegará" -ForegroundColor White
-Write-Host "automáticamente a GCP Cloud Run." -ForegroundColor White
+Write-Host "El workflow de GitHub Actions desplegara" -ForegroundColor White
+Write-Host "automaticamente a GCP Cloud Run." -ForegroundColor White
 Write-Host ""

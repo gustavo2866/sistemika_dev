@@ -15,6 +15,7 @@ from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
 from .solicitud import Solicitud
 from .solicitud_detalle import SolicitudDetalle
+from .proyecto import Proyecto
 
 __all__ = [
     "Base", 
@@ -32,7 +33,8 @@ __all__ = [
     "FacturaDetalle",
     "FacturaImpuesto",
     "Solicitud",
-    "SolicitudDetalle"
+    "SolicitudDetalle",
+    "Proyecto"
 ]
 
 
