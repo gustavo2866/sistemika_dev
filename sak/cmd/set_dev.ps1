@@ -20,16 +20,25 @@ Write-Host "1. Configurando backend/.env..." -ForegroundColor Cyan
 $backendEnv = Join-Path $root "backend\.env"
 
 if (Test-Path $backendEnv) {
-    $content = Get-Content $backendEnv -Raw
+    $lines = Get-Content $backendEnv
+    $newLines = @()
     
-    # Comentar líneas de Neon
-    $content = $content -replace '^(DATABASE_URL=postgresql\+psycopg://neondb_owner:.*)', '# $1'
-    
-    # Descomentar línea local
-    $content = $content -replace '^# (DATABASE_URL=postgresql\+psycopg://sak_user:.*@localhost:5432/sak)', '$1'
+    foreach ($line in $lines) {
+        # Comentar DATABASE_URL de Neon
+        if ($line -match '^DATABASE_URL=.*neon\.tech') {
+            $newLines += "# $line"
+        }
+        # Descomentar DATABASE_URL local (localhost)
+        elseif ($line -match '^# DATABASE_URL=.*localhost:5432') {
+            $newLines += $line -replace '^# ', ''
+        }
+        else {
+            $newLines += $line
+        }
+    }
     
     # Guardar cambios
-    $content | Set-Content $backendEnv -NoNewline
+    $newLines | Set-Content $backendEnv -Encoding UTF8
     
     Write-Host "   Base de datos: localhost:5432/sak" -ForegroundColor Green
 } else {
