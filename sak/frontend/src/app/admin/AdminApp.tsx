@@ -3,7 +3,7 @@
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource } from "ra-core";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
@@ -40,6 +40,11 @@ import {
   SolicitudMbCreate,
   SolicitudMbEdit,
 } from "@/app/resources/solicitudes_mb";
+import RecepcionesList from "@/app/resources/recepciones/list";
+import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
+import OrdenCompraList from "@/app/resources/orden-compra/list";
+import TarjasList from "@/app/resources/tarjas/list";
+import NominaList from "@/app/resources/nomina/list";
 
 declare const window: Window | undefined;
 
@@ -145,6 +150,41 @@ const AdminApp = () => {
         recordRepresentation="tipo"
         icon={ClipboardList}
         options={{ label: "Solicitudes MB" }}
+      />
+      <Resource
+        name="recepciones"
+        list={RecepcionesList}
+        recordRepresentation="id"
+        icon={Truck}
+        options={{ label: "Recepciones" }}
+      />
+      <Resource
+        name="dashboard-proyectos"
+        list={DashboardProyectosList}
+        recordRepresentation="id"
+        icon={BarChart3}
+        options={{ label: "Dashboard" }}
+      />
+      <Resource
+        name="orden-compra"
+        list={OrdenCompraList}
+        recordRepresentation="id"
+        icon={ShoppingCart}
+        options={{ label: "Orden de Compra" }}
+      />
+      <Resource
+        name="tarjas"
+        list={TarjasList}
+        recordRepresentation="id"
+        icon={ClipboardCheck}
+        options={{ label: "Tarjas" }}
+      />
+      <Resource
+        name="nomina"
+        list={NominaList}
+        recordRepresentation="id"
+        icon={Wallet}
+        options={{ label: "Nómina" }}
       />
     </Admin>
   );

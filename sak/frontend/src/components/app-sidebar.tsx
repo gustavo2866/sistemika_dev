@@ -37,11 +37,18 @@ import {
   Home,
   Package,
   ClipboardList,
-  Kanban
+  Kanban,
+  Truck,
+  BarChart3,
+  ShoppingCart,
+  ClipboardCheck,
+  Wallet
 } from "lucide-react";
 
-const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "proyectos", "tipos-comprobante"] as const;
-const OPERATIONS_RESOURCES = ["facturas", "propiedades", "proveedores", "articulos", "solicitudes"] as const;
+const CONSTRUCTORA_RESOURCES = ["proyectos", "solicitudes", "recepciones", "dashboard-proyectos", "tarjas"] as const;
+const OPERATIONS_RESOURCES = ["propiedades", "solicitudes"] as const;
+const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nomina"] as const;
+const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
 
 type ResourceName = string;
 
@@ -56,8 +63,8 @@ export function AppSidebar() {
     }
   };
 
-  const configResources = useMemo(
-    () => CONFIG_RESOURCES.filter((name) => resources[name]?.hasList),
+  const constructoraResources = useMemo(
+    () => CONSTRUCTORA_RESOURCES.filter((name) => resources[name]?.hasList),
     [resources],
   );
 
@@ -66,9 +73,19 @@ export function AppSidebar() {
     [resources],
   );
 
+  const adminResources = useMemo(
+    () => ADMIN_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
+
+  const configResources = useMemo(
+    () => CONFIG_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
+
   const groupedNames = useMemo(
-    () => new Set<ResourceName>([...configResources, ...operationsResources]),
-    [configResources, operationsResources],
+    () => new Set<ResourceName>([...constructoraResources, ...operationsResources, ...adminResources, ...configResources]),
+    [constructoraResources, operationsResources, adminResources, configResources],
   );
   const otherResources = useMemo(
     () =>
@@ -78,8 +95,10 @@ export function AppSidebar() {
     [resources, groupedNames],
   );
 
-  const [configOpen, setConfigOpen] = useState(true);
+  const [constructoraOpen, setConstructoraOpen] = useState(true);
   const [operationsOpen, setOperationsOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(true);
+  const [configOpen, setConfigOpen] = useState(true);
 
   return (
     <Sidebar variant="floating" collapsible="icon">
@@ -106,6 +125,23 @@ export function AppSidebar() {
                 <DashboardMenuItem onClick={handleItemClick} />
               ) : null}
 
+              {constructoraResources.length > 0 ? (
+                <GroupMenuItem
+                  label="Constructora"
+                  icon={Building2}
+                  isOpen={constructoraOpen}
+                  onToggle={() => setConstructoraOpen((open) => !open)}
+                >
+                  {constructoraResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                </GroupMenuItem>
+              ) : null}
+
               {operationsResources.length > 0 ? (
                 <GroupMenuItem
                   label="Operaciones"
@@ -114,6 +150,23 @@ export function AppSidebar() {
                   onToggle={() => setOperationsOpen((open) => !open)}
                 >
                   {operationsResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                </GroupMenuItem>
+              ) : null}
+
+              {adminResources.length > 0 ? (
+                <GroupMenuItem
+                  label="Administración"
+                  icon={Building2}
+                  isOpen={adminOpen}
+                  onToggle={() => setAdminOpen((open) => !open)}
+                >
+                  {adminResources.map((name) => (
                     <ResourceSubMenuItem
                       key={name}
                       name={name}
@@ -184,6 +237,11 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   articulos: Package,
   facturas: FileText,
   solicitudes: ClipboardList,
+  recepciones: Truck,
+  "dashboard-proyectos": BarChart3,
+  "orden-compra": ShoppingCart,
+  tarjas: ClipboardCheck,
+  nomina: Wallet,
 };
 
 export const ResourceMenuItem = ({
