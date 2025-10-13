@@ -12,8 +12,8 @@ export const ProyectoShow = () => (
       <TextField source="id" label="ID" />
       <TextField source="nombre" label="Nombre" />
       <TextField source="estado" label="Estado" />
-      <DateField source="fecha_inicio" label="Fecha de Inicio" />
-      <DateField source="fecha_final" label="Fecha de Finalizacion" />
+      <DateField source="fecha_inicio" />
+      <DateField source="fecha_final" />
       <NumberField
         source="importe_mat"
         label="Importe Materiales"
