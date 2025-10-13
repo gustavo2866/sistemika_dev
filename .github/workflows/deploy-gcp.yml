@@ -43,7 +43,7 @@ jobs:
             --service-account ${{ env.SERVICE_ACCOUNT }} \
             --allow-unauthenticated \
             --set-secrets="DATABASE_URL=DATABASE_URL:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,JWT_SECRET=JWT_SECRET:latest" \
-            --set-env-vars="ENV=prod,CORS_ORIGINS=https://wcl-seven.vercel.app;http://localhost:3000,SQLALCHEMY_ECHO=0"
+            --set-env-vars="ENV=prod,CORS_ORIGINS=https://sistemika-sak-frontend.vercel.app;http://localhost:3000,SQLALCHEMY_ECHO=0"
       
       # 5. Mostrar URL del servicio
       - name: Show service URL
