@@ -1,5 +1,5 @@
 """
-Modelo para clientes/empresas receptoras de facturas
+Modelo para clientes/empresas receptoras de facturas xxx
 """
 
 from typing import Optional
