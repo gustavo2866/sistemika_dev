@@ -28,6 +28,7 @@ export const TextInput = (props: TextInputProps) => {
     className,
     validate: _validateProp,
     format: _formatProp,
+    isRequired: _isRequired,
     ...rest
   } = props;
   const { id, field } = useInput(props);

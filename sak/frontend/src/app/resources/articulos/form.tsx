@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { required } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
@@ -21,16 +22,16 @@ const tipoArticuloChoices = [
 export const ArticuloForm = () => (
   <SimpleForm className="w-full max-w-4xl">
     <div className="grid gap-4 md:grid-cols-2">
-      <TextInput source="nombre" label="Nombre" isRequired className="w-full" />
+      <TextInput source="nombre" label="Nombre" validate={required()} className="w-full" />
       <SelectInput source="tipo_articulo" label="Tipo de articulo" choices={tipoArticuloChoices} className="w-full" />
     </div>
     <div className="grid gap-4 md:grid-cols-2">
-      <TextInput source="unidad_medida" label="Unidad de medida" isRequired className="w-full" />
+      <TextInput source="unidad_medida" label="Unidad de medida" validate={required()} className="w-full" />
       <TextInput source="marca" label="Marca" className="w-full" />
     </div>
     <div className="grid gap-4 md:grid-cols-2">
       <TextInput source="sku" label="SKU" className="w-full" />
-      <NumberInput source="precio" label="Precio" step={0.01} isRequired className="w-full" />
+      <NumberInput source="precio" label="Precio" step={0.01} validate={required()} className="w-full" />
     </div>
     <ReferenceInput source="proveedor_id" reference="proveedores" label="Proveedor (opcional)">
       <SelectInput optionText="nombre" emptyText="Sin proveedor" className="w-full" />

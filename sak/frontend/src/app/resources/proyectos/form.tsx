@@ -1,12 +1,13 @@
 "use client";
 
+import { required } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 
 export const ProyectoForm = () => (
   <SimpleForm>
-    <TextInput source="nombre" label="Nombre" isRequired className="w-full" />
+    <TextInput source="nombre" label="Nombre" validate={required()} className="w-full" />
     <TextInput source="estado" label="Estado" className="w-full" />
     <TextInput
       source="fecha_inicio"

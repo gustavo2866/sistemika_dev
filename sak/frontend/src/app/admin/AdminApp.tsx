@@ -44,7 +44,12 @@ import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
-import NominaList from "@/app/resources/nomina/list";
+import {
+  NominaList,
+  NominaCreate,
+  NominaEdit,
+  NominaShow,
+} from "@/app/resources/nomina";
 
 declare const window: Window | undefined;
 
@@ -180,9 +185,12 @@ const AdminApp = () => {
         options={{ label: "Tarjas" }}
       />
       <Resource
-        name="nomina"
+        name="nominas"
         list={NominaList}
-        recordRepresentation="id"
+        create={NominaCreate}
+        edit={NominaEdit}
+        show={NominaShow}
+        recordRepresentation="nombre"
         icon={Wallet}
         options={{ label: "Nómina" }}
       />

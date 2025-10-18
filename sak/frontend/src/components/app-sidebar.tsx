@@ -47,7 +47,7 @@ import {
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "solicitudes", "recepciones", "dashboard-proyectos", "tarjas"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes"] as const;
-const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nomina"] as const;
+const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas"] as const;
 const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
 
 type ResourceName = string;
@@ -241,7 +241,7 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "dashboard-proyectos": BarChart3,
   "orden-compra": ShoppingCart,
   tarjas: ClipboardCheck,
-  nomina: Wallet,
+  nominas: Wallet,
 };
 
 export const ResourceMenuItem = ({

@@ -1,0 +1,70 @@
+# ============================================
+# VARIABLES DE ENTORNO - SAK BACKEND (GCP)
+# ============================================
+# Creado: 11 de Octubre, 2025
+# NO SUBIR ESTE ARCHIVO A GIT (está en .gitignore)
+
+# ============================================
+# 1. ENTORNO
+# ============================================
+ENV=dev
+
+# ============================================
+# 2. BASE DE DATOS - NEON POSTGRESQL
+# ============================================
+# ⚠️ Neon PostgreSQL - Configurado
+# Connection con pgbouncer (pooler) - Recomendado para producción
+# DATABASE_URL=postgresql+psycopg://neondb_owner:npg_2HqUWwPRtEy7@ep-steep-bird-acyo7x0e-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require
+
+# Alternativa sin pooler (descomenta si tienes problemas con pgbouncer)
+# DATABASE_URL=postgresql+psycopg://neondb_owner:npg_2HqUWwPRtEy7@ep-steep-bird-acyo7x0e.sa-east-1.aws.neon.tech/neondb?sslmode=require
+
+# ⚠️ LOCAL - Configurado para desarrollo local con Postgres instalado localmente
+# Descomenta estas líneas para usar la base de datos local en lugar de Neon
+DATABASE_URL=postgresql+psycopg://sak_user:cambia_esta_clave@localhost:5432/sak
+SQLALCHEMY_ECHO=0
+
+
+# ============================================
+# 3. GOOGLE CLOUD STORAGE (GCS)
+# ============================================
+# Proyecto GCP detectado en gcp-credentials.json
+GCS_PROJECT_ID=sak-wcl
+
+# Nombre del bucket (debes crearlo en GCP Console)
+GCS_BUCKET_NAME=sak-facturas-prod
+
+# Ruta a las credenciales de GCP (ya existe en tu proyecto)
+GOOGLE_APPLICATION_CREDENTIALS=./gcp-credentials.json
+
+# Carpeta para almacenar facturas dentro del bucket
+GCS_INVOICE_FOLDER=facturas
+
+# Tiempo de validez de URLs firmadas (24 horas = 86400 segundos)
+GCS_SIGNED_URL_SECONDS=86400
+
+# ============================================
+# 4. OPENAI API
+# ============================================
+# API Key detectada en open_ai_key.txt
+OPENAI_API_KEY=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
+
+# ============================================
+# 5. SEGURIDAD - JWT
+# ============================================
+# ⚠️ CRÍTICO: Genera un secret único para producción
+# Comando: [System.Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+JWT_SECRET=GENERA-UN-SECRET-UNICO-AQUI-CON-EL-COMANDO-DE-ARRIBA
+
+# ============================================
+# 6. CORS - ORÍGENES PERMITIDOS
+# ============================================
+# URLs de tu frontend separadas por comas
+# Para desarrollo local, déjalo vacío o comenta la línea para usar los defaults
+# CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# ============================================
+# 7. DEBUG (Solo desarrollo)
+# ============================================
+# 0 = deshabilitado, 1 = habilitado (NO usar en producción)
+SQLALCHEMY_ECHO=0

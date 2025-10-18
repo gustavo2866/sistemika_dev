@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { required, email as emailValidator } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { BooleanInput } from "@/components/boolean-input";
@@ -7,14 +8,14 @@ import { BooleanInput } from "@/components/boolean-input";
 export const ProveedorForm = () => (
   <SimpleForm className="w-full max-w-4xl">
     <div className="grid gap-4 md:grid-cols-2">
-      <TextInput source="nombre" label="Nombre" isRequired />
-      <TextInput source="razon_social" label="Razon social" isRequired />
+      <TextInput source="nombre" label="Nombre" validate={required()} />
+      <TextInput source="razon_social" label="Razon social" validate={required()} />
     </div>
-    <TextInput source="cuit" label="CUIT" isRequired />
+    <TextInput source="cuit" label="CUIT" validate={required()} />
 
     <div className="grid gap-4 md:grid-cols-2">
       <TextInput source="telefono" label="Telefono" />
-      <TextInput source="email" label="Email" type="email" />
+      <TextInput source="email" label="Email" type="email" validate={emailValidator()} />
     </div>
     <TextInput source="direccion" label="Direccion" />
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { required } from "ra-core";
 import {
   useForm,
   useFormContext,
@@ -179,7 +180,7 @@ const SolicitudMbFormFields = ({ isEdit }: { isEdit: boolean }) => {
                 source="fecha_necesidad"
                 label="Fecha de Necesidad"
                 type="date"
-                isRequired
+                validate={required()}
                 className="w-full"
               />
             </div>
@@ -187,9 +188,8 @@ const SolicitudMbFormFields = ({ isEdit }: { isEdit: boolean }) => {
               source="solicitante_id"
               reference="users"
               label="Solicitante"
-              isRequired
             >
-              <SelectInput optionText="nombre" className="w-full" />
+              <SelectInput optionText="nombre" className="w-full" validate={required()} />
             </ReferenceInput>
             <TextInput
               source="comentario"

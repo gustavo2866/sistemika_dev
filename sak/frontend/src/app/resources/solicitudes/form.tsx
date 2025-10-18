@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { required } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { SelectInput } from "@/components/select-input";
@@ -134,7 +135,7 @@ const SolicitudFormFields = ({ isEdit }: { isEdit: boolean }) => {
               source="fecha_necesidad"
               label="Fecha de Necesidad"
               type="date"
-              isRequired
+              validate={required()}
               className="w-full"
             />
           </div>
@@ -142,9 +143,8 @@ const SolicitudFormFields = ({ isEdit }: { isEdit: boolean }) => {
             source="solicitante_id"
             reference="users"
             label="Solicitante"
-            isRequired
           >
-            <SelectInput optionText="nombre" className="w-full" />
+            <SelectInput optionText="nombre" className="w-full" validate={required()} />
           </ReferenceInput>
           <TextInput
             source="comentario"
@@ -197,7 +197,7 @@ const DetalleIteratorItem = () => (
       <TextInput
         source="descripcion"
         label="Descripción"
-        isRequired
+        validate={required()}
         placeholder="Describe la necesidad"
         className="w-full"
       />
@@ -213,7 +213,7 @@ const DetalleIteratorItem = () => (
         label="Cantidad"
         min={0.001}
         step={0.001}
-        isRequired
+        validate={required()}
         className="w-full"
       />
     </div>

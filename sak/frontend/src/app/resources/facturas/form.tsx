@@ -320,17 +320,17 @@ const FacturaFormFields = () => {
       <HiddenInput source="comprobante_id" />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <ReferenceInput source="proveedor_id" reference="proveedores" label="Proveedor" isRequired>
-          <SelectInput optionText="nombre" emptyText="Seleccionar proveedor" className="w-full" />
+        <ReferenceInput source="proveedor_id" reference="proveedores" label="Proveedor">
+          <SelectInput optionText="nombre" emptyText="Seleccionar proveedor" className="w-full" validate={required()} />
         </ReferenceInput>
-        <ReferenceInput source="tipo_operacion_id" reference="tipos-operacion" label="Tipo de Operaci\u00f3n" isRequired>
-          <SelectInput optionText="descripcion" emptyText="Seleccionar tipo" className="w-full" />
+        <ReferenceInput source="tipo_operacion_id" reference="tipos-operacion" label="Tipo de Operación">
+          <SelectInput optionText="descripcion" emptyText="Seleccionar tipo" className="w-full" validate={required()} />
         </ReferenceInput>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <ReferenceInput source="usuario_responsable_id" reference="users" label="Usuario Responsable" isRequired>
-          <SelectInput optionText="nombre" emptyText="Seleccionar usuario" className="w-full" />
+        <ReferenceInput source="usuario_responsable_id" reference="users" label="Usuario Responsable">
+          <SelectInput optionText="nombre" emptyText="Seleccionar usuario" className="w-full" validate={required()} />
         </ReferenceInput>
         <SelectInput source="estado" label="Estado" choices={facturaEstadoChoices} defaultValue="pendiente" className="w-full" />
       </div>
@@ -341,26 +341,24 @@ const FacturaFormFields = () => {
           reference="metodos-pago"
           label="Metodo de Pago"
           defaultValue={1}
-          isRequired
         >
-          <SelectInput optionText="nombre" emptyText="Seleccionar metodo" className="w-full" />
+          <SelectInput optionText="nombre" emptyText="Seleccionar metodo" className="w-full" validate={required()} />
         </ReferenceInput>
         <ReferenceInput
           source="registrado_por_id"
           reference="users"
           label="Registrado por"
           defaultValue={1}
-          isRequired
         >
-          <SelectInput optionText="nombre" emptyText="Seleccionar usuario" className="w-full" />
+          <SelectInput optionText="nombre" emptyText="Seleccionar usuario" className="w-full" validate={required()} />
         </ReferenceInput>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <TextInput source="numero" label="Numero" isRequired className="w-full" />
-        <TextInput source="punto_venta" label="Punto de Venta" isRequired className="w-full" />
-        <ReferenceInput source="id_tipocomprobante" reference="tipos-comprobante" label="Tipo de Comprobante" isRequired>
-          <SelectInput optionText="name" emptyText="Seleccionar tipo" className="w-full" />
+        <TextInput source="numero" label="Numero" validate={required()} className="w-full" />
+        <TextInput source="punto_venta" label="Punto de Venta" validate={required()} className="w-full" />
+        <ReferenceInput source="id_tipocomprobante" reference="tipos-comprobante" label="Tipo de Comprobante">
+          <SelectInput optionText="name" emptyText="Seleccionar tipo" className="w-full" validate={required()} />
         </ReferenceInput>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -375,14 +373,14 @@ const FacturaFormFields = () => {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <TextInput source="fecha_emision" label="Fecha de Emisi\u00f3n" type="date" isRequired className="w-full" />
+        <TextInput source="fecha_emision" label="Fecha de Emisi\u00f3n" type="date" validate={required()} className="w-full" />
         <TextInput source="fecha_vencimiento" label="Fecha de Vencimiento" type="date" className="w-full" />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <NumberInput source="subtotal" label="Subtotal" step={0.01} isRequired className="w-full" />
-        <NumberInput source="total_impuestos" label="Total Impuestos" step={0.01} isRequired className="w-full" />
-        <NumberInput source="total" label="Total" step={0.01} isRequired className="w-full" />
+        <NumberInput source="subtotal" label="Subtotal" step={0.01} validate={required()} className="w-full" />
+        <NumberInput source="total_impuestos" label="Total Impuestos" step={0.01} validate={required()} className="w-full" />
+        <NumberInput source="total" label="Total" step={0.01} validate={required()} className="w-full" />
       </div>
 
       <TextInput source="observaciones" label="Observaciones" multiline rows={3} className="w-full" />

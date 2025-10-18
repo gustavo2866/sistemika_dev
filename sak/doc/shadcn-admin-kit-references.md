@@ -15,12 +15,12 @@
 
 ### Forms
 - [SimpleForm](https://marmelab.com/shadcn-admin-kit/docs/simpleform) ⭐ **Consultado**
-- [Form Validation](https://marmelab.com/shadcn-admin-kit/docs/simpleform#validation)
+- [Form Validation](https://marmelab.com/shadcn-admin-kit/docs/simpleform#validation) ⭐ **Consultado - 18/10/2025**
 
 ### Inputs
 - [ReferenceInput](https://marmelab.com/shadcn-admin-kit/docs/referenceinput) ⭐ **Consultado**
 - [SelectInput](https://marmelab.com/shadcn-admin-kit/docs/selectinput)
-- [TextInput](https://marmelab.com/shadcn-admin-kit/docs/textinput)
+- [TextInput](https://marmelab.com/shadcn-admin-kit/docs/textinput) ⭐ **Consultado - 18/10/2025**
 - [NumberInput](https://marmelab.com/shadcn-admin-kit/docs/numberinput)
 - [BooleanInput](https://marmelab.com/shadcn-admin-kit/docs/booleaninput)
 - [AutocompleteInput](https://marmelab.com/shadcn-admin-kit/docs/autocompleteinput)
@@ -77,6 +77,28 @@ Para cada nueva funcionalidad:
 2. **NO usar Material-UI**: shadcn-admin-kit usa shadcn/ui + Tailwind
 3. **NO usar patrones obsoletos**: Siempre consultar la documentación más reciente
 4. **NO mezclar paradigmas**: Usar consistentemente los patrones de shadcn-admin-kit
+5. **NO usar `isRequired` prop**: Usar `validate={required()}` de ra-core (ver [doc/migracion-isRequired-validate.md](./migracion-isRequired-validate.md))
+
+## ✅ Patrones Oficiales Validados
+
+### Validación de Formularios (18/10/2025)
+
+**INCORRECTO ❌:**
+```tsx
+<TextInput source="nombre" label="Nombre" isRequired />
+```
+
+**CORRECTO ✅:**
+```tsx
+import { required, email } from "ra-core";
+
+<TextInput source="nombre" label="Nombre" validate={required()} />
+<TextInput source="email" type="email" validate={[required(), email()]} />
+```
+
+**Referencia**: [SimpleForm Validation](https://marmelab.com/shadcn-admin-kit/docs/simpleform#validation)  
+**Validadores disponibles**: `required`, `email`, `minLength`, `maxLength`, `minValue`, `maxValue`, `number`, `regex`, `choices`  
+**Documento completo**: [migracion-isRequired-validate.md](./migracion-isRequired-validate.md)
 
 ---
 
