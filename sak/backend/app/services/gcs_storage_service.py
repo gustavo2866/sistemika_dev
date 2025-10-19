@@ -79,11 +79,8 @@ class GCSStorageService:
         blob.upload_from_filename(file_path, content_type=content_type)
 
         storage_uri = f"gs://{bucket.name}/{blob_name}"
-        download_url = self.generate_signed_url(
-            blob_name,
-            expiration=signed_url_ttl or self.default_signed_url_ttl,
-            bucket_name=bucket.name,
-        )
+        # Usar URL pública directamente (bucket es público)
+        download_url = f"https://storage.googleapis.com/{bucket.name}/{blob_name}"
 
         return {
             "storage_uri": storage_uri,
