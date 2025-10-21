@@ -12,6 +12,7 @@ from .solicitud_router import solicitud_router
 from .solicitud_detalle_router import solicitud_detalle_router
 from .proyecto_router import proyecto_router
 from .nomina_router import nomina_router
+from .partediario_router import parte_diario_router
 
 __all__ = [
     "item_router",
@@ -26,5 +27,6 @@ __all__ = [
     "solicitud_router",
     "solicitud_detalle_router",
     "proyecto_router",
-    "nomina_router"
+    "nomina_router",
+    "parte_diario_router",
 ]

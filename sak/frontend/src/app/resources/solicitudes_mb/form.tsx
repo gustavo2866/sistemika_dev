@@ -13,7 +13,6 @@ import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { SelectInput } from "@/components/select-input";
 import { ReferenceInput } from "@/components/reference-input";
-import { NumberInput } from "@/components/number-input";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {

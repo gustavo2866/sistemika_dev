@@ -56,8 +56,7 @@ export const FilterForm = (inProps: FilterFormProps) => {
   );
 };
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface FilterFormProps extends FilterFormBaseProps {}
+export type FilterFormProps = FilterFormBaseProps;
 
 /**
  * @deprecated Use FilterFormBase from `ra-core` once available.
@@ -139,16 +138,15 @@ const StyledForm = (props: React.FormHTMLAttributes<HTMLFormElement>) => {
   );
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const isEmptyValue = (filterValue: any): boolean => {
+const isEmptyValue = (filterValue: unknown): boolean => {
   if (filterValue === "" || filterValue == null) return true;
 
   // If one of the value leaf is not empty
   // the value is considered not empty
-  if (typeof filterValue === "object") {
-    return Object.keys(filterValue).every((key) =>
-      isEmptyValue(filterValue[key]),
-    );
+  if (typeof filterValue === "object" && filterValue !== null) {
+    return Object.values(
+      filterValue as Record<string, unknown>,
+    ).every((value) => isEmptyValue(value));
   }
 
   return false;
@@ -253,8 +251,7 @@ export const FilterButton = (props: FilterButtonProps) => {
   );
 
   const handleShow = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ({ source, defaultValue }: { source: string; defaultValue: any }) => {
+    ({ source, defaultValue }: { source: string; defaultValue: unknown }) => {
       showFilter(source, defaultValue === "" ? undefined : defaultValue);
       // We have to fallback to imperative code because the new FilterFormInput
       // has no way of knowing it has just been displayed (and thus that it should focus its input)
@@ -487,8 +484,7 @@ export const FilterButtonMenuItem = React.forwardRef<
 export interface FilterButtonMenuItemProps {
   filter: React.ReactElement<FilterElementProps>;
   displayed: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onShow: (params: { source: string; defaultValue: any }) => void;
+  onShow: (params: { source: string; defaultValue: unknown }) => void;
   onHide: (params: { source: string }) => void;
   resource?: string;
   autoFocus?: boolean;
