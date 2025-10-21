@@ -6,7 +6,6 @@ import { TextField } from "@/components/text-field";
 import { NumberField } from "@/components/number-field";
 import { ReferenceField } from "@/components/reference-field";
 import { TextInput } from "@/components/text-input";
-import { SelectInput } from "@/components/select-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { EditButton } from "@/components/edit-button";

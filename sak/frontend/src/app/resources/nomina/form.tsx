@@ -6,6 +6,7 @@ import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 import { SelectInput } from "@/components/select-input";
 import { BooleanInput } from "@/components/boolean-input";
+import { ReferenceInput } from "@/components/reference-input";
 import { categoriaChoices } from "./constants";
 
 export const NominaForm = () => (
@@ -26,6 +27,18 @@ export const NominaForm = () => (
         validate={required()}
         className="w-full"
       />
+      <ReferenceInput
+        source="idproyecto"
+        reference="proyectos"
+        label="Proyecto"
+      >
+        <SelectInput
+          className="w-full"
+          optionText="nombre"
+          emptyText="Seleccionar proyecto"
+          validate={required()}
+        />
+      </ReferenceInput>
       <TextInput
         source="email"
         label="Email"

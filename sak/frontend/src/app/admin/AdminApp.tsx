@@ -3,7 +3,7 @@
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource } from "ra-core";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
@@ -50,6 +50,12 @@ import {
   NominaEdit,
   NominaShow,
 } from "@/app/resources/nomina";
+import {
+  ParteDiarioList,
+  ParteDiarioCreate,
+  ParteDiarioEdit,
+  ParteDiarioShow,
+} from "@/app/resources/parte-diario";
 
 declare const window: Window | undefined;
 
@@ -183,6 +189,16 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={ClipboardCheck}
         options={{ label: "Tarjas" }}
+      />
+      <Resource
+        name="parte-diario"
+        list={ParteDiarioList}
+        create={ParteDiarioCreate}
+        edit={ParteDiarioEdit}
+        show={ParteDiarioShow}
+        recordRepresentation="descripcion"
+        icon={NotebookPen}
+        options={{ label: "Parte Diario" }}
       />
       <Resource
         name="nominas"

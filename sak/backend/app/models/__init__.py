@@ -17,6 +17,12 @@ from .solicitud import Solicitud
 from .solicitud_detalle import SolicitudDetalle
 from .proyecto import Proyecto
 from .nomina import Nomina, CategoriaNomina
+from .partediario import (
+    ParteDiario,
+    ParteDiarioDetalle,
+    EstadoParteDiario,
+    TipoLicencia,
+)
 
 __all__ = [
     "Base", 
@@ -37,7 +43,11 @@ __all__ = [
     "SolicitudDetalle",
     "Proyecto",
     "Nomina",
-    "CategoriaNomina"
+    "CategoriaNomina",
+    "ParteDiario",
+    "ParteDiarioDetalle",
+    "EstadoParteDiario",
+    "TipoLicencia",
 ]
 
 
