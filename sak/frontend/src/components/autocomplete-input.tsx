@@ -80,6 +80,7 @@ export const AutocompleteInput = (
   const translate = useTranslate();
   const { placeholder = translate("ra.action.search", { _: "Search..." }) } =
     props;
+  const { value: fieldValue, onChange: handleFieldChange } = field;
 
   const getRecordRepresentation = useGetRecordRepresentation(resource);
   const { getChoiceText, getChoiceValue } = useChoices({
@@ -94,7 +95,7 @@ export const AutocompleteInput = (
 
   const [open, setOpen] = React.useState(false);
   const selectedChoice = allChoices.find(
-    (choice) => getChoiceValue(choice) === field.value,
+    (choice) => getChoiceValue(choice) === fieldValue,
   );
 
   const getInputText = useCallback(
@@ -120,8 +121,8 @@ export const AutocompleteInput = (
 
   const handleChange = useCallback(
     (choice: Choice) => {
-      if (field.value === getChoiceValue(choice) && !isRequired) {
-        field.onChange("");
+      if (fieldValue === getChoiceValue(choice) && !isRequired) {
+        handleFieldChange("");
         setFilterValue("");
         if (isFromReference) {
           setFilters(filterToQuery(""));
@@ -129,12 +130,12 @@ export const AutocompleteInput = (
         setOpen(false);
         return;
       }
-      field.onChange(getChoiceValue(choice));
+      handleFieldChange(getChoiceValue(choice));
       setOpen(false);
     },
     [
-      field.value,
-      field.onChange,
+      fieldValue,
+      handleFieldChange,
       getChoiceValue,
       isRequired,
       setFilterValue,

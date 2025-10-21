@@ -33,8 +33,7 @@ export const Count = (props: CountProps) => {
     filter,
     sort,
     link,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    resource: resourceFromProps,
+    resource: _resource,
     timeout = 1000,
     ...rest
   } = props;
@@ -82,8 +81,7 @@ export const Count = (props: CountProps) => {
 };
 
 export interface CountProps {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  filter?: any;
+  filter?: Record<string, unknown>;
   sort?: SortPayload;
   link?: boolean;
   resource?: string;

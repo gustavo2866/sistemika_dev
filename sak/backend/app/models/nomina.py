@@ -70,6 +70,11 @@ class Nomina(Base, table=True):
         sa_column=Column(String(32), nullable=False),
         description="Categoria laboral del empleado",
     )
+    idproyecto: Optional[int] = Field(
+        default=None,
+        foreign_key="proyectos.id",
+        description="Proyecto asociado al empleado",
+    )
     activo: bool = Field(
         default=True,
         description="Indicador de empleado activo en la nomina",

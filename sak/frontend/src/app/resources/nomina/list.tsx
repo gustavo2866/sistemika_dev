@@ -8,6 +8,8 @@ import { NumberField } from "@/components/number-field";
 import { TextInput } from "@/components/text-input";
 import { SelectInput } from "@/components/select-input";
 import { SelectField } from "@/components/select-field";
+import { ReferenceField } from "@/components/reference-field";
+import { ReferenceInput } from "@/components/reference-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -37,6 +39,14 @@ const filters = [
     choices={estadoChoices}
     emptyText="Todos"
   />,
+  <ReferenceInput
+    key="idproyecto"
+    source="idproyecto"
+    reference="proyectos"
+    label="Proyecto"
+  >
+    <SelectInput emptyText="Todos" optionText="nombre" />
+  </ReferenceInput>,
 ];
 
 const ListActions = () => (
@@ -64,6 +74,11 @@ export const NominaList = () => (
       </DataTable.Col>
       <DataTable.Col source="categoria" label="Categoria">
         <SelectField source="categoria" choices={categoriaChoices} />
+      </DataTable.Col>
+      <DataTable.Col source="idproyecto" label="Proyecto">
+        <ReferenceField source="idproyecto" reference="proyectos">
+          <TextField source="nombre" />
+        </ReferenceField>
       </DataTable.Col>
       <DataTable.Col source="email" label="Email">
         <TextField source="email" />

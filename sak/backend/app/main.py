@@ -37,6 +37,7 @@ from app.routers.solicitud_router import solicitud_router
 from app.routers.solicitud_detalle_router import solicitud_detalle_router
 from app.routers.proyecto_router import proyecto_router
 from app.routers.nomina_router import nomina_router
+from app.routers.partediario_router import parte_diario_router
 from app.routers.cliente_router import router as cliente_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
@@ -95,6 +96,7 @@ app.include_router(solicitud_detalle_router)
 app.include_router(cliente_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)
+app.include_router(parte_diario_router)
 
 # Servir archivos estáticos (uploads)
 uploads_dir = "uploads"

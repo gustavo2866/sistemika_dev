@@ -75,8 +75,15 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
                     obj_dict[attr_name] = filtrar_respuesta(attr_value, context, _depth + 1, _visited)
                 # Si es una lista de relaciones (one-to-many)
                 elif isinstance(attr_value, list) and len(attr_value) > 0 and hasattr(attr_value[0], 'model_fields'):
-                    # Para listas, solo incluir IDs para evitar sobrecarga
-                    obj_dict[attr_name] = [{"id": item.id} if hasattr(item, 'id') else {} for item in attr_value]
+                    expanded_relations = getattr(type(obj), "__expanded_list_relations__", set())
+                    if attr_name in expanded_relations:
+                        obj_dict[attr_name] = [
+                            filtrar_respuesta(item, context, _depth + 1, _visited.copy())
+                            for item in attr_value
+                        ]
+                    else:
+                        # Para listas, solo incluir IDs para evitar sobrecarga
+                        obj_dict[attr_name] = [{"id": item.id} if hasattr(item, 'id') else {} for item in attr_value]
     
     # Filtrar campos válidos más las relaciones
     result = {}
