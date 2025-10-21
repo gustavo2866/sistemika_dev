@@ -2,6 +2,8 @@ from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
 from app.models.partediario import ParteDiario, ParteDiarioDetalle
 
+# Define NestedCRUD for ParteDiario with its nested detalles
+
 parte_diario_crud = NestedCRUD(
     ParteDiario,
     nested_relations={
