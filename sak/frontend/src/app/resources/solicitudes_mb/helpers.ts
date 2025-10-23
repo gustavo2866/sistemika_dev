@@ -1,5 +1,3 @@
-import { DataProvider, Identifier, RaRecord } from "ra-core";
-
 import type {
   SolicitudMbDetalleFormValue,
   SolicitudMbFormValues,
@@ -21,7 +19,13 @@ export type SolicitudMbDetailPayload = {
   cantidad: number;
 };
 
-export const normalizeSolicitudMbValues = (values: SolicitudMbFormValues) => {
+export type SolicitudMbPayload = SolicitudMbHeaderPayload & {
+  detalles: SolicitudMbDetailPayload[];
+};
+
+export const normalizeSolicitudMbValues = (
+  values: SolicitudMbFormValues,
+): SolicitudMbPayload => {
   const detalles = Array.isArray(values.detalles) ? values.detalles : [];
 
   const header: SolicitudMbHeaderPayload = {
@@ -39,75 +43,10 @@ export const normalizeSolicitudMbValues = (values: SolicitudMbFormValues) => {
     .map(normalizeDetalle)
     .filter((detalle): detalle is SolicitudMbDetailPayload => detalle !== null);
 
-  return { header, detalles: detailPayloads };
-};
-
-export const createSolicitudMbDetalles = async (
-  dataProvider: DataProvider,
-  solicitudId: Identifier,
-  detalles: SolicitudMbDetailPayload[],
-) => {
-  if (!detalles.length) {
-    return;
-  }
-
-  await Promise.all(
-    detalles.map((detalle) =>
-      dataProvider.create("solicitud-detalles", {
-        data: {
-          ...detalle,
-          solicitud_id: solicitudId,
-        },
-      }),
-    ),
-  );
-};
-
-export const syncSolicitudMbDetalles = async (
-  dataProvider: DataProvider,
-  solicitudId: Identifier,
-  detalles: SolicitudMbDetailPayload[],
-) => {
-  const { data: current } = await dataProvider.getList<RaRecord>(
-    "solicitud-detalles",
-    {
-      filter: { solicitud_id: solicitudId },
-      pagination: { page: 1, perPage: 200 },
-      sort: { field: "id", order: "ASC" },
-    },
-  );
-
-  const currentIds = current.map((item) => item.id).filter(Boolean) as number[];
-  const incomingById = new Map<number, SolicitudMbDetailPayload>();
-
-  detalles.forEach((detalle) => {
-    if (detalle.id != null) {
-      incomingById.set(detalle.id, detalle);
-    }
-  });
-
-  const idsToDelete = currentIds.filter((id) => !incomingById.has(id));
-  if (idsToDelete.length) {
-    await dataProvider.deleteMany("solicitud-detalles", { ids: idsToDelete });
-  }
-
-  const updates = detalles.filter((detalle) => detalle.id != null);
-  const creations = detalles.filter((detalle) => detalle.id == null);
-
-  await Promise.all(
-    updates.map((detalle) =>
-      dataProvider.update("solicitud-detalles", {
-        id: detalle.id as Identifier,
-        data: {
-          ...detalle,
-          solicitud_id: solicitudId,
-        },
-        previousData: current.find((item) => item.id === detalle.id) ?? {},
-      }),
-    ),
-  );
-
-  await createSolicitudMbDetalles(dataProvider, solicitudId, creations);
+  return {
+    ...header,
+    detalles: detailPayloads,
+  };
 };
 
 const normalizeDetalle = (

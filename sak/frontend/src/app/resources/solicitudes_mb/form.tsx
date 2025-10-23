@@ -18,7 +18,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   RaRecord,
   useDataProvider,
-  useRecordContext,
 } from "ra-core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,78 +66,24 @@ const emptyDetalle: DetalleEditorValues = {
   cantidad: "",
 };
 
-export const SolicitudMbForm = (
-  { isEdit = false }: { isEdit?: boolean },
-) => (
-  <SimpleForm className="w-full max-w-5xl space-y-6" defaultValues={{ detalles: [] }}>
-    <SolicitudMbFormFields isEdit={isEdit} />
+export const SolicitudMbForm = () => (
+  <SimpleForm
+    className="w-full max-w-5xl space-y-6"
+    defaultValues={(record?: SolicitudMbRecord) => ({
+      tipo: record?.tipo ?? "normal",
+      fecha_necesidad: record?.fecha_necesidad ?? "",
+      comentario: record?.comentario ?? "",
+      solicitante_id: record?.solicitante_id ?? undefined,
+      version: record?.version,
+      detalles: mapDetalleRecords(record?.detalles ?? []),
+    })}
+  >
+    <SolicitudMbFormFields />
   </SimpleForm>
 );
 
-const SolicitudMbFormFields = ({ isEdit }: { isEdit: boolean }) => {
-  const record = useRecordContext<SolicitudMbRecord>();
-  const form = useFormContext<SolicitudMbFormValues>();
-  const dataProvider = useDataProvider();
-  const [detailsLoaded, setDetailsLoaded] = useState(!isEdit);
+const SolicitudMbFormFields = () => {
   const [generalOpen, setGeneralOpen] = useState(true);
-
-  const recordId = record?.id;
-
-  useEffect(() => {
-    if (!isEdit) {
-      if (!form.getValues("tipo")) {
-        form.setValue("tipo", "normal", { shouldDirty: false });
-      }
-      if (!Array.isArray(form.getValues("detalles"))) {
-        form.setValue("detalles", [], { shouldDirty: false });
-      }
-      return;
-    }
-
-    if (record?.version != null) {
-      form.setValue("version", record.version, { shouldDirty: false });
-    }
-
-    if (detailsLoaded) {
-      return;
-    }
-
-    if (record?.detalles && record.detalles.length > 0) {
-      form.setValue("detalles", mapDetalleRecords(record.detalles), {
-        shouldDirty: false,
-      });
-      setDetailsLoaded(true);
-      return;
-    }
-
-    if (!recordId) {
-      return;
-    }
-
-    let active = true;
-    dataProvider
-      .getList("solicitud-detalles", {
-        filter: { solicitud_id: recordId },
-        pagination: { page: 1, perPage: 100 },
-        sort: { field: "id", order: "ASC" },
-      })
-      .then(({ data }) => {
-        if (!active) return;
-        form.setValue("detalles", mapDetalleRecords(data), {
-          shouldDirty: false,
-        });
-        setDetailsLoaded(true);
-      })
-      .catch(() => {
-        if (active) {
-          setDetailsLoaded(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [dataProvider, detailsLoaded, form, isEdit, record, recordId]);
 
   return (
     <div className="space-y-6 pb-36">
@@ -201,12 +146,12 @@ const SolicitudMbFormFields = ({ isEdit }: { isEdit: boolean }) => {
         ) : null}
       </Card>
 
-      <SolicitudMbDetalles detailsLoaded={detailsLoaded} />
+      <SolicitudMbDetalles />
     </div>
   );
 };
 
-const SolicitudMbDetalles = ({ detailsLoaded }: { detailsLoaded: boolean }) => {
+const SolicitudMbDetalles = () => {
   const parentForm = useFormContext<SolicitudMbFormValues>();
   const dataProvider = useDataProvider();
   const { append, update, remove } = useFieldArray({
@@ -462,8 +407,6 @@ const SolicitudMbDetalles = ({ detailsLoaded }: { detailsLoaded: boolean }) => {
           </div>
         </div>
 
-        {detailPlaceholder(detailsLoaded)}
-
         {isEditing ? detailEditor : detailCards}
       </div>
 
@@ -478,16 +421,6 @@ const SolicitudMbDetalles = ({ detailsLoaded }: { detailsLoaded: boolean }) => {
     </div>
   );
 };
-
-const detailPlaceholder = (detailsLoaded: boolean) => {
-  if (!detailsLoaded) {
-    return (
-      <p className="text-sm text-muted-foreground">Cargando detalles...</p>
-    );
-  }
-  return null;
-};
-
 const FieldControl = (
   {
     control,

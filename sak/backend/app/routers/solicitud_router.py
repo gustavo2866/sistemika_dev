@@ -1,8 +1,18 @@
 from app.models.solicitud import Solicitud
-from app.core.generic_crud import GenericCRUD
+from app.models.solicitud_detalle import SolicitudDetalle
+from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
 
-solicitud_crud = GenericCRUD(Solicitud)
+solicitud_crud = NestedCRUD(
+    Solicitud,
+    nested_relations={
+        "detalles": {
+            "model": SolicitudDetalle,
+            "fk_field": "solicitud_id",
+            "allow_delete": True,
+        }
+    },
+)
 
 solicitud_router = create_generic_router(
     model=Solicitud,

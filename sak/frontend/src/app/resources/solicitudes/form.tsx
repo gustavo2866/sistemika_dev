@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { required } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
@@ -11,12 +10,7 @@ import { SimpleFormIterator } from "@/components/simple-form-iterator";
 import { NumberInput } from "@/components/number-input";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import {
-  RaRecord,
-  useDataProvider,
-  useRecordContext,
-} from "ra-core";
-import { useFormContext } from "react-hook-form";
+import { RaRecord } from "ra-core";
 
 export const solicitudTipoChoices = [
   { id: "normal", name: "Normal" },
@@ -48,70 +42,22 @@ type SolicitudRecord = RaRecord & {
   detalles?: SolicitudDetalleFormValue[];
 };
 
-export const SolicitudForm = ({ isEdit = false }: { isEdit?: boolean }) => (
-  <SimpleForm className="w-full max-w-5xl space-y-6" defaultValues={{ detalles: [] }}>
-    <SolicitudFormFields isEdit={isEdit} />
+export const SolicitudForm = () => (
+  <SimpleForm
+    className="w-full max-w-5xl space-y-6"
+    defaultValues={(record?: SolicitudRecord) => ({
+      tipo: record?.tipo ?? "normal",
+      fecha_necesidad: record?.fecha_necesidad ?? "",
+      comentario: record?.comentario ?? "",
+      solicitante_id: record?.solicitante_id ?? undefined,
+      detalles: mapDetalleRecords(record?.detalles ?? []),
+    })}
+  >
+    <SolicitudFormFields />
   </SimpleForm>
 );
 
-const SolicitudFormFields = ({ isEdit }: { isEdit: boolean }) => {
-  const record = useRecordContext<SolicitudRecord>();
-  const form = useFormContext<SolicitudFormValues>();
-  const dataProvider = useDataProvider();
-  const [detailsLoaded, setDetailsLoaded] = useState(!isEdit);
-
-  useEffect(() => {
-    if (!isEdit) {
-      if (!form.getValues("tipo")) {
-        form.setValue("tipo", "normal", { shouldDirty: false });
-      }
-      if (!Array.isArray(form.getValues("detalles"))) {
-        form.setValue("detalles", [], { shouldDirty: false });
-      }
-      return;
-    }
-
-    if (detailsLoaded) {
-      return;
-    }
-
-    if (record?.detalles && record.detalles.length > 0) {
-      form.setValue("detalles", mapDetalleRecords(record.detalles), {
-        shouldDirty: false,
-      });
-      setDetailsLoaded(true);
-      return;
-    }
-
-    if (!record?.id) {
-      return;
-    }
-
-    let active = true;
-    dataProvider
-      .getList("solicitud-detalles", {
-        filter: { solicitud_id: record.id },
-        pagination: { page: 1, perPage: 100 },
-        sort: { field: "id", order: "ASC" },
-      })
-      .then(({ data }) => {
-        if (!active) return;
-        form.setValue("detalles", mapDetalleRecords(data), {
-          shouldDirty: false,
-        });
-        setDetailsLoaded(true);
-      })
-      .catch(() => {
-        if (active) {
-          setDetailsLoaded(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [dataProvider, detailsLoaded, form, isEdit, record]);
-
+const SolicitudFormFields = () => {
   return (
     <div className="space-y-6">
       {/* Cabecera */}
@@ -174,9 +120,6 @@ const SolicitudFormFields = ({ isEdit }: { isEdit: boolean }) => {
               <DetalleIteratorItem />
             </SimpleFormIterator>
           </ArrayInput>
-          {!detailsLoaded && isEdit ? (
-            <p className="text-sm text-muted-foreground">Cargando detalles...</p>
-          ) : null}
         </div>
       </Card>
     </div>

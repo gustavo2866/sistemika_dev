@@ -1,62 +1,37 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { Edit } from "@/components/edit";
-import { useDataProvider, useNotify } from "ra-core";
-import type { RaRecord } from "ra-core";
+import { useNotify } from "ra-core";
 
 import { SolicitudMbForm } from "./form";
 import type { SolicitudMbFormValues } from "./types";
 import {
   getSolicitudMbErrorMessage,
   normalizeSolicitudMbValues,
-  syncSolicitudMbDetalles,
-  type SolicitudMbDetailPayload,
 } from "./helpers";
 
 export const SolicitudMbEdit = () => {
-  const dataProvider = useDataProvider();
   const notify = useNotify();
-  const detalleBuffer = useRef<SolicitudMbDetailPayload[]>([]);
 
   const transform = useCallback((values: SolicitudMbFormValues) => {
-    const { header, detalles } = normalizeSolicitudMbValues(values);
-    detalleBuffer.current = detalles;
+    const payload = normalizeSolicitudMbValues(values);
     return {
-      ...header,
+      ...payload,
       id: values.id,
     };
   }, []);
 
   const mutationOptions = {
-    onSuccess: async (record: RaRecord) => {
-      try {
-        const solicitudId = record.id;
-        if (solicitudId != null) {
-          await syncSolicitudMbDetalles(
-            dataProvider,
-            solicitudId,
-            detalleBuffer.current,
-          );
-          await dataProvider.getOne("solicitudes", { id: solicitudId });
-        }
-        notify("Solicitud actualizada correctamente", { type: "success" });
-      } catch (error) {
-        notify(
-          getSolicitudMbErrorMessage(
-            error,
-            "Solicitud actualizada pero hubo un error al sincronizar los detalles",
-          ),
-          { type: "warning" },
-        );
-      } finally {
-        detalleBuffer.current = [];
-      }
+    onSuccess: () => {
+      notify("Solicitud actualizada correctamente", { type: "success" });
     },
     onError: (error: unknown) => {
-      detalleBuffer.current = [];
       notify(
-        getSolicitudMbErrorMessage(error, "No se pudo actualizar la solicitud"),
+        getSolicitudMbErrorMessage(
+          error,
+          "No se pudo actualizar la solicitud",
+        ),
         { type: "error" },
       );
     },
@@ -70,7 +45,7 @@ export const SolicitudMbEdit = () => {
       mutationMode="pessimistic"
       mutationOptions={mutationOptions}
     >
-      <SolicitudMbForm isEdit />
+      <SolicitudMbForm />
     </Edit>
   );
 };
