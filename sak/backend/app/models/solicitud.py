@@ -1,6 +1,6 @@
 from datetime import date
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, ClassVar, List, Optional
 
 from sqlalchemy import Column, String
 from sqlmodel import Field, Relationship
@@ -22,7 +22,8 @@ class Solicitud(Base, table=True):
 
     __tablename__ = "solicitudes"
 
-    __searchable_fields__ = ["tipo", "comentario"]
+    __searchable_fields__: ClassVar[List[str]] = ["tipo", "comentario"]
+    __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
 
     tipo: TipoSolicitud = Field(
         default=TipoSolicitud.NORMAL,

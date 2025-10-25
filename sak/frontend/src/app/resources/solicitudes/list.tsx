@@ -36,8 +36,9 @@ const SolicitudBulkActions = () => (
 );
 
 export const SolicitudList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={25}>
+  <List filters={filters} actions={<ListActions />} perPage={25} sort={{ field: "id", order: "DESC" }}>
     <DataTable rowClick="edit" bulkActionButtons={<SolicitudBulkActions />}>
+      <DataTable.Col source="id" label="ID" />
       <DataTable.Col source="tipo" label="Tipo">
         <TextField source="tipo" />
       </DataTable.Col>

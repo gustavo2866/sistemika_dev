@@ -1,6 +1,4 @@
-﻿import { DataProvider, Identifier, RaRecord } from "ra-core";
-
-import type { SolicitudDetalleFormValue, SolicitudFormValues } from "./form";
+﻿import type { SolicitudDetalleFormValue, SolicitudFormValues } from "./form";
 
 export type SolicitudHeaderPayload = {
   tipo: string;
@@ -17,7 +15,13 @@ export type SolicitudDetailPayload = {
   cantidad: number;
 };
 
-export const normalizeSolicitudValues = (values: SolicitudFormValues) => {
+export type SolicitudPayload = SolicitudHeaderPayload & {
+  detalles: SolicitudDetailPayload[];
+};
+
+export const normalizeSolicitudValues = (
+  values: SolicitudFormValues,
+): SolicitudPayload => {
   const detalles = Array.isArray(values.detalles) ? values.detalles : [];
   const header: SolicitudHeaderPayload = {
     tipo: (values.tipo ?? "normal").toString(),
@@ -34,73 +38,10 @@ export const normalizeSolicitudValues = (values: SolicitudFormValues) => {
     .map(normalizeDetalle)
     .filter((detail): detail is SolicitudDetailPayload => detail !== null);
 
-  return { header, detalles: detailPayloads };
-};
-
-export const createSolicitudDetalles = async (
-  dataProvider: DataProvider,
-  solicitudId: Identifier,
-  detalles: SolicitudDetailPayload[],
-) => {
-  if (!detalles.length) {
-    return;
-  }
-  await Promise.all(
-    detalles.map((detalle) =>
-      dataProvider.create("solicitud-detalles", {
-        data: {
-          ...detalle,
-          solicitud_id: solicitudId,
-        },
-      }),
-    ),
-  );
-};
-
-export const syncSolicitudDetalles = async (
-  dataProvider: DataProvider,
-  solicitudId: Identifier,
-  detalles: SolicitudDetailPayload[],
-) => {
-  const { data: current } = await dataProvider.getList<RaRecord>(
-    "solicitud-detalles",
-    {
-      filter: { solicitud_id: solicitudId },
-      pagination: { page: 1, perPage: 200 },
-      sort: { field: "id", order: "ASC" },
-    },
-  );
-
-  const currentIds = current.map((item) => item.id).filter(Boolean) as number[];
-  const incomingById = new Map<number, SolicitudDetailPayload>();
-  detalles.forEach((detalle) => {
-    if (detalle.id != null) {
-      incomingById.set(detalle.id, detalle);
-    }
-  });
-
-  const idsToDelete = currentIds.filter((id) => !incomingById.has(id));
-  if (idsToDelete.length) {
-    await dataProvider.deleteMany("solicitud-detalles", { ids: idsToDelete });
-  }
-
-  const updates = detalles.filter((detalle) => detalle.id != null);
-  const creations = detalles.filter((detalle) => detalle.id == null);
-
-  await Promise.all(
-    updates.map((detalle) =>
-      dataProvider.update("solicitud-detalles", {
-        id: detalle.id as Identifier,
-        data: {
-          ...detalle,
-          solicitud_id: solicitudId,
-        },
-        previousData: current.find((item) => item.id === detalle.id) ?? {},
-      }),
-    ),
-  );
-
-  await createSolicitudDetalles(dataProvider, solicitudId, creations);
+  return {
+    ...header,
+    detalles: detailPayloads,
+  };
 };
 
 export const getErrorMessage = (error: unknown, fallback: string) => {

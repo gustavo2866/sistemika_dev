@@ -110,7 +110,7 @@ def test_create_cliente(client: TestClient) -> None:
     delete_response = client.delete(f"/api/v1/clientes/{body['id']}")
     assert delete_response.status_code == 200
 
-def test_create_solicitud_with_detalle(client: TestClient, db_session: Session) -> None:
+def test_solicitud_nested_crud(client: TestClient, db_session: Session) -> None:
     user = User(nombre="Solicitudes Test", email=f"sol-{uuid4().hex[:8]}@example.com")
     db_session.add(user)
     db_session.commit()
@@ -122,12 +122,6 @@ def test_create_solicitud_with_detalle(client: TestClient, db_session: Session) 
         "comentario": "Materiales para obra",
         "solicitante_id": user.id,
     }
-    solicitud_response = client.post("/solicitudes", json=solicitud_payload)
-    assert solicitud_response.status_code == 201, solicitud_response.text
-    solicitud_data = solicitud_response.json()
-    assert solicitud_data["solicitante_id"] == user.id
-    assert solicitud_data["tipo"] == "normal"
-
     articulo_payload = {
         "nombre": "Arena fina",
         "tipo_articulo": "Material",
@@ -141,26 +135,82 @@ def test_create_solicitud_with_detalle(client: TestClient, db_session: Session) 
     assert articulo_response.status_code == 201, articulo_response.text
     articulo_id = articulo_response.json()["id"]
 
-    detalle_payload = {
-        "solicitud_id": solicitud_data["id"],
-        "articulo_id": articulo_id,
-        "descripcion": "Arena fina para relleno",
-        "unidad_medida": "m3",
-        "cantidad": 2.5,
-    }
-    detalle_response = client.post("/solicitud-detalles", json=detalle_payload)
-    assert detalle_response.status_code == 201, detalle_response.text
-    detalle_data = detalle_response.json()
-    assert detalle_data["solicitud_id"] == solicitud_data["id"]
+    solicitud_payload["detalles"] = [
+        {
+            "articulo_id": articulo_id,
+            "descripcion": "Arena fina para relleno",
+            "unidad_medida": "m3",
+            "cantidad": 2.5,
+        }
+    ]
+
+    solicitud_response = client.post("/solicitudes", json=solicitud_payload)
+    assert solicitud_response.status_code == 201, solicitud_response.text
+    solicitud_data = solicitud_response.json()
+    assert solicitud_data["solicitante_id"] == user.id
+    assert solicitud_data["tipo"] == "normal"
+    assert "detalles" in solicitud_data
+    assert len(solicitud_data["detalles"]) == 1
+
+    detalle_data = solicitud_data["detalles"][0]
+    assert detalle_data["descripcion"] == "Arena fina para relleno"
     assert Decimal(str(detalle_data["cantidad"])) == Decimal("2.5")
 
     fetched = client.get(f"/solicitudes/{solicitud_data['id']}")
     assert fetched.status_code == 200, fetched.text
     fetched_data = fetched.json()
     assert fetched_data["id"] == solicitud_data["id"]
+    assert len(fetched_data["detalles"]) == 1
+    assert fetched_data["detalles"][0]["id"] == detalle_data["id"]
 
-    detalle_list = client.get(f"/solicitud-detalles?solicitud_id={solicitud_data['id']}")
-    assert detalle_list.status_code == 200, detalle_list.text
-    detalle_items = detalle_list.json()
-    assert any(item["id"] == detalle_data["id"] for item in detalle_items)
-    assert any(item["descripcion"] == detalle_payload["descripcion"] for item in detalle_items)
+    update_payload = {
+        "comentario": "Materiales ajustados",
+        "detalles": [
+            {
+                "id": detalle_data["id"],
+                "articulo_id": articulo_id,
+                "descripcion": "Arena fina para relleno",
+                "unidad_medida": "m3",
+                "cantidad": 3.75,
+            },
+            {
+                "articulo_id": articulo_id,
+                "descripcion": "Arcilla para terminaciones",
+                "unidad_medida": "kg",
+                "cantidad": 10,
+            },
+        ],
+    }
+    update_response = client.patch(f"/solicitudes/{solicitud_data['id']}", json=update_payload)
+    assert update_response.status_code == 200, update_response.text
+    updated_data = update_response.json()
+    assert updated_data["comentario"] == "Materiales ajustados"
+    assert len(updated_data["detalles"]) == 2
+
+    existing_detail = next(item for item in updated_data["detalles"] if item["id"] == detalle_data["id"])
+    assert Decimal(str(existing_detail["cantidad"])) == Decimal("3.75")
+    new_detail = next(item for item in updated_data["detalles"] if item["id"] != detalle_data["id"])
+    assert new_detail["descripcion"] == "Arcilla para terminaciones"
+
+    # Remove original detail and keep only the new one
+    prune_payload = {
+        "detalles": [
+            {
+                "id": new_detail["id"],
+                "articulo_id": articulo_id,
+                "descripcion": "Arcilla para terminaciones",
+                "unidad_medida": "kg",
+                "cantidad": 10,
+            }
+        ]
+    }
+    prune_response = client.patch(f"/solicitudes/{solicitud_data['id']}", json=prune_payload)
+    assert prune_response.status_code == 200, prune_response.text
+    pruned_data = prune_response.json()
+    assert len(pruned_data["detalles"]) == 1
+    assert pruned_data["detalles"][0]["id"] == new_detail["id"]
+
+    delete_response = client.delete(f"/solicitudes/{solicitud_data['id']}")
+    assert delete_response.status_code == 200, delete_response.text
+    deleted_data = delete_response.json()
+    assert deleted_data["id"] == solicitud_data["id"]
