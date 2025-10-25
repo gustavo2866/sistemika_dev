@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { required, useRecordContext, useGetIdentity } from "ra-core";
 import {
   useForm,
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, ChevronDown, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import ReactDOM from "react-dom";
 
 import type {
   SolicitudMbDetalleFormValue,
@@ -68,6 +69,10 @@ const emptyDetalle: DetalleEditorValues = {
 };
 
 export const SolicitudMbForm = () => {
+  const [isItemEditorOpen, setIsItemEditorOpen] = useState(false);
+  const [itemFooter, setItemFooter] = useState<React.ReactNode>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+
   return (
     <SimpleForm
       className="w-full max-w-5xl space-y-6"
@@ -79,13 +84,29 @@ export const SolicitudMbForm = () => {
         version: record?.version,
         detalles: mapDetalleRecords(record?.detalles ?? []),
       })}
+      toolbar={isItemEditorOpen ? null : undefined}
     >
-      <SolicitudMbFormFields />
+      <SolicitudMbFormFields
+        setIsItemEditorOpen={setIsItemEditorOpen}
+        setItemFooter={setItemFooter}
+        footerRef={footerRef}
+      />
+      <div ref={footerRef} />
+      {isItemEditorOpen && itemFooter && footerRef.current
+        ? ReactDOM.createPortal(itemFooter, footerRef.current)
+        : null}
     </SimpleForm>
   );
 };
 
-const SolicitudMbFormFields = () => {
+
+interface SolicitudMbFormFieldsProps {
+  setIsItemEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setItemFooter: React.Dispatch<React.SetStateAction<React.ReactNode>>;
+  footerRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const SolicitudMbFormFields = ({ setIsItemEditorOpen, setItemFooter, footerRef: _footerRef }: SolicitudMbFormFieldsProps) => {
   const router = useRouter();
   const record = useRecordContext<SolicitudMbRecord>();
   const { data: identity } = useGetIdentity();
@@ -150,7 +171,9 @@ const SolicitudMbFormFields = () => {
     }
     setGeneralOpen(false);
     // Activar la apertura del editor después de un momento para que el colapso se complete
-    setTimeout(() => setShouldOpenEditor(true), 100);
+    setTimeout(() => {
+      setShouldOpenEditor((prev) => prev ? prev : true);
+    }, 100);
   };
 
   // Cerrar el formulario automáticamente al guardar exitosamente
@@ -245,6 +268,8 @@ const SolicitudMbFormFields = () => {
       <SolicitudMbDetalles 
         shouldOpenEditor={shouldOpenEditor} 
         onEditorOpened={() => setShouldOpenEditor(false)} 
+        setIsItemEditorOpen={setIsItemEditorOpen}
+        setItemFooter={setItemFooter}
       />
     </div>
   );
@@ -252,10 +277,14 @@ const SolicitudMbFormFields = () => {
 
 const SolicitudMbDetalles = ({ 
   shouldOpenEditor, 
-  onEditorOpened 
+  onEditorOpened,
+  setIsItemEditorOpen,
+  setItemFooter,
 }: { 
   shouldOpenEditor?: boolean;
   onEditorOpened?: () => void;
+  setIsItemEditorOpen?: (open: boolean) => void;
+  setItemFooter?: (footer: React.ReactNode) => void;
 }) => {
   const parentForm = useFormContext<SolicitudMbFormValues>();
   const dataProvider = useDataProvider();
@@ -341,54 +370,67 @@ const SolicitudMbDetalles = ({
     setEditorState({ mode: "edit", index, existingId: current?.id });
   };
 
-  const closeEditor = () => {
+  const closeEditor = useCallback(() => {
     setEditorState(null);
     detalleForm.reset(emptyDetalle);
-  };
+  }, [detalleForm]);
 
-  const submitDetalle = detalleForm.handleSubmit((values) => {
-    const payload: SolicitudMbDetalleFormValue = {
-      id: editorState && "existingId" in editorState ? editorState.existingId : undefined,
-      articulo_id:
-        values.articulo_id && values.articulo_id.trim().length > 0
-          ? Number(values.articulo_id)
-          : null,
-      descripcion: values.descripcion.trim(),
-      unidad_medida: values.unidad_medida.trim() || null,
-      cantidad:
-        values.cantidad && values.cantidad.trim().length > 0
-          ? Number(values.cantidad)
-          : 0,
-    };
+  const handleDetalleSubmit = useCallback(
+    (values: DetalleEditorValues) => {
+      const payload: SolicitudMbDetalleFormValue = {
+        id:
+          editorState && "existingId" in editorState
+            ? editorState.existingId
+            : undefined,
+        articulo_id:
+          values.articulo_id && values.articulo_id.trim().length > 0
+            ? Number(values.articulo_id)
+            : null,
+        descripcion: values.descripcion.trim(),
+        unidad_medida: values.unidad_medida.trim() || null,
+        cantidad:
+          values.cantidad && values.cantidad.trim().length > 0
+            ? Number(values.cantidad)
+            : 0,
+      };
 
-    const wasCreateMode = editorState?.mode === "create";
+      const wasCreateMode = editorState?.mode === "create";
 
-    if (editorState?.mode === "edit" && editorState.index != null) {
-      update(editorState.index, payload);
-      closeEditor();
-    } else {
-      append(payload);
-      
-      // En modo create, agregar una nueva línea vacía y reabrir el editor
-      if (wasCreateMode) {
-        // Usar setTimeout para asegurar que el estado se actualice correctamente
-        setTimeout(() => {
-          openCreate();
-        }, 0);
-      } else {
+      if (editorState?.mode === "edit" && editorState.index != null) {
+        update(editorState.index, payload);
         closeEditor();
-      }
-    }
-  });
+      } else {
+        append(payload);
 
-  const handleDelete = () => {
+        // En modo create, agregar una nueva linea vacia y reabrir el editor
+        if (wasCreateMode) {
+          // Usar setTimeout para asegurar que el estado se actualice correctamente
+          setTimeout(() => {
+            openCreate();
+          }, 0);
+        } else {
+          closeEditor();
+        }
+      }
+    },
+    [append, closeEditor, editorState, openCreate, update],
+  );
+
+  const submitDetalle = useCallback(() => {
+    void detalleForm.handleSubmit(handleDetalleSubmit)();
+  }, [detalleForm, handleDetalleSubmit]);
+
+  const handleDelete = useCallback(() => {
     if (editorState?.mode === "edit" && editorState.index != null) {
       remove(editorState.index);
       closeEditor();
     }
-  };
+  }, [editorState, remove, closeEditor]);
 
   const isEditing = editorState !== null;
+  const shouldRenderInlineActions = !(
+    isEditing && typeof setItemFooter === "function"
+  );
 
   const detailCards = (
     <div className="max-h-[340px] overflow-y-auto space-y-3 pr-1">
@@ -431,7 +473,7 @@ const SolicitudMbDetalles = ({
 
   const detailEditor = editorState ? (
     <div className="rounded-lg border bg-card p-4 shadow-sm space-y-4">
-      {editorState.mode === "edit" ? (
+      {editorState.mode === "edit" && shouldRenderInlineActions ? (
         <div className="flex items-center justify-end">
           <Button
             type="button"
@@ -512,29 +554,79 @@ const SolicitudMbDetalles = ({
         />
 
         {/* Botones al final del formulario */}
-        <div className="flex justify-between pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={closeEditor}
-            className="gap-2 px-6"
-            tabIndex={-1}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Button>
-          <Button
-            type="button"
-            onClick={submitDetalle}
-            className="gap-2 px-6"
-          >
-            <Save className="h-4 w-4" />
-            Aceptar
-          </Button>
-        </div>
+        {shouldRenderInlineActions ? (
+          <div className="flex justify-between pt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeEditor}
+              className="gap-2 px-6"
+              tabIndex={-1}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Button>
+            <Button
+              type="button"
+              onClick={submitDetalle}
+              className="gap-2 px-6"
+            >
+              <Save className="h-4 w-4" />
+              Aceptar
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   ) : null;
+
+  useEffect(() => {
+    if (isEditing) {
+      if (setIsItemEditorOpen) setIsItemEditorOpen(true);
+      if (setItemFooter) {
+        const newFooter = (
+          <div className="flex justify-between pt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeEditor}
+              className="gap-2 px-6"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Button>
+            <div className="flex gap-2">
+              {editorState?.mode === "edit" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDelete}
+                  className="text-destructive gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </Button>
+              )}
+              <Button
+                type="button"
+                onClick={submitDetalle}
+                className="gap-2 px-6"
+              >
+                <Save className="h-4 w-4" />
+                Aceptar
+              </Button>
+            </div>
+          </div>
+        );
+        setItemFooter(newFooter);
+      }
+    } else {
+      if (setIsItemEditorOpen) setIsItemEditorOpen(false);
+      if (setItemFooter) setItemFooter(null);
+    }
+    // Incluye todos los handlers y setters en dependencias
+  }, [isEditing, editorState, closeEditor, handleDelete, submitDetalle, setIsItemEditorOpen, setItemFooter]);
 
   return (
     <div className="relative">
