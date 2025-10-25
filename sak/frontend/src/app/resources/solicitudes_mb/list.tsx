@@ -48,9 +48,10 @@ export const SolicitudMbList = () => (
     filters={filters}
     actions={<ListActions />}
     perPage={25}
-    sort={{ field: "fecha_necesidad", order: "DESC" }}
+    sort={{ field: "id", order: "DESC" }}
   >
     <DataTable rowClick="edit" bulkActionButtons={<SolicitudMbBulkActions />}>
+      <DataTable.Col source="id" label="ID" />
       <DataTable.Col source="tipo" label="Tipo">
         <TextField source="tipo" />
       </DataTable.Col>
