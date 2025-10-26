@@ -12,13 +12,11 @@ import { ReferenceField } from "@/components/reference-field";
 import { SelectInput } from "@/components/select-input";
 import { TextField } from "@/components/text-field";
 import { TextInput } from "@/components/text-input";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { BulkDeleteButton } from "@/components/bulk-delete-button";
 import {
   RecordContextProvider,
   Translate,
@@ -32,10 +30,11 @@ import {
 import { ClipboardList, Pencil } from "lucide-react";
 import { Link } from "react-router";
 
-import { solicitudMbTipoChoices } from "./form";
-import type { SolicitudMbFormValues } from "./types";
+import { BulkDeleteButton } from "@/components/bulk-delete-button";
 
-type SolicitudMbListRecord = SolicitudMbFormValues & RaRecord;
+import { SolicitudFormValues, solicitudTipoChoices, truncateDescripcion } from "../model";
+
+type SolicitudListRecord = SolicitudFormValues & RaRecord;
 
 const filters = [
   <TextInput
@@ -49,12 +48,12 @@ const filters = [
     key="tipo"
     source="tipo"
     label="Tipo"
-    choices={solicitudMbTipoChoices}
+    choices={solicitudTipoChoices}
   />,
 ];
 
 const tipoLabelMap = new Map(
-  solicitudMbTipoChoices.map((choice) => [choice.id, choice.name] as const),
+  solicitudTipoChoices.map((choice) => [choice.id, choice.name] as const),
 );
 
 const ListActions = () => (
@@ -64,9 +63,9 @@ const ListActions = () => (
   </div>
 );
 
-const SolicitudMbBulkActions = () => <BulkDeleteButton />;
+const SolicitudBulkActions = () => <BulkDeleteButton />;
 
-export const SolicitudMbList = () => {
+export const SolicitudList = () => {
   const isMobile = useIsMobile();
 
   return (
@@ -77,17 +76,17 @@ export const SolicitudMbList = () => {
       sort={{ field: "id", order: "DESC" }}
     >
       {isMobile ? (
-        <SolicitudMbMobileCards />
+        <SolicitudMobileCards />
       ) : (
         <DataTable
           rowClick="edit"
-          bulkActionButtons={<SolicitudMbBulkActions />}
+          bulkActionButtons={<SolicitudBulkActions />}
         >
           <DataTable.Col source="id" label="ID" />
           <DataTable.Col source="tipo" label="Tipo">
             <TextField source="tipo" />
           </DataTable.Col>
-          <DataTable.Col source="fecha_necesidad" label="Fecha Necesidad">
+          <DataTable.Col source="fecha_necesidad" label="Fecha necesidad">
             <DateField source="fecha_necesidad" />
           </DataTable.Col>
           <DataTable.Col label="Solicitante">
@@ -107,13 +106,13 @@ export const SolicitudMbList = () => {
   );
 };
 
-const SolicitudMbMobileCards = () => {
+const SolicitudMobileCards = () => {
   const {
     data,
     isLoading,
     selectedIds = [],
     onToggleItem,
-  } = useListContext<SolicitudMbListRecord>();
+  } = useListContext<SolicitudListRecord>();
 
   const hasRecords = (data ?? []).length > 0;
 
@@ -152,7 +151,7 @@ const SolicitudMbMobileCards = () => {
             key={record?.id ?? `solicitud-${index}`}
             value={record}
           >
-            <SolicitudMbCard
+            <SolicitudCard
               isSelected={
                 record?.id != null && selectedIds.includes(record.id)
               }
@@ -162,20 +161,20 @@ const SolicitudMbMobileCards = () => {
         ))}
       </div>
       <BulkActionsToolbar>
-        <SolicitudMbBulkActions />
+        <SolicitudBulkActions />
       </BulkActionsToolbar>
     </>
   );
 };
 
-const SolicitudMbCard = ({
+const SolicitudCard = ({
   isSelected,
   onToggleItem,
 }: {
   isSelected: boolean;
   onToggleItem?: (id: Identifier) => void;
 }) => {
-  const record = useRecordContext<SolicitudMbListRecord>();
+  const record = useRecordContext<SolicitudListRecord>();
   const resource = useResourceContext();
   const createPath = useCreatePath();
 
@@ -187,17 +186,12 @@ const SolicitudMbCard = ({
     return tipoLabelMap.get(tipo) ?? tipo;
   }, [record?.tipo]);
 
-  const comentario = record?.comentario?.trim();
-  const comentarioCompacto = useMemo(() => {
-    if (!comentario || comentario.length === 0) {
-      return "Sin descripcion";
-    }
-    return comentario.length > 35
-      ? `${comentario.substring(0, 35).trimEnd()}...`
-      : comentario;
-  }, [comentario]);
+  const comentario = useMemo(
+    () => truncateDescripcion(record?.comentario ?? null),
+    [record?.comentario],
+  );
 
-  const mostrarSeparador =
+  const showSeparator =
     record?.solicitante_id != null && !!record?.fecha_necesidad;
 
   if (!record) {
@@ -234,9 +228,9 @@ const SolicitudMbCard = ({
                 ID: {record.id ?? "--"}
               </span>
               {record.tipo ? (
-                <Badge variant="secondary" className="shrink-0">
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
                   {tipoLabel}
-                </Badge>
+                </span>
               ) : null}
             </div>
             <Link
@@ -250,24 +244,19 @@ const SolicitudMbCard = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <ReferenceField
-              source="solicitante_id"
-              reference="users"
-              link={false}
-            >
+            <ReferenceField source="solicitante_id" reference="users" link={false}>
               <TextField source="nombre" />
             </ReferenceField>
-            {mostrarSeparador ? <span aria-hidden="true">•</span> : null}
+            {showSeparator ? <span aria-hidden="true">•</span> : null}
             {record?.fecha_necesidad ? (
               <DateField source="fecha_necesidad" />
             ) : null}
           </div>
 
-          <p className="text-sm text-muted-foreground">{comentarioCompacto}</p>
+          <p className="text-sm text-muted-foreground">{comentario}</p>
         </div>
       </div>
     </Card>
   );
 };
-
 
