@@ -11,6 +11,9 @@ import {
 import { Identifier, OptionText, useTranslate } from "ra-core";
 import set from "lodash/set";
 
+const hasIdentifier = (value: unknown): value is { id: Identifier } =>
+  typeof value === "object" && value !== null && "id" in value;
+
 /**
  * This hook provides support for suggestion creation in inputs which have choices.
  *
@@ -43,7 +46,7 @@ export const useSupportCreateSuggestion = <T = unknown,>(
     createHintValue = "@@ra-create-hint",
     optionText = "name",
     filter,
-    handleChange,
+    handleChange: onInputChange,
     onCreate,
   } = options;
 
@@ -74,12 +77,23 @@ export const useSupportCreateSuggestion = <T = unknown,>(
             : createLabel,
       );
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handleChange: async (eventOrValue: MouseEvent | any) => {
-      const value = eventOrValue?.target?.value || eventOrValue;
-      const finalValue = Array.isArray(value) ? [...value].pop() : value;
+    handleChange: async (eventOrValue: unknown) => {
+      const rawValue =
+        typeof eventOrValue === "object" &&
+        eventOrValue !== null &&
+        "target" in eventOrValue
+          ? (eventOrValue as { target?: { value?: unknown } }).target?.value ??
+            eventOrValue
+          : eventOrValue;
+      const finalValue = Array.isArray(rawValue)
+        ? [...rawValue].pop()
+        : rawValue;
 
-      if (finalValue?.id === createValue || finalValue === createValue) {
+      const isCreateValue =
+        (hasIdentifier(finalValue) && finalValue.id === createValue) ||
+        finalValue === createValue;
+
+      if (isCreateValue) {
         if (!isValidElement(create)) {
           if (!onCreate) {
             // this should never happen because the createValue is only added if a create function is provided
@@ -90,7 +104,7 @@ export const useSupportCreateSuggestion = <T = unknown,>(
           }
           const newSuggestion = await onCreate(filter);
           if (newSuggestion) {
-            handleChange(newSuggestion);
+            onInputChange(newSuggestion);
             return;
           }
         } else {
@@ -98,7 +112,7 @@ export const useSupportCreateSuggestion = <T = unknown,>(
           return;
         }
       }
-      handleChange(eventOrValue);
+      onInputChange(eventOrValue as ChangeEvent | T);
     },
     createElement:
       renderOnCreate && isValidElement(create) ? (
@@ -108,7 +122,7 @@ export const useSupportCreateSuggestion = <T = unknown,>(
             onCancel: () => setRenderOnCreate(false),
             onCreate: (item) => {
               setRenderOnCreate(false);
-              handleChange(item as T);
+              onInputChange(item as T);
             },
           }}
         >
@@ -116,8 +130,8 @@ export const useSupportCreateSuggestion = <T = unknown,>(
         </CreateSuggestionContext.Provider>
       ) : null,
     getOptionDisabled: (option) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (option as any)?.id === createHintValue || option === createHintValue,
+      (hasIdentifier(option) && option.id === createHintValue) ||
+      option === createHintValue,
   };
 };
 
@@ -131,8 +145,8 @@ export interface SupportCreateSuggestionOptions<T = unknown> {
   createLabel?: React.ReactNode;
   createItemLabel?: string | ((filter: string) => React.ReactNode);
   filter?: string;
-  handleChange: (value: T) => void;
-  onCreate?: OnCreateHandler;
+  handleChange: (value: T | ChangeEvent) => void | Promise<void>;
+  onCreate?: OnCreateHandler<T>;
   optionText?: OptionText;
 }
 
@@ -142,14 +156,12 @@ export interface SupportCreateSuggestionOptions<T = unknown> {
 export interface UseSupportCreateValue<T = unknown> {
   createId: string;
   createHintId: string;
-  getCreateItem: (filterValue?: string) => {
-    id: Identifier;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-  };
+  getCreateItem: (
+    filterValue?: string,
+  ) => Record<string, unknown> & { id: Identifier };
   handleChange: (eventOrValue: ChangeEvent | T) => Promise<void>;
   createElement: ReactElement | null;
-  getOptionDisabled: (option: T) => boolean;
+  getOptionDisabled: (option: unknown) => boolean;
 }
 
 /**
@@ -184,5 +196,6 @@ export const useCreateSuggestionContext = () => {
 /**
  * @deprecated Use `OnCreateHandler` from "ra-core" when available.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type OnCreateHandler = (filter?: string) => any | Promise<any>;
+export type OnCreateHandler<T = unknown> = (
+  filter?: string,
+) => T | undefined | Promise<T | undefined>;

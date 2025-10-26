@@ -13,6 +13,8 @@ import {
   ComponentProps,
   useCallback,
   useEffect,
+  type ChangeEvent,
+  type MouseEvent,
   type ReactElement,
 } from "react";
 
@@ -145,8 +147,7 @@ export const SelectInput = (props: SelectInputProps) => {
   }, [emptyText, translate]);
 
   const renderMenuItemOption = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (choice: any) => getChoiceText(choice),
+    (choice: unknown) => getChoiceText(choice),
     [getChoiceText],
   );
 
@@ -169,13 +170,15 @@ export const SelectInput = (props: SelectInputProps) => {
     getCreateItem,
     handleChange: handleChangeWithCreateSupport,
     createElement,
-  } = useSupportCreateSuggestion({
+  } = useSupportCreateSuggestion<string>({
     create,
     createLabel,
     createValue,
     createHintValue,
     onCreate,
-    handleChange,
+    handleChange: handleChange as (
+      value: string | ChangeEvent<Element>
+    ) => void | Promise<void>,
     optionText,
   });
 
@@ -212,7 +215,7 @@ export const SelectInput = (props: SelectInputProps) => {
   }
 
   // Handle reset functionality
-  const handleReset = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleReset = (e: MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     field.onChange(emptyValue);
   };
@@ -294,9 +297,8 @@ export const SelectInput = (props: SelectInputProps) => {
 export type SelectInputProps = ChoicesProps &
   // Source is optional as SelectInput can be used inside a ReferenceInput that already defines the source
   Partial<InputProps> &
-  Omit<SupportCreateSuggestionOptions, "handleChange"> & {
+  Omit<SupportCreateSuggestionOptions<string>, "handleChange"> & {
     emptyText?: string | ReactElement;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    emptyValue?: any;
+    emptyValue?: string | number;
     onChange?: (value: string) => void;
   } & Omit<ComponentProps<typeof FormField>, "id" | "name" | "children">;

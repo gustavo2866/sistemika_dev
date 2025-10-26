@@ -64,8 +64,7 @@ export interface ReferenceManyCountProps<
   target: string;
   source?: string;
   sort?: SortPayload;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  filter?: any;
+  filter?: Record<string, unknown>;
   link?: boolean;
   timeout?: number;
 }

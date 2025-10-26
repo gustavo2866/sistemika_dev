@@ -46,7 +46,7 @@ import {
   NotebookPen
 } from "lucide-react";
 
-const CONSTRUCTORA_RESOURCES = ["proyectos", "solicitudes_mb", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
+const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas"] as const;
 const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
@@ -238,7 +238,6 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   articulos: Package,
   facturas: FileText,
   solicitudes: ClipboardList,
-  solicitudes_mb: ClipboardList,
   recepciones: Truck,
   "dashboard-proyectos": BarChart3,
   "orden-compra": ShoppingCart,

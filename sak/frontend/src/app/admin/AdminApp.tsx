@@ -36,11 +36,6 @@ import {
   ProyectoShow,
 } from "@/app/resources/proyectos";
 import {
-  SolicitudMbList,
-  SolicitudMbCreate,
-  SolicitudMbEdit,
-} from "@/app/resources/solicitudes_mb";
-import {
   SolicitudList,
   SolicitudCreate,
   SolicitudEdit,
@@ -166,15 +161,6 @@ const AdminApp = () => {
         recordRepresentation="tipo"
         icon={ClipboardList}
         options={{ label: "Solicitudes" }}
-      />
-      <Resource
-        name="solicitudes_mb"
-        list={SolicitudMbList}
-        create={SolicitudMbCreate}
-        edit={SolicitudMbEdit}
-        recordRepresentation="tipo"
-        icon={ClipboardList}
-        options={{ label: "Solicitudes MB" }}
       />
       <Resource
         name="recepciones"

@@ -3,9 +3,9 @@
 import { useRef, useState, type ReactNode } from "react";
 import { SimpleForm } from "@/components/simple-form";
 import ReactDOM from "react-dom";
-import type { RaRecord } from "ra-core";
 
-import { mapDetalleRecords, type SolicitudFormValues, type SolicitudRecord } from "../model";
+import { buildFormValues } from "@/components/form/helpers/detailHelpers";
+import { SolicitudFormSchema, type SolicitudRecord } from "../model";
 import { SolicitudFormHeader } from "./FormHeader";
 
 export const SolicitudForm = () => {
@@ -13,17 +13,8 @@ export const SolicitudForm = () => {
   const [footerContent, setFooterContent] = useState<ReactNode>(null);
   const footerRef = useRef<HTMLDivElement>(null);
 
-  const defaultValues = (record?: RaRecord) => {
-    const solicitudRecord = record as SolicitudRecord | undefined;
-    return {
-      tipo: solicitudRecord?.tipo ?? "normal",
-      fecha_necesidad: solicitudRecord?.fecha_necesidad ?? "",
-      comentario: solicitudRecord?.comentario ?? "",
-      solicitante_id: solicitudRecord?.solicitante_id ?? undefined,
-      version: solicitudRecord?.version,
-      detalles: mapDetalleRecords(solicitudRecord?.detalles ?? []),
-    } satisfies SolicitudFormValues;
-  };
+  const defaultValues = (record?: SolicitudRecord) =>
+    buildFormValues(SolicitudFormSchema, record);
 
   return (
     <SimpleForm

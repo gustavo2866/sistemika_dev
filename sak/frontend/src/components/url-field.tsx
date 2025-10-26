@@ -6,8 +6,7 @@ import { genericMemo } from "@/lib/genericMemo";
 import { FieldProps } from "@/lib/field.type";
 
 const UrlFieldImpl = <
-  //eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 >(
   inProps: UrlFieldProps<RecordType>,
 ) => {
@@ -51,8 +50,7 @@ UrlFieldImpl.displayName = "UrlFieldImpl";
 export const UrlField = genericMemo(UrlFieldImpl);
 
 export interface UrlFieldProps<
-  //eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RecordType extends Record<string, any> = Record<string, any>,
+  RecordType extends Record<string, unknown> = Record<string, unknown>,
 > extends FieldProps<RecordType>,
     AnchorHTMLAttributes<HTMLAnchorElement> {}
 

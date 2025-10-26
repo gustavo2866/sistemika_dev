@@ -45,7 +45,7 @@ type Choice = RaRecord;
 
 export const AutocompleteInput = (
   props: Omit<InputProps, "source"> &
-    Omit<SupportCreateSuggestionOptions, "handleChange" | "filter"> &
+    Omit<SupportCreateSuggestionOptions<Choice>, "handleChange" | "filter"> &
     Partial<Pick<InputProps, "source">> &
     ChoicesProps & {
       className?: string;
@@ -151,14 +151,16 @@ export const AutocompleteInput = (
     handleChange: handleChangeWithCreateSupport,
     createElement,
     getOptionDisabled,
-  } = useSupportCreateSuggestion({
+  } = useSupportCreateSuggestion<Choice>({
     create,
     createLabel,
     createValue,
     createHintValue,
     createItemLabel,
     onCreate,
-    handleChange,
+    handleChange: handleChange as (
+      value: Choice | React.ChangeEvent<Element>
+    ) => void,
     optionText,
     filter: filterValue,
   });

@@ -21,10 +21,22 @@ const baseProvider = simpleRestProvider(apiUrl, httpClient);
 
 export const dataProvider: DataProvider = {
   ...baseProvider,
+  getList: (resource, params) => baseProvider.getList(resource, params),
+  getOne: (resource, params) => baseProvider.getOne(resource, params),
+  getMany: (resource, params) => baseProvider.getMany(resource, params),
+  getManyReference: (resource, params) =>
+    baseProvider.getManyReference(resource, params),
+  create: (resource, params) => baseProvider.create(resource, params),
+  update: (resource, params) => baseProvider.update(resource, params),
+  updateMany: (resource, params) =>
+    baseProvider.updateMany(resource, params),
+  delete: (resource, params) => baseProvider.delete(resource, params),
   deleteMany: async (resource, params) => {
     const { ids } = params;
     const results = await Promise.allSettled(
-      ids.map((id) => baseProvider.delete(resource, { id }))
+      ids.map((id) =>
+        baseProvider.delete(resource, { id }),
+      ),
     );
     const rejected = results.find((result) => result.status === "rejected");
     if (rejected && rejected.status === "rejected") {

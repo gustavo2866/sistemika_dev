@@ -7,15 +7,26 @@ import { useNotify } from "ra-core";
 import { SolicitudForm } from "./form/Form";
 import {
   getSolicitudErrorMessage,
-  normalizeSolicitudValues,
+  SolicitudFormSchema,
+  type SolicitudPayload,
   type SolicitudFormValues,
 } from "./model";
+import { buildPayload } from "@/components/form/helpers/detailHelpers";
 
 export const SolicitudCreate = () => {
   const notify = useNotify();
 
   const transform = useCallback((values: SolicitudFormValues) => {
-    return normalizeSolicitudValues(values);
+    const payload = buildPayload(
+      SolicitudFormSchema,
+      values as Record<string, unknown>,
+    ) as SolicitudPayload;
+
+    return {
+      ...payload,
+      comentario: payload.comentario ?? null,
+      detalles: Array.isArray(payload.detalles) ? payload.detalles : [],
+    };
   }, []);
 
   const mutationOptions = {
