@@ -16,6 +16,7 @@ import {
   solicitudTipoChoices,
   type SolicitudFormValues,
   type SolicitudRecord,
+  type DetalleEditorValues,
 } from "../model";
 import { SolicitudFormDetails } from "./FormDetails";
 
@@ -72,15 +73,18 @@ export const SolicitudFormHeader = ({
   const [shouldOpenEditor, setShouldOpenEditor] = useState(false);
 
   const handleAccept = useCallback(() => {
-    const currentDetalles = form.getValues("detalles") || [];
+    const rawDetalles = form.getValues("detalles");
+    const currentDetalles = Array.isArray(rawDetalles)
+      ? (rawDetalles as DetalleEditorValues[])
+      : [];
     if (currentDetalles.length === 0) {
       form.setValue("detalles", [
         {
           id: undefined,
-          articulo_id: undefined,
+          articulo_id: "",
           descripcion: "",
           unidad_medida: "",
-          cantidad: 0,
+          cantidad: "0",
         },
       ]);
     }
@@ -136,7 +140,7 @@ export const SolicitudFormHeader = ({
               <SelectInput
                 source="tipo"
                 label="Tipo"
-                choices={solicitudTipoChoices}
+                choices={[...solicitudTipoChoices]}
                 className="w-full"
               />
               <TextInput

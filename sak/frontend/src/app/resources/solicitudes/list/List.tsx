@@ -48,7 +48,7 @@ const filters = [
     key="tipo"
     source="tipo"
     label="Tipo"
-    choices={solicitudTipoChoices}
+    choices={[...solicitudTipoChoices]}
   />,
 ];
 

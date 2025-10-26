@@ -115,8 +115,7 @@ const defaultIcon = <ArrowUpDown className="h-4 w-4" />;
 
 const inverseOrder = (sort: string) => (sort === "ASC" ? "DESC" : "ASC");
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const arePropsEqual = (prevProps: any, nextProps: any) =>
+const arePropsEqual = (prevProps: SortButtonProps, nextProps: SortButtonProps) =>
   shallowEqual(prevProps.fields, nextProps.fields);
 
 export interface SortButtonProps extends ButtonProps {

@@ -4,14 +4,14 @@ import { useContext } from "react";
 export interface FilterElementProps {
   alwaysOn?: boolean;
   context?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  defaultValue?: any;
+  defaultValue?: unknown;
   resource?: string;
   record?: object;
   source: string;
+  disabled?: boolean;
+  label?: React.ReactNode;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any; // Allow any other prop
+  [key: string]: unknown; // Allow any other prop
 }
 
 export type FilterContextType =

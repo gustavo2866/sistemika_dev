@@ -8,8 +8,11 @@ import {
 } from "react";
 import {
   type CreateParams,
+  type OnError,
+  type OnSuccess,
   type RaRecord,
   setSubmissionErrors,
+  type SaveHandlerCallbacks,
   type TransformData,
   type UpdateParams,
   useRecordFromLocation,
@@ -21,13 +24,18 @@ import {
 import { Loader2, Save } from "lucide-react";
 import * as LabelPrimitive from "@radix-ui/react-label";
 import { Slot } from "@radix-ui/react-slot";
-import { FormProvider, useFormContext, useFormState } from "react-hook-form";
+import {
+  FormProvider,
+  useFormContext,
+  useFormState,
+  type FieldValues,
+} from "react-hook-form";
 import type { UseMutationOptions } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-const Form = FormProvider;
+export const Form = FormProvider;
 
 type FormItemContextValue = {
   id: string;
@@ -38,7 +46,7 @@ const FormItemContext = createContext<FormItemContextValue>(
   {} as FormItemContextValue,
 );
 
-const useFormField = () => {
+export const useFormField = () => {
   const { getFieldState, formState } = useFormContext();
   const { id, name } = useContext(FormItemContext);
 
@@ -55,7 +63,7 @@ const useFormField = () => {
   );
 };
 
-function FormField({ className, id, name, ...props }: FormItemProps) {
+export function FormField({ className, id, name, ...props }: FormItemProps) {
   const contextValue: FormItemContextValue = useMemo(
     () => ({
       id,
@@ -81,7 +89,7 @@ type FormItemProps = Omit<React.ComponentProps<"div">, "id"> & {
   name: string;
 };
 
-function FormLabel({
+export function FormLabel({
   className,
   ...props
 }: React.ComponentProps<typeof LabelPrimitive.Root>) {
@@ -98,7 +106,7 @@ function FormLabel({
   );
 }
 
-function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
+export function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
   const { error, formItemId, formDescriptionId, formMessageId } =
     useFormField();
 
@@ -117,7 +125,7 @@ function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
   );
 }
 
-function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
+export function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   const { formDescriptionId } = useFormField();
 
   return (
@@ -130,7 +138,7 @@ function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
-const FormError = ({ className, ...props }: React.ComponentProps<"p">) => {
+export const FormError = ({ className, ...props }: React.ComponentProps<"p">) => {
   const { invalid, error, formMessageId } = useFormField();
 
   const err = error?.root?.message ?? error?.message;
@@ -150,7 +158,7 @@ const FormError = ({ className, ...props }: React.ComponentProps<"p">) => {
   );
 };
 
-const SaveButton = <RecordType extends RaRecord = RaRecord>(
+export const SaveButton = <RecordType extends RaRecord = RaRecord>(
   props: SaveButtonProps<RecordType>,
 ) => {
   const {
@@ -194,14 +202,24 @@ const SaveButton = <RecordType extends RaRecord = RaRecord>(
   );
 
   const handleSubmit = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async (values: any) => {
-      let errors;
+    async (values: FieldValues) => {
+      let errors: unknown;
       if (saveContext?.save) {
-        errors = await saveContext.save(values, {
-          ...mutationOptions,
-          transform,
-        } as any);
+        const callbacks: SaveHandlerCallbacks | undefined = (() => {
+          const config: SaveHandlerCallbacks = {};
+          if (mutationOptions?.onSuccess) {
+            config.onSuccess = mutationOptions.onSuccess as OnSuccess;
+          }
+          if (mutationOptions?.onError) {
+            config.onError = mutationOptions.onError as OnError;
+          }
+          if (transform) {
+            config.transform = transform;
+          }
+          return Object.keys(config).length > 0 ? config : undefined;
+        })();
+
+        errors = await saveContext.save(values as Partial<RecordType>, callbacks);
       }
       if (errors != null) {
         setSubmissionErrors(errors, form.setError);
@@ -279,18 +297,6 @@ export type SaveButtonProps<RecordType extends RaRecord = RaRecord> =
       alwaysEnable?: boolean;
     };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const valueOrDefault = (value: any, defaultValue: any) =>
+const valueOrDefault = <T,>(value: T | undefined, defaultValue: T): T =>
   typeof value === "undefined" ? defaultValue : value;
 
-export {
-  // eslint-disable-next-line react-refresh/only-export-components
-  useFormField,
-  Form,
-  FormField,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormError,
-  SaveButton,
-};

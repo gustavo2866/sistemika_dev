@@ -5,13 +5,14 @@ import { useFieldArray, useForm, useFormContext } from "react-hook-form";
 import { useDataProvider } from "ra-core";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import { DetailEditorFooter } from "@/components/form/detail-editor";
+import { createFormDefaults } from "@/components/form/helpers/detailHelpers";
 
 import {
-  DetalleEditorValues,
-  EditorState,
-  SolicitudFormValues,
-  emptyDetalle,
+  SolicitudDetalleSchema,
+  type DetalleEditorValues,
+  type SolicitudFormValues,
   truncateDescripcion,
 } from "../model";
 import { SolicitudFormDetailsEdit } from "./FormDetailsEdit";
@@ -25,12 +26,21 @@ type SolicitudFormDetailsProps = {
 
 type ArticuloOption = { id: number; nombre: string };
 
+type EditorState =
+  | { mode: "create" }
+  | { mode: "edit"; index: number };
+
 export const SolicitudFormDetails = ({
   shouldOpenEditor,
   onEditorOpened,
   setIsDetailEditorOpen,
   setFooterContent,
 }: SolicitudFormDetailsProps) => {
+  const buildEmptyDetalle = useCallback(
+    () => createFormDefaults(SolicitudDetalleSchema) as DetalleEditorValues,
+    [],
+  );
+
   const parentForm = useFormContext<SolicitudFormValues>();
   const dataProvider = useDataProvider();
   const { append, update, remove } = useFieldArray({
@@ -38,9 +48,12 @@ export const SolicitudFormDetails = ({
     name: "detalles",
   });
   const detalles = parentForm.watch("detalles") ?? [];
+  const detallesActuales = Array.isArray(detalles)
+    ? (detalles as DetalleEditorValues[])
+    : [];
 
   const detalleForm = useForm<DetalleEditorValues>({
-    defaultValues: emptyDetalle,
+    defaultValues: buildEmptyDetalle(),
   });
 
   const [articulos, setArticulos] = useState<ArticuloOption[]>([]);
@@ -81,9 +94,9 @@ export const SolicitudFormDetails = ({
   const [editorState, setEditorState] = useState<EditorState | null>(null);
 
   const openCreate = useCallback(() => {
-    detalleForm.reset(emptyDetalle);
+    detalleForm.reset(buildEmptyDetalle());
     setEditorState({ mode: "create" });
-  }, [detalleForm]);
+  }, [buildEmptyDetalle, detalleForm]);
 
   useEffect(() => {
     if (shouldOpenEditor) {
@@ -93,43 +106,30 @@ export const SolicitudFormDetails = ({
   }, [shouldOpenEditor, openCreate, onEditorOpened]);
 
   const openEdit = (index: number) => {
-    const current = detalles[index];
+    const current = detallesActuales[index];
     detalleForm.reset({
-      articulo_id: current?.articulo_id != null ? String(current.articulo_id) : "",
+      id: current?.id ?? "",
+      articulo_id: current?.articulo_id ?? "",
       descripcion: current?.descripcion ?? "",
       unidad_medida: current?.unidad_medida ?? "",
-      cantidad:
-        typeof current?.cantidad === "number"
-          ? String(current.cantidad)
-          : current?.cantidad != null
-            ? String(current.cantidad)
-            : "",
+      cantidad: current?.cantidad ?? "",
     });
-    setEditorState({ mode: "edit", index, existingId: current?.id });
+    setEditorState({ mode: "edit", index });
   };
 
   const closeEditor = useCallback(() => {
     setEditorState(null);
-    detalleForm.reset(emptyDetalle);
-  }, [detalleForm]);
+    detalleForm.reset(buildEmptyDetalle());
+  }, [buildEmptyDetalle, detalleForm]);
 
   const handleDetalleSubmit = useCallback(
     (values: DetalleEditorValues) => {
-      const payload = {
-        id:
-          editorState && "existingId" in editorState
-            ? editorState.existingId
-            : undefined,
-        articulo_id:
-          values.articulo_id && values.articulo_id.trim().length > 0
-            ? Number(values.articulo_id)
-            : null,
+      const payload: DetalleEditorValues = {
+        id: values.id?.trim() ?? "",
+        articulo_id: values.articulo_id.trim(),
         descripcion: values.descripcion.trim(),
-        unidad_medida: values.unidad_medida.trim() || null,
-        cantidad:
-          values.cantidad && values.cantidad.trim().length > 0
-            ? Number(values.cantidad)
-            : 0,
+        unidad_medida: values.unidad_medida.trim(),
+        cantidad: values.cantidad.trim() || "0",
       };
 
       const wasCreateMode = editorState?.mode === "create";
@@ -167,26 +167,32 @@ export const SolicitudFormDetails = ({
 
   const detailCards = (
     <div className="max-h-[460px] overflow-y-auto space-y-3 pr-1">
-      {detalles.length === 0 ? (
+      {detallesActuales.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Aun no se agregaron articulos.
         </p>
       ) : (
-        detalles.map((detalle, index) => {
-          const nombre =
-            (detalle?.articulo_id != null &&
-              articulosMap.get(
-                typeof detalle.articulo_id === "number"
-                  ? detalle.articulo_id
-                  : Number(detalle.articulo_id),
-              )) ||
-            detalle?.descripcion ||
-            `Detalle ${index + 1}`;
+        detallesActuales.map((detalle, index) => {
+          const articuloIdCrudo = detalle?.articulo_id;
+          const articuloIdTexto =
+            typeof articuloIdCrudo === "string"
+              ? articuloIdCrudo.trim()
+              : articuloIdCrudo != null
+                ? String(articuloIdCrudo).trim()
+                : "";
+          const articuloNombre =
+            articuloIdTexto.length > 0 ? articulosMap.get(Number(articuloIdTexto)) : undefined;
+
+          const nombre = articuloNombre || detalle?.descripcion || `Detalle ${index + 1}`;
 
           return (
             <button
               type="button"
-              key={detalle.id ?? `detalle-${index}`}
+              key={
+                detalle.id && detalle.id.length > 0
+                  ? `detalle-${detalle.id}`
+                  : `detalle-${index}`
+              }
               onClick={() => openEdit(index)}
               className="w-full rounded-lg border bg-card px-4 py-3 shadow-sm transition hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary flex items-center justify-between gap-3"
             >
@@ -213,44 +219,14 @@ export const SolicitudFormDetails = ({
     if (isEditing) {
       setIsDetailEditorOpen?.(true);
       if (setFooterContent) {
-        const footer = (
-          <div className="flex justify-between pt-4">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={closeEditor}
-              className="gap-2 px-6"
-              tabIndex={-1}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Button>
-            <div className="flex gap-2">
-              {editorState?.mode === "edit" && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDelete}
-                  className="text-destructive gap-2"
-                  tabIndex={-1}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Eliminar
-                </Button>
-              )}
-              <Button
-                type="button"
-                onClick={submitDetalle}
-                className="gap-2 px-6"
-              >
-                <Save className="h-4 w-4" />
-                Aceptar
-              </Button>
-            </div>
-          </div>
+        setFooterContent(
+          <DetailEditorFooter
+            onClose={closeEditor}
+            onSubmit={submitDetalle}
+            onDelete={editorState?.mode === "edit" ? handleDelete : undefined}
+            showDelete={editorState?.mode === "edit"}
+          />,
         );
-        setFooterContent(footer);
       }
     } else {
       setIsDetailEditorOpen?.(false);
