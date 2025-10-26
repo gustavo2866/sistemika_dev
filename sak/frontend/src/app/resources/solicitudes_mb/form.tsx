@@ -25,13 +25,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ArrowLeft, ChevronDown, Plus, Save, Trash2 } from "lucide-react";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronsUpDown,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import ReactDOM from "react-dom";
 
@@ -87,6 +100,7 @@ export const SolicitudMbForm = () => {
       toolbar={isItemEditorOpen ? null : undefined}
     >
       <SolicitudMbFormFields
+        isItemEditorOpen={isItemEditorOpen}
         setIsItemEditorOpen={setIsItemEditorOpen}
         setItemFooter={setItemFooter}
         footerRef={footerRef}
@@ -101,12 +115,13 @@ export const SolicitudMbForm = () => {
 
 
 interface SolicitudMbFormFieldsProps {
+  isItemEditorOpen: boolean;
   setIsItemEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setItemFooter: React.Dispatch<React.SetStateAction<React.ReactNode>>;
   footerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const SolicitudMbFormFields = ({ setIsItemEditorOpen, setItemFooter, footerRef: _footerRef }: SolicitudMbFormFieldsProps) => {
+const SolicitudMbFormFields = ({ isItemEditorOpen, setIsItemEditorOpen, setItemFooter, footerRef: _footerRef }: SolicitudMbFormFieldsProps) => {
   const router = useRouter();
   const record = useRecordContext<SolicitudMbRecord>();
   const { data: identity } = useGetIdentity();
@@ -183,8 +198,10 @@ const SolicitudMbFormFields = ({ setIsItemEditorOpen, setItemFooter, footerRef: 
     }
   }, [form.formState.isSubmitSuccessful, router]);
 
+  const containerPadding = isItemEditorOpen ? "pb-12" : "pb-36";
+
   return (
-    <div className="space-y-6 pb-36">
+    <div className={`space-y-6 ${containerPadding}`}>
       <Card className="overflow-hidden">
         <div className="p-4 bg-muted/30 border-b">
           <div className="flex items-center justify-between gap-4">
@@ -300,6 +317,7 @@ const SolicitudMbDetalles = ({
   });
 
   const [articulos, setArticulos] = useState<Array<{ id: number; nombre: string }>>([]);
+  const [isArticuloPickerOpen, setIsArticuloPickerOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -344,6 +362,7 @@ const SolicitudMbDetalles = ({
       cantidad: "",
     });
     setEditorState({ mode: "create" });
+    setIsArticuloPickerOpen(false);
   }, [detalleForm]);
 
   // Efecto para abrir el editor cuando se activa desde el botón Aceptar
@@ -368,11 +387,13 @@ const SolicitudMbDetalles = ({
             : "",
     });
     setEditorState({ mode: "edit", index, existingId: current?.id });
+    setIsArticuloPickerOpen(false);
   };
 
   const closeEditor = useCallback(() => {
     setEditorState(null);
     detalleForm.reset(emptyDetalle);
+    setIsArticuloPickerOpen(false);
   }, [detalleForm]);
 
   const handleDetalleSubmit = useCallback(
@@ -428,12 +449,9 @@ const SolicitudMbDetalles = ({
   }, [editorState, remove, closeEditor]);
 
   const isEditing = editorState !== null;
-  const shouldRenderInlineActions = !(
-    isEditing && typeof setItemFooter === "function"
-  );
 
   const detailCards = (
-    <div className="max-h-[340px] overflow-y-auto space-y-3 pr-1">
+    <div className="max-h-[460px] overflow-y-auto space-y-3 pr-1">
       {detalles.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Aun no se agregaron articulos.
@@ -473,51 +491,89 @@ const SolicitudMbDetalles = ({
 
   const detailEditor = editorState ? (
     <div className="rounded-lg border bg-card p-4 shadow-sm space-y-4">
-      {editorState.mode === "edit" && shouldRenderInlineActions ? (
-        <div className="flex items-center justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleDelete}
-            className="text-destructive gap-2"
-          >
-            <Trash2 className="h-4 w-4" />
-            Eliminar
-          </Button>
-        </div>
-      ) : null}
-
-      <div className="max-h-[340px] overflow-y-auto space-y-4 pr-1">
+      <div className="max-h-[460px] overflow-y-auto space-y-4 pr-1">
         {/* Campos principales - responsive */}
         <div className="space-y-4">
           {/* Artículo - siempre en fila completa */}
           <Controller
             control={detalleForm.control}
             name="articulo_id"
-            render={({ field }) => (
-              <div className="space-y-2">
-                <Label htmlFor="articulo_id">Articulo</Label>
-                <Select
-                  value={field.value && field.value.length > 0 ? field.value : "__none__"}
-                  onValueChange={(value) =>
-                    field.onChange(value === "__none__" ? "" : value)
-                  }
-                >
-                  <SelectTrigger className="w-full md:max-w-[50ch]">
-                    <SelectValue placeholder="Seleccionar articulo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sin seleccionar</SelectItem>
-                    {articulos.map((articulo) => (
-                      <SelectItem key={articulo.id} value={String(articulo.id)}>
-                        {articulo.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            render={({ field }) => {
+              const selectedName =
+                field.value && field.value.length > 0
+                  ? articulosMap.get(Number(field.value)) ?? ""
+                  : "";
+
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="articulo_id">Articulo</Label>
+                  <Popover
+                    open={isArticuloPickerOpen}
+                    onOpenChange={setIsArticuloPickerOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={isArticuloPickerOpen}
+                        id="articulo_id"
+                        className="w-full md:max-w-[50ch] justify-between"
+                      >
+                        <span className="truncate">
+                          {selectedName || "Seleccionar articulo"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+                      <Command>
+                        <CommandInput placeholder="Buscar articulo..." />
+                        <CommandEmpty>No se encontraron articulos.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="sin seleccionar"
+                            onSelect={() => {
+                              field.onChange("");
+                              setIsArticuloPickerOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                !field.value ? "opacity-100" : "opacity-0"
+                              }`}
+                            />
+                            Sin seleccionar
+                          </CommandItem>
+                          {articulos.map((articulo) => {
+                            const value = String(articulo.id);
+                            const isSelected = field.value === value;
+
+                            return (
+                              <CommandItem
+                                key={articulo.id}
+                                value={`${articulo.nombre} ${articulo.id}`}
+                                onSelect={() => {
+                                  field.onChange(value);
+                                  setIsArticuloPickerOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${
+                                    isSelected ? "opacity-100" : "opacity-0"
+                                  }`}
+                                />
+                                {articulo.nombre}
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              );
+            }}
           />
           
           {/* Unidad de Medida y Cantidad - responsive */}
@@ -553,29 +609,6 @@ const SolicitudMbDetalles = ({
           required
         />
 
-        {/* Botones al final del formulario */}
-        {shouldRenderInlineActions ? (
-          <div className="flex justify-between pt-4">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={closeEditor}
-              className="gap-2 px-6"
-              tabIndex={-1}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Button>
-            <Button
-              type="button"
-              onClick={submitDetalle}
-              className="gap-2 px-6"
-            >
-              <Save className="h-4 w-4" />
-              Aceptar
-            </Button>
-          </div>
-        ) : null}
       </div>
     </div>
   ) : null;
@@ -591,6 +624,7 @@ const SolicitudMbDetalles = ({
               variant="ghost"
               onClick={closeEditor}
               className="gap-2 px-6"
+              tabIndex={-1}
             >
               <ArrowLeft className="h-4 w-4" />
               Volver
@@ -603,6 +637,7 @@ const SolicitudMbDetalles = ({
                   size="sm"
                   onClick={handleDelete}
                   className="text-destructive gap-2"
+                  tabIndex={-1}
                 >
                   <Trash2 className="h-4 w-4" />
                   Eliminar
