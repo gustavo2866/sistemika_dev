@@ -1,14 +1,15 @@
-﻿"use client";
+"use client";
 
 import { useCallback } from "react";
 import { Create } from "@/components/create";
 import { useNotify } from "ra-core";
 
-import { SolicitudForm, type SolicitudFormValues } from "./form";
+import { SolicitudForm } from "./form/Form";
 import {
-  getErrorMessage,
+  getSolicitudErrorMessage,
   normalizeSolicitudValues,
-} from "./helpers";
+  type SolicitudFormValues,
+} from "./model";
 
 export const SolicitudCreate = () => {
   const notify = useNotify();
@@ -22,7 +23,7 @@ export const SolicitudCreate = () => {
       notify("Solicitud creada correctamente", { type: "success" });
     },
     onError: (error: unknown) => {
-      notify(getErrorMessage(error, "No se pudo guardar la solicitud"), {
+      notify(getSolicitudErrorMessage(error, "No se pudo guardar la solicitud"), {
         type: "error",
       });
     },

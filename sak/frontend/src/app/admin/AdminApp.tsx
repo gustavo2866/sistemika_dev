@@ -40,6 +40,11 @@ import {
   SolicitudMbCreate,
   SolicitudMbEdit,
 } from "@/app/resources/solicitudes_mb";
+import {
+  SolicitudList,
+  SolicitudCreate,
+  SolicitudEdit,
+} from "@/app/resources/solicitudes";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
@@ -155,6 +160,15 @@ const AdminApp = () => {
       />
       <Resource
         name="solicitudes"
+        list={SolicitudList}
+        create={SolicitudCreate}
+        edit={SolicitudEdit}
+        recordRepresentation="tipo"
+        icon={ClipboardList}
+        options={{ label: "Solicitudes" }}
+      />
+      <Resource
+        name="solicitudes_mb"
         list={SolicitudMbList}
         create={SolicitudMbCreate}
         edit={SolicitudMbEdit}
