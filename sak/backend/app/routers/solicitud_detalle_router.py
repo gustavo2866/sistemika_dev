@@ -4,6 +4,7 @@ from app.core.router import create_generic_router
 
 solicitud_detalle_crud = GenericCRUD(SolicitudDetalle)
 
+# comentario 12
 solicitud_detalle_router = create_generic_router(
     model=SolicitudDetalle,
     crud=solicitud_detalle_crud,

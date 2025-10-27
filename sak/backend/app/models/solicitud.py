@@ -11,7 +11,7 @@ from .user import User
 if TYPE_CHECKING:
     from .solicitud_detalle import SolicitudDetalle
 
-
+# comentario
 class TipoSolicitud(str, Enum):
     NORMAL = "normal"
     DIRECTA = "directa"

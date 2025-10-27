@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .articulo import Articulo
     from .solicitud import Solicitud
 
-
+# comentario
 class SolicitudDetalle(Base, table=True):
     """Items asociados a una solicitud"""
 
