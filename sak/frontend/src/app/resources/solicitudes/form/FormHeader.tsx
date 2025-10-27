@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { required, useGetIdentity, useRecordContext } from "ra-core";
 import { Card } from "@/components/ui/card";
@@ -19,17 +26,22 @@ import {
   type DetalleEditorValues,
 } from "../model";
 import { SolicitudFormDetails } from "./FormDetails";
+import type {
+  EnterNavigationPropGetter,
+} from "@/components/form/use-enter-navigation";
 
 type SolicitudFormHeaderProps = {
   setIsDetailEditorOpen: (open: boolean) => void;
   setFooterContent: (node: ReactNode) => void;
   footerRef: RefObject<HTMLDivElement | null>;
+  getEnterNavigationProps: EnterNavigationPropGetter;
 };
 
 export const SolicitudFormHeader = ({
   setIsDetailEditorOpen,
   setFooterContent,
   footerRef: _footerRef,
+  getEnterNavigationProps,
 }: SolicitudFormHeaderProps) => {
   const router = useRouter();
   const record = useRecordContext<SolicitudRecord>();
@@ -142,6 +154,7 @@ export const SolicitudFormHeader = ({
                 label="Tipo"
                 choices={[...solicitudTipoChoices]}
                 className="w-full"
+                triggerProps={getEnterNavigationProps()}
               />
               <TextInput
                 source="fecha_necesidad"
@@ -149,6 +162,7 @@ export const SolicitudFormHeader = ({
                 type="date"
                 validate={required()}
                 className="w-full"
+                {...getEnterNavigationProps()}
               />
             </div>
             <ReferenceInput
@@ -156,7 +170,12 @@ export const SolicitudFormHeader = ({
               reference="users"
               label="Solicitante"
             >
-              <SelectInput optionText="nombre" className="w-full" validate={required()} />
+              <SelectInput
+                optionText="nombre"
+                className="w-full"
+                validate={required()}
+                triggerProps={getEnterNavigationProps()}
+              />
             </ReferenceInput>
             <TextInput
               source="comentario"
@@ -164,6 +183,7 @@ export const SolicitudFormHeader = ({
               multiline
               rows={3}
               className="w-full"
+              {...getEnterNavigationProps("submit")}
             />
 
             {isCreateMode && (

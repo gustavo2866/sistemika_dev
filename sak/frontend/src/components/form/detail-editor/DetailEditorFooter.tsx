@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type DetailEditorFooterProps = {
   onClose: () => void;
@@ -11,6 +12,7 @@ type DetailEditorFooterProps = {
   submitLabel?: string;
   deleteLabel?: string;
   showDelete?: boolean;
+  showClose?: boolean;
 };
 
 export const DetailEditorFooter = ({
@@ -21,19 +23,27 @@ export const DetailEditorFooter = ({
   submitLabel = "Aceptar",
   deleteLabel = "Eliminar",
   showDelete = true,
+  showClose = true,
 }: DetailEditorFooterProps) => {
   return (
-    <div className="flex justify-between pt-4">
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={onClose}
-        className="gap-2 px-6"
-        tabIndex={-1}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        {closeLabel}
-      </Button>
+    <div
+      className={cn(
+        "flex pt-4",
+        showClose ? "justify-between" : "justify-end",
+      )}
+    >
+      {showClose ? (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onClose}
+          className="gap-2 px-6"
+          tabIndex={-1}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {closeLabel}
+        </Button>
+      ) : null}
       <div className="flex gap-2">
         {showDelete && onDelete ? (
           <Button

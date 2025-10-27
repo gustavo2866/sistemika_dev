@@ -27,12 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { ComponentPropsWithoutRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   SupportCreateSuggestionOptions,
   useSupportCreateSuggestion,
 } from "@/hooks/useSupportCreateSuggestion";
 import { cn } from "@/lib/utils";
+
+type SelectTriggerProps = ComponentPropsWithoutRef<typeof SelectTrigger>;
 
 export const SelectInput = (props: SelectInputProps) => {
   const {
@@ -70,6 +73,7 @@ export const SelectInput = (props: SelectInputProps) => {
     create,
     createLabel,
     onCreate,
+    triggerProps,
 
     ...rest
   } = props;
@@ -249,8 +253,12 @@ export const SelectInput = (props: SelectInputProps) => {
             onValueChange={handleChangeWithCreateSupport}
           >
             <SelectTrigger
-              className={cn("w-full transition-all hover:bg-accent")}
-              disabled={field.disabled}
+              {...triggerProps}
+              className={cn(
+                "w-full transition-all hover:bg-accent",
+                triggerProps?.className,
+              )}
+              disabled={triggerProps?.disabled ?? field.disabled}
             >
               <SelectValue placeholder={renderEmptyItemOption()} />
 
@@ -301,4 +309,5 @@ export type SelectInputProps = ChoicesProps &
     emptyText?: string | ReactElement;
     emptyValue?: string | number;
     onChange?: (value: string) => void;
+    triggerProps?: SelectTriggerProps;
   } & Omit<ComponentProps<typeof FormField>, "id" | "name" | "children">;
