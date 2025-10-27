@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Controller, type Control, type UseFormReturn } from "react-hook-form";
-import { ArrowLeft, Pencil, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -46,11 +46,19 @@ export const SolicitudFormDetailsEdit = ({
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Pencil className="size-4" />
-          {isEditMode ? "Editar detalle" : "Nuevo detalle"}
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="gap-2 px-3"
+          tabIndex={-1}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </Button>
+        <div className="flex-1" />
         {isEditMode && onDelete ? (
           <Button
             type="button"
@@ -174,17 +182,7 @@ export const SolicitudFormDetailsEdit = ({
       </div>
 
       {showInlineActions ? (
-        <div className="flex justify-between pt-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-            className="gap-2 px-6"
-            tabIndex={-1}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Button>
+        <div className="flex justify-end pt-2">
           <Button type="button" onClick={onSubmit} className="gap-2 px-6">
             <Save className="h-4 w-4" />
             Aceptar

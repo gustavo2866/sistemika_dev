@@ -224,7 +224,8 @@ export const SolicitudFormDetails = ({
             onClose={closeEditor}
             onSubmit={submitDetalle}
             onDelete={editorState?.mode === "edit" ? handleDelete : undefined}
-            showDelete={editorState?.mode === "edit"}
+            showDelete={false}
+            showClose={false}
           />,
         );
       }
