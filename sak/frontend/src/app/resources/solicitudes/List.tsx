@@ -29,7 +29,7 @@ import { Link } from "react-router";
 import { BulkDeleteButton } from "@/components/bulk-delete-button";
 import { Button } from "@/components/ui/button";
 
-import { SolicitudFormValues, solicitudTipoChoices, truncateDescripcion } from "../model";
+import { SolicitudFormValues, solicitudTipoChoices, truncateDescripcion } from "./model";
 
 type SolicitudListRecord = SolicitudFormValues & RaRecord;
 
