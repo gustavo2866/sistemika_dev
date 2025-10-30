@@ -2,7 +2,8 @@
 
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
-import { Resource } from "ra-core";
+import { Resource, CustomRoutes } from "ra-core";
+import { Route } from "react-router-dom";
 import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -37,8 +38,8 @@ import {
 } from "@/app/resources/proyectos";
 import {
   SolicitudList,
-  SolicitudCreate,
-  SolicitudEdit,
+  SolicitudCreateMB,
+  SolicitudEditMB,
 } from "@/app/resources/solicitudes";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
@@ -156,8 +157,6 @@ const AdminApp = () => {
       <Resource
         name="solicitudes"
         list={SolicitudList}
-        create={SolicitudCreate}
-        edit={SolicitudEdit}
         recordRepresentation="tipo"
         icon={ClipboardList}
         options={{ label: "Solicitudes" }}
@@ -210,6 +209,10 @@ const AdminApp = () => {
         icon={Wallet}
         options={{ label: "Nómina" }}
       />
+      <CustomRoutes>
+        <Route path="/solicitudes/create-mb" element={<SolicitudCreateMB />} />
+        <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEditMB />} />
+      </CustomRoutes>
     </Admin>
   );
 };
