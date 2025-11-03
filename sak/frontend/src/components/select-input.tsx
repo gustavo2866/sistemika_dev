@@ -249,7 +249,7 @@ export const SelectInput = (props: SelectInputProps) => {
             // was called with an empty string when the controlled value was changed.
             // See: https://github.com/radix-ui/primitives/issues/3135#issuecomment-2916908248
             key={`select:${field.value?.toString() ?? emptyValue}`}
-            value={field.value?.toString() || emptyValue}
+            value={field.value?.toString() ?? emptyValue}
             onValueChange={handleChangeWithCreateSupport}
           >
             <SelectTrigger
@@ -281,7 +281,7 @@ export const SelectInput = (props: SelectInputProps) => {
                 return (
                   <SelectItem
                     key={value}
-                    value={value?.toString()}
+                    value={value?.toString() ?? ""}
                     disabled={isDisabled}
                   >
                     {renderMenuItemOption(

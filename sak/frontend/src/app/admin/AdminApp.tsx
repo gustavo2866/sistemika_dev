@@ -38,8 +38,8 @@ import {
 } from "@/app/resources/proyectos";
 import {
   SolicitudList,
-  SolicitudCreateMB,
-  SolicitudEditMB,
+  SolicitudCreate,
+  SolicitudEdit,
 } from "@/app/resources/solicitudes";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
@@ -157,6 +157,8 @@ const AdminApp = () => {
       <Resource
         name="solicitudes"
         list={SolicitudList}
+        create={SolicitudCreate}
+        edit={SolicitudEdit}
         recordRepresentation="tipo"
         icon={ClipboardList}
         options={{ label: "Solicitudes" }}
@@ -210,8 +212,8 @@ const AdminApp = () => {
         options={{ label: "Nómina" }}
       />
       <CustomRoutes>
-        <Route path="/solicitudes/create-mb" element={<SolicitudCreateMB />} />
-        <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEditMB />} />
+        <Route path="/solicitudes/create-mb" element={<SolicitudCreate />} />
+        <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
       </CustomRoutes>
     </Admin>
   );

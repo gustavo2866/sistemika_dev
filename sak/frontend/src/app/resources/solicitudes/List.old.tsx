@@ -29,7 +29,8 @@ import { Link } from "react-router";
 import { BulkDeleteButton } from "@/components/bulk-delete-button";
 import { Button } from "@/components/ui/button";
 
-import { SolicitudFormValues, solicitudTipoChoices, truncateDescripcion } from "../model";
+import { SolicitudFormValues, solicitudTipoChoices } from "./types";
+import { truncateString } from "@/components/form/utils";
 
 type SolicitudListRecord = SolicitudFormValues & RaRecord;
 
@@ -202,7 +203,7 @@ const SolicitudCard = ({
   }, [record?.tipo]);
 
   const comentario = useMemo(
-    () => truncateDescripcion(record?.comentario ?? null),
+    () => truncateString(record?.comentario ?? "Sin descripción", 100),
     [record?.comentario],
   );
 

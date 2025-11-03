@@ -35,6 +35,7 @@ import { ArrowDownAZ, ArrowUpZA } from "lucide-react";
 import get from "lodash/get";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -60,8 +61,115 @@ import {
   BulkActionsToolbar,
   BulkActionsToolbarChildren,
 } from "@/components/bulk-actions-toolbar";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type { MobileConfig } from "@/components/list/GenericList/types";
 
 const defaultBulkActionButtons = <BulkActionsToolbarChildren />;
+
+const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
+  children,
+  rowClassName,
+}: {
+  children: ReactNode;
+  mobileConfig?: MobileConfig;
+  rowClassName?: (record: RecordType) => string | undefined;
+}) => {
+  const data = useDataTableDataContext();
+  const { rowClick, handleToggleItem } = useDataTableCallbacksContext();
+  const selectedIds = useDataTableSelectedIdsContext();
+  const { hasBulkActions = false } = useDataTableConfigContext();
+  const resource = useResourceContext();
+  const navigate = useNavigate();
+  const getPathForRecord = useGetPathForRecordCallback();
+
+  if (!data || data.length === 0) {
+    return <DataTableEmpty />;
+  }
+
+  return (
+    <div className="space-y-3 p-4">
+      {data.map((record, rowIndex) => {
+        const handleToggle = (_checked: boolean | string) => {
+          if (!handleToggleItem) return;
+          // Create a synthetic event for compatibility
+          const syntheticEvent = {
+            stopPropagation: () => {},
+          } as React.MouseEvent;
+          handleToggleItem(record.id, syntheticEvent);
+        };
+
+        const handleClick = async () => {
+          if (!resource) return;
+          
+          const temporaryLink =
+            typeof rowClick === "function"
+              ? rowClick(record.id, resource, record)
+              : rowClick;
+
+          const link = isPromise(temporaryLink) ? await temporaryLink : temporaryLink;
+
+          const path = await getPathForRecord({
+            record,
+            resource,
+            link,
+          });
+          if (path === false || path == null) {
+            return;
+          }
+          navigate(path, {
+            state: { _scrollToTop: true },
+          });
+        };
+
+        const isSelected = record?.id != null && selectedIds?.includes(record.id);
+
+        return (
+          <RecordContextProvider
+            value={record}
+            key={record.id ?? `row${rowIndex}`}
+          >
+            <Card
+              className={cn(
+                "transition-shadow",
+                isSelected && "border-primary/70 shadow-sm shadow-primary/20",
+                rowClick !== false && "cursor-pointer hover:shadow-md",
+                rowClassName?.(record)
+              )}
+              onClick={handleClick}
+            >
+              <div className="flex items-start gap-3 p-4">
+                {hasBulkActions && (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={handleToggle}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1"
+                    aria-label="Seleccionar registro"
+                  />
+                )}
+
+                <div className="flex-1 min-w-0">
+                  <div className="space-y-1">
+                    {Children.toArray(children).map((child, index) => {
+                      if (!isValidElement(child)) return null;
+                      // Extract the column info to render without table elements
+                      const columnProps = child.props as DataTableColumnProps<RecordType>;
+                      return (
+                        <RecordContextProvider value={record} key={index}>
+                          <DataTableMobileCell {...columnProps} />
+                        </RecordContextProvider>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </RecordContextProvider>
+        );
+      })}
+    </div>
+  );
+};
 
 export function DataTable<RecordType extends RaRecord = RaRecord>(
   props: DataTableProps<RecordType>
@@ -72,8 +180,10 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
     rowClassName,
     bulkActionButtons = defaultBulkActionButtons,
     bulkActionsToolbar,
+    mobileConfig,
     ...rest
   } = props;
+  const isMobile = useIsMobile();
   const hasBulkActions = !!bulkActionsToolbar || bulkActionButtons !== false;
   const resourceFromContext = useResourceContext(props);
   const storeKey = props.storeKey || `${resourceFromContext}.datatable`;
@@ -89,16 +199,25 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
       empty={<DataTableEmpty />}
       {...rest}
     >
-      <div className={cn("rounded-md border", className)}>
-        <Table>
-          <DataTableRenderContext.Provider value="header">
-            <DataTableHead>{columns}</DataTableHead>
-          </DataTableRenderContext.Provider>
-          <DataTableBody<RecordType> rowClassName={rowClassName}>
-            {columns}
-          </DataTableBody>
-        </Table>
-      </div>
+      {isMobile ? (
+        <DataTableMobileView<RecordType> 
+          mobileConfig={mobileConfig}
+          rowClassName={rowClassName}
+        >
+          {columns}
+        </DataTableMobileView>
+      ) : (
+        <div className={cn("rounded-md border", className)}>
+          <Table>
+            <DataTableRenderContext.Provider value="header">
+              <DataTableHead>{columns}</DataTableHead>
+            </DataTableRenderContext.Provider>
+            <DataTableBody<RecordType> rowClassName={rowClassName}>
+              {columns}
+            </DataTableBody>
+          </Table>
+        </div>
+      )}
       {bulkActionsToolbar ??
         (bulkActionButtons !== false && (
           <BulkActionsToolbar>
@@ -278,6 +397,7 @@ export interface DataTableProps<RecordType extends RaRecord = RaRecord>
   rowClassName?: (record: RecordType) => string | undefined;
   bulkActionButtons?: ReactNode;
   bulkActionsToolbar?: ReactNode;
+  mobileConfig?: MobileConfig;
 }
 
 export function DataTableColumn<
@@ -446,6 +566,55 @@ function DataTableCell<
           ? createElement(field, { source })
           : get(record, source!))}
     </TableCell>
+  );
+}
+
+function DataTableMobileCell<
+  RecordType extends RaRecord<Identifier> = RaRecord<Identifier>
+>(props: DataTableColumnProps<RecordType>) {
+  const {
+    children,
+    render,
+    field,
+    source,
+    className,
+    cellClassName,
+    conditionalClassName,
+    label,
+  } = props;
+
+  const { storeKey, defaultHiddenColumns } = useDataTableStoreContext();
+  const [hiddenColumns] = useStore<string[]>(storeKey, defaultHiddenColumns);
+  const record = useRecordContext<RecordType>();
+  const isColumnHidden = hiddenColumns.includes(source!);
+  if (isColumnHidden) return null;
+  if (!render && !field && !children && !source) {
+    return null;
+  }
+
+  const content = children ??
+    (render
+      ? record && render(record)
+      : field
+      ? createElement(field, { source })
+      : get(record, source!));
+
+  return (
+    <div
+      className={cn(
+        "text-sm",
+        className,
+        cellClassName,
+        record && conditionalClassName?.(record)
+      )}
+    >
+      {label && (
+        <span className="font-medium text-muted-foreground mr-2">
+          {label}:
+        </span>
+      )}
+      {content}
+    </div>
   );
 }
 
