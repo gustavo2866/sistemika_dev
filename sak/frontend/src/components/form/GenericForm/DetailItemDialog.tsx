@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ export function DetailItemDialog<TDetail = any>({
     }
 
     onSave(currentItem);
+    onClose();
   };
 
   return (
@@ -76,13 +78,20 @@ export function DetailItemDialog<TDetail = any>({
           <DialogTitle>
             {isEdit ? "Editar Artículo" : "Agregar Artículo"}
           </DialogTitle>
+          <DialogDescription>
+            {isEdit ? "Modifica los detalles del artículo" : "Completa la información del nuevo artículo"}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {config.fields.map((fieldConfig) => (
+          {config.fields.map((fieldConfig, index) => (
             <FormField
               key={String(fieldConfig.name)}
-              config={fieldConfig}
+              config={{
+                ...fieldConfig,
+                // Agregar autofocus al primer campo si es combobox
+                autoFocus: index === 0 && fieldConfig.type === 'combobox'
+              }}
               value={currentItem[fieldConfig.name]}
               onChange={(value) => updateField(fieldConfig.name, value)}
               error={errors[String(fieldConfig.name)]}

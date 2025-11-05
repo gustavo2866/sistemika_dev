@@ -1,12 +1,15 @@
 /**
  * Declarative Form Configuration for Solicitudes
- * 
- * This configuration defines the entire form structure, fields, validation,
- * and behavior for the solicitudes resource.
+ *
+ * Defines structure, validation and behaviour for the solicitudes resource.
  */
 
 import { FormConfig } from "@/components/form/GenericForm/types";
-import { SolicitudFormValues, DetalleItem, solicitudTipoChoices } from "./types";
+import {
+  SolicitudFormValues,
+  DetalleItem,
+  solicitudTipoChoices,
+} from "./types";
 import { truncateString } from "@/components/form/utils";
 
 export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
@@ -15,45 +18,45 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
   submitLabel: "Guardar Solicitud",
   cancelLabel: "Cancelar",
   enableEnterKeyNavigation: true,
-  redirectAfterSave: (id) => `/solicitudes/${id}/show`,
-  
+  redirectAfterSave: "/solicitudes",
+
   sections: [
     {
       title: "Datos Generales",
       description: "Información básica de la solicitud",
       defaultOpen: true,
-      defaultOpenBehavior: "create-only", // Open in create, collapsed in edit
-      showTitleSubtitle: true, // Show subtitle with title fields
+      defaultOpenBehavior: "create-only",
+      showTitleSubtitle: true,
       fields: [
         {
           name: "tipo",
           label: "Tipo de Solicitud",
           type: "select",
           required: true,
-          isTitle: true, // Mark as title field for subtitle
-          options: solicitudTipoChoices.map(choice => ({
+          isTitle: true,
+          options: solicitudTipoChoices.map((choice) => ({
             value: choice.id,
-            label: choice.name
+            label: choice.name,
           })),
           validations: [
             {
               type: "required",
-              message: "El tipo de solicitud es requerido"
-            }
-          ]
+              message: "El tipo de solicitud es requerido",
+            },
+          ],
         },
         {
           name: "fecha_necesidad",
           label: "Fecha de Necesidad",
           type: "date",
           required: true,
-          isTitle: true, // Mark as title field for subtitle
+          isTitle: true,
           validations: [
             {
               type: "required",
-              message: "La fecha de necesidad es requerida"
-            }
-          ]
+              message: "La fecha de necesidad es requerida",
+            },
+          ],
         },
         {
           name: "solicitante_id",
@@ -66,21 +69,21 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
           validations: [
             {
               type: "required",
-              message: "El solicitante es requerido"
-            }
-          ]
+              message: "El solicitante es requerido",
+            },
+          ],
         },
         {
           name: "comentario",
           label: "Comentarios Adicionales",
           type: "textarea",
           placeholder: "Ingrese comentarios o información adicional...",
-          fullWidth: true
-        }
-      ]
+          fullWidth: true,
+        },
+      ],
     },
     {
-      title: "Artículos Solicitados",
+      title: "Artículos seleccionados",
       description: "Detalle de los artículos que se solicitan",
       defaultOpen: true,
       detailItems: {
@@ -94,12 +97,14 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
               required: true,
               searchable: true,
               placeholder: "Buscar artículo...",
+              reference: "articulos",
+              referenceSource: "nombre",
               validations: [
                 {
                   type: "required",
-                  message: "Debe seleccionar un artículo"
-                }
-              ]
+                  message: "Debe seleccionar un artículo",
+                },
+              ],
             },
             {
               name: "descripcion",
@@ -110,9 +115,9 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
               validations: [
                 {
                   type: "required",
-                  message: "La descripción es requerida"
-                }
-              ]
+                  message: "La descripción es requerida",
+                },
+              ],
             },
             {
               name: "unidad_medida",
@@ -123,9 +128,9 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
               validations: [
                 {
                   type: "required",
-                  message: "La unidad de medida es requerida"
-                }
-              ]
+                  message: "La unidad de medida es requerida",
+                },
+              ],
             },
             {
               name: "cantidad",
@@ -137,28 +142,34 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
               validations: [
                 {
                   type: "required",
-                  message: "La cantidad es requerida"
+                  message: "La cantidad es requerida",
                 },
                 {
                   type: "min",
                   value: 0.01,
-                  message: "La cantidad debe ser mayor a 0"
-                }
-              ]
-            }
+                  message: "La cantidad debe ser mayor a 0",
+                },
+              ],
+            },
           ],
           defaultItem: () => ({
             articulo_id: null,
+            articulo_nombre: "",
             descripcion: "",
             unidad_medida: "",
-            cantidad: 0
+            cantidad: 0,
           }),
-          getCardTitle: (item: DetalleItem) => 
+          getCardTitle: (item: DetalleItem) =>
             truncateString(item.descripcion || "Sin descripción", 50),
-          getCardDescription: (item: DetalleItem) => 
-            `${item.cantidad} ${item.unidad_medida}`,
-          getCardBadge: (item: DetalleItem) => 
-            item.articulo_id ? "Artículo seleccionado" : "Sin artículo",
+          getCardDescription: (item: DetalleItem) => {
+            if (item.cantidad && item.unidad_medida) {
+              return `${item.cantidad} ${item.unidad_medida}`;
+            }
+            return "Sin cantidad especificada";
+          },
+          getCardBadge: (item: DetalleItem) =>
+            item.articulo_nombre ||
+            (item.articulo_id ? "Artículo seleccionado" : "Sin artículo"),
           validateItem: (item: DetalleItem) => {
             const errors: Record<string, string> = {};
             if (!item.articulo_id) {
@@ -175,15 +186,15 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
             }
             return errors;
           },
-          minItems: 1
-        }
-      }
-    }
+          minItems: 1,
+        },
+      },
+    },
   ],
-  
+
   validate: (data: SolicitudFormValues) => {
     const errors: Record<string, string> = {};
-    
+
     if (!data.tipo) {
       errors.tipo = "El tipo es requerido";
     }
@@ -193,21 +204,20 @@ export const solicitudFormConfig: FormConfig<SolicitudFormValues> = {
     if (!data.detalles || data.detalles.length === 0) {
       errors.detalles = "Debe agregar al menos un artículo";
     }
-    
+
     return errors;
   },
-  
+
   onBeforeSave: async (data: SolicitudFormValues) => {
     // Aquí se pueden hacer transformaciones antes de guardar
-    // Por ejemplo, limpiar strings, formatear fechas, etc.
     return {
       ...data,
       comentario: data.comentario?.trim() || "",
-      detalles: data.detalles.map(det => ({
+      detalles: data.detalles.map((det) => ({
         ...det,
         descripcion: det.descripcion.trim(),
-        unidad_medida: det.unidad_medida.trim()
-      }))
+        unidad_medida: det.unidad_medida.trim(),
+      })),
     };
-  }
+  },
 };

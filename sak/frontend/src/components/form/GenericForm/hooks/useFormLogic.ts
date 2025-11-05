@@ -2,10 +2,11 @@
  * Custom hook for managing form state and logic
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDataProvider, useNotify, useGetIdentity } from "ra-core";
 import { useNavigate } from "react-router-dom";
-import type { FormConfig } from "../types";
+import type { FormConfig, FieldConfig } from "../types";
+import { useValidation } from "./useValidation";
 import { getErrorMessage } from "../../utils";
 
 export function useFormLogic<T extends Record<string, any>>(
@@ -15,12 +16,35 @@ export function useFormLogic<T extends Record<string, any>>(
   const [formData, setFormData] = useState<T>({} as T);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  const {
+    fieldErrors,
+    validateField,
+    setFieldError,
+    clearFieldError,
+    clearAllErrors,
+  } = useValidation<T>();
+
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const navigate = useNavigate();
   const { identity } = useGetIdentity();
+
+  const fieldConfigMap = useMemo(() => {
+    const map = new Map<string, FieldConfig<T>>();
+    config.sections.forEach((section) => {
+      section.fields?.forEach((field) => {
+        map.set(String(field.name), field as FieldConfig<T>);
+      });
+    });
+    return map;
+  }, [config]);
+
+  useEffect(() => {
+    clearAllErrors();
+    setFormErrors({});
+  }, [recordId, clearAllErrors]);
 
   // Load existing record if recordId is provided
   useEffect(() => {
@@ -30,6 +54,8 @@ export function useFormLogic<T extends Record<string, any>>(
         .getOne(config.resource, { id: recordId })
         .then((response: any) => {
           setFormData(response.data as T);
+          clearAllErrors();
+          setFormErrors({});
         })
         .catch((error: any) => {
           notify(getErrorMessage(error, "Error al cargar el registro"), {
@@ -39,31 +65,88 @@ export function useFormLogic<T extends Record<string, any>>(
         .finally(() => {
           setLoading(false);
         });
+    } else {
+      setFormData({} as T);
     }
-  }, [recordId, config.resource, dataProvider, notify]);
+  }, [
+    recordId,
+    config.resource,
+    dataProvider,
+    notify,
+    clearAllErrors,
+  ]);
+
+  const runFieldValidations = useCallback(() => {
+    let isValid = true;
+    fieldConfigMap.forEach((fieldConfig, fieldName) => {
+      const fieldKey = fieldConfig.name as keyof T;
+      const value = formData[fieldKey];
+      const error = validateField(fieldConfig, value);
+      if (error) {
+        setFieldError(fieldName, error);
+        isValid = false;
+      } else {
+        clearFieldError(fieldName);
+      }
+    });
+    return isValid;
+  }, [
+    fieldConfigMap,
+    formData,
+    validateField,
+    setFieldError,
+    clearFieldError,
+  ]);
 
   // Update a single field
-  const updateField = useCallback((field: keyof T, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error for this field if any
-    if (errors[field as string]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[field as string];
-        return newErrors;
+  const updateField = useCallback(
+    (field: keyof T, value: any) => {
+      const fieldName = String(field);
+      setFormData((prev) => ({ ...prev, [field]: value }));
+
+      const fieldConfig = fieldConfigMap.get(fieldName);
+      if (fieldConfig) {
+        const error = validateField(fieldConfig, value);
+        if (error) {
+          setFieldError(fieldName, error);
+        } else {
+          clearFieldError(fieldName);
+        }
+      } else {
+        clearFieldError(fieldName);
+      }
+
+      setFormErrors((prev) => {
+        if (prev[fieldName]) {
+          const next = { ...prev };
+          delete next[fieldName];
+          return next;
+        }
+        return prev;
       });
-    }
-  }, [errors]);
+    },
+    [
+      fieldConfigMap,
+      validateField,
+      setFieldError,
+      clearFieldError,
+    ]
+  );
 
   // Validate form
   const validate = useCallback((): boolean => {
+    const fieldsValid = runFieldValidations();
+    let validationErrors: Record<string, string> = {};
+
     if (config.validate) {
-      const validationErrors = config.validate(formData);
-      setErrors(validationErrors);
-      return Object.keys(validationErrors).length === 0;
+      validationErrors = config.validate(formData);
+      setFormErrors(validationErrors);
+    } else {
+      setFormErrors({});
     }
-    return true;
-  }, [config, formData]);
+
+    return fieldsValid && Object.keys(validationErrors).length === 0;
+  }, [runFieldValidations, config, formData]);
 
   // Save form
   const handleSave = useCallback(async () => {
@@ -77,13 +160,11 @@ export function useFormLogic<T extends Record<string, any>>(
     setSaving(true);
 
     try {
-      // Run onBeforeSave hook if defined
       let dataToSave = formData;
       if (config.onBeforeSave) {
         dataToSave = await config.onBeforeSave(formData);
       }
 
-      // Save to backend
       const response = recordId
         ? await dataProvider.update(config.resource, {
             id: recordId,
@@ -94,7 +175,8 @@ export function useFormLogic<T extends Record<string, any>>(
             data: dataToSave,
           });
 
-      // Run onAfterSave hook if defined
+      setFormData(response.data as T);
+
       if (config.onAfterSave) {
         await config.onAfterSave(response.data as T);
       }
@@ -106,7 +188,6 @@ export function useFormLogic<T extends Record<string, any>>(
         { type: "success" }
       );
 
-      // Navigate after save
       if (config.redirectAfterSave) {
         const redirectPath =
           typeof config.redirectAfterSave === "function"
@@ -136,14 +217,18 @@ export function useFormLogic<T extends Record<string, any>>(
     navigate(`/${config.resource}`);
   }, [navigate, config.resource]);
 
+  const combinedErrors = useMemo(
+    () => ({ ...formErrors, ...fieldErrors }),
+    [formErrors, fieldErrors]
+  );
+
   return {
     formData,
     setFormData,
     updateField,
     loading,
     saving,
-    errors,
-    setErrors,
+    errors: combinedErrors,
     handleSave,
     handleCancel,
     validate,

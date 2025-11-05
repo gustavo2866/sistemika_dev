@@ -69,6 +69,9 @@ export interface FieldConfig<T = any> {
   
   // Title field marker - used for section subtitles
   isTitle?: boolean;
+  
+  // Focus
+  autoFocus?: boolean;
 }
 
 /**

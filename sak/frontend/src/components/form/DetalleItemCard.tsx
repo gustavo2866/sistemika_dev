@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type BadgeConfig = {
   label: string;
@@ -22,21 +23,7 @@ type DetalleItemCardProps = {
 };
 
 /**
- * Card compacto para mostrar items en grid con opción de editar/eliminar
- * 
- * @example
- * ```tsx
- * <DetalleItemCard
- *   title="Artículo XYZ"
- *   subtitle="Descripción detallada"
- *   badges={[
- *     { label: "UM: UN", variant: "outline" },
- *     { label: "Cant: 10", variant: "secondary" }
- *   ]}
- *   onEdit={() => openEditDialog(index)}
- *   onDelete={() => deleteItem(index)}
- * />
- * ```
+ * Tarjeta compacta para mostrar rápidamente cada detalle.
  */
 export const DetalleItemCard = ({
   title,
@@ -48,53 +35,63 @@ export const DetalleItemCard = ({
   showDelete = true,
 }: DetalleItemCardProps) => {
   return (
-    <Card className={`relative hover:border-primary transition-colors ${className}`}>
-      <CardContent className="p-3 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <p 
-            className="font-medium text-sm truncate flex-1 cursor-pointer"
-            onClick={onEdit}
-          >
-            {title}
-          </p>
+    <Card
+      className={cn(
+        "relative h-full cursor-pointer rounded-xl border border-border/60 bg-card/80 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:shadow-md",
+        className
+      )}
+      onClick={onEdit}
+    >
+      <CardContent className="flex h-full flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1">
+            {(badges.length ? badges : [{ label: "Sin artículo", variant: "outline" }]).map(
+              (badge, index) => (
+                <Badge
+                  key={index}
+                  variant={badge.variant || "secondary"}
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-[10px] font-medium",
+                    badge.className
+                  )}
+                >
+                  {badge.label}
+                </Badge>
+              )
+            )}
+          </div>
+
           {showDelete && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-5 w-5 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+              size="icon"
+              className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete();
               }}
+              aria-label="Eliminar detalle"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="size-4" />
             </Button>
           )}
         </div>
-        
+
+        <p className="line-clamp-2 text-sm font-semibold text-foreground">
+          {title}
+        </p>
+
         {subtitle && (
-          <p 
-            className="text-xs text-muted-foreground truncate cursor-pointer"
-            onClick={onEdit}
-          >
-            {subtitle}
-          </p>
-        )}
-        
-        {badges.length > 0 && (
-          <div 
-            className="flex items-center gap-1.5 text-xs cursor-pointer"
-            onClick={onEdit}
-          >
-            {badges.map((badge, index) => (
-              <Badge 
-                key={index}
-                variant={badge.variant || "outline"} 
-                className={`text-xs px-1.5 py-0 ${badge.className || ""}`}
-              >
-                {badge.label}
-              </Badge>
-            ))}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              Cantidad solicitada
+            </span>
+            <Badge
+              variant="default"
+              className="rounded-full px-3 py-1 text-[10px] font-semibold"
+            >
+              {subtitle}
+            </Badge>
           </div>
         )}
       </CardContent>

@@ -3,6 +3,7 @@ import {
   createElement,
   isValidElement,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import {
@@ -46,6 +47,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -69,6 +71,7 @@ const defaultBulkActionButtons = <BulkActionsToolbarChildren />;
 const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   children,
   rowClassName,
+  mobileConfig,
 }: {
   children: ReactNode;
   mobileConfig?: MobileConfig;
@@ -82,6 +85,49 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   const navigate = useNavigate();
   const getPathForRecord = useGetPathForRecordCallback();
 
+  const columns = useMemo(
+    () =>
+      Children.toArray(children)
+        .filter((child): child is React.ReactElement<DataTableColumnProps<RecordType>> =>
+          isValidElement(child)
+        )
+        .map((child, index) => ({
+          key: child.key ?? index,
+          props: child.props as DataTableColumnProps<RecordType>,
+        })),
+    [children]
+  );
+
+  const columnMap = useMemo(() => {
+    const map = new Map<string, DataTableColumnProps<RecordType>>();
+    columns.forEach(({ props }) => {
+      if (props.source) {
+        map.set(String(props.source), props);
+      }
+    });
+    return map;
+  }, [columns]);
+
+  const humanize = useCallback((value: string) => {
+    return value
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }, []);
+
+  const truncate = useCallback((value: string, max: number) => {
+    if (value.length <= max) return value;
+    return `${value.substring(0, max)}…`;
+  }, []);
+
+  const getChoiceLabel = useCallback(
+    (value: any, choices?: readonly { id: any; name: string }[]) => {
+      if (!choices) return value;
+      const found = choices.find((choice) => choice.id === value);
+      return found?.name ?? value;
+    },
+    []
+  );
+
   if (!data || data.length === 0) {
     return <DataTableEmpty />;
   }
@@ -89,18 +135,26 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   return (
     <div className="space-y-3 p-4">
       {data.map((record, rowIndex) => {
-        const handleToggle = (_checked: boolean | string) => {
+        const handleToggle = (checked: boolean | string) => {
           if (!handleToggleItem) return;
-          // Create a synthetic event for compatibility
+          const nextChecked =
+            checked === "indeterminate"
+              ? !isSelected
+              : Boolean(checked);
+
           const syntheticEvent = {
             stopPropagation: () => {},
-          } as React.MouseEvent;
+            target: { checked: nextChecked },
+          } as unknown as React.MouseEvent & {
+            target: { checked: boolean };
+          };
+
           handleToggleItem(record.id, syntheticEvent);
         };
 
         const handleClick = async () => {
           if (!resource) return;
-          
+
           const temporaryLink =
             typeof rowClick === "function"
               ? rowClick(record.id, resource, record)
@@ -122,6 +176,160 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
         };
 
         const isSelected = record?.id != null && selectedIds?.includes(record.id);
+
+        const renderColumnCell = (
+          key: React.Key,
+          columnProps: DataTableColumnProps<RecordType>,
+          options?: { hideLabel?: boolean; className?: string }
+        ) => (
+          <RecordContextProvider value={record} key={key}>
+            <DataTableMobileCell
+              {...columnProps}
+              label={options?.hideLabel ? undefined : columnProps.label}
+              className={cn(options?.className, columnProps.className)}
+            />
+          </RecordContextProvider>
+        );
+
+        const getRecordValue = (source?: string) => {
+          if (!source) return undefined;
+          return get(record, source);
+        };
+
+        const renderConfiguredContent = () => {
+          if (!mobileConfig) {
+            return (
+              <div className="space-y-1">
+                {columns.map(({ props, key: columnKey }, index) =>
+                  renderColumnCell(columnKey ?? props.source ?? index, props)
+                )}
+              </div>
+            );
+          }
+
+          if (mobileConfig.customCard) {
+            return mobileConfig.customCard(record);
+          }
+
+          const primaryNode = mobileConfig.primaryField
+            ? (() => {
+                const column = columnMap.get(mobileConfig.primaryField!);
+                if (column) {
+                  return renderColumnCell(
+                    `${mobileConfig.primaryField}-primary`,
+                    column,
+                    { hideLabel: true, className: "text-base font-semibold" }
+                  );
+                }
+                const raw = getRecordValue(mobileConfig.primaryField);
+                if (raw == null || raw === "") return null;
+                return (
+                  <div className="text-base font-semibold">
+                    {String(raw)}
+                  </div>
+                );
+              })()
+            : null;
+
+          const badgeNode = mobileConfig.badge
+            ? (() => {
+                const raw = getRecordValue(mobileConfig.badge?.source);
+                if (raw == null || raw === "") return null;
+                const label = getChoiceLabel(raw, mobileConfig.badge?.choices);
+                return (
+                  <Badge variant="secondary">
+                    {String(label)}
+                  </Badge>
+                );
+              })()
+            : null;
+
+          const secondaryNodes =
+            mobileConfig.secondaryFields
+              ?.map((field) => {
+                const column = columnMap.get(field);
+                if (column) {
+                  return renderColumnCell(
+                    `${field}-secondary`,
+                    column,
+                    { hideLabel: true, className: "text-sm text-muted-foreground" }
+                  );
+                }
+                const raw = getRecordValue(field);
+                if (raw == null || raw === "") return null;
+                return (
+                  <div
+                    key={`${field}-secondary`}
+                    className="text-sm text-muted-foreground"
+                  >
+                    {String(raw)}
+                  </div>
+                );
+              })
+              .filter(Boolean) ?? [];
+
+          const descriptionNode = mobileConfig.descriptionField
+            ? (() => {
+                const raw = getRecordValue(mobileConfig.descriptionField?.source);
+                if (!raw) return null;
+                const text = String(raw);
+                const truncated =
+                  mobileConfig.descriptionField?.truncate != null
+                    ? truncate(text, mobileConfig.descriptionField.truncate)
+                    : text;
+                return (
+                  <div className="text-sm text-muted-foreground">
+                    {truncated}
+                  </div>
+                );
+              })()
+            : null;
+
+          const detailNodes =
+            mobileConfig.detailFields
+              ?.map((detailField, index) => {
+                const fieldSource =
+                  typeof detailField === "string"
+                    ? detailField
+                    : detailField.source;
+                if (!fieldSource) return null;
+                const column = columnMap.get(fieldSource);
+                if (column) {
+                  return renderColumnCell(
+                    `${fieldSource}-detail`,
+                    column,
+                    { className: "text-xs text-muted-foreground" }
+                  );
+                }
+                const raw = getRecordValue(fieldSource);
+                if (raw == null || raw === "") return null;
+                const label = humanize(fieldSource);
+                return (
+                  <div
+                    key={`${fieldSource}-detail-${index}`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    <span className="font-medium">{label}: </span>
+                    {String(raw)}
+                  </div>
+                );
+              })
+              .filter(Boolean) ?? [];
+
+          return (
+            <div className="space-y-2">
+              {primaryNode}
+              {badgeNode ? <div>{badgeNode}</div> : null}
+              {secondaryNodes.length > 0 && (
+                <div className="space-y-0.5">{secondaryNodes}</div>
+              )}
+              {descriptionNode}
+              {detailNodes.length > 0 && (
+                <div className="space-y-0.5">{detailNodes}</div>
+              )}
+            </div>
+          );
+        };
 
         return (
           <RecordContextProvider
@@ -149,18 +357,7 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                 )}
 
                 <div className="flex-1 min-w-0">
-                  <div className="space-y-1">
-                    {Children.toArray(children).map((child, index) => {
-                      if (!isValidElement(child)) return null;
-                      // Extract the column info to render without table elements
-                      const columnProps = child.props as DataTableColumnProps<RecordType>;
-                      return (
-                        <RecordContextProvider value={record} key={index}>
-                          <DataTableMobileCell {...columnProps} />
-                        </RecordContextProvider>
-                      );
-                    })}
-                  </div>
+                  {renderConfiguredContent()}
                 </div>
               </div>
             </Card>

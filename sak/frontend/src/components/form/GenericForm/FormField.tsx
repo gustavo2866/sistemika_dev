@@ -7,7 +7,8 @@
 
 "use client";
 
-import React from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useDataProvider } from "ra-core";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +19,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ReferenceField } from "@/components/form/ReferenceField";
 import type { FieldConfig } from "./types";
@@ -27,6 +44,216 @@ interface FormFieldProps<T = any> {
   value: any;
   onChange: (value: any) => void;
   error?: string;
+}
+
+type OptionItem = { id: any; name: string };
+const comboboxOptionsCache = new Map<string, OptionItem[]>();
+
+/**
+ * ComboboxField - Searchable select field using shadcn/ui Combobox pattern
+ */
+function ComboboxField({ config, value, onChange, error }: FormFieldProps) {
+  const dataProvider = useDataProvider();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const cacheKey = useMemo(() => {
+    if (config.fetchOptions) return null;
+    if (config.reference) {
+      const filtersKey = config.referenceFilters
+        ? JSON.stringify(config.referenceFilters)
+        : "";
+      return `ref:${config.reference}:${config.referenceSource || "nombre"}:${filtersKey}`;
+    }
+    if (config.options) {
+      return `static:${JSON.stringify(config.options)}`;
+    }
+    return null;
+  }, [
+    config.fetchOptions,
+    config.reference,
+    config.referenceSource,
+    config.referenceFilters,
+    config.options,
+  ]);
+
+  const cachedOptions = useMemo(
+    () => (cacheKey ? comboboxOptionsCache.get(cacheKey) ?? null : null),
+    [cacheKey]
+  );
+
+  const [options, setOptions] = useState<Array<OptionItem>>(
+    cachedOptions ?? []
+  );
+  const [loading, setLoading] = useState(() => !cachedOptions);
+
+  const openPopover = useCallback(() => setOpen(true), []);
+  const closePopover = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const applyOptions = (nextOptions: OptionItem[]) => {
+      if (!isMounted) return;
+      setOptions(nextOptions);
+      setLoading(false);
+    };
+
+    if (cachedOptions) {
+      applyOptions(cachedOptions);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (config.options && !config.fetchOptions && !config.reference) {
+      const mapped = config.options.map((opt) => ({
+        id: opt.value,
+        name: opt.label,
+      }));
+      if (cacheKey) {
+        comboboxOptionsCache.set(cacheKey, mapped);
+      }
+      applyOptions(mapped);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadOptions = async () => {
+      try {
+        setLoading(true);
+        let nextOptions: OptionItem[] = [];
+
+        if (config.fetchOptions) {
+          const fetchedOptions = await config.fetchOptions();
+          nextOptions = fetchedOptions.map((opt) => ({
+            id: opt.value,
+            name: opt.label,
+          }));
+        } else if (config.reference) {
+          const { data } = await dataProvider.getList(config.reference, {
+            pagination: { page: 1, perPage: 1000 },
+            sort: { field: config.referenceSource || "nombre", order: "ASC" },
+            filter: config.referenceFilters || {},
+          });
+
+          const optionTextField = config.referenceSource || "nombre";
+          nextOptions = data.map((item: any) => ({
+            id: item.id,
+            name: item[optionTextField] || `ID: ${item.id}`,
+          }));
+        }
+
+        if (cacheKey && !config.fetchOptions) {
+          comboboxOptionsCache.set(cacheKey, nextOptions);
+        }
+
+        applyOptions(nextOptions);
+      } catch (error) {
+        console.error("Error loading combobox options:", error);
+        if (isMounted) {
+          setOptions([]);
+          setLoading(false);
+        }
+      }
+    };
+
+    loadOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    cacheKey,
+    cachedOptions,
+    config.options,
+    config.fetchOptions,
+    config.reference,
+    config.referenceSource,
+    config.referenceFilters,
+    dataProvider,
+  ]);
+
+  useEffect(() => {
+    if (config.autoFocus && !loading && triggerRef.current) {
+      triggerRef.current.focus();
+    }
+  }, [config.autoFocus, loading]);
+
+  const selectedOption = options.find(
+    (opt) => opt.id === value || String(opt.id) === String(value)
+  );
+
+  if (loading) {
+    return (
+      <Button variant="outline" disabled className="w-full justify-between">
+        Cargando...
+        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+      </Button>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          ref={triggerRef}
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn("w-full justify-between", error && "border-red-500")}
+          disabled={config.disabled}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" || event.key === "Enter") {
+              event.preventDefault();
+              openPopover();
+            }
+          }}
+        >
+          {selectedOption
+            ? selectedOption.name
+            : config.placeholder || "Seleccionar..."}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0" align="start">
+        <Command>
+          <CommandInput
+            autoFocus
+            placeholder={
+              config.searchable !== false
+                ? config.placeholder || "Buscar..."
+                : undefined
+            }
+          />
+          <CommandList>
+            <CommandEmpty>No se encontraron resultados.</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.id}
+                  value={option.name}
+                  onSelect={() => {
+                    onChange(option.id);
+                    closePopover();
+                  }}
+                >
+                  {option.name}
+                  <Check
+                    className={cn(
+                      "ml-auto h-4 w-4",
+                      value === option.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function FormField<T = any>({
@@ -50,7 +277,7 @@ export function FormField<T = any>({
             id={fieldId}
             type="text"
             placeholder={config.placeholder}
-            value={value || ""}
+            value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={config.disabled}
             className={error ? "border-red-500" : ""}
@@ -62,7 +289,7 @@ export function FormField<T = any>({
           <Textarea
             id={fieldId}
             placeholder={config.placeholder}
-            value={value || ""}
+            value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={config.disabled}
             className={error ? "border-red-500" : ""}
@@ -76,8 +303,16 @@ export function FormField<T = any>({
             id={fieldId}
             type="number"
             placeholder={config.placeholder}
-            value={value || ""}
-            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            value={value ?? ""}
+            onChange={(e) => {
+              const inputValue = e.target.value;
+              if (inputValue === "") {
+                onChange(null);
+                return;
+              }
+              const parsed = Number(inputValue);
+              onChange(Number.isNaN(parsed) ? null : parsed);
+            }}
             disabled={config.disabled}
             min={config.min}
             max={config.max}
@@ -91,7 +326,7 @@ export function FormField<T = any>({
           <Input
             id={fieldId}
             type="date"
-            value={value || ""}
+            value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}
             disabled={config.disabled}
             className={error ? "border-red-500" : ""}
@@ -144,13 +379,7 @@ export function FormField<T = any>({
         return <ReferenceField config={config} value={value} onChange={onChange} />;
 
       case "combobox":
-        // For combobox, we'll use the ArticuloCombobox component
-        // This is a placeholder - actual implementation will use the specific component
-        return (
-          <div className="text-sm text-muted-foreground">
-            Combobox field (use ArticuloCombobox or similar)
-          </div>
-        );
+        return <ComboboxField config={config} value={value} onChange={onChange} error={error} />;
 
       default:
         return (
@@ -182,3 +411,4 @@ export function FormField<T = any>({
     </div>
   );
 }
+

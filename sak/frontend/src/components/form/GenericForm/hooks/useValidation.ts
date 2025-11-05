@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from "react";
-import type { FieldConfig } from "../types";
+import type { FieldConfig, ValidationRule } from "../types";
 import { validateRange, validatePattern } from "../../utils";
 
 export function useValidation<T = any>() {
@@ -11,9 +11,21 @@ export function useValidation<T = any>() {
 
   const validateField = useCallback(
     (fieldConfig: FieldConfig<T>, value: any): string | null => {
-      if (!fieldConfig.validations) return null;
+      const rules: ValidationRule[] = [...(fieldConfig.validations ?? [])];
 
-      for (const rule of fieldConfig.validations) {
+      if (
+        fieldConfig.required &&
+        !rules.some((rule) => rule.type === "required")
+      ) {
+        rules.unshift({
+          type: "required",
+          message: `${fieldConfig.label} es requerido`,
+        });
+      }
+
+      if (rules.length === 0) return null;
+
+      for (const rule of rules) {
         let error: string | null = null;
 
         switch (rule.type) {

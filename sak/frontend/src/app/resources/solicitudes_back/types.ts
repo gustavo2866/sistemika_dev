@@ -1,8 +1,7 @@
 /**
  * Solicitudes Domain Model
- * 
+ *
  * Domain-specific types and constants for the solicitudes resource.
- * Generic helpers have been moved to components/form/utils.
  */
 
 "use client";
@@ -19,6 +18,7 @@ export const solicitudTipoChoices = [
 export type DetalleItem = {
   id?: number;
   articulo_id: number | null;
+  articulo_nombre?: string; // Nombre del artículo para mostrar en la tarjeta
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
@@ -34,3 +34,4 @@ export type SolicitudFormValues = {
 };
 
 export type SolicitudRecord = RaRecord & Partial<SolicitudFormValues>;
+
