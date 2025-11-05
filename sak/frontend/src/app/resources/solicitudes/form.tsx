@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { required, useDataProvider } from "ra-core";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { required, useDataProvider, useGetIdentity } from "ra-core";
 import { useForm, useFieldArray, useFormContext, useWatch } from "react-hook-form";
 import { SimpleForm } from "@/components/simple-form";
 import { SelectInput } from "@/components/select-input";
@@ -47,7 +47,7 @@ type DetalleFormValues = {
 const detalleDefaultValues: DetalleFormValues = {
   articulo_id: "",
   descripcion: "",
-  unidad_medida: "",
+  unidad_medida: "UN",
   cantidad: 1,
 };
 
@@ -168,10 +168,12 @@ const DetalleItemsSection = ({
   open,
   onToggle,
   minItems = 0,
+  onNewItemCreated,
 }: {
   open: boolean;
   onToggle: () => void;
   minItems?: number;
+  onNewItemCreated?: () => void;
 }) => {
   const { control } = useFormContext();
   const { fields, append, update, remove } = useFieldArray({
@@ -183,6 +185,7 @@ const DetalleItemsSection = ({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const detalleForm = useForm<DetalleFormValues>({
     defaultValues: detalleDefaultValues,
@@ -277,6 +280,10 @@ const DetalleItemsSection = ({
         },
         { shouldFocus: false }
       );
+      onNewItemCreated?.();
+      setTimeout(() => {
+        addButtonRef.current?.focus();
+      }, 0);
     } else {
       const existing = fields[editingIndex] as any;
       update(editingIndex, {
@@ -290,7 +297,7 @@ const DetalleItemsSection = ({
 
   return (
     <Card>
-      <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between">
+      <div className="border-b px-4 py-3">
         <div className="flex items-start gap-2">
           <Button
             type="button"
@@ -306,12 +313,14 @@ const DetalleItemsSection = ({
           </Button>
           <div>
             <h3 className="text-lg font-semibold">Articulos seleccionados</h3>
-            <p className="text-sm text-muted-foreground">
-              Gestiona los articulos asociados a la solicitud.
-            </p>
           </div>
         </div>
-        <Button type="button" onClick={handleAddItem} className="w-full md:w-auto">
+        <Button
+          type="button"
+          onClick={handleAddItem}
+          className="mt-3 w-full"
+          ref={addButtonRef}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Agregar articulo
         </Button>
@@ -321,7 +330,7 @@ const DetalleItemsSection = ({
         {sortedEntries.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Todavia no agregaste articulos. Presiona "Agregar articulo" para comenzar.
+              Todavia no agregaste articulos. Presiona &quot;Agregar articulo&quot; para comenzar.
             </CardContent>
           </Card>
         ) : (
@@ -336,44 +345,60 @@ const DetalleItemsSection = ({
               return (
                 <Card
                   key={detalle.id ?? detalle.tempId ?? `${originalIndex}-${renderedIndex}`}
-                  className="border-border/70 transition-shadow hover:shadow-sm"
+                  className="cursor-pointer border-border/70 transition-shadow hover:shadow-sm"
+                  onClick={() => handleEditItem(originalIndex)}
+                  role="button"
                 >
-                  <CardContent className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
-                    <div className="flex flex-1 items-start justify-between gap-2 md:gap-4">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm font-semibold leading-tight">
-                          {detalle.descripcion || "Articulo sin descripcion"}
-                        </span>
-                        <Badge variant="secondary" className="w-fit">
-                          {articuloLabel}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-1">
+                  <CardContent className="grid gap-2 p-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
+                      <Badge
+                        variant="secondary"
+                        className="max-w-full truncate px-2 py-1 text-sm font-semibold"
+                      >
+                        {articuloLabel}
+                      </Badge>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {detalle.unidad_medida || "-"}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="px-2 py-1 text-sm font-semibold"
+                      >
+                        {detalle.cantidad}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
+                      <span className="truncate text-xs text-muted-foreground">
+                        {detalle.descripcion || "Articulo sin descripcion"}
+                      </span>
+                      <div className="flex items-center justify-end">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
                           type="button"
-                          onClick={() => handleEditItem(originalIndex)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleEditItem(originalIndex);
+                          }}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                      </div>
+                      <div className="flex items-center justify-end">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
                           type="button"
-                          onClick={() => remove(originalIndex)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            remove(originalIndex);
+                          }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground md:justify-end">
-                      <span className="uppercase tracking-wide">
-                        Unidad: {detalle.unidad_medida || "-"}
-                      </span>
-                      <Badge variant="outline">{detalle.cantidad}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -408,7 +433,12 @@ const DetalleItemsSection = ({
           </DialogHeader>
           <form onSubmit={handleSubmitDetalle} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="detalle-articulo">Articulo</Label>
+              <Label
+                htmlFor="detalle-articulo"
+                className="flex items-center gap-1"
+              >
+                Articulo <span className="text-destructive">*</span>
+              </Label>
               <ArticuloCombobox
                 value={detalleForm.watch("articulo_id")}
                 onChange={(newValue) =>
@@ -425,7 +455,12 @@ const DetalleItemsSection = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="detalle-descripcion">Descripcion</Label>
+              <Label
+                htmlFor="detalle-descripcion"
+                className="flex items-center gap-1"
+              >
+                Descripcion <span className="text-destructive">*</span>
+              </Label>
               <Textarea
                 id="detalle-descripcion"
                 rows={3}
@@ -440,7 +475,12 @@ const DetalleItemsSection = ({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="detalle-unidad">Unidad de medida</Label>
+                <Label
+                  htmlFor="detalle-unidad"
+                  className="flex items-center gap-1"
+                >
+                  Unidad de medida <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="detalle-unidad"
                   placeholder="Ej: UN, KG, LT"
@@ -453,7 +493,12 @@ const DetalleItemsSection = ({
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="detalle-cantidad">Cantidad</Label>
+                <Label
+                  htmlFor="detalle-cantidad"
+                  className="flex items-center gap-1"
+                >
+                  Cantidad <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="detalle-cantidad"
                   type="number"
@@ -475,10 +520,11 @@ const DetalleItemsSection = ({
                 variant="ghost"
                 onClick={closeDialog}
                 className="w-full sm:w-auto"
+                tabIndex={-1}
               >
                 Cancelar
               </Button>
-              <Button type="submit" className="w-full sm:w-auto">
+              <Button type="submit" className="w-full sm:w-auto" tabIndex={0}>
                 {editingIndex == null ? "Agregar" : "Actualizar"}
               </Button>
             </DialogFooter>
@@ -490,10 +536,13 @@ const DetalleItemsSection = ({
 };
 
 const SolicitudFormFields = () => {
-  const { control } = useFormContext();
+  const form = useFormContext();
+  const { control, setValue } = form;
   const idValue = useWatch({ control, name: "id" });
   const tipoValue = useWatch({ control, name: "tipo" });
   const comentarioValue = useWatch({ control, name: "comentario" }) || "";
+  const solicitanteValue = useWatch({ control, name: "solicitante_id" });
+  const { identity } = useGetIdentity();
 
   const [generalOpen, setGeneralOpen] = useState(true);
   useEffect(() => {
@@ -506,6 +555,12 @@ const SolicitudFormFields = () => {
     const snippet = comentarioValue ? comentarioValue.slice(0, 25) : "";
     return [idValue, tipoValue, snippet].filter(Boolean).join(" - ") || "Sin datos";
   }, [idValue, tipoValue, comentarioValue]);
+
+  useEffect(() => {
+    if (!idValue && identity?.id != null && (solicitanteValue == null || solicitanteValue === "")) {
+      setValue("solicitante_id", identity.id, { shouldDirty: false });
+    }
+  }, [idValue, identity, solicitanteValue, setValue]);
 
   
 
@@ -574,21 +629,29 @@ const SolicitudFormFields = () => {
         open={detailsOpen}
         onToggle={() => setDetailsOpen((prev) => !prev)}
         minItems={1}
+        onNewItemCreated={() => setGeneralOpen(false)}
       />
     </>
   );
 };
 
-export const SolicitudForm = () => (
-  <SimpleForm
-    defaultValues={{
-      tipo: "normal",
-      fecha_necesidad: "",
-      solicitante_id: undefined,
-      comentario: "",
-      detalles: [] as SolicitudDetalle[],
-    }}
-  >
-    <SolicitudFormFields />
-  </SimpleForm>
-);
+export const Form = () => {
+  const today = useMemo(
+    () => new Date().toISOString().slice(0, 10),
+    []
+  );
+
+  return (
+    <SimpleForm
+      defaultValues={{
+        tipo: "normal",
+        fecha_necesidad: today,
+        solicitante_id: undefined,
+        comentario: "",
+        detalles: [] as SolicitudDetalle[],
+      }}
+    >
+      <SolicitudFormFields />
+    </SimpleForm>
+  );
+};

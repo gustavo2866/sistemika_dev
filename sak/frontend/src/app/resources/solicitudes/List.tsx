@@ -6,6 +6,7 @@ import { TextField } from "@/components/text-field";
 import { DateField } from "@/components/date-field";
 import { ReferenceField } from "@/components/reference-field";
 import { TextInput } from "@/components/text-input";
+import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
 import { SelectField } from "@/components/select-field";
 import { FilterButton } from "@/components/filter-form";
@@ -34,6 +35,14 @@ const filters = [
     choices={tipoChoices}
     emptyText="Todos"
   />,
+  <ReferenceInput
+    key="solicitante_id"
+    source="solicitante_id"
+    reference="users"
+    label="Responsable"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
 ];
 
 const ListActions = () => (
@@ -73,4 +82,3 @@ export const SolicitudList = () => (
     </DataTable>
   </List>
 );
-

@@ -64,7 +64,27 @@ import {
   BulkActionsToolbarChildren,
 } from "@/components/bulk-actions-toolbar";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { MobileConfig } from "@/components/list/GenericList/types";
+
+type MobileConfig = {
+  primaryField: string;
+  secondaryFields?: string[];
+  badge?: {
+    source: string;
+    choices?: ReadonlyArray<{ readonly id: any; readonly name: string }>;
+  };
+  detailFields?: Array<{
+    source: string;
+    type?: string;
+    reference?: string;
+    referenceField?: string;
+    format?: (value: any) => string;
+  }>;
+  descriptionField?: {
+    source: string;
+    truncate?: number;
+  };
+  customCard?: (record: any) => ReactNode;
+};
 
 const defaultBulkActionButtons = <BulkActionsToolbarChildren />;
 
