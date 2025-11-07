@@ -1,6 +1,5 @@
 // Form components
 export { Combobox } from "./combobox";
-export { ComboboxQuery } from "./combobox-query";
 export { CollapsibleSection } from "./collapsible-section";
 export { FormDialog } from "./form-dialog";
 export { FormField } from "./form-field";
@@ -13,11 +12,9 @@ export { MinItemsValidation } from "./min-items-validation";
 
 // Types
 export type { FormSection, FormLayoutProps } from "./form-layout";
-export type { ComboboxQueryProps } from "./combobox-query";
 
 // Hooks
 export { useReferenceOptions } from "./hooks/useReferenceOptions";
 export { useAutoInitializeField } from "./hooks/useAutoInitializeField";
 export { useDetailCRUD } from "./hooks/useDetailCRUD";
 export type { UseDetailCRUDReturn } from "./hooks/useDetailCRUD";
-

@@ -11,46 +11,35 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
-  Combobox,
-  CollapsibleSection,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ComboboxQuery,
+  FormLayout,
   FormDialog,
   FormField,
   AddItemButton,
   DetailList,
   MinItemsValidation,
-  useReferenceOptions,
   useAutoInitializeField,
   useDetailCRUD,
 } from "@/components/forms";
-
-const tipoChoices = [
-  { id: "normal", name: "Normal" },
-  { id: "directa", name: "Compra Directa" },
-];
-
-type DetalleFormValues = {
-  articulo_id: string;
-  descripcion: string;
-  unidad_medida: string;
-  cantidad: number;
-};
-
-const detalleDefaultValues: DetalleFormValues = {
-  articulo_id: "",
-  descripcion: "",
-  unidad_medida: "UN",
-  cantidad: 1,
-};
-
-type SolicitudDetalle = {
-  id?: number;
-  tempId?: number;
-  articulo_id: number | null;
-  articulo_nombre?: string;
-  descripcion: string;
-  unidad_medida: string;
-  cantidad: number;
-};
+import {
+  type DetalleFormValues,
+  type SolicitudDetalle,
+  TIPO_CHOICES,
+  UNIDAD_MEDIDA_CHOICES,
+  DETALLE_DEFAULT_VALUES,
+  ARTICULOS_REFERENCE,
+  validateDetalle,
+  transformToForm,
+  transformToPersist,
+  buildGeneralSubtitle,
+} from "./model";
 
 const DetalleItemsSection = ({
   minItems = 0,
@@ -61,7 +50,7 @@ const DetalleItemsSection = ({
 }) => {
   // Crear el form para el detalle
   const detalleForm = useForm<DetalleFormValues>({
-    defaultValues: detalleDefaultValues,
+    defaultValues: DETALLE_DEFAULT_VALUES,
   });
 
   // Usar el hook genérico para toda la lógica CRUD
@@ -79,76 +68,39 @@ const DetalleItemsSection = ({
   } = useDetailCRUD<DetalleFormValues, SolicitudDetalle>({
     fieldName: "detalles",
     detalleForm,
-    defaultValues: detalleDefaultValues,
+    defaultValues: DETALLE_DEFAULT_VALUES,
   });
 
-  // Usar el hook genérico para cargar opciones
-  const { options: articuloOptions, loading: articulosLoading } =
-    useReferenceOptions("articulos", "nombre");
-
-  // Custom edit handler para convertir number a string (específico de este form)
+  // Custom edit handler usando la transformación del modelo
   const handleEditItem = (index: number) => {
     const detalle = fields[index] as SolicitudDetalle;
-    detalleForm.reset({
-      articulo_id: detalle.articulo_id != null ? String(detalle.articulo_id) : "",
-      descripcion: detalle.descripcion,
-      unidad_medida: detalle.unidad_medida,
-      cantidad: detalle.cantidad,
-    });
+    detalleForm.reset(transformToForm(detalle));
     setEditingIndex(index);
     setDialogOpen(true);
   };
 
-  // Custom submit handler con validación (específico de este form)
+  // Custom submit handler usando validación y normalización del modelo
   const handleSubmitDetalle = detalleForm.handleSubmit((data: DetalleFormValues) => {
     detalleForm.clearErrors();
 
-    const validationErrors: Partial<Record<keyof DetalleFormValues, string>> = {};
-
-    if (!data.articulo_id) {
-      validationErrors.articulo_id = "Selecciona un articulo";
-    }
-    if (!data.descripcion.trim()) {
-      validationErrors.descripcion = "La descripcion es requerida";
-    }
-    if (!data.unidad_medida.trim()) {
-      validationErrors.unidad_medida = "La unidad de medida es requerida";
-    }
-    if (!Number.isFinite(data.cantidad) || data.cantidad <= 0) {
-      validationErrors.cantidad = "La cantidad debe ser mayor a 0";
-    }
-
-    if (Object.keys(validationErrors).length > 0) {
-      Object.entries(validationErrors).forEach(([field, message]) => {
-        detalleForm.setError(field as keyof DetalleFormValues, {
-          type: "manual",
-          message,
-        });
-      });
+    // Validar usando la función del modelo
+    const hasErrors = validateDetalle(data, detalleForm);
+    if (hasErrors) {
       return;
     }
 
-    const selectedArticulo = articuloOptions.find(
-      (option: { id: number; nombre: string }) => String(option.id) === data.articulo_id
-    );
-    const normalized: SolicitudDetalle = {
-      articulo_id: selectedArticulo ? selectedArticulo.id : null,
-      articulo_nombre: selectedArticulo?.nombre ?? "",
-      descripcion: data.descripcion.trim(),
-      unidad_medida: data.unidad_medida.trim(),
-      cantidad: data.cantidad,
-    };
+    // Normalizar usando la función del modelo
+    // Nota: ComboboxQuery ya carga las opciones internamente con caché
+    const normalized = transformToPersist(data, []);
 
     // Usar handleSubmit genérico
     handleSubmit(normalized, onNewItemCreated);
   });
 
-  // Función para renderizar cada item
-  const renderDetailItem = (item: SolicitudDetalle) => {
-    const articuloLabel =
-      item.articulo_nombre ||
-      articuloOptions.find((option: { id: number; nombre: string }) => option.id === item.articulo_id)?.nombre ||
-      "Sin articulo";
+  // Render function para cada item
+  const renderItem = (item: SolicitudDetalle) => {
+    // Nota: articulo_nombre ya viene en el objeto desde transformToPersist
+    const articuloLabel = item.articulo_nombre || `ID: ${item.articulo_id}`;
 
     return (
       <div className="grid gap-2">
@@ -174,7 +126,7 @@ const DetalleItemsSection = ({
   };
 
   return (
-    <CollapsibleSection title="Articulos seleccionados" defaultOpen>
+    <>
       <AddItemButton
         onClick={() => {
           handleAdd();
@@ -185,7 +137,7 @@ const DetalleItemsSection = ({
 
       <DetailList<SolicitudDetalle>
         items={sortedEntries.map((entry) => entry.item as SolicitudDetalle)}
-        renderItem={renderDetailItem}
+        renderItem={renderItem}
         onEdit={(_, index) => {
           const originalIndex = sortedEntries[index].originalIndex;
           handleEditItem(originalIndex);
@@ -223,17 +175,13 @@ const DetalleItemsSection = ({
           error={detalleForm.formState.errors.articulo_id?.message}
           required
         >
-          <Combobox
+          <ComboboxQuery
+            {...ARTICULOS_REFERENCE}
             value={detalleForm.watch("articulo_id")}
             onChange={(newValue: string) =>
               detalleForm.setValue("articulo_id", newValue, { shouldValidate: true })
             }
-            options={articuloOptions}
-            loading={articulosLoading}
             placeholder="Selecciona un articulo"
-            searchPlaceholder="Buscar articulo..."
-            loadingMessage="Cargando articulos..."
-            emptyMessage="Sin resultados."
           />
         </FormField>
 
@@ -251,10 +199,23 @@ const DetalleItemsSection = ({
             error={detalleForm.formState.errors.unidad_medida?.message}
             required
           >
-            <Input
-              placeholder="Ej: UN, KG, LT"
-              {...detalleForm.register("unidad_medida")}
-            />
+            <Select
+              value={detalleForm.watch("unidad_medida")}
+              onValueChange={(value) =>
+                detalleForm.setValue("unidad_medida", value, { shouldValidate: true })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona unidad" />
+              </SelectTrigger>
+              <SelectContent>
+                {UNIDAD_MEDIDA_CHOICES.map((choice) => (
+                  <SelectItem key={choice.id} value={choice.id}>
+                    {choice.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           
           <FormField
@@ -271,7 +232,47 @@ const DetalleItemsSection = ({
           </FormField>
         </div>
       </FormDialog>
-    </CollapsibleSection>
+    </>
+  );
+};
+
+// Contenido de la sección de datos generales
+const DatosGeneralesContent = () => {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <SelectInput
+        source="tipo"
+        label="Tipo de solicitud"
+        choices={TIPO_CHOICES}
+        className="w-full"
+        validate={required()}
+      />
+      <TextInput
+        source="fecha_necesidad"
+        label="Fecha de necesidad"
+        type="date"
+        validate={required()}
+        className="w-full"
+      />
+      <ReferenceInput
+        source="solicitante_id"
+        reference="users"
+        label="Solicitante"
+      >
+        <SelectInput
+          optionText="nombre"
+          className="w-full"
+          validate={required()}
+        />
+      </ReferenceInput>
+      <TextInput
+        source="comentario"
+        label="Comentarios"
+        multiline
+        rows={3}
+        className="md:col-span-2"
+      />
+    </div>
   );
 };
 
@@ -285,62 +286,31 @@ const SolicitudFormFields = () => {
   // Auto-inicializar solicitante con el usuario actual
   useAutoInitializeField("solicitante_id", "id", !idValue);
 
-  const generalSubtitle = useMemo(() => {
-    const snippet = comentarioValue ? comentarioValue.slice(0, 25) : "";
-    return [idValue, tipoValue, snippet].filter(Boolean).join(" - ") || "Sin datos";
-  }, [idValue, tipoValue, comentarioValue]);
+  // Calcular subtítulo usando helper del modelo
+  const generalSubtitle = useMemo(
+    () => buildGeneralSubtitle(idValue, tipoValue, comentarioValue),
+    [idValue, tipoValue, comentarioValue]
+  );
 
   return (
-    <>
-      <CollapsibleSection
-        title="Datos generales"
-        subtitle={generalSubtitle}
-        defaultOpen={!idValue}
-      >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <SelectInput
-            source="tipo"
-            label="Tipo de solicitud"
-            choices={tipoChoices}
-            className="w-full"
-            validate={required()}
-          />
-          <TextInput
-            source="fecha_necesidad"
-            label="Fecha de necesidad"
-            type="date"
-            validate={required()}
-            className="w-full"
-          />
-          <ReferenceInput
-            source="solicitante_id"
-            reference="users"
-            label="Solicitante"
-          >
-            <SelectInput
-              optionText="nombre"
-              className="w-full"
-              validate={required()}
-            />
-          </ReferenceInput>
-          <TextInput
-            source="comentario"
-            label="Comentarios"
-            multiline
-            rows={3}
-            className="md:col-span-2"
-          />
-        </div>
-        
-      </CollapsibleSection>
-
-      <DetalleItemsSection
-        minItems={1}
-        onNewItemCreated={() => {
-          // Se puede cerrar la sección de datos generales si se desea
-        }}
-      />
-    </>
+    <FormLayout
+      spacing="md"
+      sections={[
+        {
+          id: "datos-generales",
+          title: "Datos generales",
+          subtitle: generalSubtitle,
+          defaultOpen: !idValue,
+          children: <DatosGeneralesContent />,
+        },
+        {
+          id: "articulos-seleccionados",
+          title: "Articulos seleccionados",
+          defaultOpen: true,
+          children: <DetalleItemsSection minItems={1} />,
+        },
+      ]}
+    />
   );
 };
 

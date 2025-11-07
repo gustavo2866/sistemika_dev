@@ -25,18 +25,71 @@ const { options, loading } = useReferenceOptions("articulos", "nombre");
 ```
 
 ### 2. CollapsibleSection
-Sección colapsable con header.
+Sección colapsable con header y múltiples opciones de configuración.
+
+**Parámetros disponibles:**
 
 ```tsx
 import { CollapsibleSection } from "@/components/forms";
 
 <CollapsibleSection
+  // Básico
   title="Datos generales"
-  subtitle="Información básica"
-  defaultOpen={true}
-  onToggle={(isOpen) => console.log(isOpen)}
+  subtitle="Información básica"  // String estático
+  
+  // O subtitle dinámico con función
+  subtitle={() => `Usuario: ${userName} - ${date}`}
+  
+  // Control de colapsado
+  collapsible={true}          // Si puede colapsarse (default: true)
+  defaultOpen={true}          // Estado inicial (default: true)
+  
+  // Estilos
+  variant="default"           // "default" | "outlined" | "ghost"
+  contentPadding="md"         // "none" | "sm" | "md" | "lg"
+  className="my-custom-class" // Clase CSS adicional
+  contentClassName="p-2"      // Clase CSS para el contenido
+  
+  // Callbacks
+  onToggle={(isOpen) => console.log("Toggle:", isOpen)}
+  onOpen={() => console.log("Abierto")}
+  onClose={() => console.log("Cerrado")}
+  
+  // Contenido adicional en header
+  headerContent={<Button>Acción</Button>}
 >
   {/* Contenido de la sección */}
+</CollapsibleSection>
+```
+
+**Ejemplos de uso:**
+
+```tsx
+// Sección NO colapsable (siempre visible)
+<CollapsibleSection
+  title="Datos requeridos"
+  collapsible={false}
+>
+  <RequiredFields />
+</CollapsibleSection>
+
+// Sección con subtitle dinámico
+<CollapsibleSection
+  title="Resumen"
+  subtitle={() => `Total: ${items.length} items - $${total}`}
+  defaultOpen={false}
+>
+  <Summary />
+</CollapsibleSection>
+
+// Sección con estilo especial
+<CollapsibleSection
+  title="Datos avanzados"
+  variant="outlined"
+  contentPadding="lg"
+  onOpen={() => trackEvent("advanced_section_opened")}
+>
+  <AdvancedOptions />
 </CollapsibleSection>
 ```
 
@@ -221,6 +274,187 @@ import { useAutoInitializeField } from "@/components/forms";
 // Auto-llenar solicitante_id con el id del usuario actual
 useAutoInitializeField("solicitante_id", "id", !isEditing);
 ```
+
+## 🎯 FormLayout - Configuración Avanzada de Secciones
+
+`FormLayout` permite definir todas las secciones de un formulario mediante un array de configuración, garantizando comportamiento consistente en todas las entidades.
+
+### Parámetros de FormLayout
+
+```tsx
+import { FormLayout } from "@/components/forms";
+
+<FormLayout
+  sections={[
+    {
+      id: "section1",
+      title: "Título",
+      subtitle: "Subtítulo" | (() => "Subtítulo dinámico"),
+      collapsible: true,
+      defaultOpen: true,
+      variant: "default" | "outlined" | "ghost",
+      contentPadding: "none" | "sm" | "md" | "lg",
+      className: "custom-class",
+      contentClassName: "custom-content-class",
+      onToggle: (isOpen) => {},
+      onOpen: () => {},
+      onClose: () => {},
+      children: <YourContent />
+    }
+  ]}
+  spacing="md"  // "none" | "sm" | "md" | "lg"
+  className="custom-layout-class"
+/>
+```
+
+### Ejemplos por Tipo de Entidad
+
+#### 1. Entidad Simple (sin detalle)
+```tsx
+// Ejemplo: Categorías, Tags, etc.
+<FormLayout
+  sections={[
+    {
+      id: "datos",
+      title: "Datos de la categoría",
+      collapsible: false,  // No colapsable, siempre visible
+      children: (
+        <div className="grid gap-4">
+          <TextInput source="nombre" label="Nombre" />
+          <TextInput source="descripcion" label="Descripción" multiline />
+          <SelectInput source="estado" label="Estado" choices={estadoChoices} />
+        </div>
+      )
+    }
+  ]}
+/>
+```
+
+#### 2. Entidad con Secciones Múltiples
+```tsx
+// Ejemplo: Usuarios, Clientes
+const userSubtitle = () => `${email} - ${role}`;
+
+<FormLayout
+  sections={[
+    {
+      id: "personal",
+      title: "Datos personales",
+      subtitle: userSubtitle,
+      defaultOpen: !idValue,
+      children: <DatosPersonales />
+    },
+    {
+      id: "contacto",
+      title: "Información de contacto",
+      defaultOpen: false,
+      contentPadding: "lg",
+      children: <DatosContacto />
+    },
+    {
+      id: "configuracion",
+      title: "Configuración",
+      variant: "outlined",
+      defaultOpen: false,
+      onOpen: () => trackEvent("config_opened"),
+      children: <Configuracion />
+    }
+  ]}
+  spacing="lg"
+/>
+```
+
+#### 3. Entidad Maestro-Detalle
+```tsx
+// Ejemplo: Solicitudes, Facturas, Órdenes
+<FormLayout
+  sections={[
+    {
+      id: "cabecera",
+      title: "Datos generales",
+      subtitle: () => `${tipo} - ${fecha} - ${comentario.slice(0, 25)}`,
+      defaultOpen: !idValue,
+      children: <CabeceraDatos />
+    },
+    {
+      id: "detalles",
+      title: "Artículos seleccionados",
+      defaultOpen: true,
+      collapsible: true,
+      children: <DetalleItemsSection />
+    }
+  ]}
+/>
+```
+
+#### 4. Entidad Compleja (muchas secciones)
+```tsx
+// Ejemplo: Proyectos completos, Configuración del sistema
+<FormLayout
+  sections={[
+    {
+      id: "basico",
+      title: "Información básica",
+      collapsible: false,  // Siempre visible
+      children: <BasicInfo />
+    },
+    {
+      id: "detalles",
+      title: "Detalles del proyecto",
+      subtitle: () => `${faseActual} - ${progreso}%`,
+      children: <ProjectDetails />
+    },
+    {
+      id: "equipo",
+      title: "Equipo de trabajo",
+      children: <TeamSection />
+    },
+    {
+      id: "tareas",
+      title: "Tareas",
+      children: <TasksSection />
+    },
+    {
+      id: "documentos",
+      title: "Documentos",
+      variant: "outlined",
+      defaultOpen: false,
+      children: <DocumentsSection />
+    },
+    {
+      id: "historial",
+      title: "Historial de cambios",
+      variant: "ghost",
+      contentPadding: "sm",
+      defaultOpen: false,
+      children: <HistorySection />
+    }
+  ]}
+  spacing="md"
+/>
+```
+
+### Ventajas de Usar FormLayout
+
+✅ **Consistencia**: Todas las entidades se comportan igual
+✅ **Mantenibilidad**: Un solo lugar para cambiar comportamiento
+✅ **Declarativo**: Código más legible y estructurado
+✅ **Flexible**: Soporta entidades simples y complejas
+✅ **Configurable**: Cada sección puede tener su propia configuración
+✅ **Callbacks**: Control sobre eventos de apertura/cierre
+
+### Cuándo Usar FormLayout vs CollapsibleSection
+
+**Usa FormLayout cuando:**
+- Quieras estandarizar el comportamiento de todas las secciones
+- Tengas 2+ secciones
+- Necesites configuración declarativa
+- Quieras garantizar consistencia entre formularios
+
+**Usa CollapsibleSection cuando:**
+- Solo tienes 1 sección
+- Necesites control muy específico sobre una sección individual
+- Estés haciendo un componente reutilizable que incluye su propia sección
 
 ## 📝 Ejemplo Completo: Formulario Maestro-Detalle
 
