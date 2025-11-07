@@ -1,36 +1,27 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { required, useDataProvider, useGetIdentity } from "ra-core";
-import { useForm, useFieldArray, useFormContext, useWatch } from "react-hook-form";
+import { useMemo } from "react";
+import { required } from "ra-core";
+import { useFormContext, useWatch, useForm } from "react-hook-form";
 import { SimpleForm } from "@/components/simple-form";
 import { SelectInput } from "@/components/select-input";
 import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
+  Combobox,
+  CollapsibleSection,
+  FormDialog,
+  FormField,
+  AddItemButton,
+  DetailList,
+  MinItemsValidation,
+  useReferenceOptions,
+  useAutoInitializeField,
+  useDetailCRUD,
+} from "@/components/forms";
 
 const tipoChoices = [
   { id: "normal", name: "Normal" },
@@ -61,179 +52,55 @@ type SolicitudDetalle = {
   cantidad: number;
 };
 
-const useArticuloOptions = () => {
-  const dataProvider = useDataProvider();
-  const [loading, setLoading] = useState(false);
-  const [options, setOptions] = useState<Array<{ id: number; nombre: string }>>([]);
-
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    dataProvider
-      .getList("articulos", {
-        pagination: { page: 1, perPage: 100 },
-        sort: { field: "nombre", order: "ASC" },
-        filter: {},
-      })
-      .then(({ data }) => {
-        if (!mounted) return;
-        setOptions(
-          data.map((item: any) => ({
-            id: item.id,
-            nombre: item.nombre,
-          }))
-        );
-      })
-      .finally(() => {
-        if (mounted) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [dataProvider]);
-
-  return { options, loading };
-};
-
-const ArticuloCombobox = ({
-  value,
-  onChange,
-  options,
-  loading,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ id: number; nombre: string }>;
-  loading: boolean;
-}) => {
-  const [open, setOpen] = useState(false);
-  const selected = useMemo(
-    () => options.find((option) => String(option.id) === value),
-    [options, value]
-  );
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full justify-between"
-          disabled={loading}
-        >
-          {selected
-            ? selected.nombre
-            : loading
-              ? "Cargando articulos..."
-              : "Selecciona un articulo"}
-          <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0">
-        <Command>
-          <CommandInput placeholder="Buscar articulo..." />
-          <CommandList>
-            {loading ? (
-              <CommandEmpty>Cargando articulos...</CommandEmpty>
-            ) : (
-              <>
-                <CommandEmpty>Sin resultados.</CommandEmpty>
-                <CommandGroup>
-                  {options.map((option) => (
-                    <CommandItem
-                      key={option.id}
-                      value={option.nombre}
-                      onSelect={() => {
-                        onChange(String(option.id));
-                        setOpen(false);
-                      }}
-                    >
-                      {option.nombre}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-};
-
 const DetalleItemsSection = ({
-  open,
-  onToggle,
   minItems = 0,
   onNewItemCreated,
 }: {
-  open: boolean;
-  onToggle: () => void;
   minItems?: number;
   onNewItemCreated?: () => void;
 }) => {
-  const { control } = useFormContext();
-  const { fields, append, update, remove } = useFieldArray({
-    control,
-    name: "detalles",
-    keyName: "fieldId",
-  });
-  const { options: articuloOptions, loading: articulosLoading } = useArticuloOptions();
-
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const addButtonRef = useRef<HTMLButtonElement | null>(null);
-
+  // Crear el form para el detalle
   const detalleForm = useForm<DetalleFormValues>({
     defaultValues: detalleDefaultValues,
   });
 
-  const sortedEntries = useMemo(
-    () =>
-      fields
-        .map((item, originalIndex) => ({ item: item as any, originalIndex }))
-        .sort((a, b) => {
-          const idA =
-            (a.item as SolicitudDetalle).id ??
-            (a.item as SolicitudDetalle).tempId ??
-            0;
-          const idB =
-            (b.item as SolicitudDetalle).id ??
-            (b.item as SolicitudDetalle).tempId ??
-            0;
-          return Number(idB) - Number(idA);
-        }),
-    [fields]
-  );
+  // Usar el hook genérico para toda la lógica CRUD
+  const {
+    fields,
+    sortedEntries,
+    dialogOpen,
+    setDialogOpen,
+    editingIndex,
+    setEditingIndex,
+    handleAdd,
+    handleDelete,
+    handleSubmit,
+    handleCancel,
+  } = useDetailCRUD<DetalleFormValues, SolicitudDetalle>({
+    fieldName: "detalles",
+    detalleForm,
+    defaultValues: detalleDefaultValues,
+  });
 
-  const closeDialog = () => {
-    setDialogOpen(false);
-    setEditingIndex(null);
-    detalleForm.reset(detalleDefaultValues);
-  };
+  // Usar el hook genérico para cargar opciones
+  const { options: articuloOptions, loading: articulosLoading } =
+    useReferenceOptions("articulos", "nombre");
 
-  const handleAddItem = () => {
-    setEditingIndex(null);
-    detalleForm.reset(detalleDefaultValues);
-    setDialogOpen(true);
-  };
-
+  // Custom edit handler para convertir number a string (específico de este form)
   const handleEditItem = (index: number) => {
-    const current = fields[index] as any;
+    const detalle = fields[index] as SolicitudDetalle;
     detalleForm.reset({
-      articulo_id: current.articulo_id ? String(current.articulo_id) : "",
-      descripcion: current.descripcion ?? "",
-      unidad_medida: current.unidad_medida ?? "",
-      cantidad: Number(current.cantidad ?? 1) || 1,
+      articulo_id: detalle.articulo_id != null ? String(detalle.articulo_id) : "",
+      descripcion: detalle.descripcion,
+      unidad_medida: detalle.unidad_medida,
+      cantidad: detalle.cantidad,
     });
     setEditingIndex(index);
     setDialogOpen(true);
   };
 
-  const handleSubmitDetalle = detalleForm.handleSubmit((data) => {
+  // Custom submit handler con validación (específico de este form)
+  const handleSubmitDetalle = detalleForm.handleSubmit((data: DetalleFormValues) => {
     detalleForm.clearErrors();
 
     const validationErrors: Partial<Record<keyof DetalleFormValues, string>> = {};
@@ -262,7 +129,7 @@ const DetalleItemsSection = ({
     }
 
     const selectedArticulo = articuloOptions.find(
-      (option) => String(option.id) === data.articulo_id
+      (option: { id: number; nombre: string }) => String(option.id) === data.articulo_id
     );
     const normalized: SolicitudDetalle = {
       articulo_id: selectedArticulo ? selectedArticulo.id : null,
@@ -272,374 +139,213 @@ const DetalleItemsSection = ({
       cantidad: data.cantidad,
     };
 
-    if (editingIndex == null) {
-      append(
-        {
-          ...normalized,
-          tempId: Date.now(),
-        },
-        { shouldFocus: false }
-      );
-      onNewItemCreated?.();
-      setTimeout(() => {
-        addButtonRef.current?.focus();
-      }, 0);
-    } else {
-      const existing = fields[editingIndex] as any;
-      update(editingIndex, {
-        ...existing,
-        ...normalized,
-        tempId: existing.tempId ?? Date.now(),
-      });
-    }
-    closeDialog();
+    // Usar handleSubmit genérico
+    handleSubmit(normalized, onNewItemCreated);
   });
 
-  return (
-    <Card>
-      <div className="border-b px-4 py-3">
-        <div className="flex items-start gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="mt-1 h-8 w-8"
-            onClick={onToggle}
-            aria-label={open ? "Colapsar articulos" : "Expandir articulos"}
+  // Función para renderizar cada item
+  const renderDetailItem = (item: SolicitudDetalle) => {
+    const articuloLabel =
+      item.articulo_nombre ||
+      articuloOptions.find((option: { id: number; nombre: string }) => option.id === item.articulo_id)?.nombre ||
+      "Sin articulo";
+
+    return (
+      <div className="grid gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
+          <Badge
+            variant="secondary"
+            className="max-w-full truncate px-2 py-1 text-sm font-semibold"
           >
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${open ? "" : "-rotate-90"}`}
-            />
-          </Button>
-          <div>
-            <h3 className="text-lg font-semibold">Articulos seleccionados</h3>
-          </div>
+            {articuloLabel}
+          </Badge>
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {item.unidad_medida || "-"}
+          </span>
+          <Badge variant="outline" className="px-2 py-1 text-sm font-semibold">
+            {item.cantidad}
+          </Badge>
         </div>
-        <Button
-          type="button"
-          onClick={handleAddItem}
-          className="mt-3 w-full"
-          ref={addButtonRef}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Agregar articulo
-        </Button>
+        <div className="truncate text-xs text-muted-foreground">
+          {item.descripcion || "Articulo sin descripcion"}
+        </div>
       </div>
+    );
+  };
 
-      <CardContent className={`space-y-4 ${open ? "block" : "hidden"} p-4`}>
-        {sortedEntries.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Todavia no agregaste articulos. Presiona &quot;Agregar articulo&quot; para comenzar.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-            {sortedEntries.map(({ item, originalIndex }, renderedIndex) => {
-              const detalle = item as SolicitudDetalle;
-              const articuloLabel =
-                detalle.articulo_nombre ||
-                articuloOptions.find((option) => option.id === detalle.articulo_id)?.nombre ||
-                "Sin articulo";
+  return (
+    <CollapsibleSection title="Articulos seleccionados" defaultOpen>
+      <AddItemButton
+        onClick={() => {
+          handleAdd();
+          setDialogOpen(true);
+        }}
+        label="Agregar articulo"
+      />
 
-              return (
-                <Card
-                  key={detalle.id ?? detalle.tempId ?? `${originalIndex}-${renderedIndex}`}
-                  className="cursor-pointer border-border/70 transition-shadow hover:shadow-sm"
-                  onClick={() => handleEditItem(originalIndex)}
-                  role="button"
-                >
-                  <CardContent className="grid gap-2 p-3">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
-                      <Badge
-                        variant="secondary"
-                        className="max-w-full truncate px-2 py-1 text-sm font-semibold"
-                      >
-                        {articuloLabel}
-                      </Badge>
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {detalle.unidad_medida || "-"}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className="px-2 py-1 text-sm font-semibold"
-                      >
-                        {detalle.cantidad}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
-                      <span className="truncate text-xs text-muted-foreground">
-                        {detalle.descripcion || "Articulo sin descripcion"}
-                      </span>
-                      <div className="flex items-center justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleEditItem(originalIndex);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            remove(originalIndex);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+      <DetailList<SolicitudDetalle>
+        items={sortedEntries.map((entry) => entry.item as SolicitudDetalle)}
+        renderItem={renderDetailItem}
+        onEdit={(_, index) => {
+          const originalIndex = sortedEntries[index].originalIndex;
+          handleEditItem(originalIndex);
+        }}
+        onDelete={(_, index) => {
+          const originalIndex = sortedEntries[index].originalIndex;
+          handleDelete(originalIndex);
+        }}
+        emptyMessage='Todavía no agregaste artículos. Presiona "Agregar articulo" para comenzar.'
+        keyExtractor={(item) => String(item.id ?? item.tempId)}
+      />
 
-        {minItems > 0 && fields.length < minItems && (
-          <p className="text-sm text-red-500">
-            Debes agregar al menos {minItems} articulo(s)
-          </p>
-        )}
-      </CardContent>
+      <MinItemsValidation
+        currentCount={fields.length}
+        minItems={minItems}
+        itemName="articulo"
+      />
 
-      <Dialog
+      <FormDialog
         open={dialogOpen}
         onOpenChange={(open) => {
           if (!open) {
-            closeDialog();
+            handleCancel();
           }
+          setDialogOpen(open);
         }}
+        title={editingIndex == null ? "Agregar articulo" : "Editar articulo"}
+        description="Completa los datos del articulo para la solicitud."
+        onSubmit={handleSubmitDetalle}
+        onCancel={handleCancel}
+        submitLabel={editingIndex == null ? "Agregar" : "Actualizar"}
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editingIndex == null ? "Agregar articulo" : "Editar articulo"}
-            </DialogTitle>
-            <DialogDescription>
-              Completa los datos del articulo para la solicitud.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmitDetalle} className="space-y-4">
-            <div className="space-y-2">
-              <Label
-                htmlFor="detalle-articulo"
-                className="flex items-center gap-1"
-              >
-                Articulo <span className="text-destructive">*</span>
-              </Label>
-              <ArticuloCombobox
-                value={detalleForm.watch("articulo_id")}
-                onChange={(newValue) =>
-                  detalleForm.setValue("articulo_id", newValue, { shouldValidate: true })
-                }
-                options={articuloOptions}
-                loading={articulosLoading}
-              />
-              {detalleForm.formState.errors.articulo_id && (
-                <p className="text-sm text-destructive">
-                  {detalleForm.formState.errors.articulo_id.message}
-                </p>
-              )}
-            </div>
+        <FormField
+          label="Articulo"
+          error={detalleForm.formState.errors.articulo_id?.message}
+          required
+        >
+          <Combobox
+            value={detalleForm.watch("articulo_id")}
+            onChange={(newValue: string) =>
+              detalleForm.setValue("articulo_id", newValue, { shouldValidate: true })
+            }
+            options={articuloOptions}
+            loading={articulosLoading}
+            placeholder="Selecciona un articulo"
+            searchPlaceholder="Buscar articulo..."
+            loadingMessage="Cargando articulos..."
+            emptyMessage="Sin resultados."
+          />
+        </FormField>
 
-            <div className="space-y-2">
-              <Label
-                htmlFor="detalle-descripcion"
-                className="flex items-center gap-1"
-              >
-                Descripcion <span className="text-destructive">*</span>
-              </Label>
-              <Textarea
-                id="detalle-descripcion"
-                rows={3}
-                {...detalleForm.register("descripcion")}
-              />
-              {detalleForm.formState.errors.descripcion && (
-                <p className="text-sm text-destructive">
-                  {detalleForm.formState.errors.descripcion.message}
-                </p>
-              )}
-            </div>
+        <FormField
+          label="Descripcion"
+          error={detalleForm.formState.errors.descripcion?.message}
+          required
+        >
+          <Textarea rows={3} {...detalleForm.register("descripcion")} />
+        </FormField>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="detalle-unidad"
-                  className="flex items-center gap-1"
-                >
-                  Unidad de medida <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="detalle-unidad"
-                  placeholder="Ej: UN, KG, LT"
-                  {...detalleForm.register("unidad_medida")}
-                />
-                {detalleForm.formState.errors.unidad_medida && (
-                  <p className="text-sm text-destructive">
-                    {detalleForm.formState.errors.unidad_medida.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="detalle-cantidad"
-                  className="flex items-center gap-1"
-                >
-                  Cantidad <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="detalle-cantidad"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  {...detalleForm.register("cantidad", { valueAsNumber: true })}
-                />
-                {detalleForm.formState.errors.cantidad && (
-                  <p className="text-sm text-destructive">
-                    {detalleForm.formState.errors.cantidad.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={closeDialog}
-                className="w-full sm:w-auto"
-                tabIndex={-1}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" className="w-full sm:w-auto" tabIndex={0}>
-                {editingIndex == null ? "Agregar" : "Actualizar"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </Card>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            label="Unidad de medida"
+            error={detalleForm.formState.errors.unidad_medida?.message}
+            required
+          >
+            <Input
+              placeholder="Ej: UN, KG, LT"
+              {...detalleForm.register("unidad_medida")}
+            />
+          </FormField>
+          
+          <FormField
+            label="Cantidad"
+            error={detalleForm.formState.errors.cantidad?.message}
+            required
+          >
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              {...detalleForm.register("cantidad", { valueAsNumber: true })}
+            />
+          </FormField>
+        </div>
+      </FormDialog>
+    </CollapsibleSection>
   );
 };
 
 const SolicitudFormFields = () => {
   const form = useFormContext();
-  const { control, setValue } = form;
+  const { control } = form;
   const idValue = useWatch({ control, name: "id" });
   const tipoValue = useWatch({ control, name: "tipo" });
   const comentarioValue = useWatch({ control, name: "comentario" }) || "";
-  const solicitanteValue = useWatch({ control, name: "solicitante_id" });
-  const { identity } = useGetIdentity();
 
-  const [generalOpen, setGeneralOpen] = useState(true);
-  useEffect(() => {
-    setGeneralOpen(!idValue);
-  }, [idValue]);
-
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  // Auto-inicializar solicitante con el usuario actual
+  useAutoInitializeField("solicitante_id", "id", !idValue);
 
   const generalSubtitle = useMemo(() => {
     const snippet = comentarioValue ? comentarioValue.slice(0, 25) : "";
     return [idValue, tipoValue, snippet].filter(Boolean).join(" - ") || "Sin datos";
   }, [idValue, tipoValue, comentarioValue]);
 
-  useEffect(() => {
-    if (!idValue && identity?.id != null && (solicitanteValue == null || solicitanteValue === "")) {
-      setValue("solicitante_id", identity.id, { shouldDirty: false });
-    }
-  }, [idValue, identity, solicitanteValue, setValue]);
-
-  
-
   return (
     <>
-      <Card>
-        <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
-          <div className="flex items-start gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="mt-1 h-8 w-8"
-              onClick={() => setGeneralOpen((prev) => !prev)}
-              aria-label={generalOpen ? "Colapsar datos generales" : "Expandir datos generales"}
-            >
-              <ChevronDown
-                className={`h-4 w-4 transition-transform ${generalOpen ? "" : "-rotate-90"}`}
-              />
-            </Button>
-            <div>
-              <h3 className="text-lg font-semibold">Datos generales</h3>
-              <p className="text-sm text-muted-foreground">{generalSubtitle}</p>
-            </div>
-          </div>
-        </div>
-        <CardContent className={`space-y-4 ${generalOpen ? "block" : "hidden"} p-4`}>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <CollapsibleSection
+        title="Datos generales"
+        subtitle={generalSubtitle}
+        defaultOpen={!idValue}
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <SelectInput
+            source="tipo"
+            label="Tipo de solicitud"
+            choices={tipoChoices}
+            className="w-full"
+            validate={required()}
+          />
+          <TextInput
+            source="fecha_necesidad"
+            label="Fecha de necesidad"
+            type="date"
+            validate={required()}
+            className="w-full"
+          />
+          <ReferenceInput
+            source="solicitante_id"
+            reference="users"
+            label="Solicitante"
+          >
             <SelectInput
-              source="tipo"
-              label="Tipo de solicitud"
-              choices={tipoChoices}
+              optionText="nombre"
               className="w-full"
               validate={required()}
             />
-            <TextInput
-              source="fecha_necesidad"
-              label="Fecha de necesidad"
-              type="date"
-              validate={required()}
-              className="w-full"
-            />
-            <ReferenceInput
-              source="solicitante_id"
-              reference="users"
-              label="Solicitante"
-            >
-              <SelectInput
-                optionText="nombre"
-                className="w-full"
-                validate={required()}
-              />
-            </ReferenceInput>
-            <TextInput
-              source="comentario"
-              label="Comentarios"
-              multiline
-              rows={3}
-              className="md:col-span-2"
-            />
-          </div>
-        </CardContent>
-      </Card>
+          </ReferenceInput>
+          <TextInput
+            source="comentario"
+            label="Comentarios"
+            multiline
+            rows={3}
+            className="md:col-span-2"
+          />
+        </div>
+        
+      </CollapsibleSection>
 
       <DetalleItemsSection
-        open={detailsOpen}
-        onToggle={() => setDetailsOpen((prev) => !prev)}
         minItems={1}
-        onNewItemCreated={() => setGeneralOpen(false)}
+        onNewItemCreated={() => {
+          // Se puede cerrar la sección de datos generales si se desea
+        }}
       />
     </>
   );
 };
 
 export const Form = () => {
-  const today = useMemo(
-    () => new Date().toISOString().slice(0, 10),
-    []
-  );
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   return (
     <SimpleForm
@@ -651,7 +357,7 @@ export const Form = () => {
         detalles: [] as SolicitudDetalle[],
       }}
     >
-      <SolicitudFormFields />
+    <SolicitudFormFields />
     </SimpleForm>
   );
 };
