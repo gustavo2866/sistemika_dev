@@ -16,6 +16,13 @@
  */
 
 import { UseFormReturn } from "react-hook-form";
+import {
+  createDetailSchema,
+  numberField,
+  referenceField,
+  selectField,
+  stringField,
+} from "@/lib/form-detail-schema";
 
 // ============================================
 // 1. CONFIGURACIÓN
@@ -57,13 +64,6 @@ export const VALIDATION_RULES = {
   GENERAL: {
     MAX_COMENTARIO_LENGTH: 1000,
   },
-} as const;
-
-/**
- * Configuración de campos
- */
-export const FIELD_CONFIG = {
-  COMENTARIO_SNIPPET_LENGTH: 25,
 } as const;
 
 /**
@@ -209,76 +209,42 @@ export function validateDetalle(
 // 5. TRANSFORMACIONES
 // ============================================
 
-/**
- * Interfaz genérica para opciones de referencias
- */
-export interface ReferenceOption {
-  id: number;
-  nombre: string;
-}
-
-/**
- * Convierte detalle de BD a formato de formulario
- * 
- * Transformaciones aplicadas:
- * - number → string para IDs (compatibilidad Combobox)
- * 
- * @param detalle - Detalle desde BD
- * @returns Valores para edición en formulario
- * 
- * @example
- * ```ts
- * const formValues = transformToForm(detalle);
- * detalleForm.reset(formValues);
- * ```
- */
-export function transformToForm(
-  detalle: SolicitudDetalle
-): DetalleFormValues {
-  return {
-    articulo_id: detalle.articulo_id != null ? String(detalle.articulo_id) : "",
-    descripcion: detalle.descripcion,
-    unidad_medida: detalle.unidad_medida,
-    cantidad: detalle.cantidad,
-  };
-}
-
-/**
- * Convierte datos de formulario a detalle para BD
- * 
- * Transformaciones aplicadas:
- * - string → number para IDs
- * - trim() en campos de texto
- * - Enriquecimiento con nombre del artículo
- * 
- * @param data - Datos del formulario
- * @param articuloOptions - Referencias disponibles
- * @returns Detalle normalizado para persistir
- * 
- * @example
- * ```ts
- * const detalle = transformToPersist(formData, articuloOptions);
- * handleSubmit(detalle);
- * ```
- */
-export function transformToPersist(
-  data: DetalleFormValues,
-  articuloOptions: ReferenceOption[]
-): SolicitudDetalle {
-  const selectedArticulo = articuloOptions.find(
-    (option) => String(option.id) === data.articulo_id
-  );
-
-  return {
-    articulo_id: selectedArticulo ? selectedArticulo.id : null,
-    articulo_nombre: selectedArticulo?.nombre ?? "",
-    descripcion: data.descripcion.trim(),
-    unidad_medida: data.unidad_medida.trim(),
-    cantidad: data.cantidad,
-  };
-}
-
 // ============================================
+
+// ============================================
+// 6. ESQUEMA DECLARATIVO PARA DETALLES
+// ============================================
+
+export const solicitudDetalleSchema = createDetailSchema<
+  DetalleFormValues,
+  SolicitudDetalle
+>({
+  defaults: () => DETALLE_DEFAULT_VALUES,
+  fields: {
+    articulo_id: referenceField({
+      resource: ARTICULOS_REFERENCE.resource,
+      labelField: ARTICULOS_REFERENCE.labelField,
+      persistLabelAs: "articulo_nombre",
+      perPage: ARTICULOS_REFERENCE.limit,
+      sortField: ARTICULOS_REFERENCE.labelField,
+      sortOrder: "ASC",
+    }),
+    descripcion: stringField({
+      required: true,
+      trim: true,
+      maxLength: VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH,
+    }),
+    unidad_medida: selectField({
+      required: true,
+      options: UNIDAD_MEDIDA_CHOICES,
+    }),
+    cantidad: numberField({
+      required: true,
+      min: VALIDATION_RULES.DETALLE.MIN_CANTIDAD + 1,
+    }),
+  },
+});
+
 // 6. HELPERS DE PRESENTACIÓN
 // ============================================
 
@@ -293,7 +259,7 @@ export function transformToPersist(
  */
 export function getArticuloLabel(
   item: SolicitudDetalle,
-  articuloOptions: ReferenceOption[]
+  articuloOptions: Array<{ id: number; nombre: string }>
 ): string {
   return (
     item.articulo_nombre ||
@@ -315,11 +281,10 @@ export function getArticuloLabel(
 export function buildGeneralSubtitle(
   id: number | undefined,
   tipo: string | undefined,
-  comentario: string | undefined
+  comentario: string | undefined,
+  comentarioSnippetLength: number = 25
 ): string {
-  const snippet = comentario 
-    ? comentario.slice(0, FIELD_CONFIG.COMENTARIO_SNIPPET_LENGTH) 
-    : "";
+  const snippet = comentario ? comentario.slice(0, comentarioSnippetLength) : "";
   return [id, tipo, snippet].filter(Boolean).join(" - ") || "Sin datos";
 }
 
@@ -336,7 +301,6 @@ export const SolicitudModel = {
   TIPO_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   VALIDATION_RULES,
-  FIELD_CONFIG,
   ARTICULOS_REFERENCE,
   
   // Valores default
@@ -345,8 +309,7 @@ export const SolicitudModel = {
   
   // Funciones
   validateDetalle,
-  transformToForm,
-  transformToPersist,
   getArticuloLabel,
   buildGeneralSubtitle,
+  solicitudDetalleSchema,
 } as const;

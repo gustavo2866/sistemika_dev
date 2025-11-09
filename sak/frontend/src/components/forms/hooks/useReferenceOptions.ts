@@ -6,14 +6,6 @@ interface ReferenceOption {
   nombre: string;
 }
 
-interface UseReferenceOptionsOptions {
-  resource: string;
-  optionTextField?: string;
-  perPage?: number;
-  sortField?: string;
-  sortOrder?: "ASC" | "DESC";
-}
-
 export const useReferenceOptions = (
   resource: string,
   optionTextField: string = "nombre",
