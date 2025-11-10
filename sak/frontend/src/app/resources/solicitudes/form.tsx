@@ -37,6 +37,7 @@ import {
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   VALIDATION_RULES,
+  solicitudCabeceraSchema,
   solicitudDetalleSchema,
 } from "./model";
 
@@ -70,6 +71,98 @@ const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
     />
   );
 };
+
+const SolicitudDetalleForm = () => (
+  <FormDetailFormDialog
+    title={({ action }) =>
+      action === "create" ? "Agregar artículo" : "Editar artículo"
+    }
+    description="Completa los datos del artículo para la solicitud."
+  >
+    {(detalleForm) => (
+      <>
+        <FormField
+          label="Artículo"
+          error={detalleForm.formState.errors.articulo_id}
+          required
+        >
+          <ComboboxQuery
+            {...ARTICULOS_REFERENCE}
+            value={detalleForm.watch("articulo_id")}
+              onChange={(value: string) =>
+                detalleForm.setValue("articulo_id", value, {
+                  shouldValidate: true,
+                })
+              }
+              placeholder="Selecciona un artículo"
+            />
+          </FormField>
+
+        <FormField
+          label="Descripción"
+          error={detalleForm.formState.errors.descripcion}
+          required
+        >
+          <Textarea rows={3} {...detalleForm.register("descripcion")} />
+        </FormField>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              label="Unidad de medida"
+              error={detalleForm.formState.errors.unidad_medida}
+              required
+            >
+              <Select
+                value={detalleForm.watch("unidad_medida")}
+                onValueChange={(value) =>
+                  detalleForm.setValue("unidad_medida", value, {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona unidad" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIDAD_MEDIDA_CHOICES.map((choice) => (
+                    <SelectItem key={choice.id} value={choice.id}>
+                      {choice.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField
+              label="Cantidad"
+              error={detalleForm.formState.errors.cantidad}
+              required
+            >
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                {...detalleForm.register("cantidad", { valueAsNumber: true })}
+              />
+            </FormField>
+          </div>
+        </>
+    )}
+  </FormDetailFormDialog>
+);
+
+const SolicitudDetalleContent = () => (
+  <>
+    <FormDetailSectionAddButton label="Agregar artículo" />
+    <FormDetailCardList<SolicitudDetalle>
+      emptyMessage="Todavía no agregaste artículos."
+    >
+      {(item) => <SolicitudDetalleCard item={item} />}
+    </FormDetailCardList>
+    <FormDetailSectionMinItems itemName="artículo" />
+    <SolicitudDetalleForm />
+  </>
+);
 
 const DatosGeneralesContent = () => (
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -148,112 +241,7 @@ const SolicitudFormFields = () => {
               schema={solicitudDetalleSchema}
               minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
             >
-              <FormDetailSectionAddButton label="Agregar artículo" />
-
-              <FormDetailCardList<SolicitudDetalle>
-                emptyMessage="Todavía no agregaste artículos."
-              >
-                {(item) => <SolicitudDetalleCard item={item} />}
-              </FormDetailCardList>
-
-              <FormDetailSectionMinItems itemName="artículo" />
-
-              <FormDetailFormDialog
-                title={({ action }) =>
-                  action === "create" ? "Agregar artículo" : "Editar artículo"
-                }
-                description="Completa los datos del artículo para la solicitud."
-              >
-                {(detalleForm) => {
-                  const resolveErrorMessage = (error: unknown) => {
-                    if (!error) return undefined;
-                    if (typeof error === "string") return error;
-                    const maybeMessage =
-                      typeof error === "object" && error !== null
-                        ? (error as { message?: unknown }).message
-                        : undefined;
-                    return typeof maybeMessage === "string" ? maybeMessage : undefined;
-                  };
-
-                  return (
-                  <>
-                    <FormField
-                      label="Artículo"
-                      error={resolveErrorMessage(
-                        detalleForm.formState.errors.articulo_id
-                      )}
-                      required
-                    >
-                      <ComboboxQuery
-                        {...ARTICULOS_REFERENCE}
-                        value={detalleForm.watch("articulo_id")}
-                        onChange={(value: string) =>
-                          detalleForm.setValue("articulo_id", value, {
-                            shouldValidate: true,
-                          })
-                        }
-                        placeholder="Selecciona un artículo"
-                      />
-                    </FormField>
-
-                    <FormField
-                      label="Descripción"
-                      error={resolveErrorMessage(
-                        detalleForm.formState.errors.descripcion
-                      )}
-                      required
-                    >
-                      <Textarea rows={3} {...detalleForm.register("descripcion")} />
-                    </FormField>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <FormField
-                        label="Unidad de medida"
-                        error={resolveErrorMessage(
-                          detalleForm.formState.errors.unidad_medida
-                        )}
-                        required
-                      >
-                        <Select
-                          value={detalleForm.watch("unidad_medida")}
-                          onValueChange={(value) =>
-                            detalleForm.setValue("unidad_medida", value, {
-                              shouldValidate: true,
-                            })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona unidad" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {UNIDAD_MEDIDA_CHOICES.map((choice) => (
-                              <SelectItem key={choice.id} value={choice.id}>
-                                {choice.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-
-                      <FormField
-                        label="Cantidad"
-                        error={resolveErrorMessage(
-                          detalleForm.formState.errors.cantidad
-                        )}
-                        required
-                      >
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          {...detalleForm.register("cantidad", { valueAsNumber: true })}
-                        />
-                      </FormField>
-                    </div>
-                  </>
-                  );
-                }}
-              </FormDetailFormDialog>
+              <SolicitudDetalleContent />
             </FormDetailSection>
           ),
         },
@@ -264,16 +252,27 @@ const SolicitudFormFields = () => {
 
 export const Form = () => {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const cabeceraDefaults = useMemo(
+    () => solicitudCabeceraSchema.defaults(),
+    []
+  );
+  const defaultValues = useMemo(() => {
+    const solicitanteDefault =
+      cabeceraDefaults.solicitante_id &&
+      cabeceraDefaults.solicitante_id.trim().length > 0
+        ? Number(cabeceraDefaults.solicitante_id)
+        : undefined;
+    return {
+      ...cabeceraDefaults,
+      fecha_necesidad: cabeceraDefaults.fecha_necesidad || today,
+      solicitante_id: solicitanteDefault,
+      detalles: [] as SolicitudDetalle[],
+    };
+  }, [cabeceraDefaults, today]);
 
   return (
     <SimpleForm
-      defaultValues={{
-        tipo: "normal",
-        fecha_necesidad: today,
-        solicitante_id: undefined,
-        comentario: "",
-        detalles: [] as SolicitudDetalle[],
-      }}
+      defaultValues={defaultValues}
     >
       <SolicitudFormFields />
     </SimpleForm>

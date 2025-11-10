@@ -18,6 +18,7 @@
 import { UseFormReturn } from "react-hook-form";
 import {
   createDetailSchema,
+  createEntitySchema,
   numberField,
   referenceField,
   selectField,
@@ -77,6 +78,11 @@ export const ARTICULOS_REFERENCE = {
   staleTime: 5 * 60 * 1000, // 5 minutos - los artículos cambian poco
 } as const;
 
+export const USERS_REFERENCE = {
+  resource: "users",
+  labelField: "nombre",
+} as const;
+
 // ============================================
 // 2. TIPOS
 // ============================================
@@ -118,18 +124,16 @@ export type Solicitud = {
   detalles: SolicitudDetalle[];
 };
 
+export type SolicitudCabeceraFormValues = {
+  tipo: "normal" | "directa";
+  fecha_necesidad: string;
+  solicitante_id: string;
+  comentario: string;
+};
+
 // ============================================
 // 3. VALORES DEFAULT
 // ============================================
-
-/**
- * Estado inicial para nueva solicitud
- */
-export const SOLICITUD_DEFAULT_VALUES: Partial<Solicitud> = {
-  tipo: "normal",
-  fecha_necesidad: new Date().toISOString().split("T")[0],
-  detalles: [],
-};
 
 // ============================================
 // 4. VALIDACIONES
@@ -200,11 +204,16 @@ export function validateDetalle(
 // ============================================
 
 // ============================================
-
-// ============================================
-// 6. ESQUEMA DECLARATIVO PARA DETALLES
-// ============================================
-
+
+
+// ============================================
+
+// 6. ESQUEMA DECLARATIVO PARA DETALLES
+
+// ============================================
+
+
+
 export const solicitudDetalleSchema = createDetailSchema<
   DetalleFormValues,
   SolicitudDetalle
@@ -237,7 +246,36 @@ export const solicitudDetalleSchema = createDetailSchema<
     }),
   },
 });
-
+
+export const solicitudCabeceraSchema = createEntitySchema<
+  SolicitudCabeceraFormValues,
+  Pick<Solicitud, "tipo" | "fecha_necesidad" | "solicitante_id" | "comentario">
+>({
+  fields: {
+    tipo: selectField({
+      required: true,
+      options: TIPO_CHOICES,
+      defaultValue: "normal",
+    }),
+    fecha_necesidad: stringField({
+      required: true,
+      defaultValue: "",
+    }),
+    solicitante_id: referenceField({
+      resource: USERS_REFERENCE.resource,
+      labelField: USERS_REFERENCE.labelField,
+      required: true,
+      defaultValue: "",
+    }),
+    comentario: stringField({
+      trim: true,
+      maxLength: VALIDATION_RULES.GENERAL.MAX_COMENTARIO_LENGTH,
+      defaultValue: "",
+    }),
+  },
+});
+
+
 // 6. HELPERS DE PRESENTACIÓN
 // ============================================
 
@@ -275,12 +313,10 @@ export const SolicitudModel = {
   UNIDAD_MEDIDA_CHOICES,
   VALIDATION_RULES,
   ARTICULOS_REFERENCE,
-  
-  // Valores default
-  SOLICITUD_DEFAULT_VALUES,
-  
   // Funciones
   validateDetalle,
   getArticuloLabel,
   solicitudDetalleSchema,
+  solicitudCabeceraSchema,
 } as const;
+

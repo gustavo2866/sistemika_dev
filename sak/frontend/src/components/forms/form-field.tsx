@@ -1,9 +1,15 @@
 import { Label } from "@/components/ui/label";
 import { type ReactNode } from "react";
 
+type FormFieldError =
+  | string
+  | { message?: string | undefined | null }
+  | null
+  | undefined;
+
 interface FormFieldProps {
   label: string;
-  error?: string;
+  error?: FormFieldError;
   required?: boolean;
   children: ReactNode;
   htmlFor?: string;
@@ -18,6 +24,16 @@ export const FormField = ({
   htmlFor,
   className,
 }: FormFieldProps) => {
+  const resolveErrorMessage = (err: FormFieldError) => {
+    if (!err) return undefined;
+    if (typeof err === "string") return err;
+    const maybeMessage =
+      typeof err === "object" && err !== null ? err.message : undefined;
+    return typeof maybeMessage === "string" ? maybeMessage : undefined;
+  };
+
+  const resolvedError = resolveErrorMessage(error);
+
   return (
     <div className={className || "space-y-2"}>
       <Label htmlFor={htmlFor} className="flex items-center gap-1">
@@ -25,7 +41,9 @@ export const FormField = ({
         {required && <span className="text-destructive">*</span>}
       </Label>
       {children}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {resolvedError && (
+        <p className="text-sm text-destructive">{resolvedError}</p>
+      )}
     </div>
   );
 };

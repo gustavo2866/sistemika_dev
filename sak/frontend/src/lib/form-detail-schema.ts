@@ -267,7 +267,12 @@ export const createDetailSchema = <
     fields,
   };
 };
-
+export function createEntitySchema<
+  TForm extends FieldValues,
+  TDetail
+>(definition: DetailSchemaDefinition<TForm, TDetail>) {
+  return createDetailSchema(definition);
+}
 export const stringField = (config: Omit<StringFieldConfig, "type"> = {}) => ({
   type: "string",
   trim: true,
