@@ -10,16 +10,10 @@ import { ReferenceInput } from "@/components/reference-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   ComboboxQuery,
   FormLayout,
   FormField,
+  FormChoiceSelect,
   FormSimpleSection,
   FormDetailSection,
   FormDetailSectionAddButton,
@@ -106,32 +100,20 @@ const SolicitudDetalleForm = () => (
           <Textarea rows={3} {...detalleForm.register("descripcion")} />
         </FormField>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              label="Unidad de medida"
-              error={detalleForm.formState.errors.unidad_medida}
-              required
-            >
-              <Select
-                value={detalleForm.watch("unidad_medida")}
-                onValueChange={(value) =>
-                  detalleForm.setValue("unidad_medida", value, {
-                    shouldValidate: true,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona unidad" />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNIDAD_MEDIDA_CHOICES.map((choice) => (
-                    <SelectItem key={choice.id} value={choice.id}>
-                      {choice.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormChoiceSelect
+            label="Unidad de medida"
+            error={detalleForm.formState.errors.unidad_medida}
+            required
+            choices={UNIDAD_MEDIDA_CHOICES}
+            value={detalleForm.watch("unidad_medida")}
+            onChange={(value) =>
+              detalleForm.setValue("unidad_medida", value, {
+                shouldValidate: true,
+              })
+            }
+            placeholder="Selecciona unidad"
+          />
 
             <FormField
               label="Cantidad"

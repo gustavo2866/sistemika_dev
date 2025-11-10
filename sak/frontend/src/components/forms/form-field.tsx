@@ -1,7 +1,7 @@
 import { Label } from "@/components/ui/label";
 import { type ReactNode } from "react";
 
-type FormFieldError =
+export type FormFieldError =
   | string
   | { message?: string | undefined | null }
   | null
