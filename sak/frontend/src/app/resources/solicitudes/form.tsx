@@ -28,6 +28,7 @@ import {
   FormDetailSectionMinItems,
   FormDetailFormDialog,
   useAutoInitializeField,
+  useFormDetailSectionContext,
 } from "@/components/forms";
 import {
   type Solicitud,
@@ -36,11 +37,39 @@ import {
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   VALIDATION_RULES,
-  buildGeneralSubtitle,
   solicitudDetalleSchema,
 } from "./model";
 
 const GENERAL_SUBTITLE_COMMENT_SNIPPET = 25;
+
+const buildGeneralSubtitle = (
+  id: number | undefined,
+  tipo: string | undefined,
+  comentario: string | undefined,
+  comentarioSnippetLength: number = GENERAL_SUBTITLE_COMMENT_SNIPPET
+): string => {
+  const snippet = comentario ? comentario.slice(0, comentarioSnippetLength) : "";
+  return [id, tipo, snippet].filter(Boolean).join(" - ") || "Sin datos";
+};
+
+const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
+  const { getReferenceLabel } = useFormDetailSectionContext();
+  const articuloLabel =
+    item.articulo_nombre ||
+    getReferenceLabel("articulo_id", item.articulo_id) ||
+    `ID: ${item.articulo_id}`;
+
+  return (
+    <FormDetailCard
+      title={articuloLabel}
+      subtitle={item.descripcion || "Artículo sin descripción"}
+      meta={[
+        { label: "Unidad", value: item.unidad_medida || "-" },
+        { label: "Cantidad", value: item.cantidad },
+      ]}
+    />
+  );
+};
 
 const DatosGeneralesContent = () => (
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -124,16 +153,7 @@ const SolicitudFormFields = () => {
               <FormDetailCardList<SolicitudDetalle>
                 emptyMessage="Todavía no agregaste artículos."
               >
-                {(item) => (
-                  <FormDetailCard
-                    title={item.articulo_nombre ?? `ID: ${item.articulo_id}`}
-                    subtitle={item.descripcion || "Artículo sin descripción"}
-                    meta={[
-                      { label: "Unidad", value: item.unidad_medida || "-" },
-                      { label: "Cantidad", value: item.cantidad },
-                    ]}
-                  />
-                )}
+                {(item) => <SolicitudDetalleCard item={item} />}
               </FormDetailCardList>
 
               <FormDetailSectionMinItems itemName="artículo" />

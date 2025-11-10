@@ -128,6 +128,15 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
 
   const getReferenceOptions = (fieldName: string) =>
     referenceOptionsMap[fieldName] ?? [];
+  const getReferenceLabel = (
+    fieldName: string,
+    value: number | string | null | undefined
+  ) => {
+    if (value === null || value === undefined || value === "") return undefined;
+    const options = getReferenceOptions(fieldName);
+    return options.find((option) => String(option.id) === String(value))
+      ?.nombre;
+  };
 
   const {
     fields,
@@ -185,14 +194,25 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
   };
 
   const submitHandler = detalleForm.handleSubmit(async (values) => {
-    const action = actionRef();
-    const normalized = schema.toModel(values, {
-      getReferenceOptions,
-    });
+    try {
+      const action = actionRef();
+      const normalized = schema.toModel(values, {
+        getReferenceOptions,
+      });
 
-    handleSubmit(normalized, () => {
-      onAfterSubmit?.({ action, item: normalized });
-    });
+      handleSubmit(normalized, () => {
+        onAfterSubmit?.({ action, item: normalized });
+      });
+    } catch (error) {
+      const detailErrors =
+        (error as { errors?: Record<string, string> })?.errors ?? {};
+      Object.entries(detailErrors).forEach(([field, message]) => {
+        detalleForm.setError(field as keyof TForm, {
+          type: "manual",
+          message,
+        });
+      });
+    }
   });
 
   const items = useMemo(() => sortedEntries.map((entry) => entry.item), [sortedEntries]);
@@ -215,6 +235,8 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
     handleFormSubmit: submitHandler,
     handleCancel,
     resolveAction: actionRef,
+    getReferenceOptions,
+    getReferenceLabel,
   };
 
   return (

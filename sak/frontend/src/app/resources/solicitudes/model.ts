@@ -123,16 +123,6 @@ export type Solicitud = {
 // ============================================
 
 /**
- * Estado inicial para nuevo detalle
- */
-export const DETALLE_DEFAULT_VALUES: DetalleFormValues = {
-  articulo_id: "",
-  descripcion: "",
-  unidad_medida: "UN",
-  cantidad: 1,
-};
-
-/**
  * Estado inicial para nueva solicitud
  */
 export const SOLICITUD_DEFAULT_VALUES: Partial<Solicitud> = {
@@ -219,7 +209,6 @@ export const solicitudDetalleSchema = createDetailSchema<
   DetalleFormValues,
   SolicitudDetalle
 >({
-  defaults: () => DETALLE_DEFAULT_VALUES,
   fields: {
     articulo_id: referenceField({
       resource: ARTICULOS_REFERENCE.resource,
@@ -228,19 +217,23 @@ export const solicitudDetalleSchema = createDetailSchema<
       perPage: ARTICULOS_REFERENCE.limit,
       sortField: ARTICULOS_REFERENCE.labelField,
       sortOrder: "ASC",
+      defaultValue: "",
     }),
     descripcion: stringField({
       required: true,
       trim: true,
       maxLength: VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH,
+      defaultValue: "",
     }),
     unidad_medida: selectField({
       required: true,
       options: UNIDAD_MEDIDA_CHOICES,
+      defaultValue: "UN",
     }),
     cantidad: numberField({
       required: true,
       min: VALIDATION_RULES.DETALLE.MIN_CANTIDAD + 1,
+      defaultValue: 1,
     }),
   },
 });
@@ -268,26 +261,6 @@ export function getArticuloLabel(
   );
 }
 
-/**
- * Genera subtítulo para sección de datos generales
- * 
- * Formato: "ID - Tipo - Comentario (primeros 25 chars)"
- * 
- * @param id - ID de la solicitud
- * @param tipo - Tipo de solicitud
- * @param comentario - Comentario completo
- * @returns Subtítulo formateado o "Sin datos"
- */
-export function buildGeneralSubtitle(
-  id: number | undefined,
-  tipo: string | undefined,
-  comentario: string | undefined,
-  comentarioSnippetLength: number = 25
-): string {
-  const snippet = comentario ? comentario.slice(0, comentarioSnippetLength) : "";
-  return [id, tipo, snippet].filter(Boolean).join(" - ") || "Sin datos";
-}
-
 // ============================================
 // EXPORTS CONSOLIDADOS (para facilitar imports)
 // ============================================
@@ -304,12 +277,10 @@ export const SolicitudModel = {
   ARTICULOS_REFERENCE,
   
   // Valores default
-  DETALLE_DEFAULT_VALUES,
   SOLICITUD_DEFAULT_VALUES,
   
   // Funciones
   validateDetalle,
   getArticuloLabel,
-  buildGeneralSubtitle,
   solicitudDetalleSchema,
 } as const;

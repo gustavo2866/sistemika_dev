@@ -24,6 +24,11 @@ export interface FormDetailSectionContextValue<
   handleFormSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   handleCancel: () => void;
   resolveAction: () => FormDetailSectionAction;
+  getReferenceOptions: (fieldName: string) => Array<{ id: number; nombre: string }>;
+  getReferenceLabel: (
+    fieldName: string,
+    value: number | string | null | undefined
+  ) => string | undefined;
 }
 
 export const FormDetailSectionContext =
