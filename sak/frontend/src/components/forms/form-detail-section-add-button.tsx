@@ -5,13 +5,18 @@ interface FormDetailSectionAddButtonProps {
   label?: string;
 }
 
-export const FormDetailSectionAddButton = ({ label }: FormDetailSectionAddButtonProps) => {
+export const FormDetailSectionAddButton = ({
+  label,
+}: FormDetailSectionAddButtonProps) => {
   const { handleStartCreate } = useFormDetailSectionContext();
 
   return (
-    <AddItemButton
-      label={label ?? "Agregar item"}
-      onClick={handleStartCreate}
-    />
+    <div className="-mt-5 mb-2 border-b border-border/60 pt-0.5 pb-1.5">
+      <AddItemButton
+        label={label ?? "Agregar item"}
+        onClick={handleStartCreate}
+        className="w-full"
+      />
+    </div>
   );
 };

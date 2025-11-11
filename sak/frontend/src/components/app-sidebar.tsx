@@ -32,6 +32,7 @@ import {
   Settings,
   Users,
   Building2,
+  Building,
   Workflow,
   ChevronDown,
   Home,
@@ -43,13 +44,14 @@ import {
   ShoppingCart,
   ClipboardCheck,
   Wallet,
-  NotebookPen
+  NotebookPen,
+  FileStack
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas"] as const;
-const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
+const CONFIG_RESOURCES = ["users", "departamentos", "tipos-solicitud", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
 
 type ResourceName = string;
 
@@ -230,6 +232,8 @@ export const DashboardMenuItem = ({ onClick }: { onClick?: () => void }) => {
 
 const GROUP_ICONS: Record<string, React.ComponentType> = {
   users: Users,
+  departamentos: Building,
+  "tipos-solicitud": FileStack,
   proveedores: Building2,
   "tipos-operacion": Workflow,
   "metodos-pago": FileText,

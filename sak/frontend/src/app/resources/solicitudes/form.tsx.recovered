@@ -1,4 +1,4 @@
-"use client";
+Ã¯Â»Â¿"use client";
 
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -68,7 +68,7 @@ const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
   return (
     <FormDetailCard
       title={articuloLabel}
-      subtitle={item.descripcion || "Artículo sin descripción"}
+      subtitle={item.descripcion || "ArtÂ­culo sin descripciÂ³n"}
       meta={[
         { label: "Unidad", value: item.unidad_medida || "-" },
         { label: "Cantidad", value: item.cantidad },
@@ -90,14 +90,14 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
   return (
     <FormDetailFormDialog
       title={({ action }) =>
-        action === "create" ? "Agregar artículo" : "Editar artículo"
+        action === "create" ? "Agregar artÂ­culo" : "Editar artÂ­culo"
       }
-      description="Completa los datos del artículo para la solicitud."
+      description="Completa los datos del artÂ­culo para la solicitud."
     >
       {(detalleForm) => (
         <>
         <FormField
-          label="Artículo"
+          label="ArtÂ­culo"
           error={detalleForm.formState.errors.articulo_id}
           required
         >
@@ -109,14 +109,14 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
                 shouldValidate: true,
               })
             }
-            placeholder="Selecciona un artículo"
+            placeholder="Selecciona un artÂ­culo"
             filter={articuloFilterQuery}
             dependsOn={articuloFilter ?? "all"}
           />
         </FormField>
 
         <FormField
-          label="Descripción"
+          label="DescripciÂ³n"
           error={detalleForm.formState.errors.descripcion}
           required
         >
@@ -159,13 +159,13 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
 
 const SolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }) => (
   <>
-    <FormDetailSectionAddButton label="Agregar artículo" />
+    <FormDetailSectionAddButton label="Agregar artÂ­culo" />
     <FormDetailCardList<SolicitudDetalle>
-      emptyMessage="Todavía no agregaste artículos."
+      emptyMessage="TodavÂ­a no agregaste artÂ­culos."
     >
       {(item) => <SolicitudDetalleCard item={item} />}
     </FormDetailCardList>
-    <FormDetailSectionMinItems itemName="artículo" />
+    <FormDetailSectionMinItems itemName="artÂ­culo" />
     <SolicitudDetalleForm articuloFilter={articuloFilter} />
   </>
 );
@@ -194,6 +194,7 @@ const DatosGeneralesContent = () => (
       choices={ESTADO_CHOICES}
       className="w-full"
       disabled
+    
     />
     
     <TextInput
@@ -320,7 +321,7 @@ const SolicitudFormFields = () => {
         },
         {
           id: "articulos",
-          title: "Artículos seleccionados",
+          title: "ArtÂ­culos seleccionados",
           defaultOpen: true,
           children: (
             <FormDetailSection

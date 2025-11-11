@@ -4,4 +4,6 @@ export * from "./proveedores";
 export * from "./tipos-operacion";
 export * from "./proyectos";
 export * from "./parte-diario";
+export * from "./departamentos";
+export * from "./tipos-solicitud";
 export * from "./solicitudes";

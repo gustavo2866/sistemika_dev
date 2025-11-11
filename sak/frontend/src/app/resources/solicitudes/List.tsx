@@ -8,17 +8,13 @@ import { ReferenceField } from "@/components/reference-field";
 import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
-import { SelectField } from "@/components/select-field";
+import { BadgeField } from "@/components/badge-field";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
 import { ShowButton } from "@/components/show-button";
-
-const tipoChoices = [
-  { id: "normal", name: "Normal" },
-  { id: "directa", name: "Compra Directa" },
-];
+import { ESTADO_CHOICES } from "./model";
 
 const filters = [
   <TextInput
@@ -28,18 +24,34 @@ const filters = [
     alwaysOn
     placeholder="Buscar solicitudes"
   />,
-  <SelectInput
-    key="tipo"
-    source="tipo"
+  <ReferenceInput
+    key="tipo_solicitud_id"
+    source="tipo_solicitud_id"
+    reference="tipos-solicitud"
     label="Tipo"
-    choices={tipoChoices}
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
+  <ReferenceInput
+    key="departamento_id"
+    source="departamento_id"
+    reference="departamentos"
+    label="Departamento"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
+  <SelectInput
+    key="estado"
+    source="estado"
+    label="Estado"
+    choices={ESTADO_CHOICES}
     emptyText="Todos"
   />,
   <ReferenceInput
     key="solicitante_id"
     source="solicitante_id"
     reference="users"
-    label="Responsable"
+    label="Solicitante"
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
@@ -59,8 +71,18 @@ export const SolicitudList = () => (
       <DataTable.Col source="id" label="ID" className="w-[80px]">
         <TextField source="id" />
       </DataTable.Col>
-      <DataTable.Col source="tipo" label="Tipo" className="w-[140px]">
-        <SelectField source="tipo" choices={tipoChoices} />
+      <DataTable.Col source="tipo_solicitud_id" label="Tipo" className="w-[180px]">
+        <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud">
+          <TextField source="nombre" />
+        </ReferenceField>
+      </DataTable.Col>
+      <DataTable.Col source="departamento_id" label="Departamento" className="w-[180px]">
+        <ReferenceField source="departamento_id" reference="departamentos">
+          <TextField source="nombre" />
+        </ReferenceField>
+      </DataTable.Col>
+      <DataTable.Col source="estado" label="Estado" className="w-[120px]">
+        <BadgeField source="estado" />
       </DataTable.Col>
       <DataTable.Col source="fecha_necesidad" label="Fecha necesidad" className="w-[160px]">
         <DateField source="fecha_necesidad" />
@@ -70,8 +92,8 @@ export const SolicitudList = () => (
           <TextField source="nombre" />
         </ReferenceField>
       </DataTable.Col>
-      <DataTable.Col source="comentario" label="Comentario" className="min-w-[220px]">
-        <TextField source="comentario" />
+      <DataTable.Col source="total" label="Total" className="w-[120px]">
+        <TextField source="total" />
       </DataTable.Col>
       <DataTable.Col label="Acciones" className="w-[120px]">
         <div className="flex items-center gap-2">

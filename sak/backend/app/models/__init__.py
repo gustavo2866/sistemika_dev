@@ -13,7 +13,9 @@ from .articulo import Articulo
 from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
-from .solicitud import Solicitud
+from .departamento import Departamento
+from .tipo_solicitud import TipoSolicitud
+from .solicitud import Solicitud, EstadoSolicitud
 from .solicitud_detalle import SolicitudDetalle
 from .proyecto import Proyecto
 from .nomina import Nomina, CategoriaNomina
@@ -39,7 +41,10 @@ __all__ = [
     "Factura",
     "FacturaDetalle",
     "FacturaImpuesto",
+    "Departamento",
+    "TipoSolicitud",
     "Solicitud",
+    "EstadoSolicitud",
     "SolicitudDetalle",
     "Proyecto",
     "Nomina",

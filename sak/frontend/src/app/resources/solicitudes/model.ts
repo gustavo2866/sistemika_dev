@@ -30,12 +30,14 @@ import {
 // ============================================
 
 /**
- * Tipos de solicitud permitidos
- * Usado en: SelectInput del formulario
+ * Estados posibles de una solicitud
  */
-export const TIPO_CHOICES = [
-  { id: "normal", name: "Normal" },
-  { id: "directa", name: "Compra Directa" },
+export const ESTADO_CHOICES = [
+  { id: "pendiente", name: "Pendiente" },
+  { id: "aprobada", name: "Aprobada" },
+  { id: "rechazada", name: "Rechazada" },
+  { id: "en_proceso", name: "En Proceso" },
+  { id: "finalizada", name: "Finalizada" },
 ];
 
 /**
@@ -78,6 +80,20 @@ export const ARTICULOS_REFERENCE = {
   staleTime: 5 * 60 * 1000, // 5 minutos - los artículos cambian poco
 } as const;
 
+export const TIPOS_SOLICITUD_REFERENCE = {
+  resource: "tipos-solicitud",
+  labelField: "nombre",
+  limit: 50,
+  staleTime: 10 * 60 * 1000, // 10 minutos - los tipos cambian poco
+} as const;
+
+export const DEPARTAMENTOS_REFERENCE = {
+  resource: "departamentos",
+  labelField: "nombre",
+  limit: 50,
+  staleTime: 10 * 60 * 1000,
+} as const;
+
 export const USERS_REFERENCE = {
   resource: "users",
   labelField: "nombre",
@@ -117,15 +133,37 @@ export type SolicitudDetalle = {
  */
 export type Solicitud = {
   id?: number;
-  tipo: "normal" | "directa";
+  tipo_solicitud_id: number;        // ✅ NUEVO - FK a tipos_solicitud
+  departamento_id: number;          // ✅ NUEVO - FK a departamentos
+  estado: string;                   // ✅ NUEVO - enum EstadoSolicitud
+  total: number;                    // ✅ NUEVO - monto total
   fecha_necesidad: string;
   solicitante_id: number;
   comentario?: string;
   detalles: SolicitudDetalle[];
+  
+  // Relaciones expandidas
+  solicitante?: {
+    id: number;
+    nombre: string;
+    email: string;
+  };
+  tipo_solicitud?: {                // ✅ NUEVO
+    id: number;
+    nombre: string;
+    tipo_articulo_filter?: string;
+    articulo_default_id?: number;
+  };
+  departamento?: {                  // ✅ NUEVO
+    id: number;
+    nombre: string;
+  };
 };
 
 export type SolicitudCabeceraFormValues = {
-  tipo: "normal" | "directa";
+  tipo_solicitud_id: string;        // ✅ CAMBIO: antes era "tipo" string local
+  departamento_id: string;          // ✅ NUEVO
+  estado: string;                   // ✅ NUEVO
   fecha_necesidad: string;
   solicitante_id: string;
   comentario: string;
@@ -249,13 +287,25 @@ export const solicitudDetalleSchema = createDetailSchema<
 
 export const solicitudCabeceraSchema = createEntitySchema<
   SolicitudCabeceraFormValues,
-  Pick<Solicitud, "tipo" | "fecha_necesidad" | "solicitante_id" | "comentario">
+  Pick<Solicitud, "tipo_solicitud_id" | "departamento_id" | "estado" | "fecha_necesidad" | "solicitante_id" | "comentario">
 >({
   fields: {
-    tipo: selectField({
+    tipo_solicitud_id: referenceField({
+      resource: TIPOS_SOLICITUD_REFERENCE.resource,
+      labelField: TIPOS_SOLICITUD_REFERENCE.labelField,
       required: true,
-      options: TIPO_CHOICES,
-      defaultValue: "normal",
+      defaultValue: "",
+    }),
+    departamento_id: referenceField({
+      resource: DEPARTAMENTOS_REFERENCE.resource,
+      labelField: DEPARTAMENTOS_REFERENCE.labelField,
+      required: true,
+      defaultValue: "",
+    }),
+    estado: selectField({
+      required: false,
+      options: ESTADO_CHOICES,
+      defaultValue: "pendiente",
     }),
     fecha_necesidad: stringField({
       required: true,
@@ -299,6 +349,45 @@ export function getArticuloLabel(
   );
 }
 
+/**
+ * Obtiene el filtro de artículos según el tipo de solicitud seleccionado
+ */
+export const getArticuloFilterByTipo = (
+  tipoSolicitudId: string | undefined,
+  tiposSolicitud: Array<{ id: number; tipo_articulo_filter?: string }> | undefined
+): string | undefined => {
+  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
+  
+  const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
+  return tipo?.tipo_articulo_filter;
+};
+
+/**
+ * Obtiene el departamento default según el tipo de solicitud
+ */
+export const getDepartamentoDefaultByTipo = (
+  tipoSolicitudId: string | undefined,
+  tiposSolicitud: Array<{ id: number; departamento_default_id?: number }> | undefined
+): string | undefined => {
+  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
+  
+  const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
+  return tipo?.departamento_default_id?.toString();
+};
+
+/**
+ * Obtiene el artículo default según el tipo de solicitud
+ */
+export const getArticuloDefaultByTipo = (
+  tipoSolicitudId: string | undefined,
+  tiposSolicitud: Array<{ id: number; articulo_default_id?: number }> | undefined
+): string | undefined => {
+  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
+  
+  const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
+  return tipo?.articulo_default_id?.toString();
+};
+
 // ============================================
 // EXPORTS CONSOLIDADOS (para facilitar imports)
 // ============================================
@@ -309,13 +398,18 @@ export function getArticuloLabel(
  */
 export const SolicitudModel = {
   // Configuración
-  TIPO_CHOICES,
+  ESTADO_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   VALIDATION_RULES,
   ARTICULOS_REFERENCE,
+  TIPOS_SOLICITUD_REFERENCE,
+  DEPARTAMENTOS_REFERENCE,
   // Funciones
   validateDetalle,
   getArticuloLabel,
+  getArticuloFilterByTipo,
+  getDepartamentoDefaultByTipo,
+  getArticuloDefaultByTipo,
   solicitudDetalleSchema,
   solicitudCabeceraSchema,
 } as const;

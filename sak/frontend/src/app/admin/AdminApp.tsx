@@ -4,7 +4,7 @@ import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource, CustomRoutes } from "ra-core";
 import { Route } from "react-router-dom";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen, FileStack, Building } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
@@ -41,6 +41,16 @@ import {
   SolicitudCreate,
   SolicitudEdit,
 } from "@/app/resources/solicitudes";
+import {
+  DepartamentoList,
+  DepartamentoCreate,
+  DepartamentoEdit,
+} from "@/app/resources/departamentos";
+import {
+  TipoSolicitudList,
+  TipoSolicitudCreate,
+  TipoSolicitudEdit,
+} from "@/app/resources/tipos-solicitud";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
@@ -155,11 +165,29 @@ const AdminApp = () => {
         icon={Workflow}
       />
       <Resource
+        name="departamentos"
+        list={DepartamentoList}
+        create={DepartamentoCreate}
+        edit={DepartamentoEdit}
+        recordRepresentation="nombre"
+        icon={Building}
+        options={{ label: "Departamentos" }}
+      />
+      <Resource
+        name="tipos-solicitud"
+        list={TipoSolicitudList}
+        create={TipoSolicitudCreate}
+        edit={TipoSolicitudEdit}
+        recordRepresentation="nombre"
+        icon={FileStack}
+        options={{ label: "Tipos de Solicitud" }}
+      />
+      <Resource
         name="solicitudes"
         list={SolicitudList}
         create={SolicitudCreate}
         edit={SolicitudEdit}
-        recordRepresentation="tipo"
+        recordRepresentation="id"
         icon={ClipboardList}
         options={{ label: "Solicitudes" }}
       />

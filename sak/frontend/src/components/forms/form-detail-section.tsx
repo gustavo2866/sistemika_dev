@@ -207,7 +207,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
       const detailErrors =
         (error as { errors?: Record<string, string> })?.errors ?? {};
       Object.entries(detailErrors).forEach(([field, message]) => {
-        detalleForm.setError(field as keyof TForm, {
+        detalleForm.setError(field as any, {
           type: "manual",
           message,
         });
@@ -240,7 +240,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
   };
 
   return (
-    <FormDetailSectionContext.Provider value={contextValue}>
+    <FormDetailSectionContext.Provider value={contextValue as any}>
       {children}
     </FormDetailSectionContext.Provider>
   );

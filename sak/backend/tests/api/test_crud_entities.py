@@ -116,8 +116,37 @@ def test_solicitud_nested_crud(client: TestClient, db_session: Session) -> None:
     db_session.commit()
     db_session.refresh(user)
 
+    # Create test data for new required fields
+    from app.models import Departamento, TipoSolicitud
+    
+    # Check if departamento exists, create if not
+    departamento = db_session.query(Departamento).first()
+    if not departamento:
+        departamento = Departamento(
+            nombre="Compras Test",
+            descripcion="Departamento de prueba",
+            activo=True
+        )
+        db_session.add(departamento)
+        db_session.commit()
+        db_session.refresh(departamento)
+    
+    # Check if tipo_solicitud exists, create if not
+    tipo_solicitud = db_session.query(TipoSolicitud).first()
+    if not tipo_solicitud:
+        tipo_solicitud = TipoSolicitud(
+            nombre="Materiales Test",
+            descripcion="Tipo de prueba",
+            tipo_articulo_filter="Material",
+            activo=True
+        )
+        db_session.add(tipo_solicitud)
+        db_session.commit()
+        db_session.refresh(tipo_solicitud)
+
     solicitud_payload = {
-        "tipo": "normal",
+        "tipo_solicitud_id": tipo_solicitud.id,
+        "departamento_id": departamento.id,
         "fecha_necesidad": "2025-10-01",
         "comentario": "Materiales para obra",
         "solicitante_id": user.id,
@@ -148,7 +177,9 @@ def test_solicitud_nested_crud(client: TestClient, db_session: Session) -> None:
     assert solicitud_response.status_code == 201, solicitud_response.text
     solicitud_data = solicitud_response.json()
     assert solicitud_data["solicitante_id"] == user.id
-    assert solicitud_data["tipo"] == "normal"
+    assert solicitud_data["tipo_solicitud_id"] == tipo_solicitud.id
+    assert solicitud_data["departamento_id"] == departamento.id
+    assert solicitud_data["estado"] == "pendiente"
     assert "detalles" in solicitud_data
     assert len(solicitud_data["detalles"]) == 1
 

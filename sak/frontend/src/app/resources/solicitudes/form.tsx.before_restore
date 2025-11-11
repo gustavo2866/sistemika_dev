@@ -45,12 +45,12 @@ const GENERAL_SUBTITLE_COMMENT_SNIPPET = 25;
 
 const buildGeneralSubtitle = (
   id: number | undefined,
-  estado: string | undefined,
+  tipoSolicitudId: string | number | undefined,
   comentario: string | undefined,
   comentarioSnippetLength: number = GENERAL_SUBTITLE_COMMENT_SNIPPET
 ): string => {
   const snippet = comentario ? comentario.slice(0, comentarioSnippetLength) : "";
-  return [id, estado, snippet].filter(Boolean).join(" - ") || "Sin datos";
+  return [id, tipoSolicitudId, snippet].filter(Boolean).join(" - ") || "Sin datos";
 };
 
 type TipoSolicitudCatalog = Pick<
@@ -77,25 +77,15 @@ const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
   );
 };
 
-interface SolicitudDetalleFormProps {
-  articuloFilter?: string;
-}
-
-const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => {
-  const articuloFilterQuery = useMemo(
-    () => (articuloFilter ? { tipo_articulo: articuloFilter } : undefined),
-    [articuloFilter]
-  );
-
-  return (
-    <FormDetailFormDialog
-      title={({ action }) =>
-        action === "create" ? "Agregar artículo" : "Editar artículo"
-      }
-      description="Completa los datos del artículo para la solicitud."
-    >
-      {(detalleForm) => (
-        <>
+const SolicitudDetalleForm = () => (
+  <FormDetailFormDialog
+    title={({ action }) =>
+      action === "create" ? "Agregar artículo" : "Editar artículo"
+    }
+    description="Completa los datos del artículo para la solicitud."
+  >
+    {(detalleForm) => (
+      <>
         <FormField
           label="Artículo"
           error={detalleForm.formState.errors.articulo_id}
@@ -104,16 +94,14 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
           <ComboboxQuery
             {...ARTICULOS_REFERENCE}
             value={detalleForm.watch("articulo_id")}
-            onChange={(value: string) =>
-              detalleForm.setValue("articulo_id", value, {
-                shouldValidate: true,
-              })
-            }
-            placeholder="Selecciona un artículo"
-            filter={articuloFilterQuery}
-            dependsOn={articuloFilter ?? "all"}
-          />
-        </FormField>
+              onChange={(value: string) =>
+                detalleForm.setValue("articulo_id", value, {
+                  shouldValidate: true,
+                })
+              }
+              placeholder="Selecciona un artículo"
+            />
+          </FormField>
 
         <FormField
           label="Descripción"
@@ -138,26 +126,25 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
             placeholder="Selecciona unidad"
           />
 
-          <FormField
-            label="Cantidad"
-            error={detalleForm.formState.errors.cantidad}
-            required
-          >
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              {...detalleForm.register("cantidad", { valueAsNumber: true })}
-            />
-          </FormField>
-        </div>
+            <FormField
+              label="Cantidad"
+              error={detalleForm.formState.errors.cantidad}
+              required
+            >
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                {...detalleForm.register("cantidad", { valueAsNumber: true })}
+              />
+            </FormField>
+          </div>
         </>
-      )}
-    </FormDetailFormDialog>
-  );
-};
+    )}
+  </FormDetailFormDialog>
+);
 
-const SolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }) => (
+const SolicitudDetalleContent = () => (
   <>
     <FormDetailSectionAddButton label="Agregar artículo" />
     <FormDetailCardList<SolicitudDetalle>
@@ -166,7 +153,7 @@ const SolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }
       {(item) => <SolicitudDetalleCard item={item} />}
     </FormDetailCardList>
     <FormDetailSectionMinItems itemName="artículo" />
-    <SolicitudDetalleForm articuloFilter={articuloFilter} />
+    <SolicitudDetalleForm />
   </>
 );
 
@@ -174,28 +161,11 @@ const DatosGeneralesContent = () => (
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
     <ReferenceInput
       source="tipo_solicitud_id"
-      reference="tipos-solicitud"
+      reference={TIPOS_SOLICITUD_REFERENCE.resource}
       label="Tipo de solicitud"
     >
-      <SelectInput optionText="nombre" className="w-full" validate={required()} />
+      <SelectInput optionText={TIPOS_SOLICITUD_REFERENCE.labelField} className="w-full" validate={required()} />
     </ReferenceInput>
-    
-    <ReferenceInput
-      source="departamento_id"
-      reference="departamentos"
-      label="Departamento"
-    >
-      <SelectInput optionText="nombre" className="w-full" validate={required()} />
-    </ReferenceInput>
-    
-    <SelectInput
-      source="estado"
-      label="Estado"
-      choices={ESTADO_CHOICES}
-      className="w-full"
-      disabled
-    />
-    
     <TextInput
       source="fecha_necesidad"
       label="Fecha de necesidad"
@@ -203,7 +173,6 @@ const DatosGeneralesContent = () => (
       className="w-full"
       validate={required()}
     />
-    
     <ReferenceInput
       source="solicitante_id"
       reference="users"
@@ -211,7 +180,6 @@ const DatosGeneralesContent = () => (
     >
       <SelectInput optionText="nombre" className="w-full" validate={required()} />
     </ReferenceInput>
-    
     <TextInput
       source="comentario"
       label="Comentarios"
@@ -224,72 +192,10 @@ const DatosGeneralesContent = () => (
 
 const SolicitudFormFields = () => {
   const form = useFormContext<Solicitud>();
-  const dataProvider = useDataProvider();
-  const tipoSolicitudPreviousRef = useRef<string | undefined>(undefined);
   const { control } = form;
   const idValue = useWatch({ control, name: "id" });
-  const estadoValue = useWatch({ control, name: "estado" });
-  const comentarioValue = useWatch({ control, name: "comentario" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
-
-  const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
-    queryKey: ["tipos-solicitud", "defaults"],
-    queryFn: async () => {
-      const { data } = await dataProvider.getList(
-        TIPOS_SOLICITUD_REFERENCE.resource,
-        {
-          pagination: { page: 1, perPage: TIPOS_SOLICITUD_REFERENCE.limit },
-          sort: { field: "nombre", order: "ASC" },
-          filter: {},
-        }
-      );
-      return data as TipoSolicitudCatalog[];
-    },
-    staleTime: TIPOS_SOLICITUD_REFERENCE.staleTime,
-  });
-  const tiposSolicitudCatalog = useMemo(
-    () => tiposSolicitudData ?? [],
-    [tiposSolicitudData]
-  );
-
-  const articuloFilter = useMemo(() => {
-    const rawFilter = getArticuloFilterByTipo(
-      tipoSolicitudValue ? String(tipoSolicitudValue) : undefined,
-      tiposSolicitudCatalog
-    );
-    const normalized = rawFilter?.trim();
-    return normalized ? normalized : undefined;
-  }, [tipoSolicitudValue, tiposSolicitudCatalog]);
-
-  useEffect(() => {
-    const currentTipo = tipoSolicitudValue
-      ? String(tipoSolicitudValue)
-      : undefined;
-
-    if (!currentTipo || tiposSolicitudCatalog.length === 0) {
-      tipoSolicitudPreviousRef.current = currentTipo;
-      return;
-    }
-
-    const defaultDepartamento = getDepartamentoDefaultByTipo(
-      currentTipo,
-      tiposSolicitudCatalog
-    );
-    const previousTipo = tipoSolicitudPreviousRef.current;
-    const isCreate = !idValue;
-    const tipoChanged = Boolean(previousTipo) && previousTipo !== currentTipo;
-
-    if (defaultDepartamento && (isCreate || tipoChanged)) {
-      const currentDepartamento = form.getValues("departamento_id");
-      if (currentDepartamento !== defaultDepartamento) {
-        form.setValue("departamento_id", defaultDepartamento, {
-          shouldDirty: true,
-        });
-      }
-    }
-
-    tipoSolicitudPreviousRef.current = currentTipo;
-  }, [form, idValue, tipoSolicitudValue, tiposSolicitudCatalog]);
+  const comentarioValue = useWatch({ control, name: "comentario" }) || "";
 
   useAutoInitializeField("solicitante_id", "id", !idValue);
 
@@ -297,11 +203,11 @@ const SolicitudFormFields = () => {
     () =>
       buildGeneralSubtitle(
         idValue,
-        estadoValue,
+        tipoSolicitudValue,
         comentarioValue,
         GENERAL_SUBTITLE_COMMENT_SNIPPET
       ),
-    [idValue, estadoValue, comentarioValue]
+    [idValue, tipoSolicitudValue, comentarioValue]
   );
 
   return (
@@ -328,7 +234,7 @@ const SolicitudFormFields = () => {
               schema={solicitudDetalleSchema}
               minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
             >
-              <SolicitudDetalleContent articuloFilter={articuloFilter} />
+              <SolicitudDetalleContent />
             </FormDetailSection>
           ),
         },
@@ -336,41 +242,6 @@ const SolicitudFormFields = () => {
     />
   );
 };
-
-const SolicitudTotals = () => {
-  const { control } = useFormContext<Solicitud>();
-  const total = useWatch({ control, name: "total" }) ?? 0;
-  const formattedTotal = useMemo(
-    () =>
-      new Intl.NumberFormat("es-AR", {
-        style: "currency",
-        currency: "ARS",
-        minimumFractionDigits: 2,
-      }).format(Number(total) || 0),
-    [total]
-  );
-
-  return (
-    <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="h-10 w-1 rounded-full bg-primary" aria-hidden="true" />
-          <p className="text-[11px] font-medium uppercase leading-4 tracking-wider text-muted-foreground">
-            Total estimado
-          </p>
-        </div>
-        <p className="text-lg font-semibold text-primary sm:text-xl">{formattedTotal}</p>
-      </div>
-    </div>
-  );
-};
-
-const FormFooter = () => (
-  <div className="flex flex-col gap-4">
-    <SolicitudTotals />
-    <FormToolbar />
-  </div>
-);
 
 export const Form = () => {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -393,10 +264,10 @@ export const Form = () => {
   }, [cabeceraDefaults, today]);
 
   return (
-    <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>
+    <SimpleForm
+      defaultValues={defaultValues}
+    >
       <SolicitudFormFields />
     </SimpleForm>
   );
 };
-
-

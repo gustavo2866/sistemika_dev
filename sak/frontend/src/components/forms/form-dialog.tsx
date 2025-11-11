@@ -15,7 +15,7 @@ interface FormDialogProps {
   title: string;
   description?: string;
   children: ReactNode;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
   submitLabel?: string;
   isSubmitting?: boolean;
