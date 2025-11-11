@@ -354,12 +354,13 @@ export function getArticuloLabel(
  */
 export const getArticuloFilterByTipo = (
   tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; tipo_articulo_filter?: string }> | undefined
+  tiposSolicitud: Array<{ id: number; tipo_articulo_filter?: string | null }> | undefined
 ): string | undefined => {
   if (!tipoSolicitudId || !tiposSolicitud) return undefined;
   
   const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
-  return tipo?.tipo_articulo_filter;
+  const filter = tipo?.tipo_articulo_filter;
+  return typeof filter === "string" ? filter : undefined;
 };
 
 /**

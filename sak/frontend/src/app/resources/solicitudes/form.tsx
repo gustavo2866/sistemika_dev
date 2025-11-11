@@ -28,18 +28,17 @@ import {
 import {
   type Solicitud,
   type SolicitudDetalle,
-  type TipoSolicitud,
   ESTADO_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
-  DEPARTAMENTOS_REFERENCE,
   VALIDATION_RULES,
   solicitudCabeceraSchema,
   solicitudDetalleSchema,
   getArticuloFilterByTipo,
   getDepartamentoDefaultByTipo,
 } from "./model";
+import type { TipoSolicitud } from "../tipos-solicitud/model";
 
 const GENERAL_SUBTITLE_COMMENT_SNIPPET = 25;
 
@@ -281,10 +280,14 @@ const SolicitudFormFields = () => {
 
     if (defaultDepartamento && (isCreate || tipoChanged)) {
       const currentDepartamento = form.getValues("departamento_id");
-      if (currentDepartamento !== defaultDepartamento) {
-        form.setValue("departamento_id", defaultDepartamento, {
-          shouldDirty: true,
-        });
+      const normalizedDepartamento = currentDepartamento?.toString();
+      if (normalizedDepartamento !== defaultDepartamento) {
+        const departamentoIdValue = Number(defaultDepartamento);
+        if (!Number.isNaN(departamentoIdValue)) {
+          form.setValue("departamento_id", departamentoIdValue, {
+            shouldDirty: true,
+          });
+        }
       }
     }
 
