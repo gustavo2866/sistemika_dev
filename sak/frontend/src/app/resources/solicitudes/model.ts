@@ -99,6 +99,14 @@ export const USERS_REFERENCE = {
   labelField: "nombre",
 } as const;
 
+export const CENTROS_COSTO_REFERENCE = {
+  resource: "centros-costo",
+  labelField: "nombre",
+  limit: 100,
+  staleTime: 5 * 60 * 1000,
+  filter: { activo: true },
+} as const;
+
 // ============================================
 // 2. TIPOS
 // ============================================
@@ -113,6 +121,8 @@ export type DetalleFormValues = {
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
+  precio: number;
+  importe: number;
 };
 
 /**
@@ -126,6 +136,8 @@ export type SolicitudDetalle = {
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
+  precio: number;
+  importe: number;
 };
 
 /**
@@ -135,6 +147,7 @@ export type Solicitud = {
   id?: number;
   tipo_solicitud_id: number;        // ✅ NUEVO - FK a tipos_solicitud
   departamento_id: number;          // ✅ NUEVO - FK a departamentos
+  centro_costo_id: number;
   estado: string;                   // ✅ NUEVO - enum EstadoSolicitud
   total: number;                    // ✅ NUEVO - monto total
   fecha_necesidad: string;
@@ -158,11 +171,18 @@ export type Solicitud = {
     id: number;
     nombre: string;
   };
+  centro_costo?: {
+    id: number;
+    nombre: string;
+    tipo?: string;
+    codigo_contable?: string;
+  };
 };
 
 export type SolicitudCabeceraFormValues = {
   tipo_solicitud_id: string;        // ✅ CAMBIO: antes era "tipo" string local
   departamento_id: string;          // ✅ NUEVO
+  centro_costo_id: string;
   estado: string;                   // ✅ NUEVO
   fecha_necesidad: string;
   solicitante_id: string;
@@ -221,6 +241,10 @@ export function validateDetalle(
   // Validar cantidad
   if (!Number.isFinite(data.cantidad) || data.cantidad <= VALIDATION_RULES.DETALLE.MIN_CANTIDAD) {
     errors.cantidad = "La cantidad debe ser mayor a 0";
+  }
+
+  if (!Number.isFinite(data.precio) || data.precio < 0) {
+    errors.precio = "El precio debe ser mayor o igual a 0";
   }
 
   // Establecer errores en el formulario si existen
@@ -282,12 +306,22 @@ export const solicitudDetalleSchema = createDetailSchema<
       min: VALIDATION_RULES.DETALLE.MIN_CANTIDAD + 1,
       defaultValue: 1,
     }),
+    precio: numberField({
+      required: true,
+      min: 0,
+      defaultValue: 0,
+    }),
+    importe: numberField({
+      required: true,
+      min: 0,
+      defaultValue: 0,
+    }),
   },
 });
 
 export const solicitudCabeceraSchema = createEntitySchema<
   SolicitudCabeceraFormValues,
-  Pick<Solicitud, "tipo_solicitud_id" | "departamento_id" | "estado" | "fecha_necesidad" | "solicitante_id" | "comentario">
+  Pick<Solicitud, "tipo_solicitud_id" | "departamento_id" | "centro_costo_id" | "estado" | "fecha_necesidad" | "solicitante_id" | "comentario">
 >({
   fields: {
     tipo_solicitud_id: referenceField({
@@ -301,6 +335,12 @@ export const solicitudCabeceraSchema = createEntitySchema<
       labelField: DEPARTAMENTOS_REFERENCE.labelField,
       required: true,
       defaultValue: "",
+    }),
+    centro_costo_id: referenceField({
+      resource: CENTROS_COSTO_REFERENCE.resource,
+      labelField: CENTROS_COSTO_REFERENCE.labelField,
+      required: true,
+      defaultValue: "1",
     }),
     estado: selectField({
       required: false,
@@ -405,6 +445,7 @@ export const SolicitudModel = {
   ARTICULOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   DEPARTAMENTOS_REFERENCE,
+  CENTROS_COSTO_REFERENCE,
   // Funciones
   validateDetalle,
   getArticuloLabel,

@@ -4,7 +4,7 @@ import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource, CustomRoutes } from "ra-core";
 import { Route } from "react-router-dom";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen, FileStack, Building } from "lucide-react";
+import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen, FileStack, Building, Coins } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
@@ -46,6 +46,12 @@ import {
   DepartamentoCreate,
   DepartamentoEdit,
 } from "@/app/resources/departamentos";
+import {
+  CentroCostoList,
+  CentroCostoCreate,
+  CentroCostoEdit,
+  CentroCostoShow,
+} from "@/app/resources/centros-costo";
 import {
   TipoSolicitudList,
   TipoSolicitudCreate,
@@ -172,6 +178,16 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Building}
         options={{ label: "Departamentos" }}
+      />
+      <Resource
+        name="centros-costo"
+        list={CentroCostoList}
+        create={CentroCostoCreate}
+        edit={CentroCostoEdit}
+        show={CentroCostoShow}
+        recordRepresentation="nombre"
+        icon={Coins}
+        options={{ label: "Centros de Costo" }}
       />
       <Resource
         name="tipos-solicitud"

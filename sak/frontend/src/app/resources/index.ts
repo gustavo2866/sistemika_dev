@@ -7,3 +7,4 @@ export * from "./parte-diario";
 export * from "./departamentos";
 export * from "./tipos-solicitud";
 export * from "./solicitudes";
+export * from "./centros-costo";

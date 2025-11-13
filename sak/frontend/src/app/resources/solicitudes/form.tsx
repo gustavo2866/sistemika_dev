@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { required, useDataProvider } from "ra-core";
-import { useFormContext, useWatch } from "react-hook-form";
+import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { SelectInput } from "@/components/select-input";
 import { TextInput } from "@/components/text-input";
@@ -28,10 +28,12 @@ import {
 import {
   type Solicitud,
   type SolicitudDetalle,
+  type DetalleFormValues,
   ESTADO_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
+  CENTROS_COSTO_REFERENCE,
   VALIDATION_RULES,
   solicitudCabeceraSchema,
   solicitudDetalleSchema,
@@ -41,6 +43,12 @@ import {
 import type { TipoSolicitud } from "../tipos-solicitud/model";
 
 const GENERAL_SUBTITLE_COMMENT_SNIPPET = 25;
+
+const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "ARS",
+  minimumFractionDigits: 2,
+});
 
 const buildGeneralSubtitle = (
   id: number | undefined,
@@ -71,6 +79,17 @@ const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
       meta={[
         { label: "Unidad", value: item.unidad_medida || "-" },
         { label: "Cantidad", value: item.cantidad },
+        { label: "Precio", value: CURRENCY_FORMATTER.format(Number(item.precio ?? 0)) },
+        {
+          label: "Importe",
+          value: CURRENCY_FORMATTER.format(
+            Number(
+              typeof item.importe === "number"
+                ? item.importe
+                : (item.cantidad ?? 0) * (item.precio ?? 0)
+            ) || 0
+          ),
+        },
       ]}
     />
   );
@@ -79,6 +98,127 @@ const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
 interface SolicitudDetalleFormProps {
   articuloFilter?: string;
 }
+
+type SolicitudDetalleDialogContentProps = {
+  detalleForm: UseFormReturn<DetalleFormValues>;
+  articuloFilterQuery?: Record<string, unknown>;
+  articuloFilter?: string;
+};
+
+const SolicitudDetalleDialogContent = ({
+  detalleForm,
+  articuloFilterQuery,
+  articuloFilter,
+}: SolicitudDetalleDialogContentProps) => {
+  const cantidadValue = detalleForm.watch("cantidad");
+  const precioValue = detalleForm.watch("precio");
+  const importeValue = detalleForm.watch("importe");
+  const importeDisplay = useMemo(() => {
+    const asNumber = Number(importeValue ?? 0);
+    return Number.isFinite(asNumber) ? asNumber.toFixed(2) : "0.00";
+  }, [importeValue]);
+
+  useEffect(() => {
+    const cantidad = Number(cantidadValue ?? 0) || 0;
+    const precio = Number(precioValue ?? 0) || 0;
+    const calculated = Number((cantidad * precio).toFixed(2));
+    const currentImporte = Number(importeValue ?? Number.NaN);
+
+    if (
+      !Number.isNaN(calculated) &&
+      Number.isFinite(calculated) &&
+      calculated !== currentImporte
+    ) {
+      detalleForm.setValue("importe", calculated, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [cantidadValue, precioValue, importeValue, detalleForm]);
+
+  return (
+    <>
+      <FormField
+        label="Artículo"
+        error={detalleForm.formState.errors.articulo_id}
+        required
+      >
+        <ComboboxQuery
+          {...ARTICULOS_REFERENCE}
+          value={detalleForm.watch("articulo_id")}
+          onChange={(value: string) =>
+            detalleForm.setValue("articulo_id", value, {
+              shouldValidate: true,
+            })
+          }
+          placeholder="Selecciona un artículo"
+          filter={articuloFilterQuery}
+          dependsOn={articuloFilter ?? "all"}
+        />
+      </FormField>
+
+      <FormField
+        label="Descripción"
+        error={detalleForm.formState.errors.descripcion}
+        required
+      >
+        <Textarea rows={3} {...detalleForm.register("descripcion")} />
+      </FormField>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormChoiceSelect
+          label="Unidad de medida"
+          error={detalleForm.formState.errors.unidad_medida}
+          required
+          choices={UNIDAD_MEDIDA_CHOICES}
+          value={detalleForm.watch("unidad_medida")}
+          onChange={(value) =>
+            detalleForm.setValue("unidad_medida", value, {
+              shouldValidate: true,
+            })
+          }
+          placeholder="Selecciona unidad"
+        />
+
+        <FormField
+          label="Cantidad"
+          error={detalleForm.formState.errors.cantidad}
+          required
+        >
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            {...detalleForm.register("cantidad", { valueAsNumber: true })}
+          />
+        </FormField>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField
+          label="Precio unitario"
+          error={detalleForm.formState.errors.precio}
+          required
+        >
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            {...detalleForm.register("precio", { valueAsNumber: true, min: 0 })}
+          />
+        </FormField>
+
+        <FormField
+          label="Importe"
+          error={detalleForm.formState.errors.importe}
+        >
+          <Input type="text" value={importeDisplay} readOnly className="bg-muted/50" />
+          <input type="hidden" {...detalleForm.register("importe", { valueAsNumber: true })} />
+        </FormField>
+      </div>
+    </>
+  );
+};
 
 const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => {
   const articuloFilterQuery = useMemo(
@@ -94,63 +234,11 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
       description="Completa los datos del artículo para la solicitud."
     >
       {(detalleForm) => (
-        <>
-        <FormField
-          label="Artículo"
-          error={detalleForm.formState.errors.articulo_id}
-          required
-        >
-          <ComboboxQuery
-            {...ARTICULOS_REFERENCE}
-            value={detalleForm.watch("articulo_id")}
-            onChange={(value: string) =>
-              detalleForm.setValue("articulo_id", value, {
-                shouldValidate: true,
-              })
-            }
-            placeholder="Selecciona un artículo"
-            filter={articuloFilterQuery}
-            dependsOn={articuloFilter ?? "all"}
-          />
-        </FormField>
-
-        <FormField
-          label="Descripción"
-          error={detalleForm.formState.errors.descripcion}
-          required
-        >
-          <Textarea rows={3} {...detalleForm.register("descripcion")} />
-        </FormField>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormChoiceSelect
-            label="Unidad de medida"
-            error={detalleForm.formState.errors.unidad_medida}
-            required
-            choices={UNIDAD_MEDIDA_CHOICES}
-            value={detalleForm.watch("unidad_medida")}
-            onChange={(value) =>
-              detalleForm.setValue("unidad_medida", value, {
-                shouldValidate: true,
-              })
-            }
-            placeholder="Selecciona unidad"
-          />
-
-          <FormField
-            label="Cantidad"
-            error={detalleForm.formState.errors.cantidad}
-            required
-          >
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              {...detalleForm.register("cantidad", { valueAsNumber: true })}
-            />
-          </FormField>
-        </div>
-        </>
+        <SolicitudDetalleDialogContent
+          detalleForm={detalleForm as unknown as UseFormReturn<DetalleFormValues>}
+          articuloFilterQuery={articuloFilterQuery}
+          articuloFilter={articuloFilter}
+        />
       )}
     </FormDetailFormDialog>
   );
@@ -170,46 +258,84 @@ const SolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }
 );
 
 const DatosGeneralesContent = () => (
-  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-    <ReferenceInput
-      source="tipo_solicitud_id"
-      reference="tipos-solicitud"
-      label="Tipo de solicitud"
-    >
-      <SelectInput optionText="nombre" className="w-full" validate={required()} />
-    </ReferenceInput>
+  <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
+    <div className="min-w-0">
+      <ReferenceInput
+        source="tipo_solicitud_id"
+        reference="tipos-solicitud"
+        label="Tipo de solicitud"
+      >
+        <SelectInput 
+          optionText="nombre" 
+          className="w-full" 
+          validate={required()} 
+        />
+      </ReferenceInput>
+    </div>
     
-    <ReferenceInput
-      source="departamento_id"
-      reference="departamentos"
-      label="Departamento"
-    >
-      <SelectInput optionText="nombre" className="w-full" validate={required()} />
-    </ReferenceInput>
+    <div className="min-w-0">
+      <ReferenceInput
+        source="departamento_id"
+        reference="departamentos"
+        label="Departamento"
+      >
+        <SelectInput 
+          optionText="nombre" 
+          className="w-full" 
+          validate={required()} 
+        />
+      </ReferenceInput>
+    </div>
     
-    <SelectInput
-      source="estado"
-      label="Estado"
-      choices={ESTADO_CHOICES}
-      className="w-full"
-      disabled
-    />
+    <div className="min-w-0 overflow-hidden">
+      <ReferenceInput
+        source="centro_costo_id"
+        reference={CENTROS_COSTO_REFERENCE.resource}
+        label="Centro de costo"
+        filter={CENTROS_COSTO_REFERENCE.filter}
+      >
+        <SelectInput
+          optionText="nombre"
+          className="w-full"
+          triggerProps={{ className: "w-full truncate text-left" }}
+          validate={required()}
+        />
+      </ReferenceInput>
+    </div>
     
-    <TextInput
-      source="fecha_necesidad"
-      label="Fecha de necesidad"
-      type="date"
-      className="w-full"
-      validate={required()}
-    />
+    <div className="min-w-0">
+      <SelectInput
+        source="estado"
+        label="Estado"
+        choices={ESTADO_CHOICES}
+        className="w-full"
+        disabled
+      />
+    </div>
     
-    <ReferenceInput
-      source="solicitante_id"
-      reference="users"
-      label="Solicitante"
-    >
-      <SelectInput optionText="nombre" className="w-full" validate={required()} />
-    </ReferenceInput>
+    <div className="min-w-0">
+      <TextInput
+        source="fecha_necesidad"
+        label="Fecha de necesidad"
+        type="date"
+        className="w-full"
+        validate={required()}
+      />
+    </div>
+    
+    <div className="min-w-0">
+      <ReferenceInput
+        source="solicitante_id"
+        reference="users"
+        label="Solicitante"
+      >
+        <SelectInput 
+          optionText="nombre" 
+          className="w-full" 
+          validate={required()} 
+        />
+      </ReferenceInput>
+    </div>
     
     <TextInput
       source="comentario"
@@ -230,6 +356,7 @@ const SolicitudFormFields = () => {
   const estadoValue = useWatch({ control, name: "estado" });
   const comentarioValue = useWatch({ control, name: "comentario" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
+  const detallesValue = useWatch({ control, name: "detalles" });
 
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
     queryKey: ["tipos-solicitud", "defaults"],
@@ -294,6 +421,28 @@ const SolicitudFormFields = () => {
     tipoSolicitudPreviousRef.current = currentTipo;
   }, [form, idValue, tipoSolicitudValue, tiposSolicitudCatalog]);
 
+  useEffect(() => {
+    const detalles = Array.isArray(detallesValue) ? detallesValue : [];
+    const calculated = detalles.reduce((acc, detalle) => {
+      if (!detalle) return acc;
+      const importe =
+        typeof detalle.importe === "number"
+          ? detalle.importe
+          : (Number(detalle.cantidad) || 0) * (Number(detalle.precio) || 0);
+      if (!Number.isFinite(importe)) {
+        return acc;
+      }
+      return acc + Number(importe);
+    }, 0);
+    const normalizedTotal = Number(calculated.toFixed(2));
+    const currentTotal = Number(form.getValues("total") ?? 0);
+    if (!Number.isNaN(normalizedTotal) && Number(currentTotal.toFixed(2)) !== normalizedTotal) {
+      form.setValue("total", normalizedTotal, {
+        shouldDirty: true,
+      });
+    }
+  }, [detallesValue, form]);
+
   useAutoInitializeField("solicitante_id", "id", !idValue);
 
   const generalSubtitle = useMemo(
@@ -344,12 +493,7 @@ const SolicitudTotals = () => {
   const { control } = useFormContext<Solicitud>();
   const total = useWatch({ control, name: "total" }) ?? 0;
   const formattedTotal = useMemo(
-    () =>
-      new Intl.NumberFormat("es-AR", {
-        style: "currency",
-        currency: "ARS",
-        minimumFractionDigits: 2,
-      }).format(Number(total) || 0),
+    () => CURRENCY_FORMATTER.format(Number(total) || 0),
     [total]
   );
 
@@ -387,10 +531,20 @@ export const Form = () => {
       cabeceraDefaults.solicitante_id.trim().length > 0
         ? Number(cabeceraDefaults.solicitante_id)
         : undefined;
+    const centroCostoParsed =
+      cabeceraDefaults.centro_costo_id &&
+      cabeceraDefaults.centro_costo_id.trim().length > 0
+        ? Number(cabeceraDefaults.centro_costo_id)
+        : 1;
+    const centroCostoDefault = Number.isFinite(centroCostoParsed)
+      ? centroCostoParsed
+      : 1;
     return {
       ...cabeceraDefaults,
       fecha_necesidad: cabeceraDefaults.fecha_necesidad || today,
       solicitante_id: solicitanteDefault,
+      centro_costo_id: centroCostoDefault,
+      total: 0,
       detalles: [] as SolicitudDetalle[],
     };
   }, [cabeceraDefaults, today]);

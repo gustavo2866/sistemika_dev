@@ -11,6 +11,7 @@ from .user import User
 
 if TYPE_CHECKING:
     from .solicitud_detalle import SolicitudDetalle
+    from .centro_costo import CentroCosto
 
 
 class EstadoSolicitud(str, Enum):
@@ -28,7 +29,7 @@ class Solicitud(Base, table=True):
     __tablename__ = "solicitudes"
 
     __searchable_fields__: ClassVar[List[str]] = ["comentario"]
-    __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
+    __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "centro_costo"}
 
     tipo_solicitud_id: int = Field(
         foreign_key="tipos_solicitud.id",
@@ -58,8 +59,13 @@ class Solicitud(Base, table=True):
         foreign_key="users.id",
         description="Identificador del usuario solicitante"
     )
+    centro_costo_id: int = Field(
+        foreign_key="centros_costo.id",
+        description="Centro de costo al que se imputa la solicitud"
+    )
 
     solicitante: User = Relationship(back_populates="solicitudes")
+    centro_costo: "CentroCosto" = Relationship(back_populates="solicitudes")
     detalles: List["SolicitudDetalle"] = Relationship(
         back_populates="solicitud",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}

@@ -156,6 +156,8 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
   const { filterElement, handleHide, className } = inProps;
   const resource = useResourceContext(inProps);
   const translate = useTranslate();
+  const { filterValues } = useListContext();
+  const currentValue = get(filterValues, filterElement.props.source);
 
   return (
     <div
@@ -170,8 +172,7 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
         record: emptyRecord,
         size: filterElement.props.size ?? "small",
         helperText: false,
-        // ignore defaultValue in Field because it was already set in Form (via mergedInitialValuesWithDefaultValues)
-        defaultValue: undefined,
+        defaultValue: currentValue ?? filterElement.props.defaultValue,
       })}
       {!filterElement.props.alwaysOn && (
         <Button

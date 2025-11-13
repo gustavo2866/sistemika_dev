@@ -1,0 +1,11 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.4
+   - Local:        http://localhost:3005
+   - Network:      http://192.168.1.107:3005
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 8.4s

@@ -40,6 +40,16 @@ class SolicitudDetalle(Base, table=True):
         sa_column=Column(DECIMAL(12, 3), nullable=False),
         description="Cantidad solicitada"
     )
+    precio: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
+        description="Precio unitario del artículo"
+    )
+    importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
+        description="Importe total (cantidad x precio)"
+    )
 
     solicitud: "Solicitud" = Relationship(back_populates="detalles")
     articulo: Optional["Articulo"] = Relationship()
