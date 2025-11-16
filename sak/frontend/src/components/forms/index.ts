@@ -35,3 +35,4 @@ export { useDetailCRUD } from "./hooks/useDetailCRUD";
 export { useFormDetailSectionContext } from "./form-detail-section-context";
 export type { UseDetailCRUDReturn } from "./hooks/useDetailCRUD";
 
+export { PeriodRangeNavigator } from './period-range-navigator';

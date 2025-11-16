@@ -90,6 +90,24 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
     for k, v in obj_dict.items():
         if k in campos_validos or (not k.startswith('_') and k not in STAMP_FIELDS):
             result[k] = v
+
+    # Inyectar campos calculados cuando existan propiedades auxiliares
+    _calculated_overrides = [
+        ("dias_totales", "dias_totales_calculado"),
+        ("dias_reparacion", "dias_reparacion_calculado"),
+        ("dias_disponible", "dias_disponible_calculado"),
+    ]
+    for field_name, calculated_attr in _calculated_overrides:
+        if field_name in result:
+            if result[field_name] is None and hasattr(obj, calculated_attr):
+                calculated_value = getattr(obj, calculated_attr)
+                if calculated_value is not None:
+                    result[field_name] = calculated_value
+        else:
+            if hasattr(obj, calculated_attr):
+                calculated_value = getattr(obj, calculated_attr)
+                if calculated_value is not None:
+                    result[field_name] = calculated_value
     
     return result 
 

@@ -1,7 +1,7 @@
 import simpleRestProvider from "ra-data-simple-rest";
 import { DataProvider, fetchUtils } from "ra-core";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const httpClient: typeof fetchUtils.fetchJson = (url, options = {}) => {
   const headers = new Headers(options.headers ?? {});

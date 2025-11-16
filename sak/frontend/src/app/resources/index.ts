@@ -8,3 +8,7 @@ export * from "./departamentos";
 export * from "./tipos-solicitud";
 export * from "./solicitudes";
 export * from "./centros-costo";
+export * from "./propiedades";
+export * from "./vacancias";
+export * from "./dashboard-proyectos";
+export * from "./dashboard-vacancias";

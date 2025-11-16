@@ -4,7 +4,29 @@ import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource, CustomRoutes } from "ra-core";
 import { Route } from "react-router-dom";
-import { Users, FileText, Building2, Workflow, CreditCard, Receipt, Home, Package, ClipboardList, Kanban, Truck, BarChart3, ShoppingCart, ClipboardCheck, Wallet, NotebookPen, FileStack, Building, Coins } from "lucide-react";
+import {
+  Users,
+  FileText,
+  Building2,
+  Workflow,
+  CreditCard,
+  Receipt,
+  Home,
+  Package,
+  ClipboardList,
+  Kanban,
+  Truck,
+  BarChart3,
+  ShoppingCart,
+  ClipboardCheck,
+  Wallet,
+  NotebookPen,
+  FileStack,
+  Building,
+  Coins,
+  Activity,
+  BarChart2,
+} from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
 import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
@@ -57,8 +79,10 @@ import {
   TipoSolicitudCreate,
   TipoSolicitudEdit,
 } from "@/app/resources/tipos-solicitud";
+import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
+import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
 import {
@@ -162,6 +186,14 @@ const AdminApp = () => {
         icon={Home}
       />
       <Resource
+        name="vacancias"
+        list={VacanciaList}
+        show={VacanciaShow}
+        recordRepresentation="id"
+        icon={Activity}
+        options={{ label: "Vacancias" }}
+      />
+      <Resource
         name="tipos-operacion"
         list={TipoOperacionList}
         create={TipoOperacionCreate}
@@ -220,6 +252,13 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={BarChart3}
         options={{ label: "Dashboard" }}
+      />
+      <Resource
+        name="dashboard-vacancias"
+        list={DashboardVacanciasList}
+        recordRepresentation="id"
+        icon={BarChart2}
+        options={{ label: "Dashboard Vacancias" }}
       />
       <Resource
         name="orden-compra"

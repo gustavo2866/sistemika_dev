@@ -425,7 +425,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
         </DataTableMobileView>
       ) : (
         <div className={cn("rounded-md border", className)}>
-          <Table>
+          <Table className="table-fixed">
             <DataTableRenderContext.Provider value="header">
               <DataTableHead>{columns}</DataTableHead>
             </DataTableRenderContext.Provider>

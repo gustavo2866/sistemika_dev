@@ -26,6 +26,8 @@ from .partediario import (
     EstadoParteDiario,
     TipoLicencia,
 )
+from .vacancia import Vacancia
+from .enums import EstadoPropiedad, TRANSICIONES_ESTADO_PROPIEDAD
 
 __all__ = [
     "Base", 
@@ -55,6 +57,9 @@ __all__ = [
     "ParteDiarioDetalle",
     "EstadoParteDiario",
     "TipoLicencia",
+    "Vacancia",
+    "EstadoPropiedad",
+    "TRANSICIONES_ESTADO_PROPIEDAD",
 ]
 
 

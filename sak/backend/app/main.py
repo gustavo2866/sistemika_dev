@@ -41,6 +41,8 @@ from app.routers.centro_costo_router import centro_costo_router
 from app.routers.proyecto_router import proyecto_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
+from app.routers.vacancia_router import vacancia_router
+from app.routers.vacancia_dashboard_router import router as vacancia_dashboard_router
 from app.routers.cliente_router import router as cliente_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
@@ -99,6 +101,8 @@ app.include_router(tipo_solicitud_router)
 app.include_router(solicitud_router)
 app.include_router(solicitud_detalle_router)
 app.include_router(centro_costo_router)
+app.include_router(vacancia_router)
+app.include_router(vacancia_dashboard_router)
 app.include_router(cliente_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)
