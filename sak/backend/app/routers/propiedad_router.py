@@ -126,11 +126,11 @@ def cambiar_estado_propiedad(
         # Si viene de ALQUILADA, crear nuevo ciclo
         if estado_actual == EstadoPropiedad.ALQUILADA.value:
             if vacancia_activa:
-                # Cerrar ciclo anterior
-                vacancia_crud.update(session, vacancia_activa.id, {
-                    "ciclo_activo": False,
-                    "dias_totales": vacancia_activa.dias_totales_calculado
-                })
+                # Cerrar ciclo anterior - calcular dias_totales solo si es válido
+                update_data = {"ciclo_activo": False}
+                if vacancia_activa.fecha_recibida and fecha_cambio >= vacancia_activa.fecha_recibida:
+                    update_data["dias_totales"] = (fecha_cambio - vacancia_activa.fecha_recibida).days
+                vacancia_crud.update(session, vacancia_activa.id, update_data)
             # Crear nuevo ciclo usando CRUD
             nueva_vacancia_data = {
                 "propiedad_id": id,
@@ -153,25 +153,45 @@ def cambiar_estado_propiedad(
                 "fecha_disponible": fecha_cambio,
                 "comentario_disponible": data.comentario
             }
-            # Calcular y guardar dias_reparacion si corresponde
-            if vacancia_activa.fecha_en_reparacion:
-                update_data["dias_reparacion"] = vacancia_activa.dias_reparacion_calculado
+            # Calcular dias_reparacion solo si las fechas son válidas
+            if vacancia_activa.fecha_en_reparacion and fecha_cambio >= vacancia_activa.fecha_en_reparacion:
+                update_data["dias_reparacion"] = (fecha_cambio - vacancia_activa.fecha_en_reparacion).days
             vacancia_crud.update(session, vacancia_activa.id, update_data)
     
     elif nuevo_estado == EstadoPropiedad.ALQUILADA.value:
         if vacancia_activa:
-            # Cerrar ciclo
+            # Primero actualizar las fechas
             update_data = {
                 "fecha_alquilada": fecha_cambio,
                 "comentario_alquilada": data.comentario,
-                "ciclo_activo": False,
-                "dias_disponible": vacancia_activa.dias_disponible_calculado,
-                "dias_totales": vacancia_activa.dias_totales_calculado
+                "ciclo_activo": False
             }
-            # Guardar dias_reparacion si existe
-            if vacancia_activa.fecha_en_reparacion:
-                update_data["dias_reparacion"] = vacancia_activa.dias_reparacion_calculado
             vacancia_crud.update(session, vacancia_activa.id, update_data)
+            
+            # Luego actualizar el objeto en sesión y calcular días
+            session.refresh(vacancia_activa)
+            
+            # Calcular días solo si las fechas son válidas (no futuras)
+            dias_disponible = None
+            dias_reparacion = None
+            dias_totales = None
+            
+            if vacancia_activa.fecha_disponible and fecha_cambio >= vacancia_activa.fecha_disponible:
+                dias_disponible = (fecha_cambio - vacancia_activa.fecha_disponible).days
+            
+            if vacancia_activa.fecha_en_reparacion and vacancia_activa.fecha_disponible:
+                if vacancia_activa.fecha_disponible >= vacancia_activa.fecha_en_reparacion:
+                    dias_reparacion = (vacancia_activa.fecha_disponible - vacancia_activa.fecha_en_reparacion).days
+            
+            if vacancia_activa.fecha_recibida and fecha_cambio >= vacancia_activa.fecha_recibida:
+                dias_totales = (fecha_cambio - vacancia_activa.fecha_recibida).days
+            
+            # Actualizar días calculados
+            vacancia_crud.update(session, vacancia_activa.id, {
+                "dias_disponible": dias_disponible,
+                "dias_reparacion": dias_reparacion,
+                "dias_totales": dias_totales
+            })
     
     elif nuevo_estado == EstadoPropiedad.RETIRADA.value:
         if vacancia_activa:
