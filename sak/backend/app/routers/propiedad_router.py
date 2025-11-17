@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.models.propiedad import Propiedad
 from app.models.vacancia import Vacancia
@@ -26,6 +26,22 @@ class CambiarEstadoRequest(BaseModel):
     """Request para cambiar el estado de una propiedad."""
     nuevo_estado: str
     comentario: Optional[str] = None
+    fecha: Optional[datetime] = None  # Si no se provee, usa fecha actual
+    
+    @field_validator('fecha', mode='before')
+    @classmethod
+    def parse_fecha(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            # Intentar parsear string como datetime
+            try:
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except ValueError:
+                raise ValueError('Formato de fecha inválido')
+        return v
 
 
 @propiedad_router.post("/{id}/cambiar-estado", response_model=dict)
@@ -40,6 +56,7 @@ def cambiar_estado_propiedad(
     Validaciones:
     - La propiedad debe existir
     - El nuevo estado debe ser válido según TRANSICIONES_ESTADO_PROPIEDAD
+    - La fecha no puede ser anterior a la del estado anterior
     - Si la propiedad tiene ciclo activo, actualiza el ciclo
     - Si no tiene ciclo activo y pasa a estado 1-recibida, crea nuevo ciclo
     """
@@ -50,6 +67,7 @@ def cambiar_estado_propiedad(
     
     estado_actual = propiedad.estado
     nuevo_estado = data.nuevo_estado
+    fecha_cambio = data.fecha or datetime.utcnow()
     
     # 2. Validar transición de estado
     estados_validos = TRANSICIONES_ESTADO_PROPIEDAD.get(estado_actual, [])
@@ -69,15 +87,41 @@ def cambiar_estado_propiedad(
     vacancias = session.exec(statement).all()
     vacancia_activa = vacancias[0] if vacancias else None
     
-    # 4. Actualizar propiedad
+    # 4. Validar que la fecha no sea anterior a la del estado anterior
+    if vacancia_activa:
+        fecha_anterior = None
+        # Determinar la última fecha según el estado actual
+        if estado_actual == EstadoPropiedad.RECIBIDA.value:
+            fecha_anterior = vacancia_activa.fecha_recibida
+        elif estado_actual == EstadoPropiedad.EN_REPARACION.value:
+            fecha_anterior = vacancia_activa.fecha_en_reparacion
+        elif estado_actual == EstadoPropiedad.DISPONIBLE.value:
+            fecha_anterior = vacancia_activa.fecha_disponible
+        elif estado_actual == EstadoPropiedad.ALQUILADA.value:
+            fecha_anterior = vacancia_activa.fecha_alquilada
+        
+        if fecha_anterior and fecha_cambio < fecha_anterior:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La fecha no puede ser anterior a la fecha del estado '{estado_actual}' ({fecha_anterior.strftime('%Y-%m-%d %H:%M')})"
+            )
+    
+    # También validar contra estado_fecha de la propiedad
+    if propiedad.estado_fecha and fecha_cambio < propiedad.estado_fecha:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La fecha no puede ser anterior a la fecha del estado actual de la propiedad ({propiedad.estado_fecha.strftime('%Y-%m-%d %H:%M')})"
+        )
+    
+    # 5. Actualizar propiedad
     propiedad_data = {
         "estado": nuevo_estado,
-        "estado_fecha": datetime.utcnow(),
+        "estado_fecha": fecha_cambio,
         "estado_comentario": data.comentario
     }
     propiedad = propiedad_crud.update(session, id, propiedad_data)
     
-    # 5. Actualizar o crear vacancia
+    # 6. Actualizar o crear vacancia
     if nuevo_estado == EstadoPropiedad.RECIBIDA.value:
         # Si viene de ALQUILADA, crear nuevo ciclo
         if estado_actual == EstadoPropiedad.ALQUILADA.value:
@@ -91,7 +135,7 @@ def cambiar_estado_propiedad(
             nueva_vacancia_data = {
                 "propiedad_id": id,
                 "ciclo_activo": True,
-                "fecha_recibida": datetime.utcnow(),
+                "fecha_recibida": fecha_cambio,
                 "comentario_recibida": data.comentario
             }
             vacancia_crud.create(session, nueva_vacancia_data)
@@ -99,14 +143,14 @@ def cambiar_estado_propiedad(
     elif nuevo_estado == EstadoPropiedad.EN_REPARACION.value:
         if vacancia_activa:
             vacancia_crud.update(session, vacancia_activa.id, {
-                "fecha_en_reparacion": datetime.utcnow(),
+                "fecha_en_reparacion": fecha_cambio,
                 "comentario_en_reparacion": data.comentario
             })
     
     elif nuevo_estado == EstadoPropiedad.DISPONIBLE.value:
         if vacancia_activa:
             update_data = {
-                "fecha_disponible": datetime.utcnow(),
+                "fecha_disponible": fecha_cambio,
                 "comentario_disponible": data.comentario
             }
             # Calcular y guardar dias_reparacion si corresponde
@@ -118,7 +162,7 @@ def cambiar_estado_propiedad(
         if vacancia_activa:
             # Cerrar ciclo
             update_data = {
-                "fecha_alquilada": datetime.utcnow(),
+                "fecha_alquilada": fecha_cambio,
                 "comentario_alquilada": data.comentario,
                 "ciclo_activo": False,
                 "dias_disponible": vacancia_activa.dias_disponible_calculado,
@@ -133,7 +177,7 @@ def cambiar_estado_propiedad(
         if vacancia_activa:
             # Cerrar ciclo sin alquilar
             update_data = {
-                "fecha_retirada": datetime.utcnow(),
+                "fecha_retirada": fecha_cambio,
                 "comentario_retirada": data.comentario,
                 "ciclo_activo": False
             }

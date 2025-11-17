@@ -19,11 +19,43 @@ import {
 import { useEffect, useState } from "react";
 import { useFormContext } from "react-hook-form";
 
-export const PropiedadForm = () => (
-  <SimpleForm className="w-full max-w-4xl" warnWhenUnsavedChanges>
-    <PropiedadFormContent />
-  </SimpleForm>
-);
+export const PropiedadForm = () => {
+  // const dataProvider = useDataProvider();
+  // const notify = useNotify();
+  // const record = useRecordContext<Propiedad>();
+  // const isCreate = !record?.id;
+
+  // TODO: Revisar cómo manejar la creación automática de vacancia inicial
+  // El callback onSuccess no es soportado por SimpleForm actual
+  /*
+  const handleSuccess = async ({ data }: { data: Propiedad }) => {
+    if (!isCreate) return;
+    try {
+      if (!data?.id) return;
+      await dataProvider.create("vacancias", {
+        data: {
+          propiedad_id: data.id,
+          ciclo_activo: true,
+          fecha_recibida: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo crear la vacancia inicial";
+      notify(message, { type: "warning" });
+    }
+  };
+  */
+
+  return (
+    <SimpleForm
+      className="w-full max-w-4xl"
+      warnWhenUnsavedChanges
+      defaultValues={{ estado: "1-recibida" }}
+    >
+      <PropiedadFormContent />
+    </SimpleForm>
+  );
+};
 
 const PropiedadFormContent = () => {
   const form = useFormContext();
@@ -61,6 +93,7 @@ const PropiedadFormContent = () => {
                     name: option.label,
                   }))}
                   className="w-full"
+                  disabled
                   validate={required()}
                 />
               </div>
@@ -143,7 +176,7 @@ const PropiedadVacanciasTable = () => {
         if (!cancel) {
           setVacancias(response.data ?? []);
         }
-      } catch (error) {
+      } catch {
         if (!cancel) {
           setVacancias([]);
         }

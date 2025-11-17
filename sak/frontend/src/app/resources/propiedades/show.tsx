@@ -62,11 +62,6 @@ const PropiedadDetails = () => {
     };
   }, [dataProvider, record, vacanciaVersion]);
 
-  if (!record) {
-    return null;
-  }
-
-  const vacanciaActiva = vacancias.find((vacancia) => vacancia.ciclo_activo);
   const vacanciasOrdenadas = useMemo(() => {
     return [...vacancias].sort((a, b) => {
       const fechaA = a.fecha_recibida ? new Date(a.fecha_recibida).getTime() : 0;
@@ -77,6 +72,8 @@ const PropiedadDetails = () => {
       return fechaB - fechaA;
     });
   }, [vacancias]);
+
+  const vacanciaActiva = useMemo(() => vacancias.find((vacancia) => vacancia.ciclo_activo), [vacancias]);
   const ultimaVacancia = vacanciaActiva ?? vacanciasOrdenadas[0];
 
   const diasReparacion = preferCalculated(
@@ -93,14 +90,17 @@ const PropiedadDetails = () => {
   );
 
   const metadata = useMemo(
-    () => [
-      { label: "Ambientes", value: record.ambientes ?? "N/D" },
-      { label: "Metros2", value: record.metros_cuadrados ?? "N/D", format: "decimal" as const },
-      { label: "Valor alquiler", value: record.valor_alquiler, format: "currency" as const },
-      { label: "Expensas", value: record.expensas, format: "currency" as const },
-      { label: "Fecha ingreso", value: record.fecha_ingreso ?? "Sin registrar" },
-      { label: "Vencimiento contrato", value: record.vencimiento_contrato ?? "Sin registrar" },
-    ],
+    () => {
+      if (!record) return [];
+      return [
+        { label: "Ambientes", value: record.ambientes ?? "N/D" },
+        { label: "Metros2", value: record.metros_cuadrados ?? "N/D", format: "decimal" as const },
+        { label: "Valor alquiler", value: record.valor_alquiler, format: "currency" as const },
+        { label: "Expensas", value: record.expensas, format: "currency" as const },
+        { label: "Fecha ingreso", value: record.fecha_ingreso ?? "Sin registrar" },
+        { label: "Vencimiento contrato", value: record.vencimiento_contrato ?? "Sin registrar" },
+      ];
+    },
     [record]
   );
 
@@ -123,6 +123,11 @@ const PropiedadDetails = () => {
     return new Intl.NumberFormat("es-AR").format(value);
   };
 
+  // Early return después de todos los hooks
+  if (!record) {
+    return null;
+  }
+
   return (
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -138,6 +143,7 @@ const PropiedadDetails = () => {
           <ChangeStateDialog
             propiedadId={record.id}
             currentEstado={record.estado}
+            estadoFecha={record.estado_fecha}
             onCompleted={() => {
               setVacanciaVersion((version) => version + 1);
             }}

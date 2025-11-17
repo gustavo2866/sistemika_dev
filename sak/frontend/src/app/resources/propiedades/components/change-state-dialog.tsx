@@ -26,31 +26,78 @@ import {
 type ChangeStateDialogProps = {
   propiedadId: number;
   currentEstado: PropiedadEstado;
+  estadoFecha?: string | null;  // Fecha del estado actual para validación
   className?: string;
   onCompleted?: () => void;
+  trigger?: React.ReactNode;  // Trigger personalizado opcional
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCompleted }: ChangeStateDialogProps) => {
+// Función helper para formatear fecha para input datetime-local
+const formatDateForInput = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, className, onCompleted, trigger }: ChangeStateDialogProps) => {
   const [open, setOpen] = useState(false);
   const [nuevoEstado, setNuevoEstado] = useState<PropiedadEstado>(currentEstado);
   const [comentario, setComentario] = useState("");
+  const [fecha, setFecha] = useState<string>(() => formatDateForInput(new Date()));
   const [notifDestinatario, setNotifDestinatario] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fechaError, setFechaError] = useState<string | null>(null);
   const notify = useNotify();
   const refresh = useRefresh();
+
+  // Calcular la fecha mínima permitida (fecha del estado actual)
+  const minFecha = useMemo(() => {
+    if (!estadoFecha) return null;
+    try {
+      const date = new Date(estadoFecha);
+      return formatDateForInput(date);
+    } catch {
+      return null;
+    }
+  }, [estadoFecha]);
 
   const opcionesDisponibles = useMemo(() => {
     const posibles = TRANSICIONES_ESTADO_PROPIEDAD[currentEstado] ?? [];
     return ESTADOS_PROPIEDAD_OPTIONS.filter((option) => posibles.includes(option.value));
   }, [currentEstado]);
 
+  // Validar fecha cuando cambia
+  const handleFechaChange = useCallback((value: string) => {
+    setFecha(value);
+    
+    if (minFecha && value < minFecha) {
+      setFechaError(`La fecha no puede ser anterior a ${new Date(minFecha).toLocaleString('es-AR')}`);
+    } else {
+      setFechaError(null);
+    }
+  }, [minFecha]);
+
   const handleSubmit = useCallback(async () => {
     if (!propiedadId) return;
+    
+    // Validar fecha antes de enviar
+    if (fechaError) {
+      notify(fechaError, { type: "error" });
+      return;
+    }
+    
     setLoading(true);
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      
+      // Convertir fecha local a ISO string para el backend
+      const fechaISO = new Date(fecha).toISOString();
+      
       const response = await fetch(`${API_URL}/propiedades/${propiedadId}/cambiar-estado`, {
         method: "POST",
         headers: {
@@ -60,6 +107,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCom
         body: JSON.stringify({
           nuevo_estado: nuevoEstado,
           comentario: comentario || undefined,
+          fecha: fechaISO,
         }),
       });
 
@@ -71,7 +119,9 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCom
       notify(`Estado actualizado a ${formatEstadoPropiedad(nuevoEstado)}`, { type: "success" });
       setOpen(false);
       setComentario("");
+      setFecha(formatDateForInput(new Date()));
       setNotifDestinatario("");
+      setFechaError(null);
       onCompleted?.();
       refresh();
     } catch (error) {
@@ -80,7 +130,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCom
     } finally {
       setLoading(false);
     }
-  }, [comentario, notify, nuevoEstado, onCompleted, propiedadId, refresh]);
+  }, [comentario, notify, nuevoEstado, onCompleted, propiedadId, refresh, fecha, fechaError]);
 
   if (!opcionesDisponibles.length) {
     return null;
@@ -88,11 +138,17 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCom
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className={className} size="sm" variant="default">
-          Cambiar estado
-        </Button>
-      </DialogTrigger>
+      {trigger ? (
+        <div onClick={() => setOpen(true)}>
+          {trigger}
+        </div>
+      ) : (
+        <DialogTrigger asChild>
+          <Button className={className} size="sm" variant="default">
+            Cambiar estado
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Cambiar estado de la propiedad</DialogTitle>
@@ -116,6 +172,32 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCom
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="fecha-estado">Fecha del cambio</Label>
+            <Input
+              id="fecha-estado"
+              type="datetime-local"
+              value={fecha}
+              onChange={(e) => handleFechaChange(e.target.value)}
+              min={minFecha || undefined}
+              className={fechaError ? "border-red-500" : ""}
+            />
+            {fechaError && (
+              <p className="text-xs text-red-600">{fechaError}</p>
+            )}
+            {minFecha && !fechaError && (
+              <p className="text-xs text-muted-foreground">
+                La fecha debe ser igual o posterior al {new Date(minFecha).toLocaleString('es-AR', { 
+                  year: 'numeric', 
+                  month: '2-digit', 
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -147,7 +229,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, className, onCom
           <Button variant="secondary" onClick={() => setOpen(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button onClick={handleSubmit} disabled={loading || !!fechaError}>
             {loading ? "Guardando..." : "Confirmar"}
           </Button>
         </DialogFooter>

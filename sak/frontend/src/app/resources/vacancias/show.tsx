@@ -52,7 +52,7 @@ const VacanciaDetails = () => {
       setOpen(false);
       setFormState({});
       refresh();
-    } catch (error) {
+    } catch {
       notify("No se pudieron guardar los comentarios", { type: "error" });
     }
   };
@@ -124,7 +124,7 @@ const VacanciaDetails = () => {
         </CardHeader>
         <CardContent className="divide-y">
           {VACANCIA_STATE_STEPS.map((step) => {
-            const comment = record[step.commentField as keyof Vacancia];
+            const comment = record[step.commentField as keyof Vacancia] as string | null | undefined;
             const date = record[step.dateField as keyof Vacancia];
             return (
               <div key={step.key} className="py-4">

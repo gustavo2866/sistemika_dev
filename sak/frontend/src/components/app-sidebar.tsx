@@ -49,7 +49,7 @@ import {
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
-const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "vacancias", "dashboard-vacancias"] as const;
+const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "dashboard-vacancias"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
 const CONFIG_RESOURCES = ["users", "departamentos", "tipos-solicitud", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
 

@@ -10,6 +10,7 @@ export type PropiedadEstado =
 export type Vacancia = {
   id: number;
   propiedad_id: number;
+  propiedad?: Propiedad;
   ciclo_activo: boolean;
   fecha_recibida?: string | null;
   comentario_recibida?: string | null;

@@ -10,5 +10,6 @@ export * from "./solicitudes";
 export * from "./centros-costo";
 export * from "./propiedades";
 export * from "./vacancias";
-export * from "./dashboard-proyectos";
-export * from "./dashboard-vacancias";
+// Los dashboards no necesitan ser exportados aquí
+// export * from "./dashboard-proyectos";
+// export * from "./dashboard-vacancias";
