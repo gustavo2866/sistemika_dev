@@ -76,6 +76,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["Content-Range"],  # Para ra-data-simple-rest
+    max_age=60,  # Cachear preflight solo 60 segundos (evita problemas con actualizaciones)
 )
 
 # Registrar routers
