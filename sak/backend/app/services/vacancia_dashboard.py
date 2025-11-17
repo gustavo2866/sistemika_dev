@@ -123,7 +123,11 @@ def fetch_vacancias_for_dashboard(
     cut = min(end, today)
 
     # Construir query base desde Vacancia
-    query = select(Vacancia).where(Vacancia.deleted_at.is_(None))
+    query = (
+        select(Vacancia)
+        .where(Vacancia.deleted_at.is_(None))
+        .options(selectinload(Vacancia.propiedad))
+    )
 
     # Si hay filtros de propiedad, hacer join
     join_propiedad = any([estado_propiedad, propietario, ambientes is not None])
@@ -152,9 +156,41 @@ def fetch_vacancias_for_dashboard(
 
 
 def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, end_date: str, limit_top: int = 5) -> dict:
+    def _vacancia_cost(v: Vacancia, dias: int) -> float:
+        alquiler = float(v.propiedad.valor_alquiler or 0) if v.propiedad else 0.0
+        expensas = float(v.propiedad.expensas or 0) if v.propiedad else 0.0
+        return dias * ((alquiler + expensas) / 30.0)
+
+    def _kpi_stats(subset: list[CalculatedVacancia]) -> dict:
+        if not subset:
+            return {"count": 0, "propiedades": 0, "dias": 0, "costo": 0.0, "promedio": 0.0}
+        unique_props = {item.vacancia.propiedad_id for item in subset}
+        total_dias = sum(item.dias_totales for item in subset)
+        total_costo = sum(_vacancia_cost(item.vacancia, item.dias_totales) for item in subset)
+        promedio = round(total_dias / max(len(unique_props), 1), 1)
+        return {
+            "count": len(subset),
+            "propiedades": len(unique_props),
+            "dias": total_dias,
+            "costo": round(total_costo, 1),
+            "promedio": promedio,
+        }
+
+    def _activos_por_estado(subset: list[CalculatedVacancia]) -> dict:
+        reparacion = 0
+        disponible = 0
+        for item in subset:
+            estado_propiedad = item.vacancia.propiedad.estado if item.vacancia.propiedad else None
+            if estado_propiedad == "2-en_reparacion":
+                reparacion += 1
+            elif estado_propiedad == "3-disponible":
+                disponible += 1
+        return {"reparacion": reparacion, "disponible": disponible}
+
     total = len(items)
     buckets: dict[str, dict[str, list[int] | int]] = {}
     estados = {"activo": 0, "alquilada": 0, "retirada": 0}
+    activos: list[CalculatedVacancia] = []
 
     for item in items:
         bucket = buckets.setdefault(
@@ -168,6 +204,7 @@ def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, en
 
         if item.estado_corte == "Activo":
             estados["activo"] += 1
+            activos.append(item)
         elif item.estado_corte == "Alquilada":
             estados["alquilada"] += 1
         else:
@@ -194,6 +231,15 @@ def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, en
 
     top_items = sorted(items, key=lambda i: i.dias_totales, reverse=True)[:limit_top]
 
+    kpi_cards = {
+        "totales": _kpi_stats(items),
+        "disponible": _kpi_stats([i for i in items if i.vacancia.propiedad and i.vacancia.propiedad.estado == "3-disponible"]),
+        "reparacion": _kpi_stats([i for i in items if i.vacancia.propiedad and i.vacancia.propiedad.estado == "2-en_reparacion"]),
+        "activas": _kpi_stats(
+            [i for i in items if i.estado_corte == "Activo" and (i.vacancia.propiedad is None or i.vacancia.propiedad.estado not in {"4-alquilada", "5-retirada"})]
+        ),
+    }
+
     payload = {
         "range": {"startDate": start_date, "endDate": end_date},
         "kpis": {
@@ -205,6 +251,8 @@ def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, en
         },
         "buckets": buckets_list,
         "estados_finales": estados,
+        "activos_detalle": _activos_por_estado(activos),
+        "kpi_cards": kpi_cards,
         "top": [
             {
                 "vacancia": item.vacancia,

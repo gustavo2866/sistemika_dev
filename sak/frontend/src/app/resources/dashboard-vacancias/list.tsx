@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import {
 } from "@/components/dashboard";
 import {
   type DashboardResponse,
+  type DashboardDetalleResponse,
   type CalculatedVacancia,
   type KpiStats,
   DEFAULT_PERIOD,
@@ -31,10 +32,10 @@ import {
   formatDecimal,
   formatCurrency,
   getVacanciaCost,
-  calculateStats,
-  calculatePorcentajeRetiro,
   getVacanciaEstadoLabel,
   exportRanking,
+  mapDashboardItemToCalculated,
+  sortBuckets,
 } from "./model";
 import {
   Area,
@@ -51,20 +52,28 @@ import {
 } from "recharts";
 import VacanciaShow from "./show";
 
+const EMPTY_STATS: KpiStats = { count: 0, propiedades: 0, dias: 0, costo: 0, promedio: 0 };
+
 export default function DashboardVacanciasList() {
   const [periodType, setPeriodType] = useState<PeriodType>(DEFAULT_PERIOD);
   const [filters, setFilters] = useState(() => buildDefaultFilters(DEFAULT_PERIOD));
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
+  const [detalleData, setDetalleData] = useState<DashboardDetalleResponse | null>(null);
+  const [rankingLoading, setRankingLoading] = useState(true);
   const [longestFilter, setLongestFilter] = useState<
     "todos" | "activas" | "recibida" | "en_reparacion" | "disponible" | "alquilada" | "retirada"
   >("activas");
   const [rankingBucket, setRankingBucket] = useState<string>("todos");
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailPerPage] = useState(20);
   const [selectedVacancia, setSelectedVacancia] = useState<CalculatedVacancia | null>(null);
+
+  const resetPage = () => setDetailPage(1);
 
   useEffect(() => {
     let cancelled = false;
-    
+
     const load = async () => {
       setLoading(true);
       try {
@@ -72,7 +81,6 @@ export default function DashboardVacanciasList() {
           startDate: filters.startDate,
           endDate: filters.endDate,
           limitTop: "5",
-          includeItems: "true",
         });
         if (filters.estadoPropiedad) params.set("estadoPropiedad", filters.estadoPropiedad);
         if (filters.propietario) params.set("propietario", filters.propietario);
@@ -87,70 +95,71 @@ export default function DashboardVacanciasList() {
         if (!cancelled) setLoading(false);
       }
     };
-    
-    // Debounce: esperar 300ms antes de hacer el fetch
+
     const timeoutId = setTimeout(() => {
       load();
     }, 300);
-    
+
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
     };
   }, [filters]);
 
-  const calculatedVacancias = useMemo<CalculatedVacancia[]>(() => {
-    if (!dashboardData?.items) return [];
-    return dashboardData.items.map((item) => ({
-      vacancia: item.vacancia,
-      diasTotales: item.dias_totales,
-      diasReparacion: item.dias_reparacion,
-      diasDisponible: item.dias_disponible,
-      estadoCorte: item.estado_corte,
-      bucket: item.bucket,
-    }));
+  useEffect(() => {
+    let cancelled = false;
+    const loadDetalle = async () => {
+      setRankingLoading(true);
+      try {
+        const params = new URLSearchParams({
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          page: detailPage.toString(),
+          perPage: detailPerPage.toString(),
+          orderBy: "dias_totales",
+          orderDir: "desc",
+        });
+        const estadoVacancia = longestFilter === "todos" ? "" : longestFilter;
+        if (estadoVacancia) params.set("estadoVacancia", estadoVacancia);
+        if (rankingBucket !== "todos") params.set("bucket", rankingBucket);
+        if (filters.estadoPropiedad) params.set("estadoPropiedad", filters.estadoPropiedad);
+        if (filters.propietario) params.set("propietario", filters.propietario);
+        if (filters.ambientes) params.set("ambientes", filters.ambientes);
+
+        const response = await fetch(`${apiUrl}/api/dashboard/vacancias/detalle?${params.toString()}`);
+        if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+        const json: DashboardDetalleResponse = await response.json();
+        if (!cancelled) setDetalleData(json);
+      } catch (error) {
+        console.error("No se pudo cargar el detalle de vacancias", error);
+      } finally {
+        if (!cancelled) setRankingLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      loadDetalle();
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [filters, longestFilter, rankingBucket, detailPage, detailPerPage]);
+
+  const kpiCards = useMemo(() => {
+    const cards = dashboardData?.kpi_cards;
+    return [
+      { id: "totales" as const, title: "Vacancias totales", stats: cards?.totales ?? EMPTY_STATS },
+      { id: "activas" as const, title: "Vacancias activas", stats: cards?.activas ?? EMPTY_STATS, accent: "risk" as const },
+      { id: "disponible" as const, title: "Vacancias disponible", stats: cards?.disponible ?? EMPTY_STATS },
+      { id: "reparacion" as const, title: "Vacancias en reparacion", stats: cards?.reparacion ?? EMPTY_STATS },
+    ];
   }, [dashboardData]);
-
-  const subsetActivas = useMemo(
-    () =>
-      calculatedVacancias.filter(
-        (item) =>
-          item.estadoCorte === "Activo" &&
-          item.vacancia.propiedad?.estado !== "4-alquilada" &&
-          item.vacancia.propiedad?.estado !== "5-retirada"
-      ),
-    [calculatedVacancias],
-  );
-  const subsetDisponible = useMemo(
-    () => calculatedVacancias.filter((item) => item.vacancia.propiedad?.estado === "3-disponible"),
-    [calculatedVacancias],
-  );
-  const subsetReparacion = useMemo(
-    () => calculatedVacancias.filter((item) => item.vacancia.propiedad?.estado === "2-en_reparacion"),
-    [calculatedVacancias],
-  );
-  const subsetRetiradas = useMemo(
-    () => calculatedVacancias.filter((item) => item.estadoCorte === "Retirada"),
-    [calculatedVacancias],
-  );
-
-  const kpiCards = [
-    { id: "totales" as const, title: "Vacancias totales", items: calculatedVacancias },
-    { id: "disponible" as const, title: "Vacancias disponible", items: subsetDisponible },
-    { id: "reparacion" as const, title: "Vacancias en reparacion", items: subsetReparacion },
-    { id: "activas" as const, title: "Vacancias activas", items: subsetActivas, accent: "risk" as const },
-  ].map((card) => ({
-    ...card,
-    stats: calculateStats(card.items),
-  }));
 
   const areaData = useMemo(() => {
     if (!dashboardData?.buckets) return [];
-    const sorted = [...dashboardData.buckets].sort((a, b) => {
-      if (a.bucket === "Historico") return -1;
-      if (b.bucket === "Historico") return 1;
-      return a.bucket.localeCompare(b.bucket);
-    });
+    const sorted = sortBuckets(dashboardData.buckets);
     return sorted.map((bucket) => ({
       month: bucket.bucket,
       dias_totales: bucket.dias_totales,
@@ -161,88 +170,39 @@ export default function DashboardVacanciasList() {
 
   const estadoFinalData = useMemo(() => {
     const buckets = dashboardData?.estados_finales ?? { alquilada: 0, retirada: 0, activo: 0 };
-    
-    // Calcular cuántas vacancias activas están en reparación vs disponibles
-    const activasEnReparacion = calculatedVacancias.filter(
-      item => item.estadoCorte === "Activo" && item.vacancia.propiedad?.estado === "2-en_reparacion"
-    ).length;
-    
-    const activasDisponibles = buckets.activo - activasEnReparacion;
-    
+    const activosDetalle = dashboardData?.activos_detalle ?? { disponible: 0, reparacion: 0 };
+
     return [
-      { 
-        name: "alquilada", 
-        value: buckets.alquilada,
-        disponible: 0,
-        reparacion: 0
-      },
-      { 
-        name: "retirada", 
-        value: buckets.retirada,
-        disponible: 0,
-        reparacion: 0
-      },
-      { 
-        name: "activo", 
-        value: 0,
-        disponible: activasDisponibles,
-        reparacion: activasEnReparacion
+      { name: "alquilada", disponible: buckets.alquilada, reparacion: 0, total: buckets.alquilada },
+      { name: "retirada", disponible: buckets.retirada, reparacion: 0, total: buckets.retirada },
+      {
+        name: "activo",
+        disponible: activosDetalle.disponible,
+        reparacion: activosDetalle.reparacion,
+        total: activosDetalle.disponible + activosDetalle.reparacion,
       },
     ];
-  }, [dashboardData, calculatedVacancias]);
+  }, [dashboardData]);
 
-  const longestVacancias = useMemo(() => {
-    const source = calculatedVacancias;
-    const filtered = source.filter((item) => {
-      switch (longestFilter) {
-        case "todos":
-          return true;
-        case "activas":
-          // Filtrar solo vacancias realmente activas (no alquiladas ni retiradas)
-          return (
-            item.estadoCorte === "Activo" &&
-            item.vacancia.propiedad?.estado !== "4-alquilada" &&
-            item.vacancia.propiedad?.estado !== "5-retirada"
-          );
-        case "recibida":
-          return item.vacancia.propiedad?.estado === "1-recibida";
-        case "en_reparacion":
-          return item.vacancia.propiedad?.estado === "2-en_reparacion";
-        case "disponible":
-          return item.vacancia.propiedad?.estado === "3-disponible";
-        case "alquilada":
-          return item.vacancia.propiedad?.estado === "4-alquilada";
-        case "retirada":
-          return item.estadoCorte === "Retirada";
-        default:
-          return true;
-      }
-    });
-    const filteredByBucket =
-      rankingBucket === "todos" ? filtered : filtered.filter((item) => item.bucket === rankingBucket);
-    return [...filteredByBucket].sort((a, b) => b.diasTotales - a.diasTotales);
-  }, [calculatedVacancias, longestFilter, rankingBucket]);
+  const rankingItems = useMemo<CalculatedVacancia[]>(() => {
+    if (!detalleData?.data) return [];
+    return detalleData.data.map(mapDashboardItemToCalculated);
+  }, [detalleData]);
 
   const bucketOptions = useMemo(() => {
-    const buckets = new Set<string>();
-    calculatedVacancias.forEach((item) => buckets.add(item.bucket));
-    return [
-      "todos",
-      ...Array.from(buckets).sort((a, b) => {
-        if (a === "Historico") return -1;
-        if (b === "Historico") return 1;
-        return a.localeCompare(b);
-      }),
-    ];
-  }, [calculatedVacancias]);
+    if (!dashboardData?.buckets) return ["todos"];
+    return ["todos", ...sortBuckets(dashboardData.buckets).map((bucket) => bucket.bucket)];
+  }, [dashboardData]);
 
   const handleFilterChange = (field: keyof typeof filters, value: string) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
+    resetPage();
   };
 
   const applyRange = (range: PeriodRange, type: PeriodType) => {
     setFilters((prev) => ({ ...prev, startDate: range.startDate, endDate: range.endDate }));
     setPeriodType(type);
+    resetPage();
   };
 
   const cardToRankingFilter = (id: "totales" | "disponible" | "reparacion" | "activas") => {
@@ -256,6 +216,42 @@ export default function DashboardVacanciasList() {
       case "activas":
       default:
         return "activas" as const;
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil((detalleData?.total ?? 0) / detailPerPage));
+
+  const handleExport = async () => {
+    try {
+      const collected: CalculatedVacancia[] = [];
+      let page = 1;
+      // Obtener todas las paginas usando el endpoint paginado
+      while (true) {
+        const params = new URLSearchParams({
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          page: page.toString(),
+          perPage: "200",
+          orderBy: "dias_totales",
+          orderDir: "desc",
+        });
+        const estadoVacancia = longestFilter === "todos" ? "" : longestFilter;
+        if (estadoVacancia) params.set("estadoVacancia", estadoVacancia);
+        if (rankingBucket !== "todos") params.set("bucket", rankingBucket);
+        if (filters.estadoPropiedad) params.set("estadoPropiedad", filters.estadoPropiedad);
+        if (filters.propietario) params.set("propietario", filters.propietario);
+        if (filters.ambientes) params.set("ambientes", filters.ambientes);
+
+        const response = await fetch(`${apiUrl}/api/dashboard/vacancias/detalle?${params.toString()}`);
+        if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+        const json: DashboardDetalleResponse = await response.json();
+        collected.push(...json.data.map(mapDashboardItemToCalculated));
+        if (collected.length >= json.total || json.data.length === 0) break;
+        page += 1;
+      }
+      exportRanking(collected);
+    } catch (error) {
+      console.error("No se pudo exportar el ranking de vacancias", error);
     }
   };
 
@@ -290,6 +286,7 @@ export default function DashboardVacanciasList() {
                 const resetRange = buildDefaultFilters(DEFAULT_PERIOD);
                 setPeriodType(DEFAULT_PERIOD);
                 setFilters(resetRange);
+                resetPage();
               }}
             >
               Limpiar filtros
@@ -304,30 +301,44 @@ export default function DashboardVacanciasList() {
             key={card.id}
             title={card.title}
             stats={card.stats}
-            onSelect={() => setLongestFilter(cardToRankingFilter(card.id))}
+            onSelect={() => {
+              setLongestFilter(cardToRankingFilter(card.id));
+              resetPage();
+            }}
             risk={card.accent === "risk"}
           />
         ))}
-        <DashboardKpiCard 
+        <DashboardKpiCard
           title="% retiro"
-          onSelect={() => setLongestFilter("retirada")}
+          onSelect={() => {
+            setLongestFilter("retirada");
+            resetPage();
+          }}
         >
-          <KpiMetricsRow>
-            <KpiMetric 
-              label="Vacancias" 
-              value={formatInteger(subsetRetiradas.length)} 
-            />
-            <KpiMetric 
-              label="Días totales" 
-              value={formatInteger(calculateStats(subsetRetiradas).dias)} 
-            />
-          </KpiMetricsRow>
-          <KpiDetails>
-            <KpiDetail 
-              label="Ciclos cerrados sin alquilar" 
-              value={`${calculatePorcentajeRetiro(calculatedVacancias)}%`} 
-            />
-          </KpiDetails>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-baseline justify-between gap-6">
+              <div className="flex flex-col gap-1">
+                <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
+                  {formatInteger(dashboardData?.kpis.totalVacancias ?? 0)}
+                </span>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Vacancias</span>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
+                  {formatInteger(dashboardData?.kpis.promedioDiasTotales ?? 0)}
+                </span>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">D\u00edas totales</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex flex-col">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">
+                  Ciclos cerrados sin alquilar
+                </span>
+                <span className="font-semibold whitespace-nowrap">{`${dashboardData?.kpis.porcentajeRetiro ?? 0}%`}</span>
+              </div>
+            </div>
+          </div>
         </DashboardKpiCard>
       </section>
 
@@ -363,65 +374,115 @@ export default function DashboardVacanciasList() {
                   <XAxis dataKey="name" />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="value" fill="#6366f1">
-                    <LabelList dataKey="value" position="center" fill="#fff" fontSize={12} />
-                  </Bar>
                   <Bar dataKey="disponible" stackId="a" fill="#6366f1">
-                    <LabelList dataKey="disponible" position="center" fill="#fff" fontSize={12} />
+                    <LabelList content={(props) => {
+                      const { x = 0, y = 0, width = 0, height = 0, value, payload } = props as any;
+                      const total = (payload?.disponible ?? 0) + (payload?.reparacion ?? 0);
+                      const labelValue = total || value;
+                      if (!labelValue) return null;
+                      return (
+                        <text
+                          x={x + width / 2}
+                          y={y + height / 2}
+                          fill="#fff"
+                          fontSize={12}
+                          fontWeight={600}
+                          textAnchor="middle"
+                        >
+                          {labelValue}
+                        </text>
+                      );
+                    }} />
                   </Bar>
                   <Bar dataKey="reparacion" stackId="a" fill="#ef4444">
-                    <LabelList dataKey="reparacion" position="center" fill="#fff" fontSize={12} />
+                    <LabelList content={(props) => {
+                      const { x = 0, y = 0, width = 0, height = 0, payload } = props as any;
+                      const total = (payload?.disponible ?? 0) + (payload?.reparacion ?? 0);
+                      if (!total) return null;
+                      return (
+                        <text
+                          x={x + width / 2}
+                          y={y + height / 2}
+                          fill="#fff"
+                          fontSize={12}
+                          fontWeight={600}
+                          textAnchor="middle"
+                        >
+                          {total}
+                        </text>
+                      );
+                    }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
-        <DashboardRanking
-          title="Ranking de vacancias"
-          items={longestVacancias}
-          loading={loading}
-          emptyMessage="No hay vacancias para este filtro."
-          height="100%"
-          maxScrollHeight="540px"
-          renderItem={(item) => (
-            <VacanciaRankingItem
-              key={item.vacancia.id}
-              item={item}
-              setFilters={setFilters}
-              onShowDetails={() => setSelectedVacancia(item)}
-            />
-          )}
-          filters={{
-            primary: {
-              label: "Vacancia",
-              value: longestFilter,
-              options: [
-                { value: "todos", label: "Todos" },
-                { value: "activas", label: "Activas" },
-                { value: "recibida", label: "Recibida" },
-                { value: "en_reparacion", label: "En reparacion" },
-                { value: "disponible", label: "Disponible" },
-                { value: "alquilada", label: "Alquilada" },
-                { value: "retirada", label: "Retirada" },
-              ],
-              onChange: (value) => setLongestFilter(value as typeof longestFilter),
-            },
-            secondary: {
-              label: "Periodo",
-              value: rankingBucket,
-              options: bucketOptions.map((opt) => ({
-                value: opt,
-                label: opt === "todos" ? "Todos" : opt === "Historico" ? "Historico" : opt,
-              })),
-              onChange: setRankingBucket,
-            },
-          }}
-          onExport={() => exportRanking(longestVacancias)}
-        />
+        <div className="space-y-2">
+          <DashboardRanking
+            title="Ranking de vacancias"
+            items={rankingItems}
+            loading={rankingLoading}
+            emptyMessage="No hay vacancias para este filtro."
+            height="100%"
+            maxScrollHeight="540px"
+            renderItem={(item) => (
+              <VacanciaRankingItem
+                key={item.vacancia.id}
+                item={item}
+                setFilters={setFilters}
+                onShowDetails={() => setSelectedVacancia(item)}
+              />
+            )}
+            filters={{
+              primary: {
+                label: "Vacancia",
+                value: longestFilter,
+                options: [
+                  { value: "todos", label: "Todos" },
+                  { value: "activas", label: "Activas" },
+                  { value: "recibida", label: "Recibida" },
+                  { value: "en_reparacion", label: "En reparacion" },
+                  { value: "disponible", label: "Disponible" },
+                  { value: "alquilada", label: "Alquilada" },
+                  { value: "retirada", label: "Retirada" },
+                ],
+                onChange: (value) => {
+                  setLongestFilter(value as typeof longestFilter);
+                  resetPage();
+                },
+              },
+              secondary: {
+                label: "Periodo",
+                value: rankingBucket,
+                options: bucketOptions.map((opt) => ({
+                  value: opt,
+                  label: opt === "todos" ? "Todos" : opt === "Historico" ? "Historico" : opt,
+                })),
+                onChange: (value) => {
+                  setRankingBucket(value);
+                  resetPage();
+                },
+              },
+            }}
+            onExport={handleExport}
+          />
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Pagina {detailPage} de {totalPages} ({detalleData?.total ?? 0} vacancias)
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={detailPage <= 1 || rankingLoading} onClick={() => setDetailPage((p) => Math.max(1, p - 1))}>
+                Anterior
+              </Button>
+              <Button variant="outline" size="sm" disabled={detailPage >= totalPages || rankingLoading} onClick={() => setDetailPage((p) => p + 1)}>
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Modal para mostrar detalles de vacancia */}
       {selectedVacancia && (
         <VacanciaShow
           vacancia={selectedVacancia}
@@ -445,19 +506,37 @@ const KpiCard = ({ title, stats, onSelect, risk }: KpiCardProps) => (
     variant={risk ? "danger" : "default"}
     onSelect={onSelect}
   >
-    <KpiMetricsRow>
-      <KpiMetric label="Vacancias" value={formatInteger(stats.count)} />
-      <KpiMetric label="Dias" value={formatInteger(stats.dias)} />
-    </KpiMetricsRow>
-    
-    <KpiDetails>
-      <KpiDetail label="Costo" value={formatCurrency(stats.costo)} />
-      <KpiDetail label="Dias promedio" value={formatDecimal(stats.promedio)} />
-    </KpiDetails>
-    
-    {risk && (
-      <KpiAlert variant="danger" message="Revisar vacancias activas" />
-    )}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-baseline justify-between gap-6">
+        <div className="flex flex-col gap-1">
+          <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
+            {formatInteger(stats.count)}
+          </span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Vacancias</span>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
+            {formatInteger(stats.dias)}
+          </span>
+          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Dias</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-sm">
+        <div className="flex flex-col">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Costo</span>
+          <span className="font-semibold whitespace-nowrap">{formatCurrency(stats.costo)}</span>
+        </div>
+        <div className="flex flex-col text-right">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Dias promedio</span>
+          <span className="font-semibold whitespace-nowrap">{formatDecimal(stats.promedio)}</span>
+        </div>
+      </div>
+
+      {risk && (
+        <div className="text-xs font-semibold text-red-600 whitespace-nowrap">Revisar vacancias activas</div>
+      )}
+    </div>
   </DashboardKpiCard>
 );
 
@@ -504,7 +583,7 @@ const VacanciaRankingItem = ({
             <ResourceContextProvider value="propiedades">
               <PropiedadActionsMenu 
                 propiedad={actionRecord} 
-                onChanged={() => setFilters((prev) => ({ ...prev }))}
+                onChanged={() => setFilters((prev) => ({ ...prev }))} // refrescar filtros para re-cargar lista
               />
             </ResourceContextProvider>
           </div>

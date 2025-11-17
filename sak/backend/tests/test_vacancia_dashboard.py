@@ -1,16 +1,16 @@
-from datetime import datetime
+from datetime import date
 
 from app.models.vacancia import Vacancia
 from app.services.vacancia_dashboard import _calculate_for_vacancia, build_dashboard_payload, CalculatedVacancia
 
 
 def test_calculate_in_range_closed_cycle():
-    start = datetime(2024, 1, 1).date()
-    end = datetime(2024, 1, 31).date()
+    start = date(2024, 1, 1)
+    end = date(2024, 1, 31)
     v = Vacancia(
         propiedad_id=1,
-        fecha_recibida=datetime(2024, 1, 5),
-        fecha_alquilada=datetime(2024, 1, 20),
+        fecha_recibida=date(2024, 1, 5),
+        fecha_alquilada=date(2024, 1, 20),
     )
 
     calc = _calculate_for_vacancia(v, start=start, end=end, today=end)
@@ -20,11 +20,11 @@ def test_calculate_in_range_closed_cycle():
 
 
 def test_calculate_historic_bucket_and_cut():
-    start = datetime(2024, 3, 1).date()
-    end = datetime(2024, 3, 31).date()
+    start = date(2024, 3, 1)
+    end = date(2024, 3, 31)
     v = Vacancia(
         propiedad_id=1,
-        fecha_recibida=datetime(2024, 2, 15),
+        fecha_recibida=date(2024, 2, 15),
     )
 
     calc = _calculate_for_vacancia(v, start=start, end=end, today=end)

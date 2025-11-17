@@ -1,7 +1,7 @@
 """
 Modelo Vacancia - Registro de ciclos de vacancia de propiedades.
 """
-from datetime import datetime
+from datetime import date
 from typing import Optional, TYPE_CHECKING
 from sqlmodel import Field, Relationship
 from .base import Base
@@ -30,31 +30,31 @@ class Vacancia(Base, table=True):
     )
     
     # Fechas de estados (registro cronológico)
-    fecha_recibida: Optional[datetime] = Field(
+    fecha_recibida: Optional[date] = Field(
         default=None,
         description="Fecha en que la propiedad fue recibida (inicio del ciclo)"
     )
     comentario_recibida: Optional[str] = Field(default=None, max_length=500)
     
-    fecha_en_reparacion: Optional[datetime] = Field(
+    fecha_en_reparacion: Optional[date] = Field(
         default=None,
         description="Fecha en que comenzó el acondicionamiento"
     )
     comentario_en_reparacion: Optional[str] = Field(default=None, max_length=500)
     
-    fecha_disponible: Optional[datetime] = Field(
+    fecha_disponible: Optional[date] = Field(
         default=None,
         description="Fecha en que quedó disponible para alquilar"
     )
     comentario_disponible: Optional[str] = Field(default=None, max_length=500)
     
-    fecha_alquilada: Optional[datetime] = Field(
+    fecha_alquilada: Optional[date] = Field(
         default=None,
         description="Fecha en que fue alquilada (fin del ciclo)"
     )
     comentario_alquilada: Optional[str] = Field(default=None, max_length=500)
     
-    fecha_retirada: Optional[datetime] = Field(
+    fecha_retirada: Optional[date] = Field(
         default=None,
         description="Fecha en que fue retirada del sistema (fin del ciclo)"
     )
@@ -86,7 +86,7 @@ class Vacancia(Base, table=True):
         if not self.fecha_en_reparacion:
             return None
         
-        fecha_fin = self.fecha_disponible or (datetime.utcnow() if self.ciclo_activo else None)
+        fecha_fin = self.fecha_disponible or (date.today() if self.ciclo_activo else None)
         if not fecha_fin:
             return None
             
@@ -98,7 +98,7 @@ class Vacancia(Base, table=True):
         if not self.fecha_disponible:
             return None
         
-        fecha_fin = self.fecha_alquilada or (datetime.utcnow() if self.ciclo_activo else None)
+        fecha_fin = self.fecha_alquilada or (date.today() if self.ciclo_activo else None)
         if not fecha_fin:
             return None
             
@@ -110,9 +110,8 @@ class Vacancia(Base, table=True):
         if not self.fecha_recibida:
             return None
         
-        # Si ciclo activo, hasta hoy; si cerrado, hasta fecha de cierre
         if self.ciclo_activo:
-            fecha_fin = datetime.utcnow()
+            fecha_fin = date.today()
         else:
             fecha_fin = self.fecha_alquilada or self.fecha_retirada
         

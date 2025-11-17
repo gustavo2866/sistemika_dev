@@ -71,9 +71,9 @@ class Propiedad(Base, table=True):
     )
     
     # Control de estado
-    estado_fecha: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Fecha y hora del último cambio de estado"
+    estado_fecha: date = Field(
+        default_factory=date.today,
+        description="Fecha del último cambio de estado"
     )
     
     estado_comentario: Optional[str] = Field(

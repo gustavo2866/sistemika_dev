@@ -34,14 +34,12 @@ type ChangeStateDialogProps = {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// Función helper para formatear fecha para input datetime-local
+// Función helper para formatear fecha para input date
 const formatDateForInput = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return `${year}-${month}-${day}`;
 };
 
 export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, className, onCompleted, trigger }: ChangeStateDialogProps) => {
@@ -59,8 +57,8 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
   const minFecha = useMemo(() => {
     if (!estadoFecha) return null;
     try {
-      const date = new Date(estadoFecha);
-      return formatDateForInput(date);
+      const dateObj = new Date(estadoFecha);
+      return formatDateForInput(dateObj);
     } catch {
       return null;
     }
@@ -76,7 +74,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
     setFecha(value);
     
     if (minFecha && value < minFecha) {
-      setFechaError(`La fecha no puede ser anterior a ${new Date(minFecha).toLocaleString('es-AR')}`);
+      setFechaError(`La fecha no puede ser anterior a ${new Date(minFecha).toLocaleDateString('es-AR')}`);
     } else {
       setFechaError(null);
     }
@@ -95,9 +93,6 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       
-      // Convertir fecha local a ISO string para el backend
-      const fechaISO = new Date(fecha).toISOString();
-      
       const response = await fetch(`${API_URL}/propiedades/${propiedadId}/cambiar-estado`, {
         method: "POST",
         headers: {
@@ -107,7 +102,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
         body: JSON.stringify({
           nuevo_estado: nuevoEstado,
           comentario: comentario || undefined,
-          fecha: fechaISO,
+          fecha,
         }),
       });
 
@@ -178,7 +173,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
             <Label htmlFor="fecha-estado">Fecha del cambio</Label>
             <Input
               id="fecha-estado"
-              type="datetime-local"
+              type="date"
               value={fecha}
               onChange={(e) => handleFechaChange(e.target.value)}
               min={minFecha || undefined}
@@ -189,13 +184,7 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
             )}
             {minFecha && !fechaError && (
               <p className="text-xs text-muted-foreground">
-                La fecha debe ser igual o posterior al {new Date(minFecha).toLocaleString('es-AR', { 
-                  year: 'numeric', 
-                  month: '2-digit', 
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
+                La fecha debe ser igual o posterior al {new Date(minFecha).toLocaleDateString('es-AR')}
               </p>
             )}
           </div>

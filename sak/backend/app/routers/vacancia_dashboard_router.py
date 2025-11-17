@@ -16,7 +16,6 @@ def get_dashboard(
     propietario: str | None = Query(None),
     ambientes: int | None = Query(None),
     limitTop: int = Query(5, ge=1, le=50),
-    includeItems: bool = Query(False, description="Incluir lista completa de vacancias calculadas"),
     session: Session = Depends(get_session),
 ):
     try:
@@ -34,19 +33,6 @@ def get_dashboard(
         for entry in payload.get("top", []):
             entry["vacancia"] = filtrar_respuesta(entry["vacancia"])
 
-        if includeItems:
-            payload["items"] = [
-                {
-                    "vacancia": filtrar_respuesta(item.vacancia),
-                    "dias_totales": item.dias_totales,
-                    "dias_reparacion": item.dias_reparacion,
-                    "dias_disponible": item.dias_disponible,
-                    "estado_corte": item.estado_corte,
-                    "bucket": item.bucket,
-                }
-                for item in items
-            ]
-
         return payload
     except Exception as exc:  # pragma: no cover - fallback de seguridad
         raise HTTPException(status_code=400, detail={"error": str(exc)})
@@ -63,6 +49,8 @@ def get_dashboard_detalle(
     perPage: int = Query(25, ge=1, le=200),
     orderBy: str = Query("dias_totales"),
     orderDir: str = Query("desc", pattern="^(asc|desc)$"),
+    estadoVacancia: str | None = Query(None, description="Filtro por estado de vacancia calculado"),
+    bucket: str | None = Query(None, description="Filtro por bucket calculado"),
     session: Session = Depends(get_session),
 ):
     items = fetch_vacancias_for_dashboard(
@@ -73,6 +61,30 @@ def get_dashboard_detalle(
         propietario=propietario,
         ambientes=ambientes,
     )
+
+    # Filtros calculados adicionales
+    if estadoVacancia:
+        estadoVacancia = estadoVacancia.lower()
+        filtered = []
+        for item in items:
+            prop_estado = item.vacancia.propiedad.estado if item.vacancia.propiedad else None
+            if estadoVacancia == "activas":
+                if item.estado_corte == "Activo" and prop_estado not in {"4-alquilada", "5-retirada"}:
+                    filtered.append(item)
+            elif estadoVacancia == "recibida" and prop_estado == "1-recibida":
+                filtered.append(item)
+            elif estadoVacancia == "en_reparacion" and prop_estado == "2-en_reparacion":
+                filtered.append(item)
+            elif estadoVacancia == "disponible" and prop_estado == "3-disponible":
+                filtered.append(item)
+            elif estadoVacancia == "alquilada" and item.estado_corte == "Alquilada":
+                filtered.append(item)
+            elif estadoVacancia == "retirada" and item.estado_corte == "Retirada":
+                filtered.append(item)
+        items = filtered
+
+    if bucket:
+        items = [item for item in items if item.bucket == bucket]
 
     reverse = orderDir.lower() == "desc"
     key_map = {

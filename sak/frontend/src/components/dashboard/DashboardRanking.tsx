@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Download } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /**
@@ -112,18 +113,18 @@ export function DashboardRanking<T>({
         <CardTitle>{title}</CardTitle>
         
         {hasFilters && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-end gap-3 text-sm">
             {/* Filtro principal */}
             {hasPrimaryFilter && filters.primary && (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="primary-filter" className="text-muted-foreground">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="primary-filter" className="text-xs uppercase tracking-wide text-muted-foreground">
                   {filters.primary.label}
                 </Label>
                 <Select
                   value={filters.primary.value}
                   onValueChange={filters.primary.onChange}
                 >
-                  <SelectTrigger id="primary-filter" className="h-8 w-[150px]">
+                  <SelectTrigger id="primary-filter" className="h-9 w-[170px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -139,15 +140,15 @@ export function DashboardRanking<T>({
             
             {/* Filtro secundario */}
             {hasSecondaryFilter && filters.secondary && (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="secondary-filter" className="text-muted-foreground">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="secondary-filter" className="text-xs uppercase tracking-wide text-muted-foreground">
                   {filters.secondary.label}
                 </Label>
                 <Select
                   value={filters.secondary.value}
                   onValueChange={filters.secondary.onChange}
                 >
-                  <SelectTrigger id="secondary-filter" className="h-8 w-[150px]">
+                  <SelectTrigger id="secondary-filter" className="h-9 w-[170px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -164,12 +165,13 @@ export function DashboardRanking<T>({
             {/* Botón de exportación */}
             {onExport && (
               <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-8" 
+                variant="ghost" 
+                size="icon" 
+                className="h-10 w-10 rounded-full border border-border/70 hover:border-primary/60"
                 onClick={onExport}
+                aria-label={exportLabel}
               >
-                {exportLabel}
+                <Download className="h-4 w-4" />
               </Button>
             )}
           </div>

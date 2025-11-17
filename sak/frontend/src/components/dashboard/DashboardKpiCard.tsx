@@ -35,9 +35,9 @@ export interface DashboardKpiCardProps {
 
 const variantStyles = {
   default: "",
-  warning: "border-amber-300/60 hover:border-amber-400/70",
-  danger: "border-red-300/60 hover:border-red-400/70",
-  success: "border-green-300/60 hover:border-green-400/70",
+  warning: "border-amber-300/70 hover:border-amber-400/80 shadow-sm",
+  danger: "border-red-300/70 hover:border-red-400/80 shadow-sm",
+  success: "border-green-300/70 hover:border-green-400/80 shadow-sm",
 };
 
 /**
@@ -89,9 +89,9 @@ export const DashboardKpiCard = ({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       className={cn(
-        "border-muted bg-card/80 shadow-none transition-colors",
-        isClickable && "cursor-pointer hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/30",
-        selected && "border-primary/70 ring-2 ring-primary/20",
+        "border-muted bg-card/90 shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all",
+        isClickable && "cursor-pointer hover:shadow-[0_6px_16px_rgba(0,0,0,0.08)] hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/30",
+        selected && "border-primary/70 ring-2 ring-primary/20 shadow-[0_6px_16px_rgba(0,0,0,0.10)]",
         disabled && "opacity-50 cursor-not-allowed",
         variantStyles[variant],
         className,

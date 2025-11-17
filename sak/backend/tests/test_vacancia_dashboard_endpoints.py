@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,7 +34,7 @@ def override_session():
         tipo="Depto",
         propietario="Juan",
         estado="2-en_reparacion",
-        estado_fecha=datetime.utcnow(),
+        estado_fecha=date(2024, 1, 2),
     )
 
     vacancias = [
@@ -42,19 +42,19 @@ def override_session():
             id=1,
             propiedad_id=1,
             propiedad=prop,
-            fecha_recibida=datetime(2024, 1, 5),
-            fecha_en_reparacion=datetime(2024, 1, 6),
-            fecha_disponible=datetime(2024, 1, 10),
-            fecha_alquilada=datetime(2024, 1, 20),
+            fecha_recibida=date(2024, 1, 5),
+            fecha_en_reparacion=date(2024, 1, 6),
+            fecha_disponible=date(2024, 1, 10),
+            fecha_alquilada=date(2024, 1, 20),
         ),
         Vacancia(
             id=2,
             propiedad_id=1,
             propiedad=prop,
-            fecha_recibida=datetime(2023, 12, 15),
-            fecha_en_reparacion=datetime(2023, 12, 16),
-            fecha_disponible=datetime(2023, 12, 20),
-            fecha_retirada=datetime(2024, 1, 8),
+            fecha_recibida=date(2023, 12, 15),
+            fecha_en_reparacion=date(2023, 12, 16),
+            fecha_disponible=date(2023, 12, 20),
+            fecha_retirada=date(2024, 1, 8),
         ),
     ]
 
@@ -68,7 +68,7 @@ def test_dashboard_endpoint_summary_and_top():
     client = TestClient(app)
     resp = client.get(
         "/api/dashboard/vacancias",
-        params={"startDate": "2024-01-01", "endDate": "2024-01-31", "includeItems": "true"},
+        params={"startDate": "2024-01-01", "endDate": "2024-01-31"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -78,7 +78,7 @@ def test_dashboard_endpoint_summary_and_top():
     buckets = {b["bucket"]: b for b in data["buckets"]}
     assert "Historico" in buckets  # vacancia que empezó antes del rango
     assert any(top["vacancia"]["id"] == 1 for top in data["top"])
-    assert "items" in data and len(data["items"]) == 2
+    assert "kpi_cards" in data and data["kpi_cards"]["totales"]["count"] == 2
 
 
 def test_dashboard_detalle_pagination_and_order():

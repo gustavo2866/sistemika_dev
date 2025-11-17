@@ -38,13 +38,26 @@ export type DashboardEstadosFinales = {
   retirada: number;
 };
 
+export type DashboardKpiCards = {
+  totales: KpiStats;
+  disponible: KpiStats;
+  reparacion: KpiStats;
+  activas: KpiStats;
+};
+
+export type DashboardActivosDetalle = {
+  reparacion: number;
+  disponible: number;
+};
+
 export type DashboardResponse = {
   range: { startDate: string; endDate: string };
   kpis: DashboardKPIs;
   buckets: DashboardBucket[];
   estados_finales: DashboardEstadosFinales;
+  activos_detalle: DashboardActivosDetalle;
+  kpi_cards: DashboardKpiCards;
   top: DashboardItem[];
-  items?: DashboardItem[];
 };
 
 export type CalculatedVacancia = {
@@ -238,4 +251,11 @@ export const sortBuckets = (buckets: DashboardBucket[]): DashboardBucket[] => {
     if (b.bucket === "Historico") return 1;
     return a.bucket.localeCompare(b.bucket);
   });
+};
+
+export type DashboardDetalleResponse = {
+  data: DashboardItem[];
+  total: number;
+  page: number;
+  perPage: number;
 };
