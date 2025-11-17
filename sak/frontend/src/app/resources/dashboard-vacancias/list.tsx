@@ -64,6 +64,7 @@ export default function DashboardVacanciasList() {
 
   useEffect(() => {
     let cancelled = false;
+    
     const load = async () => {
       setLoading(true);
       try {
@@ -86,9 +87,15 @@ export default function DashboardVacanciasList() {
         if (!cancelled) setLoading(false);
       }
     };
-    load();
+    
+    // Debounce: esperar 300ms antes de hacer el fetch
+    const timeoutId = setTimeout(() => {
+      load();
+    }, 300);
+    
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [filters]);
 
