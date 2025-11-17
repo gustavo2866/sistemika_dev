@@ -151,7 +151,7 @@ export default function DashboardVacanciasList() {
     const cards = dashboardData?.kpi_cards;
     return [
       { id: "totales" as const, title: "Vacancias totales", stats: cards?.totales ?? EMPTY_STATS },
-      { id: "activas" as const, title: "Vacancias activas", stats: cards?.activas ?? EMPTY_STATS, accent: "risk" as const },
+      { id: "activas" as const, title: "Vacancias activas", stats: cards?.activas ?? EMPTY_STATS },
       { id: "disponible" as const, title: "Vacancias disponible", stats: cards?.disponible ?? EMPTY_STATS },
       { id: "reparacion" as const, title: "Vacancias en reparacion", stats: cards?.reparacion ?? EMPTY_STATS },
     ];
@@ -319,15 +319,15 @@ export default function DashboardVacanciasList() {
             <div className="flex items-baseline justify-between gap-6">
               <div className="flex flex-col gap-1">
                 <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
-                  {formatInteger(dashboardData?.kpis.totalVacancias ?? 0)}
+                  {formatInteger(dashboardData?.estados_finales.retirada ?? 0)}
                 </span>
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">Vacancias</span>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Retiradas</span>
               </div>
               <div className="flex flex-col items-end gap-1">
                 <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
-                  {formatInteger(dashboardData?.kpis.promedioDiasTotales ?? 0)}
+                  {formatInteger(dashboardData?.kpis.totalVacancias ?? 0)}
                 </span>
-                <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">D\u00edas totales</span>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Vacancias totales</span>
               </div>
             </div>
             <div className="flex items-center justify-between text-sm">
@@ -505,37 +505,34 @@ const KpiCard = ({ title, stats, onSelect, risk }: KpiCardProps) => (
     title={title}
     variant={risk ? "danger" : "default"}
     onSelect={onSelect}
+    className="min-w-[180px]"
   >
-    <div className="flex flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-6">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
+          <span className="text-[26px] font-semibold leading-none whitespace-nowrap">
             {formatInteger(stats.count)}
           </span>
-          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Vacancias</span>
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground whitespace-nowrap">Vacancias</span>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <span className="text-[32px] font-semibold leading-none whitespace-nowrap">
+          <span className="text-[26px] font-semibold leading-none whitespace-nowrap">
             {formatInteger(stats.dias)}
           </span>
-          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Dias</span>
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground whitespace-nowrap">Dias</span>
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between text-[12px]">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Costo</span>
-          <span className="font-semibold whitespace-nowrap">{formatCurrency(stats.costo)}</span>
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground whitespace-nowrap">Costo</span>
+          <span className="font-semibold whitespace-nowrap text-sm">{formatCurrency(stats.costo)}</span>
         </div>
         <div className="flex flex-col text-right">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground whitespace-nowrap">Dias promedio</span>
-          <span className="font-semibold whitespace-nowrap">{formatDecimal(stats.promedio)}</span>
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground whitespace-nowrap">Dias promedio</span>
+          <span className="font-semibold whitespace-nowrap text-sm">{formatDecimal(stats.promedio)}</span>
         </div>
       </div>
-
-      {risk && (
-        <div className="text-xs font-semibold text-red-600 whitespace-nowrap">Revisar vacancias activas</div>
-      )}
     </div>
   </DashboardKpiCard>
 );
@@ -609,3 +606,4 @@ const VacanciaRankingItem = ({
     </RankingItem>
   );
 };
+
