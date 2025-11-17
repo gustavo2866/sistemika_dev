@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import os
 import logging
+import traceback
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -78,6 +80,33 @@ app.add_middleware(
     expose_headers=["Content-Range"],  # Para ra-data-simple-rest
     max_age=60,  # Cachear preflight solo 60 segundos (evita problemas con actualizaciones)
 )
+
+# Global exception handler para asegurar headers CORS en errores 500
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Captura todas las excepciones no manejadas y retorna una respuesta 500
+    con headers CORS correctos para evitar bloqueos del navegador.
+    """
+    logger.error(f"Unhandled exception: {exc}")
+    logger.error(traceback.format_exc())
+    
+    # Obtener el origin del request
+    origin = request.headers.get("origin")
+    
+    # Crear respuesta de error
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
+    
+    # Agregar headers CORS manualmente si el origin está permitido
+    if origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Expose-Headers"] = "Content-Range"
+    
+    return response
 
 # Registrar routers
 app.include_router(item_router)
