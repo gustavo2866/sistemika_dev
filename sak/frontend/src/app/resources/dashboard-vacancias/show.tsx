@@ -105,7 +105,20 @@ export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
         const json = await response.json();
         const vacancias = json?.data ?? json?.items ?? [];
         if (vacancias.length) {
-          setPropiedad((prev) => ({ ...(prev ?? { id: vacanciaData.propiedad_id }), vacancias }));
+          setPropiedad((prev) => {
+            if (prev) {
+              return { ...prev, vacancias };
+            }
+            return {
+              id: vacanciaData.propiedad_id,
+              nombre: `Propiedad ${vacanciaData.propiedad_id}`,
+              tipo: "",
+              propietario: "",
+              estado: "1-recibida",
+              estado_fecha: "",
+              vacancias,
+            };
+          });
         }
       } catch (error) {
         console.error("No se pudo cargar el historico de vacancias", error);

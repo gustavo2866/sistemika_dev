@@ -133,8 +133,9 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
 
   const renderTrigger = () => {
     if (React.isValidElement(trigger)) {
-      const existingOnClick = trigger.props.onClick as ((event: React.MouseEvent) => void) | undefined;
-      return React.cloneElement(trigger, {
+      const element = trigger as React.ReactElement<any>;
+      const existingOnClick = element.props?.onClick as ((event: React.MouseEvent) => void) | undefined;
+      return React.cloneElement(element, {
         onClick: (event: React.MouseEvent) => {
           existingOnClick?.(event);
           setOpen(true);
