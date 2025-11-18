@@ -1,7 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-
 /**
  * Props para el componente KpiMetric
  */

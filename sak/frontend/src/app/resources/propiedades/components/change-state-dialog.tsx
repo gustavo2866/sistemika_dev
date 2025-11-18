@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useNotify, useRefresh } from "ra-core";
 import { Button } from "@/components/ui/button";
 import {
@@ -131,19 +131,29 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
     return null;
   }
 
+  const renderTrigger = () => {
+    if (React.isValidElement(trigger)) {
+      const existingOnClick = trigger.props.onClick as ((event: React.MouseEvent) => void) | undefined;
+      return React.cloneElement(trigger, {
+        onClick: (event: React.MouseEvent) => {
+          existingOnClick?.(event);
+          setOpen(true);
+        },
+      });
+    }
+
+    return (
+      <Button className={className} size="sm" variant="default">
+        Cambiar estado
+      </Button>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {trigger ? (
-        <div onClick={() => setOpen(true)}>
-          {trigger}
-        </div>
-      ) : (
-        <DialogTrigger asChild>
-          <Button className={className} size="sm" variant="default">
-            Cambiar estado
-          </Button>
-        </DialogTrigger>
-      )}
+      <DialogTrigger asChild>
+        {renderTrigger()}
+      </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Cambiar estado de la propiedad</DialogTitle>
@@ -215,7 +225,14 @@ export const ChangeStateDialog = ({ propiedadId, currentEstado, estadoFecha, cla
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => setOpen(false)}>
+          <Button
+            variant="secondary"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setOpen(false);
+            }}
+          >
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={loading || !!fechaError}>

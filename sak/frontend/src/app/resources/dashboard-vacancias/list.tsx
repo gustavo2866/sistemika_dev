@@ -8,19 +8,10 @@ import { Label } from "@/components/ui/label";
 import { PeriodRangeNavigator, type PeriodRange, type PeriodType } from "@/components/forms/period-range-navigator";
 import type { Propiedad } from "../propiedades/model";
 import { ESTADOS_PROPIEDAD_OPTIONS } from "../propiedades/model";
-import { ResourceContextProvider } from "ra-core";
-import { PropiedadActionsMenu } from "../propiedades/list";
+import { ChangeStateDialog } from "../propiedades/components/change-state-dialog";
+import { Eye, GitBranch } from "lucide-react";
 import { apiUrl } from "@/lib/dataProvider";
-import {
-  DashboardKpiCard,
-  KpiMetric,
-  KpiMetricsRow,
-  KpiDetails,
-  KpiDetail,
-  KpiAlert,
-  DashboardRanking,
-  RankingItem,
-} from "@/components/dashboard";
+import { DashboardKpiCard, DashboardRanking, RankingItem } from "@/components/dashboard";
 import {
   type DashboardResponse,
   type DashboardDetalleResponse,
@@ -53,11 +44,17 @@ import {
 import VacanciaShow from "./show";
 
 const EMPTY_STATS: KpiStats = { count: 0, propiedades: 0, dias: 0, costo: 0, promedio: 0 };
+type KpiCardConfig = {
+  id: "totales" | "activas" | "disponible" | "reparacion";
+  title: string;
+  stats: KpiStats;
+  accent?: "risk" | "warning" | "default";
+};
 
 export default function DashboardVacanciasList() {
   const [periodType, setPeriodType] = useState<PeriodType>(DEFAULT_PERIOD);
   const [filters, setFilters] = useState(() => buildDefaultFilters(DEFAULT_PERIOD));
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
   const [detalleData, setDetalleData] = useState<DashboardDetalleResponse | null>(null);
   const [rankingLoading, setRankingLoading] = useState(true);
@@ -147,13 +144,13 @@ export default function DashboardVacanciasList() {
     };
   }, [filters, longestFilter, rankingBucket, detailPage, detailPerPage]);
 
-  const kpiCards = useMemo(() => {
+  const kpiCards = useMemo<KpiCardConfig[]>(() => {
     const cards = dashboardData?.kpi_cards;
     return [
-      { id: "totales" as const, title: "Vacancias totales", stats: cards?.totales ?? EMPTY_STATS },
-      { id: "activas" as const, title: "Vacancias activas", stats: cards?.activas ?? EMPTY_STATS },
-      { id: "disponible" as const, title: "Vacancias disponible", stats: cards?.disponible ?? EMPTY_STATS },
-      { id: "reparacion" as const, title: "Vacancias en reparacion", stats: cards?.reparacion ?? EMPTY_STATS },
+      { id: "totales" as const, title: "Vacancias totales", stats: cards?.totales ?? EMPTY_STATS, accent: "default" },
+      { id: "activas" as const, title: "Vacancias activas", stats: cards?.activas ?? EMPTY_STATS, accent: "default" },
+      { id: "disponible" as const, title: "Vacancias disponible", stats: cards?.disponible ?? EMPTY_STATS, accent: "default" },
+      { id: "reparacion" as const, title: "Vacancias en reparacion", stats: cards?.reparacion ?? EMPTY_STATS, accent: "risk" },
     ];
   }, [dashboardData]);
 
@@ -563,26 +560,42 @@ const VacanciaRankingItem = ({
 
   return (
     <RankingItem
+      onClick={() => onShowDetails()}
       actions={
         <div className="flex flex-col items-end gap-2">
           <div className="text-lg font-semibold whitespace-nowrap">{item.diasTotales} dias</div>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="sm"
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Consultar vacancia"
               onClick={(e) => {
                 e.stopPropagation();
                 onShowDetails();
               }}
             >
-              Mostrar
+              <Eye className="h-4 w-4" />
+              <span className="sr-only">Consultar vacancia</span>
             </Button>
-            <ResourceContextProvider value="propiedades">
-              <PropiedadActionsMenu 
-                propiedad={actionRecord} 
-                onChanged={() => setFilters((prev) => ({ ...prev }))} // refrescar filtros para re-cargar lista
-              />
-            </ResourceContextProvider>
+            <ChangeStateDialog
+              propiedadId={actionRecord.id}
+              currentEstado={actionRecord.estado}
+              estadoFecha={actionRecord.estado_fecha}
+              onCompleted={() => setFilters((prev) => ({ ...prev }))} // refrescar filtros para re-cargar lista
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Cambiar estado"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <GitBranch className="h-4 w-4" />
+                  <span className="sr-only">Cambiar estado</span>
+                </Button>
+              }
+            />
           </div>
         </div>
       }

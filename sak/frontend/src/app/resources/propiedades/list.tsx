@@ -157,7 +157,16 @@ export const PropiedadActionsMenu = ({
           estadoFecha={record.estado_fecha}
           onCompleted={handleCompleted}
           trigger={
-            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
               Cambiar estado
             </DropdownMenuItem>
           }

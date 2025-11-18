@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -56,7 +56,7 @@ const DataRow = ({ label, value }: { label: string; value: string | number | nul
 );
 
 export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
-  const propiedad = vacancia.vacancia.propiedad;
+  const [propiedad, setPropiedad] = useState(vacancia.vacancia.propiedad);
   const vacanciaData = vacancia.vacancia;
 
   // Calcular días y costo por cada estado
@@ -94,8 +94,30 @@ export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
     return { fecha, comentario, dias, costo };
   };
 
-  // Obtener historial de vacancias anteriores
-  const historialVacancias = propiedad?.vacancias?.filter(v => v.id !== vacanciaData.id) ?? [];
+  // Cargar historial de vacancias desde API si no viene en la propiedad
+  useEffect(() => {
+    const loadVacancias = async () => {
+      if (propiedad?.vacancias && propiedad.vacancias.length > 0) return;
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const response = await fetch(`${apiUrl}/api/v1/vacancias?propiedad_id=${vacanciaData.propiedad_id}&perPage=100`);
+        if (!response.ok) return;
+        const json = await response.json();
+        const vacancias = json?.data ?? json?.items ?? [];
+        if (vacancias.length) {
+          setPropiedad((prev) => ({ ...(prev ?? { id: vacanciaData.propiedad_id }), vacancias }));
+        }
+      } catch (error) {
+        console.error("No se pudo cargar el historico de vacancias", error);
+      }
+    };
+    loadVacancias();
+  }, [propiedad?.vacancias, vacanciaData.propiedad_id]);
+
+  // Historial (incluye la vacancia actual si no hay datos adicionales)
+  const historialVacancias = (propiedad?.vacancias && propiedad.vacancias.length > 0)
+    ? propiedad.vacancias
+    : [vacanciaData];
 
   return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
