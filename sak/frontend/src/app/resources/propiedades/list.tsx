@@ -23,6 +23,8 @@ import {
   useResourceContext,
 } from "ra-core";
 import { Button } from "@/components/ui/button";
+import { ReferenceInput } from "@/components/reference-input";
+import { ReferenceField } from "@/components/reference-field";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +51,22 @@ const filters = [
   <TextInput key="metros_cuadrados__lte" source="metros_cuadrados__lte" label="Metros2 <=" type="number" />,
   <TextInput key="valor_alquiler__gte" source="valor_alquiler__gte" label="Alquiler >=" type="number" />,
   <TextInput key="valor_alquiler__lte" source="valor_alquiler__lte" label="Alquiler <=" type="number" />,
+  <ReferenceInput
+    key="tipo_operacion_id"
+    source="tipo_operacion_id"
+    reference="crm/catalogos/tipos-operacion"
+    label="Tipo operación"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" className="w-full" />
+  </ReferenceInput>,
+  <ReferenceInput
+    key="emprendimiento_id"
+    source="emprendimiento_id"
+    reference="emprendimientos"
+    label="Emprendimiento"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" className="w-full" />
+  </ReferenceInput>,
 ];
 
 const ListActions = () => (
@@ -79,6 +97,16 @@ export const PropiedadList = () => (
       <DataTable.Col source="tipo" label="Tipo" className="w-[110px]">
         <TextField source="tipo" />
       </DataTable.Col>
+      <DataTable.Col source="tipo_operacion_id" label="Operación" className="w-[150px]">
+        <ReferenceField
+          source="tipo_operacion_id"
+          reference="crm/catalogos/tipos-operacion"
+          link={false}
+          empty="Sin asignar"
+        >
+          <TextField source="nombre" />
+        </ReferenceField>
+      </DataTable.Col>
       <DataTable.Col source="ambientes" label="Ambientes" className="w-[70px] text-right">
         <NumberField source="ambientes" />
       </DataTable.Col>
@@ -93,6 +121,11 @@ export const PropiedadList = () => (
       </DataTable.Col>
       <DataTable.Col source="estado" label="Estado" className="w-[120px]">
         <EstadoBadge />
+      </DataTable.Col>
+      <DataTable.Col source="emprendimiento_id" label="Emprendimiento" className="w-[160px]">
+        <ReferenceField source="emprendimiento_id" reference="emprendimientos" link={false} empty="Sin asignar">
+          <TextField source="nombre" />
+        </ReferenceField>
       </DataTable.Col>
       <DataTable.Col label="Acciones" className="w-[64px] text-right pr-2">
         <PropiedadActionsMenu />
@@ -191,3 +224,4 @@ const EstadoBadge = () => {
     </Badge>
   );
 };
+

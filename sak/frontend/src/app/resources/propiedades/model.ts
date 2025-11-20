@@ -30,6 +30,17 @@ export type Vacancia = {
   dias_totales_calculado?: number | null;
 };
 
+type CRMReference = {
+  id: number;
+  nombre: string;
+};
+
+type Moneda = {
+  id: number;
+  nombre: string;
+  codigo: string;
+};
+
 export type Propiedad = {
   id: number;
   nombre: string;
@@ -44,6 +55,16 @@ export type Propiedad = {
   vencimiento_contrato?: string | null;
   estado_fecha: string;
   estado_comentario?: string | null;
+  tipo_operacion_id?: number | null;
+  tipo_operacion?: CRMReference | null;
+  emprendimiento_id?: number | null;
+  emprendimiento?: CRMReference | null;
+  costo_propiedad?: number | null;
+  costo_moneda_id?: number | null;
+  costo_moneda?: Moneda | null;
+  precio_venta_estimado?: number | null;
+  precio_moneda_id?: number | null;
+  precio_moneda?: Moneda | null;
   vacancias?: Vacancia[];
 };
 
@@ -59,6 +80,12 @@ export type PropiedadFormValues = {
   fecha_ingreso?: string | null;
   vencimiento_contrato?: string | null;
   estado_comentario?: string | null;
+  tipo_operacion_id?: number | null;
+  emprendimiento_id?: number | null;
+  costo_propiedad?: number | null;
+  costo_moneda_id?: number | null;
+  precio_venta_estimado?: number | null;
+  precio_moneda_id?: number | null;
 };
 
 export const ESTADOS_PROPIEDAD_OPTIONS: Array<{
@@ -123,6 +150,12 @@ export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad
     fecha_ingreso: stringField({ required: false }),
     vencimiento_contrato: stringField({ required: false }),
     estado_comentario: stringField({ required: false, maxLength: 500 }),
+    tipo_operacion_id: numberField({ required: false, min: 1 }),
+    emprendimiento_id: numberField({ required: false, min: 1 }),
+    costo_propiedad: numberField({ required: false, min: 0 }),
+    costo_moneda_id: numberField({ required: false, min: 1 }),
+    precio_venta_estimado: numberField({ required: false, min: 0 }),
+    precio_moneda_id: numberField({ required: false, min: 1 }),
   },
 });
 

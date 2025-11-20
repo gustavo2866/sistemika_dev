@@ -10,6 +10,18 @@ export * from "./solicitudes";
 export * from "./centros-costo";
 export * from "./propiedades";
 export * from "./vacancias";
+export * from "./crm-catalogos-tipos-operacion";
+export * from "./crm-catalogos-motivos-perdida";
+export * from "./crm-catalogos-condiciones-pago";
+export * from "./crm-catalogos-tipos-evento";
+export * from "./crm-catalogos-motivos-evento";
+export * from "./crm-catalogos-origenes-lead";
+export * from "./monedas";
+export * from "./crm-cotizaciones";
+export * from "./crm-contactos";
+export * from "./crm-oportunidades";
+export * from "./crm-eventos";
+export * from "./emprendimientos";
 // Los dashboards no necesitan ser exportados aquí
 // export * from "./dashboard-proyectos";
 // export * from "./dashboard-vacancias";

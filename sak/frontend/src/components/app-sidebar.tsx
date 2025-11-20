@@ -45,13 +45,26 @@ import {
   ClipboardCheck,
   Wallet,
   NotebookPen,
-  FileStack
+  FileStack,
+  Handshake,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
-const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "dashboard-vacancias"] as const;
+const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
 const CONFIG_RESOURCES = ["users", "departamentos", "tipos-solicitud", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
+const CRM_RESOURCES = ["crm/oportunidades", "crm/eventos", "crm/contactos"] as const;
+const CRM_CUSTOM_LINKS = [{ label: "Setup", to: "/crm/setup" }] as const;
+const CRM_CATALOG_RESOURCES = [
+  "crm/catalogos/tipos-operacion",
+  "crm/catalogos/motivos-perdida",
+  "crm/catalogos/condiciones-pago",
+  "crm/catalogos/tipos-evento",
+  "crm/catalogos/motivos-evento",
+  "crm/catalogos/origenes-lead",
+  "crm/catalogos/monedas",
+  "crm/cotizaciones",
+] as const;
 
 type ResourceName = string;
 
@@ -86,9 +99,28 @@ export function AppSidebar() {
     [resources],
   );
 
+  const crmResources = useMemo(
+    () => CRM_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
+
   const groupedNames = useMemo(
-    () => new Set<ResourceName>([...constructoraResources, ...operationsResources, ...adminResources, ...configResources]),
-    [constructoraResources, operationsResources, adminResources, configResources],
+    () =>
+      new Set<ResourceName>([
+        ...constructoraResources,
+        ...operationsResources,
+        ...adminResources,
+        ...configResources,
+        ...crmResources,
+        ...CRM_CATALOG_RESOURCES,
+      ]),
+    [
+      constructoraResources,
+      operationsResources,
+      adminResources,
+      configResources,
+      crmResources,
+    ],
   );
   const otherResources = useMemo(
     () =>
@@ -100,6 +132,7 @@ export function AppSidebar() {
 
   const [constructoraOpen, setConstructoraOpen] = useState(true);
   const [operationsOpen, setOperationsOpen] = useState(true);
+  const [crmOpen, setCrmOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [configOpen, setConfigOpen] = useState(true);
 
@@ -162,6 +195,30 @@ export function AppSidebar() {
                 </GroupMenuItem>
               ) : null}
 
+              {crmResources.length > 0 || CRM_CUSTOM_LINKS.length > 0 ? (
+                <GroupMenuItem
+                  label="CRM"
+                  icon={Handshake}
+                  isOpen={crmOpen}
+                  onToggle={() => setCrmOpen((open) => !open)}
+                >
+                  {crmResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                  {CRM_CUSTOM_LINKS.map((link) => (
+                    <SidebarCustomMenuItem
+                      key={link.to}
+                      label={link.label}
+                      to={link.to}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                </GroupMenuItem>
+              ) : null}
               {adminResources.length > 0 ? (
                 <GroupMenuItem
                   label="Administración"
@@ -365,6 +422,30 @@ const ResourceSubMenuItem = ({
     </SidebarMenuSubItem>
   );
 };
+
+const SidebarCustomMenuItem = ({
+  label,
+  to,
+  onClick,
+}: {
+  label: string;
+  to: string;
+  onClick?: () => void;
+}) => {
+  const match = useMatch({ path: to, end: false });
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton asChild isActive={!!match} size="sm">
+        <Link to={to} state={{ _scrollToTop: true }} onClick={onClick}>
+          <Settings />
+          <span>{label}</span>
+        </Link>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
+  );
+};
+
+
 
 
 

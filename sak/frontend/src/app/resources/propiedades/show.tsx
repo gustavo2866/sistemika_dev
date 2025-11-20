@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Show } from "@/components/show";
 import { TextField } from "@/components/text-field";
+import { ReferenceField } from "@/components/reference-field";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useDataProvider, useRecordContext } from "ra-core";
@@ -205,6 +206,85 @@ const PropiedadDetails = () => {
               </div>
             ))}
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Relaciones CRM</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Tipo de operación">
+              {record.tipo_operacion_id ? (
+                <ReferenceField
+                  source="tipo_operacion_id"
+                  reference="crm/catalogos/tipos-operacion"
+                  link={false}
+                  empty="Sin asignar"
+                >
+                  <TextField source="nombre" />
+                </ReferenceField>
+              ) : (
+                <span className="text-sm text-muted-foreground">Sin asignar</span>
+              )}
+            </Field>
+            <Field label="Emprendimiento">
+              {record.emprendimiento_id ? (
+                <ReferenceField source="emprendimiento_id" reference="emprendimientos" link={false} empty="Sin asignar">
+                  <TextField source="nombre" />
+                </ReferenceField>
+              ) : (
+                <span className="text-sm text-muted-foreground">Sin asignar</span>
+              )}
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Valor estimado</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Costo de la propiedad">
+              {record.costo_propiedad != null ? (
+                <div className="flex items-center gap-2">
+                  {formatNumber(record.costo_propiedad)}
+                  {record.costo_moneda_id ? (
+                    <ReferenceField source="costo_moneda_id" reference="monedas" link={false} empty="">
+                      <span className="text-sm text-muted-foreground uppercase">
+                        <TextField source="codigo" />
+                      </span>
+                    </ReferenceField>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">ARS</span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">Sin registrar</span>
+              )}
+            </Field>
+            <Field label="Precio estimado de venta">
+              {record.precio_venta_estimado != null ? (
+                <div className="flex items-center gap-2">
+                  {formatNumber(record.precio_venta_estimado)}
+                  {record.precio_moneda_id ? (
+                    <ReferenceField source="precio_moneda_id" reference="monedas" link={false} empty="">
+                      <span className="text-sm text-muted-foreground uppercase">
+                        <TextField source="codigo" />
+                      </span>
+                    </ReferenceField>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">ARS</span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">Sin registrar</span>
+              )}
+            </Field>
+          </div>
         </CardContent>
       </Card>
 

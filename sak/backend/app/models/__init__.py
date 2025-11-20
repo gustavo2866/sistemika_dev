@@ -9,6 +9,21 @@ from .tipo_operacion import TipoOperacion
 from .tipo_comprobante import TipoComprobante
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
+from .crm_catalogos import (
+    CRMTipoOperacion,
+    CRMMotivoPerdida,
+    CRMCondicionPago,
+    CRMTipoEvento,
+    CRMMotivoEvento,
+    CRMOrigenLead,
+    Moneda,
+)
+from .cotizacion_moneda import CotizacionMoneda
+from .crm_contacto import CRMContacto
+from .crm_oportunidad import CRMOportunidad
+from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
+from .crm_evento import CRMEvento
+from .emprendimiento import Emprendimiento
 from .articulo import Articulo
 from .factura import Factura
 from .factura_detalle import FacturaDetalle
@@ -27,7 +42,14 @@ from .partediario import (
     TipoLicencia,
 )
 from .vacancia import Vacancia
-from .enums import EstadoPropiedad, TRANSICIONES_ESTADO_PROPIEDAD
+from .enums import (
+    EstadoPropiedad,
+    TRANSICIONES_ESTADO_PROPIEDAD,
+    EstadoOportunidad,
+    TRANSICIONES_ESTADO_OPORTUNIDAD,
+    EstadoEvento,
+    EstadoEmprendimiento,
+)
 
 __all__ = [
     "Base", 
@@ -40,6 +62,19 @@ __all__ = [
     "TipoComprobante", 
     "MetodoPago", 
     "Propiedad", 
+    "CRMTipoOperacion",
+    "CRMMotivoPerdida",
+    "CRMCondicionPago",
+    "CRMTipoEvento",
+    "CRMMotivoEvento",
+    "CRMOrigenLead",
+    "Moneda",
+    "CotizacionMoneda",
+    "CRMContacto",
+    "CRMOportunidad",
+    "CRMOportunidadLogEstado",
+    "CRMEvento",
+    "Emprendimiento",
     "Articulo", 
     "Factura",
     "FacturaDetalle",
@@ -60,6 +95,10 @@ __all__ = [
     "Vacancia",
     "EstadoPropiedad",
     "TRANSICIONES_ESTADO_PROPIEDAD",
+    "EstadoOportunidad",
+    "TRANSICIONES_ESTADO_OPORTUNIDAD",
+    "EstadoEvento",
+    "EstadoEmprendimiento",
 ]
 
 

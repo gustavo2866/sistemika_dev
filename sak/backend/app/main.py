@@ -46,10 +46,26 @@ from app.routers.partediario_router import parte_diario_router
 from app.routers.vacancia_router import vacancia_router
 from app.routers.vacancia_dashboard_router import router as vacancia_dashboard_router
 from app.routers.cliente_router import router as cliente_router
+from app.routers.crm import (
+    crm_tipo_operacion_router,
+    crm_motivo_perdida_router,
+    crm_condicion_pago_router,
+    crm_tipo_evento_router,
+    crm_motivo_evento_router,
+    crm_origen_lead_router,
+    moneda_router,
+    crm_moneda_router,
+    cotizacion_moneda_router,
+    cotizacion_conversion_router,
+    crm_contacto_router,
+    crm_oportunidad_router,
+    crm_evento_router,
+)
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
 from app.api.auth import router as auth_router
 from app.routers.file_proxy import router as file_proxy_router
+from app.routers.emprendimiento_router import emprendimiento_router
 
 app = FastAPI(title="API genérica con FastAPI + SQLModel")
 
@@ -134,6 +150,20 @@ app.include_router(centro_costo_router)
 app.include_router(vacancia_router)
 app.include_router(vacancia_dashboard_router)
 app.include_router(cliente_router)
+app.include_router(crm_tipo_operacion_router)
+app.include_router(crm_motivo_perdida_router)
+app.include_router(crm_condicion_pago_router)
+app.include_router(crm_tipo_evento_router)
+app.include_router(crm_motivo_evento_router)
+app.include_router(crm_origen_lead_router)
+app.include_router(moneda_router)
+app.include_router(crm_moneda_router)
+app.include_router(cotizacion_conversion_router)
+app.include_router(cotizacion_moneda_router)
+app.include_router(crm_contacto_router)
+app.include_router(crm_oportunidad_router)
+app.include_router(crm_evento_router)
+app.include_router(emprendimiento_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)
 app.include_router(parte_diario_router)

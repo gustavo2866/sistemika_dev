@@ -5,6 +5,7 @@ import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 import { SelectInput } from "@/components/select-input";
+import { ReferenceInput } from "@/components/reference-input";
 import { FormLayout, FormSimpleSection } from "@/components/forms";
 import { ESTADOS_PROPIEDAD_OPTIONS } from "./model";
 import type { Propiedad, Vacancia } from "./model";
@@ -132,6 +133,60 @@ const PropiedadFormContent = () => {
                   type="date"
                   className="w-full"
                 />
+              </div>
+            </FormSimpleSection>
+          ),
+        },
+        {
+          id: "relaciones-crm",
+          title: "Relaciones CRM",
+          defaultOpen: false,
+          children: (
+            <FormSimpleSection>
+              <div className="grid gap-4 md:grid-cols-2">
+                <ReferenceInput
+                  source="tipo_operacion_id"
+                  reference="crm/catalogos/tipos-operacion"
+                  label="Tipo de operación CRM"
+                >
+                  <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
+                </ReferenceInput>
+                <ReferenceInput source="emprendimiento_id" reference="emprendimientos" label="Emprendimiento">
+                  <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
+                </ReferenceInput>
+              </div>
+            </FormSimpleSection>
+          ),
+        },
+        {
+          id: "valor-propiedad",
+          title: "Valoración y monedas",
+          defaultOpen: false,
+          children: (
+            <FormSimpleSection>
+              <div className="grid gap-4 md:grid-cols-2">
+                <NumberInput
+                  source="costo_propiedad"
+                  label="Costo de la propiedad"
+                  step="any"
+                  min={0}
+                  className="w-full"
+                />
+                <ReferenceInput source="costo_moneda_id" reference="monedas" label="Moneda del costo">
+                  <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+                </ReferenceInput>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <NumberInput
+                  source="precio_venta_estimado"
+                  label="Precio estimado de venta"
+                  step="any"
+                  min={0}
+                  className="w-full"
+                />
+                <ReferenceInput source="precio_moneda_id" reference="monedas" label="Moneda del precio">
+                  <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+                </ReferenceInput>
               </div>
             </FormSimpleSection>
           ),

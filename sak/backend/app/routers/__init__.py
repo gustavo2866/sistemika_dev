@@ -13,6 +13,21 @@ from .solicitud_detalle_router import solicitud_detalle_router
 from .proyecto_router import proyecto_router
 from .nomina_router import nomina_router
 from .partediario_router import parte_diario_router
+from .crm import (
+    crm_tipo_operacion_router,
+    crm_motivo_perdida_router,
+    crm_condicion_pago_router,
+    crm_tipo_evento_router,
+    crm_motivo_evento_router,
+    crm_origen_lead_router,
+    moneda_router,
+    crm_moneda_router,
+    cotizacion_moneda_router,
+    cotizacion_conversion_router,
+    crm_contacto_router,
+    crm_evento_router,
+)
+from .emprendimiento_router import emprendimiento_router
 
 __all__ = [
     "item_router",
@@ -29,4 +44,17 @@ __all__ = [
     "proyecto_router",
     "nomina_router",
     "parte_diario_router",
+    "crm_tipo_operacion_router",
+    "crm_motivo_perdida_router",
+    "crm_condicion_pago_router",
+    "crm_tipo_evento_router",
+    "crm_motivo_evento_router",
+    "crm_origen_lead_router",
+    "moneda_router",
+    "crm_moneda_router",
+    "cotizacion_moneda_router",
+    "cotizacion_conversion_router",
+    "crm_contacto_router",
+    "crm_evento_router",
+    "emprendimiento_router",
 ]

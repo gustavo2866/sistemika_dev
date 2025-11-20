@@ -26,6 +26,17 @@ import {
   Coins,
   Activity,
   BarChart2,
+  GitBranch,
+  AlertTriangle,
+  CalendarDays,
+  ListChecks,
+  Megaphone,
+  LineChart,
+  Target,
+  CalendarCheck,
+  UserRound,
+  Factory,
+  HandCoins,
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -97,6 +108,79 @@ import {
   ParteDiarioEdit,
   ParteDiarioShow,
 } from "@/app/resources/parte-diario";
+import {
+  CRMTipoOperacionList,
+  CRMTipoOperacionCreate,
+  CRMTipoOperacionEdit,
+  CRMTipoOperacionShow,
+} from "@/app/resources/crm-catalogos-tipos-operacion";
+import {
+  CRMMotivoPerdidaList,
+  CRMMotivoPerdidaCreate,
+  CRMMotivoPerdidaEdit,
+  CRMMotivoPerdidaShow,
+} from "@/app/resources/crm-catalogos-motivos-perdida";
+import {
+  CRMCondicionPagoList,
+  CRMCondicionPagoCreate,
+  CRMCondicionPagoEdit,
+  CRMCondicionPagoShow,
+} from "@/app/resources/crm-catalogos-condiciones-pago";
+import {
+  CRMTipoEventoList,
+  CRMTipoEventoCreate,
+  CRMTipoEventoEdit,
+  CRMTipoEventoShow,
+} from "@/app/resources/crm-catalogos-tipos-evento";
+import {
+  CRMMotivoEventoList,
+  CRMMotivoEventoCreate,
+  CRMMotivoEventoEdit,
+  CRMMotivoEventoShow,
+} from "@/app/resources/crm-catalogos-motivos-evento";
+import {
+  CRMOrigenLeadList,
+  CRMOrigenLeadCreate,
+  CRMOrigenLeadEdit,
+  CRMOrigenLeadShow,
+} from "@/app/resources/crm-catalogos-origenes-lead";
+import {
+  MonedaList,
+  MonedaCreate,
+  MonedaEdit,
+  MonedaShow,
+} from "@/app/resources/monedas";
+import {
+  CRMCotizacionList,
+  CRMCotizacionCreate,
+  CRMCotizacionEdit,
+  CRMCotizacionShow,
+} from "@/app/resources/crm-cotizaciones";
+import {
+  CRMContactoList,
+  CRMContactoCreate,
+  CRMContactoEdit,
+  CRMContactoShow,
+} from "@/app/resources/crm-contactos";
+import {
+  CRMOportunidadList,
+  CRMOportunidadCreate,
+  CRMOportunidadEdit,
+  CRMOportunidadShow,
+} from "@/app/resources/crm-oportunidades";
+import {
+  CRMEventoList,
+  CRMEventoCreate,
+  CRMEventoEdit,
+  CRMEventoShow,
+} from "@/app/resources/crm-eventos";
+import {
+  EmprendimientoList,
+  EmprendimientoCreate,
+  EmprendimientoEdit,
+  EmprendimientoShow,
+} from "@/app/resources/emprendimientos";
+import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
 
 declare const window: Window | undefined;
 
@@ -294,9 +378,130 @@ const AdminApp = () => {
         icon={Wallet}
         options={{ label: "Nómina" }}
       />
+      <Resource
+        name="crm/catalogos/tipos-operacion"
+        list={CRMTipoOperacionList}
+        create={CRMTipoOperacionCreate}
+        edit={CRMTipoOperacionEdit}
+        show={CRMTipoOperacionShow}
+        recordRepresentation="nombre"
+        icon={GitBranch}
+        options={{ label: "CRM · Tipos de Operación" }}
+      />
+      <Resource
+        name="crm/catalogos/motivos-perdida"
+        list={CRMMotivoPerdidaList}
+        create={CRMMotivoPerdidaCreate}
+        edit={CRMMotivoPerdidaEdit}
+        show={CRMMotivoPerdidaShow}
+        recordRepresentation="nombre"
+        icon={AlertTriangle}
+        options={{ label: "CRM · Motivos de Pérdida" }}
+      />
+      <Resource
+        name="crm/catalogos/condiciones-pago"
+        list={CRMCondicionPagoList}
+        create={CRMCondicionPagoCreate}
+        edit={CRMCondicionPagoEdit}
+        show={CRMCondicionPagoShow}
+        recordRepresentation="nombre"
+        icon={HandCoins}
+        options={{ label: "CRM · Condiciones de Pago" }}
+      />
+      <Resource
+        name="crm/catalogos/tipos-evento"
+        list={CRMTipoEventoList}
+        create={CRMTipoEventoCreate}
+        edit={CRMTipoEventoEdit}
+        show={CRMTipoEventoShow}
+        recordRepresentation="nombre"
+        icon={CalendarDays}
+        options={{ label: "CRM · Tipos de Evento" }}
+      />
+      <Resource
+        name="crm/catalogos/motivos-evento"
+        list={CRMMotivoEventoList}
+        create={CRMMotivoEventoCreate}
+        edit={CRMMotivoEventoEdit}
+        show={CRMMotivoEventoShow}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "CRM · Motivos de Evento" }}
+      />
+      <Resource
+        name="crm/catalogos/origenes-lead"
+        list={CRMOrigenLeadList}
+        create={CRMOrigenLeadCreate}
+        edit={CRMOrigenLeadEdit}
+        show={CRMOrigenLeadShow}
+        recordRepresentation="nombre"
+        icon={Megaphone}
+        options={{ label: "CRM · Orígenes de Lead" }}
+      />
+      <Resource
+        name="monedas"
+        list={MonedaList}
+        create={MonedaCreate}
+        edit={MonedaEdit}
+        show={MonedaShow}
+        recordRepresentation="nombre"
+        icon={Coins}
+        options={{ label: "CRM · Monedas" }}
+      />
+      <Resource
+        name="crm/cotizaciones"
+        list={CRMCotizacionList}
+        create={CRMCotizacionCreate}
+        edit={CRMCotizacionEdit}
+        show={CRMCotizacionShow}
+        recordRepresentation="id"
+        icon={LineChart}
+        options={{ label: "CRM · Cotizaciones" }}
+      />
+      <Resource
+        name="crm/contactos"
+        list={CRMContactoList}
+        create={CRMContactoCreate}
+        edit={CRMContactoEdit}
+        show={CRMContactoShow}
+        recordRepresentation="nombre_completo"
+        icon={UserRound}
+        options={{ label: "CRM · Contactos" }}
+      />
+      <Resource
+        name="crm/oportunidades"
+        list={CRMOportunidadList}
+        create={CRMOportunidadCreate}
+        edit={CRMOportunidadEdit}
+        show={CRMOportunidadShow}
+        recordRepresentation="id"
+        icon={Target}
+        options={{ label: "CRM · Oportunidades" }}
+      />
+      <Resource
+        name="crm/eventos"
+        list={CRMEventoList}
+        create={CRMEventoCreate}
+        edit={CRMEventoEdit}
+        show={CRMEventoShow}
+        recordRepresentation="id"
+        icon={CalendarCheck}
+        options={{ label: "CRM · Eventos" }}
+      />
+      <Resource
+        name="emprendimientos"
+        list={EmprendimientoList}
+        create={EmprendimientoCreate}
+        edit={EmprendimientoEdit}
+        show={EmprendimientoShow}
+        recordRepresentation="nombre"
+        icon={Factory}
+        options={{ label: "Emprendimientos" }}
+      />
       <CustomRoutes>
         <Route path="/solicitudes/create-mb" element={<SolicitudCreate />} />
         <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
+        <Route path="/crm/setup" element={<CRMSetupPage />} />
       </CustomRoutes>
     </Admin>
   );
