@@ -18,7 +18,7 @@ const estadoChoices = [
 ];
 
 const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar eventos" className="w-full" />,
+  <TextInput key="q" source="q" label={false} placeholder="Buscar eventos" className="w-full" alwaysOn />,
   <ReferenceInput key="contacto_id" source="contacto_id" reference="crm/contactos" label="Contacto">
     <SelectInput optionText="nombre_completo" emptyText="Todos" />
   </ReferenceInput>,

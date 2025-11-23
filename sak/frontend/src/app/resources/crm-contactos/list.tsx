@@ -13,7 +13,7 @@ import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
 
 const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar contactos" className="w-full" />,
+  <TextInput key="q" source="q" label={false} placeholder="Buscar contactos" className="w-full" alwaysOn />,
   <TextInput key="email" source="email" label="Email" />,
   <ReferenceInput key="origen_lead_id" source="origen_lead_id" reference="crm/catalogos/origenes-lead" label="Origen">
     <SelectInput optionText="nombre" emptyText="Todos" />
@@ -35,13 +35,13 @@ export const CRMContactoList = () => (
         <TextField source="id" />
       </DataTable.Col>
       <DataTable.Col source="nombre_completo" label="Nombre">
-        <TextField source="nombre_completo" />
+        <TextField source="nombre_completo" className="whitespace-normal break-words max-w-[240px]" />
       </DataTable.Col>
       <DataTable.Col source="email" label="Email">
-        <TextField source="email" />
+        <TextField source="email" className="whitespace-normal break-words max-w-[260px]" />
       </DataTable.Col>
       <DataTable.Col source="telefonos" label="Teléfonos">
-        <TextField source="telefonos" />
+        <TextField source="telefonos" className="whitespace-normal break-words max-w-[220px]" />
       </DataTable.Col>
       <DataTable.Col source="origen_lead_id" label="Origen">
         <ReferenceField source="origen_lead_id" reference="crm/catalogos/origenes-lead">

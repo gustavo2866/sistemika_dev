@@ -62,6 +62,7 @@ const CRM_CATALOG_RESOURCES = [
   "crm/catalogos/tipos-evento",
   "crm/catalogos/motivos-evento",
   "crm/catalogos/origenes-lead",
+  "monedas",
   "crm/catalogos/monedas",
   "crm/cotizaciones",
 ] as const;

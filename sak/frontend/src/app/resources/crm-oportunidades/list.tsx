@@ -17,13 +17,25 @@ import { Badge } from "@/components/ui/badge";
 import { useRecordContext } from "ra-core";
 
 const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar oportunidades" className="w-full" />,
+  <TextInput key="q" source="q" label={false} placeholder="Buscar oportunidades" className="w-full" alwaysOn />,
   <SelectInput key="estado" source="estado" label="Estado" choices={CRM_OPORTUNIDAD_ESTADO_CHOICES} emptyText="Todos" />,
   <ReferenceInput key="contacto_id" source="contacto_id" reference="crm/contactos" label="Contacto">
     <SelectInput optionText="nombre_completo" emptyText="Todos" />
   </ReferenceInput>,
+  <ReferenceInput
+    key="tipo_operacion_id"
+    source="tipo_operacion_id"
+    reference="crm/catalogos/tipos-operacion"
+    label="Tipo de operación"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
   <ReferenceInput key="propiedad_id" source="propiedad_id" reference="propiedades" label="Propiedad">
     <SelectInput optionText="nombre" emptyText="Todas" />
+  </ReferenceInput>,
+  <TextInput key="propiedad.tipo" source="propiedad.tipo" label="Tipo de propiedad" />,
+  <ReferenceInput key="emprendimiento_id" source="emprendimiento_id" reference="emprendimientos" label="Emprendimiento">
+    <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
 ];
 

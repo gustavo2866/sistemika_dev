@@ -1,5 +1,6 @@
 ﻿# Plan paso a paso - Implementación CRM Backend
 
+
 ## 1. Preparación y diseño
 1. Revisar `doc/03-devs/20251119-oportunidades/20251119_oportunidades_spec_backend.md` y aclarar dudas con el equipo funcional (estados, sincronización Propiedad/Vacancia, catálogos CRM).
 2. Validar disponibilidad de recursos: versión de DB, herramientas de migración (Alembic), variables de entorno.

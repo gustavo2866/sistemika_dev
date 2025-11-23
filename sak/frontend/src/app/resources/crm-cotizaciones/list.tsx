@@ -14,6 +14,7 @@ import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
 
 const filters = [
+  <TextInput key="q" source="q" label={false} placeholder="Buscar cotizaciones" className="w-full" alwaysOn />,
   <ReferenceInput key="moneda_origen_id" source="moneda_origen_id" reference="monedas" label="Moneda origen">
     <SelectInput optionText="nombre" emptyText="Todas" />
   </ReferenceInput>,

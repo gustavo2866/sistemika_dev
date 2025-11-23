@@ -16,7 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FormLayout, FormSimpleSection } from "@/components/forms";
-import type { CRMEvento, CRMOportunidad } from "./model";
+import type { CRMEvento } from "../crm-eventos/model";
+import type { CRMOportunidad } from "./model";
 import { CRM_OPORTUNIDAD_ESTADO_CHOICES } from "./model";
 
 export const CRMOportunidadForm = () => (
