@@ -88,9 +88,9 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
   const dataProvider = useDataProvider();
 
   // Hook incondicional - solo se usa si source existe
-  const controller = useController({ 
-    name: source || "_dummy",
-    disabled: !source 
+  const controller = useController({
+    name: source || `_combobox_${resource}`,
+    disabled: disabled ?? !source,
   });
 
   // React Query - Carga con caché

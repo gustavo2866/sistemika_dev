@@ -62,6 +62,33 @@ class EstadoEvento(str, Enum):
     HECHO = "hecho"
 
 
+class TipoMensaje(str, Enum):
+    ENTRADA = "entrada"
+    SALIDA = "salida"
+
+
+class CanalMensaje(str, Enum):
+    WHATSAPP = "whatsapp"
+    EMAIL = "email"
+    RED_SOCIAL = "red_social"
+    OTRO = "otro"
+
+
+class EstadoMensaje(str, Enum):
+    NUEVO = "nuevo"
+    CONFIRMADO = "confirmado"
+    DESCARTADO = "descartado"
+    PENDIENTE_ENVIO = "pendiente_envio"
+    ENVIADO = "enviado"
+    ERROR_ENVIO = "error_envio"
+
+
+class PrioridadMensaje(str, Enum):
+    ALTA = "alta"
+    MEDIA = "media"
+    BAJA = "baja"
+
+
 class EstadoEmprendimiento(str, Enum):
     PLANIFICACION = "planificacion"
     CONSTRUCCION = "construccion"

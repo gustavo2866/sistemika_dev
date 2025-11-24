@@ -33,7 +33,7 @@ const ListActions = () => (
 );
 
 export const CRMCotizacionList = () => (
-  <List filters={filters} actions={<ListActions />} sort={{ field: "fecha_vigencia", order: "DESC" }} perPage={25}>
+  <List filters={filters} actions={<ListActions />} sort={{ field: "fecha_vigencia", order: "DESC" }} perPage={10}>
     <DataTable rowClick="edit">
       <DataTable.Col source="id" label="ID">
         <TextField source="id" />

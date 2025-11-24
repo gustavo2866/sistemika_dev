@@ -30,6 +30,7 @@ import {
   AlertTriangle,
   CalendarDays,
   ListChecks,
+  Mail,
   Megaphone,
   LineChart,
   Target,
@@ -174,6 +175,7 @@ import {
   CRMEventoEdit,
   CRMEventoShow,
 } from "@/app/resources/crm-eventos";
+import { CRMInboxList } from "@/app/resources/crm-inbox";
 import {
   EmprendimientoList,
   EmprendimientoCreate,
@@ -487,6 +489,13 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={CalendarCheck}
         options={{ label: "CRM · Eventos" }}
+      />
+      <Resource
+        name="crm/mensajes"
+        list={CRMInboxList}
+        recordRepresentation="asunto"
+        icon={Mail}
+        options={{ label: "CRM - Inbox" }}
       />
       <Resource
         name="emprendimientos"

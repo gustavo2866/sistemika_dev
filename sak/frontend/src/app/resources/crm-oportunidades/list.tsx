@@ -48,7 +48,7 @@ const ListActions = () => (
 );
 
 export const CRMOportunidadList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={25} sort={{ field: "created_at", order: "DESC" }}>
+  <List filters={filters} actions={<ListActions />} perPage={10} sort={{ field: "created_at", order: "DESC" }}>
     <DataTable rowClick="edit">
       <DataTable.Col source="id" label="ID">
         <TextField source="id" />

@@ -23,6 +23,7 @@ from .crm_contacto import CRMContacto
 from .crm_oportunidad import CRMOportunidad
 from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
 from .crm_evento import CRMEvento
+from .crm_mensaje import CRMMensaje
 from .emprendimiento import Emprendimiento
 from .articulo import Articulo
 from .factura import Factura
@@ -48,6 +49,10 @@ from .enums import (
     EstadoOportunidad,
     TRANSICIONES_ESTADO_OPORTUNIDAD,
     EstadoEvento,
+    TipoMensaje,
+    CanalMensaje,
+    EstadoMensaje,
+    PrioridadMensaje,
     EstadoEmprendimiento,
 )
 
@@ -74,6 +79,7 @@ __all__ = [
     "CRMOportunidad",
     "CRMOportunidadLogEstado",
     "CRMEvento",
+    "CRMMensaje",
     "Emprendimiento",
     "Articulo", 
     "Factura",
@@ -98,6 +104,10 @@ __all__ = [
     "EstadoOportunidad",
     "TRANSICIONES_ESTADO_OPORTUNIDAD",
     "EstadoEvento",
+    "TipoMensaje",
+    "CanalMensaje",
+    "EstadoMensaje",
+    "PrioridadMensaje",
     "EstadoEmprendimiento",
 ]
 

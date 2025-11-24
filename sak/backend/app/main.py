@@ -60,6 +60,7 @@ from app.routers.crm import (
     crm_contacto_router,
     crm_oportunidad_router,
     crm_evento_router,
+    crm_mensaje_router,
 )
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
@@ -163,6 +164,7 @@ app.include_router(cotizacion_moneda_router)
 app.include_router(crm_contacto_router)
 app.include_router(crm_oportunidad_router)
 app.include_router(crm_evento_router)
+app.include_router(crm_mensaje_router)
 app.include_router(emprendimiento_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)
