@@ -45,6 +45,7 @@ from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
 from app.routers.vacancia_router import vacancia_router
 from app.routers.vacancia_dashboard_router import router as vacancia_dashboard_router
+from app.routers.crm_dashboard_router import router as crm_dashboard_router
 from app.routers.cliente_router import router as cliente_router
 from app.routers.crm import (
     crm_tipo_operacion_router,
@@ -150,6 +151,7 @@ app.include_router(solicitud_detalle_router)
 app.include_router(centro_costo_router)
 app.include_router(vacancia_router)
 app.include_router(vacancia_dashboard_router)
+app.include_router(crm_dashboard_router)
 app.include_router(cliente_router)
 app.include_router(crm_tipo_operacion_router)
 app.include_router(crm_motivo_perdida_router)

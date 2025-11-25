@@ -95,6 +95,7 @@ import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
 import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
+import DashboardCrmList from "@/app/resources/dashboard-crm/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
 import {
@@ -338,6 +339,13 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={BarChart3}
         options={{ label: "Dashboard" }}
+      />
+      <Resource
+        name="dashboard-crm"
+        list={DashboardCrmList}
+        recordRepresentation="id"
+        icon={LineChart}
+        options={{ label: "CRM Dashboard" }}
       />
       <Resource
         name="dashboard-vacancias"
