@@ -29,6 +29,7 @@ type FormValues = {
   evento_descripcion?: string;
   proximo_estado?: string;
   fecha_proximo_estado?: string;
+  enviar_respuesta?: boolean;
 };
 
 type SectionCardProps = {
@@ -44,6 +45,7 @@ type OportunidadAuto = {
   id: number;
   label: string;
   propiedad_id?: number | null;
+  propiedad_nombre?: string | null;
   tipo_operacion_id?: number | null;
   responsable_id?: number | null;
   tipo_operacion_nombre?: string | null;
@@ -107,13 +109,15 @@ const MessagePreview = ({
   contenido,
   contactName,
   resumenOportunidad,
+  propiedadLabel,
   responsableTexto,
 }: {
   referencia?: string;
-  asunto?: string;
+  asunto?: string | null;
   contenido?: string | null;
   contactName?: string;
   resumenOportunidad?: string;
+  propiedadLabel?: string;
   responsableTexto?: string;
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -134,6 +138,11 @@ const MessagePreview = ({
       {resumenOportunidad ? (
         <div>
           <span className="font-semibold">Oportunidad:</span> {resumenOportunidad}
+        </div>
+      ) : null}
+      {propiedadLabel ? (
+        <div>
+          <span className="font-semibold">Propiedad:</span> {propiedadLabel}
         </div>
       ) : null}
       {responsableTexto ? (
@@ -210,7 +219,9 @@ export const CRMInboxConfirmForm = ({
       evento_descripcion: "",
       proximo_estado: "",
       fecha_proximo_estado: new Date().toISOString().slice(0, 10),
+      enviar_respuesta: true,
     },
+    shouldUnregister: false,
   });
 
   const notify = useNotify();
@@ -219,11 +230,12 @@ export const CRMInboxConfirmForm = ({
   const { data: identity } = useGetIdentity();
 
   const [forceNuevaOportunidad, setForceNuevaOportunidad] = useState(false);
-  const [autoOportunidad, setAutoOportunidad] = useState<OportunidadAuto | null>(null);
+const [autoOportunidad, setAutoOportunidad] = useState<OportunidadAuto | null>(null);
   const [loadingContacto, setLoadingContacto] = useState(false);
   const [tipoOperacionLabel, setTipoOperacionLabel] = useState<string>("");
   const [responsableLabel, setResponsableLabel] = useState<string>("");
   const [eventoTipoDefault, setEventoTipoDefault] = useState<string>("");
+  const [propiedadNombre, setPropiedadNombre] = useState<string>("");
 
   useEffect(() => {
     methods.reset({
@@ -243,6 +255,7 @@ export const CRMInboxConfirmForm = ({
       evento_descripcion: "",
       proximo_estado: "",
       fecha_proximo_estado: new Date().toISOString().slice(0, 10),
+      enviar_respuesta: true,
     });
     setAutoOportunidad(null);
     setForceNuevaOportunidad(false);
@@ -285,8 +298,8 @@ export const CRMInboxConfirmForm = ({
     }
   }, [eventoTipoDefault, methods]);
 
-  const contactoNuevo = useWatch({ control: methods.control, name: "contacto_nuevo" });
-  const crearOportunidad = useWatch({ control: methods.control, name: "crear_oportunidad" });
+  const contactoNuevo = useWatch({ control: methods.control, name: "contacto_nuevo" }) ?? false;
+  const crearOportunidad = useWatch({ control: methods.control, name: "crear_oportunidad" }) ?? false;
   const contactoId = useWatch({ control: methods.control, name: "contacto_id" });
   const contactoNombre = useWatch({ control: methods.control, name: "contacto_nombre" }) ?? "";
 const contactoResponsableId = useWatch({ control: methods.control, name: "contacto_responsable_id" });
@@ -303,7 +316,62 @@ const eventoTipoId = useWatch({ control: methods.control, name: "evento_tipo_id"
 const eventoMotivoId = useWatch({ control: methods.control, name: "evento_motivo_id" });
 const eventoAsignadoId = useWatch({ control: methods.control, name: "evento_asignado_id" });
 const eventoDescripcion = useWatch({ control: methods.control, name: "evento_descripcion" }) ?? "";
-const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [contactoNuevoChecked, setContactoNuevoChecked] = useState(false);
+
+  // Capturar cuando contacto_nuevo se vuelve true y mantenerlo
+  // NO resetear cuando el Controller se desmonta (undefined)
+  useEffect(() => {
+    const rawValue = methods.watch("contacto_nuevo");
+    if (rawValue === true) {
+      setContactoNuevoChecked(true);
+    } else if (rawValue === false) {
+      // Solo resetear si el usuario explícitamente desmarca el checkbox
+      setContactoNuevoChecked(false);
+    }
+    // Si es undefined, no hacer nada - mantener el estado actual
+  }, [contactoNuevo, methods]);
+
+  useEffect(() => {
+    if (crearOportunidad) {
+      methods.setValue("proximo_estado", "1-abierta", { shouldDirty: false });
+    }
+  }, [crearOportunidad, methods]);
+
+  useEffect(() => {
+    const watchedPropiedadId = methods.watch("propiedad_id");
+    const targetPropertyId =
+      watchedPropiedadId && watchedPropiedadId.trim().length > 0
+        ? watchedPropiedadId
+        : !crearOportunidad && autoOportunidad?.propiedad_id
+          ? String(autoOportunidad.propiedad_id)
+          : "";
+    if (!targetPropertyId) {
+      setPropiedadNombre(autoOportunidad?.propiedad_nombre || "");
+      return;
+    }
+    if (!crearOportunidad && autoOportunidad?.propiedad_nombre) {
+      setPropiedadNombre(autoOportunidad.propiedad_nombre);
+      return;
+    }
+    let ignore = false;
+    const fetchPropiedad = async () => {
+      try {
+        const { data } = await dataProvider.getOne("propiedades", { id: Number(targetPropertyId) });
+        if (!ignore) {
+          setPropiedadNombre(data?.nombre || `Propiedad ${targetPropertyId}`);
+        }
+      } catch {
+        if (!ignore) {
+          setPropiedadNombre(`Propiedad ${targetPropertyId}`);
+        }
+      }
+    };
+    fetchPropiedad();
+    return () => {
+      ignore = true;
+    };
+  }, [methods, autoOportunidad?.propiedad_id, autoOportunidad?.propiedad_nombre, crearOportunidad, dataProvider]);
 
   const handleStepValidate = async (index: number) => {
     if (index === 0) {
@@ -384,6 +452,7 @@ const [currentStep, setCurrentStep] = useState(0);
             responsable_id: abierta.responsable_id,
             tipo_operacion_nombre: abierta.tipo_operacion?.nombre,
             responsable_nombre: abierta.responsable?.nombre,
+            propiedad_nombre: abierta.propiedad?.nombre,
             estado: abierta.estado,
           });
           setForceNuevaOportunidad(false);
@@ -445,11 +514,12 @@ const [currentStep, setCurrentStep] = useState(0);
               label: data.descripcion_estado || `Oportunidad #${data.id}`,
               propiedad_id: data.propiedad_id,
               tipo_operacion_id: data.tipo_operacion_id,
-              responsable_id: data.responsable_id,
-              tipo_operacion_nombre: data.tipo_operacion?.nombre,
-              responsable_nombre: data.responsable?.nombre,
-              estado: data.estado,
-            });
+            responsable_id: data.responsable_id,
+            tipo_operacion_nombre: data.tipo_operacion?.nombre,
+            responsable_nombre: data.responsable?.nombre,
+            propiedad_nombre: data.propiedad?.nombre,
+            estado: data.estado,
+          });
             methods.setValue("tipo_operacion_id", data.tipo_operacion_id ? String(data.tipo_operacion_id) : "", {
               shouldDirty: false,
             });
@@ -512,6 +582,7 @@ const [currentStep, setCurrentStep] = useState(0);
         asignado_a_id: values.evento_asignado_id ? Number(values.evento_asignado_id) : undefined,
         proximo_estado: values.proximo_estado || undefined,
         fecha_proximo_estado: values.fecha_proximo_estado || undefined,
+        enviar_respuesta: values.enviar_respuesta ?? false,
       };
 
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -654,22 +725,25 @@ const [currentStep, setCurrentStep] = useState(0);
   }, [crearOportunidad, responsableOportunidadId, autoOportunidad?.responsable_id, autoOportunidad?.responsable_nombre, dataProvider]);
 
   const resumenOportunidadTexto = useMemo(() => {
+    const resolvedPropiedadNombre =
+      propiedadNombre ||
+      autoOportunidad?.propiedad_nombre ||
+      (autoOportunidad?.propiedad_id ? `Propiedad ${autoOportunidad.propiedad_id}` : undefined) ||
+      (propiedadId && propiedadId.trim().length > 0 ? `Propiedad ${propiedadId}` : undefined);
     const tipoTexto = tipoOperacionLabel || (tipoOperacionId ? `Tipo ${tipoOperacionId}` : undefined);
     if (crearOportunidad) {
-      const propiedadTexto = propiedadId ? `Propiedad ${propiedadId}` : "Propiedad sin asignar";
+      const propiedadTexto = resolvedPropiedadNombre || (propiedadId ? `Propiedad ${propiedadId}` : "Propiedad sin asignar");
       return [tipoTexto, propiedadTexto].filter(Boolean).join(" - ");
     }
     if (autoOportunidad) {
-      const propiedadTexto =
-        autoOportunidad.label ||
-        (autoOportunidad.propiedad_id ? `Propiedad ${autoOportunidad.propiedad_id}` : undefined);
+      const propiedadTexto = resolvedPropiedadNombre || autoOportunidad.label;
       return [tipoOperacionLabel, propiedadTexto].filter(Boolean).join(" - ");
     }
     if (oportunidadId) {
       return [tipoOperacionLabel, `Oportunidad #${oportunidadId}`].filter(Boolean).join(" - ");
     }
     return tipoOperacionLabel || undefined;
-  }, [crearOportunidad, tipoOperacionLabel, propiedadId, autoOportunidad, oportunidadId, tipoOperacionId]);
+  }, [crearOportunidad, tipoOperacionLabel, propiedadNombre, autoOportunidad, oportunidadId, tipoOperacionId, propiedadId]);
 
   const responsableTexto = useMemo(() => {
     if ((crearOportunidad && responsableOportunidadId) || (!crearOportunidad && autoOportunidad?.responsable_id)) {
@@ -678,13 +752,42 @@ const [currentStep, setCurrentStep] = useState(0);
     return responsableLabel || undefined;
   }, [crearOportunidad, responsableOportunidadId, autoOportunidad, responsableLabel]);
 
+  const contactoPreviewNombre = useMemo(
+    () => {
+      // Leer directamente del formulario en lugar de usar el watch
+      const formContactoNuevo = methods.getValues("contacto_nuevo");
+      const isNew = formContactoNuevo === true || contactoNuevoChecked;
+      return isNew
+        ? `${contactoNombre.trim() || "(sin nombre)"} (nuevo)`
+        : contactoNombre || (contactoId ? `ID ${contactoId}` : undefined);
+    },
+    [contactoNuevoChecked, contactoNombre, contactoId, methods]
+  );
+
+  const oportunidadPreviewLabel = crearOportunidad
+    ? `${resumenOportunidadTexto || "Nueva oportunidad"} (nuevo)`
+    : resumenOportunidadTexto;
+
+  const propiedadPreviewLabel = useMemo(() => {
+    const resolved =
+      propiedadNombre ||
+      autoOportunidad?.propiedad_nombre ||
+      (autoOportunidad?.propiedad_id ? `Propiedad ${autoOportunidad.propiedad_id}` : undefined) ||
+      (propiedadId && propiedadId.trim().length > 0 ? `Propiedad ${propiedadId}` : undefined);
+    if (!resolved) {
+      return crearOportunidad ? "Propiedad sin asignar" : undefined;
+    }
+    return resolved;
+  }, [propiedadNombre, autoOportunidad?.propiedad_nombre, autoOportunidad?.propiedad_id, propiedadId, crearOportunidad]);
+
   const messageBlock = (
     <MessagePreview
       referencia={referenciaValor || message.contacto_referencia || ""}
       asunto={message.asunto}
       contenido={message.contenido}
-      contactName={contactoNombre || (contactoId ? `ID ${contactoId}` : undefined)}
-      resumenOportunidad={resumenOportunidadTexto}
+      contactName={contactoPreviewNombre}
+      resumenOportunidad={oportunidadPreviewLabel}
+      propiedadLabel={propiedadPreviewLabel}
       responsableTexto={responsableTexto}
     />
   );
@@ -702,6 +805,7 @@ const [currentStep, setCurrentStep] = useState(0);
               <Controller
                 name="contacto_nuevo"
                 control={methods.control}
+                defaultValue={false}
                 render={({ field }) => (
                   <label className="flex items-center gap-2 text-sm">
                     <span className="text-xs uppercase tracking-wide text-muted-foreground">Nuevo</span>
@@ -856,10 +960,11 @@ const [currentStep, setCurrentStep] = useState(0);
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <p className="text-xs uppercase text-muted-foreground font-medium">Pr?ximo estado</p>
+                <p className="text-xs uppercase text-muted-foreground font-medium">Próximo estado</p>
                 <select
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   {...methods.register("proximo_estado")}
+                  disabled={crearOportunidad}
                 >
                   {ESTADO_OPORTUNIDAD_CHOICES.map((choice) => (
                     <option key={choice.id} value={choice.id}>
@@ -883,11 +988,20 @@ const [currentStep, setCurrentStep] = useState(0);
               />
             </div>
             <div className="space-y-1">
-              <p className="text-xs uppercase text-muted-foreground font-medium">Respuesta</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase text-muted-foreground font-medium">Respuesta</p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={methods.watch("enviar_respuesta")}
+                    onCheckedChange={(checked) => methods.setValue("enviar_respuesta", Boolean(checked))}
+                  />
+                  Enviar
+                </label>
+              </div>
               <Textarea
                 rows={4}
                 {...methods.register("evento_descripcion")}
-                placeholder="Detalle la respuesta o acci?n"
+                placeholder="Detalle la respuesta o acción"
               />
             </div>
           </SectionCard>

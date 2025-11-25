@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { CRMInboxConfirmForm } from "./form";
 import type { CRMMensaje } from "./model";
+import { Check, Trash2 } from "lucide-react";
 
 const ESTADO_CHOICES = [
   { id: "nuevo", name: "Nuevo" },
@@ -53,6 +54,21 @@ const ListActions = () => (
   </div>
 );
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 export const CRMInboxList = () => {
   const [detailRecord, setDetailRecord] = useState<CRMMensaje | null>(null);
   const [confirmRecord, setConfirmRecord] = useState<CRMMensaje | null>(null);
@@ -81,20 +97,24 @@ export const CRMInboxList = () => {
     refresh();
   };
 
-  const handleDiscard = async () => {
-    if (!detailRecord) return;
+  const discardMessage = async (record: CRMMensaje) => {
     try {
       await dataProvider.update("crm/mensajes", {
-        id: detailRecord.id,
+        id: record.id,
         data: { estado: "descartado" },
-        previousData: detailRecord,
+        previousData: record,
       });
       notify("Mensaje descartado", { type: "info" });
-      setOpenDetail(false);
       refresh();
     } catch (e: any) {
       notify(e?.message || "No se pudo descartar", { type: "warning" });
     }
+  };
+
+  const handleDiscard = () => {
+    if (!detailRecord) return;
+    discardMessage(detailRecord);
+    setOpenDetail(false);
   };
 
   const handleLLM = async () => {
@@ -152,18 +172,56 @@ export const CRMInboxList = () => {
             return false;
           }}
         >
+          <DataTable.Col
+            label="Fecha"
+            className="w-[170px]"
+            render={(record: CRMMensaje) => (
+              <span className="text-xs text-muted-foreground">
+                {formatDateTime(record.fecha_mensaje || record.created_at)}
+              </span>
+            )}
+          />
           <DataTable.Col source="contacto_referencia" label="Referencia">
             <TextField source="contacto_referencia" className="max-w-[220px] break-words" />
           </DataTable.Col>
           <DataTable.Col source="asunto" label="Asunto">
             <TextField source="asunto" className="truncate max-w-[240px]" />
           </DataTable.Col>
-          <DataTable.Col source="canal" label="Canal">
+          <DataTable.Col source="canal" label="Canal" className="w-[110px]" cellClassName="w-[110px]">
             <BadgeField source="canal" />
           </DataTable.Col>
-          <DataTable.Col source="estado" label="Estado">
+          <DataTable.Col source="estado" label="Estado" className="w-[110px]" cellClassName="w-[110px]">
             <BadgeField source="estado" />
           </DataTable.Col>
+          <DataTable.Col
+            label="Acciones"
+            className="w-[110px]"
+            disableSort
+            render={(record: CRMMensaje) =>
+              record.estado === "nuevo" ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    aria-label="Confirmar mensaje"
+                    onClick={() => handleOpenConfirm(record)}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Descartar mensaje"
+                    onClick={() => discardMessage(record)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Procesado</span>
+              )
+            }
+          />
         </DataTable>
       </List>
 

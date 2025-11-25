@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, SQLModel
 
-from .base import Base
+from .base import Base, current_utc_time
 from .enums import EstadoMensaje, PrioridadMensaje, CanalMensaje, TipoMensaje
 
 
@@ -27,6 +27,7 @@ class CRMMensaje(Base, table=True):
     prioridad: str = Field(default=PrioridadMensaje.MEDIA.value, max_length=20, index=True)
     asunto: Optional[str] = Field(default=None, max_length=255)
     contenido: Optional[str] = Field(default=None)
+    fecha_mensaje: datetime = Field(default_factory=current_utc_time, index=True, nullable=False)
     adjuntos: list[dict] = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False, server_default="[]"),

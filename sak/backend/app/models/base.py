@@ -16,6 +16,7 @@ class Base(SQLModel):
     __searchable_fields__: ClassVar[List[str]] = []  # Campos donde buscar con "q"
 
 STAMP_FIELDS = {"id", "created_at", "updated_at", "deleted_at", "version"}
+VISIBLE_STAMP_FIELDS = {"created_at", "updated_at"}
 
 def campos_editables(model_cls: type[SQLModel]) -> set[str]:
     """Campos editables por el usuario (para formularios de edición)"""
@@ -88,7 +89,7 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
     # Filtrar campos válidos más las relaciones
     result = {}
     for k, v in obj_dict.items():
-        if k in campos_validos or (not k.startswith('_') and k not in STAMP_FIELDS):
+        if k in campos_validos or (not k.startswith('_') and (k not in STAMP_FIELDS or k in VISIBLE_STAMP_FIELDS)):
             result[k] = v
 
     # Inyectar campos calculados cuando existan propiedades auxiliares
