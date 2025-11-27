@@ -18,7 +18,8 @@ export { FormDetailCardList } from "./form-detail-card-list";
 export { FormDetailFormDialog } from "./form-detail-form-dialog";
 export { FormDetailSectionAddButton } from "./form-detail-section-add-button";
 export { FormDetailSectionMinItems } from "./form-detail-section-min-items";
-export { FormWizard } from "./form-wizard";
+export { FormWizard } from "./form-wizard/form-wizard";
+export { SectionCard, SummaryList, MessagePreview } from "./form-wizard/sections";
 
 // Types
 export type { FormSection, FormLayoutProps } from "./form-layout";
@@ -28,7 +29,12 @@ export type {
   FormDetailSectionSubmitPayload,
 } from "./form-detail-section";
 export type { FormDetailSectionContextValue } from "./form-detail-section-context";
-export type { FormWizardStep, FormWizardProps } from "./form-wizard";
+export type { FormWizardStep, FormWizardProps } from "./form-wizard/form-wizard";
+export type {
+  SectionCardProps,
+  SummaryListProps,
+  MessagePreviewProps,
+} from "./form-wizard/sections";
 
 // Hooks
 export { useReferenceOptions } from "./hooks/useReferenceOptions";

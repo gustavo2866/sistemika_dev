@@ -419,16 +419,27 @@ export default function DashboardCrmList() {
 
       <Accordion type="multiple" defaultValue={[]} className="space-y-4">
         <AccordionItem value="detalle">
-          <AccordionTrigger className="rounded-md bg-card px-4">
-            <div className="flex flex-col items-start gap-1">
-              <span className="text-base font-semibold">Detalle de oportunidades</span>
-              <span className="text-xs text-muted-foreground">Ver el listado completo filtrado</span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleExportDetalle(); }} disabled={detailLoading}>
+          <div className="relative">
+            <AccordionTrigger className="rounded-md bg-card px-4 pr-28">
+              <div className="flex flex-col items-start gap-1">
+                <span className="text-base font-semibold">Detalle de oportunidades</span>
+                <span className="text-xs text-muted-foreground">Ver el listado completo filtrado</span>
+              </div>
+            </AccordionTrigger>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-4 top-1/2 -translate-y-1/2"
+              onClick={(event) => {
+                event.stopPropagation()
+                handleExportDetalle()
+              }}
+              disabled={detailLoading}
+            >
               <Download className="mr-2 h-4 w-4" />
               Exportar
             </Button>
-          </AccordionTrigger>
+          </div>
           <AccordionContent className="pt-0">
             <Card className="flex flex-col">
               <CardHeader className="space-y-2">

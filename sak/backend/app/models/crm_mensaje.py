@@ -1,11 +1,14 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import Column, JSON
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Relationship
 
 from .base import Base, current_utc_time
 from .enums import EstadoMensaje, PrioridadMensaje, CanalMensaje, TipoMensaje
+
+if TYPE_CHECKING:
+    from .crm_oportunidad import CRMOportunidad
 
 
 class CRMMensaje(Base, table=True):
@@ -41,6 +44,10 @@ class CRMMensaje(Base, table=True):
         alias="metadata",
     )
     responsable_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    oportunidad_id: Optional[int] = Field(
+        default=None, foreign_key="crm_oportunidades.id", index=True
+    )
+    oportunidad: Optional["CRMOportunidad"] = Relationship(back_populates="mensajes")
 
     def set_estado(self, nuevo_estado: str) -> None:
         self.estado = nuevo_estado

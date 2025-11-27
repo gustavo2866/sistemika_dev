@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     )
     from .crm_contacto import CRMContacto
     from .crm_evento import CRMEvento
+    from .crm_mensaje import CRMMensaje
     from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
     from .emprendimiento import Emprendimiento
     from .propiedad import Propiedad
@@ -81,6 +82,7 @@ class CRMOportunidad(Base, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     eventos: list["CRMEvento"] = Relationship(back_populates="oportunidad")
+    mensajes: list["CRMMensaje"] = Relationship(back_populates="oportunidad")
 
     def __str__(self) -> str:  # pragma: no cover
         return f"CRMOportunidad(id={self.id}, estado='{self.estado}')"

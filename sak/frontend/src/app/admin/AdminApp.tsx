@@ -115,37 +115,37 @@ import {
   CRMTipoOperacionCreate,
   CRMTipoOperacionEdit,
   CRMTipoOperacionShow,
-} from "@/app/resources/crm-catalogos-tipos-operacion";
+} from "@/app/resources/crm-catalogos/crm-catalogos-tipos-operacion";
 import {
   CRMMotivoPerdidaList,
   CRMMotivoPerdidaCreate,
   CRMMotivoPerdidaEdit,
   CRMMotivoPerdidaShow,
-} from "@/app/resources/crm-catalogos-motivos-perdida";
+} from "@/app/resources/crm-catalogos/crm-catalogos-motivos-perdida";
 import {
   CRMCondicionPagoList,
   CRMCondicionPagoCreate,
   CRMCondicionPagoEdit,
   CRMCondicionPagoShow,
-} from "@/app/resources/crm-catalogos-condiciones-pago";
+} from "@/app/resources/crm-catalogos/crm-catalogos-condiciones-pago";
 import {
   CRMTipoEventoList,
   CRMTipoEventoCreate,
   CRMTipoEventoEdit,
   CRMTipoEventoShow,
-} from "@/app/resources/crm-catalogos-tipos-evento";
+} from "@/app/resources/crm-catalogos/crm-catalogos-tipos-evento";
 import {
   CRMMotivoEventoList,
   CRMMotivoEventoCreate,
   CRMMotivoEventoEdit,
   CRMMotivoEventoShow,
-} from "@/app/resources/crm-catalogos-motivos-evento";
+} from "@/app/resources/crm-catalogos/crm-catalogos-motivos-evento";
 import {
   CRMOrigenLeadList,
   CRMOrigenLeadCreate,
   CRMOrigenLeadEdit,
   CRMOrigenLeadShow,
-} from "@/app/resources/crm-catalogos-origenes-lead";
+} from "@/app/resources/crm-catalogos/crm-catalogos-origenes-lead";
 import {
   MonedaList,
   MonedaCreate,
