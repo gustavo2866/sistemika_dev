@@ -1,15 +1,17 @@
+import json
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
+from sqlalchemy import func
 from pydantic import BaseModel, field_validator
 
 from app.models.propiedad import Propiedad
 from app.models.vacancia import Vacancia
 from app.models.enums import EstadoPropiedad, TRANSICIONES_ESTADO_PROPIEDAD
 from app.core.generic_crud import GenericCRUD
-from app.core.router import create_generic_router
+from app.core.router import create_generic_router, flatten_nested_filters
 from app.db import get_session
 
 propiedad_crud = GenericCRUD(Propiedad)
@@ -228,4 +230,52 @@ def cambiar_estado_propiedad(
             "nuevo_estado": getattr(data, 'nuevo_estado', None),
         })
         raise HTTPException(status_code=500, detail="Error interno al cambiar estado de la propiedad") from exc
+
+
+def _build_filters(request: Request) -> dict[str, Any]:
+    filters: dict[str, Any] = {}
+    reserved_params = {"sort", "range", "page", "perPage"}
+
+    for key in request.query_params:
+        if key in reserved_params or key == "filter":
+            continue
+        if key not in {"q"} and not hasattr(Propiedad, key):
+            continue
+        values = request.query_params.getlist(key)
+        if len(values) == 1:
+            filters[key] = values[0]
+        elif len(values) > 1:
+            filters[key] = values
+
+    if "filter" in request.query_params:
+        try:
+            filter_dict = json.loads(request.query_params["filter"])
+            flat = flatten_nested_filters(filter_dict)
+            filters.update(flat)
+        except json.JSONDecodeError:
+            pass
+
+    return filters
+
+
+@propiedad_router.get("/aggregates/estado")
+def propiedades_estado_aggregate(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    filters = _build_filters(request)
+    base_filters = {k: v for k, v in filters.items() if k != "estado"}
+
+    stmt = (
+        select(Propiedad.estado, func.count())
+        .group_by(Propiedad.estado)
+    )
+    stmt = propiedad_crud._apply_filters(stmt, base_filters)
+
+    rows = session.exec(stmt).all()
+    data = [
+        {"estado": estado, "total": total}
+        for estado, total in rows
+    ]
+    return {"data": data}
 

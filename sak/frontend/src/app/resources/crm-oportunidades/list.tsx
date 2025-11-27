@@ -147,27 +147,19 @@ const EstadoSummaryChips = () => {
         const json = await response.json();
         const raw: Array<{
           estado: CRMOportunidadEstado;
-          filtered?: number;
           total?: number;
         }> = json?.data ?? json ?? [];
-        const totals = new Map<
-          string,
-          { filtered: number; total: number }
-        >();
-        raw.forEach(({ estado, filtered, total }) => {
-          totals.set(estado, {
-            filtered: filtered ?? 0,
-            total: total ?? filtered ?? 0,
-          });
+        const totals = new Map<string, number>();
+        raw.forEach(({ estado, total }) => {
+          totals.set(estado, total ?? 0);
         });
         const normalized: SummaryChipItem[] =
           CRM_OPORTUNIDAD_ESTADO_CHOICES.map((choice) => {
-            const entry = totals.get(choice.id as string);
+            const total = totals.get(choice.id as string) ?? 0;
             return {
               label: formatEstadoOportunidad(choice.id as CRMOportunidadEstado),
               value: choice.id,
-              count: entry?.filtered ?? 0,
-              total: entry?.total ?? 0,
+              count: total,
               chipClassName: cnBadge(choice.id as CRMOportunidadEstado),
               selectedChipClassName: cnBadge(
                 choice.id as CRMOportunidadEstado,

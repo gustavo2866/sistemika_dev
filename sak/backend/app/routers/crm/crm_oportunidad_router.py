@@ -120,25 +120,14 @@ def oportunidades_estado_aggregate(
     )
     base_stmt = crm_oportunidad_crud._apply_filters(base_stmt, base_filters)
 
-    selected_stmt = (
-        select(CRMOportunidad.estado, func.count())
-        .group_by(CRMOportunidad.estado)
-    )
-    selected_stmt = crm_oportunidad_crud._apply_filters(selected_stmt, filters)
-
     base_rows = session.exec(base_stmt).all()
-    selected_rows = session.exec(selected_stmt).all()
-
     base_counts = {estado: count for estado, count in base_rows}
-    selected_counts = {estado: count for estado, count in selected_rows}
 
-    estados = base_counts.keys() | selected_counts.keys()
     data = [
         {
             "estado": estado,
             "total": base_counts.get(estado, 0),
-            "filtered": selected_counts.get(estado, 0),
         }
-        for estado in estados
+        for estado in base_counts.keys()
     ]
     return {"data": data}
