@@ -69,7 +69,7 @@ def get_dashboard_detalle(
         for item in items:
             prop_estado = item.vacancia.propiedad.estado if item.vacancia.propiedad else None
             if estadoVacancia == "activas":
-                if item.estado_corte == "Activo" and prop_estado not in {"4-alquilada", "5-retirada"}:
+                if item.estado_corte == "Activo" and prop_estado not in {"4-realizada", "5-retirada"}:
                     filtered.append(item)
             elif estadoVacancia == "recibida" and prop_estado == "1-recibida":
                 filtered.append(item)

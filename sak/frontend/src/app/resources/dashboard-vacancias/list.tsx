@@ -170,7 +170,7 @@ export default function DashboardVacanciasList() {
     const activosDetalle = dashboardData?.activos_detalle ?? { disponible: 0, reparacion: 0 };
 
     return [
-      { name: "alquilada", disponible: buckets.alquilada, reparacion: 0, total: buckets.alquilada },
+      { name: "realizada", disponible: buckets.alquilada, reparacion: 0, total: buckets.alquilada },
       { name: "retirada", disponible: buckets.retirada, reparacion: 0, total: buckets.retirada },
       {
         name: "activo",
@@ -441,7 +441,7 @@ export default function DashboardVacanciasList() {
                   { value: "recibida", label: "Recibida" },
                   { value: "en_reparacion", label: "En reparacion" },
                   { value: "disponible", label: "Disponible" },
-                  { value: "alquilada", label: "Alquilada" },
+                  { value: "realizada", label: "Realizada" },
                   { value: "retirada", label: "Retirada" },
                 ],
                 onChange: (value) => {

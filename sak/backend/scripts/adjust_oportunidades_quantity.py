@@ -57,7 +57,7 @@ MOTIVOS_PERDIDA_NOMBRES = [
 
 # Mapeo de estado de oportunidad a estado de propiedad
 ESTADO_OPP_A_PROPIEDAD = {
-    EstadoOportunidad.GANADA.value: EstadoPropiedad.ALQUILADA.value,
+    EstadoOportunidad.GANADA.value: EstadoPropiedad.REALIZADA.value,
     EstadoOportunidad.RESERVA.value: EstadoPropiedad.DISPONIBLE.value,
     EstadoOportunidad.ABIERTA.value: EstadoPropiedad.DISPONIBLE.value,
     EstadoOportunidad.VISITA.value: EstadoPropiedad.DISPONIBLE.value,

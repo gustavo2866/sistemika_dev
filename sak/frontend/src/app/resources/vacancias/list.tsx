@@ -36,8 +36,8 @@ const filters = [
   />,
   <TextInput key="fecha_recibida__gte" source="fecha_recibida__gte" label="Recibida desde" type="date" />,
   <TextInput key="fecha_recibida__lte" source="fecha_recibida__lte" label="Recibida hasta" type="date" />,
-  <TextInput key="fecha_alquilada__gte" source="fecha_alquilada__gte" label="Alquilada desde" type="date" />,
-  <TextInput key="fecha_alquilada__lte" source="fecha_alquilada__lte" label="Alquilada hasta" type="date" />,
+  <TextInput key="fecha_alquilada__gte" source="fecha_alquilada__gte" label="Realizada desde" type="date" />,
+  <TextInput key="fecha_alquilada__lte" source="fecha_alquilada__lte" label="Realizada hasta" type="date" />,
 ];
 
 const ListActions = () => (
@@ -68,7 +68,7 @@ export const VacanciaList = () => (
       <DataTable.Col source="fecha_disponible" label="Disponible" className="w-[160px]">
         <DateField source="fecha_disponible" showTime />
       </DataTable.Col>
-      <DataTable.Col source="fecha_alquilada" label="Alquilada" className="w-[160px]">
+      <DataTable.Col source="fecha_alquilada" label="Realizada" className="w-[160px]">
         <DateField source="fecha_alquilada" showTime />
       </DataTable.Col>
       <DataTable.Col source="dias_totales" label="Dias totales" className="w-[110px] text-right">

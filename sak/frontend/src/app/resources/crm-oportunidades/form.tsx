@@ -23,6 +23,7 @@ const OportunidadFormSections = () => {
   const record = useRecordContext<CRMOportunidad>();
   const form = useFormContext();
   const control = form.control;
+  const isEditMode = Boolean(record?.id);
 
   const contactoWatch = useWatch({ control, name: "contacto_id" });
   const propiedadWatch = useWatch({ control, name: "propiedad_id" });
@@ -113,6 +114,7 @@ const OportunidadFormSections = () => {
           id: "datos-generales",
           title: "Datos generales",
           subtitle: datosSubtitle || "Información clave del contacto y responsable.",
+          defaultOpen: !isEditMode,
           contentPadding: "lg",
           children: <DatosGeneralesSection />,
         },

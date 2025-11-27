@@ -21,7 +21,7 @@ export * from "./crm-cotizaciones";
 export * from "./crm-contactos";
 export * from "./crm-oportunidades";
 export * from "./crm-eventos";
-export * from "./crm-inbox";
+export * from "./crm-mensajes";
 export * from "./emprendimientos";
 // Los dashboards no necesitan ser exportados aquí
 // export * from "./dashboard-proyectos";

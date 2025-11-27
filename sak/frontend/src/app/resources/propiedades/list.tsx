@@ -35,7 +35,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Home } from "lucide-react";
+import { ResourceTitle } from "@/components/resource-title";
 import { ChangeStateDialog } from "./components/change-state-dialog";
 import { SummaryChips, SummaryChipItem } from "@/components/lists/SummaryChips";
 
@@ -215,7 +216,12 @@ const PropiedadBulkActions = () => (
 );
 
 export const PropiedadList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={10}>
+  <List
+    title={<ResourceTitle icon={Home} text="Propiedades" />}
+    filters={filters}
+    actions={<ListActions />}
+    perPage={10}
+  >
     <PropiedadEstadoSummaryChips />
     <DataTable rowClick="edit" bulkActionButtons={<PropiedadBulkActions />}>
       <DataTable.Col source="nombre" label="Nombre" className="w-[180px]">

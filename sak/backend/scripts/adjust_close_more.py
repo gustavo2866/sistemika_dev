@@ -177,7 +177,7 @@ def adjust_closures(session: Session):
                 if nuevo_estado == EstadoOportunidad.GANADA.value and opp.propiedad_id:
                     propiedad = session.get(Propiedad, opp.propiedad_id)
                     if propiedad:
-                        propiedad.estado = EstadoPropiedad.ALQUILADA.value
+                        propiedad.estado = EstadoPropiedad.REALIZADA.value
                         session.add(propiedad)
                 
                 modificadas += 1

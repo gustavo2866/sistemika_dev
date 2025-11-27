@@ -195,8 +195,8 @@ export const calculatePorcentajeRetiro = (items: CalculatedVacancia[]): number =
  * Funciones de utilidad para etiquetas
  */
 
-export const getVacanciaEstadoLabel = (estado: EstadoCorte): string => {
-  if (estado === "Alquilada") return "Alquilada";
+export const getVacanciaEstadoLabel = (estado: string): string => {
+  if (estado === "Alquilada") return "Realizada";
   if (estado === "Retirada") return "Retirada";
   return "Activo";
 };

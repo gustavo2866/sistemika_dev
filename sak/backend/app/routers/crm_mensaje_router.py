@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlmodel import Session
+import json
+from typing import Any
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from sqlalchemy import func
+from sqlmodel import Session, select
 
-from app.core.router import create_generic_router
+from app.core.router import create_generic_router, flatten_nested_filters
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
 from app.models import CRMMensaje
@@ -14,6 +17,47 @@ router = create_generic_router(
     prefix="/crm/mensajes",
     tags=["crm-mensajes"],
 )
+
+
+def _build_filters(request: Request) -> dict[str, Any]:
+    filters: dict[str, Any] = {}
+    reserved = {"sort", "range", "page", "perPage"}
+
+    for key in request.query_params:
+        if key in reserved or key == "filter":
+            continue
+        if key not in {"q"} and not hasattr(CRMMensaje, key):
+            continue
+        values = request.query_params.getlist(key)
+        if len(values) == 1:
+            filters[key] = values[0]
+        elif len(values) > 1:
+            filters[key] = values
+
+    if "filter" in request.query_params:
+        try:
+            raw = request.query_params["filter"]
+            filter_dict = json.loads(raw)
+            flat = flatten_nested_filters(filter_dict)
+            filters.update(flat)
+        except json.JSONDecodeError:
+            pass
+    return filters
+
+
+@router.get("/aggregates/tipo")
+def mensajes_tipo_aggregate(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    filters = _build_filters(request)
+    base_filters = {k: v for k, v in filters.items() if k != "tipo"}
+
+    stmt = select(CRMMensaje.tipo, func.count()).group_by(CRMMensaje.tipo)
+    stmt = crm_mensaje_crud._apply_filters(stmt, base_filters)
+    rows = session.exec(stmt).all()
+    data = [{"tipo": tipo, "total": total} for tipo, total in rows]
+    return {"data": data}
 
 
 @router.post("/entrada")

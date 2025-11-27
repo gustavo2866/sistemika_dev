@@ -94,7 +94,7 @@ def analizar_propiedades():
             
             # Proponer asignación según estado
             print("\n💡 PROPUESTA DE ASIGNACIÓN:")
-            print("  - Estados '4-alquilada' → Tipo 'Alquiler' (ID: 1)")
+            print("  - Estados '4-realizada' → Tipo 'Alquiler' (ID: 1)")
             print("  - Otros estados → Tipo 'Venta' (ID: 2)")
             
             confirmacion = input("\n¿Deseas aplicar esta asignación? (escribe 'SI' para confirmar): ")
@@ -108,7 +108,7 @@ def analizar_propiedades():
                 UPDATE propiedades 
                 SET tipo_operacion_id = 1 
                 WHERE tipo_operacion_id IS NULL 
-                AND estado = '4-alquilada'
+                AND estado = '4-realizada'
             """))
             alquiladas_actualizadas = result.rowcount
             

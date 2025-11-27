@@ -24,6 +24,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useListContext, useRecordContext } from "ra-core";
 import { SummaryChips, SummaryChipItem } from "@/components/lists/SummaryChips";
+import { ResourceTitle } from "@/components/resource-title";
+import { Target } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -211,7 +213,13 @@ const EstadoSummaryChips = () => {
 };
 
 export const CRMOportunidadList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={10} sort={{ field: "created_at", order: "DESC" }}>
+  <List
+    title={<ResourceTitle icon={Target} text="CRM - Oportunidades" />}
+    filters={filters}
+    actions={<ListActions />}
+    perPage={10}
+    sort={{ field: "created_at", order: "DESC" }}
+  >
     <EstadoSummaryChips />
     <DataTable rowClick="edit">
       <DataTable.Col source="id" label="ID">

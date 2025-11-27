@@ -4,7 +4,7 @@ export type PropiedadEstado =
   | "1-recibida"
   | "2-en_reparacion"
   | "3-disponible"
-  | "4-alquilada"
+  | "4-realizada"
   | "5-retirada";
 
 export type Vacancia = {
@@ -96,7 +96,7 @@ export const ESTADOS_PROPIEDAD_OPTIONS: Array<{
   { value: "1-recibida", label: "1 - Recibida", badgeColor: "bg-blue-100 text-blue-800" },
   { value: "2-en_reparacion", label: "2 - En reparacion", badgeColor: "bg-amber-100 text-amber-800" },
   { value: "3-disponible", label: "3 - Disponible", badgeColor: "bg-emerald-100 text-emerald-800" },
-  { value: "4-alquilada", label: "4 - Alquilada", badgeColor: "bg-violet-100 text-violet-800" },
+  { value: "4-realizada", label: "4 - Realizada", badgeColor: "bg-violet-100 text-violet-800" },
   { value: "5-retirada", label: "5 - Retirada", badgeColor: "bg-slate-200 text-slate-800" },
 ];
 
@@ -120,8 +120,8 @@ export const VACANCIA_STATE_STEPS = [
     commentField: "comentario_disponible",
   },
   {
-    key: "alquilada",
-    label: "Alquilada",
+    key: "realizada",
+    label: "Realizada",
     dateField: "fecha_alquilada",
     commentField: "comentario_alquilada",
   },
@@ -184,9 +184,9 @@ export const formatEstadoPropiedad = (estado?: PropiedadEstado | null) => {
 };
 
 export const TRANSICIONES_ESTADO_PROPIEDAD: Record<PropiedadEstado, PropiedadEstado[]> = {
-  "1-recibida": ["2-en_reparacion", "3-disponible", "4-alquilada"],
+  "1-recibida": ["2-en_reparacion", "3-disponible", "4-realizada"],
   "2-en_reparacion": ["3-disponible", "5-retirada"],
-  "3-disponible": ["4-alquilada", "5-retirada"],
-  "4-alquilada": ["1-recibida", "5-retirada"],
+  "3-disponible": ["4-realizada", "5-retirada"],
+  "4-realizada": ["1-recibida", "5-retirada"],
   "5-retirada": [],
 };

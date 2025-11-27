@@ -236,7 +236,7 @@ def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, en
         "disponible": _kpi_stats([i for i in items if i.vacancia.propiedad and i.vacancia.propiedad.estado == "3-disponible"]),
         "reparacion": _kpi_stats([i for i in items if i.vacancia.propiedad and i.vacancia.propiedad.estado == "2-en_reparacion"]),
         "activas": _kpi_stats(
-            [i for i in items if i.estado_corte == "Activo" and (i.vacancia.propiedad is None or i.vacancia.propiedad.estado not in {"4-alquilada", "5-retirada"})]
+            [i for i in items if i.estado_corte == "Activo" and (i.vacancia.propiedad is None or i.vacancia.propiedad.estado not in {"4-realizada", "5-retirada"})]
         ),
     }
 

@@ -35,7 +35,7 @@ class Propiedad(Base, table=True):
     estado: str = Field(
         default='1-recibida',
         max_length=20,
-        description='Estado actual: 1-recibida, 2-en_reparacion, 3-disponible, 4-alquilada, 5-retirada'
+        description='Estado actual: 1-recibida, 2-en_reparacion, 3-disponible, 4-realizada, 5-retirada'
     )
     
     # Características físicas

@@ -11,6 +11,8 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
+import { ResourceTitle } from "@/components/resource-title";
+import { UserRound } from "lucide-react";
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar contactos" className="w-full" alwaysOn />,
@@ -29,7 +31,14 @@ const ListActions = () => (
 );
 
 export const CRMContactoList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={10} debounce={300} sort={{ field: "nombre_completo", order: "ASC" }}>
+  <List
+    title={<ResourceTitle icon={UserRound} text="CRM - Contactos" />}
+    filters={filters}
+    actions={<ListActions />}
+    perPage={10}
+    debounce={300}
+    sort={{ field: "nombre_completo", order: "ASC" }}
+  >
     <DataTable rowClick="edit">
       <DataTable.Col source="id" label="ID">
         <TextField source="id" />

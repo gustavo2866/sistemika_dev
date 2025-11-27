@@ -112,7 +112,7 @@ class CRMOportunidadService:
         hoy = date.today()
 
         if oportunidad.estado == EstadoOportunidad.GANADA.value:
-            propiedad.estado = EstadoPropiedad.ALQUILADA.value
+            propiedad.estado = EstadoPropiedad.REALIZADA.value
             vacancia = self._vacancia_activa(session, propiedad.id)
             if vacancia:
                 vacancia.fecha_alquilada = hoy

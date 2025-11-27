@@ -7,7 +7,7 @@ import { ArrowDownCircle, ArrowUpCircle, CalendarClock } from "lucide-react";
 import { FormSimpleSection } from "@/components/forms";
 import type { CRMEvento } from "../crm-eventos/model";
 import type { CRMOportunidad } from "./model";
-import type { CRMMensaje } from "../crm-inbox/model";
+import type { CRMMensaje } from "../crm-mensajes/model";
 
 const formatDateTimeValue = (value?: string | null, options?: Intl.DateTimeFormatOptions) => {
   if (!value) return "sin fecha";

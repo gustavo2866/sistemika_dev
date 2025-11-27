@@ -11,6 +11,8 @@ import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
 import { TextInput } from "@/components/text-input";
+import { ResourceTitle } from "@/components/resource-title";
+import { CalendarCheck } from "lucide-react";
 
 const estadoChoices = [
   { id: "pendiente", name: "Pendiente" },
@@ -34,7 +36,13 @@ const ListActions = () => (
 );
 
 export const CRMEventoList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={10} sort={{ field: "fecha_evento", order: "DESC" }}>
+  <List
+    title={<ResourceTitle icon={CalendarCheck} text="CRM - Eventos" />}
+    filters={filters}
+    actions={<ListActions />}
+    perPage={10}
+    sort={{ field: "fecha_evento", order: "DESC" }}
+  >
     <DataTable rowClick="edit">
       <DataTable.Col source="id" label="ID">
         <TextField source="id" />

@@ -91,10 +91,8 @@ import {
   TipoSolicitudCreate,
   TipoSolicitudEdit,
 } from "@/app/resources/tipos-solicitud";
-import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
-import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
 import DashboardCrmList from "@/app/resources/dashboard-crm/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
@@ -176,7 +174,12 @@ import {
   CRMEventoEdit,
   CRMEventoShow,
 } from "@/app/resources/crm-eventos";
-import { CRMInboxList } from "@/app/resources/crm-inbox";
+import {
+  CRMMensajeList,
+  CRMMensajeCreate,
+  CRMMensajeEdit,
+  CRMMensajeShow,
+} from "@/app/resources/crm-mensajes";
 import {
   EmprendimientoList,
   EmprendimientoCreate,
@@ -273,14 +276,6 @@ const AdminApp = () => {
         icon={Home}
       />
       <Resource
-        name="vacancias"
-        list={VacanciaList}
-        show={VacanciaShow}
-        recordRepresentation="id"
-        icon={Activity}
-        options={{ label: "Vacancias" }}
-      />
-      <Resource
         name="tipos-operacion"
         list={TipoOperacionList}
         create={TipoOperacionCreate}
@@ -346,13 +341,6 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={LineChart}
         options={{ label: "CRM Dashboard" }}
-      />
-      <Resource
-        name="dashboard-vacancias"
-        list={DashboardVacanciasList}
-        recordRepresentation="id"
-        icon={BarChart2}
-        options={{ label: "Dashboard Vacancias" }}
       />
       <Resource
         name="orden-compra"
@@ -500,10 +488,13 @@ const AdminApp = () => {
       />
       <Resource
         name="crm/mensajes"
-        list={CRMInboxList}
+        list={CRMMensajeList}
+        create={CRMMensajeCreate}
+        edit={CRMMensajeEdit}
+        show={CRMMensajeShow}
         recordRepresentation="asunto"
         icon={Mail}
-        options={{ label: "CRM - Inbox" }}
+        options={{ label: "CRM - Mensajes" }}
       />
       <Resource
         name="emprendimientos"

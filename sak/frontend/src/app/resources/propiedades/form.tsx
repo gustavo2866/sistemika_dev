@@ -7,8 +7,8 @@ import { NumberInput } from "@/components/number-input";
 import { SelectInput } from "@/components/select-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { FormLayout, FormSimpleSection } from "@/components/forms";
-import { ESTADOS_PROPIEDAD_OPTIONS } from "./model";
-import type { Propiedad, Vacancia } from "./model";
+import { ESTADOS_PROPIEDAD_OPTIONS, formatEstadoPropiedad } from "./model";
+import type { Propiedad, Vacancia, PropiedadEstado } from "./model";
 import {
   Table,
   TableBody,
@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useEffect, useState } from "react";
-import { useFormContext } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 
 export const PropiedadForm = () => {
   // const dataProvider = useDataProvider();
@@ -61,14 +61,88 @@ export const PropiedadForm = () => {
 const PropiedadFormContent = () => {
   const form = useFormContext();
   const record = useRecordContext<Propiedad>();
-  const watched = form?.watch ? form.watch(["nombre", "propietario", "estado"]) : [];
-  const [nombre, propietario, estado] = watched as (string | undefined)[];
+  const control = form.control;
+  const isEditMode = Boolean(record?.id);
 
-  const generalSubtitle = [
-    nombre || record?.nombre || "Sin nombre",
-    propietario || record?.propietario || "Sin propietario",
-    estado || record?.estado || "Sin estado",
-  ].join(" · ");
+  const nombreWatch = useWatch({ control, name: "nombre" });
+  const propietarioWatch = useWatch({ control, name: "propietario" });
+  const estadoWatch = useWatch({ control, name: "estado" });
+  const valorAlquilerWatch = useWatch({ control, name: "valor_alquiler" });
+  const expensasWatch = useWatch({ control, name: "expensas" });
+  const vencimientoWatch = useWatch({ control, name: "vencimiento_contrato" });
+  const tipoOperacionWatch = useWatch({ control, name: "tipo_operacion_id" });
+  const emprendimientoWatch = useWatch({ control, name: "emprendimiento_id" });
+  const costoPropWatch = useWatch({ control, name: "costo_propiedad" });
+  const costoMonedaWatch = useWatch({ control, name: "costo_moneda_id" });
+  const precioVentaWatch = useWatch({ control, name: "precio_venta_estimado" });
+  const precioMonedaWatch = useWatch({ control, name: "precio_moneda_id" });
+
+  const estadoValue: PropiedadEstado | undefined =
+    (estadoWatch as PropiedadEstado) || record?.estado;
+
+  const generalSubtitleItems = [
+    nombreWatch || record?.nombre,
+    propietarioWatch || record?.propietario,
+    estadoValue ? formatEstadoPropiedad(estadoValue) : null,
+  ].filter(Boolean);
+  const generalSubtitle =
+    generalSubtitleItems.join(" - ") ||
+    "Defini el nombre, propietario y estado.";
+
+  const valorAlquilerText = formatCurrencyShort(
+    valorAlquilerWatch ?? record?.valor_alquiler
+  );
+  const expensasText = formatCurrencyShort(expensasWatch ?? record?.expensas);
+  const vencimientoText = formatDateValue(
+    vencimientoWatch ?? record?.vencimiento_contrato
+  );
+  const contratoSubtitleItems = [
+    valorAlquilerText ? `Alquiler ${valorAlquilerText}` : null,
+    expensasText ? `Expensas ${expensasText}` : null,
+    vencimientoText ? `Vence ${vencimientoText}` : null,
+  ].filter(Boolean);
+  const contratoSubtitle =
+    contratoSubtitleItems.join(" - ") ||
+    "Detalla montos, expensas y vigencia.";
+
+  const tipoOperacionLabel =
+    record?.tipo_operacion?.nombre ||
+    (tipoOperacionWatch ? `Tipo operacion #${tipoOperacionWatch}` : null);
+  const emprendimientoLabel =
+    record?.emprendimiento?.nombre ||
+    (emprendimientoWatch ? `Emprendimiento #${emprendimientoWatch}` : null);
+  const relacionesSubtitleItems = [tipoOperacionLabel, emprendimientoLabel].filter(
+    Boolean
+  );
+  const relacionesSubtitle =
+    relacionesSubtitleItems.join(" - ") ||
+    "Relaciona la propiedad dentro de CRM.";
+
+  const costoPropText = formatCurrencyShort(
+    costoPropWatch ?? record?.costo_propiedad
+  );
+  const precioVentaText = formatCurrencyShort(
+    precioVentaWatch ?? record?.precio_venta_estimado
+  );
+  const costoMonedaLabel =
+    record?.costo_moneda?.nombre ||
+    (costoMonedaWatch ? `Moneda #${costoMonedaWatch}` : null);
+  const precioMonedaLabel =
+    record?.precio_moneda?.nombre ||
+    (precioMonedaWatch ? `Moneda #${precioMonedaWatch}` : null);
+  const valorSubtitleItems = [
+    costoPropText ? `Costo ${costoPropText}` : null,
+    costoMonedaLabel,
+    precioVentaText ? `Precio ${precioVentaText}` : null,
+    precioMonedaLabel,
+  ].filter(Boolean);
+  const valorSubtitle =
+    valorSubtitleItems.join(" - ") || "Define costos y monedas estimadas.";
+
+  const vacanciasCount = record?.vacancias?.length ?? 0;
+  const vacanciasSubtitle = vacanciasCount
+    ? `${vacanciasCount} ciclo${vacanciasCount === 1 ? "" : "s"} registrados`
+    : "Se mostraran luego de guardar.";
 
   return (
     <FormLayout
@@ -77,7 +151,7 @@ const PropiedadFormContent = () => {
           id: "datos-generales",
           title: "Datos generales",
           subtitle: generalSubtitle,
-          defaultOpen: false,
+          defaultOpen: !isEditMode,
           children: (
             <FormSimpleSection>
               <div className="grid gap-4 md:grid-cols-2">
@@ -118,7 +192,8 @@ const PropiedadFormContent = () => {
         },
         {
           id: "datos-contrato",
-          title: "Datos del Contrato",
+          title: "Datos del contrato",
+          subtitle: contratoSubtitle,
           defaultOpen: false,
           children: (
             <FormSimpleSection>
@@ -140,6 +215,7 @@ const PropiedadFormContent = () => {
         {
           id: "relaciones-crm",
           title: "Relaciones CRM",
+          subtitle: relacionesSubtitle,
           defaultOpen: false,
           children: (
             <FormSimpleSection>
@@ -147,7 +223,7 @@ const PropiedadFormContent = () => {
                 <ReferenceInput
                   source="tipo_operacion_id"
                   reference="crm/catalogos/tipos-operacion"
-                  label="Tipo de operación CRM"
+                  label="Tipo de operacion CRM"
                 >
                   <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
                 </ReferenceInput>
@@ -160,7 +236,8 @@ const PropiedadFormContent = () => {
         },
         {
           id: "valor-propiedad",
-          title: "Valoración y monedas",
+          title: "Valoracion y monedas",
+          subtitle: valorSubtitle,
           defaultOpen: false,
           children: (
             <FormSimpleSection>
@@ -194,6 +271,7 @@ const PropiedadFormContent = () => {
         {
           id: "vacancias",
           title: "Vacancia",
+          subtitle: vacanciasSubtitle,
           collapsible: true,
           defaultOpen: false,
           children: (
@@ -205,6 +283,23 @@ const PropiedadFormContent = () => {
       ]}
     />
   );
+};
+
+const formatCurrencyShort = (value?: unknown) => {
+  if (value == null || value === "") return null;
+  const numeric = typeof value === "string" ? Number(value) : (value as number);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+};
+
+const formatDateValue = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("es-AR");
 };
 
 const PropiedadVacanciasTable = () => {
@@ -276,7 +371,7 @@ const PropiedadVacanciasTable = () => {
             <TableHead className="px-2 py-1">Estado</TableHead>
             <TableHead className="px-2 py-1">Recibida</TableHead>
             <TableHead className="px-2 py-1">Disp.</TableHead>
-            <TableHead className="px-2 py-1">Alquilada</TableHead>
+            <TableHead className="px-2 py-1">Realizada</TableHead>
             <TableHead className="px-2 py-1">Retirada</TableHead>
           </TableRow>
         </TableHeader>

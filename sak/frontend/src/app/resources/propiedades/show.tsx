@@ -367,7 +367,7 @@ const VacanciaHistoryTable = ({ vacancias }: { vacancias: Vacancia[] }) => {
             <TableHead className="px-2 py-1">Estado</TableHead>
             <TableHead className="px-2 py-1">Recibida</TableHead>
             <TableHead className="px-2 py-1">Disp.</TableHead>
-            <TableHead className="px-2 py-1">Alquilada</TableHead>
+            <TableHead className="px-2 py-1">Realizada</TableHead>
             <TableHead className="px-2 py-1">Retirada</TableHead>
             <TableHead className="px-2 py-1 text-right">Dias</TableHead>
           </TableRow>
