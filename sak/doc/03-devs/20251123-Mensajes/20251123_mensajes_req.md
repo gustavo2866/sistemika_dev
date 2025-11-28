@@ -13,7 +13,7 @@
 
 ## 1. Objetivo
 Disponer de una entidad mensaje que permita mantener una trazabilidad del intercambio de informacion con los clientes independientemente del canal.  
-Mensaje de entrada: el usuario CRM podra decidir el destino que le quiere otorgar al mensaje de entrada (confirmar o descartar). Los mensajes confirmados se transformaran en un evento que a su vez pueden dar inicio a una nueva oportunidad o vincularse a una oportunidad existente cambiando su estado.  
+Mensaje de entrada: el usuario CRM podra decidir el destino que le quiere otorgar al mensaje de entrada (confirmar o descartar). Los mensajes recibidos se transformaran en un evento que a su vez pueden dar inicio a una nueva oportunidad o vincularse a una oportunidad existente cambiando su estado.  
 Mensaje de salida: cuando el usuario confirma un evento que contiene una respuesta al cliente, se genera un mensaje de salida que queda pendiente para que el servicio de entrega de mensaje se encargue del envio. Si el envio fue exitoso se marca en su estado, y si tuvo algun problema se identifica el error para que luego el usuario consultando un panel de mensajes con error pueda realizar las gestiones correspondientes.
 
 ---
@@ -50,7 +50,7 @@ Mensaje de salida: cuando el usuario confirma un evento que contiene una respues
 - `oportunidad_generar` (booleano) para indicar que se debe crear una nueva oportunidad al confirmar cuando no se encuentra una existente.
 - `evento_id` (cuando se confirmo y genero evento).
 - `estado`:
-  - Entradas: `nuevo`, `confirmado`, `descartado`.
+  - Entradas: `nuevo`, `recibido`, `descartado`.
   - Salidas: `pendiente_envio`, `enviado`, `error_envio`.
 - `prioridad`: `alta`, `media`, `baja`.
 - `asunto` / `titulo`.
@@ -76,12 +76,12 @@ Mensaje de salida: cuando el usuario confirma un evento que contiene una respues
 - `monto_estimado` y `moneda_id` cuando corresponda.
 - `probabilidad` / `etapa`
 - `responsable_id`
-- `fuente` (debe indicar que proviene de un mensaje confirmado).
+- `fuente` (debe indicar que proviene de un mensaje recibido).
 
 ---
 
 ## 5. Reglas de negocio
-1. Todo mensaje de entrada debe pasar a `confirmado` o `descartado`; no se permite omitir la clasificacion.
+1. Todo mensaje de entrada debe pasar a `recibido` o `descartado`; no se permite omitir la clasificacion.
 2. Resolucion de contacto al confirmar:
    - El sistema debe buscar contactos por la referencia del canal (`contacto_referencia`).
    - Si no encuentra coincidencias, el usuario puede crear un nuevo contacto cargando nombre y la referencia; esta accion crea el registro en `crm_contactos` antes de continuar.
@@ -128,8 +128,8 @@ Mensaje de salida: cuando el usuario confirma un evento que contiene una respues
 ---
 
 ## 9. KPIs y monitoreo
-- Porcentaje de mensajes confirmados vs descartados por canal.
-- Tiempo promedio (en minutos) desde mensaje `nuevo` hasta `confirmado`.
+- Porcentaje de mensajes recibidos vs descartados por canal.
+- Tiempo promedio (en minutos) desde mensaje `nuevo` hasta `recibido`.
 - Volumen de mensajes de salida con `error_envio` y tasa de reintento exitoso.
 - Oportunidades creadas a partir de mensajes de entrada.
 
@@ -137,7 +137,7 @@ Mensaje de salida: cuando el usuario confirma un evento que contiene una respues
 
 ## 10. Backlog sugerido
 1. CRUD basico de mensajes con bandeja y filtros.
-2. Transformacion de mensajes confirmados a eventos.
+2. Transformacion de mensajes recibidos a eventos.
 3. Asociacion manual a oportunidades existentes y creacion rapida de nuevas.
 4. Panel de errores para mensajes de salida con reintentos.
 5. Dashboards/KPIs para supervisores.
@@ -147,4 +147,4 @@ Mensaje de salida: cuando el usuario confirma un evento que contiene una respues
 
 ## 11. Consideraciones de modelo y relaciones
 - **Duplicacion de datos:** la entidad `mensaje` solo debe almacenar la informacion necesaria para procesar el contacto/oportunidad (referencias, resumen, adjuntos). Datos completos del evento y de la oportunidad se guardan en sus respectivas tablas; no duplicar campos como montos, estado o responsable mas alla del tracking minimo (ej. `oportunidad_generar`). Si se requiere auditar, usar historiales o snapshots en los modelos destino.
-- **Relaciones:** el flujo definitivo es `mensaje confirmado -> evento -> oportunidad`. `mensajes` guarda `evento_id`, y desde el evento se llega a la oportunidad ya que `crm_eventos` referencia a `crm_oportunidades`. No es necesario que eventos u oportunidades almacenen `mensaje_id`; las trazas se obtienen recorriendo la relacion en un unico sentido (mensaje -> evento -> oportunidad). Reportes que comiencen desde eventos pueden resolver el mensaje asociado consultando `eventos.evento_id` en `mensajes`.
+- **Relaciones:** el flujo definitivo es `mensaje recibido -> evento -> oportunidad`. `mensajes` guarda `evento_id`, y desde el evento se llega a la oportunidad ya que `crm_eventos` referencia a `crm_oportunidades`. No es necesario que eventos u oportunidades almacenen `mensaje_id`; las trazas se obtienen recorriendo la relacion en un unico sentido (mensaje -> evento -> oportunidad). Reportes que comiencen desde eventos pueden resolver el mensaje asociado consultando `eventos.evento_id` en `mensajes`.

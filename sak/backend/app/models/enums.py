@@ -76,7 +76,7 @@ class CanalMensaje(str, Enum):
 
 class EstadoMensaje(str, Enum):
     NUEVO = "nuevo"
-    CONFIRMADO = "confirmado"
+    RECIBIDO = "recibido"
     DESCARTADO = "descartado"
     PENDIENTE_ENVIO = "pendiente_envio"
     ENVIADO = "enviado"

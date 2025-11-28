@@ -72,18 +72,24 @@ export const authProvider: AuthProvider = {
     if (!token) {
       throw new Error("Not authenticated");
     }
+    
+    // Verificar expiración del token localmente (JWT tiene formato: header.payload.signature)
     try {
-      const response = await fetch(`${AUTH_URL}/api/auth/check`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        throw new Error("Invalid token");
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const isExpired = payload.exp && payload.exp * 1000 < Date.now();
+      
+      if (isExpired) {
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user");
+        throw new Error("Token expired");
       }
     } catch (error) {
+      // Si falla el parseo del token, lo consideramos inválido
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");
-      throw error;
+      throw new Error("Invalid token");
     }
+    
     return Promise.resolve();
   },
   checkError: async (error) => {
@@ -102,16 +108,8 @@ export const authProvider: AuthProvider = {
     if (!token) {
       throw new Error("Not authenticated");
     }
-    try {
-      const response = await fetch(`${AUTH_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        return response.json() as Promise<UserIdentity>;
-      }
-    } catch (error) {
-      console.warn("Failed to fetch identity", error);
-    }
+    
+    // Usar datos almacenados localmente primero (más rápido)
     const stored = localStorage.getItem("auth_user");
     if (stored) {
       try {
@@ -126,6 +124,27 @@ export const authProvider: AuthProvider = {
         console.error("Failed to parse stored user", error);
       }
     }
+    
+    // Si no hay datos locales, consultar al servidor
+    try {
+      const response = await fetch(`${AUTH_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const identity = await response.json();
+        // Actualizar caché local con los datos del servidor
+        localStorage.setItem("auth_user", JSON.stringify({
+          id: identity.id,
+          nombre: identity.fullName,
+          email: identity.email,
+          url_foto: identity.avatar,
+        }));
+        return identity as UserIdentity;
+      }
+    } catch (error) {
+      console.warn("Failed to fetch identity from server", error);
+    }
+    
     throw new Error("No identity");
   },
   getPermissions: async () => Promise.resolve(["admin"]),

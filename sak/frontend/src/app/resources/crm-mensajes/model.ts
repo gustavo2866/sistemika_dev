@@ -4,7 +4,7 @@ export type CRMMensajeTipo = "entrada" | "salida";
 export type CRMMensajeCanal = "whatsapp" | "email" | "red_social" | "otro";
 export type CRMMensajeEstado =
   | "nuevo"
-  | "confirmado"
+  | "recibido"
   | "descartado"
   | "pendiente_envio"
   | "enviado"
@@ -41,6 +41,7 @@ export type CRMMensaje = {
   oportunidad_id?: number | null;
   oportunidad?: {
     id: number;
+    nombre?: string | null;
     estado?: string | null;
     descripcion_estado?: string | null;
     contacto?: CRMReference | null;
@@ -61,7 +62,7 @@ export const CRM_MENSAJE_CANAL_CHOICES = [
 
 export const CRM_MENSAJE_ESTADO_CHOICES = [
   { id: "nuevo", name: "Nuevo" },
-  { id: "confirmado", name: "Confirmado" },
+  { id: "recibido", name: "Recibido" },
   { id: "descartado", name: "Descartado" },
   { id: "pendiente_envio", name: "Pendiente envio" },
   { id: "enviado", name: "Enviado" },
@@ -76,7 +77,7 @@ export const CRM_MENSAJE_PRIORIDAD_CHOICES = [
 
 export const CRM_MENSAJE_ESTADO_BADGES: Record<CRMMensajeEstado, string> = {
   nuevo: "bg-blue-100 text-blue-800",
-  confirmado: "bg-emerald-100 text-emerald-800",
+  recibido: "bg-emerald-100 text-emerald-800",
   descartado: "bg-slate-200 text-slate-800",
   pendiente_envio: "bg-amber-100 text-amber-800",
   enviado: "bg-indigo-100 text-indigo-800",

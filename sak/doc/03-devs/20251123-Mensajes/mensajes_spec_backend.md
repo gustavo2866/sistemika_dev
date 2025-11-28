@@ -18,7 +18,7 @@
 - `oportunidad_generar` (bool, default false) — indica crear nueva oportunidad al confirmar
 - `evento_id` (FK opcional a `crm_eventos`)
 - `estado` (enum)
-  - entradas: `nuevo`, `confirmado`, `descartado`
+  - entradas: `nuevo`, `recibido`, `descartado`
   - salidas: `pendiente`, `enviado`, `error_envio`
 - `prioridad` (enum: `alta`, `media`, `baja`)
 - `asunto` / `titulo` (string)
@@ -77,13 +77,13 @@
     - `evento`: `{tipo_evento_id, descripcion, fecha_evento, responsable_id, canal, resultado}`
     - `oportunidad`:
       - `oportunidad_id` (opcional, si se vincula existente)
-      - `crear_nueva` (bool) + campos requeridos (`tipo_operacion_id`, `estado` inicial, `monto_estimado`, `moneda_id`, `propiedad_id` opcional, `responsable_id`, `probabilidad/etapa`, `fuente`="mensaje_confirmado")
+      - `crear_nueva` (bool) + campos requeridos (`tipo_operacion_id`, `estado` inicial, `monto_estimado`, `moneda_id`, `propiedad_id` opcional, `responsable_id`, `probabilidad/etapa`, `fuente`="mensaje_recibido")
     - `respuesta` (opcional, para preparar salida)
   - Flujo (reutilizando CRUD existentes):
     1) Resolver/crear contacto via `crud_contactos.create` si no existe.
     2) Crear evento con `crud_eventos.create`, referenciando el contacto y el mensaje.
     3) Crear o vincular oportunidad usando `crud_oportunidades` (create o update) segun corresponda.
-    4) Actualizar mensaje via `crud_mensajes.update` (`evento_id`, `contacto_id`, `estado=confirmado`).
+    4) Actualizar mensaje via `crud_mensajes.update` (`evento_id`, `contacto_id`, `estado=recibido`).
   - Respuesta: payload con mensaje + evento + oportunidad resultante.
 
 ### 3.3 Accion de descarte (usar CRUD genérico)
@@ -109,7 +109,7 @@
 ---
 
 ## 4. Validaciones / reglas (backend)
-- No permitir `DELETE` si `estado=confirmado` o `estado` de salida distinto de `pendiente_envio`.
+- No permitir `DELETE` si `estado=recibido` o `estado` de salida distinto de `pendiente_envio`.
 - `confirmar` solo si `tipo=entrada` y `estado=nuevo`.
 - En `confirmar`, si `contacto_id` viene vacío:
   - Requerir `{nombre, referencia}` y crear contacto.
@@ -141,7 +141,7 @@
 ### 6.2 Confirmar mensaje creando contacto y oportunidad
 - Dado un mensaje `nuevo` sin `contacto_id`.
 - `POST /crm/mensajes/{id}/confirmar` con datos de contacto nuevo + crear oportunidad.
-- Assert: se crea contacto, evento y oportunidad; mensaje queda `estado=confirmado`, `evento_id` seteado; oportunidad `estado=nueva`.
+- Assert: se crea contacto, evento y oportunidad; mensaje queda `estado=recibido`, `evento_id` seteado; oportunidad `estado=nueva`.
 
 ### 6.3 Confirmar mensaje vinculando contacto existente y oportunidad existente
 - Dado contacto y oportunidad abierta.
@@ -158,7 +158,7 @@
 - Assert: pasa a `pendiente_envio`, agrega log de reintento.
 
 ### 6.6 Reglas de transicion invalidas
-- Confirmar un mensaje ya confirmado -> 400.
+- Confirmar un mensaje ya recibido -> 400.
 - Reintentar un mensaje que no esta en `error_envio` -> 400.
 - Vincular oportunidad de otro contacto sin flag de override -> 400.
 

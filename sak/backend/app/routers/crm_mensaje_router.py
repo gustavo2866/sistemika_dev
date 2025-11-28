@@ -60,6 +60,21 @@ def mensajes_tipo_aggregate(
     return {"data": data}
 
 
+@router.get("/aggregates/estado")
+def mensajes_estado_aggregate(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    filters = _build_filters(request)
+    base_filters = {k: v for k, v in filters.items() if k != "estado"}
+
+    stmt = select(CRMMensaje.estado, func.count()).group_by(CRMMensaje.estado)
+    stmt = crm_mensaje_crud._apply_filters(stmt, base_filters)
+    rows = session.exec(stmt).all()
+    data = [{"estado": estado, "total": total} for estado, total in rows]
+    return {"data": data}
+
+
 @router.post("/entrada")
 def crear_mensaje_entrada(
     payload: dict = Body(...),

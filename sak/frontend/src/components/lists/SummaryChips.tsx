@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export type SummaryChipItem = {
@@ -14,7 +15,7 @@ export type SummaryChipItem = {
 };
 
 type SummaryChipsProps = {
-  title?: string;
+  title?: ReactNode;
   items: SummaryChipItem[];
   loading?: boolean;
   error?: string | null;
@@ -51,15 +52,23 @@ export const SummaryChips = ({
   return (
     <div
       className={cn(
-        "mb-4 rounded-lg border bg-card/60 p-3",
+        "mb-4 inline-flex w-full flex-col items-stretch rounded-2xl border border-border/50 bg-card/80 p-3 shadow-sm md:w-auto",
         className
       )}
     >
-      {title ? (
-        <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </p>
-      ) : null}
+      {title
+        ? typeof title === "string"
+          ? (
+            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground text-center">
+              {title}
+            </p>
+          )
+          : (
+            <div className="mb-3 flex items-center justify-center">
+              {title}
+            </div>
+          )
+        : null}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">
@@ -68,14 +77,14 @@ export const SummaryChips = ({
       ) : error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-1 flex flex-wrap justify-end gap-1.5">
           {items.map((item) => (
             <button
               key={item.value ?? item.label}
               type="button"
               onClick={() => handleClick(item.value)}
               className={cn(
-                "flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium transition-colors",
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-all duration-150",
                 item.chipClassName,
                 selected === item.value
                   ? cn(
@@ -85,17 +94,22 @@ export const SummaryChips = ({
                   : "border-border bg-background text-foreground hover:border-primary/40"
               )}
             >
-              <span className="text-xs uppercase tracking-wide">
+              <span
+                className={cn(
+                  "text-[9px]",
+                  selected === item.value ? "opacity-90" : "text-muted-foreground/90"
+                )}
+              >
                 {item.label}
               </span>
-            <span
+              <span
                 className={cn(
-                  "rounded-full px-2 py-0.5",
+                  "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
                   selected === item.value
                     ? item.selectedCountClassName ??
-                        "text-base font-semibold bg-background/80 text-foreground"
+                        "bg-background/80 text-foreground"
                     : item.countClassName ??
-                        "text-sm font-semibold text-muted-foreground bg-muted/70"
+                        "text-muted-foreground bg-muted/70"
                 )}
               >
                 {item.total != null

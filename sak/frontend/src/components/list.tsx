@@ -121,7 +121,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
           )}
         </div>
         <FilterForm />
-
+        <div className="h-3" />
         <div className={cn("my-2", props.className)}>{children}</div>
         {pagination}
       </FilterContext.Provider>

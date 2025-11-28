@@ -37,7 +37,7 @@ def generar_mensajes_ficticios():
                 "contenido": "Hola, vi la propiedad publicada y me gustaría obtener más información. ¿Está disponible para una visita?",
                 "contacto_referencia": "+54911234567",
                 "contacto_nombre_propuesto": "Juan Pérez",
-                "estado": EstadoMensaje.CONFIRMADO.value,
+                "estado": EstadoMensaje.RECIBIDO.value,
                 "prioridad": PrioridadMensaje.ALTA.value,
                 "fecha_mensaje": datetime.now() - timedelta(days=5)
             },
@@ -59,7 +59,7 @@ def generar_mensajes_ficticios():
                 "contenido": "Perfecto, ahí estaré el viernes. ¿Cuál es la dirección exacta?",
                 "contacto_referencia": "+54911234567",
                 "contacto_nombre_propuesto": "Juan Pérez",
-                "estado": EstadoMensaje.CONFIRMADO.value,
+                "estado": EstadoMensaje.RECIBIDO.value,
                 "prioridad": PrioridadMensaje.MEDIA.value,
                 "fecha_mensaje": datetime.now() - timedelta(days=4)
             },
@@ -70,7 +70,7 @@ def generar_mensajes_ficticios():
                 "contenido": "Buenos días, después de la visita me interesa avanzar. ¿Me pueden enviar la documentación de la propiedad?",
                 "contacto_referencia": "juan.perez@email.com",
                 "contacto_nombre_propuesto": "Juan Pérez",
-                "estado": EstadoMensaje.CONFIRMADO.value,
+                "estado": EstadoMensaje.RECIBIDO.value,
                 "prioridad": PrioridadMensaje.ALTA.value,
                 "fecha_mensaje": datetime.now() - timedelta(days=2)
             },
@@ -85,7 +85,7 @@ def generar_mensajes_ficticios():
                 "contenido": "Cliente llamó preguntando por el precio de la propiedad y condiciones de financiamiento.",
                 "contacto_referencia": "+54911987654",
                 "contacto_nombre_propuesto": "María González",
-                "estado": EstadoMensaje.CONFIRMADO.value,
+                "estado": EstadoMensaje.RECIBIDO.value,
                 "prioridad": PrioridadMensaje.ALTA.value,
                 "fecha_mensaje": datetime.now() - timedelta(days=7)
             },
@@ -107,7 +107,7 @@ def generar_mensajes_ficticios():
                 "contenido": "Gracias por la info. Me interesa la opción de financiamiento a 20 años. ¿Qué requisitos necesito?",
                 "contacto_referencia": "+54911987654",
                 "contacto_nombre_propuesto": "María González",
-                "estado": EstadoMensaje.CONFIRMADO.value,
+                "estado": EstadoMensaje.RECIBIDO.value,
                 "prioridad": PrioridadMensaje.ALTA.value,
                 "fecha_mensaje": datetime.now() - timedelta(days=6)
             },
@@ -118,7 +118,7 @@ def generar_mensajes_ficticios():
                 "contenido": "Adjunto la documentación solicitada para el análisis crediticio. Recibo de sueldo, DNI y constancia de CUIL.",
                 "contacto_referencia": "maria.gonzalez@email.com",
                 "contacto_nombre_propuesto": "María González",
-                "estado": EstadoMensaje.CONFIRMADO.value,
+                "estado": EstadoMensaje.RECIBIDO.value,
                 "prioridad": PrioridadMensaje.ALTA.value,
                 "fecha_mensaje": datetime.now() - timedelta(days=3),
                 "adjuntos": [

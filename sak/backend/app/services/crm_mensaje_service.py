@@ -115,7 +115,7 @@ class CRMMensajeService:
         mensaje.contacto_id = contacto_id
         mensaje.evento_id = evento.id
         mensaje.oportunidad_id = oportunidad_id
-        mensaje.set_estado(EstadoMensaje.CONFIRMADO.value)
+        mensaje.set_estado(EstadoMensaje.RECIBIDO.value)
         session.add(mensaje)
         session.commit()
         session.refresh(mensaje)

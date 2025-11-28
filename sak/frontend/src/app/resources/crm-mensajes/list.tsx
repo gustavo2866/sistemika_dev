@@ -17,6 +17,7 @@ import { useListContext, useRecordContext } from "ra-core";
 import { SummaryChips, type SummaryChipItem } from "@/components/lists/SummaryChips";
 import { ResourceTitle } from "@/components/resource-title";
 import { Mail } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { CRMMensaje } from "./model";
 import {
   CRM_MENSAJE_TIPO_CHOICES,
@@ -29,7 +30,6 @@ import {
   formatMensajeCanal,
   formatMensajeEstado,
   formatMensajePrioridad,
-  CRM_MENSAJE_TIPO_BADGES,
 } from "./model";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -54,10 +54,30 @@ const setTipoFilterValue = (filters: Record<string, unknown>, values: string[]) 
   }
 };
 
-const tipoChipClass = (tipo: string, selected = false) => {
+const normalizeEstadoFilter = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === "string" ? v : String(v ?? "")))
+      .filter((v) => v.length > 0);
+  }
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+  return [];
+};
+
+const setEstadoFilterValue = (filters: Record<string, unknown>, values: string[]) => {
+  if (values.length) {
+    filters.estado = values;
+  } else {
+    delete filters.estado;
+  }
+};
+
+const estadoChipClass = (estado: string, selected = false) => {
   const base =
-    CRM_MENSAJE_TIPO_BADGES[tipo as keyof typeof CRM_MENSAJE_TIPO_BADGES] ??
-    "bg-slate-200 text-slate-800";
+    CRM_MENSAJE_ESTADO_BADGES[estado as keyof typeof CRM_MENSAJE_ESTADO_BADGES] ??
+    "bg-slate-100 text-slate-800";
   return selected
     ? `${base} border-transparent ring-1 ring-offset-1 ring-offset-background`
     : `${base} border-transparent`;
@@ -117,7 +137,54 @@ const ListActions = () => (
   </div>
 );
 
-const TipoSummaryChips = () => {
+const TipoDualToggle = () => {
+  const { filterValues, setFilters } = useListContext();
+  const currentTipos = normalizeTipoFilter(filterValues.tipo);
+  const current = currentTipos[0];
+
+  const handleToggle = (next?: string) => {
+    const newFilters = { ...filterValues };
+    setTipoFilterValue(newFilters, next ? [next] : []);
+    setFilters(newFilters, {});
+  };
+
+  const options = [
+    { id: undefined, label: "Todos" },
+    { id: "entrada", label: "Entrada" },
+    { id: "salida", label: "Salida" },
+  ] as const;
+
+  return (
+    <div className="flex items-center justify-center gap-1 rounded-full border border-slate-200/80 bg-white/80 px-1 py-1 shadow-[0_1px_6px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+      {options.map(({ id, label }, index) => {
+        const isActive = current === id || (!id && !current);
+        const isFirst = index === 0;
+        const isLast = index === options.length - 1;
+        return (
+          <button
+            key={label}
+            type="button"
+            aria-pressed={isActive}
+            data-active={isActive}
+            onClick={() => handleToggle(id)}
+            className={cn(
+              "min-w-[92px] rounded-full px-5 py-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200",
+              isFirst ? "rounded-l-full" : "",
+              isLast ? "rounded-r-full" : "",
+              isActive
+                ? "bg-slate-900 text-white shadow-md"
+                : "text-slate-600 hover:bg-slate-100"
+            )}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+const EstadoSummaryChips = () => {
   const { filterValues, setFilters } = useListContext();
   const [items, setItems] = useState<SummaryChipItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,34 +213,37 @@ const TipoSummaryChips = () => {
           }
         });
         const response = await fetch(
-          `${API_URL}/crm/mensajes/aggregates/tipo?${query.toString()}`
+          `${API_URL}/crm/mensajes/aggregates/estado?${query.toString()}`
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
         const json = await response.json();
-        const raw: Array<{ tipo: string; total?: number }> = json?.data ?? json ?? [];
+        const raw: Array<{ estado: string; total?: number }> =
+          json?.data ?? json ?? [];
         const totals = new Map<string, number>();
-        raw.forEach(({ tipo, total }) => {
-          totals.set(tipo, total ?? 0);
+        raw.forEach(({ estado, total }) => {
+          totals.set(estado, total ?? 0);
         });
-        const mapped: SummaryChipItem[] = CRM_MENSAJE_TIPO_CHOICES.map((choice) => ({
-          label: choice.name,
-          value: choice.id,
-          count: totals.get(choice.id as string) ?? 0,
-          chipClassName: tipoChipClass(choice.id),
-          selectedChipClassName: tipoChipClass(choice.id, true),
-          countClassName: "text-sm font-semibold bg-muted/70",
-          selectedCountClassName:
-            "text-base font-bold bg-background/90 text-foreground",
-        }));
+        const mapped: SummaryChipItem[] = CRM_MENSAJE_ESTADO_CHOICES.map(
+          (choice) => ({
+            label: choice.name,
+            value: choice.id,
+            count: totals.get(choice.id as string) ?? 0,
+            chipClassName: estadoChipClass(choice.id),
+            selectedChipClassName: estadoChipClass(choice.id, true),
+            countClassName: "text-xs font-semibold bg-slate-100 text-slate-600",
+            selectedCountClassName:
+              "text-xs font-semibold bg-white/70 text-slate-900",
+          })
+        );
         if (!cancel) {
           setItems(mapped);
           setError(null);
         }
       } catch (err: any) {
         if (!cancel) {
-          setError(err?.message ?? "No se pudieron cargar los tipos");
+          setError(err?.message ?? "No se pudieron cargar los estados");
         }
       } finally {
         if (!cancel) {
@@ -187,23 +257,31 @@ const TipoSummaryChips = () => {
     };
   }, [signature]);
 
-  const currentTipos = normalizeTipoFilter(filterValues.tipo);
+  const currentEstados = normalizeEstadoFilter(filterValues.estado);
 
   const handleSelect = (value?: string) => {
     const nextFilters = { ...filterValues };
-    setTipoFilterValue(nextFilters, value ? [value] : []);
+    setEstadoFilterValue(nextFilters, value ? [value] : []);
     setFilters(nextFilters, {});
   };
 
   return (
-    <SummaryChips
-      title="Mensajes por tipo"
-      items={items}
-      loading={loading}
-      error={error}
-      selectedValue={currentTipos[0]}
-      onSelect={handleSelect}
-    />
+    <div className="mb-6 rounded-3xl border border-slate-200/80 bg-white/80 p-3 shadow-[0_20px_40px_rgba(15,23,42,0.08)] backdrop-blur-md">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex justify-start">
+          <TipoDualToggle />
+        </div>
+        <SummaryChips
+          className="mb-0 border-none bg-transparent p-0 shadow-none"
+          title={null}
+          items={items}
+          loading={loading}
+          error={error}
+          selectedValue={currentEstados[0]}
+          onSelect={handleSelect}
+        />
+      </div>
+    </div>
   );
 };
 
@@ -212,24 +290,34 @@ export const CRMMensajeList = () => (
     title={<ResourceTitle icon={Mail} text="CRM - Mensajes" />}
     filters={filters}
     actions={<ListActions />}
-    perPage={25}
+    perPage={10}
     sort={{ field: "fecha_mensaje", order: "DESC" }}
   >
-    <TipoSummaryChips />
-    <DataTable rowClick="edit">
+    <EstadoSummaryChips />
+    <DataTable rowClick="show">
       <DataTable.Col source="id" label="ID">
         <IdCell />
       </DataTable.Col>
-      <DataTable.Col source="fecha_mensaje" label="Fecha/Hora">
+      <DataTable.Col
+        source="fecha_mensaje"
+        label="Fecha/Hora"
+        className="w-[150px] min-w-[140px]"
+        cellClassName="!whitespace-normal"
+      >
         <FechaCell />
       </DataTable.Col>
       <DataTable.Col source="contacto_id" label="Contacto" className="max-w-[220px]">
         <ContactoCell />
       </DataTable.Col>
-      <DataTable.Col source="asunto" label="Asunto" className="max-w-[260px]">
+      <DataTable.Col
+        source="asunto"
+        label="Asunto"
+        className="w-[440px] min-w-[360px]"
+        cellClassName="!whitespace-normal"
+      >
         <AsuntoCell />
       </DataTable.Col>
-      <DataTable.Col source="tipo" label="Tipo / Canal">
+      <DataTable.Col source="tipo" label="Tipo / Canal" className="w-[140px] min-w-[120px]">
         <TipoCanalCell />
       </DataTable.Col>
       <DataTable.Col source="estado" label="Estado / Prioridad">
@@ -302,6 +390,7 @@ const AsuntoCell = () => {
   );
 };
 
+
 const TipoCanalCell = () => {
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
@@ -348,6 +437,9 @@ const OportunidadCell = () => {
       <span className="font-medium">
         Oportunidad #{record.oportunidad?.id ?? record.oportunidad_id}
       </span>
+      {record.oportunidad?.nombre ? (
+        <span className="text-xs text-foreground">{record.oportunidad.nombre}</span>
+      ) : null}
       {record.oportunidad?.descripcion_estado ? (
         <span className="text-xs text-muted-foreground">
           {record.oportunidad.descripcion_estado}

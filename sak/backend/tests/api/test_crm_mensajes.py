@@ -64,7 +64,7 @@ def test_confirmar_mensaje_creando_contacto_y_evento(client, seed_crm_basico):
     res_conf = client.post(f"/crm/mensajes/{mensaje_id}/confirmar", json=payload)
     assert res_conf.status_code == 200, res_conf.text
     data = res_conf.json()
-    assert data["estado"] == EstadoMensaje.CONFIRMADO.value
+    assert data["estado"] == EstadoMensaje.RECIBIDO.value
     assert data["contacto_id"] is not None
     assert data["evento_id"] is not None
 
