@@ -1,0 +1,122 @@
+========================================================================
+IMPLEMENTACIÓN: PANEL DE ACTIVIDADES EN MENSAJE SHOW
+========================================================================
+
+✅ BACKEND - Endpoint Creado
+------------------------------------------------------------------------
+Archivo: backend/app/routers/crm_mensaje_router.py
+
+Endpoint: GET /crm/mensajes/{mensaje_id}/actividades
+
+Funcionalidad:
+- Obtiene todos los mensajes asociados a la oportunidad del mensaje
+- Obtiene todos los eventos asociados a la oportunidad del mensaje
+- Combina ambas listas en una única lista de actividades
+- Ordena cronológicamente (más reciente primero)
+- Retorna: mensaje_id, oportunidad_id, total, actividades[]
+
+Estructura de respuesta:
+{
+  "mensaje_id": 23,
+  "oportunidad_id": 6520,
+  "total": 6,
+  "actividades": [
+    {
+      "tipo": "mensaje",
+      "id": 28,
+      "fecha": "2025-11-29T11:34:00",
+      "descripcion": "Respuesta #1: Gracias por...",
+      "canal": "whatsapp",
+      "estado": "enviado",
+      "tipo_mensaje": "salida"
+    },
+    {
+      "tipo": "evento",
+      "id": 225,
+      "fecha": "2025-11-29T11:34:00",
+      "descripcion": "Llamada telefónica - Cliente...",
+      "estado": "hecho",
+      "tipo_id": 1,
+      "motivo_id": 1
+    }
+  ]
+}
+
+✅ FRONTEND - Panel de Actividades
+------------------------------------------------------------------------
+Archivo: frontend/src/app/resources/crm-mensajes/show.tsx
+
+Cambios realizados:
+1. Agregado estado para actividades: actividades, actividadesLoading
+2. Agregada función loadActividades() que usa fetch para llamar endpoint
+3. useEffect que carga actividades cuando cambia mensaje o oportunidad
+4. Actualizado renderPanelContent() para mostrar lista de actividades
+5. Agregados iconos: Mail, Phone, CheckCircle2, Clock
+
+Funcionalidad del Panel:
+- Muestra lista minimalista de actividades si hay oportunidad
+- Cada actividad muestra:
+  * Icono según tipo (mensaje/evento) y canal
+  * Fecha formateada (hora si es hoy, fecha si es anterior)
+  * Descripción truncada
+  * Estado del mensaje/evento
+  * Colores diferenciados por tipo
+- Scroll cuando hay muchas actividades (max-height: 400px)
+- Mensaje por defecto cuando no hay oportunidad
+- Se actualiza automáticamente al crear oportunidad
+
+Visualización:
+┌─────────────────────────────────────┐
+│ Historial de Actividades        6  │
+├─────────────────────────────────────┤
+│ ✓ 11:34  Evento                     │
+│ Visita programada para el próxi...  │
+│ pendiente                           │
+├─────────────────────────────────────┤
+│ ✓ 11:34  Evento                     │
+│ Llamada telefónica - Cliente int... │
+│ hecho                               │
+├─────────────────────────────────────┤
+│ 📱 11:34  Mensaje                   │
+│ Respuesta #2: Gracias por tu int... │
+│ enviado                             │
+└─────────────────────────────────────┘
+
+✅ PRUEBAS REALIZADAS
+------------------------------------------------------------------------
+1. test_actividades.py - Verifica endpoint básico
+2. crear_actividades_prueba.py - Crea datos de prueba variados
+
+Resultado: 6 actividades creadas para mensaje #23
+- 3 mensajes (1 entrada, 2 salidas)
+- 3 eventos (2 hechos, 1 pendiente)
+
+URL de prueba:
+http://localhost:3000/admin/crm-mensajes/23/show
+
+✅ FLUJO DE DATOS
+------------------------------------------------------------------------
+1. Usuario abre vista de mensaje (show.tsx)
+2. useEffect detecta mensaje.id y mensaje.oportunidad_id
+3. Si hay oportunidad → loadActividades()
+4. fetch() → GET /crm/mensajes/{id}/actividades
+5. Backend consulta mensajes y eventos de la oportunidad
+6. Backend combina, ordena y retorna lista
+7. Frontend actualiza estado actividades[]
+8. renderPanelContent() muestra lista visual
+9. Al crear oportunidad → refresh() + loadActividades()
+
+✅ CARACTERÍSTICAS IMPLEMENTADAS
+------------------------------------------------------------------------
+✓ Lista minimalista con iconos diferenciados
+✓ Colores por tipo de actividad
+✓ Ordenamiento cronológico inverso
+✓ Formato de fecha inteligente (hoy/fecha)
+✓ Descripción truncada para mantener UI limpia
+✓ Scroll para listas largas
+✓ Recarga automática al crear oportunidad
+✓ Manejo de estados de carga
+✓ Manejo de errores
+✓ Mensaje contextual cuando no hay oportunidad
+
+========================================================================

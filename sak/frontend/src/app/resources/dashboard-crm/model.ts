@@ -84,7 +84,7 @@ export type CrmDashboardFilters = {
 
 export const DEFAULT_CRM_PERIOD: PeriodType = "trimestre";
 
-const periodMap: Record<PeriodType, number> = {
+const periodMap: Partial<Record<PeriodType, number>> = {
   mes: 1,
   trimestre: 3,
   cuatrimestre: 4,

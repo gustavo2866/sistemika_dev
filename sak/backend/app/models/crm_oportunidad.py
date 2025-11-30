@@ -21,12 +21,13 @@ if TYPE_CHECKING:
     from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
     from .emprendimiento import Emprendimiento
     from .propiedad import Propiedad
+    from .tipo_propiedad import TipoPropiedad
     from .user import User
 
 
 class CRMOportunidad(Base, table=True):
     __tablename__ = "crm_oportunidades"
-    __searchable_fields__ = ["descripcion_estado"]
+    __searchable_fields__ = ["descripcion_estado", "descripcion"]
     __expanded_list_relations__ = {
         "contacto",
         "tipo_operacion",
@@ -41,15 +42,27 @@ class CRMOportunidad(Base, table=True):
     )
 
     contacto_id: int = Field(foreign_key="crm_contactos.id", index=True)
-    tipo_operacion_id: int = Field(foreign_key="crm_tipos_operacion.id", index=True)
+    tipo_operacion_id: Optional[int] = Field(
+        default=None, foreign_key="crm_tipos_operacion.id", index=True
+    )
     emprendimiento_id: Optional[int] = Field(
         default=None, foreign_key="emprendimientos.id", index=True
     )
-    propiedad_id: int = Field(foreign_key="propiedades.id", index=True)
+    propiedad_id: Optional[int] = Field(
+        default=None, foreign_key="propiedades.id", index=True
+    )
+    tipo_propiedad_id: Optional[int] = Field(
+        default=None, foreign_key="tipos_propiedad.id", index=True
+    )
     estado: str = Field(
-        default=EstadoOportunidad.ABIERTA.value,
+        default=EstadoOportunidad.PROSPECT.value,
         max_length=20,
         description="Estado del pipeline",
+        index=True,
+    )
+    activo: bool = Field(
+        default=True,
+        description="Oportunidad activa",
         index=True,
     )
     fecha_estado: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -62,17 +75,14 @@ class CRMOportunidad(Base, table=True):
     probabilidad: Optional[int] = Field(default=None, ge=0, le=100)
     fecha_cierre_estimada: Optional[date] = Field(default=None)
     responsable_id: int = Field(foreign_key="users.id")
-    descripcion_estado: Optional[str] = Field(default=None, max_length=1000)
-    cotizacion_aplicada: Optional[Decimal] = Field(
-        default=None,
-        sa_column=Column(DECIMAL(18, 6), nullable=True),
-        description="Tipo de cambio utilizado en Ganada/Reserva",
-    )
+    descripcion_estado: Optional[str] = Field(default=None, max_length=255)
+    descripcion: Optional[str] = Field(default=None, max_length=1000)
 
     contacto: Optional["CRMContacto"] = Relationship(back_populates="oportunidades")
     tipo_operacion: Optional["CRMTipoOperacion"] = Relationship(back_populates="oportunidades")
     emprendimiento: Optional["Emprendimiento"] = Relationship(back_populates="oportunidades")
     propiedad: Optional["Propiedad"] = Relationship(back_populates="oportunidades")
+    tipo_propiedad: Optional["TipoPropiedad"] = Relationship(back_populates="oportunidades")
     motivo_perdida: Optional["CRMMotivoPerdida"] = Relationship(back_populates="oportunidades")
     moneda: Optional["Moneda"] = Relationship(back_populates="oportunidades")
     condicion_pago: Optional["CRMCondicionPago"] = Relationship(back_populates="oportunidades")

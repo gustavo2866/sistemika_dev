@@ -56,6 +56,7 @@ export type CRMOportunidad = {
   tipo_operacion_id: number;
   emprendimiento_id?: number | null;
   propiedad_id: number;
+  tipo_propiedad_id?: number | null;
   estado: CRMOportunidadEstado;
   fecha_estado: string;
   motivo_perdida_id?: number | null;
@@ -74,6 +75,7 @@ export type CRMOportunidadFormValues = {
   tipo_operacion_id: number | null;
   emprendimiento_id?: number | null;
   propiedad_id: number | null;
+  tipo_propiedad_id?: number | null;
   estado: CRMOportunidadEstado;
   fecha_estado?: string | null;
   motivo_perdida_id?: number | null;
@@ -92,6 +94,7 @@ export const CRM_OPORTUNIDAD_DEFAULTS: CRMOportunidadFormValues = {
   tipo_operacion_id: null,
   emprendimiento_id: null,
   propiedad_id: null,
+  tipo_propiedad_id: null,
   estado: "1-abierta",
   fecha_estado: "",
   motivo_perdida_id: null,
@@ -123,6 +126,11 @@ export const crmOportunidadSchema = createEntitySchema<
     propiedad_id: referenceField({
       required: true,
       resource: "propiedades",
+      labelField: "nombre",
+    }),
+    tipo_propiedad_id: referenceField({
+      required: false,
+      resource: "tipos-propiedad",
       labelField: "nombre",
     }),
     emprendimiento_id: referenceField({

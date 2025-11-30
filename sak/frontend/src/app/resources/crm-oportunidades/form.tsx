@@ -194,9 +194,19 @@ const DatosGeneralesSection = () => (
       <ReferenceInput source="responsable_id" reference="users" label="Responsable">
         <SelectInput optionText="nombre" className="w-full" validate={required()} />
       </ReferenceInput>
-      <ReferenceInput source="tipo_operacion_id" reference="crm/catalogos/tipos-operacion" label="Tipo de operaci?n">
-        <SelectInput optionText="nombre" className="w-full" validate={required()} />
-      </ReferenceInput>
+                <ReferenceInput
+                  source="tipo_operacion_id"
+                  reference="tipos-operacion"
+                  label="Tipo de operacion"
+                >
+                  <SelectInput
+                    optionText={(record) =>
+                      record?.id ? `${record.id} - ${record.descripcion ?? record.codigo ?? ""}` : ""
+                    }
+                    className="w-full"
+                    validate={required()}
+                  />
+                </ReferenceInput>
       <TextInput source="descripcion_estado" label="Descripci?n" multiline className="w-full" />
     </div>
   </FormSimpleSection>
@@ -208,6 +218,11 @@ const CotizacionSection = () => (
       <div className="md:col-span-2">
         <ReferenceInput source="propiedad_id" reference="propiedades" label="Propiedad">
           <SelectInput optionText="nombre" className="w-full" validate={required()} />
+        </ReferenceInput>
+      </div>
+      <div className="md:col-span-2">
+        <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo de propiedad">
+          <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
         </ReferenceInput>
       </div>
       <div>
@@ -252,4 +267,3 @@ const EstadoSection = () => (
     </div>
   </FormSimpleSection>
 );
-

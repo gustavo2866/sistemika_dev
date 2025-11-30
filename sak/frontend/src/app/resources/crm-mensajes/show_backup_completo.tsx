@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Show } from "@/components/show";
 import {
   useDataProvider,
@@ -19,7 +19,12 @@ import {
   MessageCircle,
   CalendarPlus,
   Trash2,
+  NotebookPen,
   ArrowRightLeft,
+  Mail,
+  Phone,
+  CheckCircle2,
+  Clock,
   X,
   Send,
 } from "lucide-react";
@@ -34,7 +39,6 @@ import {
 import { useLocation, useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
 import { OportunidadCrear } from "./OportunidadCrear";
-import { ActividadesPanel } from "../crm-actividades/Panel";
 
 const ensureReplySubject = (subject?: string | null) => {
   if (!subject) return "RE:";
@@ -71,12 +75,13 @@ const CRMMensajeMinimalView = () => {
   const [replyLoading, setReplyLoading] = useState(false);
   const [contactoNombre, setContactoNombre] = useState("");
   const [oportunidadDialogOpen, setOportunidadDialogOpen] = useState(false);
+  const [actividades, setActividades] = useState<any[]>([]);
+  const [actividadesLoading, setActividadesLoading] = useState(false);
   const [modoRespuesta, setModoRespuesta] = useState(false);
   const [respuestaInlineSubject, setRespuestaInlineSubject] = useState("");
   const [respuestaInlineContent, setRespuestaInlineContent] = useState("");
   const [respuestaInlineLoading, setRespuestaInlineLoading] = useState(false);
   const [contactoNombreInline, setContactoNombreInline] = useState("");
-  const [actividadesReload, setActividadesReload] = useState(0);
 
   useEffect(() => {
     if (initialAction === "discard") {
@@ -109,6 +114,31 @@ const CRMMensajeMinimalView = () => {
       setContactoNombreInline("");
     }
   }, [record?.asunto, record?.contacto]);
+
+  const loadActividades = useCallback(async () => {
+    if (!record?.id) return;
+    setActividadesLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/crm/mensajes/${record.id}/actividades`);
+      if (response.ok) {
+        const data = await response.json();
+        setActividades(data.actividades || []);
+      } else {
+        setActividades([]);
+      }
+    } catch (error) {
+      console.error("Error al cargar actividades:", error);
+      setActividades([]);
+    } finally {
+      setActividadesLoading(false);
+    }
+  }, [record?.id]);
+
+  useEffect(() => {
+    if (record?.id) {
+      loadActividades();
+    }
+  }, [record?.id, record?.oportunidad_id, loadActividades]);
 
   if (!record) return null;
 
@@ -197,7 +227,6 @@ const CRMMensajeMinimalView = () => {
       setReplyContent("");
       setContactoNombre("");
       refresh();
-      setActividadesReload((prev) => prev + 1);
     } catch (error: any) {
       notify(error?.message ?? "No se pudo guardar la respuesta", { type: "warning" });
       setReplyLoading(false);
@@ -250,7 +279,7 @@ const CRMMensajeMinimalView = () => {
       setRespuestaInlineContent("");
       setContactoNombreInline("");
       refresh();
-      setActividadesReload((prev) => prev + 1);
+      loadActividades();
     } catch (error: any) {
       notify(error?.message ?? "No se pudo guardar la respuesta", { type: "warning" });
       setRespuestaInlineLoading(false);
@@ -384,12 +413,99 @@ const CRMMensajeMinimalView = () => {
       );
     }
 
+    // Mostrar loader mientras carga actividades
+    if (hasOportunidad && actividadesLoading) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+          <NotebookPen className="h-10 w-10 text-muted-foreground/70 animate-pulse" />
+          <p className="text-base font-medium text-foreground">Cargando actividades...</p>
+        </div>
+      );
+    }
+
+    // Mostrar actividades si hay oportunidad asociada
+    if (hasOportunidad && actividades.length > 0) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Historial de Actividades
+            </p>
+            <span className="text-xs text-muted-foreground">{actividades.length}</span>
+          </div>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+            {actividades.map((actividad) => {
+              const fechaObj = new Date(actividad.fecha);
+              const esHoy = fechaObj.toDateString() === new Date().toDateString();
+              const fechaFormato = esHoy
+                ? fechaObj.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+                : fechaObj.toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+
+              let icono = null;
+              let colorClase = "text-muted-foreground";
+              
+              if (actividad.tipo === "mensaje") {
+                if (actividad.canal === "whatsapp") icono = <Phone className="h-3.5 w-3.5" />;
+                else if (actividad.canal === "email") icono = <Mail className="h-3.5 w-3.5" />;
+                else icono = <MessageCircle className="h-3.5 w-3.5" />;
+                
+                if (actividad.tipo_mensaje === "salida") colorClase = "text-blue-500";
+                else if (actividad.tipo_mensaje === "entrada") colorClase = "text-green-500";
+              } else if (actividad.tipo === "evento") {
+                if (actividad.estado === "hecho") {
+                  icono = <CheckCircle2 className="h-3.5 w-3.5" />;
+                  colorClase = "text-green-500";
+                } else {
+                  icono = <Clock className="h-3.5 w-3.5" />;
+                  colorClase = "text-orange-500";
+                }
+              }
+
+              return (
+                <div
+                  key={`${actividad.tipo}-${actividad.id}`}
+                  className="flex gap-3 rounded-lg border border-border/40 bg-background/60 p-3 hover:bg-background/80 transition-colors"
+                >
+                  <div className={cn("mt-0.5 flex-shrink-0", colorClase)}>
+                    {icono}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {fechaFormato}
+                      <span className="ml-2 font-medium capitalize">{actividad.tipo}</span>
+                    </p>
+                    <p className="text-sm leading-snug text-foreground line-clamp-2">
+                      {actividad.descripcion}
+                    </p>
+                    {actividad.tipo === "mensaje" && actividad.estado && (
+                      <p className="text-xs text-muted-foreground/70 capitalize">
+                        {actividad.estado}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Mensaje por defecto cuando no hay actividades
     return (
-      <ActividadesPanel
-        mensajeId={record.id}
-        oportunidadId={record.oportunidad_id ?? undefined}
-        reloadKey={actividadesReload}
-      />
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/60 bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+        <NotebookPen className="h-10 w-10 text-muted-foreground/70" />
+        <p className="text-base font-medium text-foreground">
+          {hasOportunidad
+            ? "Cargando actividades..."
+            : "Crea una oportunidad para ver el historial de actividades."}
+        </p>
+        <p className="text-xs text-muted-foreground/80">
+          {hasOportunidad
+            ? "Las actividades relacionadas aparecerán aquí."
+            : "Las respuestas se editan ahora desde un popup dedicado para mantener el contexto del mensaje."}
+        </p>
+      </div>
     );
   };
 
@@ -597,7 +713,7 @@ const CRMMensajeMinimalView = () => {
         defaultResponsableId={record.responsable_id ?? (typeof identity?.id === 'number' ? identity.id : null)}
         onCreated={() => {
           refresh();
-          setActividadesReload((prev) => prev + 1);
+          loadActividades();
         }}
       />
       <Dialog open={discardOpen} onOpenChange={(open) => !discardLoading && setDiscardOpen(open)}>

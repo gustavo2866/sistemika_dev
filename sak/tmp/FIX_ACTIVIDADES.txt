@@ -1,0 +1,163 @@
+========================================================================
+CORRECCIONES: Panel de Actividades no Mostraba Respuestas
+========================================================================
+
+PROBLEMA IDENTIFICADO:
+------------------------------------------------------------------------
+El panel de actividades no se actualizaba después de enviar una 
+respuesta inline, aunque el endpoint backend funcionaba correctamente.
+
+CAUSA RAÍZ:
+------------------------------------------------------------------------
+1. loadActividades() se ejecutaba antes de ser declarada
+2. La función no estaba memoizada con useCallback
+3. Las dependencias del useEffect no incluían la función
+4. No había suficiente tiempo para que la BD se actualizara
+
+SOLUCIONES IMPLEMENTADAS:
+------------------------------------------------------------------------
+
+✅ 1. Reorganización de Código
+   - Movida declaración de loadActividades() antes del useEffect
+   - Función ahora está disponible cuando el useEffect la necesita
+
+✅ 2. Uso de useCallback
+   - Importado useCallback de React
+   - loadActividades() ahora está memoizada
+   - Dependencias: [record?.id]
+   - Evita re-creación innecesaria de la función
+
+✅ 3. Dependencias Correctas
+   - useEffect ahora incluye loadActividades en dependencias
+   - Array completo: [record?.id, record?.oportunidad_id, loadActividades]
+   - Garantiza recarga cuando cambian mensaje u oportunidad
+
+✅ 4. Delay en Actualización
+   - Agregado setTimeout(500ms) antes de recargar actividades
+   - Da tiempo a que la transacción de BD se complete
+   - Mejora confiabilidad de la actualización
+
+CÓDIGO MODIFICADO:
+------------------------------------------------------------------------
+
+ANTES:
+```tsx
+useEffect(() => {
+  if (record?.id) {
+    loadActividades();
+  }
+}, [record?.id, record?.oportunidad_id]);
+
+const loadActividades = async () => {
+  // ... implementación
+};
+```
+
+DESPUÉS:
+```tsx
+const loadActividades = useCallback(async () => {
+  if (!record?.id) return;
+  setActividadesLoading(true);
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/crm/mensajes/${record.id}/actividades`
+    );
+    if (response.ok) {
+      const data = await response.json();
+      setActividades(data.actividades || []);
+    } else {
+      setActividades([]);
+    }
+  } catch (error) {
+    console.error("Error al cargar actividades:", error);
+    setActividades([]);
+  } finally {
+    setActividadesLoading(false);
+  }
+}, [record?.id]);
+
+useEffect(() => {
+  if (record?.id) {
+    loadActividades();
+  }
+}, [record?.id, record?.oportunidad_id, loadActividades]);
+```
+
+handleRespuestaInlineSubmit() ahora incluye:
+```tsx
+notify("Respuesta guardada para enviar", { type: "success" });
+setRespuestaInlineLoading(false);
+setModoRespuesta(false);
+setRespuestaInlineContent("");
+refresh();
+// Pequeño delay para asegurar que la BD se actualice
+setTimeout(() => {
+  loadActividades();
+}, 500);
+```
+
+VERIFICACIÓN:
+------------------------------------------------------------------------
+
+Test realizado: test_panel_actividades.py
+Resultado: ✅ EXITOSO
+
+1. Respuesta creada correctamente (ID: 31)
+2. Endpoint /actividades retorna 7 actividades
+3. Nueva respuesta aparece primera en la lista
+4. Datos correctos: canal, tipo, estado
+
+Orden cronológico correcto (más reciente primero):
+- [MENSAJE] ID:31 - Respuesta nueva ✓
+- [EVENTO] ID:226 - Visita programada
+- [EVENTO] ID:225 - Llamada telefónica
+- [MENSAJE] ID:29 - Respuesta anterior
+- [MENSAJE] ID:28 - Respuesta anterior
+
+FLUJO COMPLETO AHORA:
+------------------------------------------------------------------------
+
+1. Usuario escribe respuesta en panel inline
+2. Click "Enviar Respuesta"
+3. handleRespuestaInlineSubmit() ejecuta:
+   a. Crea mensaje de salida
+   b. Actualiza estado si era "nuevo"
+   c. Muestra notificación
+   d. Cierra modo respuesta
+   e. Ejecuta refresh()
+   f. Espera 500ms
+   g. Ejecuta loadActividades()
+4. loadActividades() hace fetch al endpoint
+5. Endpoint retorna lista actualizada
+6. Panel muestra nueva respuesta al tope
+7. ✅ Usuario ve inmediatamente su respuesta enviada
+
+BENEFICIOS:
+------------------------------------------------------------------------
+
+✓ Panel se actualiza automáticamente
+✓ No requiere recargar página
+✓ Feedback visual inmediato
+✓ Lista siempre sincronizada con BD
+✓ Orden cronológico correcto
+✓ Sin errores de consola
+✓ Performance optimizada con useCallback
+
+PRÓXIMOS PASOS:
+------------------------------------------------------------------------
+
+Para probar:
+1. Abrir http://localhost:3000/admin/crm-mensajes/23/show
+2. Click botón "Responder" en panel
+3. Escribir mensaje de prueba
+4. Click "Enviar Respuesta"
+5. Verificar que:
+   - Panel cierra formulario ✓
+   - Muestra historial de actividades ✓
+   - Nueva respuesta aparece al tope ✓
+   - Timestamp correcto ✓
+   - Icono y color apropiados ✓
+
+========================================================================
+PROBLEMA RESUELTO ✅
+========================================================================

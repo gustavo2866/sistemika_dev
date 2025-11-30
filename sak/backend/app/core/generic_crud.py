@@ -334,49 +334,58 @@ class GenericCRUD(Generic[M]):
         List con paginaciÃ³n y filtros
         Returns: (items, total_count)
         """
-        # Base query
-        stmt = select(self.model)
-        
-        # Apply auto-includes (including nested relationships)
-        stmt = self._apply_auto_includes(stmt)
-        
-        # Aplicar joins para relaciones incluidas
-        if include:
-            include_list = [rel.strip() for rel in include.split(",")]
-            for relation in include_list:
-                try:
-                    if hasattr(self.model, relation):
-                        stmt = stmt.options(selectinload(getattr(self.model, relation)))
-                except Exception as e:
-                    # Log the error but don't fail the entire query
-                    print(f"Warning: Could not load relationship {relation} for {self.model.__name__}: {e}")
-                    pass
-        
-        # Aplicar filtros
-        if filters:
-            stmt = self._apply_filters(stmt, filters)
-        
-        # Aplicar soft delete
-        stmt = self._apply_soft_delete_filter(stmt, deleted)
-        
-        # Contar total (antes de paginaciÃ³n)
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total = session.exec(count_stmt).one()
-        
-        # Aplicar ordenamiento
-        if hasattr(self.model, sort_by):
-            order_column = getattr(self.model, sort_by)
-            if sort_dir.lower() == "desc":
-                stmt = stmt.order_by(order_column.desc())
-            else:
-                stmt = stmt.order_by(order_column.asc())
-        
-        # Aplicar paginaciÃ³n
-        offset = (page - 1) * per_page
-        stmt = stmt.offset(offset).limit(per_page)
-        
-        items = session.exec(stmt).all()
-        return items, total
+        try:
+            # Base query
+            stmt = select(self.model)
+            
+            # Apply auto-includes (including nested relationships)
+            stmt = self._apply_auto_includes(stmt)
+            
+            # Aplicar joins para relaciones incluidas
+            if include:
+                include_list = [rel.strip() for rel in include.split(",")]
+                for relation in include_list:
+                    try:
+                        if hasattr(self.model, relation):
+                            stmt = stmt.options(selectinload(getattr(self.model, relation)))
+                    except Exception as e:
+                        # Log the error but don't fail the entire query
+                        print(f"Warning: Could not load relationship {relation} for {self.model.__name__}: {e}")
+                        pass
+            
+            # Aplicar filtros
+            if filters:
+                stmt = self._apply_filters(stmt, filters)
+            
+            # Aplicar soft delete
+            stmt = self._apply_soft_delete_filter(stmt, deleted)
+            
+            # Contar total (antes de paginaciÃ³n)
+            count_stmt = select(func.count()).select_from(stmt.subquery())
+            print(f"DEBUG: Executing count query for {self.model.__name__}")
+            print(f"DEBUG: Count statement: {count_stmt}")
+            total = session.exec(count_stmt).one()
+            print(f"DEBUG: Count result: {total}")
+            
+            # Aplicar ordenamiento
+            if hasattr(self.model, sort_by):
+                order_column = getattr(self.model, sort_by)
+                if sort_dir.lower() == "desc":
+                    stmt = stmt.order_by(order_column.desc())
+                else:
+                    stmt = stmt.order_by(order_column.asc())
+            
+            # Aplicar paginaciÃ³n
+            offset = (page - 1) * per_page
+            stmt = stmt.offset(offset).limit(per_page)
+            
+            items = session.exec(stmt).all()
+            return items, total
+        except Exception as e:
+            print(f"ERROR in list() for {self.model.__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def _discover_relations(self, model_class: Type[SQLModel], max_depth: int = 2, current_depth: int = 0) -> Dict[str, Any]:
         """
@@ -446,11 +455,25 @@ class GenericCRUD(Generic[M]):
 
     def _get_auto_include_options(self) -> List[Any]:
         """
-        Obtiene automÃ¡ticamente las opciones de include para el modelo actual
+        Obtiene automáticamente las opciones de include para el modelo actual
         
         Returns:
             Lista de selectinload options para usar en la query
         """
+        manual_relations = getattr(self.model, "__auto_include_relations__", None)
+        if manual_relations is not None:
+            # Si existe __auto_include_relations__, usarlo (incluso si está vacío)
+            options = []
+            for relation_name in manual_relations:
+                if hasattr(self.model, relation_name):
+                    relation_attr = getattr(self.model, relation_name)
+                    options.append(selectinload(relation_attr))
+            print(
+                f"DEBUG: Using manual auto-includes for {self.model.__name__}: {manual_relations}"
+            )
+            return options
+
+        # Solo hacer auto-discovery si NO existe __auto_include_relations__
         relations = self._discover_relations(self.model, max_depth=2)
         options = []
         
@@ -469,8 +492,14 @@ class GenericCRUD(Generic[M]):
         return list(relations.keys())
 
     def _apply_auto_includes(self, stmt):
+        auto_enabled = getattr(self.model, "__auto_include_enabled__", True)
+        print(f"DEBUG: _apply_auto_includes for {self.model.__name__}, __auto_include_enabled__={auto_enabled}")
+        if not auto_enabled:
+            print(f"DEBUG: Auto-includes DISABLED for {self.model.__name__}")
+            return stmt
+
         """
-        Aplica automÃ¡ticamente las relaciones descubiertas al statement SQL
+        Aplica automáticamente las relaciones descubiertas al statement SQL
         
         Args:
             stmt: SQLAlchemy statement
@@ -481,7 +510,7 @@ class GenericCRUD(Generic[M]):
         try:
             print(f"DEBUG: Auto-discovering includes for model: {self.model.__name__}")
             
-            # Rehabilitar auto-discovery ahora que el problema del enum estÃ¡ resuelto
+            # Obtener opciones (respeta __auto_include_relations__ si existe)
             include_options = self._get_auto_include_options()
             
             if include_options:

@@ -13,13 +13,17 @@ if TYPE_CHECKING:
 class CRMTipoOperacion(Base, table=True):
     __tablename__ = "crm_tipos_operacion"
     __searchable_fields__ = ["codigo", "nombre"]
+    __auto_include_enabled__ = False
 
     codigo: str = Field(max_length=50, description="Código único", unique=True, index=True)
     nombre: str = Field(max_length=100, description="Nombre del tipo de operación")
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True, description="Indica si el tipo está activo")
 
-    oportunidades: list["CRMOportunidad"] = Relationship(back_populates="tipo_operacion")
+    oportunidades: list["CRMOportunidad"] = Relationship(
+        back_populates="tipo_operacion",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
 
 
 class CRMMotivoPerdida(Base, table=True):
@@ -31,7 +35,10 @@ class CRMMotivoPerdida(Base, table=True):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
 
-    oportunidades: list["CRMOportunidad"] = Relationship(back_populates="motivo_perdida")
+    oportunidades: list["CRMOportunidad"] = Relationship(
+        back_populates="motivo_perdida",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
 
 
 class CRMCondicionPago(Base, table=True):
@@ -43,7 +50,10 @@ class CRMCondicionPago(Base, table=True):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
 
-    oportunidades: list["CRMOportunidad"] = Relationship(back_populates="condicion_pago")
+    oportunidades: list["CRMOportunidad"] = Relationship(
+        back_populates="condicion_pago",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
 
 
 class CRMTipoEvento(Base, table=True):
@@ -55,7 +65,10 @@ class CRMTipoEvento(Base, table=True):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
 
-    eventos: list["CRMEvento"] = Relationship(back_populates="tipo")
+    eventos: list["CRMEvento"] = Relationship(
+        back_populates="tipo",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
 
 
 class CRMMotivoEvento(Base, table=True):
@@ -67,7 +80,10 @@ class CRMMotivoEvento(Base, table=True):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
 
-    eventos: list["CRMEvento"] = Relationship(back_populates="motivo")
+    eventos: list["CRMEvento"] = Relationship(
+        back_populates="motivo",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
 
 
 class CRMOrigenLead(Base, table=True):
@@ -79,8 +95,14 @@ class CRMOrigenLead(Base, table=True):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
 
-    contactos: list["CRMContacto"] = Relationship(back_populates="origen_lead")
-    eventos: list["CRMEvento"] = Relationship(back_populates="origen_lead")
+    contactos: list["CRMContacto"] = Relationship(
+        back_populates="origen_lead",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
+    eventos: list["CRMEvento"] = Relationship(
+        back_populates="origen_lead",
+        sa_relationship_kwargs={"lazy": "noload"}
+    )
 
 
 class Moneda(Base, table=True):

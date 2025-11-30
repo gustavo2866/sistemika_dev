@@ -1,0 +1,172 @@
+========================================================================
+NUEVA FUNCIONALIDAD: RESPONDER INLINE EN PANEL DE ACTIVIDADES
+========================================================================
+
+✅ IMPLEMENTADO - Modo Respuesta en Panel
+------------------------------------------------------------------------
+
+📍 Ubicación: Panel lateral derecho "Actividades"
+📍 Archivo: frontend/src/app/resources/crm-mensajes/show.tsx
+
+CARACTERÍSTICAS NUEVAS:
+------------------------------------------------------------------------
+
+1. 🔵 Botón "Responder" en Panel
+   - Ubicado junto al botón "Agendar"
+   - Color azul distintivo
+   - Activa el modo de respuesta inline
+
+2. 📝 Formulario Inline en Panel
+   - Campo: Asunto (auto-rellena con RE: del mensaje original)
+   - Campo: Mensaje (textarea expandido)
+   - Botones: "Enviar Respuesta" y "Cancelar"
+   - Icono X para cerrar en la esquina superior
+
+3. 🔄 Funcionalidad Completa
+   - Guarda la respuesta como mensaje de salida
+   - Asocia a la misma oportunidad y contacto
+   - Estado: "pendiente_envio"
+   - Actualiza el estado del mensaje original a "recibido" si era "nuevo"
+   - Recarga actividades automáticamente
+   - Cierra el modo respuesta tras enviar
+
+4. 🎨 UX/UI Mejorada
+   - Todo en el mismo panel, sin cambiar de contexto
+   - No usa modal popup
+   - Formulario integrado visualmente
+   - Transiciones suaves
+   - Feedback visual inmediato
+
+FLUJO DE USO:
+------------------------------------------------------------------------
+
+1. Usuario abre mensaje → Ve panel de actividades
+2. Click en botón "Responder" (azul) → Panel cambia a modo respuesta
+3. Usuario escribe asunto y contenido
+4. Click "Enviar Respuesta" → Se guarda el mensaje
+5. Panel vuelve a mostrar historial de actividades (actualizado)
+
+COMPARACIÓN: Modal vs Inline
+------------------------------------------------------------------------
+
+VERSIÓN MODAL (original - sigue disponible):
+✓ Más espacio para escribir
+✓ Overlay que enfoca atención
+✓ Botón "Responder" en sección Mensaje
+✗ Pierde contexto visual del mensaje
+✗ Requiere cerrar para ver otras cosas
+
+VERSIÓN INLINE (nueva):
+✓ Mantiene contexto del mensaje visible
+✓ Integrado en flujo de actividades
+✓ Más rápido (sin abrir/cerrar modal)
+✓ Historial se actualiza automáticamente
+✗ Menos espacio (pero suficiente)
+
+ELEMENTOS AGREGADOS:
+------------------------------------------------------------------------
+
+Estados nuevos:
+- modoRespuesta: boolean
+- respuestaInlineSubject: string
+- respuestaInlineContent: string
+- respuestaInlineLoading: boolean
+
+Función nueva:
+- handleRespuestaInlineSubmit()
+
+Iconos nuevos:
+- X (cerrar)
+- Send (enviar)
+
+Botón nuevo:
+- "Responder" (azul, en panel de actividades)
+
+EJEMPLO DE USO:
+------------------------------------------------------------------------
+
+Mensaje original (entrada):
+"Hola, estoy interesado en comprar un departamento..."
+
+Usuario click "Responder" en panel →
+
+┌─────────────────────────────────┐
+│ Responder Mensaje            X  │
+├─────────────────────────────────┤
+│ Asunto:                         │
+│ [RE: Consulta departamento]     │
+│                                 │
+│ Mensaje:                        │
+│ ┌─────────────────────────────┐ │
+│ │ Gracias por contactarnos.   │ │
+│ │ Tenemos varias opciones...  │ │
+│ │                             │ │
+│ │                             │ │
+│ └─────────────────────────────┘ │
+│                                 │
+│ [📤 Enviar Respuesta] [Cancelar]│
+└─────────────────────────────────┘
+
+Usuario click "Enviar Respuesta" →
+
+Resultado:
+✓ Mensaje de salida creado
+✓ Panel vuelve a mostrar actividades
+✓ Nueva respuesta aparece en el historial
+
+┌─────────────────────────────────┐
+│ Historial de Actividades     3  │
+├─────────────────────────────────┤
+│ 📱 11:45  Mensaje               │
+│ Gracias por contactarnos. Te... │
+│ pendiente_envio                 │
+├─────────────────────────────────┤
+│ ✓ 11:34  Evento                │
+│ Oportunidad #6520 creada...    │
+├─────────────────────────────────┤
+│ 📱 11:18  Mensaje               │
+│ Hola, estoy interesado en...   │
+└─────────────────────────────────┘
+
+VENTAJAS DE ESTA IMPLEMENTACIÓN:
+------------------------------------------------------------------------
+
+1. ✅ Doble opción: Modal Y Panel
+   - Modal para respuestas largas/complejas
+   - Panel para respuestas rápidas
+
+2. ✅ Contexto preservado
+   - Usuario ve mensaje original mientras escribe
+   - No pierde de vista el historial
+
+3. ✅ Flujo natural
+   - Ver actividad → Responder → Ver actualizado
+   - Todo en el mismo lugar
+
+4. ✅ Feedback inmediato
+   - Nueva respuesta aparece al instante
+   - Validación visual del envío
+
+PRUEBA:
+------------------------------------------------------------------------
+
+URL: http://localhost:3000/admin/crm-mensajes/23/show
+
+Pasos:
+1. Abrir mensaje #23
+2. Verificar panel derecho muestra actividades
+3. Click botón azul "Responder"
+4. Escribir respuesta de prueba
+5. Click "Enviar Respuesta"
+6. Verificar que aparece en historial
+
+========================================================================
+AMBAS VERSIONES DISPONIBLES
+========================================================================
+
+Botón "Responder" en mensaje principal → Abre MODAL
+Botón "Responder" en panel actividades → Usa INLINE
+
+El usuario puede elegir cuál prefiere según el contexto.
+
+========================================================================

@@ -50,9 +50,9 @@ import {
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
-const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias"] as const;
+const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
-const CONFIG_RESOURCES = ["users", "departamentos", "tipos-solicitud", "tipos-operacion", "metodos-pago", "tipos-comprobante"] as const;
+const CONFIG_RESOURCES = ["users", "departamentos", "tipos-operacion", "tipos-solicitud", "metodos-pago", "tipos-comprobante"] as const;
 const CRM_RESOURCES = ["crm/inbox", "crm/oportunidades", "crm/eventos", "crm/contactos", "crm/mensajes", "dashboard-crm"] as const;
 const CRM_CUSTOM_LINKS = [{ label: "Setup", to: "/crm/setup" }] as const;
 const CRM_CATALOG_RESOURCES = [
@@ -293,6 +293,7 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   departamentos: Building,
   "tipos-solicitud": FileStack,
   proveedores: Building2,
+  "tipos-propiedad": Building,
   "tipos-operacion": Workflow,
   "metodos-pago": FileText,
   proyectos: Kanban,

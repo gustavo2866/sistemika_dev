@@ -41,39 +41,39 @@ export type CRMMensaje = {
   oportunidad_id?: number | null;
   oportunidad?: {
     id: number;
-    nombre?: string | null;
     estado?: string | null;
     descripcion_estado?: string | null;
+    descripcion?: string | null;
     contacto?: CRMReference | null;
   } | null;
 };
 
-export const CRM_MENSAJE_TIPO_CHOICES = [
+export const CRM_MENSAJE_TIPO_CHOICES: { id: string; name: string }[] = [
   { id: "entrada", name: "Entrada" },
   { id: "salida", name: "Salida" },
-] as const;
+];
 
-export const CRM_MENSAJE_CANAL_CHOICES = [
+export const CRM_MENSAJE_CANAL_CHOICES: { id: string; name: string }[] = [
   { id: "whatsapp", name: "WhatsApp" },
   { id: "email", name: "Email" },
   { id: "red_social", name: "Red social" },
   { id: "otro", name: "Otro" },
-] as const;
+];
 
-export const CRM_MENSAJE_ESTADO_CHOICES = [
+export const CRM_MENSAJE_ESTADO_CHOICES: { id: string; name: string }[] = [
   { id: "nuevo", name: "Nuevo" },
   { id: "recibido", name: "Recibido" },
   { id: "descartado", name: "Descartado" },
   { id: "pendiente_envio", name: "Pendiente envio" },
   { id: "enviado", name: "Enviado" },
   { id: "error_envio", name: "Error envio" },
-] as const;
+];
 
-export const CRM_MENSAJE_PRIORIDAD_CHOICES = [
+export const CRM_MENSAJE_PRIORIDAD_CHOICES: { id: string; name: string }[] = [
   { id: "alta", name: "Alta" },
   { id: "media", name: "Media" },
   { id: "baja", name: "Baja" },
-] as const;
+];
 
 export const CRM_MENSAJE_ESTADO_BADGES: Record<CRMMensajeEstado, string> = {
   nuevo: "bg-blue-100 text-blue-800",

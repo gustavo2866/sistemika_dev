@@ -47,6 +47,12 @@ import { MetodoPagoList, MetodoPagoCreate, MetodoPagoEdit, MetodoPagoShow } from
 import { ArticuloList, ArticuloCreate, ArticuloEdit, ArticuloShow } from "@/app/resources/articulos";
 import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
+  TipoPropiedadList,
+  TipoPropiedadCreate,
+  TipoPropiedadEdit,
+  TipoPropiedadShow,
+} from "@/app/resources/tipos-propiedad";
+import {
   FacturaList,
   FacturaCreate,
   FacturaEdit,
@@ -180,6 +186,7 @@ import {
   CRMMensajeEdit,
   CRMMensajeShow,
 } from "@/app/resources/crm-mensajes";
+import { CRMMensajeReply } from "@/app/resources/crm-mensajes/reply";
 import {
   EmprendimientoList,
   EmprendimientoCreate,
@@ -274,6 +281,16 @@ const AdminApp = () => {
         show={PropiedadShow}
         recordRepresentation="nombre"
         icon={Home}
+      />
+      <Resource
+        name="tipos-propiedad"
+        list={TipoPropiedadList}
+        create={TipoPropiedadCreate}
+        edit={TipoPropiedadEdit}
+        show={TipoPropiedadShow}
+        recordRepresentation="nombre"
+        icon={Building}
+        options={{ label: "Tipos de Propiedad" }}
       />
       <Resource
         name="tipos-operacion"
@@ -510,6 +527,7 @@ const AdminApp = () => {
         <Route path="/solicitudes/create-mb" element={<SolicitudCreate />} />
         <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />
+        <Route path="/crm/mensajes/:id/responder" element={<CRMMensajeReply />} />
       </CustomRoutes>
     </Admin>
   );

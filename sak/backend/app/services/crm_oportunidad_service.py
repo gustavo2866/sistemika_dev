@@ -105,6 +105,8 @@ class CRMOportunidadService:
         session.add(log)
 
     def _sincronizar_propiedad(self, session: Session, oportunidad: CRMOportunidad) -> None:
+        if not oportunidad.propiedad_id:
+            return
         propiedad = session.get(Propiedad, oportunidad.propiedad_id)
         if not propiedad:
             return

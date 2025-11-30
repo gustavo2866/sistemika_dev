@@ -25,6 +25,7 @@ TRANSICIONES_ESTADO_PROPIEDAD = {
 
 class EstadoOportunidad(str, Enum):
     """Pipeline de oportunidad con prefijos numéricos."""
+    PROSPECT = "0-prospect"
     ABIERTA = "1-abierta"
     VISITA = "2-visita"
     COTIZA = "3-cotiza"
@@ -34,6 +35,10 @@ class EstadoOportunidad(str, Enum):
 
 
 TRANSICIONES_ESTADO_OPORTUNIDAD = {
+    EstadoOportunidad.PROSPECT.value: [
+        EstadoOportunidad.ABIERTA.value,
+        EstadoOportunidad.PERDIDA.value,
+    ],
     EstadoOportunidad.ABIERTA.value: [
         EstadoOportunidad.VISITA.value,
         EstadoOportunidad.COTIZA.value,

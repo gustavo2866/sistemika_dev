@@ -202,7 +202,7 @@ export default function DashboardCrmList() {
     { key: "pendientes", title: "Pendientes", description: "Activas al cierre del periodo" },
   ];
 
-  const kpiData = dashboardData?.kpis ?? {};
+  const kpiData: Record<KpiKey, { count: number; amount: number; incremento?: number; conversion?: number }> = dashboardData?.kpis ?? {} as any;
   const totalPages = detailData ? Math.max(1, Math.ceil(detailData.total / DETAIL_PAGE_SIZE)) : 1;
 
   const handleExportDetalle = async () => {
@@ -315,7 +315,6 @@ export default function DashboardCrmList() {
             <DashboardKpiCard
               key={card.key}
               title={card.title}
-              description={card.description}
               onSelect={() => {
                 setDetailKpi(card.key);
                 setDetailPage(1);
@@ -345,7 +344,7 @@ export default function DashboardCrmList() {
       </section>
 
       {dashboardData?.stats && (dashboardData.stats.sinMonto > 0 || dashboardData.stats.sinPropiedad > 0) && (
-        <Alert variant="warning" className="bg-amber-50">
+        <Alert variant="destructive" className="bg-amber-50">
           <AlertTitle>Registros con informacion incompleta</AlertTitle>
           <AlertDescription>
             {dashboardData.stats.sinMonto > 0 && (

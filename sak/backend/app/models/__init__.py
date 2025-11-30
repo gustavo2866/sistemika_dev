@@ -7,6 +7,7 @@ from .tarea import Tarea
 from .proveedor import Proveedor
 from .tipo_operacion import TipoOperacion
 from .tipo_comprobante import TipoComprobante
+from .tipo_propiedad import TipoPropiedad
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
 from .crm_catalogos import (
@@ -64,7 +65,8 @@ __all__ = [
     "Tarea",
     "Proveedor",
     "TipoOperacion", 
-    "TipoComprobante", 
+    "TipoComprobante",
+    "TipoPropiedad",
     "MetodoPago", 
     "Propiedad", 
     "CRMTipoOperacion",

@@ -75,7 +75,7 @@ const ActividadTimeline = () => {
         ...mensajes.map((mensaje) => ({
           id: `mensaje-${mensaje.id}`,
           kind: "mensaje" as const,
-          date: mensaje.fecha_mensaje || mensaje.created_at || "",
+          date: mensaje.fecha_mensaje || "",
           title: mensaje.asunto || `Mensaje ${mensaje.tipo ?? ""}`,
           description: mensaje.contenido,
           meta: [mensaje.canal, mensaje.estado].filter(Boolean).join(" · "),
