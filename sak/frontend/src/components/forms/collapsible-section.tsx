@@ -84,14 +84,14 @@ export const CollapsibleSection = ({
 
   return (
     <Card className={cn(variantClasses[variant], className)}>
-      <div className="border-b px-4 py-3">
+      <div className="border-b px-4 py-2">
         <div className="flex items-start gap-2">
           {collapsible && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="mt-1 h-8 w-8 flex-shrink-0"
+              className="h-7 w-7 flex-shrink-0"
               onClick={handleToggle}
               aria-label={open ? `Colapsar ${title}` : `Expandir ${title}`}
             >
@@ -104,15 +104,15 @@ export const CollapsibleSection = ({
             </Button>
           )}
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold truncate">{title}</h3>
+            <h3 className="text-base font-semibold truncate">{title}</h3>
             {resolvedSubtitle && (
-              <p className="text-sm text-muted-foreground truncate">
+              <p className="text-xs text-muted-foreground truncate">
                 {resolvedSubtitle}
               </p>
             )}
           </div>
         </div>
-        {headerContent && <div className="mt-3">{headerContent}</div>}
+        {headerContent && <div className="mt-2">{headerContent}</div>}
       </div>
       <CardContent
         className={cn(

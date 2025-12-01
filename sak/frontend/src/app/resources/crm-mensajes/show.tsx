@@ -62,28 +62,26 @@ const CRMMensajeMinimalView = () => {
   const initialAction = (location.state as { action?: string } | null)?.action;
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardLoading, setDiscardLoading] = useState(false);
-  const [scheduleHint, setScheduleHint] = useState(false);
-  const [panelMode, setPanelMode] = useState<"schedule" | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({ datetime: "", notes: "" });
   const [replyDialogOpen, setReplyDialogOpen] = useState(false);
   const [replySubject, setReplySubject] = useState(() => ensureReplySubject(record?.asunto));
   const [replyContent, setReplyContent] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
   const [contactoNombre, setContactoNombre] = useState("");
   const [oportunidadDialogOpen, setOportunidadDialogOpen] = useState(false);
-  const [modoRespuesta, setModoRespuesta] = useState(false);
-  const [respuestaInlineSubject, setRespuestaInlineSubject] = useState("");
-  const [respuestaInlineContent, setRespuestaInlineContent] = useState("");
-  const [respuestaInlineLoading, setRespuestaInlineLoading] = useState(false);
-  const [contactoNombreInline, setContactoNombreInline] = useState("");
   const [actividadesReload, setActividadesReload] = useState(0);
+  const [modoRespuesta, setModoRespuesta] = useState(false);
+  const [panelMode, setPanelMode] = useState<"schedule" | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({ datetime: "", notes: "" });
+  const [respuestaInlineContent, setRespuestaInlineContent] = useState("");
+  const [respuestaInlineSubject, setRespuestaInlineSubject] = useState(() =>
+    ensureReplySubject(record?.asunto)
+  );
+  const [contactoNombreInline, setContactoNombreInline] = useState("");
+  const [respuestaInlineLoading, setRespuestaInlineLoading] = useState(false);
 
   useEffect(() => {
     if (initialAction === "discard") {
       setDiscardOpen(true);
-    } else if (initialAction === "schedule") {
-      setPanelMode("schedule");
-      setScheduleHint(true);
     }
     if (initialAction) {
       navigate(".", { replace: true, state: null });
@@ -91,15 +89,9 @@ const CRMMensajeMinimalView = () => {
   }, [initialAction, navigate]);
 
   useEffect(() => {
-    if (!scheduleHint) return;
-    const timer = window.setTimeout(() => setScheduleHint(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [scheduleHint]);
-
-  useEffect(() => {
     setReplySubject(ensureReplySubject(record?.asunto));
     setRespuestaInlineSubject(ensureReplySubject(record?.asunto));
-    
+
     // Inicializar nombre del contacto si existe
     if (record?.contacto?.nombre_completo) {
       setContactoNombre(record.contacto.nombre_completo);
@@ -108,6 +100,7 @@ const CRMMensajeMinimalView = () => {
       setContactoNombre("");
       setContactoNombreInline("");
     }
+    setRespuestaInlineContent("");
   }, [record?.asunto, record?.contacto]);
 
   if (!record) return null;
@@ -499,38 +492,20 @@ const CRMMensajeMinimalView = () => {
             </p>
             <h3 className="text-xl font-semibold text-foreground">Actividades</h3>
           </div>
-          <div className="flex flex-col gap-2 rounded-2xl border border-border/40 bg-muted/10 p-3 text-sm shadow-inner">
-            <Button
-              variant="secondary"
-              className="w-full rounded-xl border border-transparent bg-gradient-to-r from-blue-600/90 to-blue-600/90 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-90"
-              onClick={() => {
-                setModoRespuesta(true);
-                setPanelMode(null);
+          <div className="flex-1">
+            <ActividadesPanel
+              mensajeId={record.id}
+              oportunidadId={record.oportunidad_id ?? undefined}
+              contactoId={record.contacto_id ?? undefined}
+              contactoNombre={record.contacto?.nombre_completo ?? undefined}
+              asuntoMensaje={record.asunto ?? undefined}
+              onActividadCreated={() => {
+                refresh();
+                setActividadesReload((prev) => prev + 1);
               }}
-            >
-              <MessageCircle className="mr-2 h-4 w-4" />
-              Responder
-            </Button>
-            <Button
-              variant="secondary"
-              className={cn(
-                "w-full rounded-xl border border-transparent bg-gradient-to-r from-primary/90 to-primary/90 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition hover:opacity-90",
-                scheduleHint ? "ring-2 ring-offset-2 ring-primary animate-pulse" : "",
-              )}
-              onClick={() => {
-                setPanelMode("schedule");
-                setScheduleHint(true);
-                setModoRespuesta(false);
-              }}
-            >
-              <CalendarPlus className="mr-2 h-4 w-4" />
-              Agendar
-            </Button>
-            <p className="text-xs leading-tight text-muted-foreground/90">
-              Responde o programa actividades desde este panel sin perder el hilo del mensaje.
-            </p>
+              reloadKey={actividadesReload}
+            />
           </div>
-          <div className="flex-1">{renderPanelContent()}</div>
         </Card>
       </div>
       <Dialog open={replyDialogOpen} onOpenChange={(open) => setReplyDialogOpen(open)}>

@@ -21,6 +21,7 @@ from app.models import (
     CRMMotivoEvento,
     EstadoMensaje,
     TipoMensaje,
+    CanalMensaje,
 )
 
 
@@ -428,6 +429,78 @@ class CRMMensajeService:
             "contacto_creado": contacto_creado,
             "contacto_id": contacto_id,
             "oportunidad_creada": oportunidad_creada,
+            "oportunidad_id": oportunidad_id,
+        }
+
+    def enviar_mensaje(
+        self,
+        session: Session,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        contenido = payload.get("contenido")
+        if not contenido or not contenido.strip():
+            raise ValueError("El contenido del mensaje es obligatorio")
+
+        oportunidad_id = payload.get("oportunidad_id")
+        if not oportunidad_id:
+            raise ValueError("oportunidad_id es obligatorio")
+
+        oportunidad = session.get(CRMOportunidad, oportunidad_id)
+        if not oportunidad:
+            raise ValueError("Oportunidad no encontrada")
+
+        responsable_id = payload.get("responsable_id") or oportunidad.responsable_id
+        if not responsable_id:
+            raise ValueError("No se pudo determinar el responsable del mensaje")
+
+        contacto_id = payload.get("contacto_id") or oportunidad.contacto_id
+        contacto_creado = False
+
+        if contacto_id is None:
+            contacto_nombre = payload.get("contacto_nombre")
+            if not contacto_nombre or not contacto_nombre.strip():
+                raise ValueError(
+                    "El campo contacto_nombre es obligatorio cuando la oportunidad no tiene contacto asignado"
+                )
+            referencia = payload.get("contacto_referencia") or oportunidad.descripcion_estado or contacto_nombre
+            contacto_payload = {
+                "nombre": contacto_nombre.strip(),
+                "referencia": referencia,
+                "responsable_id": responsable_id,
+            }
+            contacto = self._crear_contacto_si_necesario(session, contacto_payload)
+            contacto_id = contacto.id
+            contacto_creado = True
+            if oportunidad.contacto_id is None:
+                oportunidad.contacto_id = contacto_id
+                session.add(oportunidad)
+
+        asunto = payload.get("asunto")
+        if not asunto:
+            asunto = oportunidad.descripcion_estado or f"Oportunidad #{oportunidad_id}"
+
+        canal = payload.get("canal") or CanalMensaje.WHATSAPP.value
+
+        mensaje_payload = {
+            "tipo": TipoMensaje.SALIDA.value,
+            "canal": canal,
+            "contacto_id": contacto_id,
+            "oportunidad_id": oportunidad_id,
+            "asunto": asunto,
+            "contenido": contenido.strip(),
+            "estado": EstadoMensaje.PENDIENTE_ENVIO.value,
+            "fecha_mensaje": datetime.now(UTC).isoformat(),
+            "responsable_id": responsable_id,
+            "contacto_referencia": payload.get("contacto_referencia"),
+        }
+        mensaje = crm_mensaje_crud.create(session, mensaje_payload)
+
+        session.commit()
+        session.refresh(mensaje)
+        return {
+            "mensaje_salida": mensaje,
+            "contacto_id": contacto_id,
+            "contacto_creado": contacto_creado,
             "oportunidad_id": oportunidad_id,
         }
 

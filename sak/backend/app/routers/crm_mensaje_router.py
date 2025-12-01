@@ -172,6 +172,19 @@ def responder_mensaje(
         raise HTTPException(status_code=500, detail=f"Error al responder mensaje: {str(e)}")
 
 
+@router.post("/acciones/enviar")
+def enviar_mensaje_desde_panel(
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+):
+    try:
+        return crm_mensaje_service.enviar_mensaje(session, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al enviar mensaje: {str(e)}")
+
+
 @router.get("/{mensaje_id}/actividades")
 def obtener_actividades_mensaje(
     mensaje_id: int,
@@ -328,3 +341,19 @@ def obtener_actividades(
         "total": len(actividades),
         "actividades": actividades
     }
+
+
+@router.get("/acciones/buscar-actividades")
+def obtener_actividades_alias(
+    session: Session = Depends(get_session),
+    mensaje_id: int | None = None,
+    contacto_id: int | None = None,
+    oportunidad_id: int | None = None,
+):
+    """Alias con prefijo adicional para evitar colisiones con rutas genéricas."""
+    return obtener_actividades(
+        session=session,
+        mensaje_id=mensaje_id,
+        contacto_id=contacto_id,
+        oportunidad_id=oportunidad_id,
+    )
