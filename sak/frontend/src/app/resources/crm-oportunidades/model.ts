@@ -7,6 +7,7 @@ import {
 } from "@/lib/form-detail-schema";
 
 export const CRM_OPORTUNIDAD_ESTADOS = [
+  "0-prospect",
   "1-abierta",
   "2-visita",
   "3-cotiza",
@@ -26,6 +27,7 @@ export const CRM_OPORTUNIDAD_ESTADO_CHOICES = CRM_OPORTUNIDAD_ESTADOS.map(
 
 export const CRM_OPORTUNIDAD_ESTADO_BADGES: Record<CRMOportunidadEstado, string> =
   {
+    "0-prospect": "bg-slate-100 text-slate-800",
     "1-abierta": "bg-blue-100 text-blue-800",
     "2-visita": "bg-cyan-100 text-cyan-800",
     "3-cotiza": "bg-amber-100 text-amber-800",
@@ -124,7 +126,7 @@ export const crmOportunidadSchema = createEntitySchema<
       labelField: "nombre",
     }),
     propiedad_id: referenceField({
-      required: true,
+      required: false,
       resource: "propiedades",
       labelField: "nombre",
     }),

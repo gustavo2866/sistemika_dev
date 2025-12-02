@@ -99,9 +99,11 @@ import {
 } from "@/app/resources/tipos-solicitud";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
+import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
 import DashboardCrmList from "@/app/resources/dashboard-crm/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
+import { VacanciasList, VacanciasShow } from "@/app/resources/vacancias";
 import {
   NominaList,
   NominaCreate,
@@ -173,6 +175,7 @@ import {
   CRMOportunidadCreate,
   CRMOportunidadEdit,
   CRMOportunidadShow,
+  CRMOportunidadPanelPage,
 } from "@/app/resources/crm-oportunidades";
 import {
   CRMEventoList,
@@ -283,6 +286,14 @@ const AdminApp = () => {
         icon={Home}
       />
       <Resource
+        name="vacancias"
+        list={VacanciasList}
+        show={VacanciasShow}
+        recordRepresentation="id"
+        icon={AlertTriangle}
+        options={{ label: "Vacancias" }}
+      />
+      <Resource
         name="tipos-propiedad"
         list={TipoPropiedadList}
         create={TipoPropiedadCreate}
@@ -351,6 +362,13 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={BarChart3}
         options={{ label: "Dashboard" }}
+      />
+      <Resource
+        name="dashboard-vacancias"
+        list={DashboardVacanciasList}
+        recordRepresentation="id"
+        icon={BarChart2}
+        options={{ label: "Dashboard Vacancias" }}
       />
       <Resource
         name="dashboard-crm"
@@ -527,6 +545,7 @@ const AdminApp = () => {
         <Route path="/solicitudes/create-mb" element={<SolicitudCreate />} />
         <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />
+        <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/mensajes/:id/responder" element={<CRMMensajeReply />} />
       </CustomRoutes>
     </Admin>

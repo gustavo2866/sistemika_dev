@@ -74,7 +74,7 @@ const setEstadoFilterValue = (filters: Record<string, unknown>, values: string[]
   }
 };
 
-const ACTIVE_ESTADOS = ["1-abierta", "2-visita", "3-cotiza", "4-reserva"];
+const ACTIVE_ESTADOS = ["0-prospect", "1-abierta", "2-visita", "3-cotiza", "4-reserva"];
 
 const SoloActivasToggle = () => {
   const { filterValues, setFilters } = useListContext();

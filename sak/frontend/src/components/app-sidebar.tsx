@@ -54,7 +54,10 @@ const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
 const CONFIG_RESOURCES = ["users", "departamentos", "tipos-operacion", "tipos-solicitud", "metodos-pago", "tipos-comprobante"] as const;
 const CRM_RESOURCES = ["crm/mensajes", "crm/inbox", "crm/oportunidades", "crm/eventos", "crm/contactos", "dashboard-crm"] as const;
-const CRM_CUSTOM_LINKS = [{ label: "Setup", to: "/crm/setup" }] as const;
+const CRM_CUSTOM_LINKS = [
+  { label: "Panel", to: "/crm/panel" },
+  { label: "Setup", to: "/crm/setup" },
+] as const;
 const CRM_CATALOG_RESOURCES = [
   "crm/catalogos/tipos-operacion",
   "crm/catalogos/motivos-perdida",
@@ -131,11 +134,11 @@ export function AppSidebar() {
     [resources, groupedNames],
   );
 
-  const [constructoraOpen, setConstructoraOpen] = useState(true);
+  const [constructoraOpen, setConstructoraOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(true);
   const [crmOpen, setCrmOpen] = useState(true);
-  const [adminOpen, setAdminOpen] = useState(true);
-  const [configOpen, setConfigOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
 
   return (
     <Sidebar variant="floating" collapsible="icon">

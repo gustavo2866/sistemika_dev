@@ -295,7 +295,7 @@ function CotizacionSection() {
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div className="md:col-span-2">
           <ReferenceInput source="propiedad_id" reference="propiedades" label="Propiedad">
-            <SelectInput optionText="nombre" className="w-full" validate={required()} />
+            <SelectInput optionText="nombre" className="w-full" />
           </ReferenceInput>
         </div>
         <div className="md:col-span-2">
