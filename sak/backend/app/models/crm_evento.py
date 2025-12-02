@@ -53,6 +53,10 @@ class CRMEvento(Base, table=True):
     )
     
     # Campos opcionales
+    descripcion: Optional[str] = Field(
+        default=None,
+        description="Descripción detallada del evento"
+    )
     resultado: Optional[str] = Field(
         default=None,
         description="Resultado del evento (obligatorio al cerrar)"

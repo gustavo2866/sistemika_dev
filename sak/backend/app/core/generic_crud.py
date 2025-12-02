@@ -129,6 +129,33 @@ class GenericCRUD(Generic[M]):
                     return True
                 if lowered in ("false", "0", "no", "off"):
                     return False
+            if python_type.__name__ == "datetime" and isinstance(value, str):
+                s = value.strip()
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"
+                try:
+                    return datetime.fromisoformat(s)
+                except Exception:
+                    try:
+                        d = date.fromisoformat(s.split("T")[0])
+                        return datetime(d.year, d.month, d.day)
+                    except Exception:
+                        pass
+            if python_type.__name__ == "date" and isinstance(value, str):
+                try:
+                    return date.fromisoformat(value.strip().split("T")[0])
+                except Exception:
+                    pass
+            if python_type.__name__ == "Decimal" and isinstance(value, (int, float, str)):
+                try:
+                    return Decimal(str(value))
+                except Exception:
+                    pass
+            if python_type is int and isinstance(value, str) and value.isdigit():
+                try:
+                    return int(value)
+                except Exception:
+                    pass
             try:
                 return python_type(value)
             except (TypeError, ValueError):
@@ -160,15 +187,31 @@ class GenericCRUD(Generic[M]):
                 continue
             
             # Verificar si es un campo anidado (contiene punto)
-            if "." in field_name:
+            if "." in field_name and "__" not in field_name:
                 stmt = self._apply_nested_filter(stmt, field_name, filter_value)
                 continue
-            
+
+            operator_suffix = None
+            actual_field_name = field_name
+            if "__" in field_name:
+                parts = field_name.split("__", 1)
+                actual_field_name = parts[0]
+                operator_suffix = parts[1].lower() if len(parts) > 1 else None
+
             # Verificar que el campo exista en el modelo
-            if not hasattr(self.model, field_name):
+            if not hasattr(self.model, actual_field_name):
                 continue
                 
-            column = getattr(self.model, field_name)
+            column = getattr(self.model, actual_field_name)
+
+            if operator_suffix:
+                coerced_value = (
+                    [self._coerce_column_value(column, value) for value in filter_value]
+                    if isinstance(filter_value, list)
+                    else self._coerce_column_value(column, filter_value)
+                )
+                stmt = self._apply_operator_filter(stmt, column, operator_suffix, coerced_value)
+                continue
             
             if isinstance(filter_value, dict):
                 # Filtros complejos: {"gte": 10, "lt": 100}
@@ -263,6 +306,42 @@ class GenericCRUD(Generic[M]):
 
     def _apply_operator_filter(self, stmt, column, operator: str, value):
         """Aplica un operador especÃ­fico a una columna"""
+        # Para columnas datetime con operadores de comparación, usar cast a date
+        is_datetime_column = False
+        try:
+            python_type = column.type.python_type
+            if python_type.__name__ == "datetime":
+                is_datetime_column = True
+        except (AttributeError, NotImplementedError):
+            pass
+        
+        # Para comparaciones de fecha en campos datetime, usar func.date()
+        if is_datetime_column and operator in [FilterOperator.GTE, FilterOperator.GT, FilterOperator.LTE, FilterOperator.LT]:
+            # Extraer solo la parte de fecha del valor datetime
+            if isinstance(value, datetime):
+                value_date = value.date()
+            elif isinstance(value, str):
+                # Intentar parsear como datetime y obtener la fecha
+                try:
+                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                    value_date = dt.date()
+                except:
+                    value_date = value
+            else:
+                value_date = value
+            
+            # Usar func.date() para comparar solo fechas
+            date_column = func.date(column)
+            if operator == FilterOperator.GTE:
+                return stmt.where(date_column >= value_date)
+            elif operator == FilterOperator.GT:
+                return stmt.where(date_column > value_date)
+            elif operator == FilterOperator.LTE:
+                return stmt.where(date_column <= value_date)
+            elif operator == FilterOperator.LT:
+                return stmt.where(date_column < value_date)
+        
+        # Operadores normales
         if operator == FilterOperator.GTE:
             return stmt.where(column >= value)
         elif operator == FilterOperator.GT:

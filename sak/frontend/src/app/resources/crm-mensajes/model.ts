@@ -44,7 +44,12 @@ export type CRMMensaje = {
     estado?: string | null;
     descripcion_estado?: string | null;
     descripcion?: string | null;
+    nombre?: string | null;
     contacto?: CRMReference | null;
+    propiedad?: {
+      id?: number | null;
+      nombre?: string | null;
+    } | null;
   } | null;
 };
 

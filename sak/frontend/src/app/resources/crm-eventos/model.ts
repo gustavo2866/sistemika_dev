@@ -5,13 +5,22 @@ import {
   stringField,
 } from "@/lib/form-detail-schema";
 
-export const CRM_EVENTO_ESTADOS = ["pendiente", "hecho"] as const;
+export const CRM_EVENTO_ESTADOS = ["1-pendiente", "2-realizado", "3-cancelado", "4-reagendar"] as const;
 
 export type CRMEventoEstado = (typeof CRM_EVENTO_ESTADOS)[number];
 
 export const CRM_EVENTO_ESTADO_CHOICES = CRM_EVENTO_ESTADOS.map((estado) => ({
   id: estado,
-  name: estado.charAt(0).toUpperCase() + estado.slice(1),
+  name: estado.split('-')[1].charAt(0).toUpperCase() + estado.split('-')[1].slice(1),
+}));
+
+export const CRM_EVENTO_TIPOS = ["llamada", "reunion", "visita", "email", "whatsapp", "nota"] as const;
+
+export type CRMEventoTipo = (typeof CRM_EVENTO_TIPOS)[number];
+
+export const CRM_EVENTO_TIPO_CHOICES = CRM_EVENTO_TIPOS.map((tipo) => ({
+  id: tipo,
+  name: tipo.charAt(0).toUpperCase() + tipo.slice(1),
 }));
 
 export const CRM_EVENTO_VALIDATIONS = {
@@ -21,47 +30,38 @@ export const CRM_EVENTO_VALIDATIONS = {
 
 export type CRMEvento = {
   id: number;
-  contacto_id: number;
-  tipo_id: number;
-  motivo_id: number;
+  oportunidad_id: number;
+  titulo: string;
+  descripcion?: string | null;
+  tipo_evento: CRMEventoTipo;
   fecha_evento: string;
-  descripcion: string;
-  asignado_a_id: number;
-  oportunidad_id?: number | null;
-  origen_lead_id?: number | null;
-  proximo_paso?: string | null;
-  fecha_compromiso?: string | null;
   estado_evento: CRMEventoEstado;
-  tipo?: { nombre?: string } | null;
-  motivo?: { nombre?: string } | null;
+  asignado_a_id: number;
+  resultado?: string | null;
+  oportunidad?: { id?: number; estado?: string; descripcion_estado?: string; contacto_id?: number; propiedad_id?: number } | null;
+  asignado_a?: { id?: number; nombre?: string } | null;
 };
 
 export type CRMEventoFormValues = {
-  contacto_id: number | null;
-  tipo_id: number | null;
-  motivo_id: number | null;
+  oportunidad_id: number | null;
+  titulo: string;
+  descripcion?: string | null;
+  tipo_evento: CRMEventoTipo | null;
   fecha_evento: string;
-  descripcion: string;
-  asignado_a_id: number | null;
-  oportunidad_id?: number | null;
-  origen_lead_id?: number | null;
-  proximo_paso?: string | null;
-  fecha_compromiso?: string | null;
   estado_evento: CRMEventoEstado;
+  asignado_a_id: number | null;
+  resultado?: string | null;
 };
 
 export const CRM_EVENTO_DEFAULTS: CRMEventoFormValues = {
-  contacto_id: null,
-  tipo_id: null,
-  motivo_id: null,
-  fecha_evento: "",
-  descripcion: "",
-  asignado_a_id: null,
   oportunidad_id: null,
-  origen_lead_id: null,
-  proximo_paso: "",
-  fecha_compromiso: "",
-  estado_evento: "pendiente",
+  titulo: "",
+  descripcion: "",
+  tipo_evento: null,
+  fecha_evento: "",
+  estado_evento: "1-pendiente",
+  asignado_a_id: null,
+  resultado: "",
 };
 
 export const crmEventoSchema = createEntitySchema<
@@ -69,58 +69,44 @@ export const crmEventoSchema = createEntitySchema<
   CRMEvento
 >({
   fields: {
-    contacto_id: referenceField({
+    oportunidad_id: referenceField({
       required: true,
-      resource: "crm/contactos",
-      labelField: "nombre_completo",
+      resource: "crm/oportunidades",
+      labelField: "id",
     }),
-    tipo_id: referenceField({
+    titulo: stringField({
       required: true,
-      resource: "crm/catalogos/tipos-evento",
-      labelField: "nombre",
+      maxLength: 255,
+      defaultValue: "",
     }),
-    motivo_id: referenceField({
+    descripcion: stringField({
+      required: false,
+      maxLength: CRM_EVENTO_VALIDATIONS.DESCRIPCION_MAX,
+      defaultValue: "",
+    }),
+    tipo_evento: selectField({
       required: true,
-      resource: "crm/catalogos/motivos-evento",
-      labelField: "nombre",
+      options: CRM_EVENTO_TIPO_CHOICES,
+      defaultValue: null,
     }),
     fecha_evento: stringField({
       required: true,
       defaultValue: "",
     }),
-    descripcion: stringField({
+    estado_evento: selectField({
       required: true,
-      maxLength: CRM_EVENTO_VALIDATIONS.DESCRIPCION_MAX,
-      defaultValue: "",
+      options: CRM_EVENTO_ESTADO_CHOICES,
+      defaultValue: "1-pendiente",
     }),
     asignado_a_id: referenceField({
       required: true,
       resource: "users",
       labelField: "nombre",
     }),
-    oportunidad_id: referenceField({
+    resultado: stringField({
       required: false,
-      resource: "crm/oportunidades",
-      labelField: "id",
-    }),
-    origen_lead_id: referenceField({
-      required: false,
-      resource: "crm/catalogos/origenes-lead",
-      labelField: "nombre",
-    }),
-    proximo_paso: stringField({
-      required: false,
-      maxLength: CRM_EVENTO_VALIDATIONS.PROXIMO_PASO_MAX,
+      maxLength: CRM_EVENTO_VALIDATIONS.DESCRIPCION_MAX,
       defaultValue: "",
-    }),
-    fecha_compromiso: stringField({
-      required: false,
-      defaultValue: "",
-    }),
-    estado_evento: selectField({
-      required: true,
-      options: CRM_EVENTO_ESTADO_CHOICES,
-      defaultValue: "pendiente",
     }),
   },
 });

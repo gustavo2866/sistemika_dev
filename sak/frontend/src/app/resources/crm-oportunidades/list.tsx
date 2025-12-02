@@ -335,12 +335,15 @@ export const CRMOportunidadList = () => (
             className="max-w-[220px] whitespace-normal"
             cellClassName="align-top whitespace-normal"
           >
-            <ReferenceField source="propiedad_id" reference="propiedades">
-              <TextField
-                source="nombre"
-                className="block text-sm leading-tight line-clamp-2 break-words"
-              />
-            </ReferenceField>
+            <PropiedadCell />
+          </DataTable.Col>
+          <DataTable.Col
+            source="descripcion_estado"
+            label="Descripción"
+            className="w-[360px] min-w-[320px] whitespace-normal"
+            cellClassName="align-top whitespace-normal"
+          >
+            <DescripcionCell />
           </DataTable.Col>
           <DataTable.Col source="estado" label="Estado">
             <EstadoBadge />
@@ -349,9 +352,6 @@ export const CRMOportunidadList = () => (
             <ReferenceField source="tipo_operacion_id" reference="crm/catalogos/tipos-operacion">
               <TextField source="nombre" />
             </ReferenceField>
-          </DataTable.Col>
-          <DataTable.Col label="Monto">
-            <MontoMonedaCell />
           </DataTable.Col>
           <DataTable.Col source="responsable_id" label="Responsable">
             <ReferenceField source="responsable_id" reference="users">
@@ -382,30 +382,6 @@ const FechaCreacionCell = () => {
     <div className="text-sm text-muted-foreground">
       {formatShortDate(record.created_at)}
     </div>
-  );
-};
-
-const MontoMonedaCell = () => {
-  const record = useRecordContext<
-    CRMOportunidad & { moneda?: { codigo?: string | null }; moneda_codigo?: string | null }
-  >();
-  if (!record) return null;
-  const codigo =
-    record.moneda?.codigo ??
-    (record as unknown as { moneda_codigo?: string | null })?.moneda_codigo ??
-    "";
-  const montoFormatted =
-    typeof record.monto === "number"
-      ? record.monto.toLocaleString("es-AR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })
-      : "-";
-
-  return (
-    <span className="text-sm font-medium">
-      {codigo ? `${codigo} ${montoFormatted}` : montoFormatted}
-    </span>
   );
 };
 
@@ -441,6 +417,53 @@ const cnBadge = (estado: CRMOportunidadEstado, selected = false) => {
   return selected
     ? `${base} border-transparent shadow-sm ring-1 ring-offset-1 ring-offset-background`
     : `${base} border-transparent`;
+};
+
+const DescripcionCell = () => {
+  const record = useRecordContext<CRMOportunidad>();
+  if (!record) return null;
+  const descripcion = record.descripcion_estado?.trim();
+  if (!descripcion) {
+    return <span className="text-sm text-muted-foreground">Sin descripción</span>;
+  }
+  const texto =
+    descripcion.length > 80 ? `${descripcion.slice(0, 80)}...` : descripcion;
+  return (
+    <p className="text-sm text-muted-foreground line-clamp-3 break-words">
+      {texto}
+    </p>
+  );
+};
+
+const PropiedadCell = () => {
+  const record = useRecordContext<CRMOportunidad>();
+  if (!record) return null;
+  return (
+    <div className="flex flex-col text-sm">
+      <ReferenceField
+        source="propiedad_id"
+        reference="propiedades"
+        record={record}
+      >
+        <TextField
+          source="nombre"
+          className="font-medium leading-tight line-clamp-2 break-words"
+        />
+      </ReferenceField>
+      <ReferenceField
+        source="emprendimiento_id"
+        reference="emprendimientos"
+        record={record}
+        link={false}
+        empty="Sin emprendimiento"
+      >
+        <TextField
+          source="nombre"
+          className="text-xs text-muted-foreground line-clamp-2 break-words"
+        />
+      </ReferenceField>
+    </div>
+  );
 };
 
 

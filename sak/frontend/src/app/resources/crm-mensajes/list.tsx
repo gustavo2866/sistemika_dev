@@ -15,7 +15,7 @@ import { SummaryChips, type SummaryChipItem } from "@/components/lists/SummaryCh
 import { ResourceTitle } from "@/components/resource-title";
 import { Mail, MessageCircle, CalendarPlus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CRMMensaje } from "./model";
+import type { CRMMensaje, CRMMensajeEstado } from "./model";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
 import { useNavigate } from "react-router";
 import { CRMMensajeReplyDialog } from "./reply";
@@ -165,15 +165,15 @@ const TipoDualToggle = () => {
     setFilters(newFilters, {});
   };
 
-  const options = [
-    { id: undefined, label: "Nuevos" },
-    { id: "entrada", label: "Entrada" },
-    { id: "salida", label: "Salida" },
-  ] as const;
+  const options: Array<{ id?: CRMMensaje["tipo"]; label: string; estado: CRMMensajeEstado }> = [
+    { id: undefined, label: "Nuevos", estado: "nuevo" },
+    { id: "entrada", label: "Entrada", estado: "recibido" },
+    { id: "salida", label: "Salida", estado: "enviado" },
+  ];
 
   return (
     <div className="flex items-center justify-center gap-1 rounded-full border border-slate-200/80 bg-white/80 px-1 py-1 shadow-[0_1px_6px_rgba(15,23,42,0.08)] backdrop-blur-sm">
-      {options.map(({ id, label }, index) => {
+      {options.map(({ id, label, estado }, index) => {
         // Check active state based on tipo + estado combination
         let isActive = false;
         if (!id) {
@@ -189,7 +189,8 @@ const TipoDualToggle = () => {
         
         const isFirst = index === 0;
         const isLast = index === options.length - 1;
-        const isNuevos = !id;
+        const badgeColors =
+          CRM_MENSAJE_ESTADO_BADGES[estado] ?? "bg-slate-100 text-slate-800";
         return (
           <button
             key={label}
@@ -202,9 +203,10 @@ const TipoDualToggle = () => {
               isFirst ? "rounded-l-full" : "",
               isLast ? "rounded-r-full" : "",
               isActive
-                ? isNuevos
-                  ? "bg-emerald-600 text-white shadow-md"
-                  : "bg-slate-900 text-white shadow-md"
+                ? cn(
+                    badgeColors,
+                    "shadow-[0_4px_16px_rgba(15,23,42,0.18)] ring-1 ring-slate-200"
+                  )
                 : "text-slate-600 hover:bg-slate-100"
             )}
           >
@@ -320,18 +322,22 @@ const EstadoSummaryChips = () => {
   return (
     <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-3 shadow-[0_20px_40px_rgba(15,23,42,0.08)] backdrop-blur-md">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex justify-start">
-          <TipoDualToggle />
+        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+          <div className="flex justify-center lg:justify-start lg:flex-shrink-0">
+            <TipoDualToggle />
+          </div>
+          <div className="flex w-full justify-center lg:flex-1 lg:justify-end">
+            <SummaryChips
+              className="mb-0 border-none bg-transparent p-0 shadow-none"
+              title={null}
+              items={items}
+              loading={loading}
+              error={error}
+              selectedValue={currentEstados[0]}
+              onSelect={handleSelect}
+            />
+          </div>
         </div>
-        <SummaryChips
-          className="mb-0 border-none bg-transparent p-0 shadow-none"
-          title={null}
-          items={items}
-          loading={loading}
-          error={error}
-          selectedValue={currentEstados[0]}
-          onSelect={handleSelect}
-        />
       </div>
     </div>
   );
@@ -380,9 +386,17 @@ export const CRMMensajeList = () => {
         <ContactoCell />
       </DataTable.Col>
       <DataTable.Col
+        source="oportunidad_id"
+        label="Oportunidad"
+        className="w-[360px] min-w-[320px]"
+        cellClassName="!whitespace-normal"
+      >
+        <OportunidadCell />
+      </DataTable.Col>
+      <DataTable.Col
         source="asunto"
         label="Asunto"
-        className="w-[520px] min-w-[420px]"
+        className="w-[420px] min-w-[320px]"
         cellClassName="!whitespace-normal"
       >
         <AsuntoCell />
@@ -458,21 +472,49 @@ const ContactoCell = () => {
 const AsuntoCell = () => {
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
-  const oportunidadId = record.oportunidad?.id ?? record.oportunidad_id;
-  const propiedadNombre = record.oportunidad?.nombre;
-  const enlaceTexto =
-    oportunidadId || propiedadNombre
-      ? `${oportunidadId ? `#${oportunidadId}` : "Sin oportunidad"}${
-          propiedadNombre ? ` - ${propiedadNombre}` : ""
-        }`
-      : null;
   return (
     <div className="space-y-1">
       <p className="text-sm font-medium line-clamp-1">{record.asunto || "Sin asunto"}</p>
       {record.contenido ? (
         <p className="text-xs text-muted-foreground line-clamp-2">{record.contenido}</p>
       ) : null}
-      {enlaceTexto ? <p className="text-xs text-muted-foreground">{enlaceTexto}</p> : null}
+    </div>
+  );
+};
+
+const OportunidadCell = () => {
+  const record = useRecordContext<CRMMensaje>();
+  if (!record) return null;
+  const oportunidadId = record.oportunidad?.id ?? record.oportunidad_id;
+  const oportunidadDescripcionRaw =
+    record.oportunidad?.nombre ??
+    record.oportunidad?.descripcion ??
+    record.oportunidad?.descripcion_estado ??
+    null;
+  const oportunidadDescripcion =
+    typeof oportunidadDescripcionRaw === "string" && oportunidadDescripcionRaw.length > 80
+      ? `${oportunidadDescripcionRaw.slice(0, 80)}...`
+      : oportunidadDescripcionRaw;
+  const propiedadNombre =
+    record.oportunidad?.propiedad?.nombre ??
+    (record.oportunidad?.propiedad?.id ? `Propiedad #${record.oportunidad.propiedad.id}` : null);
+
+  const principalLinea = [oportunidadId ? `#${oportunidadId}` : null, oportunidadDescripcion]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!principalLinea && !propiedadNombre) {
+    return <span className="text-sm text-muted-foreground">Sin oportunidad</span>;
+  }
+
+  return (
+    <div className="flex flex-col text-sm">
+      {principalLinea ? (
+        <span className="text-sm font-semibold text-foreground">{principalLinea}</span>
+      ) : null}
+      {propiedadNombre ? (
+        <span className="text-xs text-muted-foreground">{propiedadNombre}</span>
+      ) : null}
     </div>
   );
 };

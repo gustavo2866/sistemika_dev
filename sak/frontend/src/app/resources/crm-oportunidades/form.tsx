@@ -72,7 +72,7 @@ const SummaryItem = ({ label, value, helper }: SummaryItemProps) => (
 );
 
 export const CRMOportunidadForm = () => (
-  <div className="mx-auto w-full max-w-6xl">
+  <div className="w-full max-w-6xl mr-auto ml-0">
     <SimpleForm
       className="w-full max-w-none"
       warnWhenUnsavedChanges
