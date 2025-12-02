@@ -10,7 +10,7 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Badge } from "@/components/ui/badge";
-import { useListContext, useRecordContext, useCreatePath } from "ra-core";
+import { useListContext, useRecordContext, useCreatePath, useRefresh } from "ra-core";
 import { SummaryChips, type SummaryChipItem } from "@/components/lists/SummaryChips";
 import { ResourceTitle } from "@/components/resource-title";
 import { Mail, MessageCircle, CalendarPlus, Trash2 } from "lucide-react";
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { CRMMensaje } from "./model";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
 import { useNavigate } from "react-router";
+import { CRMMensajeReplyDialog } from "./reply";
 import {
   CRM_MENSAJE_TIPO_CHOICES,
   CRM_MENSAJE_CANAL_CHOICES,
@@ -336,15 +337,30 @@ const EstadoSummaryChips = () => {
   );
 };
 
-export const CRMMensajeList = () => (
-  <List
-    title={<ResourceTitle icon={Mail} text="CRM - Mensajes" />}
-    filters={filters}
-    actions={<ListActions />}
-    perPage={10}
-    sort={{ field: "fecha_mensaje", order: "DESC" }}
-    className="space-y-5"
-  >
+export const CRMMensajeList = () => {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [selectedMensaje, setSelectedMensaje] = useState<CRMMensaje | null>(null);
+  const refresh = useRefresh();
+
+  const handleReplyClick = (mensaje: CRMMensaje) => {
+    setSelectedMensaje(mensaje);
+    setReplyOpen(true);
+  };
+
+  const handleReplySuccess = () => {
+    refresh();
+  };
+
+  return (
+    <>
+      <List
+        title={<ResourceTitle icon={Mail} text="CRM - Mensajes" />}
+        filters={filters}
+        actions={<ListActions />}
+        perPage={10}
+        sort={{ field: "fecha_mensaje", order: "DESC" }}
+        className="space-y-5"
+      >
     <div className="space-y-6 rounded-[32px] border border-slate-200/70 bg-gradient-to-br from-white/90 via-white/80 to-slate-50/80 p-5 shadow-[0_30px_60px_rgba(15,23,42,0.15)]">
       <EstadoSummaryChips />
       <div className="rounded-3xl border border-slate-200/60 bg-white/90 p-4 shadow-sm transition">
@@ -375,13 +391,21 @@ export const CRMMensajeList = () => (
         <EstadoCell />
       </DataTable.Col>
       <DataTable.Col label="Acciones" className="w-[140px] min-w-[120px] justify-center">
-        <AccionesCell />
+        <AccionesCell onReplyClick={handleReplyClick} />
       </DataTable.Col>
         </DataTable>
       </div>
     </div>
-  </List>
-);
+      </List>
+      <CRMMensajeReplyDialog
+        open={replyOpen}
+        onOpenChange={setReplyOpen}
+        mensaje={selectedMensaje}
+        onSuccess={handleReplySuccess}
+      />
+    </>
+  );
+};
 
 const IdCell = () => {
   const record = useRecordContext<CRMMensaje>();
@@ -469,7 +493,11 @@ const EstadoCell = () => {
   );
 };
 
-const AccionesCell = () => {
+interface AccionesCellProps {
+  onReplyClick: (mensaje: CRMMensaje) => void;
+}
+
+const AccionesCell = ({ onReplyClick }: AccionesCellProps) => {
   const record = useRecordContext<CRMMensaje>();
   const createPath = useCreatePath();
   const navigate = useNavigate();
@@ -487,7 +515,7 @@ const AccionesCell = () => {
 
   const handleReplyClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    navigate(`/crm/mensajes/${record.id}/responder`);
+    onReplyClick(record);
   };
 
   const handleShowAction =
@@ -497,16 +525,23 @@ const AccionesCell = () => {
     };
 
   return (
-    <div className="flex items-center gap-1">
-      <IconButtonWithTooltip label="Responder" onClick={handleReplyClick}>
+    <div className="flex items-center justify-center gap-2">
+      <button
+        type="button"
+        onClick={handleReplyClick}
+        className="flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-slate-100"
+      >
         <MessageCircle className="size-4" />
-      </IconButtonWithTooltip>
-      <IconButtonWithTooltip label="Agendar" onClick={handleShowAction("schedule")}>
-        <CalendarPlus className="size-4" />
-      </IconButtonWithTooltip>
-      <IconButtonWithTooltip label="Descartar" onClick={handleShowAction("discard")}>
+        <span className="text-[9px] font-medium leading-none text-muted-foreground">Responder</span>
+      </button>
+      <button
+        type="button"
+        onClick={handleShowAction("discard")}
+        className="flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-slate-100"
+      >
         <Trash2 className="size-4 text-destructive" />
-      </IconButtonWithTooltip>
+        <span className="text-[9px] font-medium leading-none text-muted-foreground">Descartar</span>
+      </button>
     </div>
   );
 };

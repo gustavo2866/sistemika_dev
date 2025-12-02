@@ -1,4 +1,6 @@
 import json
+import logging
+from datetime import datetime
 from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import func
@@ -18,6 +20,43 @@ router = create_generic_router(
     tags=["crm-mensajes"],
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _fetch_event_rows_dynamic(session: Session, oportunidad_id: int) -> list[dict[str, Any]]:
+    """
+    Obtiene eventos del esquema refactorizado.
+    Devuelve una lista de dicts normalizados para el panel de actividades.
+    """
+    from app.models.crm_evento import CRMEvento
+    
+    stmt = (
+        select(CRMEvento)
+        .where(CRMEvento.oportunidad_id == oportunidad_id)
+        .where(CRMEvento.deleted_at.is_(None))
+        .order_by(CRMEvento.fecha_evento.desc())
+    )
+    
+    eventos = session.exec(stmt).all()
+    normalized: list[dict[str, Any]] = []
+    
+    for evento in eventos:
+        fecha_val = evento.fecha_evento or evento.created_at
+        titulo = evento.titulo or f"Evento #{evento.id}"
+        descripcion_resumen = evento.resultado[:80] + "..." if evento.resultado and len(evento.resultado) > 80 else evento.resultado
+        
+        normalized.append({
+            "tipo": "evento",
+            "id": evento.id,
+            "fecha": fecha_val.isoformat(),
+            "titulo": titulo,
+            "descripcion": descripcion_resumen,
+            "estado": evento.estado_evento,
+            "tipo_evento": evento.tipo_evento,
+            "resultado": evento.resultado,
+        })
+    
+    return normalized
 
 def _build_filters(request: Request) -> dict[str, Any]:
     filters: dict[str, Any] = {}
@@ -218,7 +257,7 @@ def obtener_actividades(
     
     Lógica de búsqueda (en orden de prioridad):
     1. Si hay oportunidad_id → busca mensajes y eventos de esa oportunidad
-    2. Si no hay oportunidad pero hay contacto_id → busca mensajes y eventos de ese contacto
+    2. Si no hay oportunidad pero hay contacto_id → busca mensajes de contacto y eventos relacionados
     3. Si solo hay mensaje_id → busca por referencia del contacto
     
     Parámetros:
@@ -228,8 +267,7 @@ def obtener_actividades(
     
     Retorna una lista combinada y ordenada cronológicamente.
     """
-    from app.models import CRMEvento, CRMContacto
-    from datetime import datetime
+    from app.models import CRMContacto  # mantenido por compatibilidad futura
     
     actividades = []
     criterio_busqueda = None
@@ -299,35 +337,9 @@ def obtener_actividades(
             "tipo_mensaje": msg.tipo,
         })
     
-    # Buscar eventos según criterio (solo si hay oportunidad o contacto)
-    if criterio_busqueda in ["oportunidad", "contacto"]:
-        if criterio_busqueda == "oportunidad":
-            stmt_eventos = (
-                select(CRMEvento)
-                .where(CRMEvento.oportunidad_id == oportunidad_id)
-                .where(CRMEvento.deleted_at.is_(None))
-                .order_by(CRMEvento.fecha_evento.desc())
-            )
-        else:  # contacto
-            stmt_eventos = (
-                select(CRMEvento)
-                .where(CRMEvento.contacto_id == contacto_id)
-                .where(CRMEvento.deleted_at.is_(None))
-                .order_by(CRMEvento.fecha_evento.desc())
-            )
-        
-        eventos = session.exec(stmt_eventos).all()
-        
-        for evento in eventos:
-            actividades.append({
-                "tipo": "evento",
-                "id": evento.id,
-                "fecha": evento.fecha_evento.isoformat(),
-                "descripcion": evento.descripcion[:80] + "..." if len(evento.descripcion) > 80 else evento.descripcion,
-                "estado": evento.estado_evento,
-                "tipo_id": evento.tipo_id,
-                "motivo_id": evento.motivo_id,
-            })
+    # Buscar eventos solo si hay oportunidad (eventos ya no tienen contacto_id)
+    if criterio_busqueda == "oportunidad":
+        actividades.extend(_fetch_event_rows_dynamic(session, oportunidad_id))
     
     # Ordenar todas las actividades por fecha (más reciente primero)
     actividades.sort(key=lambda x: x["fecha"], reverse=True)

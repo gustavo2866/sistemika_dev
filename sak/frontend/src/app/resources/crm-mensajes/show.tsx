@@ -78,10 +78,12 @@ const CRMMensajeMinimalView = () => {
   );
   const [contactoNombreInline, setContactoNombreInline] = useState("");
   const [respuestaInlineLoading, setRespuestaInlineLoading] = useState(false);
+  const [cameFromAction, setCameFromAction] = useState(false);
 
   useEffect(() => {
     if (initialAction === "discard") {
       setDiscardOpen(true);
+      setCameFromAction(true);
     }
     if (initialAction) {
       navigate(".", { replace: true, state: null });
@@ -584,7 +586,17 @@ const CRMMensajeMinimalView = () => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="ghost" onClick={() => setDiscardOpen(false)} disabled={discardLoading}>
+            <Button 
+              variant="ghost" 
+              onClick={() => {
+                if (cameFromAction) {
+                  redirect("list", "crm/mensajes");
+                } else {
+                  setDiscardOpen(false);
+                }
+              }} 
+              disabled={discardLoading}
+            >
               Cancelar
             </Button>
             <Button onClick={handleDescartar} disabled={discardLoading}>

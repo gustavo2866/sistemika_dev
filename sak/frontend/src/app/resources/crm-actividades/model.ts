@@ -5,6 +5,9 @@ export type Actividad = {
   id: number;
   fecha: string;
   descripcion?: string | null;
+  titulo?: string | null;
+  tipo_evento?: string | null;
+  resultado?: string | null;
   canal?: string | null;
   estado?: string | null;
   tipo_mensaje?: string | null;

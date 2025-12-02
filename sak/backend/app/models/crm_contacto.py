@@ -7,7 +7,6 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .crm_catalogos import CRMOrigenLead
-    from .crm_evento import CRMEvento
     from .crm_oportunidad import CRMOportunidad
     from .user import User
 
@@ -32,7 +31,6 @@ class CRMContacto(Base, table=True):
     origen_lead: Optional["CRMOrigenLead"] = Relationship(back_populates="contactos")
     responsable: Optional["User"] = Relationship()
     oportunidades: list["CRMOportunidad"] = Relationship(back_populates="contacto")
-    eventos: list["CRMEvento"] = Relationship(back_populates="contacto")
 
     def __str__(self) -> str:  # pragma: no cover
         return f"CRMContacto(id={self.id}, nombre='{self.nombre_completo}')"

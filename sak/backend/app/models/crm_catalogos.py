@@ -65,11 +65,6 @@ class CRMTipoEvento(Base, table=True):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
 
-    eventos: list["CRMEvento"] = Relationship(
-        back_populates="tipo",
-        sa_relationship_kwargs={"lazy": "noload"}
-    )
-
 
 class CRMMotivoEvento(Base, table=True):
     __tablename__ = "crm_motivos_evento"
@@ -79,11 +74,6 @@ class CRMMotivoEvento(Base, table=True):
     nombre: str = Field(max_length=150)
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
-
-    eventos: list["CRMEvento"] = Relationship(
-        back_populates="motivo",
-        sa_relationship_kwargs={"lazy": "noload"}
-    )
 
 
 class CRMOrigenLead(Base, table=True):
@@ -96,10 +86,6 @@ class CRMOrigenLead(Base, table=True):
     activo: bool = Field(default=True)
 
     contactos: list["CRMContacto"] = Relationship(
-        back_populates="origen_lead",
-        sa_relationship_kwargs={"lazy": "noload"}
-    )
-    eventos: list["CRMEvento"] = Relationship(
         back_populates="origen_lead",
         sa_relationship_kwargs={"lazy": "noload"}
     )

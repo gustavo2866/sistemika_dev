@@ -72,13 +72,15 @@ const SummaryItem = ({ label, value, helper }: SummaryItemProps) => (
 );
 
 export const CRMOportunidadForm = () => (
-  <SimpleForm
-    className="w-full max-w-none"
-    warnWhenUnsavedChanges
-    toolbar={<FormToolbar className="rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm" />}
-  >
-    <OportunidadFormSections />
-  </SimpleForm>
+  <div className="mx-auto w-full max-w-6xl">
+    <SimpleForm
+      className="w-full max-w-none"
+      warnWhenUnsavedChanges
+      toolbar={<FormToolbar className="mt-6 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm" />}
+    >
+      <OportunidadFormSections />
+    </SimpleForm>
+  </div>
 );
 
 const OportunidadFormSections = () => {

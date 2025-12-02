@@ -1,26 +1,21 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Show } from "@/components/show";
-import {
-  useDataProvider,
-  useNotify,
-  useRecordContext,
-  useRedirect,
-} from "ra-core";
+import { useCallback, useState, useEffect } from "react";
+import { useNotify, useGetIdentity } from "ra-core";
 import type { CRMMensaje } from "./model";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, EyeOff, MessageCircle } from "lucide-react";
+import { Eye, EyeOff, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-export const CRMMensajeReply = () => (
-  <Show resource="crm/mensajes">
-    <CRMMensajeReplyForm />
-  </Show>
-);
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const ensureReplySubject = (subject?: string | null) => {
   if (!subject) return "RE:";
@@ -28,167 +23,230 @@ const ensureReplySubject = (subject?: string | null) => {
   return trimmed.toUpperCase().startsWith("RE:") ? trimmed : `RE: ${trimmed}`;
 };
 
-const CRMMensajeReplyForm = () => {
-  const record = useRecordContext<CRMMensaje>();
-  const dataProvider = useDataProvider();
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+interface CRMMensajeReplyDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mensaje: CRMMensaje | null;
+  onSuccess?: () => void;
+}
+
+export const CRMMensajeReplyDialog = ({
+  open,
+  onOpenChange,
+  mensaje,
+  onSuccess,
+}: CRMMensajeReplyDialogProps) => {
   const notify = useNotify();
-  const redirect = useRedirect();
+  const { data: identity } = useGetIdentity();
   const [reply, setReply] = useState("");
-  const [subject, setSubject] = useState(() => ensureReplySubject(record?.asunto));
+  const [subject, setSubject] = useState("");
+  const [contactoNombre, setContactoNombre] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const contactoLabel = useMemo(() => {
-    if (!record) return "Sin contacto";
-    return (
-      record.contacto?.nombre_completo ??
-      record.contacto?.nombre ??
-      (record.contacto_id ? `Contacto #${record.contacto_id}` : "Sin contacto")
-    );
-  }, [record]);
-
-  const oportunidadLabel = record?.oportunidad?.id
-    ? `#${record.oportunidad.id}`
-    : record?.oportunidad_id
-    ? `#${record.oportunidad_id}`
-    : "Sin oportunidad";
-  const propiedadLabel = record?.oportunidad?.descripcion_estado ?? "Sin oportunidad";
-
-  const handleCancel = () => {
-    if (!record) {
-      redirect("list", "crm/mensajes");
-    } else {
-      redirect("show", "crm/mensajes", record.id);
+  useEffect(() => {
+    if (mensaje) {
+      setSubject(ensureReplySubject(mensaje.asunto));
+      setReply("");
+      setContactoNombre(
+        mensaje.contacto?.nombre_completo ?? mensaje.contacto?.nombre ?? ""
+      );
+      setExpanded(false);
     }
-  };
+  }, [mensaje]);
 
   const handleSubmit = useCallback(async () => {
-    if (!record) return;
-    if (!reply.trim()) {
+    if (!mensaje) return;
+    
+    const trimmedContent = reply.trim();
+    const trimmedNombre = contactoNombre.trim();
+    
+    if (!trimmedContent) {
       notify("Completa la respuesta antes de enviar.", { type: "warning" });
       return;
     }
+    
+    if (!mensaje.contacto_id && !trimmedNombre) {
+      notify("El nombre del contacto es obligatorio.", { type: "warning" });
+      return;
+    }
+
     setLoading(true);
     try {
-      await dataProvider.create("crm/mensajes", {
-        data: {
-          tipo: "salida",
-          canal: record.canal,
-          contacto_id: record.contacto_id,
-          contacto_referencia: record.contacto_referencia,
-          oportunidad_id: record.oportunidad_id,
-          asunto: subject || ensureReplySubject(record.asunto),
-          estado: "pendiente_envio",
-          contenido: reply,
-          fecha_mensaje: new Date().toISOString(),
-          responsable_id: record.responsable_id,
-        },
-      });
-      if (record.estado === "nuevo") {
-        await dataProvider.update("crm/mensajes", {
-          id: record.id,
-          data: { ...record, estado: "recibido" },
-          previousData: record,
-        });
+      const endpoint = `${API_URL}/crm/mensajes/${mensaje.id}/responder`;
+      const payload: Record<string, unknown> = {
+        asunto: subject || ensureReplySubject(mensaje.asunto),
+        contenido: trimmedContent,
+      };
+      
+      if (!mensaje.contacto_id) {
+        payload.contacto_nombre = trimmedNombre;
       }
+
+      // Siempre enviar responsable_id: del mensaje o del usuario autenticado
+      const responsableId = mensaje.responsable_id ?? identity?.id;
+      if (responsableId) {
+        payload.responsable_id = responsableId;
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Error al enviar la respuesta (HTTP ${response.status})`;
+        try {
+          const errorBody = await response.json();
+          errorMessage = errorBody?.detail || errorMessage;
+        } catch {
+          // Ignorar errores al parsear el cuerpo
+        }
+        throw new Error(errorMessage);
+      }
+
+      const resultado = await response.json();
       notify("Respuesta enviada", { type: "success" });
-      redirect("show", "crm/mensajes", record.id);
+
+      if (resultado.contacto_creado) {
+        notify("Contacto creado automáticamente", { type: "info" });
+      }
+      if (resultado.oportunidad_creada) {
+        notify("Oportunidad creada automáticamente", { type: "info" });
+      }
+
+      onOpenChange(false);
+      onSuccess?.();
     } catch (error: any) {
       notify(error?.message ?? "No se pudo enviar la respuesta", { type: "warning" });
     } finally {
       setLoading(false);
     }
-  }, [dataProvider, notify, record, reply, subject, redirect]);
+  }, [mensaje, reply, subject, contactoNombre, notify, onOpenChange, onSuccess]);
 
-  if (!record) return null;
+  const handleCancel = () => {
+    onOpenChange(false);
+  };
+
+  if (!mensaje) return null;
+
+  const contactoLabel =
+    mensaje.contacto?.nombre_completo ??
+    mensaje.contacto?.nombre ??
+    (mensaje.contacto_id ? `Contacto #${mensaje.contacto_id}` : "Sin contacto");
+
+  const oportunidadLabel = mensaje.oportunidad?.id
+    ? `#${mensaje.oportunidad.id}`
+    : mensaje.oportunidad_id
+    ? `#${mensaje.oportunidad_id}`
+    : "Sin oportunidad";
+  const propiedadLabel = mensaje.oportunidad?.descripcion_estado ?? "Sin oportunidad";
 
   return (
-    <Card className="mr-auto max-w-4xl space-y-6 p-6">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex-1 space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Referencia
-            </p>
-            <p className="text-base font-medium">
-              {record.contacto_referencia || record.origen_externo_id || "Sin referencia"}
-            </p>
-          </div>
+    <Dialog open={open} onOpenChange={(isOpen) => !loading && onOpenChange(isOpen)}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Responder Mensaje</DialogTitle>
+          <DialogDescription>
+            Envía una respuesta al mensaje. Se creará automáticamente un contacto y oportunidad si no existen.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Subject
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Referencia
+            </label>
+            <p className="text-sm font-medium">
+              {mensaje.contacto_referencia || mensaje.origen_externo_id || "Sin referencia"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Contacto / Oportunidad
+            </label>
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
+              <p>
+                <span className="font-semibold text-foreground">Contacto:</span> {contactoLabel}
               </p>
-              <Input value={subject} onChange={(event) => setSubject(event.target.value)} />
+              <p>
+                {oportunidadLabel} - {propiedadLabel}
+              </p>
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Mensaje original
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setExpanded((value) => !value)}
-                  aria-label={expanded ? "Ver menos" : "Ver más"}
-                >
-                  {expanded ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </Button>
-              </div>
-              <div
-                className={cn(
-                  "rounded-lg border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground transition-all",
-                  expanded ? "line-clamp-none" : "line-clamp-3",
-                )}
+          </div>
+
+          {!mensaje.contacto_id && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Nombre del Contacto *
+              </label>
+              <Input
+                value={contactoNombre}
+                onChange={(event) => setContactoNombre(event.target.value)}
+                placeholder="Nombre completo del contacto"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Asunto
+            </label>
+            <Input value={subject} onChange={(event) => setSubject(event.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Mensaje original
+              </label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setExpanded((value) => !value)}
+                aria-label={expanded ? "Ver menos" : "Ver más"}
               >
-                {record.contenido || "Sin contenido disponible."}
-              </div>
+                {expanded ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </Button>
+            </div>
+            <div
+              className={cn(
+                "rounded-lg border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground transition-all",
+                expanded ? "line-clamp-none" : "line-clamp-3",
+              )}
+            >
+              {mensaje.contenido || "Sin contenido disponible."}
             </div>
           </div>
-        </div>
-        <div className="w-full space-y-3 text-right lg:w-72">
-          {record.fecha_mensaje ? (
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {new Date(record.fecha_mensaje).toLocaleDateString("es-AR")}{" "}
-              {new Date(record.fecha_mensaje).toLocaleTimeString("es-AR")}
-            </div>
-          ) : null}
-          <div className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
-            <p>
-              <span className="font-semibold text-foreground">Contacto:</span> {contactoLabel}
-            </p>
-            <p>
-              {oportunidadLabel} - {propiedadLabel}
-            </p>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Respuesta *
+            </label>
+            <Textarea
+              rows={6}
+              placeholder="Escribí tu respuesta..."
+              value={reply}
+              onChange={(event) => setReply(event.target.value)}
+            />
           </div>
         </div>
-      </div>
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Respuesta
-        </p>
-        <Textarea
-          rows={8}
-          placeholder="Escribí tu respuesta..."
-          value={reply}
-          onChange={(event) => setReply(event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
-        <Button variant="ghost" className="flex-1 sm:flex-none" onClick={handleCancel} disabled={loading}>
-          Cancelar
-        </Button>
-        <Button
-          variant="outline"
-          className="flex-1 sm:flex-none"
-          onClick={handleSubmit}
-          disabled={loading}
-        >
-          <MessageCircle className="mr-2 h-4 w-4" />
-          {loading ? "Enviando..." : "Enviar respuesta"}
-        </Button>
-      </div>
-    </Card>
+
+        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button variant="ghost" onClick={handleCancel} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading}>
+            <Send className="mr-2 h-4 w-4" />
+            {loading ? "Enviando..." : "Enviar respuesta"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

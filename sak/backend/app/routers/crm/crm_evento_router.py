@@ -3,9 +3,11 @@ from app.crud.crm_evento_crud import crm_evento_crud
 from app.models import CRMEvento
 
 
+# Router genérico simple - validaciones en frontend
 crm_evento_router = create_generic_router(
     model=CRMEvento,
     crud=crm_evento_crud,
     prefix="/crm/eventos",
     tags=["crm-eventos"],
 )
+

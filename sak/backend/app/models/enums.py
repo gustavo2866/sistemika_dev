@@ -63,8 +63,11 @@ TRANSICIONES_ESTADO_OPORTUNIDAD = {
 
 
 class EstadoEvento(str, Enum):
-    PENDIENTE = "pendiente"
-    HECHO = "hecho"
+    """Estados de eventos con prefijo numérico para secuencia."""
+    PENDIENTE = "1-pendiente"      # Evento programado
+    REALIZADO = "2-realizado"      # Evento completado
+    CANCELADO = "3-cancelado"      # Evento cancelado
+    REAGENDAR = "4-reagendar"      # Requiere reprogramación
 
 
 class TipoMensaje(str, Enum):
@@ -92,6 +95,29 @@ class PrioridadMensaje(str, Enum):
     ALTA = "alta"
     MEDIA = "media"
     BAJA = "baja"
+
+
+class TipoEvento(str, Enum):
+    """Tipos de eventos del CRM."""
+    LLAMADA = "llamada"
+    REUNION = "reunion"
+    VISITA = "visita"
+    EMAIL = "email"
+    WHATSAPP = "whatsapp"
+    NOTA = "nota"
+
+
+# Transiciones de estado permitidas para eventos
+TRANSICIONES_ESTADO_EVENTO = {
+    EstadoEvento.PENDIENTE.value: [
+        EstadoEvento.REALIZADO.value,
+        EstadoEvento.CANCELADO.value,
+        EstadoEvento.REAGENDAR.value,
+    ],
+    EstadoEvento.REALIZADO.value: [],  # Estado final, no permite cambios
+    EstadoEvento.CANCELADO.value: [],  # Estado final
+    EstadoEvento.REAGENDAR.value: [],  # Estado final (se crea nuevo evento)
+}
 
 
 class EstadoEmprendimiento(str, Enum):

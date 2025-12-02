@@ -7,7 +7,7 @@ from sqlalchemy import func
 
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.db import get_session
-from app.models import CRMOportunidad, CRMOportunidadLogEstado
+from app.models import CRMOportunidad, CRMOportunidadLogEstado, CRMEvento
 from app.crud.crm_oportunidad_crud import crm_oportunidad_crud
 from app.services.crm_oportunidad_service import crm_oportunidad_service
 from app.models.base import filtrar_respuesta
@@ -61,6 +61,58 @@ def listar_logs(
         )
     ).all()
     return [log.model_dump() for log in logs]
+
+
+@crm_oportunidad_router.get("/{oportunidad_id}/eventos")
+def listar_eventos_oportunidad(
+    oportunidad_id: int,
+    session: Session = Depends(get_session),
+):
+    """
+    Obtiene todos los eventos de una oportunidad en orden cronológico.
+    
+    Retorna una vista de timeline con todos los eventos (pendientes y cerrados)
+    asociados a la oportunidad.
+    """
+    # Verificar que la oportunidad existe
+    oportunidad = session.get(CRMOportunidad, oportunidad_id)
+    if not oportunidad:
+        raise HTTPException(status_code=404, detail=f"Oportunidad {oportunidad_id} no encontrada")
+    
+    # Obtener eventos ordenados por fecha
+    stmt = (
+        select(CRMEvento)
+        .where(CRMEvento.oportunidad_id == oportunidad_id)
+        .where(CRMEvento.deleted_at.is_(None))
+        .order_by(CRMEvento.fecha_evento.desc())
+    )
+    
+    eventos = session.exec(stmt).all()
+    
+    # Agrupar por estado para resumen
+    resumen = {
+        "total_eventos": len(eventos),
+        "por_estado": {},
+        "por_tipo": {}
+    }
+    
+    for evento in eventos:
+        # Contar por estado
+        if evento.estado not in resumen["por_estado"]:
+            resumen["por_estado"][evento.estado] = 0
+        resumen["por_estado"][evento.estado] += 1
+        
+        # Contar por tipo
+        if evento.tipo_evento not in resumen["por_tipo"]:
+            resumen["por_tipo"][evento.tipo_evento] = 0
+        resumen["por_tipo"][evento.tipo_evento] += 1
+    
+    return {
+        "oportunidad_id": oportunidad_id,
+        "oportunidad_titulo": oportunidad.titulo,
+        "resumen": resumen,
+        "eventos": [evento.model_dump() for evento in eventos]
+    }
 
 
 def _coerce_value(column, value: str):

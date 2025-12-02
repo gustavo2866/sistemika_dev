@@ -317,7 +317,8 @@ class CRMMensajeService:
             payload: {
                 "asunto": str,
                 "contenido": str,
-                "contacto_nombre": str (obligatorio si no existe contacto_id)
+                "contacto_nombre": str (obligatorio si no existe contacto_id),
+                "responsable_id": int (opcional, se usa del mensaje si no se provee)
             }
         
         Returns:
@@ -344,6 +345,30 @@ class CRMMensajeService:
         elif not asunto.upper().startswith("RE:"):
             asunto = f"RE: {asunto}"
         
+        # Determinar responsable priorizando la oportunidad
+        responsable_id: Optional[int] = None
+        oportunidad_context: Optional[CRMOportunidad] = None
+        contacto_context: Optional[CRMContacto] = None
+
+        if mensaje.oportunidad_id:
+            oportunidad_context = mensaje.oportunidad or session.get(CRMOportunidad, mensaje.oportunidad_id)
+            if oportunidad_context and oportunidad_context.responsable_id:
+                responsable_id = oportunidad_context.responsable_id
+
+        if not responsable_id:
+            responsable_id = payload.get("responsable_id") or mensaje.responsable_id
+
+        if not responsable_id and mensaje.contacto_id:
+            contacto_context = session.get(CRMContacto, mensaje.contacto_id)
+            if contacto_context and contacto_context.responsable_id:
+                responsable_id = contacto_context.responsable_id
+
+        if not responsable_id:
+            raise ValueError(
+                "No se puede procesar la respuesta: el mensaje no tiene un responsable asignado. "
+                "Por favor, asigna un responsable al mensaje, a la oportunidad asociada o proporciona un responsable_id en el payload."
+            )
+        
         # Gestionar contacto
         contacto_id = mensaje.contacto_id
         contacto_creado = False
@@ -352,10 +377,6 @@ class CRMMensajeService:
             contacto_nombre = payload.get("contacto_nombre")
             if not contacto_nombre or not contacto_nombre.strip():
                 raise ValueError("El campo contacto_nombre es obligatorio cuando no existe un contacto asociado")
-            
-            # Validar que haya responsable_id
-            if not mensaje.responsable_id:
-                raise ValueError("El mensaje debe tener un responsable_id asignado para crear el contacto")
             
             # Crear contacto
             referencia = (
@@ -368,7 +389,7 @@ class CRMMensajeService:
             contacto_payload = {
                 "nombre": contacto_nombre.strip(),
                 "referencia": referencia,
-                "responsable_id": mensaje.responsable_id,
+                "responsable_id": responsable_id,
             }
             contacto = self._crear_contacto_si_necesario(session, contacto_payload)
             contacto_id = contacto.id
@@ -390,7 +411,7 @@ class CRMMensajeService:
                 "tipo_operacion_id": None,
                 "descripcion": mensaje.contenido or "Consulta inicial",
                 "descripcion_estado": mensaje.asunto or "Nueva oportunidad",
-                "responsable_id": mensaje.responsable_id,
+                "responsable_id": responsable_id,
                 "activo": True,
             }
             oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
@@ -410,7 +431,7 @@ class CRMMensajeService:
             "contenido": contenido.strip(),
             "estado": EstadoMensaje.PENDIENTE_ENVIO.value,
             "fecha_mensaje": datetime.now(UTC).isoformat(),
-            "responsable_id": mensaje.responsable_id,
+            "responsable_id": responsable_id,
             "contacto_referencia": mensaje.contacto_referencia,
         }
         mensaje_salida = crm_mensaje_crud.create(session, mensaje_salida_payload)

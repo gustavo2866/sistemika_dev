@@ -1,15 +1,57 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useNotify, useRefresh } from "ra-core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNotify, useRefresh, useGetIdentity, useGetList } from "ra-core";
 import { cn } from "@/lib/utils";
-import { Mail, Phone, CheckCircle2, Clock, NotebookPen, MessageCircle, CalendarPlus, X, Send } from "lucide-react";
+import { Mail, Phone, CheckCircle2, Clock, NotebookPen, MessageCircle, Calendar, CalendarPlus, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Actividad } from "./model";
 
 const ACTIVIDADES_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+const EVENT_TYPE_CHOICES = [
+  { value: "llamada", label: "Llamada" },
+  { value: "reunion", label: "Reuni?n" },
+  { value: "visita", label: "Visita" },
+  { value: "email", label: "Email" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "otro", label: "Otro" },
+];
+const DEFAULT_EVENT_STATE = "1-pendiente";
+
+type ScheduleFormState = {
+  datetime: string;
+  titulo: string;
+  descripcion: string;
+  tipoEvento: string;
+  asignadoId: string;
+};
+
+type ResponsableRecord = {
+  id: number;
+  nombre?: string;
+  nombre_completo?: string;
+  full_name?: string;
+  email?: string;
+};
+
+const getCurrentDateTimeForInput = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const local = new Date(now.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+};
+
+const createDefaultScheduleForm = (asignadoId = ""): ScheduleFormState => ({
+  datetime: getCurrentDateTimeForInput(),
+  titulo: "",
+  descripcion: "",
+  tipoEvento: EVENT_TYPE_CHOICES[0].value,
+  asignadoId,
+});
 
 type ActividadesPanelProps = {
   mensajeId?: number;
@@ -40,7 +82,12 @@ export const ActividadesPanel = ({
   const [panelMode, setPanelMode] = useState<"list" | "schedule" | "reply">("list");
   
   // Estado para Agendar
-  const [scheduleForm, setScheduleForm] = useState({ datetime: "", notes: "" });
+  const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>(() => createDefaultScheduleForm());
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [readOnlyPanel, setReadOnlyPanel] = useState<"schedule" | "reply" | null>(null);
+  const scheduleDraftRef = useRef<ScheduleFormState>(createDefaultScheduleForm());
+  const replyDraftRef = useRef({ subject: "", content: "", contactoNombre: "" });
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
   
   // Estado para Responder
   const [respuestaSubject, setRespuestaSubject] = useState("");
@@ -50,6 +97,12 @@ export const ActividadesPanel = ({
   
   const notify = useNotify();
   const refresh = useRefresh();
+  const { data: identity } = useGetIdentity();
+
+  const { data: responsablesData } = useGetList<ResponsableRecord>("users", {
+    pagination: { page: 1, perPage: 50 },
+    sort: { field: "nombre", order: "ASC" },
+  });
 
   const ensureReplySubject = (subject?: string | null) => {
     if (!subject) return "RE:";
@@ -62,6 +115,42 @@ export const ActividadesPanel = ({
     setContactoNombre(contactoNombreProp || "");
   }, [asuntoMensaje, contactoNombreProp]);
 
+  useEffect(() => {
+    if (readOnlyPanel === "schedule") return;
+    scheduleDraftRef.current = scheduleForm;
+  }, [scheduleForm, readOnlyPanel]);
+
+  useEffect(() => {
+    if (readOnlyPanel === "reply") return;
+    replyDraftRef.current = {
+      subject: respuestaSubject,
+      content: respuestaContent,
+      contactoNombre,
+    };
+  }, [respuestaSubject, respuestaContent, contactoNombre, readOnlyPanel]);
+
+  useEffect(() => {
+    if (identity?.id) {
+      setScheduleForm((prev) => (prev.asignadoId ? prev : { ...prev, asignadoId: String(identity.id) }));
+    }
+  }, [identity?.id]);
+
+  const responsableOptions = useMemo(() => {
+    const base = (responsablesData ?? []).map((user) => ({
+      value: String(user.id),
+      label: user.nombre_completo || user.full_name || user.nombre || user.email || `Usuario #${user.id}`,
+    }));
+    if (identity?.id) {
+      const idValue = String(identity.id);
+      const hasIdentity = base.some((option) => option.value === idValue);
+      if (!hasIdentity) {
+        const label = identity.fullName || identity.name || identity.email || `Usuario #${identity.id}`;
+        base.unshift({ value: idValue, label });
+      }
+    }
+    return base;
+  }, [responsablesData, identity]);
+
   const mensajeIdValue = normalizeIdValue(mensajeId);
   const oportunidadIdValue = normalizeIdValue(oportunidadId);
   const contactoIdValue = normalizeIdValue(contactoId);
@@ -71,6 +160,21 @@ export const ActividadesPanel = ({
     oportunidadIdValue !== undefined ||
     contactoIdValue !== undefined;
   const puedeForzarAcciones = Boolean(forceShowActions && oportunidadIdValue !== undefined);
+
+  const isScheduleReadOnly = readOnlyPanel === "schedule";
+  const isReplyReadOnly = readOnlyPanel === "reply";
+
+  const exitReadOnlyModes = () => {
+    if (readOnlyPanel === "schedule") {
+      setScheduleForm(scheduleDraftRef.current);
+    }
+    if (readOnlyPanel === "reply") {
+      setRespuestaSubject(replyDraftRef.current.subject);
+      setRespuestaContent(replyDraftRef.current.content);
+      setContactoNombre(replyDraftRef.current.contactoNombre);
+    }
+    setReadOnlyPanel(null);
+  };
 
   const loadActividades = useCallback(async () => {
     if (!hasContextIds) {
@@ -130,7 +234,115 @@ export const ActividadesPanel = ({
     loadActividades();
   }, [hasContextIds, loadActividades, reloadKey]);
 
+  const handleActividadClick = (actividad: Actividad) => {
+    if (actividad.tipo === "mensaje") {
+      replyDraftRef.current = {
+        subject: respuestaSubject,
+        content: respuestaContent,
+        contactoNombre,
+      };
+      const subjectFromTipo =
+        actividad.tipo_mensaje?.toLowerCase() === "entrada" ? "Mensaje recibido" : "Mensaje enviado";
+      setRespuestaSubject(subjectFromTipo);
+      setRespuestaContent(actividad.descripcion || "");
+      setPanelMode("reply");
+      setReadOnlyPanel("reply");
+      return;
+    }
+    scheduleDraftRef.current = scheduleForm;
+    setScheduleForm({
+      datetime: formatInputDateTime(actividad.fecha),
+      titulo: actividad.titulo || actividad.descripcion || "",
+      descripcion: actividad.descripcion || "",
+      tipoEvento:
+        actividad.tipo_evento && EVENT_TYPE_CHOICES.some((choice) => choice.value === actividad.tipo_evento)
+          ? actividad.tipo_evento
+          : EVENT_TYPE_CHOICES[0].value,
+      asignadoId: scheduleForm.asignadoId,
+    });
+    setPanelMode("schedule");
+    setReadOnlyPanel("schedule");
+  };
+
+  const handleScheduleSubmit = async () => {
+    if (isScheduleReadOnly) {
+      return;
+    }
+    const oportunidadContextId = oportunidadIdValue;
+    const { datetime, titulo, descripcion, tipoEvento, asignadoId } = scheduleForm;
+
+    if (!oportunidadContextId) {
+      notify("Necesit?s guardar la oportunidad antes de agendar un evento.", { type: "warning" });
+      return;
+    }
+    if (!datetime) {
+      notify("Seleccion? fecha y hora para la actividad.", { type: "warning" });
+      return;
+    }
+    if (!titulo.trim()) {
+      notify("Ingres? un t?tulo para la actividad.", { type: "warning" });
+      return;
+    }
+    if (!tipoEvento) {
+      notify("Eleg? un tipo de evento.", { type: "warning" });
+      return;
+    }
+    if (!asignadoId) {
+      notify("Seleccion? a qui?n se asigna el evento.", { type: "warning" });
+      return;
+    }
+
+    const fechaISO = new Date(datetime).toISOString();
+    const payload: Record<string, unknown> = {
+      oportunidad_id: oportunidadContextId,
+      fecha_evento: fechaISO,
+      titulo: titulo.trim(),
+      tipo_evento: tipoEvento,
+      estado_evento: DEFAULT_EVENT_STATE,
+      asignado_a_id: Number(asignadoId),
+    };
+    if (descripcion.trim()) {
+      payload.descripcion = descripcion.trim();
+    }
+
+    setScheduleLoading(true);
+    try {
+      const response = await fetch(`${ACTIVIDADES_API_BASE}/crm/eventos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Error al agendar evento (HTTP ${response.status})`;
+        try {
+          const errorBody = await response.json();
+          errorMessage = normalizeError(errorBody) ?? errorMessage;
+        } catch {
+          // Ignorar parsing
+        }
+        throw new Error(errorMessage);
+      }
+
+      notify("Evento agendado", { type: "success" });
+      setScheduleForm((prev) =>
+        createDefaultScheduleForm(prev.asignadoId || (identity?.id ? String(identity.id) : ""))
+      );
+      setPanelMode("list");
+      refresh();
+      loadActividades();
+      onActividadCreated?.();
+    } catch (error: any) {
+      notify(error?.message ?? "No se pudo agendar el evento", { type: "warning" });
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
   const handleRespuestaSubmit = async () => {
+    if (isReplyReadOnly) {
+      return;
+    }
     const mensajeContextId = mensajeIdValue;
     const oportunidadContextId = oportunidadIdValue;
     const contactoContextId = contactoIdValue;
@@ -161,6 +373,11 @@ export const ActividadesPanel = ({
       asunto: subjectValue,
       contenido: trimmedContent,
     };
+
+    // Siempre enviar responsable_id del usuario autenticado cuando sea posible
+    if (identity?.id) {
+      payload.responsable_id = identity.id;
+    }
 
     if (mensajeContextId) {
       payload.contacto_nombre = trimmedNombre;
@@ -220,7 +437,11 @@ export const ActividadesPanel = ({
           type="button"
           variant="secondary"
           className="w-full rounded-xl border border-transparent bg-gradient-to-r from-blue-600/90 to-blue-600/90 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
-          onClick={() => canReply && setPanelMode("reply")}
+          onClick={() => {
+            if (!canReply) return;
+            exitReadOnlyModes();
+            setPanelMode("reply");
+          }}
           disabled={!canReply}
           title={canReply ? undefined : "Disponible cuando el panel tiene un mensaje asociado"}
         >
@@ -231,7 +452,10 @@ export const ActividadesPanel = ({
           type="button"
           variant="secondary"
           className="w-full rounded-xl border border-transparent bg-gradient-to-r from-primary/90 to-primary/90 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition hover:opacity-90"
-          onClick={() => setPanelMode("schedule")}
+          onClick={() => {
+            exitReadOnlyModes();
+            setPanelMode("schedule");
+          }}
         >
           <CalendarPlus className="mr-2 h-4 w-4" />
           Agendar
@@ -245,40 +469,150 @@ export const ActividadesPanel = ({
 
   const renderSchedulePanel = () => (
     <div className="space-y-4">
+      {isScheduleReadOnly && (
+        <p className="text-xs italic text-muted-foreground">
+          Modo solo lectura. Usa "Agendar" para crear o editar actividades.
+        </p>
+      )}
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Fecha y hora
+          T?tulo del evento *
         </p>
         <Input
-          type="datetime-local"
-          value={scheduleForm.datetime}
+          value={scheduleForm.titulo}
           onChange={(event) =>
-            setScheduleForm((state) => ({ ...state, datetime: event.target.value }))
+            setScheduleForm((state) => ({ ...state, titulo: event.target.value }))
           }
+          placeholder="Ej: Coordinar visita inicial"
+          disabled={isScheduleReadOnly}
         />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Fecha y hora *
+            </p>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => {
+                if (isScheduleReadOnly) return;
+                if (dateInputRef.current?.showPicker) {
+                  dateInputRef.current.showPicker();
+                  return;
+                }
+                dateInputRef.current?.focus();
+              }}
+              disabled={isScheduleReadOnly}
+            >
+              <Calendar className="h-4 w-4" />
+            </Button>
+          </div>
+          <Input
+            ref={dateInputRef}
+            type="datetime-local"
+            value={scheduleForm.datetime}
+            onChange={(event) =>
+              setScheduleForm((state) => ({ ...state, datetime: event.target.value }))
+            }
+            disabled={isScheduleReadOnly}
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Tipo de evento *
+          </p>
+          <Select
+            value={scheduleForm.tipoEvento}
+            onValueChange={(value) =>
+              setScheduleForm((state) => ({ ...state, tipoEvento: value }))
+            }
+            disabled={isScheduleReadOnly}
+          >
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="Seleccionar tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              {EVENT_TYPE_CHOICES.map((choice) => (
+                <SelectItem key={choice.value} value={choice.value}>
+                  {choice.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Notas de agenda
+          Descripci?n / notas
         </p>
         <Textarea
           rows={6}
-          value={scheduleForm.notes}
+          value={scheduleForm.descripcion}
           onChange={(event) =>
-            setScheduleForm((state) => ({ ...state, notes: event.target.value }))
+            setScheduleForm((state) => ({ ...state, descripcion: event.target.value }))
           }
-          placeholder="Detalla el motivo, lugar o responsables de la actividad."
+          placeholder="Detalla el objetivo, lugar o contexto de la actividad."
+          disabled={isScheduleReadOnly}
         />
       </div>
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Asignado a *
+        </p>
+        {responsableOptions.length > 0 ? (
+          <Select
+            value={scheduleForm.asignadoId}
+            onValueChange={(value) =>
+              setScheduleForm((state) => ({ ...state, asignadoId: value }))
+            }
+            disabled={isScheduleReadOnly}
+          >
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="Seleccionar usuario" />
+            </SelectTrigger>
+            <SelectContent>
+              {responsableOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            type="number"
+            placeholder="ID del usuario responsable"
+            value={scheduleForm.asignadoId}
+            onChange={(event) =>
+              setScheduleForm((state) => ({ ...state, asignadoId: event.target.value }))
+            }
+            disabled={isScheduleReadOnly}
+          />
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" className="flex-1 min-w-36" variant="secondary">
-          Guardar agenda
+        <Button
+          type="button"
+          className="flex-1 min-w-36 bg-black text-white hover:bg-black/90"
+          variant="secondary"
+          onClick={handleScheduleSubmit}
+          disabled={scheduleLoading || isScheduleReadOnly}
+        >
+          {scheduleLoading ? "Guardando..." : "Guardar agenda"}
         </Button>
         <Button
           type="button"
           variant="ghost"
           className="flex-1 min-w-24"
-          onClick={() => setPanelMode("list")}
+          onClick={() => {
+            exitReadOnlyModes();
+            setPanelMode("list");
+          }}
+          disabled={scheduleLoading}
         >
           Cerrar panel
         </Button>
@@ -298,13 +632,22 @@ export const ActividadesPanel = ({
           size="icon"
           className="h-7 w-7"
           onClick={() => {
+            if (isReplyReadOnly) {
+              exitReadOnlyModes();
+            } else {
+              setRespuestaContent("");
+            }
             setPanelMode("list");
-            setRespuestaContent("");
           }}
         >
           <X className="h-4 w-4" />
         </Button>
       </div>
+      {isReplyReadOnly && (
+        <p className="text-xs italic text-muted-foreground">
+          Modo solo lectura. Usa "Responder" para redactar una respuesta.
+        </p>
+      )}
       <div className="space-y-3">
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -314,7 +657,7 @@ export const ActividadesPanel = ({
             value={contactoNombre}
             onChange={(event) => setContactoNombre(event.target.value)}
             placeholder={contactoId ? contactoNombreProp || "Contacto registrado" : "Ingresa el nombre del contacto"}
-            disabled={!!contactoId}
+            disabled={!!contactoId || isReplyReadOnly}
             required={!contactoId}
             className="text-sm"
           />
@@ -328,6 +671,7 @@ export const ActividadesPanel = ({
             onChange={(event) => setRespuestaSubject(event.target.value)}
             placeholder="Asunto de la respuesta"
             className="text-sm"
+            disabled={isReplyReadOnly}
           />
         </div>
         <div className="space-y-1">
@@ -340,6 +684,7 @@ export const ActividadesPanel = ({
             onChange={(event) => setRespuestaContent(event.target.value)}
             placeholder="Escribe tu respuesta..."
             className="text-sm min-h-[240px]"
+            disabled={isReplyReadOnly}
           />
         </div>
       </div>
@@ -348,7 +693,7 @@ export const ActividadesPanel = ({
           type="button"
           className="flex-1"
           onClick={handleRespuestaSubmit}
-          disabled={respuestaLoading}
+          disabled={respuestaLoading || isReplyReadOnly}
         >
           <Send className="mr-2 h-4 w-4" />
           {respuestaLoading ? "Enviando..." : "Enviar Respuesta"}
@@ -357,6 +702,11 @@ export const ActividadesPanel = ({
           type="button"
           variant="outline"
           onClick={() => {
+            if (isReplyReadOnly) {
+              exitReadOnlyModes();
+              setPanelMode("list");
+              return;
+            }
             setPanelMode("list");
             setRespuestaContent("");
           }}
@@ -385,41 +735,36 @@ export const ActividadesPanel = ({
       return <p className="text-sm text-muted-foreground">No hay actividades registradas.</p>;
     }
     return (
-      <ul className="space-y-3 max-h-[320px] overflow-y-auto pr-2">
+      <ul className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
         {actividades.map((actividad) => (
           <li
             key={`${actividad.tipo}-${actividad.id}`}
-            className="flex gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm"
+            className="flex gap-2.5 rounded-xl border border-slate-200/80 bg-white/80 p-2.5 shadow-sm cursor-pointer transition hover:border-primary/40"
+            onClick={() => handleActividadClick(actividad)}
+            role="button"
           >
             <span
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                 actividad.tipo === "mensaje" ? "bg-sky-100 text-sky-600" : "bg-emerald-100 text-emerald-600"
               }`}
             >
               {getActividadIcon(actividad)}
             </span>
-            <div className="flex flex-1 flex-col gap-1">
+            <div className="flex flex-1 flex-col gap-0.5 min-w-0">
               <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                <span className="text-xs text-foreground">
+                <span className="text-xs text-foreground truncate">
                   {actividad.tipo === "mensaje" ? actividad.tipo_mensaje || "Mensaje" : "Evento"}
                 </span>
-                <span>{formatActividadDate(actividad.fecha)}</span>
+                <span className="shrink-0">{formatActividadDate(actividad.fecha)}</span>
               </div>
-              <p className="text-sm text-foreground line-clamp-2">
-                {actividad.descripcion || "Sin descripcion disponible."}
+              <p className="text-sm text-foreground line-clamp-2 leading-tight">
+                {actividad.descripcion || actividad.titulo || "Sin descripcion disponible."}
               </p>
-              <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                {actividad.estado ? (
-                  <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-slate-600">
-                    {actividad.estado}
-                  </span>
-                ) : null}
-                {actividad.tipo === "mensaje" && actividad.canal ? (
-                  <span className="rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-slate-600">
-                    {actividad.canal}
-                  </span>
-                ) : null}
-              </div>
+              {actividad.estado ? (
+                <span className="mt-0.5 inline-flex w-fit rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-600">
+                  {actividad.estado}
+                </span>
+              ) : null}
             </div>
           </li>
         ))}
@@ -508,6 +853,16 @@ const normalizeError = (value: any): string | undefined => {
   return String(value);
 };
 
+const formatInputDateTime = (value: string) => {
+  const fecha = new Date(value);
+  if (Number.isNaN(fecha.getTime())) {
+    return "";
+  }
+  const offsetMinutes = fecha.getTimezoneOffset();
+  const local = new Date(fecha.getTime() - offsetMinutes * 60000);
+  return local.toISOString().slice(0, 16);
+};
+
 const formatActividadDate = (value: string) => {
   const fecha = new Date(value);
   if (Number.isNaN(fecha.getTime())) {
@@ -529,7 +884,13 @@ const formatActividadDate = (value: string) => {
 
 const getActividadIcon = (actividad: Actividad) => {
   if (actividad.tipo === "mensaje") {
-    return <Mail className="h-5 w-5" />;
+    const canal = actividad.canal?.toLowerCase();
+    const isWhatsapp = canal === "whatsapp";
+    const isEntrada = actividad.tipo_mensaje?.toLowerCase() === "entrada";
+    if (isWhatsapp) {
+      return isEntrada ? <MessageCircle className="h-5 w-5" /> : <Send className="h-5 w-5" />;
+    }
+    return isEntrada ? <Mail className="h-5 w-5" /> : <Send className="h-5 w-5" />;
   }
   const estado = actividad.estado?.toLowerCase();
   if (estado === "pendiente") {
@@ -538,5 +899,5 @@ const getActividadIcon = (actividad: Actividad) => {
   if (estado === "hecho" || estado === "completado") {
     return <CheckCircle2 className="h-5 w-5" />;
   }
-  return <Phone className="h-5 w-5" />;
+  return <NotebookPen className="h-5 w-5" />;
 };

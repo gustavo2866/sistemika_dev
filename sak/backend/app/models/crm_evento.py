@@ -1,43 +1,87 @@
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import Field, Relationship
 
 from .base import Base
-from .enums import EstadoEvento
+from .enums import EstadoEvento, TipoEvento
 
 if TYPE_CHECKING:
-    from .crm_catalogos import CRMOrigenLead, CRMMotivoEvento, CRMTipoEvento
-    from .crm_contacto import CRMContacto
     from .crm_oportunidad import CRMOportunidad
     from .user import User
 
 
 class CRMEvento(Base, table=True):
+    """
+    Eventos/Actividades del CRM vinculados a oportunidades.
+    
+    Representa cualquier interacción con el cliente: llamadas, visitas,
+    reuniones, emails, mensajes, notas, etc.
+    """
     __tablename__ = "crm_eventos"
-    __searchable_fields__ = ["descripcion", "proximo_paso"]
-    __expanded_list_relations__ = {"contacto", "tipo", "motivo", "asignado_a", "oportunidad"}
-
-    contacto_id: int = Field(foreign_key="crm_contactos.id", index=True)
-    tipo_id: int = Field(foreign_key="crm_tipos_evento.id")
-    motivo_id: int = Field(foreign_key="crm_motivos_evento.id")
-    fecha_evento: datetime = Field(description="Fecha del evento", index=True)
-    descripcion: str = Field(max_length=2000)
-    asignado_a_id: int = Field(foreign_key="users.id")
-    oportunidad_id: Optional[int] = Field(default=None, foreign_key="crm_oportunidades.id", index=True)
-    origen_lead_id: Optional[int] = Field(default=None, foreign_key="crm_origenes_lead.id")
-    proximo_paso: Optional[str] = Field(default=None, max_length=500)
-    fecha_compromiso: Optional[date] = Field(default=None)
+    __searchable_fields__ = ["titulo", "resultado"]
+    __expanded_list_relations__ = {"asignado_a", "oportunidad"}
+    
+    # Campos obligatorios
+    oportunidad_id: int = Field(
+        foreign_key="crm_oportunidades.id", 
+        index=True,
+        description="Oportunidad a la que pertenece el evento"
+    )
+    titulo: str = Field(
+        max_length=255, 
+        description="Título/resumen breve del evento"
+    )
+    tipo_evento: str = Field(
+        max_length=20, 
+        description="Tipo de evento: llamada, reunion, visita, email, whatsapp, otro",
+        index=True
+    )
+    fecha_evento: datetime = Field(
+        description="Fecha y hora del evento (programada o realizada)",
+        index=True
+    )
     estado_evento: str = Field(
         default=EstadoEvento.PENDIENTE.value,
         max_length=20,
-        description="Estado del evento",
-        index=True,
+        description="Estado: 1-pendiente, 2-realizado, 3-cancelado, 4-reagendar",
+        index=True
     )
-
-    contacto: Optional["CRMContacto"] = Relationship(back_populates="eventos")
-    tipo: Optional["CRMTipoEvento"] = Relationship(back_populates="eventos")
-    motivo: Optional["CRMMotivoEvento"] = Relationship(back_populates="eventos")
+    asignado_a_id: int = Field(
+        foreign_key="users.id",
+        description="Usuario asignado/responsable del evento"
+    )
+    
+    # Campos opcionales
+    resultado: Optional[str] = Field(
+        default=None,
+        description="Resultado del evento (obligatorio al cerrar)"
+    )
+    
+    # Relaciones
+    oportunidad: "CRMOportunidad" = Relationship(back_populates="eventos")
     asignado_a: Optional["User"] = Relationship()
-    oportunidad: Optional["CRMOportunidad"] = Relationship(back_populates="eventos")
-    origen_lead: Optional["CRMOrigenLead"] = Relationship(back_populates="eventos")
+    
+    def __repr__(self) -> str:
+        return f"<CRMEvento {self.id}: {self.titulo} ({self.estado_evento})>"
+    
+    def to_dict_extended(self) -> dict:
+        """Serialización extendida con datos relacionados"""
+        base_dict = self.model_dump()
+        
+        # Agregar datos de relaciones si están cargadas
+        if self.oportunidad:
+            base_dict["oportunidad"] = {
+                "id": self.oportunidad.id,
+                "estado": self.oportunidad.estado,
+                "contacto_id": self.oportunidad.contacto_id,
+            }
+        
+        if self.asignado_a:
+            base_dict["asignado_a"] = {
+                "id": self.asignado_a.id,
+                "nombre": self.asignado_a.nombre,
+                "email": self.asignado_a.email,
+            }
+        
+        return base_dict
