@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
@@ -19,10 +19,11 @@ import {
   CRMOportunidad,
   type CRMOportunidadEstado,
 } from "./model";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useListContext, useRecordContext } from "ra-core";
+import { useGetList, useListContext, useRecordContext } from "ra-core";
 import { SummaryChips, SummaryChipItem } from "@/components/lists/SummaryChips";
 import { ResourceTitle } from "@/components/resource-title";
 import { Target } from "lucide-react";
@@ -103,12 +104,85 @@ const SoloActivasToggle = () => {
 
 const ListActions = () => (
   <div className="flex items-center gap-2 flex-wrap">
-    <SoloActivasToggle />
     <FilterButton filters={filters} />
     <CreateButton />
     <ExportButton />
   </div>
 );
+
+const OperacionToggle = () => {
+  const { filterValues, setFilters } = useListContext();
+  const { data: tipos } = useGetList("crm/catalogos/tipos-operacion", {
+    pagination: { page: 1, perPage: 50 },
+    sort: { field: "nombre", order: "ASC" },
+  });
+
+  const { ventaId, alquilerId } = useMemo(() => {
+    const findMatch = (term: string) =>
+      tipos?.find((tipo: any) =>
+        tipo?.codigo?.toLowerCase().includes(term) || tipo?.nombre?.toLowerCase().includes(term)
+      );
+    const venta = findMatch("venta");
+    const alquiler = findMatch("alquiler");
+    return {
+      ventaId: venta?.id ? String(venta.id) : undefined,
+      alquilerId: alquiler?.id ? String(alquiler.id) : undefined,
+    };
+  }, [tipos]);
+
+  const currentId = filterValues.tipo_operacion_id
+    ? String(filterValues.tipo_operacion_id)
+    : undefined;
+
+  const currentMode = currentId === ventaId ? "venta" : currentId === alquilerId ? "alquiler" : "todas";
+
+  const handleSelect = (mode: "todas" | "venta" | "alquiler") => {
+    const nextFilters = { ...filterValues };
+    if (mode === "venta" && ventaId) {
+      nextFilters.tipo_operacion_id = ventaId;
+    } else if (mode === "alquiler" && alquilerId) {
+      nextFilters.tipo_operacion_id = alquilerId;
+    } else {
+      delete nextFilters.tipo_operacion_id;
+    }
+    setFilters(nextFilters, {});
+  };
+
+  const buttons: Array<{ id: "todas" | "venta" | "alquiler"; label: string; disabled?: boolean }> = [
+    { id: "todas", label: "Todas" },
+    { id: "venta", label: "Venta", disabled: !ventaId },
+    { id: "alquiler", label: "Alquiler", disabled: !alquilerId },
+  ];
+
+  return (
+    <div className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/80 px-1 py-1 shadow-[0_1px_6px_rgba(15,23,42,0.08)]">
+      {buttons.map(({ id, label, disabled }) => {
+        const active = currentMode === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            disabled={disabled}
+            onClick={() => handleSelect(id)}
+            className={cn(
+              "min-w-[88px] rounded-full px-4 py-1.5 text-sm font-semibold uppercase tracking-wide transition-all",
+              active
+                ? "bg-slate-900 text-white shadow-md"
+                : "text-slate-600 hover:bg-slate-100 enabled:cursor-pointer",
+              disabled && "opacity-50 cursor-not-allowed"
+            )}
+            aria-pressed={active}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+const oportunidadRowClass = () =>
+  cn("transition-colors hover:bg-slate-50/70 odd:bg-white even:bg-slate-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60");
 
 const EstadoSummaryChips = () => {
   const { filterValues, setFilters } = useListContext();
@@ -202,12 +276,13 @@ const EstadoSummaryChips = () => {
   };
   return (
     <SummaryChips
-      title="Oportunidades por estado"
+      title={null}
       items={items}
       loading={loading}
       error={error}
       selectedValue={currentEstados[0]}
       onSelect={handleSelect}
+      className="mb-0 border-none bg-transparent p-0 shadow-none"
     />
   );
 };
@@ -219,61 +294,76 @@ export const CRMOportunidadList = () => (
     actions={<ListActions />}
     perPage={10}
     sort={{ field: "created_at", order: "DESC" }}
+    className="space-y-5"
   >
-    <EstadoSummaryChips />
-    <DataTable rowClick="edit">
-      <DataTable.Col source="id" label="ID">
-        <IdCell />
-      </DataTable.Col>
-      <DataTable.Col source="created_at" label="Fecha">
-        <FechaCreacionCell />
-      </DataTable.Col>
-      <DataTable.Col
-        source="contacto_id"
-        label="Contacto"
-        className="max-w-[220px] whitespace-normal"
-        cellClassName="align-top whitespace-normal"
-      >
-        <ReferenceField source="contacto_id" reference="crm/contactos">
-          <TextField
-            source="nombre_completo"
-            className="block text-sm leading-tight line-clamp-2 break-words"
-          />
-        </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col
-        source="propiedad_id"
-        label="Propiedad"
-        className="max-w-[220px] whitespace-normal"
-        cellClassName="align-top whitespace-normal"
-      >
-        <ReferenceField source="propiedad_id" reference="propiedades">
-          <TextField
-            source="nombre"
-            className="block text-sm leading-tight line-clamp-2 break-words"
-          />
-        </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col source="estado" label="Estado">
-        <EstadoBadge />
-      </DataTable.Col>
-      <DataTable.Col source="tipo_operacion_id" label="Operación">
-        <ReferenceField source="tipo_operacion_id" reference="crm/catalogos/tipos-operacion">
-          <TextField source="nombre" />
-        </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col label="Monto">
-        <MontoMonedaCell />
-      </DataTable.Col>
-      <DataTable.Col source="responsable_id" label="Responsable">
-        <ReferenceField source="responsable_id" reference="users">
-          <TextField source="nombre" />
-        </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col>
-        <EditButton />
-      </DataTable.Col>
-    </DataTable>
+    <div className="space-y-6 rounded-[32px] border border-slate-200/70 bg-gradient-to-br from-white/95 via-white/90 to-slate-50/85 p-5 shadow-[0_30px_60px_rgba(15,23,42,0.12)]">
+      <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <OperacionToggle />
+            <SoloActivasToggle />
+          </div>
+          <div className="flex justify-end">
+            <EstadoSummaryChips />
+          </div>
+        </div>
+      </div>
+      <div className="rounded-3xl border border-slate-200/70 bg-white/95 p-4 shadow-sm">
+        <DataTable rowClick="edit" className="border-0 shadow-none" rowClassName={oportunidadRowClass}>
+          <DataTable.Col source="id" label="ID">
+            <IdCell />
+          </DataTable.Col>
+          <DataTable.Col source="created_at" label="Fecha">
+            <FechaCreacionCell />
+          </DataTable.Col>
+          <DataTable.Col
+            source="contacto_id"
+            label="Contacto"
+            className="max-w-[220px] whitespace-normal"
+            cellClassName="align-top whitespace-normal"
+          >
+            <ReferenceField source="contacto_id" reference="crm/contactos">
+              <TextField
+                source="nombre_completo"
+                className="block text-sm leading-tight line-clamp-2 break-words"
+              />
+            </ReferenceField>
+          </DataTable.Col>
+          <DataTable.Col
+            source="propiedad_id"
+            label="Propiedad"
+            className="max-w-[220px] whitespace-normal"
+            cellClassName="align-top whitespace-normal"
+          >
+            <ReferenceField source="propiedad_id" reference="propiedades">
+              <TextField
+                source="nombre"
+                className="block text-sm leading-tight line-clamp-2 break-words"
+              />
+            </ReferenceField>
+          </DataTable.Col>
+          <DataTable.Col source="estado" label="Estado">
+            <EstadoBadge />
+          </DataTable.Col>
+          <DataTable.Col source="tipo_operacion_id" label="Operaci?n">
+            <ReferenceField source="tipo_operacion_id" reference="crm/catalogos/tipos-operacion">
+              <TextField source="nombre" />
+            </ReferenceField>
+          </DataTable.Col>
+          <DataTable.Col label="Monto">
+            <MontoMonedaCell />
+          </DataTable.Col>
+          <DataTable.Col source="responsable_id" label="Responsable">
+            <ReferenceField source="responsable_id" reference="users">
+              <TextField source="nombre" />
+            </ReferenceField>
+          </DataTable.Col>
+          <DataTable.Col>
+            <EditButton />
+          </DataTable.Col>
+        </DataTable>
+      </div>
+    </div>
   </List>
 );
 
@@ -352,3 +442,5 @@ const cnBadge = (estado: CRMOportunidadEstado, selected = false) => {
     ? `${base} border-transparent shadow-sm ring-1 ring-offset-1 ring-offset-background`
     : `${base} border-transparent`;
 };
+
+

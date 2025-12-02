@@ -14,7 +14,7 @@ const ACTIVIDADES_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhos
 
 const EVENT_TYPE_CHOICES = [
   { value: "llamada", label: "Llamada" },
-  { value: "reunion", label: "Reuni?n" },
+  { value: "reunion", label: "Reunón" },
   { value: "visita", label: "Visita" },
   { value: "email", label: "Email" },
   { value: "whatsapp", label: "WhatsApp" },
@@ -191,14 +191,14 @@ export const ActividadesPanel = ({
       const query = params.toString();
       if (!mensajeIdValue && !query) {
         setActividades([]);
-        setError("GuardÃƒÆ’Ã‚Â¡ el mensaje u oportunidad para ver actividades relacionadas.");
+        setError("GuardÃÆÃâÃâÃÂ¡ el mensaje u oportunidad para ver actividades relacionadas.");
         setLoading(false);
         return;
       }
       const endpoint = query
         ? `${ACTIVIDADES_API_BASE}/crm/mensajes/acciones/buscar-actividades?${query}`
         : `${ACTIVIDADES_API_BASE}/crm/mensajes/${mensajeIdValue}/actividades`;
-      console.info("ActividadesPanel ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ fetch", {
+      console.info("ActividadesPanel ÃÆÃÂ¢ÃÂ¢Ã¢âÂ¬ÃÂ ÃÂ¢Ã¢âÂ¬Ã¢âÂ¢ fetch", {
         mensajeIdValue,
         oportunidadIdValue,
         contactoIdValue,
@@ -209,7 +209,7 @@ export const ActividadesPanel = ({
       if (!response.ok) {
         const mensajeError =
           normalizeError(data?.detail) ??
-          (Array.isArray(data) && data.length ? data.map((item: any) => normalizeError(item)).join(" Ãƒâ€šÃ‚Â· ") : null) ??
+          (Array.isArray(data) && data.length ? data.map((item: any) => normalizeError(item)).join(" ÃÆÃ¢â¬Å¡ÃâÃÂ· ") : null) ??
           `No se pudieron cargar las actividades (HTTP ${response.status}).`;
         setActividades([]);
         setError(mensajeError);
@@ -217,7 +217,7 @@ export const ActividadesPanel = ({
       }
       setActividades(data.actividades ?? []);
     } catch (err: any) {
-      console.error("ActividadesPanel ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ error", err);
+      console.error("ActividadesPanel ÃÆÃÂ¢ÃÂ¢Ã¢âÂ¬ÃÂ ÃÂ¢Ã¢âÂ¬Ã¢âÂ¢ error", err);
       console.error("Error al cargar actividades:", err);
       setActividades([]);
       setError(err?.message ?? "No se pudieron cargar las actividades");
@@ -272,23 +272,23 @@ export const ActividadesPanel = ({
     const { datetime, titulo, descripcion, tipoEvento, asignadoId } = scheduleForm;
 
     if (!oportunidadContextId) {
-      notify("Necesit?s guardar la oportunidad antes de agendar un evento.", { type: "warning" });
+      notify("Necesitás guardar la oportunidad antes de agendar un evento.", { type: "warning" });
       return;
     }
     if (!datetime) {
-      notify("Seleccion? fecha y hora para la actividad.", { type: "warning" });
+      notify("Seleccioná fecha y hora para la actividad.", { type: "warning" });
       return;
     }
     if (!titulo.trim()) {
-      notify("Ingres? un t?tulo para la actividad.", { type: "warning" });
+      notify("Ingresá un t?tulo para la actividad.", { type: "warning" });
       return;
     }
     if (!tipoEvento) {
-      notify("Eleg? un tipo de evento.", { type: "warning" });
+      notify("Elegí un tipo de evento.", { type: "warning" });
       return;
     }
     if (!asignadoId) {
-      notify("Seleccion? a qui?n se asigna el evento.", { type: "warning" });
+      notify("Seleccioná a quién se asigna el evento.", { type: "warning" });
       return;
     }
 
@@ -476,7 +476,7 @@ export const ActividadesPanel = ({
       )}
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          T?tulo del evento *
+          Título del evento *
         </p>
         <Input
           value={scheduleForm.titulo}
@@ -547,7 +547,7 @@ export const ActividadesPanel = ({
       </div>
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Descripci?n / notas
+          Descripción / notas
         </p>
         <Textarea
           rows={6}
@@ -721,8 +721,8 @@ export const ActividadesPanel = ({
   const renderActividadesList = () => {
     if (!hasContextIds) {
       return renderInformativeState(
-        "AÃƒÆ’Ã‚Âºn no hay contexto para mostrar actividades.",
-        "Guarda la oportunidad o vincÃƒÆ’Ã‚Âºlala a un mensaje/contacto para ver el historial."
+        "AÃÆÃâÃâÃÂºn no hay contexto para mostrar actividades.",
+        "Guarda la oportunidad o vincÃÆÃâÃâÃÂºlala a un mensaje/contacto para ver el historial."
       );
     }
     if (loading) {
@@ -838,7 +838,7 @@ const normalizeError = (value: any): string | undefined => {
   if (value == null) return undefined;
   if (typeof value === "string") return value;
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeError(item) ?? JSON.stringify(item)).join(" Ãƒâ€šÃ‚Â· ");
+    return value.map((item) => normalizeError(item) ?? JSON.stringify(item)).join(" ÃÆÃ¢â¬Å¡ÃâÃÂ· ");
   }
   if (typeof value === "object") {
     if (value.msg) return normalizeError(value.msg);
