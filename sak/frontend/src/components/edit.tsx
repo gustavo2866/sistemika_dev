@@ -11,7 +11,7 @@ import {
   useResourceDefinition,
 } from "ra-core";
 import { ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -29,13 +29,20 @@ export const Edit = ({
   actions,
   className,
   ...rest
-}: EditProps) => (
-  <EditBase {...rest}>
-    <EditView title={title} actions={actions} className={className}>
-      {children}
-    </EditView>
-  </EditBase>
-);
+}: EditProps) => {
+  const location = useLocation();
+  const fromTodo = Boolean(location.state && (location.state as any).fromTodo);
+  const { redirect: redirectProp, ...baseProps } = rest;
+  const redirect = redirectProp ?? (fromTodo ? "/crm/todo" : "list");
+
+  return (
+    <EditBase {...baseProps} redirect={redirect}>
+      <EditView title={title} actions={actions} className={className}>
+        {children}
+      </EditView>
+    </EditBase>
+  );
+};
 
 export interface EditViewProps {
   title?: ReactNode | string | false;
@@ -58,13 +65,16 @@ export const EditView = ({
       "The EditView component must be used within a ResourceContextProvider",
     );
   }
+  const location = useLocation();
+  const fromTodo = Boolean(location.state && (location.state as any).fromTodo);
   const getResourceLabel = useGetResourceLabel();
   const listLabel = getResourceLabel(resource, 2);
   const createPath = useCreatePath();
-  const listLink = createPath({
+  const defaultListLink = createPath({
     resource,
     type: "list",
   });
+  const listLink = fromTodo ? "/crm/todo" : defaultListLink;
 
   const getRecordRepresentation = useGetRecordRepresentation(resource);
   const recordRepresentation = getRecordRepresentation(context.record);

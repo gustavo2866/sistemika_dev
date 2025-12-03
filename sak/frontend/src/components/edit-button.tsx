@@ -8,7 +8,7 @@ import {
   Translate,
   type RaRecord,
 } from "ra-core";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 export type EditButtonProps = {
   record?: RaRecord;
@@ -20,6 +20,8 @@ export const EditButton = (props: EditButtonProps) => {
   const resource = useResourceContext(props);
   const record = useRecordContext(props);
   const createPath = useCreatePath();
+  const location = useLocation();
+  const fromTodo = Boolean(location.state && (location.state as any).fromTodo);
   const link = createPath({
     resource,
     type: "edit",
@@ -29,6 +31,7 @@ export const EditButton = (props: EditButtonProps) => {
     <Link
       className={buttonVariants({ variant: "outline" })}
       to={link}
+      state={fromTodo ? { fromTodo: true } : undefined}
       onClick={stopPropagation}
     >
       <Pencil />

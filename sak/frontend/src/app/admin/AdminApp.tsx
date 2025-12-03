@@ -197,6 +197,7 @@ import {
   EmprendimientoShow,
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
+import { CRMToDoBoard } from "@/app/resources/crm-todo";
 
 declare const window: Window | undefined;
 
@@ -547,6 +548,7 @@ const AdminApp = () => {
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/mensajes/:id/responder" element={<CRMMensajeReply />} />
+        <Route path="/crm/todo" element={<CRMToDoBoard />} />
       </CustomRoutes>
     </Admin>
   );

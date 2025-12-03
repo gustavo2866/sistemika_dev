@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, SyntheticEvent } from "react";
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
@@ -10,14 +11,20 @@ import { SelectInput } from "@/components/select-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
 import { TextInput } from "@/components/text-input";
 import { ResourceTitle } from "@/components/resource-title";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SummaryChips, type SummaryChipItem } from "@/components/lists/SummaryChips";
 import { cn } from "@/lib/utils";
-import { CalendarCheck } from "lucide-react";
-import { useListContext, useRecordContext } from "ra-core";
+import { CalendarCheck, Flag } from "lucide-react";
+import { useDataProvider, useListContext, useNotify, useRecordContext, useRefresh } from "ra-core";
 import type { CRMEvento } from "./model";
 import { CRM_EVENTO_ESTADO_CHOICES } from "./model";
 
@@ -82,14 +89,108 @@ export const CRMEventoList = () => (
               <TextField source="nombre" />
             </ReferenceField>
           </DataTable.Col>
-          <DataTable.Col>
-            <EditButton />
+          <DataTable.Col label="Seguimiento" className="w-[110px] text-right">
+            <SeguimientoMenu />
           </DataTable.Col>
         </DataTable>
       </div>
     </div>
   </List>
 );
+
+type SeguimientoOptionId = "manana" | "proxima_semana" | "semana_siguiente" | "futuro";
+
+const seguimientoOptions: Array<{ id: SeguimientoOptionId; label: string; daysToAdd: number }> = [
+  { id: "manana", label: "Mañana", daysToAdd: 1 },
+  { id: "proxima_semana", label: "Próxima semana", daysToAdd: 7 },
+  { id: "semana_siguiente", label: "Semana siguiente", daysToAdd: 14 },
+  { id: "futuro", label: "Futuro (15 días)", daysToAdd: 15 },
+];
+
+const normalizeFechaBase = (record?: CRMEvento) => {
+  const base = new Date();
+  if (record?.fecha_evento) {
+    const current = new Date(record.fecha_evento);
+    if (!Number.isNaN(current.getTime())) {
+      base.setHours(current.getHours(), current.getMinutes(), current.getSeconds(), current.getMilliseconds());
+    }
+  }
+  return base;
+};
+
+const computeSeguimientoDate = (optionId: SeguimientoOptionId, record?: CRMEvento) => {
+  const option = seguimientoOptions.find((item) => item.id === optionId);
+  if (!option) return null;
+  const target = normalizeFechaBase(record);
+  target.setDate(target.getDate() + option.daysToAdd);
+  return target;
+};
+
+const SeguimientoMenu = () => {
+  const record = useRecordContext<CRMEvento>();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  if (!record) {
+    return null;
+  }
+
+  const stopRowClick = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleSelection = async (optionId: SeguimientoOptionId, event: Event | SyntheticEvent) => {
+    event.preventDefault();
+    if ("stopPropagation" in event) {
+      event.stopPropagation();
+    }
+    if (!record?.id) {
+      return;
+    }
+    const targetDate = computeSeguimientoDate(optionId, record);
+    if (!targetDate) {
+      notify("No se pudo calcular la nueva fecha.", { type: "warning" });
+      return;
+    }
+    setLoading(true);
+    try {
+      await dataProvider.update<CRMEvento>("crm/eventos", {
+        id: record.id,
+        data: { fecha_evento: targetDate.toISOString() },
+        previousData: record,
+      });
+      notify(`Evento reprogramado para ${targetDate.toLocaleString("es-AR")}.`, { type: "info" });
+      refresh();
+    } catch (error: any) {
+      console.error("Error al actualizar fecha_evento", error);
+      const message = error?.message ?? "No se pudo actualizar la fecha del evento.";
+      notify(message, { type: "warning" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={stopRowClick} disabled={loading}>
+          <Flag className="h-4 w-4" />
+          <span className="sr-only">Opciones de seguimiento</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {seguimientoOptions.map((option) => (
+          <DropdownMenuItem key={option.id} onSelect={(event) => handleSelection(option.id, event)}>
+            {option.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 type FechaRangeId = "vencida" | "hoy" | "esta_semana" | "proxima_semana" | "futuras";
 

@@ -9,6 +9,7 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   useListContext,
@@ -29,7 +30,7 @@ import {
   type CRMOportunidad,
   type CRMOportunidadEstado,
 } from "./model";
-import { Target, Loader2 } from "lucide-react";
+import { Target, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
@@ -180,7 +181,24 @@ const OperacionToggle = () => {
   );
 };
 
-const KanbanBoard = () => {
+const PANEL_STAGE_WINDOWS = [
+  {
+    id: "inicio",
+    label: "Prospect a Cotiza",
+    startIndex: 0,
+    endIndex: 3,
+  },
+  {
+    id: "cierre",
+    label: "Cotiza a Perdida",
+    startIndex: 3,
+    endIndex: CRM_OPORTUNIDAD_ESTADOS.length - 1,
+  },
+] as const;
+
+type StageWindow = (typeof PANEL_STAGE_WINDOWS)[number];
+
+const KanbanBoard = ({ visibleEstados }: { visibleEstados: CRMOportunidadEstado[] }) => {
   const { data, isLoading } = useListContext<CRMOportunidad>();
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -246,8 +264,10 @@ const KanbanBoard = () => {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6">
-      {CRM_OPORTUNIDAD_ESTADO_CHOICES.map((choice) => (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {CRM_OPORTUNIDAD_ESTADO_CHOICES.filter((choice) =>
+        visibleEstados.includes(choice.id as CRMOportunidadEstado),
+      ).map((choice) => (
         <KanbanColumn
           key={choice.id}
           estado={choice.id as CRMOportunidadEstado}
@@ -263,6 +283,16 @@ const KanbanBoard = () => {
   );
 };
 
+const ESTADO_BG_COLORS: Record<CRMOportunidadEstado, string> = {
+  "0-prospect": "from-slate-50/90 to-slate-100/80",
+  "1-abierta": "from-blue-50/90 to-blue-100/70",
+  "2-visita": "from-cyan-50/90 to-cyan-100/70",
+  "3-cotiza": "from-amber-50/90 to-amber-100/70",
+  "4-reserva": "from-violet-50/90 to-violet-100/70",
+  "5-ganada": "from-emerald-50/90 to-emerald-100/70",
+  "6-perdida": "from-rose-50/90 to-rose-100/70",
+};
+
 type KanbanColumnProps = {
   estado: CRMOportunidadEstado;
   label: string;
@@ -273,28 +303,31 @@ type KanbanColumnProps = {
   onDragStart: (event: React.DragEvent<HTMLDivElement>, id: number) => void;
 };
 
-const KanbanColumn = ({ estado, label, cards, hovered, onDrop, onDragOver, onDragStart }: KanbanColumnProps) => (
-  <div
+const KanbanColumn = ({ estado, label, cards, hovered, onDrop, onDragOver, onDragStart }: KanbanColumnProps) => {
+  const bgClass = ESTADO_BG_COLORS[estado] ?? "from-white/95 to-slate-50/70";
+  return (
+    <div
     onDragOver={(event) => onDragOver(event, estado)}
     onDrop={(event) => onDrop(estado, event)}
     className={cn(
-      "flex h-[380px] flex-col gap-3 overflow-x-auto rounded-3xl border border-slate-200/90 bg-white/90 p-4 shadow-sm transition",
+      "flex h-[40vh] flex-col gap-3 overflow-hidden rounded-3xl border border-slate-200/90 bg-gradient-to-b p-4 shadow-lg transition hover:border-slate-300",
+      bgClass,
       hovered === estado ? "ring-2 ring-primary/40" : "ring-0",
     )}
   >
-    <div className="flex items-center justify-between text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="flex items-center justify-between rounded-2xl bg-slate-100/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
       <span>{label}</span>
-      <Badge variant="outline" className="border-transparent bg-slate-100 text-xs text-slate-700">
+      <Badge variant="outline" className="border-transparent bg-white text-xs text-slate-800 shadow-sm">
         {cards.length}
       </Badge>
     </div>
     <div className="flex-1 overflow-y-auto pr-1">
       {cards.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-muted-foreground">
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center text-sm text-muted-foreground">
           Sin oportunidades
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 pb-2">
           {cards.map((record) => (
             <KanbanCard key={record.id} record={record} onDragStart={onDragStart} />
           ))}
@@ -302,7 +335,8 @@ const KanbanColumn = ({ estado, label, cards, hovered, onDrop, onDragOver, onDra
       )}
     </div>
   </div>
-);
+  );
+};
 
 const KanbanCard = ({
   record,
@@ -356,28 +390,111 @@ const KanbanCard = ({
   );
 };
 
-const KanbanFilters = () => (
-  <div className="flex flex-wrap items-center gap-3">
-    <OperacionToggle />
-    <SoloActivasToggle />
+const StageNavigator = ({
+  onPrev,
+  onNext,
+  canPrev,
+  canNext,
+}: {
+  onPrev: () => void;
+  onNext: () => void;
+  canPrev: boolean;
+  canNext: boolean;
+}) => (
+  <div className="flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-2 py-1 shadow-sm">
+    <Button
+      type="button"
+      variant={canPrev ? "outline" : "ghost"}
+      size="sm"
+      className={cn(
+        "h-8 rounded-full px-4 text-xs font-semibold uppercase tracking-wide",
+        canPrev ? "text-slate-900" : "text-muted-foreground",
+      )}
+      onClick={onPrev}
+      disabled={!canPrev}
+    >
+      Anterior
+    </Button>
+    <Button
+      type="button"
+      variant={canNext ? "outline" : "ghost"}
+      size="sm"
+      className={cn(
+        "h-8 rounded-full px-4 text-xs font-semibold uppercase tracking-wide",
+        canNext ? "text-slate-900" : "text-muted-foreground",
+      )}
+      onClick={onNext}
+      disabled={!canNext}
+    >
+      Siguiente
+    </Button>
   </div>
 );
 
-const CRMOportunidadPanelInner = () => (
-  <List
-    title={<ResourceTitle icon={Target} text="CRM - Panel" />}
-    filters={filters}
-    actions={<ListActions />}
-    perPage={100}
-    sort={{ field: "fecha_estado", order: "DESC" }}
-    className="space-y-6"
-  >
-    <div className="space-y-5 rounded-[32px] border border-slate-200/70 bg-gradient-to-br from-white/95 via-white/90 to-slate-50/90 p-5 shadow-[0_30px_60px_rgba(15,23,42,0.12)]">
-      <KanbanFilters />
-      <KanbanBoard />
+const KanbanFilters = ({
+  stageWindow,
+  onPrevStage,
+  onNextStage,
+  canPrevStage,
+  canNextStage,
+}: {
+  stageWindow: StageWindow;
+  onPrevStage: () => void;
+  onNextStage: () => void;
+  canPrevStage: boolean;
+  canNextStage: boolean;
+}) => (
+  <div className="flex flex-wrap items-center gap-3">
+    <OperacionToggle />
+    <div className="flex flex-wrap items-center gap-2">
+      <SoloActivasToggle />
+      <StageNavigator
+        windowLabel={stageWindow.label}
+        onPrev={onPrevStage}
+        onNext={onNextStage}
+        canPrev={canPrevStage}
+        canNext={canNextStage}
+      />
     </div>
-  </List>
+  </div>
 );
+
+const CRMOportunidadPanelInner = () => {
+  const [stageWindowIndex, setStageWindowIndex] = useState(0);
+  const stageWindow = PANEL_STAGE_WINDOWS[stageWindowIndex];
+  const start = Math.max(0, stageWindow.startIndex);
+  const end = Math.min(CRM_OPORTUNIDAD_ESTADOS.length - 1, stageWindow.endIndex);
+  const visibleEstados = CRM_OPORTUNIDAD_ESTADOS.slice(start, end + 1) as CRMOportunidadEstado[];
+
+  const handlePrevStage = () => {
+    setStageWindowIndex((prev) => Math.max(0, prev - 1));
+  };
+  const handleNextStage = () => {
+    setStageWindowIndex((prev) => Math.min(PANEL_STAGE_WINDOWS.length - 1, prev + 1));
+  };
+
+  return (
+    <List
+      title={<ResourceTitle icon={Target} text="CRM - Panel" />}
+      filters={filters}
+      actions={<ListActions />}
+      perPage={100}
+      sort={{ field: "fecha_estado", order: "DESC" }}
+      className="space-y-6"
+    >
+      <div className="space-y-5 rounded-[32px] border border-slate-200/70 bg-gradient-to-br from-white/95 via-white/90 to-slate-50/90 p-5 shadow-[0_30px_60px_rgba(15,23,42,0.12)]">
+        <KanbanFilters
+          stageWindow={stageWindow}
+          onPrevStage={handlePrevStage}
+          onNextStage={handleNextStage}
+          canPrevStage={stageWindowIndex > 0}
+          canNextStage={stageWindowIndex < PANEL_STAGE_WINDOWS.length - 1}
+        />
+        <KanbanBoard visibleEstados={visibleEstados} />
+      </div>
+    </List>
+  );
+};
 
 export const CRMOportunidadPanelPage = () => (
   <ResourceContextProvider value="crm/oportunidades">

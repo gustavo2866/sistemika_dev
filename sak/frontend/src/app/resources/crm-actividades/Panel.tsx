@@ -460,9 +460,6 @@ export const ActividadesPanel = ({
           <CalendarPlus className="mr-2 h-4 w-4" />
           Agendar
         </Button>
-        <p className="text-xs leading-tight text-muted-foreground/90">
-          Responde o programa actividades desde este panel sin perder el hilo del mensaje.
-        </p>
       </div>
     );
   };

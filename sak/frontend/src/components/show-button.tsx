@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { buttonVariants } from "@/components/ui/button";
 import { Eye } from "lucide-react";
 import {
@@ -18,6 +18,8 @@ export const ShowButton = (props: ShowButtonProps) => {
   const resource = useResourceContext();
   const record = useRecordContext();
   const createPath = useCreatePath();
+  const location = useLocation();
+  const fromTodo = Boolean(location.state && (location.state as any).fromTodo);
   const link = createPath({
     resource,
     type: "show",
@@ -28,6 +30,7 @@ export const ShowButton = (props: ShowButtonProps) => {
     <Link
       className={buttonVariants({ variant: "outline" })}
       to={link}
+      state={fromTodo ? { fromTodo: true } : undefined}
       onClick={stopPropagation}
       {...rest}
     >

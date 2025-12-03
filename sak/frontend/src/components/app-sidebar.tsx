@@ -47,17 +47,27 @@ import {
   NotebookPen,
   FileStack,
   Handshake,
+  LayoutGrid,
+  ListChecks,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
 const CONFIG_RESOURCES = ["users", "departamentos", "tipos-operacion", "tipos-solicitud", "metodos-pago", "tipos-comprobante"] as const;
-const CRM_RESOURCES = ["crm/mensajes", "crm/inbox", "crm/oportunidades", "crm/eventos", "crm/contactos", "dashboard-crm"] as const;
-const CRM_CUSTOM_LINKS = [
-  { label: "Panel", to: "/crm/panel" },
-  { label: "Setup", to: "/crm/setup" },
+const CRM_RESOURCES = ["crm/mensajes", "crm/eventos", "crm/oportunidades", "crm/contactos", "dashboard-crm"] as const;
+const CRM_CUSTOM_LINKS: Array<{
+  label: string;
+  to: string;
+  icon: ComponentType;
+  position: "top" | "bottom";
+}> = [
+  { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
+  { label: "CRM To-Do", to: "/crm/todo", icon: ListChecks, position: "top" },
+  { label: "Setup", to: "/crm/setup", icon: Settings, position: "bottom" },
 ] as const;
+const CRM_TOP_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "top");
+const CRM_BOTTOM_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "bottom");
 const CRM_CATALOG_RESOURCES = [
   "crm/catalogos/tipos-operacion",
   "crm/catalogos/motivos-perdida",
@@ -206,6 +216,15 @@ export function AppSidebar() {
                   isOpen={crmOpen}
                   onToggle={() => setCrmOpen((open) => !open)}
                 >
+                  {CRM_TOP_CUSTOM_LINKS.map((link) => (
+                    <SidebarCustomMenuItem
+                      key={link.to}
+                      label={link.label}
+                      to={link.to}
+                      icon={link.icon}
+                      onClick={handleItemClick}
+                    />
+                  ))}
                   {crmResources.map((name) => (
                     <ResourceSubMenuItem
                       key={name}
@@ -213,11 +232,12 @@ export function AppSidebar() {
                       onClick={handleItemClick}
                     />
                   ))}
-                  {CRM_CUSTOM_LINKS.map((link) => (
+                  {CRM_BOTTOM_CUSTOM_LINKS.map((link) => (
                     <SidebarCustomMenuItem
                       key={link.to}
                       label={link.label}
                       to={link.to}
+                      icon={link.icon}
                       onClick={handleItemClick}
                     />
                   ))}
@@ -431,25 +451,27 @@ const ResourceSubMenuItem = ({
 const SidebarCustomMenuItem = ({
   label,
   to,
+  icon,
   onClick,
 }: {
   label: string;
   to: string;
+  icon?: ComponentType;
   onClick?: () => void;
 }) => {
   const match = useMatch({ path: to, end: false });
+  const IconComponent = icon ?? Settings;
   return (
     <SidebarMenuSubItem>
       <SidebarMenuSubButton asChild isActive={!!match} size="sm">
         <Link to={to} state={{ _scrollToTop: true }} onClick={onClick}>
-          <Settings />
+          {createElement(IconComponent)}
           <span>{label}</span>
         </Link>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
   );
 };
-
 
 
 
