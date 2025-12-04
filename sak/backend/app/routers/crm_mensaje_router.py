@@ -211,6 +211,24 @@ def responder_mensaje(
         raise HTTPException(status_code=500, detail=f"Error al responder mensaje: {str(e)}")
 
 
+@router.post("/{mensaje_id}/agendar")
+def agendar_evento_mensaje(
+    mensaje_id: int,
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+):
+    """
+    Agenda un evento asociado a un mensaje. Si no existe contacto u oportunidad
+    vinculados al mensaje, se crean autom\u00e1ticamente.
+    """
+    try:
+        return crm_mensaje_service.agendar_evento_para_mensaje(session, mensaje_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al agendar evento: {str(e)}")
+
+
 @router.post("/acciones/enviar")
 def enviar_mensaje_desde_panel(
     payload: dict = Body(...),

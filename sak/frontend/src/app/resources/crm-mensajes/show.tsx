@@ -398,14 +398,16 @@ const CRMMensajeMinimalView = () => {
               <h2 className="text-3xl font-semibold text-foreground">Mensaje</h2>
             </div>
             <div className="lg:ml-auto">
-              <Button
-                variant="outline"
-                className="w-full border border-destructive/60 text-destructive hover:bg-destructive/10 sm:w-auto"
-                onClick={() => setDiscardOpen(true)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Descartar
-              </Button>
+              {record.estado === "nuevo" && (
+                <Button
+                  variant="outline"
+                  className="w-full border border-destructive/60 text-destructive hover:bg-destructive/10 sm:w-auto"
+                  onClick={() => setDiscardOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Descartar
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-4 rounded-2xl border border-border/50 bg-background/80 p-4">
@@ -473,7 +475,7 @@ const CRMMensajeMinimalView = () => {
                 </Button>
               </div>
             </div>
-            <div className="rounded-2xl border border-border/40 bg-background/95 p-5 text-base leading-7 text-foreground shadow-inner min-h-[320px]">
+            <div className="rounded-2xl border border-border/40 bg-background/95 p-5 text-base leading-7 text-foreground shadow-inner min-h-[180px] max-h-[320px] overflow-y-auto">
               {record.contenido || "Sin contenido disponible."}
             </div>
           </div>
@@ -578,7 +580,7 @@ const CRMMensajeMinimalView = () => {
         }}
       />
       <Dialog open={discardOpen} onOpenChange={(open) => !discardLoading && setDiscardOpen(open)}>
-        <DialogContent>
+        <DialogContent className="bg-white" overlayClassName="bg-transparent backdrop-blur-none">
           <DialogHeader>
             <DialogTitle>Descartar mensaje</DialogTitle>
             <DialogDescription>

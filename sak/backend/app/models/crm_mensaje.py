@@ -9,12 +9,14 @@ from .enums import EstadoMensaje, PrioridadMensaje, CanalMensaje, TipoMensaje
 
 if TYPE_CHECKING:
     from .crm_oportunidad import CRMOportunidad
+    from .crm_contacto import CRMContacto
 
 
 class CRMMensaje(Base, table=True):
     __tablename__ = "crm_mensajes"
     __searchable_fields__ = ["asunto", "contenido"]
-    __expanded_list_relations__ = set()
+    __expanded_list_relations__ = {"contacto"}
+    __auto_include_relations__ = ["contacto", "oportunidad"]
     model_config = SQLModel.model_config
 
     tipo: str = Field(default=TipoMensaje.ENTRADA.value, max_length=20, index=True)
@@ -47,6 +49,7 @@ class CRMMensaje(Base, table=True):
     oportunidad_id: Optional[int] = Field(
         default=None, foreign_key="crm_oportunidades.id", index=True
     )
+    contacto: Optional["CRMContacto"] = Relationship(back_populates="mensajes")
     oportunidad: Optional["CRMOportunidad"] = Relationship(back_populates="mensajes")
 
     def set_estado(self, nuevo_estado: str) -> None:

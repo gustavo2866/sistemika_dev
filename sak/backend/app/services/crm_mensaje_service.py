@@ -22,6 +22,8 @@ from app.models import (
     EstadoMensaje,
     TipoMensaje,
     CanalMensaje,
+    EstadoEvento,
+    EstadoOportunidad,
 )
 
 
@@ -403,12 +405,22 @@ class CRMMensajeService:
         oportunidad_creada = False
         
         if oportunidad_id is None:
+            tipo_operacion_seleccionada = payload.get("tipo_operacion_id")
+            if tipo_operacion_seleccionada is None:
+                raise ValueError(
+                    "tipo_operacion_id es obligatorio para crear la oportunidad desde la respuesta"
+                )
+            try:
+                tipo_operacion_id = int(tipo_operacion_seleccionada)
+            except (TypeError, ValueError):
+                raise ValueError("tipo_operacion_id es inválido")
+
             # Crear oportunidad en estado 0-prospect
             oportunidad_payload = {
                 "contacto_id": contacto_id,
                 "estado": "0-prospect",
                 "fecha_estado": datetime.now(UTC),
-                "tipo_operacion_id": None,
+                "tipo_operacion_id": tipo_operacion_id,
                 "descripcion": mensaje.contenido or "Consulta inicial",
                 "descripcion_estado": mensaje.asunto or "Nueva oportunidad",
                 "responsable_id": responsable_id,
@@ -523,6 +535,129 @@ class CRMMensajeService:
             "contacto_id": contacto_id,
             "contacto_creado": contacto_creado,
             "oportunidad_id": oportunidad_id,
+        }
+
+    def _normalize_datetime(self, value: Any) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if not isinstance(value, str):
+            raise ValueError("fecha_evento es invalida")
+        s = value.strip()
+        if not s:
+            raise ValueError("fecha_evento es invalida")
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError as exc:
+            raise ValueError("fecha_evento debe estar en formato ISO") from exc
+
+    def agendar_evento_para_mensaje(
+        self,
+        session: Session,
+        mensaje_id: int,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        mensaje = session.get(CRMMensaje, mensaje_id)
+        if not mensaje:
+            raise ValueError("Mensaje no encontrado")
+
+        titulo = (payload.get("titulo") or "").strip()
+        tipo_evento = payload.get("tipo_evento")
+        fecha_evento = payload.get("fecha_evento")
+        asignado_a_id = payload.get("asignado_a_id")
+        estado_evento = payload.get("estado_evento") or EstadoEvento.PENDIENTE.value
+        descripcion = (payload.get("descripcion") or "").strip() or None
+
+        if not titulo:
+            raise ValueError("El t\u00edtulo del evento es obligatorio")
+        if not tipo_evento:
+            raise ValueError("tipo_evento es obligatorio")
+        if not fecha_evento:
+            raise ValueError("fecha_evento es obligatorio")
+        if not asignado_a_id:
+            raise ValueError("asignado_a_id es obligatorio")
+
+        fecha_evento_dt = self._normalize_datetime(fecha_evento)
+        try:
+            asignado_a_id_int = int(asignado_a_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("asignado_a_id es invalido") from exc
+
+        responsable_id = payload.get("responsable_id") or mensaje.responsable_id or asignado_a_id_int
+        if not responsable_id:
+            raise ValueError("No se pudo determinar el responsable del evento")
+
+        contacto_id = mensaje.contacto_id
+        contacto_creado = False
+        if contacto_id is None:
+            contacto_nombre = (
+                payload.get("contacto_nombre")
+                or mensaje.contacto_nombre_propuesto
+                or mensaje.contacto_alias
+                or mensaje.asunto
+                or f"Contacto mensaje #{mensaje.id}"
+            )
+            referencia = (
+                payload.get("contacto_referencia")
+                or mensaje.contacto_referencia
+                or mensaje.origen_externo_id
+                or mensaje.contacto_alias
+                or contacto_nombre
+            )
+            contacto_payload = {
+                "nombre": contacto_nombre,
+                "referencia": referencia,
+                "responsable_id": responsable_id,
+            }
+            contacto = self._crear_contacto_si_necesario(session, contacto_payload)
+            contacto_id = contacto.id
+            contacto_creado = True
+
+        oportunidad_id = mensaje.oportunidad_id
+        oportunidad_creada = False
+        if oportunidad_id is None:
+            descripcion_estado = titulo or mensaje.asunto or f"Seguimiento mensaje #{mensaje.id}"
+            oportunidad_payload: Dict[str, Any] = {
+                "contacto_id": contacto_id,
+                "responsable_id": responsable_id,
+                "estado": EstadoOportunidad.PROSPECT.value,
+                "fecha_estado": datetime.now(UTC),
+                "descripcion_estado": descripcion_estado,
+                "descripcion": descripcion or mensaje.contenido,
+                "tipo_operacion_id": payload.get("tipo_operacion_id"),
+            }
+            oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
+            oportunidad_id = oportunidad.id
+            oportunidad_creada = True
+
+        evento = CRMEvento(
+            oportunidad_id=oportunidad_id,
+            titulo=titulo,
+            tipo_evento=tipo_evento,
+            fecha_evento=fecha_evento_dt,
+            estado_evento=estado_evento,
+            asignado_a_id=asignado_a_id_int,
+            descripcion=descripcion,
+        )
+
+        mensaje.contacto_id = contacto_id
+        mensaje.oportunidad_id = oportunidad_id
+        if mensaje.estado == EstadoMensaje.NUEVO.value:
+            mensaje.estado = EstadoMensaje.RECIBIDO.value
+        session.add(mensaje)
+        session.add(evento)
+        session.commit()
+        session.refresh(mensaje)
+        session.refresh(evento)
+
+        return {
+            "evento": evento.model_dump(),
+            "evento_id": evento.id,
+            "contacto_id": contacto_id,
+            "oportunidad_id": oportunidad_id,
+            "contacto_creado": contacto_creado,
+            "oportunidad_creada": oportunidad_creada,
         }
 
 

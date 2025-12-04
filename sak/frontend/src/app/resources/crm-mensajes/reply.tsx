@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, useEffect } from "react";
-import { useNotify, useGetIdentity } from "ra-core";
+import { useNotify, useGetIdentity, useDataProvider } from "ra-core";
 import type { CRMMensaje } from "./model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,11 +40,15 @@ export const CRMMensajeReplyDialog = ({
 }: CRMMensajeReplyDialogProps) => {
   const notify = useNotify();
   const { data: identity } = useGetIdentity();
+  const dataProvider = useDataProvider();
   const [reply, setReply] = useState("");
   const [subject, setSubject] = useState("");
   const [contactoNombre, setContactoNombre] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [tipoOperacionOptions, setTipoOperacionOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [tipoOperacionId, setTipoOperacionId] = useState("");
+  const [tipoOperacionLoading, setTipoOperacionLoading] = useState(false);
 
   useEffect(() => {
     if (mensaje) {
@@ -54,8 +58,56 @@ export const CRMMensajeReplyDialog = ({
         mensaje.contacto?.nombre_completo ?? mensaje.contacto?.nombre ?? ""
       );
       setExpanded(false);
+      if (mensaje.oportunidad_id) {
+        setTipoOperacionId("");
+      }
     }
   }, [mensaje]);
+
+  useEffect(() => {
+    if (!open || !mensaje || mensaje.oportunidad_id) {
+      return;
+    }
+    let cancelled = false;
+    const loadTiposOperacion = async () => {
+      setTipoOperacionLoading(true);
+      try {
+        const { data } = await dataProvider.getList("crm/catalogos/tipos-operacion", {
+          pagination: { page: 1, perPage: 50 },
+          sort: { field: "id", order: "ASC" },
+          filter: {},
+        });
+        const normalize = (value?: string | null) => value?.toLowerCase() ?? "";
+        const filtered = (data ?? []).filter((item: any) => {
+          const text = `${normalize(item?.nombre)} ${normalize(item?.codigo)}`;
+          return text.includes("venta") || text.includes("alquiler");
+        });
+        const base = (filtered.length ? filtered : data) ?? [];
+        const mapped = base
+          .filter((item: any) => item?.id != null)
+          .map((item: any) => ({
+            id: String(item.id),
+            label: item.nombre ?? item.codigo ?? `#${item.id}`,
+          }));
+        if (!cancelled) {
+          setTipoOperacionOptions(mapped);
+        }
+      } catch (error) {
+        console.error("No se pudieron cargar los tipos de operación:", error);
+        if (!cancelled) {
+          setTipoOperacionOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTipoOperacionLoading(false);
+        }
+      }
+    };
+    loadTiposOperacion();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, mensaje?.id, mensaje?.oportunidad_id, dataProvider]);
 
   const handleSubmit = useCallback(async () => {
     if (!mensaje) return;
@@ -72,6 +124,11 @@ export const CRMMensajeReplyDialog = ({
       notify("El nombre del contacto es obligatorio.", { type: "warning" });
       return;
     }
+    
+    if (!mensaje.oportunidad_id && !tipoOperacionId) {
+      notify("Selecciona el tipo de operación (venta o alquiler).", { type: "warning" });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -83,6 +140,9 @@ export const CRMMensajeReplyDialog = ({
       
       if (!mensaje.contacto_id) {
         payload.contacto_nombre = trimmedNombre;
+      }
+      if (!mensaje.oportunidad_id && tipoOperacionId) {
+        payload.tipo_operacion_id = Number(tipoOperacionId);
       }
 
       // Siempre enviar responsable_id: del mensaje o del usuario autenticado
@@ -118,6 +178,7 @@ export const CRMMensajeReplyDialog = ({
         notify("Oportunidad creada automáticamente", { type: "info" });
       }
 
+      setTipoOperacionId("");
       onOpenChange(false);
       onSuccess?.();
     } catch (error: any) {
@@ -125,9 +186,10 @@ export const CRMMensajeReplyDialog = ({
     } finally {
       setLoading(false);
     }
-  }, [mensaje, reply, subject, contactoNombre, notify, onOpenChange, onSuccess]);
+  }, [mensaje, reply, subject, contactoNombre, notify, onOpenChange, onSuccess, identity?.id, tipoOperacionId]);
 
   const handleCancel = () => {
+    setTipoOperacionId("");
     onOpenChange(false);
   };
 
@@ -136,7 +198,7 @@ export const CRMMensajeReplyDialog = ({
   const contactoLabel =
     mensaje.contacto?.nombre_completo ??
     mensaje.contacto?.nombre ??
-    (mensaje.contacto_id ? `Contacto #${mensaje.contacto_id}` : "Sin contacto");
+    (mensaje.contacto_id ? `Contacto #${mensaje.contacto_id}` : "No agendado");
 
   const oportunidadLabel = mensaje.oportunidad?.id
     ? `#${mensaje.oportunidad.id}`
@@ -150,91 +212,93 @@ export const CRMMensajeReplyDialog = ({
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Responder Mensaje</DialogTitle>
-          <DialogDescription>
-            Envía una respuesta al mensaje. Se creará automáticamente un contacto y oportunidad si no existen.
-          </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Referencia
-            </label>
-            <p className="text-sm font-medium">
-              {mensaje.contacto_referencia || mensaje.origen_externo_id || "Sin referencia"}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Contacto / Oportunidad
-            </label>
-            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
-              <p>
-                <span className="font-semibold text-foreground">Contacto:</span> {contactoLabel}
+        <div className="space-y-5 py-4">
+          <section className="space-y-4 rounded-2xl border border-border/40 bg-muted/10 p-4">
+            <div className="space-y-2 text-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Contexto
               </p>
-              <p>
-                {oportunidadLabel} - {propiedadLabel}
-              </p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Referencia</p>
+                  <p className="font-medium text-foreground">
+                    {mensaje.contacto_referencia || mensaje.origen_externo_id || "Sin referencia"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Estado actual
+                  </p>
+                  <div className="rounded-lg border bg-background/80 p-2 text-xs text-muted-foreground">
+                    <p>
+                      <span className="font-semibold text-foreground">Contacto:</span> {contactoLabel}
+                    </p>
+                    <p>
+                      {oportunidadLabel} · {propiedadLabel}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {!mensaje.contacto_id && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Nombre del contacto *
+                  </p>
+                  <Input
+                    value={contactoNombre}
+                    onChange={(event) => setContactoNombre(event.target.value)}
+                    placeholder="Nombre completo del contacto"
+                    className="h-10"
+                  />
+                </div>
+              )}
+              {!mensaje.oportunidad_id && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tipo de operación *
+                  </p>
+                  <select
+                    value={tipoOperacionId}
+                    onChange={(event) => setTipoOperacionId(event.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Selecciona venta o alquiler</option>
+                    {tipoOperacionOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {tipoOperacionLoading ? (
+                    <p className="text-[11px] text-muted-foreground">Cargando opciones...</p>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </section>
 
-          {!mensaje.contacto_id && (
+          <section className="space-y-4 rounded-2xl border border-border/40 bg-background p-4">
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Nombre del Contacto *
-              </label>
-              <Input
-                value={contactoNombre}
-                onChange={(event) => setContactoNombre(event.target.value)}
-                placeholder="Nombre completo del contacto"
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Asunto</p>
+              <Input value={subject} onChange={(event) => setSubject(event.target.value)} className="h-10" />
+            </div>
+            <div className="space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-[0_0_20px_rgba(37,99,235,0.08)]">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Respuesta *
+              </p>
+              <Textarea
+                rows={6}
+                placeholder="Escribí tu respuesta..."
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                className="min-h-[150px] resize-none border border-primary/40 bg-white/95 shadow-inner focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary/50"
               />
             </div>
-          )}
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Asunto
-            </label>
-            <Input value={subject} onChange={(event) => setSubject(event.target.value)} />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Mensaje original
-              </label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? "Ver menos" : "Ver más"}
-              >
-                {expanded ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </Button>
-            </div>
-            <div
-              className={cn(
-                "rounded-lg border bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground transition-all",
-                expanded ? "line-clamp-none" : "line-clamp-3",
-              )}
-            >
-              {mensaje.contenido || "Sin contenido disponible."}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Respuesta *
-            </label>
-            <Textarea
-              rows={6}
-              placeholder="Escribí tu respuesta..."
-              value={reply}
-              onChange={(event) => setReply(event.target.value)}
-            />
-          </div>
+          </section>
         </div>
 
         <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">

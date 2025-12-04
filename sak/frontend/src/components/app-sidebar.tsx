@@ -49,13 +49,14 @@ import {
   Handshake,
   LayoutGrid,
   ListChecks,
+  Mail,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
 const CONFIG_RESOURCES = ["users", "departamentos", "tipos-operacion", "tipos-solicitud", "metodos-pago", "tipos-comprobante"] as const;
-const CRM_RESOURCES = ["crm/mensajes", "crm/eventos", "crm/oportunidades", "crm/contactos", "dashboard-crm"] as const;
+const CRM_RESOURCES = ["crm/eventos", "crm/oportunidades", "crm/contactos", "dashboard-crm"] as const;
 const CRM_CUSTOM_LINKS: Array<{
   label: string;
   to: string;
@@ -63,6 +64,7 @@ const CRM_CUSTOM_LINKS: Array<{
   position: "top" | "bottom";
 }> = [
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
+  { label: "CRM Mensajes", to: "/crm/mensajes", icon: Mail, position: "top" },
   { label: "CRM To-Do", to: "/crm/todo", icon: ListChecks, position: "top" },
   { label: "Setup", to: "/crm/setup", icon: Settings, position: "bottom" },
 ] as const;
