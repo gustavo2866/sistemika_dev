@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useGetList, useListContext, useRecordContext } from "ra-core";
-import { SummaryChips, SummaryChipItem } from "@/components/lists/SummaryChips";
+import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 import { ResourceTitle } from "@/components/resource-title";
 import { Target } from "lucide-react";
 
@@ -54,24 +54,11 @@ const filters = [
   </ReferenceInput>,
 ];
 
-const normalizeEstadoFilter = (value: unknown): string[] => {
-  if (Array.isArray(value)) {
-    return value
-      .map((v) => (typeof v === "string" ? v : String(v ?? "")))
-      .filter((v) => v.length > 0);
-  }
-  if (typeof value === "string" && value.length > 0) {
-    return [value];
-  }
-  return [];
-};
-
-const setEstadoFilterValue = (filters: Record<string, unknown>, values: string[]) => {
-  if (values.length) {
-    filters.estado = values;
-  } else {
-    delete filters.estado;
-  }
+const cnBadge = (estado: CRMOportunidadEstado, selected = false) => {
+  const base = CRM_OPORTUNIDAD_ESTADO_BADGES[estado] ?? "bg-slate-200 text-slate-800";
+  return selected
+    ? `${base} border-transparent ring-1 ring-offset-1 ring-offset-background`
+    : `${base} border-transparent`;
 };
 
 const ACTIVE_ESTADOS = ["0-prospect", "1-abierta", "2-visita", "3-cotiza", "4-reserva"];
@@ -84,10 +71,10 @@ const SoloActivasToggle = () => {
     const nextFilters = { ...filterValues };
     if (checked) {
       nextFilters.solo_activas = true;
-      setEstadoFilterValue(nextFilters, [...ACTIVE_ESTADOS]);
+      nextFilters.estado = [...ACTIVE_ESTADOS];
     } else {
       delete nextFilters.solo_activas;
-      setEstadoFilterValue(nextFilters, []);
+      delete nextFilters.estado;
     }
     setFilters(nextFilters, {});
   };
@@ -184,109 +171,6 @@ const OperacionToggle = () => {
 const oportunidadRowClass = () =>
   cn("transition-colors hover:bg-slate-50/70 odd:bg-white even:bg-slate-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60");
 
-const EstadoSummaryChips = () => {
-  const { filterValues, setFilters } = useListContext();
-  const [items, setItems] = useState<SummaryChipItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const filterSignature = JSON.stringify(filterValues);
-
-  useEffect(() => {
-    let cancel = false;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const query = new URLSearchParams();
-        Object.entries(filterValues).forEach(([key, value]) => {
-          if (value == null) {
-            return;
-          }
-          if (Array.isArray(value)) {
-            if (!value.length) return;
-            value.forEach((item) => {
-              if (item != null && item !== "") {
-                query.append(key, String(item));
-              }
-            });
-            return;
-          }
-          if (value !== "") {
-            query.append(key, String(value));
-          }
-        });
-        const response = await fetch(
-          `${API_URL}/crm/oportunidades/aggregates/estado?${query.toString()}`
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const json = await response.json();
-        const raw: Array<{
-          estado: CRMOportunidadEstado;
-          total?: number;
-        }> = json?.data ?? json ?? [];
-        const totals = new Map<string, number>();
-        raw.forEach(({ estado, total }) => {
-          totals.set(estado, total ?? 0);
-        });
-        const normalized: SummaryChipItem[] =
-          CRM_OPORTUNIDAD_ESTADO_CHOICES.map((choice) => {
-            const total = totals.get(choice.id as string) ?? 0;
-            return {
-              label: formatEstadoOportunidad(choice.id as CRMOportunidadEstado),
-              value: choice.id,
-              count: total,
-              chipClassName: cnBadge(choice.id as CRMOportunidadEstado),
-              selectedChipClassName: cnBadge(
-                choice.id as CRMOportunidadEstado,
-                true
-              ),
-              countClassName: "text-sm font-semibold bg-muted/70",
-              selectedCountClassName:
-                "text-base font-bold bg-background/90 text-foreground",
-            };
-          });
-        if (!cancel) {
-          setItems(normalized);
-          setError(null);
-        }
-
-      } catch (err: any) {
-        if (!cancel) {
-          setError(err?.message ?? "No se pudieron cargar los estados");
-        }
-      } finally {
-        if (!cancel) {
-          setLoading(false);
-        }
-      }
-    };
-    fetchData();
-    return () => {
-      cancel = true;
-    };
-  }, [filterSignature]);
-
-  const currentEstados = normalizeEstadoFilter(filterValues.estado);
-
-  const handleSelect = (value?: string) => {
-    const nextFilters = { ...filterValues };
-    setEstadoFilterValue(nextFilters, value ? [value] : []);
-    setFilters(nextFilters, {});
-  };
-  return (
-    <SummaryChips
-      title={null}
-      items={items}
-      loading={loading}
-      error={error}
-      selectedValue={currentEstados[0]}
-      onSelect={handleSelect}
-      className="mb-0 border-none bg-transparent p-0 shadow-none"
-    />
-  );
-};
-
 export const CRMOportunidadList = () => (
   <List
     title={<ResourceTitle icon={Target} text="CRM - Oportunidades" />}
@@ -304,7 +188,16 @@ export const CRMOportunidadList = () => (
             <SoloActivasToggle />
           </div>
           <div className="flex justify-end">
-            <EstadoSummaryChips />
+            <AggregateEstadoChips
+              endpoint="crm/oportunidades/aggregates/estado"
+              choices={CRM_OPORTUNIDAD_ESTADO_CHOICES.map(choice => ({
+                id: choice.id,
+                name: formatEstadoOportunidad(choice.id as CRMOportunidadEstado)
+              }))}
+              badges={CRM_OPORTUNIDAD_ESTADO_BADGES}
+              getChipClassName={cnBadge}
+              className="mb-0 border-none bg-transparent p-0 shadow-none"
+            />
           </div>
         </div>
       </div>
@@ -315,6 +208,17 @@ export const CRMOportunidadList = () => (
           </DataTable.Col>
           <DataTable.Col source="created_at" label="Fecha">
             <FechaCreacionCell />
+          </DataTable.Col>
+          <DataTable.Col
+            source="titulo"
+            label="Título"
+            className="max-w-[280px] whitespace-normal"
+            cellClassName="align-top whitespace-normal"
+          >
+            <TextField
+              source="titulo"
+              className="block text-sm font-medium leading-tight line-clamp-2 break-words"
+            />
           </DataTable.Col>
           <DataTable.Col
             source="contacto_id"
@@ -408,15 +312,6 @@ const formatShortDate = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("es-AR");
-};
-
-const cnBadge = (estado: CRMOportunidadEstado, selected = false) => {
-  const base =
-    CRM_OPORTUNIDAD_ESTADO_BADGES[estado] ??
-    "bg-slate-200 text-slate-800";
-  return selected
-    ? `${base} border-transparent shadow-sm ring-1 ring-offset-1 ring-offset-background`
-    : `${base} border-transparent`;
 };
 
 const DescripcionCell = () => {

@@ -35,6 +35,7 @@ export const Show = ({
   className,
   render,
   loading,
+  showBreadcrumb,
 }: ShowProps) => (
   <ShowBase
     id={id}
@@ -44,7 +45,7 @@ export const Show = ({
     render={render}
     loading={loading}
   >
-    <ShowView title={title} actions={actions} className={className}>
+    <ShowView title={title} actions={actions} className={className} showBreadcrumb={showBreadcrumb}>
       {children}
     </ShowView>
   </ShowBase>
@@ -56,6 +57,7 @@ export interface ShowViewProps {
   children: ReactNode;
   className?: string;
   emptyWhileLoading?: boolean;
+  showBreadcrumb?: boolean;
 }
 
 export const ShowView = ({
@@ -64,6 +66,7 @@ export const ShowView = ({
   children,
   className,
   emptyWhileLoading,
+  showBreadcrumb = true,
 }: ShowViewProps) => {
   const context = useShowContext();
 
@@ -99,19 +102,21 @@ export const ShowView = ({
 
   return (
     <>
-      <Breadcrumb>
-        {hasDashboard && (
+      {showBreadcrumb ? (
+        <Breadcrumb>
+          {hasDashboard && (
+            <BreadcrumbItem>
+              <Link to="/">
+                <Translate i18nKey="ra.page.dashboard">Home</Translate>
+              </Link>
+            </BreadcrumbItem>
+          )}
           <BreadcrumbItem>
-            <Link to="/">
-              <Translate i18nKey="ra.page.dashboard">Home</Translate>
-            </Link>
+            <Link to={listLink}>{listLabel}</Link>
           </BreadcrumbItem>
-        )}
-        <BreadcrumbItem>
-          <Link to={listLink}>{listLabel}</Link>
-        </BreadcrumbItem>
-        <BreadcrumbPage>{recordRepresentation}</BreadcrumbPage>
-      </Breadcrumb>
+          <BreadcrumbPage>{recordRepresentation}</BreadcrumbPage>
+        </Breadcrumb>
+      ) : null}
       <div
         className={cn(
           "flex justify-between items-start flex-wrap gap-2 my-2",

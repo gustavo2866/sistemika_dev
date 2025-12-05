@@ -33,8 +33,12 @@ import {
 } from "@/components/ui/dialog";
 import { useLocation, useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
-import { OportunidadCrear } from "./OportunidadCrear";
 import { ActividadesPanel } from "../crm-actividades/Panel";
+import {
+  CRM_OPORTUNIDAD_ESTADO_BADGES,
+  formatEstadoOportunidad,
+  type CRMOportunidadEstado,
+} from "../crm-oportunidades/model";
 
 const ensureReplySubject = (subject?: string | null) => {
   if (!subject) return "RE:";
@@ -45,7 +49,7 @@ const ensureReplySubject = (subject?: string | null) => {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export const CRMMensajeShow = () => (
-  <Show>
+  <Show showBreadcrumb={false}>
     <CRMMensajeMinimalView />
   </Show>
 );
@@ -67,7 +71,6 @@ const CRMMensajeMinimalView = () => {
   const [replyContent, setReplyContent] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
   const [contactoNombre, setContactoNombre] = useState("");
-  const [oportunidadDialogOpen, setOportunidadDialogOpen] = useState(false);
   const [actividadesReload, setActividadesReload] = useState(0);
   const [modoRespuesta, setModoRespuesta] = useState(false);
   const [panelMode, setPanelMode] = useState<"schedule" | null>(null);
@@ -112,12 +115,22 @@ const CRMMensajeMinimalView = () => {
   const referenciaBase = record.contacto_referencia || record.origen_externo_id || "Sin referencia";
   const referenciaTexto =
     record.contacto_id && contactoNombreReal
-      ? `${referenciaBase} · ${contactoNombreReal}`
+      ? `${referenciaBase} -> ${contactoNombreReal}`
       : referenciaBase;
   const oportunidadTexto = record.oportunidad_id
-    ? `#${record.oportunidad_id} · ${record.oportunidad?.descripcion_estado ?? "Oportunidad"}`
+    ? `#${record.oportunidad_id} -> ${record.oportunidad?.titulo ?? record.oportunidad?.descripcion_estado ?? "Oportunidad"}`
     : "";
   const hasOportunidad = Boolean(record.oportunidad_id);
+  const estadoOportunidad = hasOportunidad ? (record.oportunidad?.estado as CRMOportunidadEstado | undefined) : undefined;
+  const estadoNumero = estadoOportunidad ? estadoOportunidad.split("-")[0] : undefined;
+  const estadoNombre = estadoOportunidad ? formatEstadoOportunidad(estadoOportunidad) : undefined;
+  const estadoBadgeText =
+    estadoNumero && estadoNombre
+      ? `${estadoNumero} ${estadoNombre}`
+      : estadoNombre ?? estadoNumero ?? "OK";
+  const estadoBadgeClass = estadoOportunidad
+    ? CRM_OPORTUNIDAD_ESTADO_BADGES[estadoOportunidad]
+    : "bg-slate-400 text-white";
 
   const handleDescartar = async () => {
     setDiscardLoading(true);
@@ -414,17 +427,22 @@ const CRMMensajeMinimalView = () => {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-2">
                 {record.fecha_mensaje ? (
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {new Date(record.fecha_mensaje).toLocaleDateString("es-AR")}{" "}
-                    {new Date(record.fecha_mensaje).toLocaleTimeString("es-AR")}
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Fecha mensaje
+                    </p>
+                    <p className="text-sm">
+                      {new Date(record.fecha_mensaje).toLocaleDateString("es-AR")}{" "}
+                      {new Date(record.fecha_mensaje).toLocaleTimeString("es-AR")}
+                    </p>
+                  </div>
                 ) : null}
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Referencia
                 </p>
                 <p className="text-base font-medium">{referenciaTexto}</p>
               </div>
-              <div className="w-full text-right lg:w-56">
+              <div className="w-full lg:w-56">
                 <div className="rounded-xl border border-border/30 bg-background text-xs text-muted-foreground text-left shadow-sm space-y-2">
                   <div className="px-3 pt-2">
                     <div className="flex items-center justify-between gap-1">
@@ -434,15 +452,29 @@ const CRMMensajeMinimalView = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 border border-border/30 bg-muted/20 text-foreground hover:bg-muted/40"
+                        className="relative h-8 w-8 border border-border/40 bg-white/90 text-foreground hover:bg-muted/30"
                         onClick={() => setOportunidadDialogOpen(true)}
                         disabled={hasOportunidad}
                       >
-                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                        {hasOportunidad ? (
+                          <span
+                            className={cn(
+                              "inline-flex min-h-[1.2rem] min-w-[3.5rem] items-center justify-center rounded-full px-2 text-[8px] font-semibold uppercase leading-none text-white shadow-sm",
+                              estadoBadgeClass,
+                            )}
+                          >
+                            {estadoBadgeText}
+                          </span>
+                        ) : (
+                          <ArrowRightLeft className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                     {hasOportunidad ? (
-                      <p className="text-sm font-medium text-foreground">{oportunidadTexto}</p>
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-semibold text-foreground">{oportunidadTexto}</p>
+                        <p className="text-[9px] font-medium text-muted-foreground">{estadoBadgeText}</p>
+                      </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">
                         No se registró una oportunidad vinculada.
@@ -456,7 +488,7 @@ const CRMMensajeMinimalView = () => {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Subject
               </p>
-              <p className="text-2xl font-semibold leading-snug">{record.asunto || "Sin asunto"}</p>
+              <p className="text-xl font-semibold leading-snug text-slate-800">{record.asunto || "Sin asunto"}</p>
             </div>
           </div>
           <div className="space-y-3">
@@ -566,20 +598,7 @@ const CRMMensajeMinimalView = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <OportunidadCrear
-        mensajeId={record.id}
-        open={oportunidadDialogOpen}
-        onOpenChange={setOportunidadDialogOpen}
-        contactoNombre={contactoNombreForm}
-        contactoEditable={!record.contacto_id}
-        contactoReferencia={record.contacto_referencia}
-        defaultResponsableId={record.responsable_id ?? (typeof identity?.id === 'number' ? identity.id : null)}
-        onCreated={() => {
-          refresh();
-          setActividadesReload((prev) => prev + 1);
-        }}
-      />
-      <Dialog open={discardOpen} onOpenChange={(open) => !discardLoading && setDiscardOpen(open)}>
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
         <DialogContent className="bg-white" overlayClassName="bg-transparent backdrop-blur-none">
           <DialogHeader>
             <DialogTitle>Descartar mensaje</DialogTitle>
@@ -610,3 +629,5 @@ const CRMMensajeMinimalView = () => {
     </>
   );
 };
+
+

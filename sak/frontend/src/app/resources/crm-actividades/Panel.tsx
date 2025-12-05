@@ -757,11 +757,6 @@ export const ActividadesPanel = ({
               <p className="text-sm text-foreground line-clamp-2 leading-tight">
                 {actividad.descripcion || actividad.titulo || "Sin descripcion disponible."}
               </p>
-              {actividad.estado ? (
-                <span className="mt-0.5 inline-flex w-fit rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-600">
-                  {actividad.estado}
-                </span>
-              ) : null}
             </div>
           </li>
         ))}

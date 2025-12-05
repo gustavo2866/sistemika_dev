@@ -32,6 +32,7 @@ from app.routers.tipo_comprobante_router import tipo_comprobante_router
 from app.routers.tipo_propiedad_router import router as tipo_propiedad_router
 from app.routers.metodo_pago_router import metodo_pago_router
 from app.routers.propiedad_router import propiedad_router
+from app.routers.setting_router import setting_router
 from app.routers.articulo_router import articulo_router
 from app.routers.factura_router import factura_router
 from app.routers.factura_detalle_router import factura_detalle_router
@@ -142,6 +143,7 @@ app.include_router(tipo_comprobante_router)
 app.include_router(tipo_propiedad_router)
 app.include_router(metodo_pago_router)
 app.include_router(propiedad_router)
+app.include_router(setting_router)
 app.include_router(articulo_router)
 app.include_router(factura_router)
 app.include_router(factura_detalle_router)

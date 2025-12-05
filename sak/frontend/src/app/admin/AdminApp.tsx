@@ -189,7 +189,7 @@ import {
   CRMMensajeEdit,
   CRMMensajeShow,
 } from "@/app/resources/crm-mensajes";
-import { CRMMensajeReply } from "@/app/resources/crm-mensajes/reply";
+import { CRMMensajeReply } from "@/app/resources/crm-mensajes/form_responder";
 import {
   EmprendimientoList,
   EmprendimientoCreate,

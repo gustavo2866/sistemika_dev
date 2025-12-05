@@ -38,7 +38,7 @@ import {
 import { MoreHorizontal, Home } from "lucide-react";
 import { ResourceTitle } from "@/components/resource-title";
 import { ChangeStateDialog } from "./components/change-state-dialog";
-import { SummaryChips, SummaryChipItem } from "@/components/lists/SummaryChips";
+import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -76,27 +76,7 @@ const filters = [
   </ReferenceInput>,
 ];
 
-const normalizeEstadoFilter = (value: unknown): string[] => {
-  if (Array.isArray(value)) {
-    return value
-      .map((v) => (typeof v === "string" ? v : String(v ?? "")))
-      .filter((v) => v.length > 0);
-  }
-  if (typeof value === "string" && value.length > 0) {
-    return [value];
-  }
-  return [];
-};
-
-const setEstadoFilterValue = (current: Record<string, unknown>, values: string[]) => {
-  if (values.length) {
-    current.estado = values;
-  } else {
-    delete current.estado;
-  }
-};
-
-const estadoChipClass = (estado: PropiedadEstado, selected = false) => {
+const estadoChipClass = (estado: string, selected = false) => {
   const palette =
     ESTADOS_PROPIEDAD_OPTIONS.find((option) => option.value === estado)?.badgeColor ??
     "bg-slate-200 text-slate-800";
@@ -113,102 +93,6 @@ const ListActions = () => (
   </div>
 );
 
-const PropiedadEstadoSummaryChips = () => {
-  const { filterValues, setFilters } = useListContext();
-  const [items, setItems] = useState<SummaryChipItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const filterSignature = JSON.stringify(filterValues);
-
-  useEffect(() => {
-    let cancel = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const query = new URLSearchParams();
-        Object.entries(filterValues).forEach(([key, value]) => {
-          if (value == null) return;
-          if (Array.isArray(value)) {
-            if (!value.length) return;
-            value.forEach((item) => {
-              if (item != null && item !== "") {
-                query.append(key, String(item));
-              }
-            });
-            return;
-          }
-          if (value !== "") {
-            query.append(key, String(value));
-          }
-        });
-
-        const response = await fetch(
-          `${API_URL}/propiedades/aggregates/estado?${query.toString()}`
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const json = await response.json();
-        const raw: Array<{ estado: PropiedadEstado; total?: number }> =
-          json?.data ?? json ?? [];
-        const totals = new Map<PropiedadEstado, number>();
-        raw.forEach(({ estado, total }) => {
-          totals.set(estado, total ?? 0);
-        });
-        const normalized: SummaryChipItem[] = ESTADOS_PROPIEDAD_OPTIONS.map(
-          (option) => ({
-            label: option.label,
-            value: option.value,
-            count: totals.get(option.value) ?? 0,
-            chipClassName: estadoChipClass(option.value),
-            selectedChipClassName: estadoChipClass(option.value, true),
-            countClassName: "text-sm font-semibold bg-muted/70",
-            selectedCountClassName:
-              "text-base font-bold bg-background/90 text-foreground",
-          })
-        );
-        if (!cancel) {
-          setItems(normalized);
-          setError(null);
-        }
-      } catch (err: any) {
-        if (!cancel) {
-          setError(err?.message ?? "No se pudieron cargar los estados");
-        }
-      } finally {
-        if (!cancel) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchData();
-    return () => {
-      cancel = true;
-    };
-  }, [filterSignature]);
-
-  const currentEstados = normalizeEstadoFilter(filterValues.estado);
-
-  const handleSelect = (value?: string) => {
-    const nextFilters = { ...filterValues };
-    setEstadoFilterValue(nextFilters, value ? [value] : []);
-    setFilters(nextFilters, {});
-  };
-
-  return (
-    <SummaryChips
-      title="Propiedades por estado"
-      items={items}
-      loading={loading}
-      error={error}
-      selectedValue={currentEstados[0]}
-      onSelect={handleSelect}
-    />
-  );
-};
-
 const PropiedadBulkActions = () => (
   <>
     <BulkDeleteButton />
@@ -222,7 +106,12 @@ export const PropiedadList = () => (
     actions={<ListActions />}
     perPage={10}
   >
-    <PropiedadEstadoSummaryChips />
+    <AggregateEstadoChips
+      endpoint="propiedades/aggregates/estado"
+      choices={ESTADOS_PROPIEDAD_OPTIONS.map(opt => ({ id: opt.value, name: opt.label }))}
+      badges={Object.fromEntries(ESTADOS_PROPIEDAD_OPTIONS.map(opt => [opt.value, opt.badgeColor]))}
+      getChipClassName={estadoChipClass}
+    />
     <DataTable rowClick="edit" bulkActionButtons={<PropiedadBulkActions />}>
       <DataTable.Col source="nombre" label="Nombre" className="w-[180px]">
         <div className="flex flex-col gap-0.5">

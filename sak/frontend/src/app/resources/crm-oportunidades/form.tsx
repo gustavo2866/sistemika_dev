@@ -100,6 +100,7 @@ const OportunidadFormSections = () => {
   const fechaCierreWatch = useWatch({ control, name: "fecha_cierre_estimada" });
   const tipoOperacionWatch = useWatch({ control, name: "tipo_operacion_id" });
   const descripcionWatch = useWatch({ control, name: "descripcion_estado" });
+  const tituloWatch = useWatch({ control, name: "titulo" });
 
   const contactoId = parseNumericId(contactoWatch ?? record?.contacto_id);
   const propiedadId = parseNumericId(propiedadWatch ?? record?.propiedad_id);
@@ -175,31 +176,26 @@ const OportunidadFormSections = () => {
     <div className="mr-auto flex w-full max-w-6xl flex-col gap-6 rounded-[32px] border border-border/60 bg-background/80 p-4 shadow-lg backdrop-blur lg:flex-row lg:items-stretch">
       <Card className="flex w-full flex-col gap-6 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-8 shadow-xl lg:basis-[64%] lg:self-stretch">
         <div className="space-y-6 rounded-[28px] border border-border/40 bg-background/80 p-6 shadow-inner">
-          <div className="flex flex-col gap-3 border-b border-border/30 pb-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                Secci?n
-              </p>
-              <h2 className="text-3xl font-semibold text-foreground">{formTitle}</h2>
-              <p className="text-sm text-muted-foreground">{formSubtitle}</p>
+          <div className="flex items-center justify-between border-b border-border/30 pb-4">
+            {record?.id ? (
+              <h2 className="text-lg font-semibold text-foreground">#{record.id} {tituloWatch || record?.titulo || "Sin título"}</h2>
+            ) : (
+              <h2 className="text-lg font-semibold text-foreground">Nueva Oportunidad</h2>
+            )}
+            <div className="flex flex-col items-end gap-0.5">
+              <Badge
+                variant="outline"
+                className={`${estadoBadgeClass} border border-border/40 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide shadow-sm`}
+              >
+                {estadoLabel}
+              </Badge>
+              <p className="text-[10px] text-muted-foreground">{fechaEstadoFormatted}</p>
             </div>
-            <Badge
-              variant="outline"
-              className={`${estadoBadgeClass} ml-auto border border-border/40 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide shadow-sm`}
-            >
-              {estadoLabel}
-            </Badge>
           </div>
-          <div className="grid gap-4 border-b border-border/30 pb-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <SummaryItem label="Contacto" value={contactName} />
             <SummaryItem label="Tipo de operación" value={tipoOperacionLabel} />
             <SummaryItem label="Propiedad" value={propiedadName} />
-          </div>
-          <div className="rounded-2xl bg-muted/30 p-4 text-sm text-muted-foreground">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-              Descripción
-            </p>
-            <p className="mt-1 text-base text-foreground">{descripcionNecesidad}</p>
           </div>
         </div>
         <FormLayout
@@ -221,7 +217,7 @@ const OportunidadFormSections = () => {
             },
             {
               id: "estado",
-              title: "Estado",
+              title: "Seguimiento",
               defaultOpen: false,
               contentPadding: "lg",
               children: (
@@ -262,12 +258,9 @@ function DatosGeneralesSection() {
   return (
     <FormSimpleSection className="space-y-6">
       <div className="grid grid-cols-1 gap-5">
-        <ReferenceInput source="contacto_id" reference="crm/contactos" label="Contacto">
-          <SelectInput optionText="nombre_completo" className="w-full" validate={required()} />
-        </ReferenceInput>
-        <ReferenceInput source="responsable_id" reference="users" label="Responsable">
-          <SelectInput optionText="nombre" className="w-full" validate={required()} />
-        </ReferenceInput>
+        <TextInput source="titulo" label="Título" className="w-full" placeholder="Ingrese un título para la oportunidad" />
+      </div>
+      <div className="grid grid-cols-1 gap-5">
         <ReferenceInput
           source="tipo_operacion_id"
           reference="crm/catalogos/tipos-operacion"
@@ -283,6 +276,16 @@ function DatosGeneralesSection() {
             validate={required()}
           />
         </ReferenceInput>
+      </div>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo de propiedad">
+          <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+        </ReferenceInput>
+        <ReferenceInput source="emprendimiento_id" reference="emprendimientos" label="Emprendimiento">
+          <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+        </ReferenceInput>
+      </div>
+      <div className="grid grid-cols-1 gap-5">
         <TextInput source="descripcion_estado" label="Descripción" multiline className="w-full" />
       </div>
     </FormSimpleSection>
@@ -292,22 +295,14 @@ function DatosGeneralesSection() {
 function CotizacionSection() {
   return (
     <FormSimpleSection className="space-y-6">
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <div className="md:col-span-2">
+      <div className="grid gap-5" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
+        <div>
           <ReferenceInput source="propiedad_id" reference="propiedades" label="Propiedad">
             <SelectInput optionText="nombre" className="w-full" />
           </ReferenceInput>
         </div>
-        <div className="md:col-span-2">
-          <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo de propiedad">
-            <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
-          </ReferenceInput>
-        </div>
-        <div>
-          <NumberInput source="monto" label="Monto" className="w-full" step="any" />
-        </div>
-        <div>
-          <ReferenceInput source="moneda_id" reference="monedas" label="Moneda">
+        <div className="min-w-[80px]">
+          <ReferenceInput source="moneda_id" reference="monedas" label=" ">
             <SelectInput
               optionText={(record) =>
                 record?.simbolo ? `${record.simbolo}` : record?.codigo || record?.nombre
@@ -317,7 +312,12 @@ function CotizacionSection() {
             />
           </ReferenceInput>
         </div>
-        <div className="md:col-span-2">
+        <div>
+          <NumberInput source="monto" label="Monto" className="w-full" step="any" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-5">
+        <div>
           <ReferenceInput
             source="condicion_pago_id"
             reference="crm/catalogos/condiciones-pago"
@@ -325,6 +325,15 @@ function CotizacionSection() {
           >
             <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
           </ReferenceInput>
+        </div>
+        <div>
+          <TextInput 
+            source="forma_pago_descripcion" 
+            label="Descripción forma de pago" 
+            multiline 
+            className="w-full" 
+            placeholder="Detalles adicionales sobre la forma de pago"
+          />
         </div>
       </div>
     </FormSimpleSection>
@@ -341,24 +350,17 @@ type EstadoSectionProps = {
 function EstadoSection({ estadoLabel, probabilidad, fechaEstado, fechaCierre }: EstadoSectionProps) {
   return (
     <FormSimpleSection className="space-y-6">
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          <SelectInput
-            source="estado"
-            label="Estado"
-            choices={CRM_OPORTUNIDAD_ESTADO_CHOICES}
-            className="w-full"
-            defaultValue="1-abierta"
-          />
-          <TextInput source="fecha_estado" label="Fecha estado" type="datetime-local" className="w-full" />
-          <ReferenceInput source="motivo_perdida_id" reference="crm/catalogos/motivos-perdida" label="Motivo pérdida">
-            <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
-          </ReferenceInput>
-        </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <NumberInput source="probabilidad" label="Probabilidad (%)" min={0} max={100} className="w-full" />
-          <TextInput source="fecha_cierre_estimada" label="Cierre estimado" type="date" className="w-full" />
-        </div>
+      <div className="grid grid-cols-1 gap-5">
+        <ReferenceInput source="responsable_id" reference="users" label="Responsable">
+          <SelectInput optionText="nombre" className="w-full" validate={required()} />
+        </ReferenceInput>
+      </div>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <ReferenceInput source="motivo_perdida_id" reference="crm/catalogos/motivos-perdida" label="Motivo pérdida">
+          <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
+        </ReferenceInput>
+        <NumberInput source="probabilidad" label="Probabilidad (%)" min={0} max={100} className="w-full" />
+        <TextInput source="fecha_cierre_estimada" label="Cierre estimado" type="date" className="w-full" />
       </div>
     </FormSimpleSection>
   );

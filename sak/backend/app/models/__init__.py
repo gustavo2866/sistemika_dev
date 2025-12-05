@@ -10,6 +10,7 @@ from .tipo_comprobante import TipoComprobante
 from .tipo_propiedad import TipoPropiedad
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
+from .setting import Setting
 from .crm_catalogos import (
     CRMTipoOperacion,
     CRMMotivoPerdida,
@@ -68,7 +69,8 @@ __all__ = [
     "TipoComprobante",
     "TipoPropiedad",
     "MetodoPago", 
-    "Propiedad", 
+    "Propiedad",
+    "Setting",
     "CRMTipoOperacion",
     "CRMMotivoPerdida",
     "CRMCondicionPago",

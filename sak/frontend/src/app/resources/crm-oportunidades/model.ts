@@ -54,6 +54,7 @@ export const CRM_OPORTUNIDAD_VALIDATIONS = {
 
 export type CRMOportunidad = {
   id: number;
+  titulo?: string | null;
   contacto_id: number;
   tipo_operacion_id: number;
   emprendimiento_id?: number | null;
@@ -65,6 +66,7 @@ export type CRMOportunidad = {
   monto?: number | null;
   moneda_id?: number | null;
   condicion_pago_id?: number | null;
+  forma_pago_descripcion?: string | null;
   probabilidad?: number | null;
   fecha_cierre_estimada?: string | null;
   responsable_id: number;
@@ -73,6 +75,7 @@ export type CRMOportunidad = {
 };
 
 export type CRMOportunidadFormValues = {
+  titulo?: string | null;
   contacto_id: number | null;
   tipo_operacion_id: number | null;
   emprendimiento_id?: number | null;
@@ -84,6 +87,7 @@ export type CRMOportunidadFormValues = {
   monto?: number | null;
   moneda_id?: number | null;
   condicion_pago_id?: number | null;
+  forma_pago_descripcion?: string | null;
   probabilidad?: number | null;
   fecha_cierre_estimada?: string | null;
   responsable_id: number | null;
@@ -92,6 +96,7 @@ export type CRMOportunidadFormValues = {
 };
 
 export const CRM_OPORTUNIDAD_DEFAULTS: CRMOportunidadFormValues = {
+  titulo: null,
   contacto_id: null,
   tipo_operacion_id: null,
   emprendimiento_id: null,
@@ -103,6 +108,7 @@ export const CRM_OPORTUNIDAD_DEFAULTS: CRMOportunidadFormValues = {
   monto: undefined,
   moneda_id: null,
   condicion_pago_id: null,
+  forma_pago_descripcion: null,
   probabilidad: undefined,
   fecha_cierre_estimada: "",
   responsable_id: null,
@@ -115,6 +121,11 @@ export const crmOportunidadSchema = createEntitySchema<
   CRMOportunidad
 >({
   fields: {
+    titulo: stringField({
+      required: false,
+      maxLength: 100,
+      defaultValue: "",
+    }),
     contacto_id: referenceField({
       required: true,
       resource: "crm/contactos",
@@ -167,6 +178,11 @@ export const crmOportunidadSchema = createEntitySchema<
       required: false,
       resource: "crm/catalogos/condiciones-pago",
       labelField: "nombre",
+    }),
+    forma_pago_descripcion: stringField({
+      required: false,
+      maxLength: 500,
+      defaultValue: "",
     }),
     probabilidad: numberField({
       required: false,

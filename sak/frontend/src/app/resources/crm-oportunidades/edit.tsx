@@ -12,7 +12,6 @@ export const CRMOportunidadEdit = () => {
 
   return (
     <Edit
-      title={<ResourceTitle icon={Target} text="Editar Oportunidad CRM" />}
       redirect={fromPanel ? "/crm/panel" : "list"}
     >
       <CRMOportunidadForm />

@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SummaryChips, type SummaryChipItem } from "@/components/lists/SummaryChips";
+import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 import { cn } from "@/lib/utils";
 import { CalendarCheck, Flag } from "lucide-react";
 import { useDataProvider, useListContext, useNotify, useRecordContext, useRefresh } from "ra-core";
@@ -32,6 +32,11 @@ const estadoChoices = [
   { id: "pendiente", name: "Pendiente" },
   { id: "hecho", name: "Hecho" },
 ];
+
+const estadoBadgeClasses: Record<string, string> = {
+  pendiente: "bg-amber-100 text-amber-800",
+  hecho: "bg-emerald-100 text-emerald-800",
+};
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -64,7 +69,14 @@ export const CRMEventoList = () => (
       <div className="rounded-3xl border border-slate-200/70 bg-white/95 p-4 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <FechaQuickFilter />
-          <EstadoSummaryChips />
+          <AggregateEstadoChips
+            endpoint="crm/eventos/aggregates/estado"
+            choices={CRM_EVENTO_ESTADO_CHOICES}
+            badges={estadoBadgeClasses}
+            getChipClassName={estadoChipClass}
+            filterKey="estado_evento"
+            className="mb-0 border-none bg-transparent p-0 shadow-none"
+          />
         </div>
       </div>
       <div className="rounded-3xl border border-slate-200/70 bg-white/95 p-4 shadow-sm">
@@ -341,98 +353,6 @@ const estadoChipClass = (estado: string, selected = false) => {
     : `${base} border-transparent`;
 };
 
-const EstadoSummaryChips = () => {
-  const { filterValues, setFilters } = useListContext();
-  const [items, setItems] = useState<SummaryChipItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const signature = JSON.stringify(filterValues);
-
-  useEffect(() => {
-    let cancel = false;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const query = new URLSearchParams();
-        Object.entries(filterValues).forEach(([key, value]) => {
-          if (value == null) return;
-          if (Array.isArray(value)) {
-            if (!value.length) return;
-            value.forEach((item) => {
-              if (item != null && item !== "") {
-                query.append(key, String(item));
-              }
-            });
-            return;
-          }
-          if (value !== "") {
-            query.append(key, String(value));
-          }
-        });
-        const response = await fetch(`${API_URL}/crm/eventos/aggregates/estado?${query.toString()}`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const json = await response.json();
-        const raw: Array<{ estado: string; total?: number }> = json?.data ?? json ?? [];
-        const totals = new Map<string, number>();
-        raw.forEach(({ estado, total }) => {
-          totals.set(estado, total ?? 0);
-        });
-        const mapped: SummaryChipItem[] = CRM_EVENTO_ESTADO_CHOICES.map((choice) => ({
-          label: choice.name,
-          value: choice.id,
-          count: totals.get(choice.id) ?? 0,
-          chipClassName: estadoChipClass(choice.id),
-          selectedChipClassName: estadoChipClass(choice.id, true),
-          countClassName: "text-xs font-semibold bg-white/50 text-slate-700",
-          selectedCountClassName: "text-xs font-semibold bg-white/80 text-slate-900",
-        }));
-        if (!cancel) {
-          setItems(mapped);
-          setError(null);
-        }
-      } catch (err: any) {
-        if (!cancel) {
-          setError(err?.message ?? "No se pudieron cargar los estados");
-        }
-      } finally {
-        if (!cancel) {
-          setLoading(false);
-        }
-      }
-    };
-    fetchData();
-    return () => {
-      cancel = true;
-    };
-  }, [signature]);
-
-  const handleSelect = (value?: string) => {
-    const nextFilters = { ...filterValues };
-    if (value) {
-      nextFilters.estado_evento = value;
-    } else {
-      delete nextFilters.estado_evento;
-    }
-    setFilters(nextFilters, {});
-  };
-
-  const currentEstado = typeof filterValues.estado_evento === "string" ? filterValues.estado_evento : undefined;
-
-  return (
-    <SummaryChips
-      title={null}
-      className="mb-0 border-none bg-transparent p-0 shadow-none"
-      items={items}
-      loading={loading}
-      error={error}
-      selectedValue={currentEstado}
-      onSelect={handleSelect}
-    />
-  );
-};
-
 const OportunidadCell = () => {
   const record = useRecordContext<CRMEvento>();
   if (!record?.oportunidad_id) {
@@ -449,11 +369,6 @@ const OportunidadCell = () => {
       </ReferenceField>
     </div>
   );
-};
-
-const estadoBadgeClasses: Record<string, string> = {
-  pendiente: "bg-amber-100 text-amber-800",
-  hecho: "bg-emerald-100 text-emerald-800",
 };
 
 const EstadoCell = () => {

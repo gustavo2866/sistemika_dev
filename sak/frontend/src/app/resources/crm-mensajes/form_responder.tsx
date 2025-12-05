@@ -6,16 +6,8 @@ import type { CRMMensaje } from "./model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Eye, EyeOff, Send } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Send } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const ensureReplySubject = (subject?: string | null) => {
   if (!subject) return "RE:";
@@ -24,6 +16,14 @@ const ensureReplySubject = (subject?: string | null) => {
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const FIELD_LABEL_CLASS =
+  "text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500";
+const INPUT_BASE_CLASS =
+  "h-10 w-full rounded-lg border border-slate-200 bg-white/95 px-3 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0";
+const TEXTAREA_CLASS =
+  "min-h-[140px] w-full rounded-xl border border-slate-200 bg-white/95 p-3 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0 resize-none";
+const SECTION_CARD_CLASS =
+  "rounded-2xl border border-slate-200/60 bg-white/95 p-4 shadow-sm";
 
 interface CRMMensajeReplyDialogProps {
   open: boolean;
@@ -32,35 +32,25 @@ interface CRMMensajeReplyDialogProps {
   onSuccess?: () => void;
 }
 
-export const CRMMensajeReplyDialog = ({
-  open,
-  onOpenChange,
-  mensaje,
-  onSuccess,
-}: CRMMensajeReplyDialogProps) => {
+export const CRMMensajeReplyDialog = ({ open, onOpenChange, mensaje, onSuccess }: CRMMensajeReplyDialogProps) => {
   const notify = useNotify();
   const { data: identity } = useGetIdentity();
   const dataProvider = useDataProvider();
   const [reply, setReply] = useState("");
   const [subject, setSubject] = useState("");
   const [contactoNombre, setContactoNombre] = useState("");
-  const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [tipoOperacionOptions, setTipoOperacionOptions] = useState<Array<{ id: string; label: string }>>([]);
   const [tipoOperacionId, setTipoOperacionId] = useState("");
   const [tipoOperacionLoading, setTipoOperacionLoading] = useState(false);
 
   useEffect(() => {
-    if (mensaje) {
-      setSubject(ensureReplySubject(mensaje.asunto));
-      setReply("");
-      setContactoNombre(
-        mensaje.contacto?.nombre_completo ?? mensaje.contacto?.nombre ?? ""
-      );
-      setExpanded(false);
-      if (mensaje.oportunidad_id) {
-        setTipoOperacionId("");
-      }
+    if (!mensaje) return;
+    setSubject(ensureReplySubject(mensaje.asunto));
+    setReply("");
+    setContactoNombre(mensaje.contacto?.nombre_completo ?? mensaje.contacto?.nombre ?? "");
+    if (mensaje.oportunidad_id) {
+      setTipoOperacionId("");
     }
   }, [mensaje]);
 
@@ -93,7 +83,7 @@ export const CRMMensajeReplyDialog = ({
           setTipoOperacionOptions(mapped);
         }
       } catch (error) {
-        console.error("No se pudieron cargar los tipos de operación:", error);
+        console.error("No se pudieron cargar los tipos de operacion", error);
         if (!cancelled) {
           setTipoOperacionOptions([]);
         }
@@ -107,26 +97,23 @@ export const CRMMensajeReplyDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [open, mensaje?.id, mensaje?.oportunidad_id, dataProvider]);
+  }, [open, mensaje, dataProvider]);
 
   const handleSubmit = useCallback(async () => {
     if (!mensaje) return;
-    
     const trimmedContent = reply.trim();
     const trimmedNombre = contactoNombre.trim();
-    
+
     if (!trimmedContent) {
       notify("Completa la respuesta antes de enviar.", { type: "warning" });
       return;
     }
-    
     if (!mensaje.contacto_id && !trimmedNombre) {
       notify("El nombre del contacto es obligatorio.", { type: "warning" });
       return;
     }
-    
     if (!mensaje.oportunidad_id && !tipoOperacionId) {
-      notify("Selecciona el tipo de operación (venta o alquiler).", { type: "warning" });
+      notify("Selecciona el tipo de operacion (venta o alquiler).", { type: "warning" });
       return;
     }
 
@@ -137,7 +124,7 @@ export const CRMMensajeReplyDialog = ({
         asunto: subject || ensureReplySubject(mensaje.asunto),
         contenido: trimmedContent,
       };
-      
+
       if (!mensaje.contacto_id) {
         payload.contacto_nombre = trimmedNombre;
       }
@@ -145,7 +132,6 @@ export const CRMMensajeReplyDialog = ({
         payload.tipo_operacion_id = Number(tipoOperacionId);
       }
 
-      // Siempre enviar responsable_id: del mensaje o del usuario autenticado
       const responsableId = mensaje.responsable_id ?? identity?.id;
       if (responsableId) {
         payload.responsable_id = responsableId;
@@ -163,19 +149,18 @@ export const CRMMensajeReplyDialog = ({
           const errorBody = await response.json();
           errorMessage = errorBody?.detail || errorMessage;
         } catch {
-          // Ignorar errores al parsear el cuerpo
+          // ignore
         }
         throw new Error(errorMessage);
       }
 
       const resultado = await response.json();
       notify("Respuesta enviada", { type: "success" });
-
       if (resultado.contacto_creado) {
-        notify("Contacto creado automáticamente", { type: "info" });
+        notify("Contacto creado automaticamente", { type: "info" });
       }
       if (resultado.oportunidad_creada) {
-        notify("Oportunidad creada automáticamente", { type: "info" });
+        notify("Oportunidad creada automaticamente", { type: "info" });
       }
 
       setTipoOperacionId("");
@@ -199,109 +184,96 @@ export const CRMMensajeReplyDialog = ({
     mensaje.contacto?.nombre_completo ??
     mensaje.contacto?.nombre ??
     (mensaje.contacto_id ? `Contacto #${mensaje.contacto_id}` : "No agendado");
-
-  const oportunidadLabel = mensaje.oportunidad?.id
-    ? `#${mensaje.oportunidad.id}`
-    : mensaje.oportunidad_id
-    ? `#${mensaje.oportunidad_id}`
-    : "Sin oportunidad";
-  const propiedadLabel = mensaje.oportunidad?.descripcion_estado ?? "Sin oportunidad";
+  const contactoReferencia =
+    mensaje.contacto_referencia ?? mensaje.origen_externo_id ?? mensaje.contacto_alias ?? "Sin referencia";
+  const oportunidadLabel = mensaje.oportunidad?.descripcion_estado ?? "Sin oportunidad asociada";
+  const propiedadLabel =
+    mensaje.oportunidad?.propiedad?.nombre ??
+    (mensaje.oportunidad?.propiedad?.id ? `Propiedad #${mensaje.oportunidad.propiedad.id}` : "");
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !loading && onOpenChange(isOpen)}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Responder Mensaje</DialogTitle>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden rounded-[28px] border border-slate-200/70 bg-white/98 p-0 shadow-[0_24px_60px_rgba(15,23,42,0.2)] flex flex-col">
+        <DialogHeader className="border-b border-slate-100 px-5 py-3.5">
+          <DialogTitle className="text-xl font-semibold text-slate-900">Responder mensaje</DialogTitle>
         </DialogHeader>
-        
-        <div className="space-y-5 py-4">
-          <section className="space-y-4 rounded-2xl border border-border/40 bg-muted/10 p-4">
-            <div className="space-y-2 text-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Contexto
-              </p>
-              <div className="grid gap-2 md:grid-cols-2">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Referencia</p>
-                  <p className="font-medium text-foreground">
-                    {mensaje.contacto_referencia || mensaje.origen_externo_id || "Sin referencia"}
-                  </p>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="space-y-4">
+            <section className={SECTION_CARD_CLASS}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <p className={FIELD_LABEL_CLASS}>Contacto</p>
+                  <p className="text-sm font-semibold text-slate-900">{contactoLabel}</p>
+                  <p className="text-xs text-slate-500">{contactoReferencia}</p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Estado actual
-                  </p>
-                  <div className="rounded-lg border bg-background/80 p-2 text-xs text-muted-foreground">
-                    <p>
-                      <span className="font-semibold text-foreground">Contacto:</span> {contactoLabel}
-                    </p>
-                    <p>
-                      {oportunidadLabel} · {propiedadLabel}
-                    </p>
-                  </div>
+                <div className="space-y-1.5">
+                  <p className={FIELD_LABEL_CLASS}>Oportunidad</p>
+                  <p className="text-sm font-semibold text-slate-900">{oportunidadLabel}</p>
+                  {propiedadLabel ? <p className="text-xs text-slate-500">{propiedadLabel}</p> : null}
                 </div>
               </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {!mensaje.contacto_id && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Nombre del contacto *
-                  </p>
-                  <Input
-                    value={contactoNombre}
-                    onChange={(event) => setContactoNombre(event.target.value)}
-                    placeholder="Nombre completo del contacto"
-                    className="h-10"
-                  />
+              {(!mensaje.contacto_id || !mensaje.oportunidad_id) && (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {!mensaje.contacto_id && (
+                    <div className="space-y-1">
+                      <p className={FIELD_LABEL_CLASS}>Nombre del contacto *</p>
+                      <Input
+                        value={contactoNombre}
+                        onChange={(event) => setContactoNombre(event.target.value)}
+                        placeholder="Nombre completo del contacto"
+                        className={INPUT_BASE_CLASS}
+                      />
+                    </div>
+                  )}
+                  {!mensaje.oportunidad_id && (
+                    <div className="space-y-1">
+                      <p className={FIELD_LABEL_CLASS}>Tipo de operacion *</p>
+                      <select
+                        value={tipoOperacionId}
+                        onChange={(event) => setTipoOperacionId(event.target.value)}
+                        className={INPUT_BASE_CLASS}
+                      >
+                        <option value="">Selecciona venta o alquiler</option>
+                        {tipoOperacionOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {tipoOperacionLoading ? (
+                        <p className="text-[11px] text-muted-foreground">Cargando opciones...</p>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               )}
-              {!mensaje.oportunidad_id && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Tipo de operación *
-                  </p>
-                  <select
-                    value={tipoOperacionId}
-                    onChange={(event) => setTipoOperacionId(event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="">Selecciona venta o alquiler</option>
-                    {tipoOperacionOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {tipoOperacionLoading ? (
-                    <p className="text-[11px] text-muted-foreground">Cargando opciones...</p>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          </section>
+            </section>
 
-          <section className="space-y-4 rounded-2xl border border-border/40 bg-background p-4">
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Asunto</p>
-              <Input value={subject} onChange={(event) => setSubject(event.target.value)} className="h-10" />
-            </div>
-            <div className="space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-[0_0_20px_rgba(37,99,235,0.08)]">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Respuesta *
-              </p>
-              <Textarea
-                rows={6}
-                placeholder="Escribí tu respuesta..."
-                value={reply}
-                onChange={(event) => setReply(event.target.value)}
-                className="min-h-[150px] resize-none border border-primary/40 bg-white/95 shadow-inner focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary/50"
-              />
-            </div>
-          </section>
+            <section className={SECTION_CARD_CLASS}>
+              <div className="space-y-1">
+                <p className={FIELD_LABEL_CLASS}>Asunto</p>
+                <Input
+                  value={subject}
+                  onChange={(event) => setSubject(event.target.value)}
+                  className={INPUT_BASE_CLASS}
+                />
+              </div>
+              <div className="mt-4 space-y-1">
+                <p className={FIELD_LABEL_CLASS}>Respuesta *</p>
+                <Textarea
+                  rows={6}
+                  placeholder="Escribi tu respuesta..."
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  className={TEXTAREA_CLASS}
+                />
+              </div>
+            </section>
+          </div>
         </div>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter className="border-t border-slate-100 px-5 py-3">
           <Button variant="ghost" onClick={handleCancel} disabled={loading}>
             Cancelar
           </Button>

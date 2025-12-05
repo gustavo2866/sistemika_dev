@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { List } from "@/components/list";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
@@ -9,44 +9,34 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { useListContext, useRecordContext, useRefresh, useNotify, useDataProvider } from "ra-core";
-import { SummaryChips, type SummaryChipItem } from "@/components/lists/SummaryChips";
+import { useListContext, useRecordContext, useRefresh } from "ra-core";
+import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 import { ResourceTitle } from "@/components/resource-title";
 import { Mail, MessageCircle, Trash2, ArrowDownLeft, ArrowUpRight, CalendarPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CRMMensaje, CRMMensajeEstado } from "./model";
-import { CRMMensajeReplyDialog } from "./reply";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { CRMMensaje } from "./model";
+import { CRMMensajeReplyDialog } from "./form_responder";
+import { ScheduleDialog } from "./form_agendar";
+import { DiscardDialog } from "./form_descartar";
+import { ButtonToggle, type ButtonToggleOption } from "@/components/forms/button-toggle";
 import {
   CRM_MENSAJE_TIPO_CHOICES,
   CRM_MENSAJE_CANAL_CHOICES,
   CRM_MENSAJE_ESTADO_CHOICES,
   CRM_MENSAJE_ESTADO_BADGES,
   formatMensajeEstado,
+  getEstadosPorTipo,
+  getTipoEstadoFromToggle,
+  getToggleFromTipoEstado,
+  type TipoToggleValue,
 } from "./model";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const EVENT_TYPE_CHOICES = [
-  { value: "llamada", label: "Llamada" },
-  { value: "reunion", label: "Reunión" },
-  { value: "visita", label: "Visita" },
-  { value: "email", label: "Email" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "nota", label: "Nota" },
-];
-const DEFAULT_EVENT_STATE = "1-pendiente";
+// ============================================================================
+// UTILITY FUNCTIONS - Filter Management
+// ============================================================================
 
-const getDefaultDateTime = () => {
-  const now = new Date();
-  const offsetMinutes = now.getTimezoneOffset();
-  const local = new Date(now.getTime() - offsetMinutes * 60000);
-  return local.toISOString().slice(0, 16);
-};
-
+// Normaliza el valor del filtro tipo a un array de strings
 const normalizeTipoFilter = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -59,6 +49,7 @@ const normalizeTipoFilter = (value: unknown): string[] => {
   return [];
 };
 
+// Actualiza el filtro tipo en el objeto de filtros
 const setTipoFilterValue = (filters: Record<string, unknown>, values: string[]) => {
   if (values.length) {
     filters.tipo = values;
@@ -67,6 +58,7 @@ const setTipoFilterValue = (filters: Record<string, unknown>, values: string[]) 
   }
 };
 
+// Normaliza el valor del filtro estado a un array de strings
 const normalizeEstadoFilter = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -79,6 +71,7 @@ const normalizeEstadoFilter = (value: unknown): string[] => {
   return [];
 };
 
+// Actualiza el filtro estado en el objeto de filtros
 const setEstadoFilterValue = (filters: Record<string, unknown>, values: string[]) => {
   if (values.length) {
     filters.estado = values;
@@ -87,6 +80,157 @@ const setEstadoFilterValue = (filters: Record<string, unknown>, values: string[]
   }
 };
 
+// Aplica filtros combinados de tipo y estado basados en el valor del toggle
+const applyTipoToggleFilters = (
+  value: TipoToggleValue,
+  currentFilters: Record<string, unknown>
+): Record<string, unknown> => {
+  const newFilters = { ...currentFilters };
+  const { tipo, estado } = getTipoEstadoFromToggle(value);
+  
+  setTipoFilterValue(newFilters, [tipo]);
+  if (estado) {
+    setEstadoFilterValue(newFilters, [estado]);
+  } else {
+    delete newFilters.estado;
+  }
+
+  if (value === "nuevos") {
+    return removeFechaEstadoBounds(newFilters);
+  }
+  
+  return newFilters;
+};
+
+// Filtra los estados disponibles según el tipo de mensaje seleccionado
+const filterEstadosByTipo = (choices: Array<{id: string; name: string}>, filterValues: Record<string, unknown>) => {
+  const currentTipos = normalizeTipoFilter(filterValues.tipo);
+  const currentTipo = currentTipos[0] as any;
+  
+  if (!currentTipo) return choices;
+  
+  const validEstados = getEstadosPorTipo(currentTipo);
+  return choices.filter(choice => validEstados.includes(choice.id as any));
+};
+
+// ============================================================================
+// UTILITY FUNCTIONS - Fecha Estado Quick Filter
+// ============================================================================
+
+const FECHA_ESTADO_FILTER_KEY = "fecha_estado_quick";
+
+type FechaEstadoFilterOption = "todos" | "hoy" | "semana";
+
+const FECHA_ESTADO_TOGGLE_OPTIONS: ButtonToggleOption<FechaEstadoFilterOption>[] = [
+  { id: "hoy", label: "Hoy" },
+  { id: "semana", label: "Semana" },
+  { id: "todos", label: "Todos" },
+];
+
+const isFechaEstadoOption = (value: unknown): value is FechaEstadoFilterOption =>
+  value === "hoy" || value === "semana" || value === "todos";
+
+const getFechaEstadoBounds = (option: FechaEstadoFilterOption) => {
+  if (option === "hoy") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+
+  if (option === "semana") {
+    const start = new Date();
+    const day = start.getDay();
+    const diffToMonday = (day + 6) % 7;
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - diffToMonday);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+
+  return {};
+};
+
+const removeFechaEstadoBounds = (filters: Record<string, unknown>) => {
+  if (!("fecha_estado__gte" in filters) && !("fecha_estado__lte" in filters)) {
+    return filters;
+  }
+  const nextFilters = { ...filters };
+  delete nextFilters.fecha_estado__gte;
+  delete nextFilters.fecha_estado__lte;
+  return nextFilters;
+};
+
+const applyFechaEstadoFilterOption = (
+  filters: Record<string, unknown>,
+  option: FechaEstadoFilterOption,
+  skipBounds = false
+) => {
+  const nextFilters = { ...filters, [FECHA_ESTADO_FILTER_KEY]: option };
+  delete nextFilters.fecha_estado__gte;
+  delete nextFilters.fecha_estado__lte;
+
+  if (!skipBounds && option !== "todos") {
+    const bounds = getFechaEstadoBounds(option);
+    if (bounds.from) {
+      nextFilters.fecha_estado__gte = bounds.from;
+    }
+    if (bounds.to) {
+      nextFilters.fecha_estado__lte = bounds.to;
+    }
+  }
+
+  return nextFilters;
+};
+
+const getFechaEstadoOption = (filters: Record<string, unknown>): FechaEstadoFilterOption => {
+  const stored = filters[FECHA_ESTADO_FILTER_KEY];
+  if (isFechaEstadoOption(stored)) {
+    return stored;
+  }
+
+  const currentFrom =
+    typeof filters.fecha_estado__gte === "string" ? filters.fecha_estado__gte : undefined;
+  const currentTo = typeof filters.fecha_estado__lte === "string" ? filters.fecha_estado__lte : undefined;
+
+  if (!currentFrom && !currentTo) {
+    return "hoy";
+  }
+
+  for (const option of ["hoy", "semana"] as const) {
+    const bounds = getFechaEstadoBounds(option);
+    if ((bounds.from ?? null) === (currentFrom ?? null) && (bounds.to ?? null) === (currentTo ?? null)) {
+      return option;
+    }
+  }
+
+  return "hoy";
+};
+
+const shouldSyncFechaEstadoFilters = (
+  filters: Record<string, unknown>,
+  option: FechaEstadoFilterOption
+) => {
+  const currentFrom =
+    typeof filters.fecha_estado__gte === "string" ? filters.fecha_estado__gte : undefined;
+  const currentTo = typeof filters.fecha_estado__lte === "string" ? filters.fecha_estado__lte : undefined;
+
+  if (option === "todos") {
+    return Boolean(currentFrom || currentTo);
+  }
+
+  const desired = getFechaEstadoBounds(option);
+  return (desired.from ?? null) !== (currentFrom ?? null) || (desired.to ?? null) !== (currentTo ?? null);
+};
+
+// ============================================================================
+// UTILITY FUNCTIONS - Styling
+// ============================================================================
+
+// Genera la clase CSS para un chip de estado según su selección
 const estadoChipClass = (estado: string, selected = false) => {
   const base =
     CRM_MENSAJE_ESTADO_BADGES[estado as keyof typeof CRM_MENSAJE_ESTADO_BADGES] ??
@@ -95,6 +239,19 @@ const estadoChipClass = (estado: string, selected = false) => {
     ? `${base} border-transparent ring-1 ring-offset-1 ring-offset-background`
     : `${base} border-transparent`;
 };
+
+// Genera la clase CSS para una fila según las propiedades del mensaje
+const mensajeRowClass = (record: CRMMensaje) =>
+  cn(
+    "border-b border-slate-200/60 transition-colors hover:bg-slate-50/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60 odd:bg-white even:bg-slate-50/70 last:border-b-0",
+    record.tipo === "entrada" && "border-l-4 border-l-emerald-200/80",
+    record.tipo === "salida" && "border-l-4 border-l-sky-200/80",
+    record.estado === "nuevo" && "ring-1 ring-emerald-300/70 ring-offset-0"
+  );
+
+// ============================================================================
+// CONFIGURATION - Filter Definitions
+// ============================================================================
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar mensajes" className="w-full" alwaysOn />,
@@ -135,14 +292,11 @@ const filters = [
   </ReferenceInput>,
 ];
 
-const mensajeRowClass = (record: CRMMensaje) =>
-  cn(
-    "border-b border-slate-200/60 transition-colors hover:bg-slate-50/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60 odd:bg-white even:bg-slate-50/70 last:border-b-0",
-    record.tipo === "entrada" && "border-l-4 border-l-emerald-200/80",
-    record.tipo === "salida" && "border-l-4 border-l-sky-200/80",
-    record.estado === "nuevo" && "ring-1 ring-emerald-300/70 ring-offset-0"
-  );
+// ============================================================================
+// COMPONENTS - Actions & Toggles
+// ============================================================================
 
+// Barra de acciones del listado (filtros, crear, exportar)
 const ListActions = () => (
   <div className="flex items-center gap-2 flex-wrap">
     <FilterButton filters={filters} />
@@ -151,78 +305,110 @@ const ListActions = () => (
   </div>
 );
 
+// Toggle dual para filtrar por tipo de mensaje (Nuevos/Entrada/Salida)
 const TipoDualToggle = () => {
   const { filterValues, setFilters } = useListContext();
   const currentTipos = normalizeTipoFilter(filterValues.tipo);
   const currentEstados = normalizeEstadoFilter(filterValues.estado);
-  const current = currentTipos[0];
+  
+  const activeValue = getToggleFromTipoEstado(
+    currentTipos[0] as any,
+    currentEstados[0] as any
+  );
 
-  const handleToggle = (next?: string) => {
-    const newFilters = { ...filterValues };
-    
-    if (!next) {
-      // NUEVOS: filter for entrada + nuevo
-      setTipoFilterValue(newFilters, ["entrada"]);
-      setEstadoFilterValue(newFilters, ["nuevo"]);
-    } else if (next === "entrada") {
-      // ENTRADA: filter for entrada + recibido
-      setTipoFilterValue(newFilters, ["entrada"]);
-      setEstadoFilterValue(newFilters, ["recibido"]);
-    } else if (next === "salida") {
-      // SALIDA: filter for salida only (all estados)
-      setTipoFilterValue(newFilters, ["salida"]);
-      delete newFilters.estado;
-    }
-    
+  const handleToggle = (value: TipoToggleValue) => {
+    const newFilters = applyTipoToggleFilters(value, filterValues);
     setFilters(newFilters, {});
   };
 
-  const options: Array<{ id?: CRMMensaje["tipo"]; label: string; estado: CRMMensajeEstado }> = [
-    { id: undefined, label: "Nuevos", estado: "nuevo" },
-    { id: "entrada", label: "Entrada", estado: "recibido" },
-    { id: "salida", label: "Salida", estado: "enviado" },
+  const options: ButtonToggleOption<"nuevos" | "entrada" | "salida">[] = [
+    {
+      id: "nuevos",
+      label: "Nuevos",
+      badge: {
+        color: CRM_MENSAJE_ESTADO_BADGES.nuevo,
+      },
+    },
+    {
+      id: "entrada",
+      label: "Entrada",
+      badge: {
+        color: CRM_MENSAJE_ESTADO_BADGES.recibido,
+      },
+    },
+    {
+      id: "salida",
+      label: "Salida",
+      badge: {
+        color: CRM_MENSAJE_ESTADO_BADGES.enviado,
+      },
+    },
   ];
 
   return (
-    <div className="flex items-center justify-center gap-1 rounded-full border border-slate-200/80 bg-white/80 px-1 py-1 shadow-[0_1px_6px_rgba(15,23,42,0.08)] backdrop-blur-sm">
-      {options.map(({ id, label, estado }, index) => {
-        // Check active state based on tipo + estado combination
-        let isActive = false;
-        if (!id) {
-          // NUEVOS: entrada + nuevo
-          isActive = current === "entrada" && currentEstados[0] === "nuevo";
-        } else if (id === "entrada") {
-          // ENTRADA: entrada + recibido
-          isActive = current === "entrada" && currentEstados[0] === "recibido";
-        } else if (id === "salida") {
-          // SALIDA: salida
-          isActive = current === "salida";
-        }
-        
-        const isFirst = index === 0;
-        const isLast = index === options.length - 1;
-        const badgeColors =
-          CRM_MENSAJE_ESTADO_BADGES[estado] ?? "bg-slate-100 text-slate-800";
+    <ButtonToggle
+      options={options}
+      value={activeValue}
+      onChange={handleToggle}
+      variant="rounded"
+      size="md"
+      aria-label="Filtro de tipo de mensaje"
+    />
+  );
+};
+
+const FechaEstadoFilter = () => {
+  const { filterValues, setFilters } = useListContext();
+  const currentTipos = normalizeTipoFilter(filterValues.tipo);
+  const currentEstados = normalizeEstadoFilter(filterValues.estado);
+  const activeToggle = getToggleFromTipoEstado(currentTipos[0] as any, currentEstados[0] as any);
+  const showFilter = activeToggle === "entrada" || activeToggle === "salida";
+  const activeOption = getFechaEstadoOption(filterValues);
+
+  useEffect(() => {
+    if (!showFilter) {
+      const cleaned = removeFechaEstadoBounds(filterValues);
+      if (cleaned !== filterValues) {
+        setFilters(cleaned, {});
+      }
+      return;
+    }
+
+    if (shouldSyncFechaEstadoFilters(filterValues, activeOption)) {
+      const nextFilters = applyFechaEstadoFilterOption(filterValues, activeOption, false);
+      setFilters(nextFilters, {});
+    }
+  }, [showFilter, activeOption, filterValues, setFilters]);
+
+  if (!showFilter) {
+    return null;
+  }
+
+  const handleChange = (option: FechaEstadoFilterOption) => {
+    if (option === activeOption) {
+      return;
+    }
+    const nextFilters = applyFechaEstadoFilterOption(filterValues, option, false);
+    setFilters(nextFilters, {});
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/80 px-1 py-0.5 shadow-sm">
+      {FECHA_ESTADO_TOGGLE_OPTIONS.map((option) => {
+        const isActive = option.id === activeOption;
         return (
           <button
-            key={label}
+            key={option.id}
             type="button"
-            aria-pressed={isActive}
-            data-active={isActive}
-            onClick={() => handleToggle(id)}
+            onClick={() => handleChange(option.id)}
             className={cn(
-              "min-w-[92px] rounded-full px-5 py-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200",
-              isFirst ? "rounded-l-full" : "",
-              isLast ? "rounded-r-full" : "",
+              "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-all duration-150",
               isActive
-                ? cn(
-                    badgeColors,
-                    "shadow-[0_4px_16px_rgba(15,23,42,0.18)] ring-1 ring-slate-200"
-                  )
-                : "text-slate-600 hover:bg-slate-100"
+                ? "bg-slate-900 text-white shadow-[0_4px_12px_rgba(15,23,42,0.3)]"
+                : "text-slate-500 hover:text-slate-700"
             )}
           >
-            {label}
+            {option.label}
           </button>
         );
       })}
@@ -230,243 +416,19 @@ const TipoDualToggle = () => {
   );
 };
 
-const EstadoSummaryChips = () => {
-  const { filterValues, setFilters } = useListContext();
-  const [items, setItems] = useState<SummaryChipItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const signature = JSON.stringify(filterValues);
+// ============================================================================
+// COMPONENTS - Main List
+// ============================================================================
 
-  useEffect(() => {
-    let cancel = false;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const query = new URLSearchParams();
-        Object.entries(filterValues).forEach(([key, value]) => {
-          if (value == null) return;
-          if (Array.isArray(value)) {
-            if (!value.length) return;
-            value.forEach((item) => {
-              if (item != null && item !== "") {
-                query.append(key, String(item));
-              }
-            });
-            return;
-          }
-          if (value !== "") {
-            query.append(key, String(value));
-          }
-        });
-        const response = await fetch(
-          `${API_URL}/crm/mensajes/aggregates/estado?${query.toString()}`
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const json = await response.json();
-        const raw: Array<{ estado: string; total?: number }> =
-          json?.data ?? json ?? [];
-        const totals = new Map<string, number>();
-        raw.forEach(({ estado, total }) => {
-          totals.set(estado, total ?? 0);
-        });
-        // Filter estados based on tipo
-        const currentTipos = normalizeTipoFilter(filterValues.tipo);
-        const currentTipo = currentTipos[0];
-        
-        // Define estados for entrada and salida
-        const estadosEntrada = ["nuevo", "recibido", "descartado"];
-        const estadosSalida = ["pendiente_envio", "enviado", "error_envio"];
-        
-        // Filter choices based on tipo
-        let filteredChoices = CRM_MENSAJE_ESTADO_CHOICES;
-        if (currentTipo === "entrada") {
-          filteredChoices = CRM_MENSAJE_ESTADO_CHOICES.filter(choice => 
-            estadosEntrada.includes(choice.id)
-          );
-        } else if (currentTipo === "salida") {
-          filteredChoices = CRM_MENSAJE_ESTADO_CHOICES.filter(choice => 
-            estadosSalida.includes(choice.id)
-          );
-        }
-        
-        const mapped: SummaryChipItem[] = filteredChoices.map(
-          (choice) => ({
-            label: choice.name,
-            value: choice.id,
-            count: totals.get(choice.id as string) ?? 0,
-            chipClassName: estadoChipClass(choice.id),
-            selectedChipClassName: estadoChipClass(choice.id, true),
-            countClassName: "text-xs font-semibold bg-slate-100 text-slate-600",
-            selectedCountClassName:
-              "text-xs font-semibold bg-white/70 text-slate-900",
-          })
-        );
-        if (!cancel) {
-          setItems(mapped);
-          setError(null);
-        }
-      } catch (err: any) {
-        if (!cancel) {
-          setError(err?.message ?? "No se pudieron cargar los estados");
-        }
-      } finally {
-        if (!cancel) {
-          setLoading(false);
-        }
-      }
-    };
-    fetchData();
-    return () => {
-      cancel = true;
-    };
-  }, [signature]);
-
-  const currentEstados = normalizeEstadoFilter(filterValues.estado);
-
-  const handleSelect = (value?: string) => {
-    const nextFilters = { ...filterValues };
-    setEstadoFilterValue(nextFilters, value ? [value] : []);
-    setFilters(nextFilters, {});
-  };
-
-  return (
-    <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-3 shadow-[0_20px_40px_rgba(15,23,42,0.08)] backdrop-blur-md">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-          <div className="flex justify-center lg:justify-start lg:flex-shrink-0">
-            <TipoDualToggle />
-          </div>
-          <div className="flex w-full justify-center lg:flex-1 lg:justify-end">
-            <SummaryChips
-              className="mb-0 border-none bg-transparent p-0 shadow-none"
-              title={null}
-              items={items}
-              loading={loading}
-              error={error}
-              selectedValue={currentEstados[0]}
-              onSelect={handleSelect}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
+// Componente principal del listado de mensajes CRM
 export const CRMMensajeList = () => {
   const [replyOpen, setReplyOpen] = useState(false);
   const [selectedMensaje, setSelectedMensaje] = useState<CRMMensaje | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [mensajeDescartar, setMensajeDescartar] = useState<CRMMensaje | null>(null);
-  const [discardLoading, setDiscardLoading] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleMensaje, setScheduleMensaje] = useState<CRMMensaje | null>(null);
-  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
-  const [scheduleForm, setScheduleForm] = useState({
-    titulo: "",
-    descripcion: "",
-    tipoEvento: EVENT_TYPE_CHOICES[0].value,
-    datetime: getDefaultDateTime(),
-    asignadoId: "",
-    contactoNombre: "",
-    tipoOperacionId: "",
-  });
-  const [responsables, setResponsables] = useState<Array<{ value: string; label: string }>>([]);
-  const [responsablesLoading, setResponsablesLoading] = useState(false);
-  const [tipoOperacionOptions, setTipoOperacionOptions] = useState<Array<{ value: string; label: string }>>([]);
-  const [tipoOperacionLoading, setTipoOperacionLoading] = useState(false);
   const refresh = useRefresh();
-  const notify = useNotify();
-  const dataProvider = useDataProvider();
-  const scheduleContactoLabel = scheduleMensaje
-    ? scheduleMensaje.contacto?.nombre_completo ??
-      scheduleMensaje.contacto?.nombre ??
-      (scheduleMensaje.contacto_id ? `Contacto #${scheduleMensaje.contacto_id}` : "No agendado")
-    : "No agendado";
-  const scheduleContactoReferencia =
-    scheduleMensaje?.contacto_referencia ??
-    scheduleMensaje?.origen_externo_id ??
-    scheduleMensaje?.contacto_alias ??
-    "Sin referencia";
-  const scheduleOportunidadBadge = scheduleMensaje?.oportunidad_id
-    ? `#${scheduleMensaje.oportunidad_id}`
-    : "Se creará al agendar";
-  const scheduleOportunidadLabel =
-    scheduleMensaje?.oportunidad?.descripcion_estado ??
-    (scheduleMensaje?.oportunidad_id ? "Oportunidad vinculada" : "Sin oportunidad asociada");
-
-  const loadResponsables = useCallback(async () => {
-    setResponsablesLoading(true);
-    try {
-      const { data } = await dataProvider.getList("users", {
-        pagination: { page: 1, perPage: 50 },
-        sort: { field: "nombre", order: "ASC" },
-      });
-      const mapped =
-        data?.map((user: any) => ({
-          value: String(user.id),
-          label: user.nombre_completo || user.full_name || user.nombre || user.email || `Usuario #${user.id}`,
-        })) ?? [];
-      setResponsables(mapped);
-    } catch (error) {
-      console.error("No se pudieron cargar los responsables", error);
-      notify("No se pudieron cargar los responsables", { type: "warning" });
-    } finally {
-      setResponsablesLoading(false);
-    }
-  }, [dataProvider, notify]);
-
-  useEffect(() => {
-    if (scheduleOpen && !responsables.length && !responsablesLoading) {
-      loadResponsables();
-    }
-  }, [scheduleOpen, responsables.length, responsablesLoading, loadResponsables]);
-
-  useEffect(() => {
-    if (!scheduleOpen || !scheduleMensaje || scheduleMensaje.oportunidad_id) return;
-    let cancelled = false;
-    const loadTipoOperaciones = async () => {
-      setTipoOperacionLoading(true);
-      try {
-        const { data } = await dataProvider.getList("crm/catalogos/tipos-operacion", {
-          pagination: { page: 1, perPage: 50 },
-          sort: { field: "id", order: "ASC" },
-          filter: {},
-        });
-        const normalize = (value?: string | null) => value?.toLowerCase() ?? "";
-        const filtered = (data ?? []).filter((item: any) => {
-          const text = `${normalize(item?.nombre)} ${normalize(item?.codigo)}`;
-          return text.includes("venta") || text.includes("alquiler");
-        });
-        const base = (filtered.length ? filtered : data) ?? [];
-        const mapped =
-          base
-            ?.filter((item: any) => item?.id != null)
-            .map((item: any) => ({
-              value: String(item.id),
-              label: item.nombre ?? item.codigo ?? `#${item.id}`,
-            })) ?? [];
-        if (!cancelled) {
-          setTipoOperacionOptions(mapped);
-        }
-      } catch (error) {
-        console.error("No se pudieron cargar los tipos de operación", error);
-        if (!cancelled) {
-          setTipoOperacionOptions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setTipoOperacionLoading(false);
-        }
-      }
-    };
-    loadTipoOperaciones();
-    return () => {
-      cancelled = true;
-    };
-  }, [scheduleOpen, scheduleMensaje?.id, scheduleMensaje?.oportunidad_id, dataProvider]);
 
   const handleReplyClick = (mensaje: CRMMensaje) => {
     setSelectedMensaje(mensaje);
@@ -478,158 +440,51 @@ export const CRMMensajeList = () => {
     setDiscardOpen(true);
   };
 
-  const handleDiscardDialogChange = (open: boolean) => {
-    if (discardLoading) return;
-    setDiscardOpen(open);
-    if (!open) {
-      setMensajeDescartar(null);
-    }
-  };
-
-  const handleDiscardConfirm = async () => {
-    if (!mensajeDescartar) return;
-    setDiscardLoading(true);
-    try {
-      await dataProvider.update("crm/mensajes", {
-        id: mensajeDescartar.id,
-        data: { ...mensajeDescartar, estado: "descartado" },
-        previousData: mensajeDescartar,
-      });
-      notify("Mensaje descartado", { type: "success" });
-      setDiscardOpen(false);
-      setMensajeDescartar(null);
-      refresh();
-    } catch (error: any) {
-      notify(error?.message ?? "No se pudo descartar el mensaje", { type: "warning" });
-    } finally {
-      setDiscardLoading(false);
-    }
+  const handleScheduleClick = (mensaje: CRMMensaje) => {
+    setScheduleMensaje(mensaje);
+    setScheduleOpen(true);
   };
 
   const handleReplySuccess = () => {
     refresh();
+    setReplyOpen(false);
+    setSelectedMensaje(null);
   };
 
-  const handleScheduleDialogChange = (open: boolean) => {
-    if (scheduleSubmitting) return;
-    setScheduleOpen(open);
-    if (!open) {
-      setScheduleMensaje(null);
-    }
-  };
-
-  const handleScheduleClick = (mensaje: CRMMensaje) => {
-    setScheduleMensaje(mensaje);
-    setScheduleForm({
-      titulo: mensaje.asunto || `Seguimiento mensaje #${mensaje.id}`,
-      descripcion: mensaje.contenido ? mensaje.contenido.slice(0, 400) : "",
-      tipoEvento: EVENT_TYPE_CHOICES[0].value,
-      datetime: getDefaultDateTime(),
-      asignadoId: mensaje.responsable_id ? String(mensaje.responsable_id) : "",
-      contactoNombre: mensaje.contacto?.nombre_completo ?? mensaje.contacto?.nombre ?? "",
-      tipoOperacionId: "",
-    });
-    setScheduleOpen(true);
-  };
-
-  const handleScheduleSubmit = async () => {
-    if (!scheduleMensaje) return;
-    if (!scheduleForm.titulo.trim()) {
-      notify("Ingresa un título para la actividad.", { type: "warning" });
-      return;
-    }
-    if (!scheduleForm.datetime) {
-      notify("Selecciona fecha y hora.", { type: "warning" });
-      return;
-    }
-    if (!scheduleForm.asignadoId) {
-      notify("Selecciona la persona asignada.", { type: "warning" });
-      return;
-    }
-    if (!scheduleMensaje.contacto_id && !scheduleForm.contactoNombre.trim()) {
-      notify("Ingresa el nombre del contacto.", { type: "warning" });
-      return;
-    }
-    if (!scheduleMensaje.oportunidad_id && !scheduleForm.tipoOperacionId) {
-      notify("Selecciona el tipo de operación.", { type: "warning" });
-      return;
-    }
-    const fechaIso = new Date(scheduleForm.datetime).toISOString();
-    const asignadoIdNumber = Number(scheduleForm.asignadoId);
-    const payload: Record<string, unknown> = {
-      fecha_evento: fechaIso,
-      titulo: scheduleForm.titulo.trim(),
-      tipo_evento: scheduleForm.tipoEvento,
-      estado_evento: DEFAULT_EVENT_STATE,
-      asignado_a_id: asignadoIdNumber,
-      responsable_id: scheduleMensaje.responsable_id ?? asignadoIdNumber,
-    };
-    const descripcion = scheduleForm.descripcion.trim();
-    if (descripcion) {
-      payload.descripcion = descripcion;
-    }
-    if (!scheduleMensaje.contacto_id) {
-      payload.contacto_nombre = scheduleForm.contactoNombre.trim();
-    }
-    if (!scheduleMensaje.oportunidad_id && scheduleForm.tipoOperacionId) {
-      payload.tipo_operacion_id = Number(scheduleForm.tipoOperacionId);
-    }
-    setScheduleSubmitting(true);
-    try {
-      const response = await fetch(`${API_URL}/crm/mensajes/${scheduleMensaje.id}/agendar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        let errorMessage = `Error al agendar evento (HTTP ${response.status})`;
-        try {
-          const errorBody = await response.json();
-          errorMessage = errorBody?.detail || errorMessage;
-        } catch {
-          // ignore
-        }
-        throw new Error(errorMessage);
-      }
-      const result = await response.json();
-      notify("Evento agendado correctamente", { type: "success" });
-      if (result?.contacto_creado) {
-        notify("Contacto creado automáticamente", { type: "info" });
-      }
-      if (result?.oportunidad_creada) {
-        notify("Oportunidad creada automáticamente", { type: "info" });
-      }
-      setScheduleOpen(false);
-      setScheduleMensaje(null);
-      setScheduleForm({
-        titulo: "",
-        descripcion: "",
-        tipoEvento: EVENT_TYPE_CHOICES[0].value,
-        datetime: getDefaultDateTime(),
-        asignadoId: "",
-        contactoNombre: "",
-        tipoOperacionId: "",
-      });
-      refresh();
-    } catch (error: any) {
-      notify(error?.message ?? "No se pudo agendar el evento", { type: "warning" });
-    } finally {
-      setScheduleSubmitting(false);
-    }
+  const handleScheduleSuccess = () => {
+    refresh();
+    setScheduleOpen(false);
+    setScheduleMensaje(null);
   };
 
   return (
     <>
       <List
-        title={<ResourceTitle icon={Mail} text="CRM - Mensajes" />}
+        title={<ResourceTitle icon={Mail} text="CRM - Mensajes" compact />}
         filters={filters}
         actions={<ListActions />}
+        filterDefaultValues={{ tipo: ["entrada"], estado: ["nuevo"] }}
         perPage={10}
         sort={{ field: "fecha_mensaje", order: "DESC" }}
+        showBreadcrumb={false}
         className="space-y-5"
       >
-    <div className="space-y-6 rounded-[32px] border border-slate-200/70 bg-gradient-to-br from-white/90 via-white/80 to-slate-50/80 p-5 shadow-[0_30px_60px_rgba(15,23,42,0.15)]">
-      <EstadoSummaryChips />
+    <div className="space-y-4 rounded-[28px] border border-slate-200/70 bg-gradient-to-br from-white/90 via-white/80 to-slate-50/80 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.15)]">
+      <AggregateEstadoChips
+        endpoint="crm/mensajes/aggregates/estado"
+        choices={CRM_MENSAJE_ESTADO_CHOICES}
+        badges={CRM_MENSAJE_ESTADO_BADGES}
+        getChipClassName={estadoChipClass}
+        filterChoices={filterEstadosByTipo}
+        dense
+        className="rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm"
+        leftSlot={
+          <div className="flex flex-wrap items-center gap-2">
+            <TipoDualToggle />
+            <FechaEstadoFilter />
+          </div>
+        }
+      />
       <div className="rounded-[30px] border border-slate-200/70 bg-white/95 p-0 shadow-[0_18px_45px_rgba(15,23,42,0.08)] transition">
         <DataTable
           rowClick="show"
@@ -679,226 +534,26 @@ export const CRMMensajeList = () => {
         mensaje={selectedMensaje}
         onSuccess={handleReplySuccess}
       />
-      <Dialog open={scheduleOpen} onOpenChange={handleScheduleDialogChange}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Agendar actividad</DialogTitle>
-            <DialogDescription>
-              Crea un evento asociado al contexto del mensaje seleccionado.
-            </DialogDescription>
-          </DialogHeader>
-          {scheduleMensaje ? (
-            <div className="space-y-5 py-4">
-              <section className="space-y-4 rounded-2xl border border-border/50 bg-muted/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Contexto
-                </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Contacto
-                    </p>
-                    <div className="rounded-xl border border-slate-200/70 bg-white/90 p-3 text-sm shadow-sm">
-                      <p className="font-semibold text-foreground">{scheduleContactoLabel}</p>
-                      <p className="text-xs text-muted-foreground">{scheduleContactoReferencia}</p>
-                    </div>
-                    {!scheduleMensaje.contacto_id ? (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Nombre del contacto *
-                        </p>
-                        <Input
-                          value={scheduleForm.contactoNombre}
-                          onChange={(event) =>
-                            setScheduleForm((state) => ({ ...state, contactoNombre: event.target.value }))
-                          }
-                          placeholder="Nombre completo del contacto"
-                          className="h-10"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Oportunidad
-                    </p>
-                    <div className="rounded-xl border border-slate-200/70 bg-white/90 p-3 text-sm shadow-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {scheduleOportunidadBadge}
-                      </p>
-                      <p className="text-sm text-foreground">{scheduleOportunidadLabel}</p>
-                    </div>
-                    {!scheduleMensaje.oportunidad_id ? (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Tipo de operación *
-                        </p>
-                        <select
-                          value={scheduleForm.tipoOperacionId}
-                          onChange={(event) =>
-                            setScheduleForm((state) => ({ ...state, tipoOperacionId: event.target.value }))
-                          }
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          <option value="">Selecciona venta o alquiler</option>
-                          {tipoOperacionOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        {tipoOperacionLoading ? (
-                          <p className="text-xs text-muted-foreground">Cargando opciones...</p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </section>
-              <section className="space-y-4 rounded-2xl border border-border/50 bg-background p-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Tipo de evento *
-                    </p>
-                    <select
-                      value={scheduleForm.tipoEvento}
-                      onChange={(event) =>
-                        setScheduleForm((state) => ({ ...state, tipoEvento: event.target.value }))
-                      }
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {EVENT_TYPE_CHOICES.map((choice) => (
-                        <option key={choice.value} value={choice.value}>
-                          {choice.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Fecha y hora *
-                    </p>
-                    <Input
-                      type="datetime-local"
-                      value={scheduleForm.datetime}
-                      onChange={(event) =>
-                        setScheduleForm((state) => ({ ...state, datetime: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Asignado a *
-                    </p>
-                    {responsables.length ? (
-                      <select
-                        value={scheduleForm.asignadoId}
-                        onChange={(event) =>
-                          setScheduleForm((state) => ({ ...state, asignadoId: event.target.value }))
-                        }
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="">Seleccionar responsable</option>
-                        {responsables.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Input
-                        placeholder="ID del responsable"
-                        value={scheduleForm.asignadoId}
-                        onChange={(event) =>
-                          setScheduleForm((state) => ({ ...state, asignadoId: event.target.value }))
-                        }
-                      />
-                    )}
-                    {responsablesLoading ? (
-                      <p className="text-xs text-muted-foreground">Cargando responsables...</p>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Título *
-                    </p>
-                    <Input
-                      value={scheduleForm.titulo}
-                      onChange={(event) =>
-                        setScheduleForm((state) => ({ ...state, titulo: event.target.value }))
-                      }
-                      placeholder="Ej: Coordinar visita"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-inner">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Descripción
-                  </p>
-                  <Textarea
-                    rows={4}
-                    value={scheduleForm.descripcion}
-                    onChange={(event) =>
-                      setScheduleForm((state) => ({ ...state, descripcion: event.target.value }))
-                    }
-                    placeholder="Notas adicionales o contexto de la actividad."
-                    className="min-h-[120px] resize-none border border-primary/40 bg-white/95 focus-visible:ring-primary/40"
-                  />
-                </div>
-              </section>
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => handleScheduleDialogChange(false)}
-              disabled={scheduleSubmitting}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleScheduleSubmit} disabled={scheduleSubmitting}>
-              {scheduleSubmitting ? "Guardando..." : "Agendar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={discardOpen} onOpenChange={handleDiscardDialogChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Descartar mensaje</DialogTitle>
-            <DialogDescription>
-              Esta acción marcará el mensaje seleccionado como descartado. ¿Deseas continuar?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-lg border border-border/40 bg-muted/10 p-4 text-sm text-muted-foreground">
-            {mensajeDescartar ? (
-              <>
-                <p className="font-semibold text-foreground">
-                  #{mensajeDescartar.id} · {mensajeDescartar.asunto || "Sin asunto"}
-                </p>
-                <p>{mensajeDescartar.contacto?.nombre_completo || mensajeDescartar.contacto_referencia || "Sin referencia"}</p>
-              </>
-            ) : (
-              <p>Selecciona un mensaje para descartar.</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => handleDiscardDialogChange(false)} disabled={discardLoading}>
-              Cancelar
-            </Button>
-            <Button onClick={handleDiscardConfirm} disabled={discardLoading || !mensajeDescartar}>
-              {discardLoading ? "Descartando..." : "Descartar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ScheduleDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        mensaje={scheduleMensaje}
+        onSuccess={handleScheduleSuccess}
+      />
+      <DiscardDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        mensaje={mensajeDescartar}
+      />
     </>
   );
 };
 
+// ============================================================================
+// COMPONENTS - Table Cells
+// ============================================================================
+
+// Muestra la fecha, hora, ID y tipo de mensaje
 const FechaCell = () => {
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
@@ -966,6 +621,7 @@ const FechaCell = () => {
   );
 };
 
+// Muestra el nombre del contacto, referencia y oportunidad asociada
 const ContactoCell = () => {
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
@@ -994,6 +650,7 @@ const ContactoCell = () => {
   );
 };
 
+// Muestra el asunto y un preview del contenido del mensaje
 const AsuntoCell = () => {
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
@@ -1007,19 +664,44 @@ const AsuntoCell = () => {
   );
 };
 
+// Muestra el estado del mensaje con badge colorizado
 const EstadoCell = () => {
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
   const estadoClass = record.estado
     ? CRM_MENSAJE_ESTADO_BADGES[record.estado]
     : "bg-slate-200 text-slate-800";
+  
+  const fechaEstado = record.fecha_estado ? new Date(record.fecha_estado) : null;
+  const tiempoTranscurrido = fechaEstado ? getRelativeTime(fechaEstado) : null;
+  
   return (
     <div className="flex flex-col gap-1 text-xs">
       <Badge variant="outline" className={`${estadoClass} border-transparent`}>
         {formatMensajeEstado(record.estado)}
       </Badge>
+      {tiempoTranscurrido && (
+        <span className="text-[10px] text-muted-foreground">
+          {tiempoTranscurrido}
+        </span>
+      )}
     </div>
   );
+};
+
+// Calcula el tiempo relativo desde una fecha
+const getRelativeTime = (date: Date): string => {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 1) return "ahora";
+  if (diffMins < 60) return `hace ${diffMins}m`;
+  if (diffHours < 24) return `hace ${diffHours}h`;
+  if (diffDays < 7) return `hace ${diffDays}d`;
+  return date.toLocaleDateString("es-AR");
 };
 
 interface AccionesCellProps {
@@ -1028,6 +710,7 @@ interface AccionesCellProps {
   onScheduleClick: (mensaje: CRMMensaje) => void;
 }
 
+// Muestra los botones de acción (Responder/Agendar/Descartar)
 const AccionesCell = ({ onReplyClick, onDiscardClick, onScheduleClick }: AccionesCellProps) => {
   const record = useRecordContext<CRMMensaje>();
 

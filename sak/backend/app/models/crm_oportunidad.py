@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 class CRMOportunidad(Base, table=True):
     __tablename__ = "crm_oportunidades"
-    __searchable_fields__ = ["descripcion_estado", "descripcion"]
+    __searchable_fields__ = ["titulo", "descripcion_estado", "descripcion"]
     __expanded_list_relations__ = {
         "contacto",
         "tipo_operacion",
@@ -41,6 +41,7 @@ class CRMOportunidad(Base, table=True):
         Index("idx_crm_oportunidad_tipo_estado", "tipo_operacion_id", "estado", "created_at"),
     )
 
+    titulo: Optional[str] = Field(default=None, max_length=100, description="Título de la oportunidad")
     contacto_id: int = Field(foreign_key="crm_contactos.id", index=True)
     tipo_operacion_id: Optional[int] = Field(
         default=None, foreign_key="crm_tipos_operacion.id", index=True
@@ -72,6 +73,9 @@ class CRMOportunidad(Base, table=True):
     )
     moneda_id: Optional[int] = Field(default=None, foreign_key="monedas.id")
     condicion_pago_id: Optional[int] = Field(default=None, foreign_key="crm_condiciones_pago.id")
+    forma_pago_descripcion: Optional[str] = Field(
+        default=None, max_length=500, description="Descripción adicional de la forma de pago"
+    )
     probabilidad: Optional[int] = Field(default=None, ge=0, le=100)
     fecha_cierre_estimada: Optional[date] = Field(default=None)
     responsable_id: int = Field(foreign_key="users.id")

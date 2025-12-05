@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, event
 from sqlmodel import Field, SQLModel, Relationship
 
 from .base import Base, current_utc_time
@@ -33,6 +33,7 @@ class CRMMensaje(Base, table=True):
     asunto: Optional[str] = Field(default=None, max_length=255)
     contenido: Optional[str] = Field(default=None)
     fecha_mensaje: datetime = Field(default_factory=current_utc_time, index=True, nullable=False)
+    fecha_estado: Optional[datetime] = Field(default=None, index=True, nullable=True)
     adjuntos: list[dict] = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False, server_default="[]"),
@@ -54,3 +55,23 @@ class CRMMensaje(Base, table=True):
 
     def set_estado(self, nuevo_estado: str) -> None:
         self.estado = nuevo_estado
+        self.fecha_estado = current_utc_time()
+
+
+# Event listener para actualizar fecha_estado automáticamente cuando cambie el estado
+@event.listens_for(CRMMensaje, 'before_update')
+def receive_before_update(mapper, connection, target):
+    """Actualiza fecha_estado cuando cambia el estado del mensaje."""
+    state = target._sa_instance_state
+    history = state.get_history('estado', True)
+    
+    if history.has_changes():
+        target.fecha_estado = current_utc_time()
+
+
+# Event listener para establecer fecha_estado en la creación
+@event.listens_for(CRMMensaje, 'before_insert')
+def receive_before_insert(mapper, connection, target):
+    """Establece fecha_estado en la creación del mensaje."""
+    if target.fecha_estado is None:
+        target.fecha_estado = current_utc_time()
