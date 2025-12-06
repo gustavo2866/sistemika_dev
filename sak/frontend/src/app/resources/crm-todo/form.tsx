@@ -12,10 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { UserSelect } from "@/components/forms";
 import { CRM_EVENTO_TIPO_CHOICES } from "../crm-eventos/model";
 import type { CRMEvento } from "../crm-eventos/model";
 
-export type OwnerOption = { value: string; label: string };
+export type OwnerOption = { value: string; label: string; avatar?: string | null };
 
 export type CRMEventoTodoFormValues = {
   fecha_evento: string;
@@ -133,18 +134,12 @@ export const CRMEventoTodoFormDialog = ({
             control={form.control}
             name="asignado_a_id"
             render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger className="rounded-2xl border-slate-200/80 bg-white">
-                  <SelectValue placeholder="Seleccionar usuario" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sortedOwnerOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <UserSelect
+                value={field.value}
+                onValueChange={field.onChange}
+                options={sortedOwnerOptions}
+                placeholder="Seleccionar usuario"
+              />
             )}
           />
         </div>
@@ -176,12 +171,23 @@ export const ensureOwnerOption = (
   if (!ownerId) return options;
   const hasOwner = options.some((option) => option.value === String(ownerId));
   if (hasOwner) return options;
-  return [...options, { value: String(ownerId), label: evento.asignado_a?.nombre ?? `Usuario #${ownerId}` }];
+  const avatar =
+    (evento.asignado_a as { avatar?: string; url_foto?: string } | undefined)?.avatar ??
+    (evento.asignado_a as { url_foto?: string } | undefined)?.url_foto ??
+    null;
+  return [
+    ...options,
+    {
+      value: String(ownerId),
+      label: evento.asignado_a?.nombre ?? `Usuario #${ownerId}`,
+      avatar,
+    },
+  ];
 };
 
 export const normalizeFormOwnerOptions = (options: OwnerOption[]): OwnerOption[] => {
   const unique = new Map<string, OwnerOption>();
-  unique.set("0", { value: "0", label: "Sin asignar" });
+  unique.set("0", { value: "0", label: "Sin asignar", avatar: null });
   options.forEach((option) => {
     if (!unique.has(option.value)) {
       unique.set(option.value, option);

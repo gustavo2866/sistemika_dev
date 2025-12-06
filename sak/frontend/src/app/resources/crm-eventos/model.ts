@@ -38,6 +38,7 @@ export type CRMEvento = {
   estado_evento: CRMEventoEstado;
   asignado_a_id: number;
   resultado?: string | null;
+  fecha_estado?: string | null;
   oportunidad?: {
     id?: number;
     estado?: string;

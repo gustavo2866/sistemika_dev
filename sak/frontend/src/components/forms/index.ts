@@ -20,6 +20,7 @@ export { FormDetailSectionAddButton } from "./form-detail-section-add-button";
 export { FormDetailSectionMinItems } from "./form-detail-section-min-items";
 export { FormWizard } from "./form-wizard/form-wizard";
 export { SectionCard, SummaryList, MessagePreview } from "./form-wizard/sections";
+export { UserSelect } from "./user-select";
 
 // Types
 export type { FormSection, FormLayoutProps } from "./form-layout";
@@ -35,6 +36,7 @@ export type {
   SummaryListProps,
   MessagePreviewProps,
 } from "./form-wizard/sections";
+export type { UserSelectOption } from "./user-select";
 
 // Hooks
 export { useReferenceOptions } from "./hooks/useReferenceOptions";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import type { MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
 import { List } from "@/components/list";
 import { ReferenceInput } from "@/components/reference-input";
@@ -26,13 +26,15 @@ import {
   Calendar,
   Edit3,
   Check,
-  X
+  X,
+  Ban
 } from "lucide-react";
 import { 
   useDataProvider, 
   useListContext, 
   useNotify,
-  useRefresh
+  useRefresh,
+  useGetIdentity,
 } from "ra-core";
 import type { CRMEvento } from "../crm-eventos/model";
 import {
@@ -65,6 +67,7 @@ import {
   KanbanFilterBar,
 } from "@/components/kanban";
 import { getNextWeekStart, formatDateRange } from "@/components/kanban/utils";
+import { UserSelect } from "@/components/forms";
 
 type CanonicalEstado = "1-pendiente" | "2-realizado" | "3-cancelado" | "4-reagendar";
 type BucketKey = "overdue" | "today" | "week" | "next";
@@ -103,7 +106,7 @@ const formatEventoTitulo = (evento: CRMEvento): string => {
 const cardToneClasses: Record<CanonicalEstado, string> = {
   "1-pendiente": "border-sky-100 bg-white/95 shadow-[0_10px_25px_rgba(14,165,233,0.12)]",
   "2-realizado": "border-emerald-100 bg-emerald-50 shadow-[0_10px_25px_rgba(16,185,129,0.18)]",
-  "3-cancelado": "border-rose-100 bg-white/95 shadow-[0_10px_25px_rgba(244,114,182,0.12)]",
+  "3-cancelado": "border-rose-200 bg-rose-100 shadow-[0_10px_25px_rgba(244,63,94,0.20)]",
   "4-reagendar": "border-indigo-100 bg-white/95 shadow-[0_10px_25px_rgba(99,102,241,0.12)]",
 };
 
@@ -203,6 +206,7 @@ const EventoListContent = () => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
+  const { data: identity } = useGetIdentity();
   const { data: eventos = [], isLoading } = useListContext<CRMEvento>();
 
   const [search, setSearch] = useState("");
@@ -213,19 +217,51 @@ const EventoListContent = () => {
   const [dragOverBucket, setDragOverBucket] = useState<BucketKey | null>(null);
   const [editingEvento, setEditingEvento] = useState<CRMEvento | null>(null);
   const [confirmEvento, setConfirmEvento] = useState<CRMEvento | null>(null);
+  const [collapsedAll, setCollapsedAll] = useState(false);
+  const [cardCollapseOverrides, setCardCollapseOverrides] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    if (identity?.id) {
+      setOwnerFilter((prev) => (prev === "todos" ? String(identity.id) : prev));
+    }
+  }, [identity]);
 
   const ownerOptions = useMemo<OwnerOption[]>(() => {
-    const entries = new Map<string, string>();
+    const entries = new Map<string, OwnerOption>();
     eventos.forEach((evento) => {
       const id = evento.asignado_a?.id ?? evento.asignado_a_id;
       if (!id) return;
       const key = String(id);
       if (entries.has(key)) return;
       const label = evento.asignado_a?.nombre || `Usuario #${id}`;
-      entries.set(key, label);
+      const avatar =
+        (evento.asignado_a as { avatar?: string; url_foto?: string } | undefined)?.avatar ??
+        (evento.asignado_a as { url_foto?: string } | undefined)?.url_foto ??
+        null;
+      entries.set(key, { value: key, label, avatar });
     });
-    return [{ value: "todos", label: "Todos" }, ...Array.from(entries, ([value, label]) => ({ value, label }))];
-  }, [eventos]);
+    if (identity?.id) {
+      const identityId = String(identity.id);
+      if (!entries.has(identityId)) {
+        const avatar =
+          (identity as { avatar?: string; url_foto?: string })?.avatar ??
+          (identity as { url_foto?: string })?.url_foto ??
+          null;
+        const label =
+          (identity as { fullName?: string; nombre?: string })?.fullName ||
+          (identity as { nombre?: string })?.nombre ||
+         (identity as { username?: string })?.username ||
+          identity.email ||
+          `Usuario #${identity.id}`;
+        entries.set(identityId, {
+          value: identityId,
+          label,
+          avatar,
+        });
+      }
+    }
+    return [{ value: "todos", label: "Todos", avatar: null }, ...Array.from(entries.values())];
+  }, [eventos, identity]);
   const assignableOwnerOptions = useMemo(
     () => normalizeFormOwnerOptions(ownerOptions.filter((option) => option.value !== "todos")),
     [ownerOptions]
@@ -233,6 +269,32 @@ const EventoListContent = () => {
   const dialogOwnerOptions = useMemo(
     () => ensureOwnerOption(assignableOwnerOptions, editingEvento),
     [assignableOwnerOptions, editingEvento]
+  );
+
+  const isCardCollapsed = useCallback(
+    (evento: CRMEvento) => {
+      if (!evento.id) return collapsedAll;
+      const override = cardCollapseOverrides[evento.id];
+      return override ?? collapsedAll;
+    },
+    [cardCollapseOverrides, collapsedAll]
+  );
+
+  const toggleCardCollapse = useCallback(
+    (evento: CRMEvento) => {
+      if (!evento.id) return;
+      setCardCollapseOverrides((prev) => {
+        const current = prev[evento.id];
+        const next = !(current ?? collapsedAll);
+        const updated = { ...prev, [evento.id]: next };
+        if (next === collapsedAll) {
+          const { [evento.id]: _, ...rest } = updated;
+          return rest;
+        }
+        return updated;
+      });
+    },
+    [collapsedAll]
   );
 
   const filteredEventos = useMemo(() => {
@@ -276,6 +338,11 @@ const EventoListContent = () => {
     const followingWeekStart = new Date(nextWeekStart);
     followingWeekStart.setDate(followingWeekStart.getDate() + 7);
 
+    const isSameDay = (dateA: Date, dateB: Date) =>
+      dateA.getFullYear() === dateB.getFullYear() &&
+      dateA.getMonth() === dateB.getMonth() &&
+      dateA.getDate() === dateB.getDate();
+
     filteredEventos.forEach((evento) => {
       if (!evento.fecha_evento) {
         buckets.next.push(evento);
@@ -287,6 +354,17 @@ const EventoListContent = () => {
         return;
       }
       if (fechaEvento < startOfToday) {
+        if (focusFilter === "todos") {
+          const estadoEvento = normalizeEstado(evento.estado_evento);
+          const fechaEstado = evento.fecha_estado ? new Date(evento.fecha_estado) : null;
+          const fechaEstadoEsHoy = fechaEstado ? isSameDay(fechaEstado, now) : false;
+          const allow =
+            estadoEvento === "1-pendiente" ||
+            ((estadoEvento === "2-realizado" || estadoEvento === "3-cancelado") && fechaEstadoEsHoy);
+          if (!allow) {
+            return;
+          }
+        }
         buckets.overdue.push(evento);
       } else if (fechaEvento <= endOfToday) {
         buckets.today.push(evento);
@@ -310,7 +388,7 @@ const EventoListContent = () => {
     });
 
     return buckets;
-  }, [filteredEventos]);
+  }, [filteredEventos, focusFilter]);
 
   const bucketDefinitions: { key: BucketKey; title: string; helper: string; accentClass: string }[] = useMemo(() => {
     const now = new Date();
@@ -568,18 +646,31 @@ const EventoListContent = () => {
         ✓
       </div>
     );
+    const banIcon = (
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-200 text-rose-700 text-[10px]">
+        <Ban className="h-3 w-3" />
+      </div>
+    );
     const estadoBadge = (
       <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wide", getEstadoBadgeClass(estado))}>
         {formatEstadoLabel(estado)}
       </Badge>
     );
+    const collapsed = isCardCollapsed(evento);
     const { name: ownerName, avatarUrl, initials } = getOwnerAvatarInfo(evento);
     const dateInfo = (
-      <div className={cn("flex flex-col leading-tight gap-0.5", isRealizado ? "items-start text-left" : "items-end")}>
+      <div
+        className={cn(
+          "flex flex-col leading-tight gap-0.5",
+          isRealizado || estado === "3-cancelado" ? "items-start text-left" : "items-end"
+        )}
+      >
         <p className="text-xs font-semibold tracking-tight text-foreground whitespace-nowrap">
           {formatHeaderTimestamp(evento.fecha_evento)}
         </p>
-        {!isRealizado && !isPendiente ? <Calendar className="h-3 w-3 text-slate-500 self-end" /> : null}
+        {!isRealizado && !isPendiente && estado !== "3-cancelado" ? (
+          <Calendar className="h-3 w-3 text-slate-500 self-end" />
+        ) : null}
       </div>
     );
     const avatarNode = (
@@ -589,7 +680,7 @@ const EventoListContent = () => {
       <div
         className={cn(
           "flex items-center gap-2",
-          isRealizado ? "justify-start" : "justify-end",
+          isRealizado || estado === "3-cancelado" ? "justify-start" : "justify-end",
           isPendiente ? "text-left" : ""
         )}
       >
@@ -610,57 +701,66 @@ const EventoListContent = () => {
     );
 
     return (
-      <KanbanCard
-        key={evento.id}
+        <KanbanCard
+          key={evento.id}
         className={cn(
           "cursor-pointer focus-within:ring-2 focus-within:ring-primary/40",
-          getCardStyle(estado)
+          getCardStyle(estado),
+          collapsed ? "py-2" : ""
         )}
         draggable={isDraggable}
         onDragStart={isDraggable ? (event) => handleDragStart(event, evento) : undefined}
         onDragEnd={isDraggable ? handleDragEnd : undefined}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          toggleCardCollapse(evento);
+        }}
       >
         <KanbanCardHeader>
-          {isRealizado ? dateBlock : isPendiente ? dateBlock : estadoBadge}
-          {isRealizado ? checkIcon : isPendiente ? pendingIcon : dateBlock}
+          {isRealizado ? dateBlock : isPendiente || estado === "3-cancelado" ? dateBlock : estadoBadge}
+          {isRealizado ? checkIcon : isPendiente ? pendingIcon : estado === "3-cancelado" ? banIcon : dateBlock}
         </KanbanCardHeader>
         <KanbanCardBody>
           <KanbanCardTitle className="line-clamp-2">{formatEventoTitulo(evento)}</KanbanCardTitle>
-          <KanbanMeta className="bg-slate-50/80">
-            <KanbanMetaRow icon={<ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />}>
-              <span className="text-[11px]">{getOportunidadName(evento)}</span>
-            </KanbanMetaRow>
-            <KanbanMetaRow icon={<UserRound className="h-[10px] w-[10px] text-slate-500" />}>
-              {getContactoName(evento)}
-            </KanbanMetaRow>
-          </KanbanMeta>
+          {!collapsed ? (
+            <KanbanMeta className="bg-slate-50/80">
+              <KanbanMetaRow icon={<ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />}>
+                <span className="text-[11px]">{getOportunidadName(evento)}</span>
+              </KanbanMetaRow>
+              <KanbanMetaRow icon={<UserRound className="h-[10px] w-[10px] text-slate-500" />}>
+                {getContactoName(evento)}
+              </KanbanMetaRow>
+            </KanbanMeta>
+          ) : null}
         </KanbanCardBody>
-        <KanbanCardFooter className="text-[8px] font-semibold text-slate-500">
-          {estado !== "2-realizado" ? (
-            <KanbanActionButton
-              icon={<Check className="h-3 w-3 text-emerald-600" />}
-              onClick={(event: ReactMouseEvent) => {
-                event.stopPropagation();
-                openConfirmDialog(evento);
-              }}
-              disabled={updating}
-            >
-              Confirmar
-            </KanbanActionButton>
-          ) : null}
-          {estado !== "3-cancelado" && estado !== "2-realizado" ? (
-            <KanbanActionButton
-              icon={<X className="h-3 w-3 text-rose-500" />}
-              onClick={(event: ReactMouseEvent) => {
-                event.stopPropagation();
-                handleUpdateEstado(evento, "3-cancelado");
-              }}
-              disabled={updating}
-            >
-              Cancelar
-            </KanbanActionButton>
-          ) : null}
-        </KanbanCardFooter>
+        {!collapsed ? (
+          <KanbanCardFooter className="text-[8px] font-semibold text-slate-500">
+            {estado !== "2-realizado" && estado !== "3-cancelado" ? (
+              <KanbanActionButton
+                icon={<Check className="h-3 w-3 text-emerald-600" />}
+                onClick={(event: ReactMouseEvent) => {
+                  event.stopPropagation();
+                  openConfirmDialog(evento);
+                }}
+                disabled={updating}
+              >
+                Confirmar
+              </KanbanActionButton>
+            ) : null}
+            {estado !== "3-cancelado" && estado !== "2-realizado" ? (
+              <KanbanActionButton
+                icon={<X className="h-3 w-3 text-rose-500" />}
+                onClick={(event: ReactMouseEvent) => {
+                  event.stopPropagation();
+                  handleUpdateEstado(evento, "3-cancelado");
+                }}
+                disabled={updating}
+              >
+                Cancelar
+              </KanbanActionButton>
+            ) : null}
+          </KanbanCardFooter>
+        ) : null}
       </KanbanCard>
     );
   };
@@ -672,6 +772,7 @@ const EventoListContent = () => {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Buscar eventos..."
+        searchClassName="relative w-[220px]"
         rightContent={
           <>
             <div className="flex gap-1 rounded-full border border-slate-200/80 bg-white/80 p-1 text-[11px] font-semibold uppercase">
@@ -694,18 +795,26 @@ const EventoListContent = () => {
                 Todos
               </Button>
             </div>
-            <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-              <SelectTrigger className="min-w-[170px] h-8 rounded-2xl border-slate-200/80 bg-white/80 shadow-sm text-sm">
-                <SelectValue placeholder="Asignado" />
-              </SelectTrigger>
-              <SelectContent>
-                {ownerOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="min-w-[170px]">
+              <UserSelect
+                value={ownerFilter}
+                onValueChange={setOwnerFilter}
+                options={ownerOptions}
+                placeholder="Asignado"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-full px-3"
+              onClick={() => {
+                setCollapsedAll((prev) => !prev);
+                setCardCollapseOverrides({});
+              }}
+            >
+              {collapsedAll ? "Expandir todo" : "Contraer todo"}
+            </Button>
           </>
         }
       />
@@ -775,7 +884,8 @@ export const CRMEventoListTodo = () => {
       showBreadcrumb={false}
       filters={filters}
       actions={<ListActions />}
-      perPage={100}
+      perPage={1000}
+      pagination={false}
       sort={{ field: "fecha_evento", order: "ASC" }}
       className="space-y-5"
     >

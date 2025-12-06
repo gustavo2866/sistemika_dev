@@ -10,6 +10,7 @@ export interface KanbanFilterBarProps extends React.HTMLAttributes<HTMLDivElemen
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
   rightContent?: React.ReactNode;
+  searchClassName?: string;
 }
 
 export const KanbanFilterBar = ({
@@ -18,6 +19,7 @@ export const KanbanFilterBar = ({
   onSearchChange,
   searchPlaceholder = "Buscar...",
   rightContent,
+  searchClassName,
   ...props
 }: KanbanFilterBarProps) => (
   <div
@@ -28,7 +30,7 @@ export const KanbanFilterBar = ({
     {...props}
   >
     <div className="flex flex-wrap items-center justify-between gap-2.5">
-      <div className="relative flex-1 min-w-[200px] max-w-md">
+      <div className={cn("relative flex-1 min-w-[200px] max-w-md", searchClassName)}>
         <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
         <Input
           type="search"

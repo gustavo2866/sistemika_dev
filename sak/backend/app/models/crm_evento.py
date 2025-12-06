@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
+from sqlalchemy import event
 from sqlmodel import Field, Relationship
 
-from .base import Base
+from .base import Base, current_utc_time
 from .enums import EstadoEvento, TipoEvento
 
 if TYPE_CHECKING:
@@ -52,6 +53,12 @@ class CRMEvento(Base, table=True):
         foreign_key="users.id",
         description="Usuario asignado/responsable del evento"
     )
+    fecha_estado: Optional[datetime] = Field(
+        default=None,
+        index=True,
+        nullable=True,
+        description="Fecha del último cambio de estado"
+    )
     
     # Campos opcionales
     descripcion: Optional[str] = Field(
@@ -66,6 +73,11 @@ class CRMEvento(Base, table=True):
     # Relaciones
     oportunidad: "CRMOportunidad" = Relationship(back_populates="eventos")
     asignado_a: Optional["User"] = Relationship()
+    
+    def set_estado(self, nuevo_estado: str) -> None:
+        """Actualiza el estado y la fecha_estado automáticamente."""
+        self.estado_evento = nuevo_estado
+        self.fecha_estado = current_utc_time()
     
     def __repr__(self) -> str:
         return f"<CRMEvento {self.id}: {self.titulo} ({self.estado_evento})>"
@@ -90,3 +102,21 @@ class CRMEvento(Base, table=True):
             }
         
         return base_dict
+
+
+# Event listeners para actualizar fecha_estado automáticamente
+@event.listens_for(CRMEvento, 'before_update')
+def receive_before_update(mapper, connection, target):
+    """Actualiza fecha_estado cuando cambia el estado del evento."""
+    state = target._sa_instance_state
+    history = state.get_history('estado_evento', True)
+    
+    if history.has_changes():
+        target.fecha_estado = current_utc_time()
+
+
+@event.listens_for(CRMEvento, 'before_insert')
+def receive_before_insert(mapper, connection, target):
+    """Establece fecha_estado en la creación del evento."""
+    if target.fecha_estado is None:
+        target.fecha_estado = current_utc_time()

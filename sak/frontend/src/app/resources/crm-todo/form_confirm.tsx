@@ -17,6 +17,7 @@ import {
   type CRMOportunidadEstado,
 } from "../crm-oportunidades/model";
 import { cn } from "@/lib/utils";
+import { ChevronRight, UserRound } from "lucide-react";
 
 const TRANSICIONES_ESTADO_OPORTUNIDAD: Record<string, CRMOportunidadEstado[]> = {
   "0-prospect": ["1-abierta", "6-perdida"],
@@ -130,8 +131,8 @@ export const CRMEventoConfirmFormDialog = ({
       isSubmitting={saving}
       submitLabel="Confirmar"
     >
-      <div className="space-y-5">
-        <div className="grid gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 px-3 py-3">
+      <div className="space-y-4">
+        <div className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/50 px-3 py-3">
           <InfoRow label="Fecha y hora" value={fechaEvento} />
           <InfoRow label="Título" value={getEventoTitulo(evento)} />
           <InfoRow label="Descripción" value={evento?.descripcion ?? "Sin descripción"} multiline />
@@ -142,15 +143,33 @@ export const CRMEventoConfirmFormDialog = ({
           <Textarea
             placeholder="Describe el resultado de este evento"
             rows={3}
-            className="rounded-2xl border-slate-200/80"
+            className="rounded-2xl border-slate-200/80 h-24 resize-none overflow-y-auto"
             {...form.register("resultado", { required: true })}
           />
         </div>
 
         <div className="rounded-2xl border border-slate-100 bg-white px-3 py-3 shadow-inner">
           <div className="space-y-2">
-            <InfoRow label="Oportunidad" value={getOportunidadName(evento)} />
-            <InfoRow label="Contacto" value={getContactoName(evento)} />
+            <InfoRow
+              label="Oportunidad"
+              value={
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  <ChevronRight className="h-3 w-3 text-slate-400" />
+                  <span className="truncate">{getOportunidadName(evento)}</span>
+                </div>
+              }
+              isCustom
+            />
+            <InfoRow
+              label="Contacto"
+              value={
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  <UserRound className="h-3 w-3 text-slate-400" />
+                  <span className="truncate">{getContactoName(evento)}</span>
+                </div>
+              }
+              isCustom
+            />
             {oportunidadDisponible ? (
               <div className="space-y-1">
                 <span className="text-xs font-semibold uppercase text-slate-500">Estado de la oportunidad</span>
@@ -189,21 +208,27 @@ const InfoRow = ({
   label,
   value,
   multiline,
+  isCustom,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   multiline?: boolean;
+  isCustom?: boolean;
 }) => (
   <div className={cn("space-y-0.5", multiline ? "flex flex-col" : "")}>
     <span className="text-[11px] font-semibold uppercase text-slate-500">{label}</span>
-    <p
-      className={cn(
-        "text-sm text-slate-800 rounded-xl bg-white/70 px-3 py-1.5 border border-slate-100",
-        multiline ? "whitespace-pre-line" : ""
-      )}
-    >
-      {value || "—"}
-    </p>
+    {isCustom ? (
+      <div className="rounded-xl bg-white/70 px-3 py-1.5 border border-slate-100">{value}</div>
+    ) : (
+      <p
+        className={cn(
+          "text-sm text-slate-800 rounded-xl bg-white/70 px-3 py-1.5 border border-slate-100",
+          multiline ? "max-h-16 overflow-y-auto whitespace-pre-line" : ""
+        )}
+      >
+        {typeof value === "string" ? value || "—" : value}
+      </p>
+    )}
   </div>
 );
 
