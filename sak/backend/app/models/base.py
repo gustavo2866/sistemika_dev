@@ -43,10 +43,6 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
     if _visited is None:
         _visited = set()
     
-    # Evitar recursión infinita - máximo 2 niveles de profundidad
-    if _depth > 2:
-        return {"id": obj.id} if hasattr(obj, 'id') else {}
-    
     # Evitar ciclos: si ya visitamos este objeto, solo devolver su id
     obj_key = (type(obj).__name__, getattr(obj, 'id', id(obj)))
     if obj_key in _visited:
@@ -63,28 +59,31 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
     
     obj_dict = obj.model_dump()
     
-    # Incluir relaciones si están cargadas (solo en el primer nivel)
-    if _depth < 1:
-        for attr_name in dir(obj):
-            if not attr_name.startswith('_') and hasattr(obj, attr_name):
-                attr_value = getattr(obj, attr_name)
-                # Si es una relación cargada (tiene model_fields y no es un campo regular)
-                if (hasattr(attr_value, 'model_fields') and 
-                    attr_name not in obj.model_fields and 
-                    attr_name not in STAMP_FIELDS):
-                    # Incluir la relación en la respuesta, procesándola recursivamente
-                    obj_dict[attr_name] = filtrar_respuesta(attr_value, context, _depth + 1, _visited)
-                # Si es una lista de relaciones (one-to-many)
-                elif isinstance(attr_value, list) and len(attr_value) > 0 and hasattr(attr_value[0], 'model_fields'):
-                    expanded_relations = getattr(type(obj), "__expanded_list_relations__", set())
-                    if attr_name in expanded_relations:
-                        obj_dict[attr_name] = [
-                            filtrar_respuesta(item, context, _depth + 1, _visited.copy())
-                            for item in attr_value
-                        ]
-                    else:
-                        # Para listas, solo incluir IDs para evitar sobrecarga
-                        obj_dict[attr_name] = [{"id": item.id} if hasattr(item, 'id') else {} for item in attr_value]
+    # Incluir relaciones cargadas aprovechando _visited para evitar ciclos
+    for attr_name in dir(obj):
+        if attr_name.startswith('_'):
+            continue
+        if attr_name in obj.model_fields:
+            continue
+        if attr_name not in obj.__dict__:
+            # Si la relación no está cargada, evitar accesos que disparen queries
+            continue
+
+        attr_value = obj.__dict__[attr_name]
+        # Si es una relación cargada (tiene model_fields y no es un campo regular)
+        if hasattr(attr_value, 'model_fields') and attr_name not in STAMP_FIELDS:
+            obj_dict[attr_name] = filtrar_respuesta(attr_value, context, _depth + 1, _visited)
+        # Si es una lista de relaciones (one-to-many)
+        elif isinstance(attr_value, list) and len(attr_value) > 0 and hasattr(attr_value[0], 'model_fields'):
+            expanded_relations = getattr(type(obj), "__expanded_list_relations__", set())
+            if attr_name in expanded_relations:
+                obj_dict[attr_name] = [
+                    filtrar_respuesta(item, context, _depth + 1, _visited.copy())
+                    for item in attr_value
+                ]
+            else:
+                # Para listas, solo incluir IDs para evitar sobrecarga
+                obj_dict[attr_name] = [{"id": item.id} if hasattr(item, 'id') else {} for item in attr_value]
     
     # Filtrar campos válidos más las relaciones
     result = {}

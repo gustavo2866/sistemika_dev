@@ -508,15 +508,15 @@ class GenericCRUD(Generic[M]):
                                     related_model, max_depth, current_depth + 1
                                 )
                                 
-                                # Solo aÃ±adir relaciones anidadas si es seguro
+                                # Solo añadir relaciones anidadas si es seguro
                                 if nested_relations and len(nested_relations) <= 2:
-                                    # Buscar relaciones especÃ­ficas conocidas como seguras
+                                    # Buscar relaciones específicas conocidas como seguras
                                     for nested_name, _ in nested_relations.items():
                                         if nested_name in ['pais', 'categoria', 'tipo']:  # Relaciones "seguras"
                                             try:
                                                 nested_attr = getattr(related_model, nested_name)
                                                 relations[relationship_name] = selectinload(relation_attr).selectinload(nested_attr)
-                                                break  # Solo una relaciÃ³n anidada por simplicidad
+                                                break  # Solo una relación anidada por simplicidad
                                             except:
                                                 continue
                             except:
@@ -535,6 +535,7 @@ class GenericCRUD(Generic[M]):
     def _get_auto_include_options(self) -> List[Any]:
         """
         Obtiene automáticamente las opciones de include para el modelo actual
+        Soporta relaciones anidadas usando notación de punto: "oportunidad.contacto"
         
         Returns:
             Lista de selectinload options para usar en la query
@@ -544,7 +545,34 @@ class GenericCRUD(Generic[M]):
             # Si existe __auto_include_relations__, usarlo (incluso si está vacío)
             options = []
             for relation_name in manual_relations:
-                if hasattr(self.model, relation_name):
+                # Soportar relaciones anidadas con notación de punto
+                if '.' in relation_name:
+                    parts = relation_name.split('.')
+                    current_model = self.model
+                    loader = None
+                    
+                    for part in parts:
+                        if hasattr(current_model, part):
+                            relation_attr = getattr(current_model, part)
+                            if loader is None:
+                                loader = selectinload(relation_attr)
+                            else:
+                                loader = loader.selectinload(relation_attr)
+                            # Obtener el modelo relacionado para el siguiente nivel
+                            try:
+                                from sqlalchemy import inspect
+                                mapper = inspect(current_model)
+                                relationship = mapper.relationships.get(part)
+                                if relationship:
+                                    current_model = relationship.mapper.class_
+                            except:
+                                break
+                        else:
+                            break
+                    
+                    if loader:
+                        options.append(loader)
+                elif hasattr(self.model, relation_name):
                     relation_attr = getattr(self.model, relation_name)
                     options.append(selectinload(relation_attr))
             print(

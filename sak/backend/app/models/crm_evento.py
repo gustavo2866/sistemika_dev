@@ -21,6 +21,7 @@ class CRMEvento(Base, table=True):
     __tablename__ = "crm_eventos"
     __searchable_fields__ = ["titulo", "resultado"]
     __expanded_list_relations__ = {"asignado_a", "oportunidad"}
+    __auto_include_relations__ = ["asignado_a", "oportunidad", "oportunidad.contacto"]
     
     # Campos obligatorios
     oportunidad_id: int = Field(

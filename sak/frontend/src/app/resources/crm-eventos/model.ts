@@ -38,7 +38,15 @@ export type CRMEvento = {
   estado_evento: CRMEventoEstado;
   asignado_a_id: number;
   resultado?: string | null;
-  oportunidad?: { id?: number; estado?: string; descripcion_estado?: string; contacto_id?: number; propiedad_id?: number } | null;
+  oportunidad?: {
+    id?: number;
+    estado?: string;
+    titulo?: string | null;
+    descripcion_estado?: string;
+    contacto_id?: number;
+    propiedad_id?: number;
+    contacto?: { id?: number; nombre?: string; nombre_completo?: string } | null;
+  } | null;
   asignado_a?: { id?: number; nombre?: string } | null;
 };
 

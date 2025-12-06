@@ -4,18 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDataProvider, useNotify } from "ra-core";
-import {
-  AlarmClock,
-  CalendarClock,
-  CalendarPlus,
-  CheckCircle2,
-  ChevronRight,
-  Loader2,
-  RefreshCcw,
-  Search,
-  TimerReset,
-  XCircle,
-} from "lucide-react";
+import { Calendar, ChevronRight, Loader2, RefreshCcw, Search, UserRound } from "lucide-react";
 
 import type { CRMEvento } from "../crm-eventos/model";
 import { CRM_EVENTO_ESTADO_CHOICES } from "../crm-eventos/model";
@@ -65,14 +54,38 @@ const normalizeEstado = (value?: string | null): CanonicalEstado => {
   return ESTADO_NORMALIZER[lower] ?? (value.includes("-") ? (ESTADO_NORMALIZER[value.split("-")[1]] ?? "unknown") : "unknown");
 };
 
+const boardCardToneClasses: Record<CanonicalEstado | "unknown", string> = {
+  "1-pendiente": "border-sky-100 bg-white/95 shadow-[0_10px_25px_rgba(14,165,233,0.12)]",
+  "2-realizado": "border-emerald-100 bg-emerald-50 shadow-[0_10px_25px_rgba(16,185,129,0.18)]",
+  "3-cancelado": "border-rose-100 bg-white/95 shadow-[0_10px_25px_rgba(244,114,182,0.12)]",
+  "4-reagendar": "border-indigo-100 bg-white/95 shadow-[0_10px_25px_rgba(99,102,241,0.12)]",
+  unknown: "border-slate-200 bg-white shadow-[0_10px_25px_rgba(15,23,42,0.08)]",
+};
+
+const getBoardCardStyle = (estado: CanonicalEstado | "unknown") =>
+  boardCardToneClasses[estado] ?? boardCardToneClasses.unknown;
+
 const formatEstadoLabel = (estado: CanonicalEstado) => {
   if (estado === "unknown") return "Sin estado";
   return ESTADO_LABELS.get(estado) ?? estado.replace(/^\d-/, "").replace(/^\w/, (char) => char.toUpperCase());
 };
 
-const formatEventoTipo = (value?: string | null) => {
-  if (!value) return "Evento";
-  return value.charAt(0).toUpperCase() + value.slice(1);
+const formatEventoTitulo = (evento: CRMEvento) => {
+  const titulo = evento.titulo?.trim() ?? "";
+  if (!titulo) return "Sin titulo";
+  return titulo.replace(/^ATRASADO:\s*/i, "") || "Sin titulo";
+};
+
+const formatHeaderTimestamp = (value?: string | null) => {
+  const date = parseDate(value);
+  if (!date) return "Sin fecha";
+  const pad = (num: number) => num.toString().padStart(2, "0");
+  const day = pad(date.getDate());
+  const month = pad(date.getMonth() + 1);
+  const year = date.getFullYear();
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
 const parseDate = (value?: string | null) => {
@@ -110,41 +123,31 @@ const endOfCurrentWeek = () => {
   return sunday;
 };
 
-const formatDueLabel = (value?: string | null) => {
-  const date = parseDate(value);
-  if (!date) return "Sin fecha";
-  const now = new Date();
-  const diff = date.getTime() - now.getTime();
-  const dayDiff = Math.round(diff / 86400000);
-  const time = date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-  if (date < startOfToday()) {
-    if (dayDiff === -1) return `Ayer ${time}`;
-    return `Vencido ${date.toLocaleDateString("es-AR")}`;
-  }
-  if (date <= endOfToday()) {
-    return `Hoy ${time}`;
-  }
-  if (dayDiff === 1) {
-    return `Manana ${time}`;
-  }
-  if (dayDiff <= 5) {
-    return `En ${dayDiff} dias • ${time}`;
-  }
-  return date.toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
-};
 
 const getOwnerName = (evento: CRMEvento) => {
   return evento.asignado_a?.nombre || (evento.asignado_a_id ? `Usuario #${evento.asignado_a_id}` : "Sin asignar");
 };
 
 const getOportunidadName = (evento: CRMEvento) => {
-  if (evento.oportunidad?.descripcion_estado) {
-    return evento.oportunidad.descripcion_estado;
-  }
+  const titulo = evento.oportunidad?.titulo || "";
   if (evento.oportunidad_id) {
-    return `Oportunidad #${evento.oportunidad_id}`;
+    return `#${evento.oportunidad_id}${titulo ? ` ${titulo}` : ""}`.trim();
   }
-  return "Sin oportunidad";
+  return titulo || "Sin oportunidad";
+};
+
+const getContactoName = (evento: CRMEvento) => {
+  const contacto = evento.oportunidad?.contacto;
+  const contactoNombreManual = (evento.oportunidad as { contacto_nombre?: string } | undefined)?.contacto_nombre?.trim();
+  const nombre =
+    contacto?.nombre?.trim() ||
+    contacto?.nombre_completo?.trim() ||
+    contactoNombreManual;
+  if (nombre) {
+    return nombre;
+  }
+  const contactoId = evento.oportunidad?.contacto_id;
+  return contactoId ? `Contacto #${contactoId}` : "Sin contacto";
 };
 
 const getEstadoBadgeClass = (estado: CanonicalEstado) => {
@@ -290,14 +293,6 @@ export const CRMToDoBoard = () => {
     return base;
   }, [filteredEventos]);
 
-  const boardCounts = {
-    overdue: boardData.overdue.length,
-    today: boardData.today.length,
-    week: boardData.week.length,
-    upcoming: boardData.upcoming.length,
-  };
-
-  const pendingTotal = boardCounts.overdue + boardCounts.today + boardCounts.week + boardCounts.upcoming;
   const confirmEventoNombre = confirmAction?.evento
     ? confirmAction.evento.titulo?.trim() || `Evento #${confirmAction.evento.id}`
     : "este evento";
@@ -329,37 +324,6 @@ export const CRMToDoBoard = () => {
       </p>
     </div>
   ) : null;
-
-  const statItems = [
-    {
-      id: "pending",
-      label: "Pendientes",
-      value: pendingTotal,
-      helper: "Eventos activos",
-      icon: AlarmClock,
-    },
-    {
-      id: "overdue",
-      label: "Atrasadas",
-      value: boardCounts.overdue,
-      helper: "Fuera de termino",
-      icon: TimerReset,
-    },
-    {
-      id: "today",
-      label: "Hoy",
-      value: boardCounts.today,
-      helper: "Para resolver hoy",
-      icon: CalendarClock,
-    },
-    {
-      id: "week",
-      label: "Esta semana",
-      value: boardCounts.week,
-      helper: "Antes del domingo",
-      icon: CalendarPlus,
-    },
-  ];
 
   const updating = Boolean(updatingId);
 
@@ -409,15 +373,6 @@ export const CRMToDoBoard = () => {
     );
   };
 
-  const handleSnooze = (evento: CRMEvento, days: number) => {
-    const current = parseDate(evento.fecha_evento) ?? new Date();
-    current.setDate(current.getDate() + days);
-    updateEvento(
-      evento,
-      { fecha_evento: current.toISOString(), estado_evento: "1-pendiente" },
-      `Evento reprogramado para ${current.toLocaleString("es-AR")}.`
-    );
-  };
 
   const handleCancel = (evento: CRMEvento, resultado?: string) => {
     updateEvento(
@@ -429,7 +384,6 @@ export const CRMToDoBoard = () => {
 
   const renderCard = (evento: CRMEvento) => {
     const estado = normalizeEstado(evento.estado_evento);
-    const tipo = formatEventoTipo(evento.tipo_evento);
     const goToEdit = () => {
       if (evento.id) {
         navigate(`/crm/eventos/${evento.id}/edit`, { state: { fromTodo: true } });
@@ -441,101 +395,99 @@ export const CRMToDoBoard = () => {
         goToEdit();
       }
     };
+    const isRealizado = estado === "2-realizado";
+    const isPendiente = estado === "1-pendiente";
+    const checkIcon = (
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-emerald-800 text-[10px]">
+        ✓
+      </div>
+    );
+    const estadoBadge = (
+      <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wide", getEstadoBadgeClass(estado))}>
+        {formatEstadoLabel(estado)}
+      </Badge>
+    );
+    const dateBlock = (
+      <div
+        className={cn(
+          "flex flex-col leading-tight gap-0.5",
+          isRealizado ? "items-start text-left" : "items-end"
+        )}
+      >
+        <p className="text-xs font-semibold tracking-tight text-foreground whitespace-nowrap">
+          {formatHeaderTimestamp(evento.fecha_evento)}
+        </p>
+        {!isRealizado && !isPendiente ? (
+          <Calendar className="h-3 w-3 text-slate-500 self-end" />
+        ) : null}
+      </div>
+    );
+    const pendingIcon = (
+      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-slate-600 text-[10px]">
+        <Calendar className="h-3.5 w-3.5" />
+      </div>
+    );
+
     return (
       <div
         key={evento.id}
-        className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-sm transition hover:border-slate-300 cursor-pointer focus-within:ring-2 focus-within:ring-primary/40"
+        className={cn(
+          "flex flex-col gap-2 rounded-2xl border p-3 transition hover:border-slate-300 cursor-pointer focus-within:ring-2 focus-within:ring-primary/40",
+          getBoardCardStyle(estado)
+        )}
         onClick={goToEdit}
         onKeyDown={handleKeyDown}
         tabIndex={0}
         role="button"
       >
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <Link
-              to={`/crm/eventos/${evento.id}/show`}
-              state={{ fromTodo: true }}
-              className="text-sm font-semibold leading-tight text-foreground line-clamp-2 hover:text-primary"
-              onClick={(event) => event.stopPropagation()}
-            >
-              {evento.titulo || "Sin titulo"}
-            </Link>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{tipo}</p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wide", getEstadoBadgeClass(estado))}>
-              {formatEstadoLabel(estado)}
-            </Badge>
-            <div className="flex items-center gap-1">
-            {estado !== "2-realizado" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-emerald-600 hover:text-emerald-700"
-                onClick={(event: ReactMouseEvent) => {
-                  event.stopPropagation();
-                  requestConfirm("complete", evento);
-                }}
-                disabled={updating}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                <span className="sr-only">Marcar como realizado</span>
-                </Button>
-              ) : null}
-            {estado !== "3-cancelado" && estado !== "2-realizado" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-rose-500 hover:text-rose-600"
-                onClick={(event: ReactMouseEvent) => {
-                  event.stopPropagation();
-                  requestConfirm("cancel", evento);
-                }}
-                disabled={updating}
-              >
-                <XCircle className="h-4 w-4" />
-                <span className="sr-only">Cancelar evento</span>
-                </Button>
-              ) : null}
+          {isRealizado ? dateBlock : isPendiente ? dateBlock : estadoBadge}
+          {isRealizado ? checkIcon : isPendiente ? pendingIcon : dateBlock}
+        </div>
+        <div className="text-xs text-foreground/80 leading-tight space-y-1">
+          <p className="font-semibold text-foreground line-clamp-2">{formatEventoTitulo(evento)}</p>
+          <div className="rounded-xl bg-slate-50/80 px-2 py-1.5 space-y-0.5 text-slate-600">
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />
+              <span className="truncate text-[11px]">{getOportunidadName(evento)}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <UserRound className="h-[10px] w-[10px] text-slate-500" />
+              <span className="truncate">{getContactoName(evento)}</span>
             </div>
           </div>
         </div>
-        {evento.descripcion ? (
-          <p className="text-xs text-foreground/70 line-clamp-2 leading-snug">{evento.descripcion}</p>
-        ) : null}
-        <div className="space-y-1 rounded-xl bg-slate-50/70 px-3 py-2 text-[11px] text-slate-600">
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1 font-semibold text-slate-900">
-              <CalendarClock className="h-3.5 w-3.5 text-slate-500" />
-              {formatDueLabel(evento.fecha_evento)}
-            </span>
-            {estado !== "2-realizado" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-slate-600"
-                onClick={(event: ReactMouseEvent) => {
-                  event.stopPropagation();
-                  handleSnooze(evento, 1);
-                }}
-                disabled={updating}
-              >
-                <CalendarPlus className="h-4 w-4" />
-                <span className="sr-only">Reprogramar +1 dia</span>
-              </Button>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2 text-slate-600">
-            <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />
-            <span className="truncate text-[11px]">{getOportunidadName(evento)}</span>
-          </div>
-          <div className="flex items-center gap-2 text-slate-600">
-            <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />
-            <span className="truncate text-[11px]">{getOwnerName(evento)}</span>
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1 text-[8px] font-semibold uppercase text-slate-500">
+          {estado !== "2-realizado" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="rounded-full border-emerald-200 px-1.5 py-0 text-emerald-700 hover:bg-emerald-50 h-5 text-[8px]"
+              onClick={(event: ReactMouseEvent) => {
+                event.stopPropagation();
+                requestConfirm("complete", evento);
+              }}
+              disabled={updating}
+            >
+              Confirmar
+            </Button>
+          ) : null}
+          {estado !== "3-cancelado" && estado !== "2-realizado" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="rounded-full border-rose-200 px-1.5 py-0 text-rose-600 hover:bg-rose-50 h-5 text-[8px]"
+              onClick={(event: ReactMouseEvent) => {
+                event.stopPropagation();
+                requestConfirm("cancel", evento);
+              }}
+              disabled={updating}
+            >
+              Cancelar
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -547,9 +499,6 @@ export const CRMToDoBoard = () => {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">CRM Eventos</p>
           <h1 className="text-2xl font-semibold text-foreground">Panel To-Do</h1>
-          <p className="text-xs text-muted-foreground">
-            Organiza tus eventos pendientes con un tablero simple y accionable.
-          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" className="h-9" onClick={loadEventos} disabled={loading}>
@@ -558,31 +507,10 @@ export const CRMToDoBoard = () => {
           </Button>
           <Button asChild size="sm" className="h-9">
             <Link to="/crm/eventos/create">
-              <CalendarPlus className="mr-2 h-4 w-4" />
               Nuevo evento
             </Link>
           </Button>
         </div>
-      </div>
-
-      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-        {statItems.map((stat) => (
-          <div
-            key={stat.id}
-            className="group flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm transition hover:border-slate-300"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900/90 text-white">
-              <stat.icon className="h-5 w-5" />
-            </span>
-            <div className="flex flex-1 flex-col leading-tight">
-              <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
-                <span>{stat.label}</span>
-                <span className="font-semibold text-slate-500 group-hover:text-slate-700">{stat.helper}</span>
-              </div>
-              <p className="text-xl font-semibold text-foreground">{stat.value}</p>
-            </div>
-          </div>
-        ))}
       </div>
 
       <div className="grid gap-3 rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm md:grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)_auto] md:items-end">
@@ -655,7 +583,7 @@ export const CRMToDoBoard = () => {
                 column.accentClass
               )}
             >
-              <CardHeader className="flex flex-col gap-1 pb-3">
+              <CardHeader className="flex flex-col gap-1 pb-0">
                 <CardTitle className="flex items-center justify-between text-base font-semibold">
                   {column.title}
                   <Badge variant="outline" className="rounded-full border-slate-200 bg-white px-3 py-1 text-xs">
@@ -664,7 +592,7 @@ export const CRMToDoBoard = () => {
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">{column.subtitle}</p>
               </CardHeader>
-              <CardContent className="flex flex-1 flex-col gap-2 overflow-hidden p-4">
+              <CardContent className="flex flex-1 flex-col gap-2 overflow-hidden px-4 pb-4 pt-1">
                 {loading ? (
                   <div className="flex flex-1 flex-col gap-2">
                     {[0, 1, 2].map((item) => (
