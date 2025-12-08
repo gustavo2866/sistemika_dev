@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { useDataProvider, useNotify, useRefresh } from "ra-core";
 import { FormDialog } from "@/components/forms/form-dialog";
 import {
   Select,
@@ -72,12 +73,10 @@ type CRMEventoConfirmFormValues = {
   oportunidad_estado: string;
 };
 
-type CRMEventoConfirmDialogProps = {
-  open: boolean;
-  evento: CRMEvento | null;
-  onClose: () => void;
-  onSubmit: (values: CRMEventoConfirmFormValues) => Promise<void> | void;
-  saving: boolean;
+type CRMEventoConfirmDialogProps = {}
+
+export type CRMEventoConfirmFormDialogHandle = {
+  open: (evento: CRMEvento) => void;
 };
 
 const getAvailableEstadoOptions = (evento: CRMEvento | null) => {
@@ -88,13 +87,29 @@ const getAvailableEstadoOptions = (evento: CRMEvento | null) => {
   return CRM_OPORTUNIDAD_ESTADO_CHOICES.filter((choice) => unique.has(choice.id));
 };
 
-export const CRMEventoConfirmFormDialog = ({
-  open,
-  evento,
-  onClose,
-  onSubmit,
-  saving,
-}: CRMEventoConfirmDialogProps) => {
+export const CRMEventoConfirmFormDialog = forwardRef<CRMEventoConfirmFormDialogHandle, CRMEventoConfirmDialogProps>((
+  _props,
+  ref
+) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [evento, setEvento] = useState<CRMEvento | null>(null);
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [saving, setSaving] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    open: (selectedEvento: CRMEvento) => {
+      setEvento(selectedEvento);
+      setIsOpen(true);
+    },
+  }));
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setEvento(null);
+  };
+
   const form = useForm<CRMEventoConfirmFormValues>({
     defaultValues: {
       resultado: "",
@@ -113,21 +128,66 @@ export const CRMEventoConfirmFormDialog = ({
   const oportunidadDisponible = Boolean(evento?.oportunidad_id && estadoOptions.length > 0);
 
   const handleSubmit = form.handleSubmit(async (values) => {
-    await onSubmit(values);
+    if (!evento?.id) return;
+
+    const resultado = values.resultado.trim();
+    if (!resultado) {
+      notify("Ingresa el resultado del evento", { type: "warning" });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await dataProvider.update<CRMEvento>("crm/eventos", {
+        id: evento.id,
+        data: {
+          estado_evento: "2-realizado",
+          resultado,
+        },
+        previousData: evento,
+      });
+
+      const nuevoEstado = values.oportunidad_estado;
+      const estadoActual = evento.oportunidad?.estado;
+      if (
+        evento.oportunidad_id &&
+        nuevoEstado &&
+        nuevoEstado !== estadoActual
+      ) {
+        const fechaEstado = evento.fecha_evento ?? new Date().toISOString();
+        await dataProvider.update("crm/oportunidades", {
+          id: evento.oportunidad_id,
+          data: {
+            estado: nuevoEstado,
+            fecha_estado: fechaEstado,
+          },
+          previousData: evento.oportunidad ?? undefined,
+        });
+      }
+
+      notify("Evento confirmado correctamente", { type: "success" });
+      refresh();
+      handleClose();
+    } catch (err: any) {
+      console.error("Error al confirmar evento:", err);
+      notify(err?.message ?? "No se pudo confirmar el evento", { type: "error" });
+    } finally {
+      setSaving(false);
+    }
   });
 
   const fechaEvento = formatDateTime(evento?.fecha_evento);
 
   return (
     <FormDialog
-      open={open}
+      open={isOpen}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
+        if (!nextOpen) handleClose();
       }}
       title="Confirmar evento"
       description="Registra el resultado y actualiza el estado de la oportunidad si corresponde."
       onSubmit={handleSubmit}
-      onCancel={onClose}
+      onCancel={handleClose}
       isSubmitting={saving}
       submitLabel="Confirmar"
     >
@@ -202,7 +262,9 @@ export const CRMEventoConfirmFormDialog = ({
       </div>
     </FormDialog>
   );
-};
+});
+
+CRMEventoConfirmFormDialog.displayName = "CRMEventoConfirmFormDialog";
 
 const InfoRow = ({
   label,

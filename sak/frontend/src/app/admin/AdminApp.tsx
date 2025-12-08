@@ -197,7 +197,7 @@ import {
   EmprendimientoShow,
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
-import { CRMToDoBoard, CRMEventoListTodo } from "@/app/resources/crm-todo";
+import { CRMEventoListTodo } from "@/app/resources/crm-todo";
 
 declare const window: Window | undefined;
 
