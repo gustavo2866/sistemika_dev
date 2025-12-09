@@ -14,14 +14,20 @@ export const useCrmOwnerOptions = <
   const ownerOptions = useMemo<OwnerOption[]>(() => {
     const entries = new Map<string, OwnerOption>();
     records.forEach((record) => {
-      const id = record.asignado_a?.id ?? record.asignado_a_id;
+      // Soportar tanto asignado_a como responsable
+      const id = record.asignado_a?.id ?? record.asignado_a_id ?? 
+                (record as any).responsable?.id ?? (record as any).responsable_id;
       if (!id) return;
       const key = String(id);
       if (entries.has(key)) return;
-      const label = record.asignado_a?.nombre || `Usuario #${id}`;
+      const label = record.asignado_a?.nombre || 
+                   (record as any).responsable?.nombre ||
+                   `Usuario #${id}`;
       const avatar =
         (record.asignado_a as { avatar?: string; url_foto?: string } | undefined)?.avatar ??
         (record.asignado_a as { url_foto?: string } | undefined)?.url_foto ??
+        ((record as any).responsable as { avatar?: string; url_foto?: string } | undefined)?.avatar ??
+        ((record as any).responsable as { url_foto?: string } | undefined)?.url_foto ??
         null;
       entries.set(key, { value: key, label, avatar });
     });

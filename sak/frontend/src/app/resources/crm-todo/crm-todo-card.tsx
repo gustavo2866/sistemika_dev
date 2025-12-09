@@ -24,7 +24,7 @@ import {
   getOwnerAvatarInfo,
   type BucketKey,
   type CanonicalEstado,
-} from "./evento-helpers";
+} from "./crm-todo-helpers";
 
 // ============================================================================
 // Card Configuration (inline)

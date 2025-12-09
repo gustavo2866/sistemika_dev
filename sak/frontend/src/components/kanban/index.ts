@@ -1,7 +1,6 @@
 export * from "./card";
 export * from "./bucket";
 export * from "./filter-bar";
-export * from "./crm-evento-helpers";
 export * from "./crm-owner-options";
 export * from "./use-crm-owner-options";
 export * from "./use-crm-evento-buckets";

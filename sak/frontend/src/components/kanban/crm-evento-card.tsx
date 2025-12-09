@@ -28,7 +28,7 @@ import {
   getOwnerAvatarInfo,
   normalizeEstado,
   type BucketKey,
-} from "./crm-evento-helpers";
+} from "@/app/resources/crm-todo/evento-helpers";
 
 export interface CRMEventoCardProps {
   evento: CRMEvento;

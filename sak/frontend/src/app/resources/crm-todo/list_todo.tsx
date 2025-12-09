@@ -13,12 +13,12 @@ import { useListContext, useGetIdentity } from "ra-core";
 import type { CRMEvento } from "../crm-eventos/model";
 import { CRMEventoTodoFormDialog, type CRMEventoTodoFormDialogHandle } from "./form";
 import { CRMEventoConfirmFormDialog, type CRMEventoConfirmFormDialogHandle } from "./form_confirm";
-import { EventoCustomFilters } from "./custom-filters";
-import { CRMEventoCard } from "./crm-evento-card";
-import { KanbanBoardView, type BucketKey } from "@/components/kanban";
+import { EventoCustomFilters } from "./crm-todo-customFilters";
+import { CRMEventoCard } from "./crm-todo-card";
+import { KanbanBoardView } from "@/components/kanban";
 import { calculateEventoBucketKey, prepareMoveEventoPayload, getBucketLabel } from "./model";
 import { getNextWeekStart, formatDateRange } from "@/components/kanban/utils";
-import { normalizeEstado, getOwnerName, getOportunidadName } from "@/components/kanban/crm-evento-helpers";
+import { normalizeEstado, getOwnerName, getOportunidadName, type BucketKey } from "./crm-todo-helpers";
 
 
 // Definición de buckets
@@ -45,6 +45,47 @@ const getBuckets = () => {
     { key: "week" as BucketKey, title: "Semana", helper: formatDateRange(weekStart, weekEnd), accentClass: "from-blue-50 to-white" },
     { key: "next" as BucketKey, title: "Siguiente", helper: formatDateRange(nextWeekStart, nextWeekEnd), accentClass: "from-slate-50 to-white" },
   ];
+};
+
+// Filtro para eventos activos/todos
+const activosFilterFn = (evento: CRMEvento, customFilters: Record<string, any>) => {
+  const focusFilter = customFilters.focusFilter as "activos" | "todos";
+  const estado = normalizeEstado(evento.estado_evento);
+  
+  if (focusFilter === "activos" && (estado === "2-realizado" || estado === "3-cancelado")) {
+    // Para eventos completados/cancelados en bucket overdue, mostrar solo los de hoy
+    const bucketKey = calculateEventoBucketKey(evento);
+    if (bucketKey === "overdue") {
+      const now = new Date();
+      const fechaEstado = evento.fecha_estado ? new Date(evento.fecha_estado) : null;
+      const isSameDay = (dateA: Date, dateB: Date) =>
+        dateA.getFullYear() === dateB.getFullYear() &&
+        dateA.getMonth() === dateB.getMonth() &&
+        dateA.getDate() === dateB.getDate();
+      const fechaEstadoEsHoy = fechaEstado ? isSameDay(fechaEstado, now) : false;
+      return fechaEstadoEsHoy;
+    }
+    return false;
+  }
+  
+  return true;
+};
+
+// Filtro de búsqueda
+const searchFilterFn = (evento: CRMEvento, searchTerm: string) => {
+  return (
+    (evento.titulo ?? "").toLowerCase().includes(searchTerm) ||
+    (evento.descripcion ?? "").toLowerCase().includes(searchTerm) ||
+    getOwnerName(evento).toLowerCase().includes(searchTerm) ||
+    getOportunidadName(evento).toLowerCase().includes(searchTerm) ||
+    (evento.tipo_evento ?? "").toLowerCase().includes(searchTerm)
+  );
+};
+
+// Filtro de usuario asignado
+const ownerFilterFn = (evento: CRMEvento, ownerId: string) => {
+  const eventoOwnerId = evento.asignado_a?.id ?? evento.asignado_a_id;
+  return String(eventoOwnerId ?? "") === ownerId;
 };
 
 const filters = [
@@ -96,47 +137,6 @@ const EventoListContent = () => {
   // Definición de buckets
   const buckets = useMemo(() => getBuckets(), []);
 
-  // Filtro custom para estado activo/todos
-  const activosFilter = useCallback((evento: CRMEvento, customFilters: Record<string, any>) => {
-    const focusFilter = customFilters.focusFilter as "activos" | "todos";
-    const estado = normalizeEstado(evento.estado_evento);
-    
-    if (focusFilter === "activos" && (estado === "2-realizado" || estado === "3-cancelado")) {
-      // Para eventos completados/cancelados en bucket overdue, mostrar solo los de hoy
-      const bucketKey = calculateEventoBucketKey(evento);
-      if (bucketKey === "overdue") {
-        const now = new Date();
-        const fechaEstado = evento.fecha_estado ? new Date(evento.fecha_estado) : null;
-        const isSameDay = (dateA: Date, dateB: Date) =>
-          dateA.getFullYear() === dateB.getFullYear() &&
-          dateA.getMonth() === dateB.getMonth() &&
-          dateA.getDate() === dateB.getDate();
-        const fechaEstadoEsHoy = fechaEstado ? isSameDay(fechaEstado, now) : false;
-        return fechaEstadoEsHoy;
-      }
-      return false;
-    }
-    
-    return true;
-  }, []);
-
-  // Filtro de búsqueda
-  const searchFilter = useCallback((evento: CRMEvento, searchTerm: string) => {
-    return (
-      (evento.titulo ?? "").toLowerCase().includes(searchTerm) ||
-      (evento.descripcion ?? "").toLowerCase().includes(searchTerm) ||
-      getOwnerName(evento).toLowerCase().includes(searchTerm) ||
-      getOportunidadName(evento).toLowerCase().includes(searchTerm) ||
-      (evento.tipo_evento ?? "").toLowerCase().includes(searchTerm)
-    );
-  }, []);
-
-  // Filtro de usuario asignado
-  const ownerFilterFn = useCallback((evento: CRMEvento, ownerId: string) => {
-    const eventoOwnerId = evento.asignado_a?.id ?? evento.asignado_a_id;
-    return String(eventoOwnerId ?? "") === ownerId;
-  }, []);
-
   return (
     <>
       <KanbanBoardView<CRMEvento, BucketKey>
@@ -146,11 +146,10 @@ const EventoListContent = () => {
         onItemMove={prepareMoveEventoPayload} // Maneja el movimiento de un evento entre buckets
         resource="crm/eventos" // Recurso RA
         getMoveSuccessMessage={(evento, bucket) => `Evento movido a ${getBucketLabel(bucket)}`}
-        customFilter={activosFilter} // Filtro custom
-        searchFilter={searchFilter} // Filtro de búsqueda
+        customFilter={activosFilterFn} // Filtro custom
+        searchFilter={searchFilterFn} // Filtro de búsqueda
         ownerFilter={ownerFilterFn} // Filtro de usuario asignado
         autoSelectOwnerId={identity?.id ? String(identity.id) : undefined}
-        identity={identity}
         initialCustomState={{ focusFilter: "activos" }}
         filterConfig={{
           enableSearch: true,
