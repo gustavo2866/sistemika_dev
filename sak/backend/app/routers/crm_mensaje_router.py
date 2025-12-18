@@ -194,10 +194,11 @@ async def responder_mensaje_whatsapp(
     Responde a un mensaje de WhatsApp a través de meta-w.
     
     1. Busca el mensaje original
-    2. Obtiene datos del contacto (teléfono, nombre)
-    3. Crea registro de mensaje de salida en crm_mensajes
-    4. Llama a meta-w para enviar el mensaje
-    5. Actualiza estado según respuesta de meta-w
+    2. Crea oportunidad en estado 0-prospect si no existe
+    3. Actualiza mensaje original a estado 'recibido'
+    4. Crea registro de mensaje de salida en crm_mensajes
+    5. Llama a meta-w para enviar el mensaje
+    6. Actualiza estado según respuesta de meta-w
     
     Args:
         mensaje_id: ID del mensaje a responder
@@ -218,7 +219,46 @@ async def responder_mensaje_whatsapp(
             detail="Mensaje no tiene contacto_referencia (teléfono)"
         )
     
-    # 3. Obtener celular activo (primer celular activo)
+    # 3. Crear oportunidad si no existe
+    oportunidad_creada = False
+    if not mensaje_original.oportunidad_id and mensaje_original.contacto_id:
+        from app.models import CRMOportunidad
+        from app.crud.crm_oportunidad_crud import crm_oportunidad_crud
+        from datetime import datetime, UTC
+        
+        # Obtener responsable del contacto o del mensaje
+        responsable_id = None
+        if mensaje_original.contacto:
+            responsable_id = mensaje_original.contacto.responsable_id
+        if not responsable_id:
+            responsable_id = mensaje_original.responsable_id
+        
+        if responsable_id:
+            oportunidad_payload = {
+                "contacto_id": mensaje_original.contacto_id,
+                "estado": "0-prospect",
+                "fecha_estado": datetime.now(UTC),
+                "tipo_operacion_id": 1,  # TODO: obtener de configuración
+                "propiedad_id": 4,  # TODO: permitir NULL o solicitar al usuario
+                "descripcion": mensaje_original.contenido or "Consulta por WhatsApp",
+                "descripcion_estado": "Nueva oportunidad desde WhatsApp",
+                "responsable_id": responsable_id,
+                "activo": True,
+            }
+            oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
+            mensaje_original.oportunidad_id = oportunidad.id
+            oportunidad_creada = True
+            logger.info(f"Oportunidad {oportunidad.id} creada para mensaje {mensaje_id}")
+    
+    # 4. Actualizar estado del mensaje original a 'recibido'
+    if mensaje_original.estado in [EstadoMensaje.NUEVO.value, "descartado"]:
+        mensaje_original.estado = EstadoMensaje.RECIBIDO.value
+        logger.info(f"Mensaje {mensaje_id} actualizado a estado 'recibido'")
+    
+    session.commit()
+    session.refresh(mensaje_original)
+    
+    # 5. Obtener celular activo (primer celular activo)
     stmt = select(CRMCelular).where(CRMCelular.activo == True).limit(1)
     celular = session.exec(stmt).first()
     if not celular:
@@ -227,7 +267,7 @@ async def responder_mensaje_whatsapp(
             detail="No hay celular (canal WhatsApp) activo configurado"
         )
     
-    # 4. Crear mensaje de salida en crm_mensajes
+    # 6. Crear mensaje de salida en crm_mensajes
     mensaje_salida = CRMMensaje(
         tipo=TipoMensaje.SALIDA.value,
         canal=CanalMensaje.WHATSAPP.value,
@@ -243,7 +283,7 @@ async def responder_mensaje_whatsapp(
     session.commit()
     session.refresh(mensaje_salida)
     
-    # 5. Enviar a través de meta-w
+    # 7. Enviar a través de meta-w
     try:
         # meta-w requiere empresa_id y celular_id como UUIDs
         # Por ahora usamos meta_celular_id del celular (UUID)
@@ -274,12 +314,18 @@ async def responder_mensaje_whatsapp(
             template_fallback_language=request.template_fallback_language
         )
         
-        # 6. Actualizar mensaje con respuesta de meta-w
+        # 8. Actualizar mensaje con respuesta de meta-w
         mensaje_salida.estado_meta = resultado_metaw.get("status", "sent")
         mensaje_salida.origen_externo_id = resultado_metaw.get("meta_message_id")
         mensaje_salida.estado = EstadoMensaje.ENVIADO.value
         session.commit()
         session.refresh(mensaje_salida)
+        
+        logger.info(
+            f"Respuesta enviada: mensaje {mensaje_salida.id}, "
+            f"oportunidad_creada={oportunidad_creada}, "
+            f"meta_id={mensaje_salida.origen_externo_id}"
+        )
         
         return ResponderMensajeResponse(
             mensaje_id=mensaje_salida.id,

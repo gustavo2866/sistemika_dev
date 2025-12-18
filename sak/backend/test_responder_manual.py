@@ -1,7 +1,7 @@
 """Test manual del endpoint responder"""
 import requests
 
-url = "http://localhost:8000/crm/mensajes/5/responder"
+url = "http://localhost:8000/crm/mensajes/1/responder"
 payload = {
     "texto": "Gracias por tu consulta. Te responderemos pronto."
 }
