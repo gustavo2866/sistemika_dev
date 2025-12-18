@@ -85,17 +85,17 @@ class MetaWebhookService:
     def _find_or_create_contacto(self, numero_telefono: str) -> CRMContacto:
         """
         Busca o crea un contacto por número de teléfono.
-        Busca en el array telefonos del contacto usando operador JSON de PostgreSQL.
+        Busca en el array telefonos del contacto usando operador @> de PostgreSQL.
         """
         from sqlalchemy.dialects.postgresql import JSONB
-        from sqlalchemy import cast, func
+        from sqlalchemy import cast
+        from app.models.user import User
         
-        # Buscar contacto existente usando operador @> (contains) de PostgreSQL para JSONB
-        # crm_contactos.telefonos @> '["numero"]'::jsonb
+        # Buscar contacto existente usando operador @> (contains) de PostgreSQL
+        # crm_contactos.telefonos @> '["numero"]'
         stmt = select(CRMContacto).where(
-            func.jsonb_path_exists(
-                cast(CRMContacto.telefonos, JSONB),
-                f'$[*] ? (@ == "{numero_telefono}")'
+            cast(CRMContacto.telefonos, JSONB).op('@>')(
+                cast([numero_telefono], JSONB)
             )
         )
         contacto = self.session.exec(stmt).first()
@@ -103,14 +103,22 @@ class MetaWebhookService:
         if contacto:
             return contacto
 
+        # Obtener el primer usuario como responsable por defecto
+        usuario_default = self.session.exec(
+            select(User).limit(1)
+        ).first()
+        
+        if not usuario_default:
+            raise ValueError("No hay usuarios activos para asignar como responsable")
+
         # Crear nuevo contacto
         contacto_data = {
             "nombre_completo": f"Contacto {numero_telefono}",
             "telefonos": [numero_telefono],
-            "responsable_id": None,  # Sin responsable inicial
+            "responsable_id": usuario_default.id,
         }
         contacto = crm_contacto_crud.create(self.session, contacto_data)
-        logger.info(f"Contacto auto-creado: {contacto.id} - {numero_telefono}")
+        logger.info(f"Contacto auto-creado: {contacto.id} - {numero_telefono}, responsable: {usuario_default.id}")
         return contacto
 
     def _handle_message_received(self, value: Dict[str, Any], celular: CRMCelular) -> None:
