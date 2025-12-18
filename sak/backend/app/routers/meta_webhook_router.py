@@ -44,26 +44,31 @@ async def verify_webhook(
 
 @router.post("/", response_model=WebhookResponse)
 async def receive_webhook(
-    payload: WebhookEventPayload,
+    payload: Dict[str, Any],
     session: Session = Depends(get_session),
 ):
     """
-    Endpoint principal para recibir notificaciones de Meta WhatsApp.
+    Endpoint para recibir notificaciones de meta-w.
+    
+    Formato esperado:
+    {
+      "event_type": "message.received",
+      "timestamp": "2025-12-18T22:12:46.661309Z",
+      "mensaje": {
+        "from_phone": "5491156384310",
+        "to_phone": "+15551676015",
+        "direccion": "in",
+        "tipo": "text",
+        "texto": "...",
+        "celular": {"id": "...", "phone_number": "..."}
+      }
+    }
     
     Eventos soportados:
     - message.received: Mensaje entrante de un contacto
-    - message.sent: Mensaje enviado confirmado por Meta
-    - message.delivered: Mensaje entregado al destinatario
-    - message.read: Mensaje leído por el destinatario
-    - message.failed: Mensaje falló al enviarse
-    
-    El payload contiene:
-    - entry[].id: empresa_id de Meta (debe coincidir con settings.meta_w_empresa_id)
-    - entry[].changes[].value.metadata.phone_number_id: ID del celular en Meta
-    - entry[].changes[].value.messages: Mensajes entrantes
-    - entry[].changes[].value.statuses: Cambios de estado de mensajes
+    - message.status: Cambio de estado de un mensaje enviado
     """
-    logger.info(f"Webhook recibido: {payload.model_dump()}")
+    logger.info(f"Webhook recibido: {payload}")
     
     try:
         service = MetaWebhookService(session)
