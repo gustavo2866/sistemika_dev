@@ -28,6 +28,7 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
   // Bucket configuration
   buckets: KanbanBucketDefinition<K>[];
   getBucketKey: (item: TItem) => K;
+  maxBucketsPerPage?: number;
   
   // Drag and drop
   onItemMove?: (item: TItem, bucket: K) => any | Promise<any>;
@@ -68,6 +69,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   items,
   buckets,
   getBucketKey,
+  maxBucketsPerPage,
   onItemMove,
   resource,
   getMoveSuccessMessage,
@@ -86,6 +88,32 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   noResultsMessage,
 }: KanbanBoardViewProps<TItem, K>) => {
   const [customState, setCustomStateInternal] = React.useState(initialCustomState);
+  
+  // Persist currentPage in localStorage
+  const storageKey = resource ? `kanban-page-${resource}` : null;
+  const getInitialPage = () => {
+    if (!storageKey) return 0;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? parseInt(saved, 10) : 0;
+    } catch {
+      return 0;
+    }
+  };
+  
+  const [currentPage, setCurrentPageInternal] = React.useState(getInitialPage);
+  
+  const setCurrentPage = (value: number | ((prev: number) => number)) => {
+    setCurrentPageInternal(prev => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
   
   const setCustomState = (key: string, value: any) => {
     setCustomStateInternal(prev => ({ ...prev, [key]: value }));
@@ -153,7 +181,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     toggleCollapsedAll,
     isCardCollapsed,
     toggleCardCollapse,
-  } = useKanbanCommonState({});
+  } = useKanbanCommonState({ storageKey: resource });
 
   useEffect(() => {
     if (autoSelectOwnerId && ownerFilterValue === "todos") {
@@ -203,6 +231,54 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     return result;
   }, [filteredItems, buckets, getBucketKey]);
 
+  // Paginación de buckets
+  const { visibleBuckets, bucketNavigation, paginationFooter } = useMemo(() => {
+    if (!maxBucketsPerPage || maxBucketsPerPage >= buckets.length) {
+      return { visibleBuckets: buckets, bucketNavigation: undefined, paginationFooter: null };
+    }
+
+    const totalPages = Math.ceil((buckets.length - 1) / (maxBucketsPerPage - 1));
+    const startIndex = currentPage === 0 ? 0 : currentPage * (maxBucketsPerPage - 1);
+    const endIndex = Math.min(startIndex + maxBucketsPerPage, buckets.length);
+    const visible = buckets.slice(startIndex, endIndex);
+
+    const canPrev = currentPage > 0;
+    const canNext = currentPage < totalPages - 1;
+
+    const nav = {
+      canPrev,
+      canNext,
+      onPrev: () => setCurrentPage(p => Math.max(0, p - 1)),
+      onNext: () => setCurrentPage(p => Math.min(totalPages - 1, p + 1)),
+    };
+
+    const footer = (
+      <div className="flex items-center justify-center gap-2 pt-2 mt-2">
+        <button
+          type="button"
+          onClick={nav.onPrev}
+          disabled={!canPrev}
+          className="px-4 py-1.5 text-xs font-medium rounded-lg border-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+        >
+          ← Anterior
+        </button>
+        <div className="px-3 py-1 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg shadow-sm">
+          {currentPage + 1} / {totalPages}
+        </div>
+        <button
+          type="button"
+          onClick={nav.onNext}
+          disabled={!canNext}
+          className="px-4 py-1.5 text-xs font-medium rounded-lg border-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+        >
+          Siguiente →
+        </button>
+      </div>
+    );
+
+    return { visibleBuckets: visible, bucketNavigation: nav, paginationFooter: footer };
+  }, [buckets, maxBucketsPerPage, currentPage]);
+
   const {
     enableSearch = true,
     searchPlaceholder = "Buscar...",
@@ -236,10 +312,8 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
             <KanbanCollapseToggle
               collapsed={collapsedAll}
               onToggle={toggleCollapsedAll}
-              variant="pill"
-            >
-              {collapsedAll ? collapseToggleLabels.collapsed : collapseToggleLabels.expanded}
-            </KanbanCollapseToggle>
+              variant="icon-with-label"
+            />
           )}
         </>
       }
@@ -251,7 +325,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       filterBar={filterBar}
       isLoading={isLoading}
       loadingMessage={loadingMessage}
-      bucketDefinitions={buckets}
+      bucketDefinitions={visibleBuckets}
       bucketItems={bucketItems}
       renderCard={(item, bucketKey) => {
         const collapsed = item.id ? isCardCollapsed(item.id) : false;
@@ -267,6 +341,8 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       emptyMessage={emptyMessage}
       noResults={filteredItems.length === 0}
       noResultsMessage={noResultsMessage}
+      footer={paginationFooter}
+      bucketNavigation={bucketNavigation}
     />
   );
 };

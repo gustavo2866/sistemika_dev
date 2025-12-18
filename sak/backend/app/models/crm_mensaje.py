@@ -10,6 +10,7 @@ from .enums import EstadoMensaje, PrioridadMensaje, CanalMensaje, TipoMensaje
 if TYPE_CHECKING:
     from .crm_oportunidad import CRMOportunidad
     from .crm_contacto import CRMContacto
+    from .crm_celular import CRMCelular
 
 
 class CRMMensaje(Base, table=True):
@@ -50,8 +51,24 @@ class CRMMensaje(Base, table=True):
     oportunidad_id: Optional[int] = Field(
         default=None, foreign_key="crm_oportunidades.id", index=True
     )
+    
+    # Nuevos campos para integración Meta WhatsApp
+    estado_meta: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        index=True,
+        description="Estado según Meta: sent, delivered, read, failed"
+    )
+    celular_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_celulares.id",
+        index=True,
+        description="Celular/canal por el que se envió/recibió"
+    )
+    
     contacto: Optional["CRMContacto"] = Relationship(back_populates="mensajes")
     oportunidad: Optional["CRMOportunidad"] = Relationship(back_populates="mensajes")
+    celular: Optional["CRMCelular"] = Relationship(back_populates="mensajes")
 
     def set_estado(self, nuevo_estado: str) -> None:
         self.estado = nuevo_estado

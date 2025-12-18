@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 export interface KanbanCommonStateOptions {
   initialSearch?: string;
   initialOwnerFilter?: string;
+  storageKey?: string;
 }
 
 export interface KanbanCommonState {
@@ -19,11 +20,30 @@ export interface KanbanCommonState {
 }
 
 export const useKanbanCommonState = (
-  { initialSearch = "", initialOwnerFilter = "todos" }: KanbanCommonStateOptions = {},
+  { initialSearch = "", initialOwnerFilter = "todos", storageKey }: KanbanCommonStateOptions = {},
 ): KanbanCommonState => {
+  const getInitialCollapsed = () => {
+    if (!storageKey) return false;
+    try {
+      const saved = localStorage.getItem(`kanban-collapsed-${storageKey}`);
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  };
+  
   const [searchValue, setSearchValue] = useState(initialSearch);
   const [ownerFilter, setOwnerFilter] = useState(initialOwnerFilter);
-  const [collapsedAll, setCollapsedAll] = useState(false);
+  const [collapsedAll, setCollapsedAllInternal] = useState(getInitialCollapsed);
+  
+  const setCollapsedAll = (value: boolean) => {
+    setCollapsedAllInternal(value);
+    if (storageKey) {
+      try {
+        localStorage.setItem(`kanban-collapsed-${storageKey}`, String(value));
+      } catch {}
+    }
+  };
   const [cardCollapseOverrides, setCardCollapseOverrides] = useState<Record<string | number, boolean>>({});
 
   const normalizeId = (id: string | number | undefined | null) => (id != null ? (typeof id === "number" ? id : String(id)) : null);
@@ -61,9 +81,9 @@ export const useKanbanCommonState = (
   );
 
   const toggleCollapsedAll = useCallback(() => {
-    setCollapsedAll((prev) => !prev);
+    setCollapsedAll(!collapsedAll);
     setCardCollapseOverrides({});
-  }, []);
+  }, [collapsedAll]);
 
   return {
     searchValue,

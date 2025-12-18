@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
@@ -87,6 +88,7 @@ const OportunidadListContent = () => {
   const notify = useNotify();
   const refresh = useRefresh();
   const { identity } = useGetIdentity();
+  const navigate = useNavigate();
 
   // Obtener catálogos necesarios
   const { data: tiposEvento = [] } = useGetList("crm/catalogos/tipos-evento", {
@@ -306,8 +308,7 @@ const OportunidadListContent = () => {
         updating={false}
         onToggleCollapse={onToggleCollapse}
         onEdit={(opp) => {
-          console.log("Edit oportunidad", opp.id);
-          // TODO: Implementar diálogo de edición
+          navigate(`/crm/oportunidades/${opp.id}`);
         }}
         onAgendar={(opp) => {
           setSelectedOportunidad(opp);
@@ -356,6 +357,7 @@ const OportunidadListContent = () => {
         items={oportunidades}
         buckets={buckets}
         getBucketKey={calculateOportunidadBucketKey}
+        maxBucketsPerPage={4}
         onItemMove={prepareMoveOportunidadPayload}
         resource="crm/oportunidades"
         getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}

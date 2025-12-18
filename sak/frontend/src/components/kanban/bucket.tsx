@@ -101,7 +101,7 @@ export const KanbanBucketBody = React.forwardRef<HTMLDivElement, KanbanBucketBod
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("flex flex-1 flex-col gap-3 max-h-[380px] overflow-y-auto pr-1 rounded-2xl", className)}
+      className={cn("flex flex-col gap-3 h-[380px] overflow-y-auto pr-1 rounded-2xl", className)}
       {...props}
     />
   )

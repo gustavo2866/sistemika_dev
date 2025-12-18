@@ -65,6 +65,8 @@ from app.routers.crm import (
     crm_evento_router,
     crm_mensaje_router,
 )
+from app.routers.crm_celular_router import router as crm_celular_router
+from app.routers.meta_webhook_router import router as meta_webhook_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
 from app.api.auth import router as auth_router
@@ -171,6 +173,8 @@ app.include_router(crm_contacto_router)
 app.include_router(crm_oportunidad_router)
 app.include_router(crm_evento_router)
 app.include_router(crm_mensaje_router)
+app.include_router(crm_celular_router)
+app.include_router(meta_webhook_router, prefix="/api")
 app.include_router(emprendimiento_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)

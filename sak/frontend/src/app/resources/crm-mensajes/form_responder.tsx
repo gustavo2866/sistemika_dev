@@ -286,3 +286,6 @@ export const CRMMensajeReplyDialog = ({ open, onOpenChange, mensaje, onSuccess }
     </Dialog>
   );
 };
+
+// Page component wrapper (alias for routing)
+export const CRMMensajeReply = CRMMensajeReplyDialog;

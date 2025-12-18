@@ -26,6 +26,8 @@ from .crm_oportunidad import CRMOportunidad
 from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
 from .crm_evento import CRMEvento
 from .crm_mensaje import CRMMensaje
+from .crm_celular import CRMCelular
+from .webhook_log import WebhookLog
 from .emprendimiento import Emprendimiento
 from .articulo import Articulo
 from .factura import Factura
@@ -84,6 +86,8 @@ __all__ = [
     "CRMOportunidadLogEstado",
     "CRMEvento",
     "CRMMensaje",
+    "CRMCelular",
+    "WebhookLog",
     "Emprendimiento",
     "Articulo", 
     "Factura",

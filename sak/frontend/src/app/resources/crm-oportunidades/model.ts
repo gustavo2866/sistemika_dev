@@ -54,6 +54,7 @@ export const CRM_OPORTUNIDAD_VALIDATIONS = {
 
 export type CRMOportunidad = {
   id: number;
+  created_at: string;
   titulo?: string | null;
   contacto_id: number;
   tipo_operacion_id: number;
@@ -72,6 +73,7 @@ export type CRMOportunidad = {
   responsable_id: number;
   descripcion_estado?: string | null;
   cotizacion_aplicada?: number | null;
+  activo?: boolean;
 };
 
 export type CRMOportunidadFormValues = {
@@ -93,6 +95,7 @@ export type CRMOportunidadFormValues = {
   responsable_id: number | null;
   descripcion_estado?: string | null;
   cotizacion_aplicada?: number | null;
+  activo?: boolean;
 };
 
 export const CRM_OPORTUNIDAD_DEFAULTS: CRMOportunidadFormValues = {

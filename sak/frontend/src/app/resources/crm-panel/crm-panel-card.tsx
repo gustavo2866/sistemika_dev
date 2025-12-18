@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Check, X, FileText, ChevronRight, Building2, User } from "lucide-react";
+import { Calendar, Check, X, FileText, ChevronRight, Building2, User, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CRMOportunidad, CRMOportunidadEstado } from "../crm-oportunidades/model";
@@ -18,7 +18,7 @@ import {
   getPropiedadName,
   formatMonto,
   formatEstadoLabel,
-  formatFechaCierre,
+  formatCreatedDate,
   getEstadoBadgeClass,
   getResponsableAvatarInfo,
   type BucketKey,
@@ -56,7 +56,7 @@ const createLostIcon = () => (
 );
 
 const createEstadoBadge = (estado: CRMOportunidadEstado) => (
-  <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wide", getEstadoBadgeClass(estado))}>
+  <Badge variant="outline" className={cn("text-[9px] font-semibold uppercase tracking-wide", getEstadoBadgeClass(estado))}>
     {formatEstadoLabel(estado)}
   </Badge>
 );
@@ -67,38 +67,20 @@ const createResponsableBlock = (
   isPerdida: boolean
 ) => {
   const { name: responsableName, avatarUrl, initials } = getResponsableAvatarInfo(oportunidad);
+  const contactoName = getContactoName(oportunidad);
+  const truncatedContacto = contactoName.length > 20 ? contactoName.substring(0, 20) + '...' : contactoName;
   
-  const dateInfo = oportunidad.fecha_cierre_estimada ? (
-    <div
-      className={cn(
-        "flex flex-col leading-tight gap-0.5",
-        isGanada || isPerdida ? "items-start text-left" : "items-start text-left"
-      )}
-    >
-      <p className="text-xs font-semibold tracking-tight text-foreground whitespace-nowrap">
-        {formatFechaCierre(oportunidad.fecha_cierre_estimada)}
-      </p>
-      {!isGanada && !isPerdida && (
-        <Calendar className="h-3 w-3 text-slate-500 self-start" />
-      )}
-    </div>
-  ) : (
-    <div className="text-xs text-slate-500">Sin fecha</div>
-  );
-
-  const avatarNode = (
-    <KanbanAvatar src={avatarUrl} alt={responsableName} fallback={initials} className="border-white/70 shadow-sm" />
-  );
-
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2",
-        "justify-start"
-      )}
-    >
-      {avatarNode}
-      {dateInfo}
+    <div className="flex items-start gap-2">
+      <KanbanAvatar src={avatarUrl} alt={responsableName} fallback={initials} className="border-white/70 shadow-sm" />
+      <div className="flex flex-col gap-0">
+        <span className="text-xs text-slate-700 font-medium" title={contactoName}>
+          {truncatedContacto}
+        </span>
+        <span className="text-[10px] text-slate-600">
+          {formatCreatedDate(oportunidad.created_at)}
+        </span>
+      </div>
     </div>
   );
 };
@@ -181,7 +163,16 @@ const getCardConfig = (
     },
     "0-prospect": {
       headerLeft: responsableBlock,
-      headerRight: estadoBadge,
+      headerRight: (
+        handlers.onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
+          >
+            <Pencil className="h-3 w-3 text-slate-500" />
+          </button>
+        )
+      ),
       actions: [
         handlers.onAgendar && createAgendarAction(oportunidad, handlers.onAgendar, updating),
         handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
@@ -189,7 +180,16 @@ const getCardConfig = (
     },
     "1-abierta": {
       headerLeft: responsableBlock,
-      headerRight: estadoBadge,
+      headerRight: (
+        handlers.onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
+          >
+            <Pencil className="h-3 w-3 text-slate-500" />
+          </button>
+        )
+      ),
       actions: [
         handlers.onAgendar && createAgendarAction(oportunidad, handlers.onAgendar, updating),
         handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
@@ -197,7 +197,16 @@ const getCardConfig = (
     },
     "2-visita": {
       headerLeft: responsableBlock,
-      headerRight: estadoBadge,
+      headerRight: (
+        handlers.onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
+          >
+            <Pencil className="h-3 w-3 text-slate-500" />
+          </button>
+        )
+      ),
       actions: [
         handlers.onCotizar && createCotizarAction(oportunidad, handlers.onCotizar, updating),
         handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
@@ -205,7 +214,16 @@ const getCardConfig = (
     },
     "3-cotiza": {
       headerLeft: responsableBlock,
-      headerRight: estadoBadge,
+      headerRight: (
+        handlers.onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
+          >
+            <Pencil className="h-3 w-3 text-slate-500" />
+          </button>
+        )
+      ),
       actions: [
         handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating),
         handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
@@ -213,7 +231,16 @@ const getCardConfig = (
     },
     "4-reserva": {
       headerLeft: responsableBlock,
-      headerRight: estadoBadge,
+      headerRight: (
+        handlers.onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
+          >
+            <Pencil className="h-3 w-3 text-slate-500" />
+          </button>
+        )
+      ),
       actions: [
         handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating),
       ].filter(Boolean) as KanbanCardAction[],
@@ -292,6 +319,10 @@ export const CRMOportunidadKanbanCard = ({
     </KanbanMeta>
   );
 
+  const isInactive = oportunidad.activo === false;
+  const fullTitle = formatOportunidadTitulo(oportunidad);
+  const truncatedTitle = fullTitle.length > 40 ? fullTitle.substring(0, 40) + '...' : fullTitle;
+
   return (
     <KanbanCardWithCollapse
       id={oportunidad.id}
@@ -301,10 +332,14 @@ export const CRMOportunidadKanbanCard = ({
         left: config.headerLeft,
         right: config.headerRight,
       }}
-      title={formatOportunidadTitulo(oportunidad)}
+      title={<span title={fullTitle}>{truncatedTitle}</span>}
       body={body}
       actions={config.actions}
-      className={getCardStyle(estado)}
+      className={cn(
+        getCardStyle(estado),
+        isInactive && "opacity-50 saturate-50"
+      )}
+      draggable={!isInactive}
     />
   );
 };

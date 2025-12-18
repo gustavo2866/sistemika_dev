@@ -101,6 +101,15 @@ export const formatFechaCierre = (fecha?: string | null): string => {
   });
 };
 
+// Formatear fecha de creación en formato dd/mm/aaaa
+export const formatCreatedDate = (fecha: string): string => {
+  const date = new Date(fecha);
+  const day = date.getDate().toString().padStart(2, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 // Estilo de tarjeta según estado
 export const getCardStyle = (estado: CRMOportunidadEstado): string => {
   const baseClasses = "transition-all hover:shadow-md";

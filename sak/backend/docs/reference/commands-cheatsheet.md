@@ -76,7 +76,7 @@ pip show nombre-paquete
 uvicorn app.main:app --reload
 
 # Puerto personalizado
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8000
 
 # Host 0.0.0.0 (accesible en red)
 uvicorn app.main:app --reload --host 0.0.0.0

@@ -64,17 +64,7 @@ export const LoginPage = (props: { redirectTo?: string }) => {
             >
               <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
             </svg>
-            Acme Inc
-          </div>
-          <div className="relative z-20 mt-auto">
-            <blockquote className="space-y-2">
-              <p className="text-lg">
-                &ldquo;Shadcn Admin Kit has allowed us to quickly create and
-                evolve a powerful tool that otherwise would have taken months of
-                time and effort to develop.&rdquo;
-              </p>
-              <footer className="text-sm">John Doe</footer>
-            </blockquote>
+            WCL
           </div>
         </div>
         <div className="lg:p-8">

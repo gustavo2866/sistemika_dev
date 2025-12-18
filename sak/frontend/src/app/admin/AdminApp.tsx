@@ -211,7 +211,7 @@ const AdminApp = () => {
       requireAuth
       dataProvider={dataProvider as DataProvider}
       authProvider={authProvider}
-      title="Admin Panel"
+      title="WCL"
     >
       <Resource
         name="users"
