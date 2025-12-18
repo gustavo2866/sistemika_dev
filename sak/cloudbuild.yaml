@@ -1,0 +1,23 @@
+steps:
+  - name: 'gcr.io/k8s-skaffold/pack'
+    entrypoint: 'pack'
+    args:
+      - 'build'
+      - '--builder=gcr.io/buildpacks/builder:v1'
+      - '--publish'
+      - 'gcr.io/$PROJECT_ID/meta-w-webhook:$COMMIT_SHA'
+      - '--path=sak/backend'
+      
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'meta-w-webhook'
+      - '--image=gcr.io/$PROJECT_ID/meta-w-webhook:$COMMIT_SHA'
+      - '--region=southamerica-east1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+images:
+  - 'gcr.io/$PROJECT_ID/meta-w-webhook:$COMMIT_SHA'
