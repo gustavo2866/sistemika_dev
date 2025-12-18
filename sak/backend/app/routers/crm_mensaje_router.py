@@ -5,12 +5,16 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlmodel import Session, select
+import httpx
 
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
-from app.models import CRMMensaje
+from app.models import CRMMensaje, CRMCelular
+from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
 from app.services.crm_mensaje_service import crm_mensaje_service
+from app.services.metaw_client import metaw_client
+from app.schemas.crm_mensaje_responder import ResponderMensajeRequest, ResponderMensajeResponse
 
 
 router = create_generic_router(
@@ -180,7 +184,146 @@ def crear_oportunidad_desde_mensaje(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/{mensaje_id}/responder")
+@router.post("/{mensaje_id}/responder", response_model=ResponderMensajeResponse)
+async def responder_mensaje_whatsapp(
+    mensaje_id: int,
+    request: ResponderMensajeRequest,
+    session: Session = Depends(get_session),
+):
+    """
+    Responde a un mensaje de WhatsApp a través de meta-w.
+    
+    1. Busca el mensaje original
+    2. Obtiene datos del contacto (teléfono, nombre)
+    3. Crea registro de mensaje de salida en crm_mensajes
+    4. Llama a meta-w para enviar el mensaje
+    5. Actualiza estado según respuesta de meta-w
+    
+    Args:
+        mensaje_id: ID del mensaje a responder
+        request: Datos de la respuesta (texto, template_fallback)
+        
+    Returns:
+        ResponderMensajeResponse con ID del mensaje creado y estado
+    """
+    # 1. Buscar mensaje original
+    mensaje_original = session.get(CRMMensaje, mensaje_id)
+    if not mensaje_original:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    
+    # 2. Validar que tenga contacto y referencia (teléfono)
+    if not mensaje_original.contacto_referencia:
+        raise HTTPException(
+            status_code=400,
+            detail="Mensaje no tiene contacto_referencia (teléfono)"
+        )
+    
+    # 3. Obtener celular activo (primer celular activo)
+    stmt = select(CRMCelular).where(CRMCelular.activo == True).limit(1)
+    celular = session.exec(stmt).first()
+    if not celular:
+        raise HTTPException(
+            status_code=404,
+            detail="No hay celular (canal WhatsApp) activo configurado"
+        )
+    
+    # 4. Crear mensaje de salida en crm_mensajes
+    mensaje_salida = CRMMensaje(
+        tipo=TipoMensaje.SALIDA.value,
+        canal=CanalMensaje.WHATSAPP.value,
+        contacto_id=mensaje_original.contacto_id,
+        contacto_referencia=mensaje_original.contacto_referencia,
+        oportunidad_id=mensaje_original.oportunidad_id,
+        estado=EstadoMensaje.PENDIENTE.value,
+        contenido=request.texto,
+        celular_id=celular.id,
+        estado_meta="pending"
+    )
+    session.add(mensaje_salida)
+    session.commit()
+    session.refresh(mensaje_salida)
+    
+    # 5. Enviar a través de meta-w
+    try:
+        # meta-w requiere empresa_id y celular_id como UUIDs
+        # Por ahora usamos meta_celular_id del celular (UUID)
+        if not celular.meta_celular_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Celular {celular.id} no tiene meta_celular_id configurado"
+            )
+        
+        # Necesitamos empresa_id - por ahora hardcodeado (TODO: obtener de configuración)
+        EMPRESA_ID = "692d787d-06c4-432e-a94e-cf0686e593eb"
+        
+        # Limpiar teléfono (remover + si existe)
+        telefono_limpio = mensaje_original.contacto_referencia.replace("+", "")
+        
+        # Obtener nombre del contacto si existe
+        nombre_contacto = None
+        if mensaje_original.contacto:
+            nombre_contacto = mensaje_original.contacto.nombre
+        
+        resultado_metaw = await metaw_client.enviar_mensaje(
+            empresa_id=EMPRESA_ID,
+            celular_id=celular.meta_celular_id,
+            telefono_destino=telefono_limpio,
+            texto=request.texto,
+            nombre_contacto=nombre_contacto,
+            template_fallback_name=request.template_fallback_name,
+            template_fallback_language=request.template_fallback_language
+        )
+        
+        # 6. Actualizar mensaje con respuesta de meta-w
+        mensaje_salida.estado_meta = resultado_metaw.get("status", "sent")
+        mensaje_salida.origen_externo_id = resultado_metaw.get("meta_message_id")
+        mensaje_salida.estado = EstadoMensaje.ENVIADO.value
+        session.commit()
+        session.refresh(mensaje_salida)
+        
+        return ResponderMensajeResponse(
+            mensaje_id=mensaje_salida.id,
+            status=mensaje_salida.estado_meta,
+            meta_message_id=mensaje_salida.origen_externo_id
+        )
+        
+    except httpx.HTTPStatusError as e:
+        # Error de meta-w
+        error_msg = f"Error meta-w: {e.response.status_code} - {e.response.text}"
+        logger.error(error_msg)
+        
+        mensaje_salida.estado = EstadoMensaje.ERROR.value
+        mensaje_salida.estado_meta = "failed"
+        mensaje_salida.metadata_json = {
+            "error": error_msg,
+            "error_code": e.response.status_code
+        }
+        session.commit()
+        
+        return ResponderMensajeResponse(
+            mensaje_id=mensaje_salida.id,
+            status="failed",
+            error_message=error_msg
+        )
+        
+    except Exception as e:
+        # Error general
+        error_msg = f"Error al enviar mensaje: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        
+        mensaje_salida.estado = EstadoMensaje.ERROR.value
+        mensaje_salida.estado_meta = "failed"
+        mensaje_salida.metadata_json = {"error": error_msg}
+        session.commit()
+        
+        return ResponderMensajeResponse(
+            mensaje_id=mensaje_salida.id,
+            status="failed",
+            error_message=error_msg
+        )
+
+
+@router.post("/{mensaje_id}/responder-legacy")
 def responder_mensaje(
     mensaje_id: int,
     payload: dict = Body(...),
