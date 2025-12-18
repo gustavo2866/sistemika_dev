@@ -234,7 +234,7 @@ async def responder_mensaje_whatsapp(
         contacto_id=mensaje_original.contacto_id,
         contacto_referencia=mensaje_original.contacto_referencia,
         oportunidad_id=mensaje_original.oportunidad_id,
-        estado=EstadoMensaje.PENDIENTE.value,
+        estado=EstadoMensaje.PENDIENTE_ENVIO.value,
         contenido=request.texto,
         celular_id=celular.id,
         estado_meta="pending"
@@ -262,7 +262,7 @@ async def responder_mensaje_whatsapp(
         # Obtener nombre del contacto si existe
         nombre_contacto = None
         if mensaje_original.contacto:
-            nombre_contacto = mensaje_original.contacto.nombre
+            nombre_contacto = mensaje_original.contacto.nombre_completo
         
         resultado_metaw = await metaw_client.enviar_mensaje(
             empresa_id=EMPRESA_ID,
@@ -292,7 +292,7 @@ async def responder_mensaje_whatsapp(
         error_msg = f"Error meta-w: {e.response.status_code} - {e.response.text}"
         logger.error(error_msg)
         
-        mensaje_salida.estado = EstadoMensaje.ERROR.value
+        mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
         mensaje_salida.estado_meta = "failed"
         mensaje_salida.metadata_json = {
             "error": error_msg,
@@ -311,7 +311,7 @@ async def responder_mensaje_whatsapp(
         error_msg = f"Error al enviar mensaje: {str(e)}"
         logger.error(error_msg, exc_info=True)
         
-        mensaje_salida.estado = EstadoMensaje.ERROR.value
+        mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
         mensaje_salida.estado_meta = "failed"
         mensaje_salida.metadata_json = {"error": error_msg}
         session.commit()
