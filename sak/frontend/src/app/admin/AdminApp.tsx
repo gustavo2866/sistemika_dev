@@ -103,7 +103,7 @@ import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
 import DashboardCrmList from "@/app/resources/dashboard-crm/list";
 import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
-import { VacanciasList, VacanciasShow } from "@/app/resources/vacancias";
+import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
 import {
   NominaList,
   NominaCreate,
@@ -288,8 +288,8 @@ const AdminApp = () => {
       />
       <Resource
         name="vacancias"
-        list={VacanciasList}
-        show={VacanciasShow}
+        list={VacanciaList}
+        show={VacanciaShow}
         recordRepresentation="id"
         icon={AlertTriangle}
         options={{ label: "Vacancias" }}

@@ -90,3 +90,6 @@ const CicloBadge = () => {
     </Badge>
   );
 };
+
+// Backwards compat export to match previous naming convention
+export { VacanciaList as VacanciasList };

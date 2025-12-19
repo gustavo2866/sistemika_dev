@@ -370,24 +370,8 @@ export const ActividadesPanel = ({
       : `${ACTIVIDADES_API_BASE}/crm/mensajes/acciones/enviar`;
 
     const payload: Record<string, unknown> = {
-      asunto: subjectValue,
-      contenido: trimmedContent,
+      texto: trimmedContent,
     };
-
-    // Siempre enviar responsable_id del usuario autenticado cuando sea posible
-    if (identity?.id) {
-      payload.responsable_id = identity.id;
-    }
-
-    if (mensajeContextId) {
-      payload.contacto_nombre = trimmedNombre;
-    } else if (oportunidadContextId) {
-      payload.oportunidad_id = oportunidadContextId;
-      payload.contacto_id = contactoContextId;
-      if (!contactoContextId) {
-        payload.contacto_nombre = trimmedNombre;
-      }
-    }
 
     setRespuestaLoading(true);
     try {

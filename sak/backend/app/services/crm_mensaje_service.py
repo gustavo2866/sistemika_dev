@@ -199,6 +199,7 @@ class CRMMensajeService:
             "tipo_operacion_id": tipo_operacion_id,
             "emprendimiento_id": payload.get("emprendimiento_id"),
             "responsable_id": responsable_id,
+            "titulo": nombre_oportunidad,
             "descripcion_estado": nombre_oportunidad,
             "descripcion": payload.get("descripcion"),
             "propiedad_id": payload.get("propiedad_id"),
@@ -416,13 +417,15 @@ class CRMMensajeService:
                 raise ValueError("tipo_operacion_id es inválido")
 
             # Crear oportunidad en estado 0-prospect
+            titulo_oportunidad = mensaje.asunto or "Nueva oportunidad"
             oportunidad_payload = {
                 "contacto_id": contacto_id,
                 "estado": "0-prospect",
                 "fecha_estado": datetime.now(UTC),
                 "tipo_operacion_id": tipo_operacion_id,
+                "titulo": titulo_oportunidad,
                 "descripcion": mensaje.contenido or "Consulta inicial",
-                "descripcion_estado": mensaje.asunto or "Nueva oportunidad",
+                "descripcion_estado": titulo_oportunidad,
                 "responsable_id": responsable_id,
                 "activo": True,
             }
@@ -617,10 +620,12 @@ class CRMMensajeService:
         oportunidad_id = mensaje.oportunidad_id
         oportunidad_creada = False
         if oportunidad_id is None:
+            titulo_oportunidad = titulo or mensaje.asunto or f"Seguimiento mensaje #{mensaje.id}"
             descripcion_estado = titulo or mensaje.asunto or f"Seguimiento mensaje #{mensaje.id}"
             oportunidad_payload: Dict[str, Any] = {
                 "contacto_id": contacto_id,
                 "responsable_id": responsable_id,
+                "titulo": titulo_oportunidad,
                 "estado": EstadoOportunidad.PROSPECT.value,
                 "fecha_estado": datetime.now(UTC),
                 "descripcion_estado": descripcion_estado,
@@ -631,14 +636,28 @@ class CRMMensajeService:
             oportunidad_id = oportunidad.id
             oportunidad_creada = True
 
+        tipo_catalogo_codigo = payload.get("tipo_evento_codigo") or tipo_evento or "nota"
+        motivo_catalogo_codigo = payload.get("motivo_evento_codigo") or "general"
+        tipo_catalogo_id = self._obtener_catalogo_id(
+            session, CRMTipoEvento, tipo_catalogo_codigo, "tipos de evento"
+        )
+        motivo_catalogo_id = self._obtener_catalogo_id(
+            session, CRMMotivoEvento, motivo_catalogo_codigo, "motivos de evento"
+        )
+
+        descripcion_evento = descripcion or mensaje.contenido or titulo or "Actividad programada"
+
         evento = CRMEvento(
             oportunidad_id=oportunidad_id,
+            contacto_id=contacto_id,
+            tipo_id=tipo_catalogo_id,
+            motivo_id=motivo_catalogo_id,
             titulo=titulo,
             tipo_evento=tipo_evento,
             fecha_evento=fecha_evento_dt,
             estado_evento=estado_evento,
             asignado_a_id=asignado_a_id_int,
-            descripcion=descripcion,
+            descripcion=descripcion_evento,
         )
 
         mensaje.contacto_id = contacto_id

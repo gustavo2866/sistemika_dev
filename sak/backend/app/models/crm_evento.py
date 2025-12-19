@@ -6,10 +6,12 @@ from sqlmodel import Field, Relationship
 
 from .base import Base, current_utc_time
 from .enums import EstadoEvento, TipoEvento
+from .crm_catalogos import CRMTipoEvento, CRMMotivoEvento
 
 if TYPE_CHECKING:
     from .crm_oportunidad import CRMOportunidad
     from .user import User
+    from .crm_contacto import CRMContacto
 
 
 class CRMEvento(Base, table=True):
@@ -22,16 +24,36 @@ class CRMEvento(Base, table=True):
     __tablename__ = "crm_eventos"
     __searchable_fields__ = ["titulo", "resultado"]
     __expanded_list_relations__ = {"asignado_a", "oportunidad"}
-    __auto_include_relations__ = ["asignado_a", "oportunidad", "oportunidad.contacto"]
-    
+    __auto_include_relations__ = [
+        "asignado_a",
+        "oportunidad",
+        "oportunidad.contacto",
+        "contacto",
+        "tipo_catalogo",
+        "motivo_catalogo",
+    ]
+
     # Campos obligatorios
     oportunidad_id: int = Field(
-        foreign_key="crm_oportunidades.id", 
+        foreign_key="crm_oportunidades.id",
         index=True,
         description="Oportunidad a la que pertenece el evento"
     )
+    contacto_id: int = Field(
+        foreign_key="crm_contactos.id",
+        index=True,
+        description="Contacto asociado al evento"
+    )
+    tipo_id: int = Field(
+        foreign_key="crm_tipos_evento.id",
+        description="Tipo histórico del evento (catálogo)"
+    )
+    motivo_id: int = Field(
+        foreign_key="crm_motivos_evento.id",
+        description="Motivo histórico del evento (catálogo)"
+    )
     titulo: str = Field(
-        max_length=255, 
+        max_length=255,
         description="Título/resumen breve del evento"
     )
     tipo_evento: str = Field(
@@ -72,6 +94,9 @@ class CRMEvento(Base, table=True):
     
     # Relaciones
     oportunidad: "CRMOportunidad" = Relationship(back_populates="eventos")
+    contacto: "CRMContacto" = Relationship()
+    tipo_catalogo: CRMTipoEvento = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    motivo_catalogo: CRMMotivoEvento = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     asignado_a: Optional["User"] = Relationship()
     
     def set_estado(self, nuevo_estado: str) -> None:

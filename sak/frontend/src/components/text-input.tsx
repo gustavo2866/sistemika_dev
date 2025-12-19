@@ -30,6 +30,7 @@ export const TextInput = (props: TextInputProps) => {
     validate: _validateProp,
     format: _formatProp,
     isRequired: _isRequired,
+    defaultValue: _defaultValue,
     ...rest
   } = props;
   const { id, field } = useInput(props);

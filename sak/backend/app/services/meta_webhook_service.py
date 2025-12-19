@@ -9,7 +9,7 @@ import logging
 from sqlmodel import Session, select
 from fastapi import HTTPException
 
-from app.models import CRMMensaje, CRMCelular, CRMContacto, WebhookLog
+from app.models import CRMMensaje, CRMCelular, CRMContacto, WebhookLog, CRMOportunidad
 from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
 from app.schemas.metaw_webhook import MetaWWebhookPayload
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -134,7 +134,13 @@ class MetaWebhookService:
                     elif msg.tipo == "document":
                         contenido = f"[Documento: {msg.filename or 'archivo'}]"
                 
-                # Crear CRMMensaje
+                # Buscar oportunidad activa del contacto
+                stmt_oport = select(CRMOportunidad).where(
+                    CRMOportunidad.contacto_id == contacto.id,
+                    CRMOportunidad.activo == True
+                )
+                oportunidad = self.session.exec(stmt_oport).first()
+
                 mensaje_data = {
                     "tipo": TipoMensaje.ENTRADA.value,
                     "canal": CanalMensaje.WHATSAPP.value,
@@ -152,9 +158,12 @@ class MetaWebhookService:
                         "metaw_id": str(msg.id),
                     }
                 }
-                
+                # Si hay oportunidad activa, asociarla al mensaje
+                if oportunidad:
+                    mensaje_data["oportunidad_id"] = oportunidad.id
+
                 crm_mensaje = crm_mensaje_crud.create(self.session, mensaje_data)
-                logger.info(f"Mensaje entrante creado: {crm_mensaje.id} de contacto {contacto.id}")
+                logger.info(f"Mensaje entrante creado: {crm_mensaje.id} de contacto {contacto.id} (oportunidad: {oportunidad.id if oportunidad else 'ninguna'})")
             
             elif msg.direccion == "out":
                 # Es un mensaje saliente, actualizar estado

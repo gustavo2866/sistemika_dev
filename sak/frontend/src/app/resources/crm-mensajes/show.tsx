@@ -172,9 +172,7 @@ const CRMMensajeMinimalView = () => {
     setReplyLoading(true);
     try {
       const payloadToSend = {
-        asunto: replySubject || ensureReplySubject(record.asunto),
-        contenido: replyContent,
-        contacto_nombre: contactoNombre,
+        texto: replyContent,
       };
       
       console.log("Payload a enviar:", payloadToSend);
@@ -231,9 +229,7 @@ const CRMMensajeMinimalView = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          asunto: respuestaInlineSubject || ensureReplySubject(record.asunto),
-          contenido: respuestaInlineContent,
-          contacto_nombre: contactoNombreInline,
+          texto: respuestaInlineContent,
         }),
       });
       

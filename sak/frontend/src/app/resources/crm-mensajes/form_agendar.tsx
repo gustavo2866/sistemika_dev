@@ -9,6 +9,12 @@ import { EVENT_TYPE_CHOICES, DEFAULT_EVENT_STATE, getDefaultDateTime } from "./m
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+const getAuthHeaders = () => {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 interface ScheduleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -209,7 +215,7 @@ export const ScheduleDialog = ({ open, onOpenChange, mensaje, onSuccess }: Sched
     try {
       const response = await fetch(`${API_URL}/crm/mensajes/${mensaje.id}/agendar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
 

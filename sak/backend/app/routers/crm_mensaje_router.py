@@ -240,6 +240,7 @@ async def responder_mensaje_whatsapp(
                 "fecha_estado": datetime.now(UTC),
                 "tipo_operacion_id": 1,  # TODO: obtener de configuración
                 "propiedad_id": 4,  # TODO: permitir NULL o solicitar al usuario
+                "titulo": "Nueva oportunidad desde WhatsApp",
                 "descripcion": mensaje_original.contenido or "Consulta por WhatsApp",
                 "descripcion_estado": "Nueva oportunidad desde WhatsApp",
                 "responsable_id": responsable_id,

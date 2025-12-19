@@ -121,21 +121,8 @@ export const CRMMensajeReplyDialog = ({ open, onOpenChange, mensaje, onSuccess }
     try {
       const endpoint = `${API_URL}/crm/mensajes/${mensaje.id}/responder`;
       const payload: Record<string, unknown> = {
-        asunto: subject || ensureReplySubject(mensaje.asunto),
-        contenido: trimmedContent,
+        texto: trimmedContent,
       };
-
-      if (!mensaje.contacto_id) {
-        payload.contacto_nombre = trimmedNombre;
-      }
-      if (!mensaje.oportunidad_id && tipoOperacionId) {
-        payload.tipo_operacion_id = Number(tipoOperacionId);
-      }
-
-      const responsableId = mensaje.responsable_id ?? identity?.id;
-      if (responsableId) {
-        payload.responsable_id = responsableId;
-      }
 
       const response = await fetch(endpoint, {
         method: "POST",
