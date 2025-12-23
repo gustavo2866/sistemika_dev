@@ -11,6 +11,7 @@ export interface KanbanCollapseToggleProps {
   className?: string;
   children?: React.ReactNode;
   label?: string;
+  stopPropagation?: boolean;
 }
 
 export const KanbanCollapseToggle = ({
@@ -20,6 +21,7 @@ export const KanbanCollapseToggle = ({
   className,
   children,
   label,
+  stopPropagation = false,
 }: KanbanCollapseToggleProps) => {
   const computedLabel = label ?? (collapsed ? "Expandir tarjetas" : "Contraer tarjetas");
   const baseClass =
@@ -30,10 +32,17 @@ export const KanbanCollapseToggle = ({
       : "";
 
   if (variant === "icon-with-label") {
+    const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (stopPropagation) {
+        event.stopPropagation();
+      }
+      onToggle();
+    };
+
     return (
       <button
         type="button"
-        onClick={onToggle}
+        onClick={handleClick}
         aria-label={computedLabel}
         className={cn(
           "inline-flex flex-col items-center justify-center gap-0.5 transition hover:opacity-80",
@@ -50,10 +59,17 @@ export const KanbanCollapseToggle = ({
     );
   }
 
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (stopPropagation) {
+      event.stopPropagation();
+    }
+    onToggle();
+  };
+
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={handleClick}
       aria-label={computedLabel}
       title={computedLabel}
       className={cn(

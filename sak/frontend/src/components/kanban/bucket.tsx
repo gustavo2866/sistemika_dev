@@ -4,6 +4,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
+import { KanbanCollapseToggle } from "./collapse-toggle";
+import type { KanbanCollapseToggleProps } from "./collapse-toggle";
 
 export interface KanbanBucketProps extends React.HTMLAttributes<HTMLDivElement> {
   accentClass?: string;
@@ -33,6 +35,14 @@ export interface KanbanBucketHeaderProps extends React.HTMLAttributes<HTMLDivEle
   showNextControl?: boolean;
   onPrev?: () => void;
   onNext?: () => void;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  collapseToggleVariant?: KanbanCollapseToggleProps["variant"];
+  collapseToggleLabel?: string;
+  collapseToggleClassName?: string;
+  collapseToggleContent?: React.ReactNode;
+  collapseToggleStopPropagation?: boolean;
 }
 
 export const KanbanBucketHeader = ({
@@ -44,6 +54,14 @@ export const KanbanBucketHeader = ({
   showNextControl,
   onPrev,
   onNext,
+  collapsible,
+  collapsed,
+  onToggleCollapse,
+  collapseToggleVariant,
+  collapseToggleLabel,
+  collapseToggleClassName,
+  collapseToggleContent,
+  collapseToggleStopPropagation,
   className,
   children,
   ...props
@@ -70,6 +88,18 @@ export const KanbanBucketHeader = ({
     </div>
     <div className="flex items-center gap-1.5">
       {children ?? <KanbanBucketCounter value={count ?? 0} />}
+      {collapsible && onToggleCollapse ? (
+        <KanbanCollapseToggle
+          collapsed={Boolean(collapsed)}
+          onToggle={onToggleCollapse}
+          variant={collapseToggleVariant}
+          label={collapseToggleLabel}
+          className={collapseToggleClassName}
+          stopPropagation={collapseToggleStopPropagation}
+        >
+          {collapseToggleContent}
+        </KanbanCollapseToggle>
+      ) : null}
       {showNextControl ? (
         <button
           type="button"

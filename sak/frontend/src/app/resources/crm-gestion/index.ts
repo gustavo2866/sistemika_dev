@@ -1,1 +1,1 @@
-export { CRMGestionPage } from "./CRMGestionPage";
+export { ListGestion } from "./list_gestion";
