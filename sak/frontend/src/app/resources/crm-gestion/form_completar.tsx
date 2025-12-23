@@ -1,6 +1,7 @@
 "use client";
 
-import { useGetList } from "ra-core";
+import { useEffect, useState } from "react";
+import { useDataProvider, useGetList, useNotify, useRefresh } from "ra-core";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,15 +26,8 @@ type FormCompletarDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedEvento: GestionItem | null;
-  resultado: string;
-  onResultadoChange: (value: string) => void;
-  nuevoEstadoOportunidad: string;
-  onNuevoEstadoChange: (value: string) => void;
-  motivoPerdidaId: string;
-  onMotivoPerdidaChange: (value: string) => void;
-  motivoPerdidaError: string;
-  onSubmit: () => void;
-  loading: boolean;
+  onSuccess?: (evento: GestionItem) => void;
+  onError?: (error: unknown) => void;
 };
 
 const getContactNameSafe = (item: GestionItem | null) => {
@@ -45,16 +39,93 @@ export const FormCompletarDialog = ({
   open,
   onOpenChange,
   selectedEvento,
-  resultado,
-  onResultadoChange,
-  nuevoEstadoOportunidad,
-  onNuevoEstadoChange,
-  motivoPerdidaId,
-  onMotivoPerdidaChange,
-  motivoPerdidaError,
-  onSubmit,
-  loading,
+  onSuccess,
+  onError,
 }: FormCompletarDialogProps) => {
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [resultado, setResultado] = useState("");
+  const [nuevoEstadoOportunidad, setNuevoEstadoOportunidad] = useState("");
+  const [motivoPerdidaId, setMotivoPerdidaId] = useState("");
+  const [motivoPerdidaError, setMotivoPerdidaError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setResultado("");
+    const estadoActual =
+      selectedEvento?.oportunidad_estado ?? selectedEvento?.oportunidad?.estado ?? "";
+    setNuevoEstadoOportunidad(estadoActual || "");
+    setMotivoPerdidaId("");
+    setMotivoPerdidaError("");
+  }, [open, selectedEvento]);
+
+  const handleNuevoEstadoChange = (value: string) => {
+    setNuevoEstadoOportunidad(value);
+    if (value !== "6-perdida") {
+      setMotivoPerdidaId("");
+      setMotivoPerdidaError("");
+    }
+  };
+
+  const handleMotivoPerdidaChange = (value: string) => {
+    setMotivoPerdidaId(value);
+    if (value) {
+      setMotivoPerdidaError("");
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedEvento) return;
+    const isPerdida = nuevoEstadoOportunidad === "6-perdida";
+    if (isPerdida && !motivoPerdidaId) {
+      setMotivoPerdidaError("Selecciona un motivo de perdida");
+      notify("Selecciona un motivo de perdida", { type: "warning" });
+      return;
+    }
+    setLoading(true);
+    try {
+      await dataProvider.update("crm/eventos", {
+        id: selectedEvento.id,
+        data: {
+          estado_evento: "2-realizado",
+          resultado,
+          fecha_estado: new Date().toISOString(),
+        },
+        previousData: selectedEvento,
+      });
+      const estadoActual =
+        selectedEvento.oportunidad_estado ?? selectedEvento.oportunidad?.estado ?? "";
+      const shouldUpdateOportunidad =
+        Boolean(nuevoEstadoOportunidad) &&
+        Boolean(selectedEvento.oportunidad?.id) &&
+        nuevoEstadoOportunidad !== estadoActual;
+
+      if (shouldUpdateOportunidad) {
+        await dataProvider.update("crm/oportunidades", {
+          id: selectedEvento.oportunidad?.id,
+          data: {
+            estado: nuevoEstadoOportunidad,
+            motivo_perdida_id: isPerdida ? Number(motivoPerdidaId) || null : null,
+            fecha_estado: new Date().toISOString(),
+          },
+          previousData: selectedEvento.oportunidad,
+        });
+      }
+
+      notify("Evento completado", { type: "success" });
+      refresh();
+      onSuccess?.(selectedEvento);
+      onOpenChange(false);
+    } catch (error: any) {
+      notify(error?.message ?? "No se pudo completar el evento", { type: "error" });
+      onError?.(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const { data: motivosPerdida = [] } = useGetList("crm/catalogos/motivos-perdida", {
     pagination: { page: 1, perPage: 200 },
     filter: { activo: true },
@@ -105,7 +176,7 @@ export const FormCompletarDialog = ({
             <textarea
               rows={3}
               value={resultado}
-              onChange={(event) => onResultadoChange(event.target.value)}
+              onChange={(event) => setResultado(event.target.value)}
               className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] focus-visible:outline focus-visible:ring-2 focus-visible:ring-sky-200 sm:px-3 sm:py-2 sm:text-sm"
               placeholder="Resultado de la actividad"
             />
@@ -114,7 +185,7 @@ export const FormCompletarDialog = ({
             <Label className="text-xs text-muted-foreground">
               Nuevo estado de la oportunidad
             </Label>
-            <Select value={nuevoEstadoOportunidad} onValueChange={onNuevoEstadoChange}>
+            <Select value={nuevoEstadoOportunidad} onValueChange={handleNuevoEstadoChange}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Selecciona un estado" />
               </SelectTrigger>
@@ -132,7 +203,7 @@ export const FormCompletarDialog = ({
               <Label className="text-xs text-muted-foreground">
                 Motivo de perdida
               </Label>
-              <Select value={motivoPerdidaId} onValueChange={onMotivoPerdidaChange}>
+              <Select value={motivoPerdidaId} onValueChange={handleMotivoPerdidaChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Selecciona un motivo" />
                 </SelectTrigger>
@@ -159,7 +230,7 @@ export const FormCompletarDialog = ({
           >
             Cancelar
           </Button>
-          <Button onClick={onSubmit} disabled={loading} className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm">
+          <Button onClick={handleSubmit} disabled={loading} className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm">
             {loading ? "Guardando..." : "Completar"}
           </Button>
         </DialogFooter>

@@ -14,6 +14,15 @@ export const CRM_EVENTO_ESTADO_CHOICES = CRM_EVENTO_ESTADOS.map((estado) => ({
   name: estado.split('-')[1].charAt(0).toUpperCase() + estado.split('-')[1].slice(1),
 }));
 
+export const CRM_EVENTO_TIPO_CHOICES = [
+  { id: "llamada", name: "Llamada" },
+  { id: "reunion", name: "Reunion" },
+  { id: "visita", name: "Visita" },
+  { id: "email", name: "Email" },
+  { id: "whatsapp", name: "WhatsApp" },
+  { id: "nota", name: "Nota" },
+];
+
 export const CRM_EVENTO_VALIDATIONS = {
   DESCRIPCION_MAX: 2000,
   PROXIMO_PASO_MAX: 500,
@@ -25,6 +34,7 @@ export type CRMEvento = {
   contacto_id?: number | null;
   tipo_id: number;
   motivo_id?: number | null;
+  tipo_evento?: string | null;
   titulo: string;
   descripcion?: string | null;
   fecha_evento: string;

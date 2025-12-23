@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import type { Identity } from "ra-core";
 import { useDataProvider, useNotify, useRefresh } from "ra-core";
@@ -12,6 +12,7 @@ import { UserSelect, UserSelector } from "@/components/forms";
 import type { UserSelectOption } from "@/components/forms/user-select";
 import { useKanbanCommonState } from "./use-kanban-common-state";
 import { useKanbanDragDrop } from "./use-kanban-drag-drop";
+import { useKanbanMoveController } from "./use-kanban-move-controller";
 import { cn } from "@/lib/utils";
 
 export interface KanbanBoardViewFilterConfig {
@@ -42,6 +43,7 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
   
   // Drag and drop
   onItemMove?: (item: TItem, bucket: K) => any | Promise<any>;
+  canItemMove?: (item: TItem, bucket: K) => boolean | Promise<boolean>;
   resource?: string;
   getMoveSuccessMessage?: (item: TItem, bucket: K) => string;
   
@@ -81,6 +83,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   getBucketKey,
   maxBucketsPerPage,
   onItemMove,
+  canItemMove,
   resource,
   getMoveSuccessMessage,
   customFilter,
@@ -133,40 +136,34 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const { handleItemMove } = useKanbanMoveController<TItem, K>({
+    canMove: canItemMove,
+    onMove: async (item, bucket) => {
+      if (!item.id || !onItemMove) return false;
+      const payload = await Promise.resolve(onItemMove(item, bucket));
+      if (!payload) return false;
 
-  const moveItemToBucket = useCallback(
-    async (item: TItem, bucket: K) => {
-      if (!item.id || !onItemMove) return;
-      
-      setUpdatingId(item.id);
-      try {
-        const payload = await Promise.resolve(onItemMove(item, bucket));
-        if (!payload) {
-          setUpdatingId(null);
-          return;
-        }
-
-        if (resource) {
-          await dataProvider.update<TItem>(resource, {
-            id: item.id,
-            data: payload,
-            previousData: item,
-          });
-        }
-
-        const message = getMoveSuccessMessage?.(item, bucket) ?? "Item movido correctamente";
-        notify(message, { type: "info" });
-        refresh();
-      } catch (err: any) {
-        console.error("Error al mover item:", err);
-        notify(err?.message ?? "No se pudo mover el item", { type: "error" });
-      } finally {
-        setUpdatingId(null);
+      if (resource) {
+        await dataProvider.update<TItem>(resource, {
+          id: item.id,
+          data: payload,
+          previousData: item,
+        });
       }
     },
-    [onItemMove, resource, dataProvider, notify, refresh, getMoveSuccessMessage]
-  );
+    onMoveSuccess: (item, bucket) => {
+      const message = getMoveSuccessMessage?.(item, bucket) ?? "Item movido correctamente";
+      notify(message, { type: "info" });
+    },
+    onMoveError: (err) => {
+      console.error("Error al mover item:", err);
+      notify((err as any)?.message ?? "No se pudo mover el item", { type: "error" });
+    },
+    onAfterMove: () => {
+      refresh();
+    },
+    getItemId: (item) => item.id ?? null,
+  });
 
   const {
     draggedItem,
@@ -177,7 +174,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     handleBucketDrop,
     handleBucketDragLeave,
   } = useKanbanDragDrop<TItem, K>({
-    onItemDropped: moveItemToBucket,
+    onItemDropped: handleItemMove,
     getItemId: (item) => item.id,
     nonInteractiveBuckets: buckets.filter(b => b.interactive === false).map(b => b.key),
   });

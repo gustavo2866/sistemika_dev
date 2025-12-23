@@ -36,10 +36,10 @@ type ContactoActivoOption = {
 type FormCrearEventoDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  defaultFechaEvento: string;
+  defaultFechaEvento?: string;
   identityId?: number | null;
-  onCreated: () => void;
-  onError: (error: any) => void;
+  onCreated?: () => void;
+  onError?: (error: any) => void;
 };
 
 const formatDateInput = (date: Date) => {
@@ -293,48 +293,57 @@ export const FormCrearEventoDialog = ({
   identityId,
   onCreated,
   onError,
-}: FormCrearEventoDialogProps) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent onClick={(event) => event.stopPropagation()} className="sm:max-w-lg">
-      <DialogHeader>
-        <DialogTitle>Crear evento</DialogTitle>
-        <DialogDescription>Completa los datos para crear el evento.</DialogDescription>
-      </DialogHeader>
-      <CreateBase
-        resource="crm/eventos"
-        redirect={false}
-        mutationOptions={{
-          onSuccess: onCreated,
-          onError,
-        }}
-      >
-        <SimpleForm
-          className="w-full max-w-none"
-          defaultValues={{
-            fecha_evento: defaultFechaEvento,
-            estado_evento: "1-pendiente",
-            asignado_a_id: identityId ?? null,
+}: FormCrearEventoDialogProps) => {
+  const resolvedDefaultFechaEvento = useMemo(() => {
+    if (defaultFechaEvento) return defaultFechaEvento;
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    return `${formatDateInput(now)}T${formatTimeInput(now)}`;
+  }, [defaultFechaEvento]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent onClick={(event) => event.stopPropagation()} className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Crear evento</DialogTitle>
+          <DialogDescription>Completa los datos para crear el evento.</DialogDescription>
+        </DialogHeader>
+        <CreateBase
+          resource="crm/eventos"
+          redirect={false}
+          mutationOptions={{
+            onSuccess: onCreated,
+            onError,
           }}
-          toolbar={
-            <DialogFooter className="pt-2">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
-                type="button"
-              >
-                Cancelar
-              </Button>
-              <SaveButton
-                label="Crear"
-                className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
-              />
-            </DialogFooter>
-          }
         >
-          <CrearEventoFormContent />
-        </SimpleForm>
-      </CreateBase>
-    </DialogContent>
-  </Dialog>
-);
+          <SimpleForm
+            className="w-full max-w-none"
+            defaultValues={{
+              fecha_evento: resolvedDefaultFechaEvento,
+              estado_evento: "1-pendiente",
+              asignado_a_id: identityId ?? null,
+            }}
+            toolbar={
+              <DialogFooter className="pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+                  type="button"
+                >
+                  Cancelar
+                </Button>
+                <SaveButton
+                  label="Crear"
+                  className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+                />
+              </DialogFooter>
+            }
+          >
+            <CrearEventoFormContent />
+          </SimpleForm>
+        </CreateBase>
+      </DialogContent>
+    </Dialog>
+  );
+};

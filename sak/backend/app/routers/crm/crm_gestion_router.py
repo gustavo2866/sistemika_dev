@@ -13,6 +13,7 @@ from app.db import get_session
 from app.models import CRMContacto, CRMEvento, CRMOportunidad, CRMTipoEvento
 from app.services.crm_gestion_service import (
     apply_move,
+    group_eventos,
     serialize_evento,
     summarize_buckets,
     summarize_kpis,
@@ -88,6 +89,39 @@ def gestion_items(
 
     eventos = session.exec(stmt).all()
     return {"data": [serialize_evento(evento) for evento in eventos]}
+
+
+@router.get("/kanban")
+def gestion_kanban(
+    request: Request,
+    owner_id: Optional[int] = Query(None, description="Usuario asignado"),
+    session: Session = Depends(get_session),
+):
+    filters = _build_filters(request)
+    tipo_evento = filters.pop("tipo_evento", None)
+    if owner_id:
+        filters["asignado_a_id"] = owner_id
+
+    stmt = select(CRMEvento)
+    if tipo_evento:
+        stmt = stmt.join(CRMTipoEvento, CRMEvento.tipo_id == CRMTipoEvento.id)
+        if isinstance(tipo_evento, list):
+            lowered = [str(value).lower() for value in tipo_evento]
+            stmt = stmt.where(func.lower(CRMTipoEvento.codigo).in_(lowered))
+        else:
+            stmt = stmt.where(func.lower(CRMTipoEvento.codigo) == str(tipo_evento).lower())
+    stmt = crm_evento_crud._apply_filters(stmt, filters)
+    stmt = crm_evento_crud._apply_auto_includes(stmt)
+    stmt = stmt.order_by(nullslast(CRMEvento.fecha_evento))
+
+    eventos = session.exec(stmt).all()
+    return {
+        "summary": {
+            "kpis": summarize_kpis(session, owner_id=owner_id),
+            "buckets": summarize_buckets(session, owner_id=owner_id),
+        },
+        "buckets": group_eventos(eventos),
+    }
 
 
 @router.get("/types")

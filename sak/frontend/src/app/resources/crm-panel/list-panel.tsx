@@ -102,6 +102,7 @@ const getBuckets = () => {
       title: label,
       helper: "",
       accentClass: ESTADO_BG_COLORS[estado] ?? "from-white/95 to-slate-50/70",
+      bucketClassName: "max-w-[260px] w-full justify-self-center",
       headerContent: getBucketHeader(estado as BucketKey, label),
     };
   });

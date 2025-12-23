@@ -9,6 +9,7 @@ import {
   ListChecks,
   Phone,
 } from "lucide-react";
+import type { CRMEvento } from "../crm-eventos/model";
 
 export type GestionSummary = {
   kpis: {
@@ -26,31 +27,15 @@ export type GestionSummary = {
   };
 };
 
-export type GestionItem = {
-  id: number;
-  titulo?: string | null;
-  descripcion?: string | null;
-  fecha_evento?: string | null;
-  estado_evento?: string | null;
+export type GestionBucketKey = "today" | "overdue" | "tomorrow" | "week" | "next";
+
+export type GestionItem = CRMEvento & {
   tipo_evento?: string | null;
-  bucket: string;
+  bucket: GestionBucketKey;
   is_completed: boolean;
   is_cancelled: boolean;
   oportunidad_estado?: string | null;
   oportunidad_titulo?: string | null;
-  oportunidad?: {
-    id: number;
-    titulo?: string | null;
-    estado?: string | null;
-    contacto?: {
-      nombre?: string | null;
-      nombre_completo?: string | null;
-    } | null;
-  } | null;
-  asignado_a?: {
-    id: number;
-    nombre?: string | null;
-  } | null;
 };
 
 export type EventoTipoTab = {
@@ -174,4 +159,146 @@ export const getContactName = (item: GestionItem) => {
 export const getOpportunityIdLabel = (item: GestionItem) => {
   if (!item.oportunidad?.id) return "";
   return `(#${String(item.oportunidad.id).padStart(6, "0")})`;
+};
+
+export const canMoveGestionItem = (_item: GestionItem, _bucket: string) => true;
+
+type CanonicalEstado = "1-pendiente" | "2-realizado" | "3-cancelado" | "4-reagendar";
+
+const normalizeEstado = (raw?: string | null): CanonicalEstado => {
+  if (!raw) return "1-pendiente";
+  const lower = raw.toLowerCase();
+  if (lower.includes("realizado") || lower.includes("hecho")) return "2-realizado";
+  if (lower.includes("cancelado")) return "3-cancelado";
+  if (lower.includes("reagendar")) return "4-reagendar";
+  return "1-pendiente";
+};
+
+const startOfDay = (base: Date) => {
+  const next = new Date(base);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const endOfDay = (base: Date) => {
+  const next = new Date(base);
+  next.setHours(23, 59, 59, 999);
+  return next;
+};
+
+export const calculateGestionBucketKey = (fechaEvento?: string | null): GestionBucketKey => {
+  const now = new Date();
+  const startToday = startOfDay(now);
+  const endToday = endOfDay(now);
+  const startTomorrow = new Date(startToday);
+  startTomorrow.setDate(startTomorrow.getDate() + 1);
+  const endTomorrow = endOfDay(startTomorrow);
+  const startWeekWindow = new Date(startToday);
+  startWeekWindow.setDate(startWeekWindow.getDate() + 2);
+  const endWeekWindow = endOfDay(new Date(startToday.getFullYear(), startToday.getMonth(), startToday.getDate() + 7));
+
+  if (!fechaEvento) return "next";
+  const fecha = new Date(fechaEvento);
+  if (Number.isNaN(fecha.getTime())) return "next";
+
+  if (fecha < startToday) return "overdue";
+  if (fecha <= endToday) return "today";
+  if (fecha >= startTomorrow && fecha <= endTomorrow) return "tomorrow";
+  if (fecha >= startWeekWindow && fecha <= endWeekWindow) return "week";
+  return "next";
+};
+
+export const buildGestionItem = (evento: CRMEvento): GestionItem => {
+  const estado = normalizeEstado(evento.estado_evento);
+  const tipoEvento =
+    (evento as CRMEvento & { tipo_evento?: string | null }).tipo_evento ??
+    evento.tipo_catalogo?.codigo ??
+    null;
+
+  return {
+    ...evento,
+    tipo_evento: tipoEvento,
+    bucket: calculateGestionBucketKey(evento.fecha_evento),
+    is_completed: estado === "2-realizado",
+    is_cancelled: estado === "3-cancelado",
+    oportunidad_estado: evento.oportunidad?.estado ?? null,
+    oportunidad_titulo: evento.oportunidad?.titulo ?? null,
+  };
+};
+
+export const groupGestionItems = (items: GestionItem[]) => {
+  const buckets: Record<GestionBucketKey, GestionItem[]> = {
+    overdue: [],
+    today: [],
+    tomorrow: [],
+    week: [],
+    next: [],
+  };
+
+  items.forEach((item) => {
+    const bucket = item.bucket;
+    if (bucket === "overdue" && item.is_completed) return;
+    buckets[bucket].push(item);
+  });
+
+  return buckets;
+};
+
+const moveDateForBucket = (
+  bucket: GestionBucketKey,
+  original?: string | null
+): Date | null => {
+  const now = new Date();
+  const base = original ? new Date(original) : now;
+  const startToday = startOfDay(now);
+  const startTomorrow = new Date(startToday);
+  startTomorrow.setDate(startTomorrow.getDate() + 1);
+  const startWeekWindow = new Date(startToday);
+  startWeekWindow.setDate(startWeekWindow.getDate() + 2);
+  const endWeekWindow = endOfDay(new Date(startToday.getFullYear(), startToday.getMonth(), startToday.getDate() + 7));
+
+  let target: Date | null = null;
+
+  if (bucket === "today") {
+    target = startToday;
+  } else if (bucket === "overdue") {
+    target = new Date(startToday);
+    target.setDate(target.getDate() - 1);
+  } else if (bucket === "tomorrow") {
+    target = startTomorrow;
+  } else if (bucket === "week") {
+    target = new Date(base);
+    if (target < startWeekWindow) target = startWeekWindow;
+    if (target > endWeekWindow) target = endWeekWindow;
+  } else if (bucket === "next") {
+    target = new Date(startToday);
+    target.setDate(target.getDate() + 8);
+  }
+
+  if (!target) return null;
+
+  const timeSource = Number.isNaN(base.getTime()) ? now : base;
+  target.setHours(
+    timeSource.getHours(),
+    timeSource.getMinutes(),
+    timeSource.getSeconds(),
+    timeSource.getMilliseconds()
+  );
+
+  return target;
+};
+
+export const prepareMoveGestionPayload = (
+  item: GestionItem,
+  bucket: GestionBucketKey
+): { fecha_evento: string; estado_evento?: string } | null => {
+  const targetDate = moveDateForBucket(bucket, item.fecha_evento);
+  if (!targetDate) return null;
+
+  const estado = normalizeEstado(item.estado_evento);
+  const shouldForcePendiente = estado !== "2-realizado" && estado !== "3-cancelado";
+  return {
+    fecha_evento: targetDate.toISOString(),
+    ...(shouldForcePendiente ? { estado_evento: "1-pendiente" } : {}),
+  };
 };

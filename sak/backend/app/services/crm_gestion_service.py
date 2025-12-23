@@ -206,6 +206,25 @@ def serialize_evento(evento: CRMEvento) -> dict:
     return data
 
 
+def group_eventos(eventos: Iterable[CRMEvento]) -> dict[str, list[dict]]:
+    buckets = {
+        "overdue": [],
+        "today": [],
+        "tomorrow": [],
+        "week": [],
+        "next": [],
+    }
+    for evento in eventos:
+        data = serialize_evento(evento)
+        bucket = data.get("bucket") or "next"
+        if bucket == "overdue" and data.get("is_completed"):
+            continue
+        if bucket not in buckets:
+            buckets[bucket] = []
+        buckets[bucket].append(data)
+    return buckets
+
+
 def apply_move(
     session: Session,
     evento: CRMEvento,
