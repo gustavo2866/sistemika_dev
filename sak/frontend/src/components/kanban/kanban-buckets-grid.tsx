@@ -11,6 +11,7 @@ export interface KanbanBucketDefinition<K extends string = string> {
   helper: string;
   accentClass: string;
   interactive?: boolean;
+  headerContent?: React.ReactNode;
 }
 
 interface KanbanBucketsGridProps<TItem, K extends string> {
@@ -48,7 +49,7 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
   bucketNavigation,
 }: KanbanBucketsGridProps<TItem, K>) => (
   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-    {bucketDefinitions.map(({ key, title, helper, accentClass, interactive = true }, index) => {
+    {bucketDefinitions.map(({ key, title, helper, accentClass, interactive = true, headerContent }, index) => {
       const items = bucketItems[key] ?? [];
       const isInteractive = interactive;
       const bodyClass = dragOverBucket === key ? "ring-1 ring-primary/40 bg-primary/5" : "";
@@ -86,6 +87,7 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
             title={title}
             helper={helper}
             count={items.length}
+            headerContent={headerContent}
             showPrevControl={showPrevControl}
             showNextControl={showNextControl}
             onPrev={bucketNavigation?.onPrev}

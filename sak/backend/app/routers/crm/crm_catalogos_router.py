@@ -12,7 +12,6 @@ from app.models import (
     CRMCondicionPago,
     CRMTipoEvento,
     CRMMotivoEvento,
-    CRMOrigenLead,
     Moneda,
     CotizacionMoneda,
 )
@@ -21,7 +20,6 @@ from app.crud.crm_motivo_perdida_crud import crm_motivo_perdida_crud
 from app.crud.crm_condicion_pago_crud import crm_condicion_pago_crud
 from app.crud.crm_tipo_evento_crud import crm_tipo_evento_crud
 from app.crud.crm_motivo_evento_crud import crm_motivo_evento_crud
-from app.crud.crm_origen_lead_crud import crm_origen_lead_crud
 from app.crud.moneda_crud import moneda_crud
 from app.crud.cotizacion_moneda_crud import cotizacion_moneda_crud
 from app.services.cotizacion_service import cotizacion_service
@@ -62,12 +60,7 @@ crm_motivo_evento_router = create_generic_router(
     tags=["crm-catalogos"],
 )
 
-crm_origen_lead_router = create_generic_router(
-    model=CRMOrigenLead,
-    crud=crm_origen_lead_crud,
-    prefix="/crm/catalogos/origenes-lead",
-    tags=["crm-catalogos"],
-)
+
 
 moneda_router = create_generic_router(
     model=Moneda,

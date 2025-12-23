@@ -14,15 +14,6 @@ export const CRM_EVENTO_ESTADO_CHOICES = CRM_EVENTO_ESTADOS.map((estado) => ({
   name: estado.split('-')[1].charAt(0).toUpperCase() + estado.split('-')[1].slice(1),
 }));
 
-export const CRM_EVENTO_TIPOS = ["llamada", "reunion", "visita", "email", "whatsapp", "nota"] as const;
-
-export type CRMEventoTipo = (typeof CRM_EVENTO_TIPOS)[number];
-
-export const CRM_EVENTO_TIPO_CHOICES = CRM_EVENTO_TIPOS.map((tipo) => ({
-  id: tipo,
-  name: tipo.charAt(0).toUpperCase() + tipo.slice(1),
-}));
-
 export const CRM_EVENTO_VALIDATIONS = {
   DESCRIPCION_MAX: 2000,
   PROXIMO_PASO_MAX: 500,
@@ -31,14 +22,17 @@ export const CRM_EVENTO_VALIDATIONS = {
 export type CRMEvento = {
   id: number;
   oportunidad_id: number;
+  contacto_id?: number | null;
+  tipo_id: number;
+  motivo_id?: number | null;
   titulo: string;
   descripcion?: string | null;
-  tipo_evento: CRMEventoTipo;
   fecha_evento: string;
   estado_evento: CRMEventoEstado;
   asignado_a_id: number;
   resultado?: string | null;
   fecha_estado?: string | null;
+  tipo_catalogo?: { id?: number; codigo?: string; nombre?: string } | null;
   oportunidad?: {
     id?: number;
     estado?: string;
@@ -53,9 +47,9 @@ export type CRMEvento = {
 
 export type CRMEventoFormValues = {
   oportunidad_id: number | null;
+  tipo_id: number | null;
   titulo: string;
   descripcion?: string | null;
-  tipo_evento: CRMEventoTipo | null;
   fecha_evento: string;
   estado_evento: CRMEventoEstado;
   asignado_a_id: number | null;
@@ -64,9 +58,9 @@ export type CRMEventoFormValues = {
 
 export const CRM_EVENTO_DEFAULTS: CRMEventoFormValues = {
   oportunidad_id: null,
+  tipo_id: null,
   titulo: "",
   descripcion: "",
-  tipo_evento: null,
   fecha_evento: "",
   estado_evento: "1-pendiente",
   asignado_a_id: null,
@@ -93,9 +87,10 @@ export const crmEventoSchema = createEntitySchema<
       maxLength: CRM_EVENTO_VALIDATIONS.DESCRIPCION_MAX,
       defaultValue: "",
     }),
-    tipo_evento: selectField({
+    tipo_id: referenceField({
       required: true,
-      options: CRM_EVENTO_TIPO_CHOICES,
+      resource: "crm/catalogos/tipos-evento",
+      labelField: "nombre",
       defaultValue: null,
     }),
     fecha_evento: stringField({

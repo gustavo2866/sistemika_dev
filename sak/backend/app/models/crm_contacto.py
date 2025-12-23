@@ -25,11 +25,11 @@ class CRMContacto(Base, table=True):
     )
     email: Optional[str] = Field(default=None, max_length=255, description="Email del contacto", index=True)
     red_social: Optional[str] = Field(default=None, max_length=255, description="Usuario/red social")
-    origen_lead_id: Optional[int] = Field(default=None, foreign_key="crm_origenes_lead.id")
+    # origen_lead_id eliminado
     responsable_id: int = Field(foreign_key="users.id")
     notas: Optional[str] = Field(default=None, max_length=1000)
 
-    origen_lead: Optional["CRMOrigenLead"] = Relationship(back_populates="contactos")
+    # origen_lead eliminado
     responsable: Optional["User"] = Relationship()
     oportunidades: list["CRMOportunidad"] = Relationship(back_populates="contacto")
     mensajes: list["CRMMensaje"] = Relationship(back_populates="contacto")

@@ -245,13 +245,13 @@ export const KanbanActionButton = ({
       variant="outline"
       size="sm"
       className={cn(
-        "inline-flex h-[18px] items-center rounded-full px-1.5 py-0 text-[8px] font-medium",
+        "inline-flex h-[18px] min-w-[72px] items-center justify-center rounded-full px-1.5 py-0 text-[8px] font-medium",
         variantClasses[variant],
         className
       )}
       {...props}
     >
-      {icon ? <span className="-mr-0.5 text-xs">{icon}</span> : null}
+      {icon ? <span className="-mr-1 text-xs">{icon}</span> : null}
       {children}
     </Button>
   );

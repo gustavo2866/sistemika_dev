@@ -25,6 +25,7 @@ export * from "./crm-eventos";
 export * from "./crm-mensajes";
 export * from "./emprendimientos";
 export * from "./crm-todo";
+export * from "./crm-gestion";
 // Los dashboards no necesitan ser exportados aqu??
 // export * from "./dashboard-proyectos";
 // export * from "./dashboard-vacancias";

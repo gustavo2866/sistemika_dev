@@ -17,7 +17,6 @@ from .crm_catalogos import (
     CRMCondicionPago,
     CRMTipoEvento,
     CRMMotivoEvento,
-    CRMOrigenLead,
     Moneda,
 )
 from .cotizacion_moneda import CotizacionMoneda
@@ -78,7 +77,6 @@ __all__ = [
     "CRMCondicionPago",
     "CRMTipoEvento",
     "CRMMotivoEvento",
-    "CRMOrigenLead",
     "Moneda",
     "CotizacionMoneda",
     "CRMContacto",

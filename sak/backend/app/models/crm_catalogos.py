@@ -76,19 +76,6 @@ class CRMMotivoEvento(Base, table=True):
     activo: bool = Field(default=True)
 
 
-class CRMOrigenLead(Base, table=True):
-    __tablename__ = "crm_origenes_lead"
-    __searchable_fields__ = ["codigo", "nombre"]
-
-    codigo: str = Field(max_length=50, unique=True, index=True)
-    nombre: str = Field(max_length=150)
-    descripcion: Optional[str] = Field(default=None, max_length=500)
-    activo: bool = Field(default=True)
-
-    contactos: list["CRMContacto"] = Relationship(
-        back_populates="origen_lead",
-        sa_relationship_kwargs={"lazy": "noload"}
-    )
 
 
 class Moneda(Base, table=True):

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Identity } from "ra-core";
 import { useDataProvider, useNotify, useRefresh } from "ra-core";
@@ -8,15 +8,25 @@ import type { KanbanBucketDefinition } from "./kanban-buckets-grid";
 import { KanbanBoard } from "./kanban-board";
 import { KanbanFilterBar } from "./filter-bar";
 import { KanbanCollapseToggle } from "./collapse-toggle";
-import { UserSelector } from "@/components/forms";
+import { UserSelect, UserSelector } from "@/components/forms";
+import type { UserSelectOption } from "@/components/forms/user-select";
 import { useKanbanCommonState } from "./use-kanban-common-state";
 import { useKanbanDragDrop } from "./use-kanban-drag-drop";
+import { cn } from "@/lib/utils";
 
 export interface KanbanBoardViewFilterConfig {
   enableSearch?: boolean;
   searchPlaceholder?: string;
+  searchClassName?: string;
+  searchInputClassName?: string;
   enableOwnerFilter?: boolean;
   ownerFilterPlaceholder?: string;
+  ownerFilterClassName?: string;
+  ownerTriggerClassName?: string;
+  ownerHideLabel?: boolean;
+  ownerHideLabelOnSmall?: boolean;
+  ownerFilterPlacement?: "left" | "right";
+  ownerOptions?: UserSelectOption[];
   enableCollapseToggle?: boolean;
   collapseToggleLabels?: { collapsed: string; expanded: string };
 }
@@ -183,9 +193,15 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     toggleCardCollapse,
   } = useKanbanCommonState({ storageKey: resource });
 
+  const autoSelectedOwnerRef = useRef(false);
   useEffect(() => {
-    if (autoSelectOwnerId && ownerFilterValue === "todos") {
+    if (
+      autoSelectOwnerId &&
+      ownerFilterValue === "todos" &&
+      !autoSelectedOwnerRef.current
+    ) {
       setOwnerFilterValue(autoSelectOwnerId);
+      autoSelectedOwnerRef.current = true;
     }
   }, [autoSelectOwnerId, ownerFilterValue, setOwnerFilterValue]);
 
@@ -282,32 +298,59 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   const {
     enableSearch = true,
     searchPlaceholder = "Buscar...",
+    searchClassName,
+    searchInputClassName,
     enableOwnerFilter = true,
     ownerFilterPlaceholder = "Asignado",
+    ownerFilterClassName,
+    ownerTriggerClassName,
+    ownerHideLabel,
+    ownerHideLabelOnSmall,
+    ownerFilterPlacement = "right",
+    ownerOptions,
     enableCollapseToggle = true,
     collapseToggleLabels = { collapsed: "Expandir todo", expanded: "Contraer todo" },
   } = filterConfig;
+
+  const ownerSelector = enableOwnerFilter ? (
+    <div className={cn("min-w-[170px]", ownerFilterClassName)}>
+      {ownerOptions ? (
+        <UserSelect
+          options={ownerOptions}
+          value={ownerFilterValue}
+          onValueChange={setOwnerFilterValue}
+          placeholder={ownerFilterPlaceholder}
+          triggerClassName={ownerTriggerClassName}
+          hideLabel={ownerHideLabel}
+          hideLabelOnSmall={ownerHideLabelOnSmall}
+        />
+      ) : (
+        <UserSelector
+          records={items as any[]}
+          identity={identity}
+          value={ownerFilterValue}
+          onValueChange={setOwnerFilterValue}
+          placeholder={ownerFilterPlaceholder}
+          triggerClassName={ownerTriggerClassName}
+          hideLabel={ownerHideLabel}
+          hideLabelOnSmall={ownerHideLabelOnSmall}
+        />
+      )}
+    </div>
+  ) : null;
 
   const filterBar = (
     <KanbanFilterBar
       searchValue={enableSearch ? searchValue : ""}
       onSearchChange={enableSearch ? setSearchValue : () => {}}
       searchPlaceholder={searchPlaceholder}
-      searchClassName={!enableSearch ? "hidden" : undefined}
+      searchClassName={cn(!enableSearch ? "hidden" : undefined, searchClassName)}
+      searchInputClassName={searchInputClassName}
+      leftContent={ownerFilterPlacement === "left" ? ownerSelector : null}
       rightContent={
         <>
           {customFilters?.({ customState, setCustomState })}
-          {enableOwnerFilter && (
-            <div className="min-w-[170px]">
-              <UserSelector
-                records={items as any[]}
-                identity={identity}
-                value={ownerFilterValue}
-                onValueChange={setOwnerFilterValue}
-                placeholder={ownerFilterPlaceholder}
-              />
-            </div>
-          )}
+          {ownerFilterPlacement === "right" ? ownerSelector : null}
           {enableCollapseToggle && (
             <KanbanCollapseToggle
               collapsed={collapsedAll}

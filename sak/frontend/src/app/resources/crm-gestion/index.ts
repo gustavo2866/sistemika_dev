@@ -1,0 +1,1 @@
+export { CRMGestionPage } from "./CRMGestionPage";

@@ -18,8 +18,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# --- (3) Importar modelos / MetaData para autogenerate ---
-from app.models import Base, User, Item, Paises  # ajustá estos imports a tu proyecto
+import sys
+import os
+# Agregar el directorio backend al sys.path para imports correctos
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from app.models import Base
 target_metadata = Base.metadata
 
 # --- (4) Leer DATABASE_URL del entorno y setearla en Alembic ---

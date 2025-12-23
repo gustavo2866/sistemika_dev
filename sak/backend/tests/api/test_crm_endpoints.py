@@ -37,7 +37,7 @@ def test_crm_contacto_busqueda(client, crm_base):
     )
     _post(
         client,
-        "/crm/catalogos/origenes-lead",
+
         {"codigo": "online", "nombre": "Online"},
     )
 
@@ -48,7 +48,7 @@ def test_crm_contacto_busqueda(client, crm_base):
             "nombre_completo": "Juan CRM",
             "telefonos": ["+541100000001"],
             "email": "juan.crm@example.com",
-            "origen_lead_id": 1,
+
             "responsable_id": crm_base["user_id"],
         },
     )

@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Edit3, Check, X, Ban, ChevronRight, UserRound } from "lucide-react";
+import { AlarmClock, Calendar, Edit3, Check, X, Ban, ChevronRight, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CRMEvento } from "../crm-eventos/model";
@@ -209,7 +209,7 @@ export interface CRMEventoCardProps {
 
 export const CRMEventoCard = ({
   evento,
-  bucketKey: _bucketKey,
+  bucketKey,
   collapsed = false,
   updating = false,
   onToggleCollapse,
@@ -218,6 +218,7 @@ export const CRMEventoCard = ({
   onEdit,
 }: CRMEventoCardProps) => {
   const estado = normalizeEstado(evento.estado_evento);
+  const isOverdue = bucketKey === "overdue";
   
   // Obtener configuración declarativa basada en el estado
   const config = getCardConfig(
@@ -230,6 +231,11 @@ export const CRMEventoCard = ({
   // Body content (solo se muestra cuando no está colapsado)
   const body = (
     <KanbanMeta className="bg-slate-50/80">
+      {isOverdue ? (
+        <KanbanMetaRow icon={<AlarmClock className="h-3 w-3 shrink-0 text-rose-500" />}>
+          <span className="text-[11px] font-semibold text-rose-600">Tarea vencida</span>
+        </KanbanMetaRow>
+      ) : null}
       <KanbanMetaRow icon={<ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />}>
         <span className="text-[11px]">{getOportunidadName(evento)}</span>
       </KanbanMetaRow>

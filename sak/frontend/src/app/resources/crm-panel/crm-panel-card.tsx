@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Check, X, FileText, ChevronRight, Building2, User, Pencil } from "lucide-react";
+import { Calendar, Check, X, FileText, ChevronRight, Building2, Home, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CRMOportunidad, CRMOportunidadEstado } from "../crm-oportunidades/model";
@@ -15,6 +15,7 @@ import {
   formatOportunidadTitulo,
   getCardStyle,
   getContactoName,
+  getEmprendimientoName,
   getPropiedadName,
   formatMonto,
   formatEstadoLabel,
@@ -36,6 +37,7 @@ interface CardConfig {
 
 interface CardHandlers {
   onEdit?: (oportunidad: CRMOportunidad) => void;
+  onAceptar?: (oportunidad: CRMOportunidad) => void;
   onAgendar?: (oportunidad: CRMOportunidad) => void;
   onCotizar?: (oportunidad: CRMOportunidad) => void;
   onCerrar?: (oportunidad: CRMOportunidad) => void;
@@ -69,6 +71,7 @@ const createResponsableBlock = (
   const { name: responsableName, avatarUrl, initials } = getResponsableAvatarInfo(oportunidad);
   const contactoName = getContactoName(oportunidad);
   const truncatedContacto = contactoName.length > 20 ? contactoName.substring(0, 20) + '...' : contactoName;
+  const oportunidadNumber = `#${String(oportunidad.id).padStart(6, "0")}`;
   
   return (
     <div className="flex items-start gap-2">
@@ -79,6 +82,7 @@ const createResponsableBlock = (
         </span>
         <span className="text-[10px] text-slate-600">
           {formatCreatedDate(oportunidad.created_at)}
+          <span className="ml-1 text-[9px] text-slate-500">({oportunidadNumber})</span>
         </span>
       </div>
     </div>
@@ -93,6 +97,18 @@ const createAgendarAction = (
   label: "Agendar",
   icon: <Calendar className="h-3 w-3 text-blue-600" />,
   onClick: () => onAgendar(oportunidad),
+  disabled: updating,
+  variant: "default",
+});
+
+const createConfirmarAction = (
+  oportunidad: CRMOportunidad,
+  onAceptar: (oportunidad: CRMOportunidad) => void,
+  updating: boolean
+): KanbanCardAction => ({
+  label: "Confirmar",
+  icon: <Check className="h-3 w-3 text-emerald-600" />,
+  onClick: () => onAceptar(oportunidad),
   disabled: updating,
   variant: "default",
 });
@@ -166,7 +182,10 @@ const getCardConfig = (
       headerRight: (
         handlers.onEdit && (
           <button
-            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handlers.onEdit!(oportunidad);
+            }}
             className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
           >
             <Pencil className="h-3 w-3 text-slate-500" />
@@ -174,7 +193,7 @@ const getCardConfig = (
         )
       ),
       actions: [
-        handlers.onAgendar && createAgendarAction(oportunidad, handlers.onAgendar, updating),
+        handlers.onAceptar && createConfirmarAction(oportunidad, handlers.onAceptar, updating),
         handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
       ].filter(Boolean) as KanbanCardAction[],
     },
@@ -183,7 +202,10 @@ const getCardConfig = (
       headerRight: (
         handlers.onEdit && (
           <button
-            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handlers.onEdit!(oportunidad);
+            }}
             className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
           >
             <Pencil className="h-3 w-3 text-slate-500" />
@@ -200,7 +222,10 @@ const getCardConfig = (
       headerRight: (
         handlers.onEdit && (
           <button
-            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handlers.onEdit!(oportunidad);
+            }}
             className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
           >
             <Pencil className="h-3 w-3 text-slate-500" />
@@ -217,7 +242,10 @@ const getCardConfig = (
       headerRight: (
         handlers.onEdit && (
           <button
-            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handlers.onEdit!(oportunidad);
+            }}
             className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
           >
             <Pencil className="h-3 w-3 text-slate-500" />
@@ -234,7 +262,10 @@ const getCardConfig = (
       headerRight: (
         handlers.onEdit && (
           <button
-            onClick={(e) => { e.stopPropagation(); handlers.onEdit!(oportunidad); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handlers.onEdit!(oportunidad);
+            }}
             className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
           >
             <Pencil className="h-3 w-3 text-slate-500" />
@@ -274,6 +305,7 @@ export interface CRMOportunidadKanbanCardProps {
   updating?: boolean;
   onToggleCollapse?: () => void;
   onEdit?: (oportunidad: CRMOportunidad) => void;
+  onAceptar?: (oportunidad: CRMOportunidad) => void;
   onAgendar?: (oportunidad: CRMOportunidad) => void;
   onCotizar?: (oportunidad: CRMOportunidad) => void;
   onCerrar?: (oportunidad: CRMOportunidad) => void;
@@ -287,6 +319,7 @@ export const CRMOportunidadKanbanCard = ({
   updating = false,
   onToggleCollapse,
   onEdit,
+  onAceptar,
   onAgendar,
   onCotizar,
   onCerrar,
@@ -298,17 +331,17 @@ export const CRMOportunidadKanbanCard = ({
   const config = getCardConfig(
     oportunidad,
     estado,
-    { onEdit, onAgendar, onCotizar, onCerrar, onDescartar },
+    { onEdit, onAceptar, onAgendar, onCotizar, onCerrar, onDescartar },
     updating
   );
 
   // Body content (solo se muestra cuando no está colapsado)
   const body = (
     <KanbanMeta className="bg-slate-50/80">
-      <KanbanMetaRow icon={<User className="h-3 w-3 shrink-0 text-slate-400" />}>
-        <span className="text-[11px]">{getContactoName(oportunidad)}</span>
-      </KanbanMetaRow>
       <KanbanMetaRow icon={<Building2 className="h-3 w-3 shrink-0 text-slate-400" />}>
+        <span className="text-[11px]">{getEmprendimientoName(oportunidad)}</span>
+      </KanbanMetaRow>
+      <KanbanMetaRow icon={<Home className="h-3 w-3 shrink-0 text-slate-400" />}>
         <span className="text-[11px]">{getPropiedadName(oportunidad)}</span>
       </KanbanMetaRow>
       {oportunidad.monto && (

@@ -50,6 +50,7 @@ import {
   LayoutGrid,
   ListChecks,
   Mail,
+  PanelTop,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
@@ -63,6 +64,7 @@ const CRM_CUSTOM_LINKS: Array<{
   icon: ComponentType;
   position: "top" | "bottom";
 }> = [
+  { label: "CRM Gestion", to: "/crm/gestion", icon: PanelTop, position: "top" },
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
   { label: "CRM Mensajes", to: "/crm/mensajes", icon: Mail, position: "top" },
   { label: "CRM To-Do", to: "/crm/todo", icon: ListChecks, position: "top" },

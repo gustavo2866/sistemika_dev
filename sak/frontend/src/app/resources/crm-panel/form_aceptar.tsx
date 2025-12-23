@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGetList } from "ra-core";
+import { Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -26,6 +27,8 @@ interface CRMOportunidadAceptarDialogProps {
     descripcion_estado: string;
   }) => void;
   isProcessing: boolean;
+  tipoPropiedadOptions?: Array<{ id: number; nombre: string }>;
+  emprendimientoOptions?: Array<{ id: number; nombre: string }>;
 }
 
 export const CRMOportunidadAceptarDialog = ({
@@ -34,6 +37,8 @@ export const CRMOportunidadAceptarDialog = ({
   record,
   onComplete,
   isProcessing,
+  tipoPropiedadOptions,
+  emprendimientoOptions,
 }: CRMOportunidadAceptarDialogProps) => {
   const [formData, setFormData] = useState({
     titulo: record.titulo || "",
@@ -43,20 +48,38 @@ export const CRMOportunidadAceptarDialog = ({
     descripcion_estado: record.descripcion_estado || "",
   });
 
+  useEffect(() => {
+    setFormData({
+      titulo: record.titulo || "",
+      tipo_operacion_id: record.tipo_operacion_id || null,
+      tipo_propiedad_id: record.tipo_propiedad_id || null,
+      emprendimiento_id: record.emprendimiento_id || null,
+      descripcion_estado: record.descripcion_estado || "",
+    });
+  }, [record]);
+
   const { data: tiposOperacion } = useGetList("crm/catalogos/tipos-operacion", {
     pagination: { page: 1, perPage: 500 },
     sort: { field: "nombre", order: "ASC" },
   });
 
-  const { data: tiposPropiedad } = useGetList("tipos-propiedad", {
+  const { data: tiposPropiedadFetched = [] } = useGetList("tipos-propiedad", {
+    pagination: { page: 1, perPage: 100 },
+    sort: { field: "nombre", order: "ASC" },
+  });
+
+  const { data: emprendimientosFetched = [] } = useGetList("emprendimientos", {
     pagination: { page: 1, perPage: 500 },
     sort: { field: "nombre", order: "ASC" },
   });
 
-  const { data: emprendimientos } = useGetList("emprendimientos", {
-    pagination: { page: 1, perPage: 500 },
-    sort: { field: "nombre", order: "ASC" },
-  });
+  const tipoPropiedades = (tipoPropiedadOptions?.length
+    ? tipoPropiedadOptions
+    : tiposPropiedadFetched) as Array<{ id: number; nombre: string }>;
+
+  const emprendimientosList = (emprendimientoOptions?.length
+    ? emprendimientoOptions
+    : emprendimientosFetched) as Array<{ id: number; nombre: string }>;
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -109,7 +132,7 @@ export const CRMOportunidadAceptarDialog = ({
                 </select>
               </div>
               <div>
-                <Label htmlFor="tipo_propiedad">Tipo de propiedad</Label>
+                <Label htmlFor="tipo_propiedad">Tipo de propiedad *</Label>
                 <select
                   id="tipo_propiedad"
                   className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -120,9 +143,10 @@ export const CRMOportunidadAceptarDialog = ({
                       tipo_propiedad_id: event.target.value ? Number(event.target.value) : null,
                     })
                   }
+                  required
                 >
                   <option value="">Seleccionar...</option>
-                  {tiposPropiedad?.map((tipo: any) => (
+                  {tipoPropiedades?.map((tipo: any) => (
                     <option key={tipo.id} value={tipo.id}>
                       {tipo.nombre}
                     </option>
@@ -144,7 +168,7 @@ export const CRMOportunidadAceptarDialog = ({
                 }
               >
                 <option value="">Seleccionar...</option>
-                {emprendimientos?.map((emp: any) => (
+                {emprendimientosList?.map((emp: any) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.nombre}
                   </option>

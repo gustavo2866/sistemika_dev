@@ -8,7 +8,7 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { ResourceTitle } from "@/components/resource-title";
-import { CalendarCheck } from "lucide-react";
+import { AlarmClock, CalendarCheck, CalendarClock, CalendarDays, CalendarRange } from "lucide-react";
 import { useListContext, useGetIdentity } from "ra-core";
 import type { CRMEvento } from "../crm-eventos/model";
 import { CRMEventoTodoFormDialog, type CRMEventoTodoFormDialogHandle } from "./form";
@@ -40,10 +40,55 @@ const getBuckets = () => {
   nextWeekEnd.setDate(nextWeekEnd.getDate() + 6);
 
   return [
-    { key: "overdue" as BucketKey, title: "Vencidos", helper: "Fecha anterior a hoy", accentClass: "from-rose-50 to-white", interactive: false },
-    { key: "today" as BucketKey, title: "Hoy", helper: todayHelper, accentClass: "from-amber-50 to-white" },
-    { key: "week" as BucketKey, title: "Semana", helper: formatDateRange(weekStart, weekEnd), accentClass: "from-blue-50 to-white" },
-    { key: "next" as BucketKey, title: "Siguiente", helper: formatDateRange(nextWeekStart, nextWeekEnd), accentClass: "from-slate-50 to-white" },
+    {
+      key: "overdue" as BucketKey,
+      title: "Vencidos",
+      helper: "Fecha anterior a hoy",
+      accentClass: "from-rose-50 to-white",
+      interactive: false,
+      headerContent: (
+        <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-600">
+          <AlarmClock className="h-3.5 w-3.5" />
+          Vencidas
+        </span>
+      ),
+    },
+    {
+      key: "today" as BucketKey,
+      title: "Hoy",
+      helper: todayHelper,
+      accentClass: "from-amber-50 to-white",
+      headerContent: (
+        <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+          <CalendarDays className="h-3.5 w-3.5" />
+          Hoy
+        </span>
+      ),
+    },
+    {
+      key: "week" as BucketKey,
+      title: "Semana",
+      helper: formatDateRange(weekStart, weekEnd),
+      accentClass: "from-blue-50 to-white",
+      headerContent: (
+        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+          <CalendarRange className="h-3.5 w-3.5" />
+          Semana
+        </span>
+      ),
+    },
+    {
+      key: "next" as BucketKey,
+      title: "Siguiente",
+      helper: formatDateRange(nextWeekStart, nextWeekEnd),
+      accentClass: "from-slate-50 to-white",
+      headerContent: (
+        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          <CalendarClock className="h-3.5 w-3.5" />
+          Próximas
+        </span>
+      ),
+    },
   ];
 };
 

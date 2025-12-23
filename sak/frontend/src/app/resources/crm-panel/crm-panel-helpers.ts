@@ -18,7 +18,7 @@ export const ESTADO_BG_COLORS: Record<CRMOportunidadEstado, string> = {
   "6-perdida": "from-rose-50/90 to-rose-100/70",
 };
 
-// Formatear título de oportunidad
+// Formatear tヴtulo de oportunidad
 export const formatOportunidadTitulo = (oportunidad: CRMOportunidad): string => {
   return oportunidad.titulo || `Oportunidad #${oportunidad.id}`;
 };
@@ -45,7 +45,7 @@ export const getResponsableAvatarInfo = (oportunidad: CRMOportunidad) => {
   const responsable = (oportunidad as any).responsable;
   const name = getResponsableName(oportunidad);
   const avatarUrl = responsable?.avatar || responsable?.url_foto || null;
-  
+
   // Generar iniciales
   const initials = name
     .split(" ")
@@ -63,13 +63,20 @@ export const getPropiedadName = (oportunidad: CRMOportunidad): string => {
   return propiedad?.nombre || `Propiedad #${oportunidad.propiedad_id}`;
 };
 
-// Obtener nombre del tipo de operación
-export const getTipoOperacionName = (oportunidad: CRMOportunidad): string => {
-  const tipoOperacion = (oportunidad as any).tipo_operacion;
-  return tipoOperacion?.nombre || tipoOperacion?.codigo || `Operación #${oportunidad.tipo_operacion_id}`;
+// Obtener nombre de emprendimiento
+export const getEmprendimientoName = (oportunidad: CRMOportunidad): string => {
+  const emprendimiento = (oportunidad as any).emprendimiento;
+  if (!emprendimiento && !oportunidad.emprendimiento_id) return "Sin emprendimiento";
+  return emprendimiento?.nombre || `Emprendimiento #${oportunidad.emprendimiento_id}`;
 };
 
-// Clase de badge según estado
+// Obtener nombre del tipo de operaciИn
+export const getTipoOperacionName = (oportunidad: CRMOportunidad): string => {
+  const tipoOperacion = (oportunidad as any).tipo_operacion;
+  return tipoOperacion?.nombre || tipoOperacion?.codigo || `OperaciИn #${oportunidad.tipo_operacion_id}`;
+};
+
+// Clase de badge segカn estado
 export const getEstadoBadgeClass = (estado: CRMOportunidadEstado): string => {
   return CRM_OPORTUNIDAD_ESTADO_BADGES[estado] ?? "bg-slate-100 text-slate-800";
 };
@@ -82,17 +89,17 @@ export const formatEstadoLabel = (estado: CRMOportunidadEstado): string => {
 // Formatear monto
 export const formatMonto = (oportunidad: CRMOportunidad): string => {
   if (!oportunidad.monto) return "Sin monto";
-  
+
   const moneda = (oportunidad as any).moneda;
   const simbolo = moneda?.simbolo || moneda?.codigo || "$";
-  
+
   return `${simbolo} ${oportunidad.monto.toLocaleString("es-AR")}`;
 };
 
 // Formatear fecha de cierre estimada
 export const formatFechaCierre = (fecha?: string | null): string => {
   if (!fecha) return "Sin fecha";
-  
+
   const date = new Date(fecha);
   return date.toLocaleDateString("es-AR", {
     day: "2-digit",
@@ -101,7 +108,7 @@ export const formatFechaCierre = (fecha?: string | null): string => {
   });
 };
 
-// Formatear fecha de creación en formato dd/mm/aaaa
+// Formatear fecha de creaciИn en formato dd/mm/aaaa
 export const formatCreatedDate = (fecha: string): string => {
   const date = new Date(fecha);
   const day = date.getDate().toString().padStart(2, "0");
@@ -110,10 +117,10 @@ export const formatCreatedDate = (fecha: string): string => {
   return `${day}/${month}/${year}`;
 };
 
-// Estilo de tarjeta según estado
+// Estilo de tarjeta segカn estado
 export const getCardStyle = (estado: CRMOportunidadEstado): string => {
   const baseClasses = "transition-all hover:shadow-md";
-  
+
   switch (estado) {
     case "5-ganada":
       return cn(baseClasses, "border-emerald-200 bg-emerald-50/30");
@@ -124,7 +131,7 @@ export const getCardStyle = (estado: CRMOportunidadEstado): string => {
   }
 };
 
-// Utilidad cn (si no está importada)
+// Utilidad cn (si no estケ importada)
 function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(" ");
 }

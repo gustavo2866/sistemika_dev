@@ -9,7 +9,16 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { ResourceTitle } from "@/components/resource-title";
-import { Target } from "lucide-react";
+import {
+  Bookmark,
+  Calendar,
+  CheckCircle2,
+  FileText,
+  FolderOpen,
+  Sparkles,
+  Target,
+  XCircle,
+} from "lucide-react";
 import { useListContext, useDataProvider, useNotify, useRefresh, useGetList, useGetIdentity } from "ra-core";
 import type { CRMOportunidad } from "../crm-oportunidades/model";
 import { CRM_OPORTUNIDAD_ESTADOS } from "../crm-oportunidades/model";
@@ -22,15 +31,80 @@ import { CRMOportunidadDescartarDialog } from "./form_descartar";
 import { CRMOportunidadAgendarDialog } from "./form_agendar";
 import { CRMOportunidadCotizarDialog } from "./form_cotizar";
 import { CRMOportunidadCerrarDialog } from "./form_cerrar";
+import { CRMOportunidadAceptarDialog } from "./form_aceptar";
 
 // Definición de buckets (usando todos los estados)
+const getBucketHeader = (estado: BucketKey, label: string) => {
+  switch (estado) {
+    case "0-prospect":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+          <Sparkles className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    case "1-abierta":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+          <FolderOpen className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    case "2-visita":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-700">
+          <Calendar className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    case "3-cotiza":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+          <FileText className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    case "4-reserva":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+          <Bookmark className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    case "5-ganada":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    case "6-perdida":
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700">
+          <XCircle className="h-3.5 w-3.5" />
+          {label}
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          {label}
+        </span>
+      );
+  }
+};
+
 const getBuckets = () => {
-  return CRM_OPORTUNIDAD_ESTADOS.map((estado) => ({
-    key: estado as BucketKey,
-    title: getBucketLabel(estado),
-    helper: "",
-    accentClass: ESTADO_BG_COLORS[estado] ?? "from-white/95 to-slate-50/70",
-  }));
+  return CRM_OPORTUNIDAD_ESTADOS.map((estado) => {
+    const label = getBucketLabel(estado);
+    return {
+      key: estado as BucketKey,
+      title: label,
+      helper: "",
+      accentClass: ESTADO_BG_COLORS[estado] ?? "from-white/95 to-slate-50/70",
+      headerContent: getBucketHeader(estado as BucketKey, label),
+    };
+  });
 };
 
 // Filtro de búsqueda
@@ -77,7 +151,7 @@ const filters = [
 const ListActions = () => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} />
-    <CreateButton />
+    <CreateButton state={{ fromPanel: true }} />
     <ExportButton />
   </div>
 );
@@ -113,6 +187,18 @@ const OportunidadListContent = () => {
     pagination: { page: 1, perPage: 100 },
   });
 
+  const ownerOptions = useMemo(
+    () => [
+      { value: "todos", label: "Todos", avatar: null },
+      ...usuarios.map((user: any) => ({
+        value: String(user.id),
+        label: user.nombre ?? user.email ?? `Usuario #${user.id}`,
+        avatar: user.url_foto ?? user.avatar ?? null,
+      })),
+    ],
+    [usuarios]
+  );
+
   // Estado para diálogo descartar
   const [descartarDialogOpen, setDescartarDialogOpen] = useState(false);
   const [descartarLoading, setDescartarLoading] = useState(false);
@@ -140,11 +226,17 @@ const OportunidadListContent = () => {
     formaPagoDescripcion: "",
   });
 
+  const { data: emprendimientos = [] } = useGetList("emprendimientos", {
+    pagination: { page: 1, perPage: 500 },
+  });
+
   // Estado para diálogo cerrar
   const [cerrarDialogOpen, setCerrarDialogOpen] = useState(false);
   const [cerrarLoading, setCerrarLoading] = useState(false);
   const [perderMotivoId, setPerderMotivoId] = useState("");
   const [perderNota, setPerderNota] = useState("");
+  const [aceptarDialogOpen, setAceptarDialogOpen] = useState(false);
+  const [aceptarLoading, setAceptarLoading] = useState(false);
 
   const [selectedOportunidad, setSelectedOportunidad] = useState<CRMOportunidad | null>(null);
 
@@ -297,6 +389,45 @@ const OportunidadListContent = () => {
     }
   }, [selectedOportunidad, perderMotivoId, perderNota, dataProvider, notify, refresh]);
 
+  const handleAceptarOpenChange = useCallback((open: boolean) => {
+    setAceptarDialogOpen(open);
+    if (!open) {
+      setSelectedOportunidad(null);
+    }
+  }, []);
+
+  const handleAceptarSubmit = useCallback(
+    async (payload: {
+      titulo: string;
+      tipo_operacion_id: number | null;
+      tipo_propiedad_id: number | null;
+      emprendimiento_id: number | null;
+      descripcion_estado: string;
+    }) => {
+      if (!selectedOportunidad) return;
+      setAceptarLoading(true);
+      try {
+        await dataProvider.update("crm/oportunidades", {
+          id: selectedOportunidad.id,
+          data: {
+            ...payload,
+            estado: "1-abierta",
+            fecha_estado: new Date().toISOString(),
+          },
+          previousData: selectedOportunidad,
+        });
+        notify("Oportunidad confirmada y movida a Abierta", { type: "success" });
+        refresh();
+        handleAceptarOpenChange(false);
+      } catch (error: any) {
+        notify(error.message || "Error al confirmar la oportunidad", { type: "error" });
+      } finally {
+        setAceptarLoading(false);
+      }
+    },
+    [selectedOportunidad, dataProvider, notify, refresh, handleAceptarOpenChange]
+  );
+
   // Renderizado de tarjeta
   const renderCard = useCallback(
     (oportunidad: CRMOportunidad, bucketKey?: BucketKey, collapsed?: boolean, onToggleCollapse?: () => void) => (
@@ -308,7 +439,11 @@ const OportunidadListContent = () => {
         updating={false}
         onToggleCollapse={onToggleCollapse}
         onEdit={(opp) => {
-          navigate(`/crm/oportunidades/${opp.id}`);
+          navigate(`/crm/oportunidades/${opp.id}`, { state: { fromPanel: true } });
+        }}
+        onAceptar={(opp) => {
+          setSelectedOportunidad(opp);
+          setAceptarDialogOpen(true);
         }}
         onAgendar={(opp) => {
           setSelectedOportunidad(opp);
@@ -345,7 +480,7 @@ const OportunidadListContent = () => {
         }}
       />
     ),
-    [tiposEvento, identity, monedas]
+    [tiposEvento, identity, monedas, navigate]
   );
 
   // Definición de buckets
@@ -364,11 +499,20 @@ const OportunidadListContent = () => {
         searchFilter={searchFilterFn}
         ownerFilter={ownerFilterFn}
         autoSelectOwnerId={identity?.id ? String(identity.id) : undefined}
+        identity={identity}
         filterConfig={{
           enableSearch: true,
           searchPlaceholder: "Buscar oportunidades...",
+          searchClassName: "w-[60vw] max-w-none min-w-0 sm:flex-1 sm:min-w-[200px] sm:max-w-md",
+          searchInputClassName: "!h-5 !py-0 !text-[9px] sm:!h-9 sm:!text-sm",
           enableOwnerFilter: true,
           ownerFilterPlaceholder: "Responsable",
+          ownerFilterClassName: "w-[35vw] min-w-0 sm:min-w-[170px]",
+          ownerTriggerClassName: "!h-5 !py-0 !text-[9px] sm:!h-9 sm:!text-sm !px-2",
+          ownerHideLabel: true,
+          ownerHideLabelOnSmall: true,
+          ownerFilterPlacement: "left",
+          ownerOptions,
           enableCollapseToggle: true,
         }}
         customFilters={() => <OportunidadCustomFilters />}
@@ -425,6 +569,19 @@ const OportunidadListContent = () => {
         onConfirm={handleCerrarConfirm}
         disabled={cerrarLoading}
       />
+
+      {/* Diálogo de confirmar prospecto */}
+      {selectedOportunidad && (
+        <CRMOportunidadAceptarDialog
+          open={aceptarDialogOpen}
+          onOpenChange={handleAceptarOpenChange}
+          record={selectedOportunidad}
+          onComplete={handleAceptarSubmit}
+          isProcessing={aceptarLoading}
+          tipoPropiedadOptions={tiposPropiedad}
+          emprendimientoOptions={emprendimientos}
+        />
+      )}
     </>
   );
 };

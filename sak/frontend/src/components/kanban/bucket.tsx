@@ -14,9 +14,9 @@ export const KanbanBucket = React.forwardRef<HTMLDivElement, KanbanBucketProps>(
     <div
       ref={ref}
       className={cn(
-        "flex min-h-[320px] flex-col gap-3 rounded-3xl border border-slate-200/70 bg-gradient-to-b p-4 shadow-inner",
-        accentClass,
-        className
+        "flex min-h-[320px] flex-col gap-3 rounded-3xl border border-slate-200/70 bg-gradient-to-b px-3 py-4 shadow-inner",
+        className,
+        accentClass
       )}
       {...props}
     />
@@ -28,6 +28,7 @@ export interface KanbanBucketHeaderProps extends React.HTMLAttributes<HTMLDivEle
   title: string;
   helper?: string;
   count?: number;
+  headerContent?: React.ReactNode;
   showPrevControl?: boolean;
   showNextControl?: boolean;
   onPrev?: () => void;
@@ -38,6 +39,7 @@ export const KanbanBucketHeader = ({
   title,
   helper,
   count,
+  headerContent,
   showPrevControl,
   showNextControl,
   onPrev,
@@ -57,10 +59,14 @@ export const KanbanBucketHeader = ({
           <ChevronsLeft className="h-3.5 w-3.5" />
         </button>
       ) : null}
-      <div>
-        <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-600">{title}</p>
-        {helper ? <p className="text-xs text-slate-500">{helper}</p> : null}
-      </div>
+      {headerContent ? (
+        <div>{headerContent}</div>
+      ) : (
+        <div>
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-600">{title}</p>
+          {helper ? <p className="text-xs text-slate-500">{helper}</p> : null}
+        </div>
+      )}
     </div>
     <div className="flex items-center gap-1.5">
       {children ?? <KanbanBucketCounter value={count ?? 0} />}
@@ -98,12 +104,14 @@ export const KanbanBucketCounter = ({
 export interface KanbanBucketBodyProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export const KanbanBucketBody = React.forwardRef<HTMLDivElement, KanbanBucketBodyProps>(
-  ({ className, ...props }, ref) => (
+  ({ className, children, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("flex flex-col gap-3 h-[380px] overflow-y-auto pr-1 rounded-2xl", className)}
+      className={cn("kanban-scroll flex h-[380px] overflow-y-auto rounded-2xl -mx-3", className)}
       {...props}
-    />
+    >
+      <div className="flex min-w-0 w-full flex-col gap-3 px-3">{children}</div>
+    </div>
   )
 );
 KanbanBucketBody.displayName = "KanbanBucketBody";

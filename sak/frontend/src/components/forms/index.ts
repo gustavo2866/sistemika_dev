@@ -22,6 +22,7 @@ export { FormWizard } from "./form-wizard/form-wizard";
 export { SectionCard, SummaryList, MessagePreview } from "./form-wizard/sections";
 export { UserSelect } from "./user-select";
 export { UserSelector } from "./user-selector";
+export { ResponsableSelector } from "./responsable-selector";
 
 // Types
 export type { FormSection, FormLayoutProps } from "./form-layout";

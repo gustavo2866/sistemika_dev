@@ -3,7 +3,6 @@
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { SelectInput } from "@/components/select-input";
-import { ReferenceInput } from "@/components/reference-input";
 import { BooleanInput } from "@/components/boolean-input";
 import { required } from "ra-core";
 import { EMPRENDIMIENTO_ESTADO_CHOICES } from "./model";
@@ -24,9 +23,6 @@ export const EmprendimientoForm = () => (
       <TextInput source="fecha_inicio" label="Fecha de inicio" type="date" className="w-full" />
       <TextInput source="fecha_fin_estimada" label="Fecha estimada de fin" type="date" className="w-full" />
     </div>
-    <ReferenceInput source="responsable_id" reference="users" label="Responsable">
-      <SelectInput optionText="nombre" className="w-full" validate={required()} />
-    </ReferenceInput>
     <BooleanInput source="activo" label="Activo" />
   </SimpleForm>
 );

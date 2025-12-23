@@ -3,7 +3,6 @@
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
-import { ReferenceField } from "@/components/reference-field";
 import { SelectInput } from "@/components/select-input";
 import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
@@ -42,11 +41,6 @@ export const EmprendimientoList = () => (
       </DataTable.Col>
       <DataTable.Col source="estado" label="Estado">
         <TextField source="estado" />
-      </DataTable.Col>
-      <DataTable.Col source="responsable_id" label="Responsable">
-        <ReferenceField source="responsable_id" reference="users">
-          <TextField source="nombre" />
-        </ReferenceField>
       </DataTable.Col>
       <DataTable.Col source="activo" label="Activo">
         <TextField source="activo" />

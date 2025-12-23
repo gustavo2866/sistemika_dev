@@ -5,7 +5,7 @@ from sqlalchemy import event
 from sqlmodel import Field, Relationship
 
 from .base import Base, current_utc_time
-from .enums import EstadoEvento, TipoEvento
+from .enums import EstadoEvento
 from .crm_catalogos import CRMTipoEvento, CRMMotivoEvento
 
 if TYPE_CHECKING:
@@ -56,14 +56,11 @@ class CRMEvento(Base, table=True):
         max_length=255,
         description="Título/resumen breve del evento"
     )
-    tipo_evento: str = Field(
-        max_length=20, 
-        description="Tipo de evento: llamada, reunion, visita, email, whatsapp, otro",
-        index=True
-    )
-    fecha_evento: datetime = Field(
+    fecha_evento: Optional[datetime] = Field(
+        default=None,
         description="Fecha y hora del evento (programada o realizada)",
-        index=True
+        index=True,
+        nullable=True,
     )
     estado_evento: str = Field(
         default=EstadoEvento.PENDIENTE.value,

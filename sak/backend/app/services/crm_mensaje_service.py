@@ -566,7 +566,8 @@ class CRMMensajeService:
             raise ValueError("Mensaje no encontrado")
 
         titulo = (payload.get("titulo") or "").strip()
-        tipo_evento = payload.get("tipo_evento")
+        tipo_evento_codigo = payload.get("tipo_evento_codigo") or payload.get("tipo_evento")
+        tipo_id = payload.get("tipo_id")
         fecha_evento = payload.get("fecha_evento")
         asignado_a_id = payload.get("asignado_a_id")
         estado_evento = payload.get("estado_evento") or EstadoEvento.PENDIENTE.value
@@ -574,8 +575,8 @@ class CRMMensajeService:
 
         if not titulo:
             raise ValueError("El t\u00edtulo del evento es obligatorio")
-        if not tipo_evento:
-            raise ValueError("tipo_evento es obligatorio")
+        if not tipo_id and not tipo_evento_codigo:
+            raise ValueError("tipo_evento_codigo o tipo_id es obligatorio")
         if not fecha_evento:
             raise ValueError("fecha_evento es obligatorio")
         if not asignado_a_id:
@@ -636,11 +637,17 @@ class CRMMensajeService:
             oportunidad_id = oportunidad.id
             oportunidad_creada = True
 
-        tipo_catalogo_codigo = payload.get("tipo_evento_codigo") or tipo_evento or "nota"
+        tipo_catalogo_codigo = tipo_evento_codigo or "nota"
         motivo_catalogo_codigo = payload.get("motivo_evento_codigo") or "general"
-        tipo_catalogo_id = self._obtener_catalogo_id(
-            session, CRMTipoEvento, tipo_catalogo_codigo, "tipos de evento"
-        )
+        if tipo_id is not None:
+            try:
+                tipo_catalogo_id = int(tipo_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("tipo_id es invalido") from exc
+        else:
+            tipo_catalogo_id = self._obtener_catalogo_id(
+                session, CRMTipoEvento, tipo_catalogo_codigo, "tipos de evento"
+            )
         motivo_catalogo_id = self._obtener_catalogo_id(
             session, CRMMotivoEvento, motivo_catalogo_codigo, "motivos de evento"
         )
@@ -653,7 +660,6 @@ class CRMMensajeService:
             tipo_id=tipo_catalogo_id,
             motivo_id=motivo_catalogo_id,
             titulo=titulo,
-            tipo_evento=tipo_evento,
             fecha_evento=fecha_evento_dt,
             estado_evento=estado_evento,
             asignado_a_id=asignado_a_id_int,

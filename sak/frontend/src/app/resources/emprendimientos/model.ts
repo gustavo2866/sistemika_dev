@@ -1,6 +1,5 @@
 import {
   createEntitySchema,
-  referenceField,
   selectField,
   stringField,
 } from "@/lib/form-detail-schema";
@@ -38,7 +37,6 @@ export type Emprendimiento = {
   estado: EmprendimientoEstado;
   fecha_inicio?: string | null;
   fecha_fin_estimada?: string | null;
-  responsable_id: number;
   activo: boolean;
 };
 
@@ -49,7 +47,6 @@ export type EmprendimientoFormValues = {
   estado: EmprendimientoEstado;
   fecha_inicio?: string | null;
   fecha_fin_estimada?: string | null;
-  responsable_id: number | null;
   activo: boolean;
 };
 
@@ -60,7 +57,6 @@ export const EMPRENDIMIENTO_DEFAULTS: EmprendimientoFormValues = {
   estado: "planificacion",
   fecha_inicio: "",
   fecha_fin_estimada: "",
-  responsable_id: null,
   activo: true,
 };
 
@@ -96,11 +92,6 @@ export const emprendimientoSchema = createEntitySchema<
     fecha_fin_estimada: stringField({
       required: false,
       defaultValue: "",
-    }),
-    responsable_id: referenceField({
-      required: true,
-      resource: "users",
-      labelField: "nombre",
     }),
   },
 });

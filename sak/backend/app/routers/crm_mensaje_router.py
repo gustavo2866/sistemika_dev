@@ -49,6 +49,8 @@ def _fetch_event_rows_dynamic(session: Session, oportunidad_id: int) -> list[dic
         titulo = evento.titulo or f"Evento #{evento.id}"
         descripcion_resumen = evento.resultado[:80] + "..." if evento.resultado and len(evento.resultado) > 80 else evento.resultado
         
+        tipo_codigo = evento.tipo_catalogo.codigo if evento.tipo_catalogo else None
+        tipo_nombre = evento.tipo_catalogo.nombre if evento.tipo_catalogo else None
         normalized.append({
             "tipo": "evento",
             "id": evento.id,
@@ -56,7 +58,7 @@ def _fetch_event_rows_dynamic(session: Session, oportunidad_id: int) -> list[dic
             "titulo": titulo,
             "descripcion": descripcion_resumen,
             "estado": evento.estado_evento,
-            "tipo_evento": evento.tipo_evento,
+            "tipo_evento": tipo_codigo or tipo_nombre,
             "resultado": evento.resultado,
         })
     

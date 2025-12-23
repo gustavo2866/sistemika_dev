@@ -97,16 +97,6 @@ class PrioridadMensaje(str, Enum):
     BAJA = "baja"
 
 
-class TipoEvento(str, Enum):
-    """Tipos de eventos del CRM."""
-    LLAMADA = "llamada"
-    REUNION = "reunion"
-    VISITA = "visita"
-    EMAIL = "email"
-    WHATSAPP = "whatsapp"
-    NOTA = "nota"
-
-
 # Transiciones de estado permitidas para eventos
 TRANSICIONES_ESTADO_EVENTO = {
     EstadoEvento.PENDIENTE.value: [

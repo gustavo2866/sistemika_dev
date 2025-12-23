@@ -98,14 +98,16 @@ def listar_eventos_oportunidad(
     
     for evento in eventos:
         # Contar por estado
-        if evento.estado not in resumen["por_estado"]:
-            resumen["por_estado"][evento.estado] = 0
-        resumen["por_estado"][evento.estado] += 1
+        estado = evento.estado_evento
+        if estado not in resumen["por_estado"]:
+            resumen["por_estado"][estado] = 0
+        resumen["por_estado"][estado] += 1
         
         # Contar por tipo
-        if evento.tipo_evento not in resumen["por_tipo"]:
-            resumen["por_tipo"][evento.tipo_evento] = 0
-        resumen["por_tipo"][evento.tipo_evento] += 1
+        tipo = evento.tipo_catalogo.codigo if evento.tipo_catalogo else str(evento.tipo_id)
+        if tipo not in resumen["por_tipo"]:
+            resumen["por_tipo"][tipo] = 0
+        resumen["por_tipo"][tipo] += 1
     
     return {
         "oportunidad_id": oportunidad_id,

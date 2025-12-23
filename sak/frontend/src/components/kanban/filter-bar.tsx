@@ -9,8 +9,11 @@ export interface KanbanFilterBarProps extends React.HTMLAttributes<HTMLDivElemen
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
+  leftContent?: React.ReactNode;
   rightContent?: React.ReactNode;
   searchClassName?: string;
+  searchInputClassName?: string;
+  rightContentClassName?: string;
 }
 
 export const KanbanFilterBar = ({
@@ -18,8 +21,11 @@ export const KanbanFilterBar = ({
   searchValue,
   onSearchChange,
   searchPlaceholder = "Buscar...",
+  leftContent,
   rightContent,
   searchClassName,
+  searchInputClassName,
+  rightContentClassName,
   ...props
 }: KanbanFilterBarProps) => (
   <div
@@ -30,17 +36,26 @@ export const KanbanFilterBar = ({
     {...props}
   >
     <div className="flex flex-wrap items-center justify-between gap-2.5">
-      <div className={cn("relative flex-1 min-w-[200px] max-w-md", searchClassName)}>
-        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-        <Input
-          type="search"
-          value={searchValue}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="h-9 rounded-2xl border-slate-200/80 bg-white/70 pl-8 text-sm shadow-sm focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className={cn("relative flex-1 min-w-[200px] max-w-md", searchClassName)}>
+        <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 sm:h-3.5 sm:w-3.5" />
+          <Input
+            type="search"
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={searchPlaceholder}
+          className={cn(
+            "h-9 rounded-2xl border-slate-200/80 bg-white/70 pl-8 text-sm shadow-sm focus:border-slate-300 focus:ring-2 focus:ring-primary/20",
+            "py-0",
+            searchInputClassName
+          )}
         />
+        </div>
+        {leftContent}
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">{rightContent}</div>
+      <div className={cn("flex flex-wrap items-center gap-1.5", rightContentClassName)}>
+        {rightContent}
+      </div>
     </div>
   </div>
 );

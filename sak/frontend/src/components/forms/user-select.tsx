@@ -20,6 +20,8 @@ export interface UserSelectProps extends React.ComponentProps<typeof Select> {
   options: UserSelectOption[];
   placeholder?: string;
   triggerClassName?: string;
+  hideLabel?: boolean;
+  hideLabelOnSmall?: boolean;
 }
 
 const getInitials = (name?: string) => {
@@ -36,6 +38,8 @@ export const UserSelect = ({
   onValueChange,
   placeholder = "Seleccionar usuario",
   triggerClassName,
+  hideLabel,
+  hideLabelOnSmall,
   ...props
 }: UserSelectProps) => {
   const selected = React.useMemo(
@@ -53,15 +57,23 @@ export const UserSelect = ({
       >
         {selected ? (
           <div className="flex items-center gap-1.5 text-slate-700">
-            <Avatar className="size-5 border border-slate-200">
+            <Avatar className="size-4 border border-slate-200 sm:size-5">
               {selected.avatar ? (
                 <AvatarImage src={selected.avatar} alt={selected.label} />
               ) : null}
-              <AvatarFallback className="bg-slate-200 text-[9px] font-semibold uppercase text-slate-600">
+              <AvatarFallback className="bg-slate-200 text-[8px] font-semibold uppercase text-slate-600 sm:text-[9px]">
                 {getInitials(selected.label)}
               </AvatarFallback>
             </Avatar>
-            <span className="truncate">{selected.label}</span>
+            <span
+              className={cn(
+                "truncate",
+                hideLabel ? "hidden" : undefined,
+                hideLabelOnSmall ? "hidden sm:inline" : undefined
+              )}
+            >
+              {selected.label}
+            </span>
           </div>
         ) : (
           <span className="text-sm text-slate-500">{placeholder}</span>

@@ -31,7 +31,7 @@ def test_catalogos():
         ("condiciones-pago", "/crm/catalogos/condiciones-pago"),
         ("tipos-evento", "/crm/catalogos/tipos-evento"),
         ("motivos-evento", "/crm/catalogos/motivos-evento"),
-        ("origenes-lead", "/crm/catalogos/origenes-lead"),
+
         ("monedas", "/crm/catalogos/monedas"),
     ]
     

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useGetList } from "ra-core";
+import { Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -109,7 +110,7 @@ export const CRMOportunidadAceptarDialog = ({
                 </select>
               </div>
               <div>
-                <Label htmlFor="tipo_propiedad">Tipo de propiedad</Label>
+                <Label htmlFor="tipo_propiedad">Tipo de propiedad *</Label>
                 <select
                   id="tipo_propiedad"
                   className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -120,6 +121,7 @@ export const CRMOportunidadAceptarDialog = ({
                       tipo_propiedad_id: event.target.value ? Number(event.target.value) : null,
                     })
                   }
+                  required
                 >
                   <option value="">Seleccionar...</option>
                   {tiposPropiedad?.map((tipo: any) => (

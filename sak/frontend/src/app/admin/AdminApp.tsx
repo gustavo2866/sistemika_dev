@@ -198,6 +198,7 @@ import {
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
 import { CRMEventoListTodo } from "@/app/resources/crm-todo";
+import { CRMGestionPage } from "@/app/resources/crm-gestion";
 
 declare const window: Window | undefined;
 
@@ -548,6 +549,7 @@ const AdminApp = () => {
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/mensajes/:id/responder" element={<CRMMensajeReply />} />
+        <Route path="/crm/gestion" element={<CRMGestionPage />} />
         <Route path="/crm/todo" element={<CRMEventoListTodo />} />
       </CustomRoutes>
     </Admin>

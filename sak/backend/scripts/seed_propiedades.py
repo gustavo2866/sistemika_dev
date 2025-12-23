@@ -34,7 +34,6 @@ from app.models import (
     Emprendimiento,
     Moneda,
     Propiedad,
-    User,
 )
 
 
@@ -44,16 +43,14 @@ def get_default_ids(session: Session) -> dict:
     tipo_emprendimiento = session.exec(select(CRMTipoOperacion).where(CRMTipoOperacion.codigo == "emprendimiento")).first()
     dolar = session.exec(select(Moneda).where(Moneda.codigo == "USD")).first()
     peso = session.exec(select(Moneda).where(Moneda.codigo == "ARS")).first()
-    responsable = session.exec(select(User)).first()
 
     # Emprendimiento demo (solo si no existe ninguno)
     emprendimiento = session.exec(select(Emprendimiento)).first()
-    if not emprendimiento and responsable:
+    if not emprendimiento:
         emprendimiento = Emprendimiento(
             nombre="Emprendimiento General",
             descripcion="Emprendimiento para propiedades tipo terreno",
             estado="planificacion",
-            responsable_id=responsable.id,
         )
         session.add(emprendimiento)
         session.commit()
