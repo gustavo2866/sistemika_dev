@@ -65,6 +65,7 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
   initialCustomState?: Record<string, any>;
   
   // Board configuration
+  bucketGridClassName?: string;
   renderCard: (
     item: TItem,
     bucketKey?: K,
@@ -94,6 +95,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   filterConfig = {},
   customFilters,
   initialCustomState = {},
+  bucketGridClassName,
   renderCard,
   isLoading,
   loadingMessage,
@@ -362,6 +364,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
 
   return (
     <KanbanBoard<TItem, K>
+      bucketGridClassName={bucketGridClassName}
       filterBar={filterBar}
       isLoading={isLoading}
       loadingMessage={loadingMessage}

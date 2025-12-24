@@ -494,6 +494,7 @@ const OportunidadListContent = () => {
         buckets={buckets}
         getBucketKey={calculateOportunidadBucketKey}
         maxBucketsPerPage={4}
+        bucketGridClassName="gap-2 md:gap-3 xl:gap-3"
         onItemMove={prepareMoveOportunidadPayload}
         resource="crm/oportunidades"
         getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}

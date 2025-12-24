@@ -45,6 +45,8 @@ export interface ComboboxQueryProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  clearable?: boolean;
+  clearValue?: string;
 }
 
 /**
@@ -80,10 +82,12 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
     source,
     value: valueProp,
     onChange: onChangeProp,
-    placeholder,
-    disabled,
-    className,
-  } = props;
+  placeholder,
+  disabled,
+  className,
+  clearable,
+  clearValue,
+} = props;
 
   const dataProvider = useDataProvider();
 
@@ -117,16 +121,19 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
   // Determinar value y onChange según el modo
   const value = source ? controller.field.value : valueProp;
   const onChange = source ? controller.field.onChange : onChangeProp;
+  const normalizedValue = value == null ? "" : String(value);
 
   return (
     <Combobox
       options={options}
       loading={isLoading}
-      value={value || ""}
+      value={normalizedValue}
       onChange={onChange || (() => {})}
       placeholder={placeholder}
       disabled={disabled}
       className={className}
+      clearable={clearable}
+      clearValue={clearValue}
     />
   );
 };

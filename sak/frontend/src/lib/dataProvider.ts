@@ -21,7 +21,13 @@ const baseProvider = simpleRestProvider(apiUrl, httpClient);
 
 export const dataProvider: DataProvider = {
   ...baseProvider,
-  getList: (resource, params) => baseProvider.getList(resource, params),
+  getList: (resource, params) => {
+    if (resource === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
+      const { default_scope, ...restFilter } = params.filter as Record<string, unknown>;
+      return baseProvider.getList("crm/eventos/default", { ...params, filter: restFilter });
+    }
+    return baseProvider.getList(resource, params);
+  },
   getOne: (resource, params) => baseProvider.getOne(resource, params),
   getMany: (resource, params) => baseProvider.getMany(resource, params),
   getManyReference: (resource, params) =>

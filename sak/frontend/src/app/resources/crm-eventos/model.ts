@@ -52,6 +52,7 @@ export type CRMEvento = {
     propiedad_id?: number;
     contacto?: { id?: number; nombre?: string; nombre_completo?: string } | null;
   } | null;
+  contacto?: { id?: number; nombre?: string; nombre_completo?: string } | null;
   asignado_a?: { id?: number; nombre?: string } | null;
 };
 
@@ -101,7 +102,7 @@ export const crmEventoSchema = createEntitySchema<
       required: true,
       resource: "crm/catalogos/tipos-evento",
       labelField: "nombre",
-      defaultValue: null,
+      defaultValue: undefined,
     }),
     fecha_evento: stringField({
       required: true,

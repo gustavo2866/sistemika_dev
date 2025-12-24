@@ -51,23 +51,23 @@ export const UserSelect = ({
     <Select value={value} onValueChange={onValueChange} {...props}>
       <SelectTrigger
         className={cn(
-          "rounded-2xl border-slate-200/80 bg-white/80 shadow-sm text-sm",
+          "h-9 px-3 py-2 rounded-md border-slate-200/80 bg-white/80 shadow-sm text-sm",
           triggerClassName
         )}
       >
         {selected ? (
           <div className="flex items-center gap-1.5 text-slate-700">
-            <Avatar className="size-4 border border-slate-200 sm:size-5">
+            <Avatar className="size-3.5 border border-slate-200 sm:size-4">
               {selected.avatar ? (
                 <AvatarImage src={selected.avatar} alt={selected.label} />
               ) : null}
-              <AvatarFallback className="bg-slate-200 text-[8px] font-semibold uppercase text-slate-600 sm:text-[9px]">
+              <AvatarFallback className="bg-slate-200 text-[7px] font-semibold uppercase text-slate-600 sm:text-[8px]">
                 {getInitials(selected.label)}
               </AvatarFallback>
             </Avatar>
             <span
               className={cn(
-                "truncate",
+                "truncate text-sm font-normal",
                 hideLabel ? "hidden" : undefined,
                 hideLabelOnSmall ? "hidden sm:inline" : undefined
               )}
@@ -76,22 +76,22 @@ export const UserSelect = ({
             </span>
           </div>
         ) : (
-          <span className="text-sm text-slate-500">{placeholder}</span>
+          <span className="text-sm font-normal text-slate-500">{placeholder}</span>
         )}
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             <div className="flex items-center gap-2 text-sm">
-              <Avatar className="size-5 border border-slate-200">
+              <Avatar className="size-4 border border-slate-200">
                 {option.avatar ? (
                   <AvatarImage src={option.avatar} alt={option.label} />
                 ) : null}
-                <AvatarFallback className="bg-slate-200 text-[9px] font-semibold uppercase text-slate-600">
+                <AvatarFallback className="bg-slate-200 text-[8px] font-semibold uppercase text-slate-600">
                   {getInitials(option.label)}
                 </AvatarFallback>
               </Avatar>
-              <span className="truncate">{option.label}</span>
+              <span className="truncate text-sm">{option.label}</span>
             </div>
           </SelectItem>
         ))}

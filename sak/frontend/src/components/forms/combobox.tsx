@@ -9,7 +9,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ComboboxOption {
   id: number | string;
@@ -27,6 +28,8 @@ interface ComboboxProps {
   emptyMessage?: string;
   disabled?: boolean;
   className?: string;
+  clearable?: boolean;
+  clearValue?: string;
 }
 
 export const Combobox = ({
@@ -40,6 +43,8 @@ export const Combobox = ({
   emptyMessage = "Sin resultados.",
   disabled = false,
   className,
+  clearable = false,
+  clearValue = "",
 }: ComboboxProps) => {
   const [open, setOpen] = useState(false);
   
@@ -47,6 +52,7 @@ export const Combobox = ({
     () => options.find((option) => String(option.id) === value),
     [options, value]
   );
+  const canClear = clearable && Boolean(value) && !disabled && !loading;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -54,15 +60,34 @@ export const Combobox = ({
         <Button
           type="button"
           variant="outline"
-          className={className || "w-full justify-between"}
+          className={cn("w-full justify-between text-left", className)}
           disabled={loading || disabled}
         >
-          {selected
-            ? selected.nombre
-            : loading
-              ? loadingMessage
-              : placeholder}
-          <ChevronDown className="ml-2 h-4 w-4 opacity-60" />
+          <span className="flex-1 truncate text-left">
+            {selected
+              ? selected.nombre
+              : loading
+                ? loadingMessage
+                : placeholder}
+          </span>
+          {canClear ? (
+            <span
+              role="button"
+              className="ml-2 inline-flex h-6 w-6 items-center justify-center text-muted-foreground/70 hover:text-muted-foreground"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onChange(clearValue);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </span>
+          ) : null}
+          <ChevronDown className="ml-1 h-4 w-4 opacity-60" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[280px] p-0">

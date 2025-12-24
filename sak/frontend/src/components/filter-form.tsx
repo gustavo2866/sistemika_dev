@@ -204,6 +204,7 @@ export const FilterButton = (props: FilterButtonProps) => {
   const {
     filters: filtersProp,
     className,
+    buttonClassName,
     disableSaveQuery,
     size,
     variant = "outline",
@@ -311,10 +312,10 @@ export const FilterButton = (props: FilterButtonProps) => {
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            className="add-filter"
             variant={variant}
             size={size}
             aria-haspopup="true"
+            className={cn("add-filter", buttonClassName)}
           >
             <Filter className="h-4 w-4" />
             {translate("ra.action.add_filter")}
@@ -422,6 +423,7 @@ export const FilterButton = (props: FilterButtonProps) => {
 
 export interface FilterButtonProps extends HtmlHTMLAttributes<HTMLDivElement> {
   className?: string;
+  buttonClassName?: string;
   disableSaveQuery?: boolean;
   filters?: React.ReactElement<FilterElementProps>[];
   resource?: string;

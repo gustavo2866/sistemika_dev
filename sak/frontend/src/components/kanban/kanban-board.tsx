@@ -10,6 +10,7 @@ import {
 
 export interface KanbanBoardProps<TItem, K extends string> {
   className?: string;
+  bucketGridClassName?: string;
   filterBar?: React.ReactNode;
   isLoading?: boolean;
   loadingMessage?: string;
@@ -31,6 +32,7 @@ export interface KanbanBoardProps<TItem, K extends string> {
 
 export const KanbanBoard = <TItem, K extends string>({
   className,
+  bucketGridClassName,
   filterBar,
   isLoading,
   loadingMessage = "Cargando...",
@@ -61,6 +63,7 @@ export const KanbanBoard = <TItem, K extends string>({
     ) : (
       <div className="space-y-6">
         <KanbanBucketsGrid
+          className={bucketGridClassName}
           bucketDefinitions={bucketDefinitions}
           bucketItems={bucketItems}
           renderCard={renderCard}

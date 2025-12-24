@@ -194,14 +194,14 @@ export const AutocompleteInput = (
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className="w-full justify-between h-auto py-1.75 font-normal"
+                className="w-full justify-between h-9 px-3 py-2 font-normal"
               >
                 {selectedChoice ? (
-                  getInputText(selectedChoice)
+                  <span className="text-sm font-normal">{getInputText(selectedChoice)}</span>
                 ) : (
-                  <span className="text-muted-foreground">{placeholder}</span>
+                  <span className="text-sm font-normal text-muted-foreground">{placeholder}</span>
                 )}
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-full p-0">
