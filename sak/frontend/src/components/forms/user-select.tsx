@@ -57,7 +57,12 @@ export const UserSelect = ({
       >
         {selected ? (
           <div className="flex items-center gap-1.5 text-slate-700">
-            <Avatar className="size-3.5 border border-slate-200 sm:size-4">
+            <Avatar
+              className={cn(
+                "size-3.5 border border-slate-200 sm:size-4",
+                (hideLabel || hideLabelOnSmall) && "size-7 sm:size-8"
+              )}
+            >
               {selected.avatar ? (
                 <AvatarImage src={selected.avatar} alt={selected.label} />
               ) : null}

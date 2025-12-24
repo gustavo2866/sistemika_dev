@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { required, useGetIdentity, useGetList, useRecordContext } from "ra-core";
-import { useController, useFormContext } from "react-hook-form";
+import { useController, useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import { ComboboxQuery, ResponsableSelector } from "@/components/forms";
@@ -17,6 +17,8 @@ const CRMEventoFormContent = () => {
   const { data: identity } = useGetIdentity();
   const { field: asignadoField } = useController({ name: "asignado_a_id" });
   const isEdit = Boolean(record?.id);
+  const descripcionValue = useWatch({ control: form.control, name: "descripcion" });
+  const contactoIdRaw = useWatch({ control: form.control, name: "contacto_id" });
 
   const { data: tiposEventoCatalogo = [] } = useGetList("crm/catalogos/tipos-evento", {
     pagination: { page: 1, perPage: 200 },
@@ -28,11 +30,23 @@ const CRMEventoFormContent = () => {
     filter: { activo: true },
     sort: { field: "nombre", order: "ASC" },
   });
+  const { data: contactosActivos = [] } = useGetList<any>("crm/gestion/contactos-activos", {
+    pagination: { page: 1, perPage: 200 },
+    filter: {},
+    sort: { field: "nombre_completo", order: "ASC" },
+  });
 
   const selectedTipo = useMemo(
     () =>
       tiposEventoCatalogo.find((tipo: any) => tipo.id === form.getValues("tipo_id")),
     [tiposEventoCatalogo, form]
+  );
+  const selectedContacto = useMemo(
+    () =>
+      contactosActivos.find(
+        (contacto: any) => String(contacto.id) === String(contactoIdRaw ?? "")
+      ),
+    [contactosActivos, contactoIdRaw]
   );
 
   useEffect(() => {
@@ -68,6 +82,29 @@ const CRMEventoFormContent = () => {
     }
   }, [form, selectedTipo?.codigo]);
 
+  useEffect(() => {
+    if (descripcionValue == null) {
+      form.setValue("descripcion", "", { shouldDirty: false });
+    }
+  }, [descripcionValue, form]);
+
+  useEffect(() => {
+    if (typeof contactoIdRaw === "string") {
+      const numeric = Number(contactoIdRaw);
+      if (Number.isFinite(numeric) && Number(contactoIdRaw) === numeric) {
+        form.setValue("contacto_id", numeric, { shouldDirty: true });
+      }
+    }
+  }, [contactoIdRaw, form]);
+
+  useEffect(() => {
+    if (selectedContacto?.oportunidad_id) {
+      form.setValue("oportunidad_id", selectedContacto.oportunidad_id, { shouldDirty: true });
+    } else if (!isEdit) {
+      form.setValue("oportunidad_id", null, { shouldDirty: true });
+    }
+  }, [form, isEdit, selectedContacto]);
+
   return (
     <div className="space-y-4">
       <ReferenceInput
@@ -83,7 +120,7 @@ const CRMEventoFormContent = () => {
         <Label className="text-sm text-muted-foreground">Contacto</Label>
         <ComboboxQuery
           source="contacto_id"
-          resource="crm/contactos"
+          resource="crm/gestion/contactos-activos"
           labelField="nombre_completo"
           limit={200}
           placeholder="Selecciona un contacto"
@@ -110,6 +147,7 @@ const CRMEventoFormContent = () => {
       </div>
       <TextInput source="tipo_evento" label={false} className="hidden" />
       <TextInput source="motivo_id" label={false} className="hidden" />
+      <TextInput source="oportunidad_id" label={false} className="hidden" />
       <TextInput source="estado_evento" label={false} className="hidden" defaultValue="1-pendiente" />
     </div>
   );

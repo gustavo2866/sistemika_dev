@@ -38,6 +38,7 @@ import {
   UserRound,
   Factory,
   HandCoins,
+  MessageCircle,
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -183,6 +184,7 @@ import {
   CRMEventoEdit,
   CRMEventoShow,
 } from "@/app/resources/crm-eventos";
+import { CRMChatList, CRMChatShow } from "@/app/resources/crm-chat";
 import {
   CRMMensajeList,
   CRMMensajeCreate,
@@ -522,6 +524,14 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={CalendarCheck}
         options={{ label: "CRM · Eventos" }}
+      />
+      <Resource
+        name="crm/chat"
+        list={CRMChatList}
+        show={CRMChatShow}
+        recordRepresentation="id"
+        icon={MessageCircle}
+        options={{ label: "CRM - Chat" }}
       />
       <Resource
         name="crm/mensajes"

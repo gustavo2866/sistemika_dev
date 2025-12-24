@@ -40,6 +40,7 @@ import {
 import { useDataProvider, useGetIdentity, useListContext, useNotify, useRefresh } from "ra-core";
 import { useNavigate } from "react-router-dom";
 import type { CRMEvento } from "./model";
+import { FormCompletarDialog } from "./form_completar";
 
 const estadoChoices = [
   { id: "pendiente", name: "Pendiente" },
@@ -118,6 +119,8 @@ const ListActions = () => (
 
 export const CRMEventoList = () => {
   const { data: identity } = useGetIdentity();
+  const [completarDialogOpen, setCompletarDialogOpen] = useState(false);
+  const [selectedCompletar, setSelectedCompletar] = useState<CRMEvento | null>(null);
   const defaultFilters = {
     default_scope: "pendientes_mes",
     ...(identity?.id ? { asignado_a_id: identity.id } : {}),
@@ -137,8 +140,24 @@ export const CRMEventoList = () => {
       className="space-y-5"
     >
       <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3">
-        <EventosTodoList />
+        <EventosTodoList
+          onCompletar={(evento) => {
+            setSelectedCompletar(evento);
+            setCompletarDialogOpen(true);
+          }}
+        />
       </div>
+      <FormCompletarDialog
+        open={completarDialogOpen}
+        onOpenChange={setCompletarDialogOpen}
+        selectedEvento={selectedCompletar}
+        onSuccess={() => {
+          setSelectedCompletar(null);
+        }}
+        onError={() => {
+          setSelectedCompletar(null);
+        }}
+      />
     </List>
   );
 };
@@ -171,7 +190,14 @@ const computeSeguimientoDate = (optionId: SeguimientoOptionId, record?: CRMEvent
   return target;
 };
 
-const SeguimientoMenu = ({ record }: { record: CRMEvento }) => {
+const SeguimientoMenu = ({
+  record,
+  onCompletar,
+}: {
+  record: CRMEvento;
+  onCompletar: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
@@ -234,22 +260,8 @@ const SeguimientoMenu = ({ record }: { record: CRMEvento }) => {
       event.stopPropagation();
     }
     if (!record?.id) return;
-    setLoading(true);
-    try {
-      await dataProvider.update<CRMEvento>("crm/eventos", {
-        id: record.id,
-        data: { estado_evento: "2-realizado" },
-        previousData: record,
-      });
-      notify("Evento marcado como realizado.", { type: "info" });
-      refresh();
-    } catch (error: any) {
-      console.error("Error al completar evento", error);
-      const message = error?.message ?? "No se pudo completar el evento.";
-      notify(message, { type: "warning" });
-    } finally {
-      setLoading(false);
-    }
+    setOpen(false);
+    onCompletar();
   };
 
   const handleDelete = async (event: Event | SyntheticEvent) => {
@@ -273,7 +285,7 @@ const SeguimientoMenu = ({ record }: { record: CRMEvento }) => {
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={stopRowClick} disabled={loading}>
           <Flag className="h-4 w-4" />
@@ -382,7 +394,7 @@ const getFechaBucketLabel = (fecha?: string | null): FechaBucket => {
   return "siguientes";
 };
 
-const EventosTodoList = () => {
+const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => void }) => {
   const { data = [], isLoading } = useListContext<CRMEvento>();
   const [collapsed, setCollapsed] = useState<Record<FechaBucket, boolean>>({
     vencido: false,
@@ -461,7 +473,7 @@ const EventosTodoList = () => {
                   <div className="px-4 py-4 text-xs text-slate-400">Sin eventos</div>
                 ) : (
                   items.map((evento) => (
-                    <EventoTodoRow key={evento.id} record={evento} />
+                    <EventoTodoRow key={evento.id} record={evento} onCompletar={onCompletar} />
                   ))
                 )}
               </div>
@@ -473,8 +485,12 @@ const EventosTodoList = () => {
   );
 };
 
-const EventoTodoRow = ({ record }: { record: CRMEvento }) => {
+const EventoTodoRow = ({ record, onCompletar }: { record: CRMEvento; onCompletar: (evento: CRMEvento) => void }) => {
   const navigate = useNavigate();
+  const isCompleted =
+    record.estado_evento === "2-realizado" ||
+    record.estado_evento?.includes("realizado") ||
+    record.estado_evento?.includes("hecho");
   const contactoName =
     record.contacto?.nombre_completo?.trim() ||
     record.contacto?.nombre?.trim() ||
@@ -538,8 +554,12 @@ const EventoTodoRow = ({ record }: { record: CRMEvento }) => {
         })()}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[10px] text-slate-700 sm:text-[12px]">
-          <span className="font-semibold text-slate-900">
+        <div
+          className={`truncate text-[10px] text-slate-700 sm:text-[12px] ${
+            isCompleted ? "line-through text-slate-400" : ""
+          }`}
+        >
+          <span className={`font-semibold ${isCompleted ? "text-slate-400" : "text-slate-900"}`}>
             {contactoName.slice(0, 12)}
           </span>
           <span className="mx-1.5 text-slate-300">-</span>
@@ -555,7 +575,12 @@ const EventoTodoRow = ({ record }: { record: CRMEvento }) => {
             {responsableInitials || "??"}
           </AvatarFallback>
         </Avatar>
-        <SeguimientoMenu record={record} />
+        {isCompleted ? null : (
+          <SeguimientoMenu
+            record={record}
+            onCompletar={() => onCompletar(record)}
+          />
+        )}
       </div>
     </div>
   );

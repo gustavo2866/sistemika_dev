@@ -60,7 +60,7 @@ export type CRMEventoFormValues = {
   oportunidad_id: number | null;
   tipo_id: number | null;
   titulo: string;
-  descripcion?: string | null;
+  descripcion?: string;
   fecha_evento: string;
   estado_evento: CRMEventoEstado;
   asignado_a_id: number | null;

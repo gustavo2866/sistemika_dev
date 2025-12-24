@@ -22,6 +22,7 @@ export * from "./crm-cotizaciones";
 export * from "./crm-contactos";
 export * from "./crm-oportunidades";
 export * from "./crm-eventos";
+export * from "./crm-chat";
 export * from "./crm-mensajes";
 export * from "./emprendimientos";
 export * from "./crm-todo";
