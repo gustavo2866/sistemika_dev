@@ -1,4 +1,4 @@
-import type { CRMOportunidad, CRMOportunidadEstado } from "./model";
+import type { CRMOportunidad } from "./model";
 import type { BucketKey } from "./oportunidad-helpers";
 
 // Calcular bucket key basado en el estado de la oportunidad

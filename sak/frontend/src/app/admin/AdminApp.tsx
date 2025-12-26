@@ -24,7 +24,6 @@ import {
   FileStack,
   Building,
   Coins,
-  Activity,
   BarChart2,
   GitBranch,
   AlertTriangle,

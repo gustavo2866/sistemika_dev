@@ -1,4 +1,4 @@
-﻿import { createElement, useMemo, useState } from "react";
+﻿import { createElement, useMemo, useState, type ComponentType } from "react";
 import {
   useCanAccess,
   useCreatePath,
@@ -49,7 +49,6 @@ import {
   Handshake,
   LayoutGrid,
   Mail,
-  PanelTop,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;

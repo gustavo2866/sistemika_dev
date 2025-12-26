@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
-import type { Identity } from "ra-core";
+import type { UserIdentity } from "ra-core";
 import { useDataProvider, useNotify, useRefresh } from "ra-core";
 import type { KanbanBucketDefinition } from "./kanban-buckets-grid";
 import { KanbanBoard } from "./kanban-board";
@@ -20,6 +20,10 @@ export interface KanbanBoardViewFilterConfig {
   searchPlaceholder?: string;
   searchClassName?: string;
   searchInputClassName?: string;
+  filterBarClassName?: string;
+  filterBarWrap?: boolean;
+  filterBarSpread?: boolean;
+  collapseToggleAlignRight?: boolean;
   enableOwnerFilter?: boolean;
   ownerFilterPlaceholder?: string;
   ownerFilterClassName?: string;
@@ -53,7 +57,7 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
   ownerFilter?: (item: TItem, ownerId: string) => boolean;
   
   // UI
-  identity?: Identity | null;
+  identity?: UserIdentity | null;
   autoSelectOwnerId?: string | null;
   
   // Filter configuration
@@ -118,7 +122,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   
   const [currentPage, setCurrentPageInternal] = React.useState(getInitialPage);
   
-  const setCurrentPage = (value: number | ((prev: number) => number)) => {
+  const setCurrentPage = React.useCallback((value: number | ((prev: number) => number)) => {
     setCurrentPageInternal(prev => {
       const next = typeof value === 'function' ? value(prev) : value;
       if (storageKey) {
@@ -128,7 +132,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       }
       return next;
     });
-  };
+  }, [storageKey]);
   
   const setCustomState = (key: string, value: any) => {
     setCustomStateInternal(prev => ({ ...prev, [key]: value }));
@@ -146,8 +150,8 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       if (!payload) return false;
 
       if (resource) {
-        await dataProvider.update<TItem>(resource, {
-          id: item.id,
+        await dataProvider.update<TItem & { id: number }>(resource, {
+          id: item.id!,
           data: payload,
           previousData: item,
         });
@@ -171,7 +175,6 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     draggedItem,
     dragOverBucket,
     handleDragStart,
-    handleDragEnd,
     handleBucketDragOver,
     handleBucketDrop,
     handleBucketDragLeave,
@@ -292,13 +295,17 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     );
 
     return { visibleBuckets: visible, bucketNavigation: nav, paginationFooter: footer };
-  }, [buckets, maxBucketsPerPage, currentPage]);
+  }, [buckets, maxBucketsPerPage, currentPage, setCurrentPage]);
 
   const {
     enableSearch = true,
     searchPlaceholder = "Buscar...",
     searchClassName,
     searchInputClassName,
+    filterBarClassName,
+    filterBarWrap,
+    filterBarSpread,
+    collapseToggleAlignRight,
     enableOwnerFilter = true,
     ownerFilterPlaceholder = "Asignado",
     ownerFilterClassName,
@@ -308,7 +315,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     ownerFilterPlacement = "right",
     ownerOptions,
     enableCollapseToggle = true,
-    collapseToggleLabels = { collapsed: "Expandir todo", expanded: "Contraer todo" },
+    collapseToggleLabels: _collapseToggleLabels = { collapsed: "Expandir todo", expanded: "Contraer todo" },
   } = filterConfig;
 
   const ownerSelector = enableOwnerFilter ? (
@@ -338,27 +345,33 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     </div>
   ) : null;
 
+  const collapseToggle = enableCollapseToggle ? (
+    <KanbanCollapseToggle
+      collapsed={collapsedAll}
+      onToggle={toggleCollapsedAll}
+      variant="icon-with-label"
+    />
+  ) : null;
+
   const filterBar = (
     <KanbanFilterBar
+      className={filterBarClassName}
       searchValue={enableSearch ? searchValue : ""}
       onSearchChange={enableSearch ? setSearchValue : () => {}}
       searchPlaceholder={searchPlaceholder}
       searchClassName={cn(!enableSearch ? "hidden" : undefined, searchClassName)}
       searchInputClassName={searchInputClassName}
+      wrap={filterBarWrap}
+      spread={filterBarSpread}
       leftContent={ownerFilterPlacement === "left" ? ownerSelector : null}
       rightContent={
         <>
           {customFilters?.({ customState, setCustomState })}
           {ownerFilterPlacement === "right" ? ownerSelector : null}
-          {enableCollapseToggle && (
-            <KanbanCollapseToggle
-              collapsed={collapsedAll}
-              onToggle={toggleCollapsedAll}
-              variant="icon-with-label"
-            />
-          )}
+          {!collapseToggleAlignRight ? collapseToggle : null}
         </>
       }
+      rightEdgeContent={collapseToggleAlignRight ? collapseToggle : null}
     />
   );
 

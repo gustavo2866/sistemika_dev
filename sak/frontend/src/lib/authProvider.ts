@@ -83,7 +83,7 @@ export const authProvider: AuthProvider = {
         localStorage.removeItem("auth_user");
         throw new Error("Token expired");
       }
-    } catch (error) {
+    } catch {
       // Si falla el parseo del token, lo consideramos inválido
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");

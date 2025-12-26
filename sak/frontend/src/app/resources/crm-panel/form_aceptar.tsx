@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { CRMOportunidad } from "./model";
+import type { CRMOportunidad } from "../crm-oportunidades/model";
 
 interface CRMOportunidadAceptarDialogProps {
   open: boolean;

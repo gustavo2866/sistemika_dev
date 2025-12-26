@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Identity } from "ra-core";
+import type { UserIdentity } from "ra-core";
 import type { OwnerAssignableRecord, OwnerOption } from "./crm-owner-options";
 import { normalizeFormOwnerOptions } from "./crm-owner-options";
 
@@ -9,7 +9,7 @@ export const useCrmOwnerOptions = <
   TRecord extends OwnerAssignableRecord = OwnerAssignableRecord,
 >(
   records: TRecord[],
-  identity?: Identity | null,
+  identity?: UserIdentity | null,
 ) => {
   const ownerOptions = useMemo<OwnerOption[]>(() => {
     const entries = new Map<string, OwnerOption>();

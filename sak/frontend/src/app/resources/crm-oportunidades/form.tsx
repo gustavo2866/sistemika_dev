@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { required, useRecordContext, useGetOne } from "ra-core";
 
@@ -15,7 +14,6 @@ import { FormLayout, FormSimpleSection } from "@/components/forms";
 import type { CRMOportunidad, CRMOportunidadEstado } from "./model";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
-  CRM_OPORTUNIDAD_ESTADO_CHOICES,
   formatEstadoOportunidad,
 } from "./model";
 import { ActividadesPanel } from "../crm-actividades/Panel";
@@ -24,28 +22,6 @@ const parseNumericId = (value?: unknown) => {
   if (value == null || value === "") return undefined;
   const numeric = typeof value === "string" ? Number(value) : (value as number);
   return Number.isFinite(numeric) ? Number(numeric) : undefined;
-};
-
-const parseFloatValue = (value?: unknown) => {
-  if (value == null || value === "") return undefined;
-  const numeric = typeof value === "string" ? Number(value) : (value as number);
-  return Number.isFinite(numeric) ? Number(numeric) : undefined;
-};
-
-const formatCurrencyValue = (value?: unknown, currencyCode?: string | null) => {
-  const numeric = parseFloatValue(value);
-  if (numeric == null) {
-    return "Sin monto";
-  }
-  try {
-    return new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: currencyCode ?? "USD",
-      maximumFractionDigits: 2,
-    }).format(numeric);
-  } catch {
-    return numeric.toString();
-  }
 };
 
 const formatDateTimeValue = (value?: string | null, options?: Intl.DateTimeFormatOptions) => {
@@ -91,38 +67,21 @@ const OportunidadFormSections = () => {
 
   const contactoWatch = useWatch({ control, name: "contacto_id" });
   const propiedadWatch = useWatch({ control, name: "propiedad_id" });
-  const responsableWatch = useWatch({ control, name: "responsable_id" });
   const estadoWatch = useWatch({ control, name: "estado" });
-  const montoWatch = useWatch({ control, name: "monto" });
-  const probabilidadWatch = useWatch({ control, name: "probabilidad" });
   const fechaEstadoWatch = useWatch({ control, name: "fecha_estado" });
-  const monedaWatch = useWatch({ control, name: "moneda_id" });
-  const fechaCierreWatch = useWatch({ control, name: "fecha_cierre_estimada" });
   const tipoOperacionWatch = useWatch({ control, name: "tipo_operacion_id" });
   const descripcionWatch = useWatch({ control, name: "descripcion_estado" });
   const tituloWatch = useWatch({ control, name: "titulo" });
 
   const contactoId = parseNumericId(contactoWatch ?? record?.contacto_id);
   const propiedadId = parseNumericId(propiedadWatch ?? record?.propiedad_id);
-  const responsableId = parseNumericId(responsableWatch ?? record?.responsable_id);
   const tipoOperacionId = parseNumericId(tipoOperacionWatch ?? record?.tipo_operacion_id);
-  const monedaId = parseNumericId(monedaWatch ?? record?.moneda_id);
   const oportunidadId = parseNumericId(record?.id);
 
   const { data: contacto } = useGetOne(
     "crm/contactos",
     { id: contactoId ?? 0 },
     { enabled: Boolean(contactoId) }
-  );
-  const { data: responsable } = useGetOne(
-    "users",
-    { id: responsableId ?? 0 },
-    { enabled: Boolean(responsableId) }
-  );
-  const { data: moneda } = useGetOne(
-    "monedas",
-    { id: monedaId ?? 0 },
-    { enabled: Boolean(monedaId) }
   );
   const { data: propiedad } = useGetOne(
     "propiedades",
@@ -136,29 +95,14 @@ const OportunidadFormSections = () => {
   );
 
   const estadoValue = (estadoWatch as string) || record?.estado;
-  const montoValue = montoWatch ?? record?.monto;
-  const probabilidadValue = probabilidadWatch ?? record?.probabilidad;
   const fechaEstadoValue = fechaEstadoWatch ?? record?.fecha_estado;
 
   const contactName =
     contacto?.nombre_completo ??
     (contactoId ? `Contacto #${contactoId}` : "Seleccioná un contacto");
-  const responsableName =
-    responsable?.nombre ?? (responsableId ? `Usuario #${responsableId}` : "Sin asignar");
   const propiedadName =
     propiedad?.nombre ?? (propiedadId ? `Propiedad #${propiedadId}` : "Propiedad sin asignar");
-  const montoFormatted = useMemo(
-    () => formatCurrencyValue(montoValue, moneda?.codigo),
-    [montoValue, moneda?.codigo]
-  );
-  const monedaLabel = moneda?.simbolo ?? moneda?.codigo ?? moneda?.nombre ?? "";
-  const probabilidadFormatted = (() => {
-    const numeric = parseFloatValue(probabilidadValue);
-    if (numeric == null) return "Sin estimar";
-    return `${numeric}%`;
-  })();
   const fechaEstadoFormatted = formatDateTimeValue(fechaEstadoValue);
-  const fechaCierreFormatted = formatDateTimeValue(fechaCierreWatch, { dateStyle: "short" });
   const estadoLabel = formatEstadoOportunidad(estadoValue as CRMOportunidadEstado);
   const estadoBadgeClass =
     CRM_OPORTUNIDAD_ESTADO_BADGES[estadoValue as CRMOportunidadEstado] ??
@@ -167,11 +111,6 @@ const OportunidadFormSections = () => {
     tipoOperacion?.nombre ?? (tipoOperacionId ? `Tipo #${tipoOperacionId}` : "Tipo desconocido");
   const descripcionNecesidad =
     (descripcionWatch ?? record?.descripcion_estado ?? "").trim() || "Sin descripción";
-  const formTitle = record?.id ? "Editar Oportunidad CRM" : "Nueva Oportunidad CRM";
-  const formSubtitle = record?.id
-    ? `ID #${record.id}`
-    : "Completa los campos para registrar la oportunidad.";
-
   return (
     <div className="mr-auto flex w-full max-w-6xl flex-col gap-6 rounded-[32px] border border-border/60 bg-background/80 p-4 shadow-lg backdrop-blur lg:flex-row lg:items-stretch">
       <Card className="flex w-full flex-col gap-6 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-8 shadow-xl lg:basis-[64%] lg:self-stretch">
@@ -221,12 +160,7 @@ const OportunidadFormSections = () => {
               defaultOpen: false,
               contentPadding: "lg",
               children: (
-                <EstadoSection
-                  estadoLabel={estadoLabel}
-                  probabilidad={probabilidadFormatted}
-                  fechaEstado={fechaEstadoFormatted}
-                  fechaCierre={fechaCierreFormatted}
-                />
+                <EstadoSection />
               ),
             },
           ]}
@@ -340,14 +274,7 @@ function CotizacionSection() {
   );
 }
 
-type EstadoSectionProps = {
-  estadoLabel: string;
-  probabilidad: string;
-  fechaEstado: string;
-  fechaCierre: string;
-};
-
-function EstadoSection({ estadoLabel, probabilidad, fechaEstado, fechaCierre }: EstadoSectionProps) {
+function EstadoSection() {
   return (
     <FormSimpleSection className="space-y-6">
       <div className="grid grid-cols-1 gap-5">

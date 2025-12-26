@@ -37,7 +37,6 @@ export default function DashboardCrmList() {
   const [periodType, setPeriodType] = useState<PeriodType>(DEFAULT_CRM_PERIOD);
   const [filters, setFilters] = useState<CrmDashboardFilters>(() => buildDefaultFilters(DEFAULT_CRM_PERIOD));
   const [dashboardData, setDashboardData] = useState<CrmDashboardResponse | null>(null);
-  const [dashboardLoading, setDashboardLoading] = useState(true);
 
   const [detailKpi, setDetailKpi] = useState<KpiKey>("totales");
   const [detailData, setDetailData] = useState<CrmDashboardDetalleResponse | null>(null);
@@ -51,7 +50,6 @@ export default function DashboardCrmList() {
 
   useEffect(() => {
     let cancelled = false;
-    setDashboardLoading(true);
     const params = serializeFiltersToParams(filters);
     params.set("limitTop", "5");
     const timeout = setTimeout(() => {
@@ -65,7 +63,6 @@ export default function DashboardCrmList() {
         })
         .catch((error) => console.error("No se pudo cargar el dashboard CRM", error))
         .finally(() => {
-          if (!cancelled) setDashboardLoading(false);
         });
     }, 250);
     return () => {

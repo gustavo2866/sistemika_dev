@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Identity } from "ra-core";
+import type { UserIdentity } from "ra-core";
 import type { OwnerAssignableRecord } from "@/components/kanban/crm-owner-options";
 import { ensureOwnerOption } from "@/components/kanban/crm-owner-options";
 import { useCrmOwnerOptions } from "@/components/kanban/use-crm-owner-options";
@@ -13,7 +13,7 @@ export interface UserSelectorProps<
   TRecord extends OwnerAssignableRecord = OwnerAssignableRecord,
 > extends Omit<UserSelectProps, "options"> {
   records: TRecord[];
-  identity?: Identity | null;
+  identity?: UserIdentity | null;
   variant?: UserSelectorVariant;
   ensureRecord?: TRecord | null;
 }

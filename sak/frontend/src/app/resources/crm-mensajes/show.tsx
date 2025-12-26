@@ -8,7 +8,6 @@ import {
   useRecordContext,
   useRedirect,
   useRefresh,
-  useGetIdentity,
 } from "ra-core";
 import type { CRMMensaje } from "./model";
 import { Card } from "@/components/ui/card";
@@ -17,11 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   MessageCircle,
-  CalendarPlus,
   Trash2,
   ArrowRightLeft,
-  X,
-  Send,
 } from "lucide-react";
 import {
   Dialog,
@@ -62,7 +58,6 @@ const CRMMensajeMinimalView = () => {
   const refresh = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
-  const { data: identity } = useGetIdentity();
   const initialAction = (location.state as { action?: string } | null)?.action;
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardLoading, setDiscardLoading] = useState(false);
@@ -72,15 +67,6 @@ const CRMMensajeMinimalView = () => {
   const [replyLoading, setReplyLoading] = useState(false);
   const [contactoNombre, setContactoNombre] = useState("");
   const [actividadesReload, setActividadesReload] = useState(0);
-  const [modoRespuesta, setModoRespuesta] = useState(false);
-  const [panelMode, setPanelMode] = useState<"schedule" | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({ datetime: "", notes: "" });
-  const [respuestaInlineContent, setRespuestaInlineContent] = useState("");
-  const [respuestaInlineSubject, setRespuestaInlineSubject] = useState(() =>
-    ensureReplySubject(record?.asunto)
-  );
-  const [contactoNombreInline, setContactoNombreInline] = useState("");
-  const [respuestaInlineLoading, setRespuestaInlineLoading] = useState(false);
   const [cameFromAction, setCameFromAction] = useState(false);
 
   useEffect(() => {
@@ -95,30 +81,25 @@ const CRMMensajeMinimalView = () => {
 
   useEffect(() => {
     setReplySubject(ensureReplySubject(record?.asunto));
-    setRespuestaInlineSubject(ensureReplySubject(record?.asunto));
 
     // Inicializar nombre del contacto si existe
     if (record?.contacto?.nombre_completo) {
       setContactoNombre(record.contacto.nombre_completo);
-      setContactoNombreInline(record.contacto.nombre_completo);
     } else {
       setContactoNombre("");
-      setContactoNombreInline("");
     }
-    setRespuestaInlineContent("");
   }, [record?.asunto, record?.contacto]);
 
   if (!record) return null;
 
   const contactoNombreReal = record.contacto?.nombre_completo ?? record.contacto?.nombre ?? "";
-  const contactoNombreForm = record.contacto_id ? contactoNombreReal : "";
   const referenciaBase = record.contacto_referencia || record.origen_externo_id || "Sin referencia";
   const referenciaTexto =
     record.contacto_id && contactoNombreReal
       ? `${referenciaBase} -> ${contactoNombreReal}`
       : referenciaBase;
   const oportunidadTexto = record.oportunidad_id
-    ? `#${record.oportunidad_id} -> ${record.oportunidad?.titulo ?? record.oportunidad?.descripcion_estado ?? "Oportunidad"}`
+    ? `#${record.oportunidad_id} -> ${record.oportunidad?.descripcion_estado ?? "Oportunidad"}`
     : "";
   const hasOportunidad = Boolean(record.oportunidad_id);
   const estadoOportunidad = hasOportunidad ? (record.oportunidad?.estado as CRMOportunidadEstado | undefined) : undefined;
@@ -210,192 +191,7 @@ const CRMMensajeMinimalView = () => {
     }
   };
 
-  const handleRespuestaInlineSubmit = async () => {
-    if (!record) return;
-    if (!respuestaInlineContent.trim()) {
-      notify("Completa la respuesta antes de enviar.", { type: "warning" });
-      return;
-    }
-    
-    // Validar nombre de contacto si no existe
-    if (!record.contacto_id && !contactoNombreInline.trim()) {
-      notify("El nombre del contacto es obligatorio.", { type: "warning" });
-      return;
-    }
-    
-    setRespuestaInlineLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/crm/mensajes/${record.id}/responder`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          texto: respuestaInlineContent,
-        }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "Error al enviar la respuesta");
-      }
-      
-      const resultado = await response.json();
-      notify("Respuesta guardada para enviar", { type: "success" });
-      
-      if (resultado.contacto_creado) {
-        notify("Contacto creado automáticamente", { type: "info" });
-      }
-      if (resultado.oportunidad_creada) {
-        notify("Oportunidad creada automáticamente", { type: "info" });
-      }
-      
-      setRespuestaInlineLoading(false);
-      setModoRespuesta(false);
-      setRespuestaInlineSubject("");
-      setRespuestaInlineContent("");
-      setContactoNombreInline("");
-      refresh();
-      setActividadesReload((prev) => prev + 1);
-    } catch (error: any) {
-      notify(error?.message ?? "No se pudo guardar la respuesta", { type: "warning" });
-      setRespuestaInlineLoading(false);
-    }
-  };
 
-  const renderPanelContent = () => {
-    if (panelMode === "schedule") {
-      return (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Fecha y hora
-            </p>
-            <Input
-              type="datetime-local"
-              value={scheduleForm.datetime}
-              onChange={(event) =>
-                setScheduleForm((state) => ({ ...state, datetime: event.target.value }))
-              }
-            />
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Notas de agenda
-            </p>
-            <Textarea
-              rows={6}
-              value={scheduleForm.notes}
-              onChange={(event) =>
-                setScheduleForm((state) => ({ ...state, notes: event.target.value }))
-              }
-              placeholder="Detalla el motivo, lugar o responsables de la actividad."
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button className="flex-1 min-w-36" variant="secondary">
-              Guardar agenda
-            </Button>
-            <Button
-              variant="ghost"
-              className="flex-1 min-w-24"
-              onClick={() => setPanelMode(null)}
-            >
-              Cerrar panel
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // Modo respuesta inline
-    if (modoRespuesta) {
-      return (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Responder Mensaje
-            </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => {
-                setModoRespuesta(false);
-                setRespuestaInlineContent("");
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Nombre del Contacto {!record.contacto_id && <span className="text-red-500">*</span>}
-              </p>
-              <Input
-                value={contactoNombreInline}
-                onChange={(event) => setContactoNombreInline(event.target.value)}
-                placeholder={record.contacto_id ? record.contacto?.nombre_completo || "Contacto registrado" : "Ingresa el nombre del contacto"}
-                disabled={!!record.contacto_id}
-                required={!record.contacto_id}
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Asunto
-              </p>
-              <Input
-                value={respuestaInlineSubject}
-                onChange={(event) => setRespuestaInlineSubject(event.target.value)}
-                placeholder="Asunto de la respuesta"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Mensaje
-              </p>
-              <Textarea
-                rows={10}
-                value={respuestaInlineContent}
-                onChange={(event) => setRespuestaInlineContent(event.target.value)}
-                placeholder="Escribe tu respuesta..."
-                className="text-sm min-h-[240px]"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              onClick={handleRespuestaInlineSubmit}
-              disabled={respuestaInlineLoading}
-            >
-              <Send className="mr-2 h-4 w-4" />
-              {respuestaInlineLoading ? "Enviando..." : "Enviar Respuesta"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setModoRespuesta(false);
-                setRespuestaInlineContent("");
-              }}
-              disabled={respuestaInlineLoading}
-            >
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <ActividadesPanel
-        mensajeId={record.id}
-        oportunidadId={record.oportunidad_id ?? undefined}
-        reloadKey={actividadesReload}
-      />
-    );
-  };
 
   return (
     <>
@@ -449,7 +245,6 @@ const CRMMensajeMinimalView = () => {
                         variant="ghost"
                         size="icon"
                         className="relative h-8 w-8 border border-border/40 bg-white/90 text-foreground hover:bg-muted/30"
-                        onClick={() => setOportunidadDialogOpen(true)}
                         disabled={hasOportunidad}
                       >
                         {hasOportunidad ? (

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
@@ -28,8 +28,6 @@ import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 import { ResourceTitle } from "@/components/resource-title";
 import { Target } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar oportunidades" className="w-full" alwaysOn />,
   <SelectInput key="estado" source="estado" label="Estado" choices={CRM_OPORTUNIDAD_ESTADO_CHOICES} emptyText="Todos" />,
@@ -54,8 +52,8 @@ const filters = [
   </ReferenceInput>,
 ];
 
-const cnBadge = (estado: CRMOportunidadEstado, selected = false) => {
-  const base = CRM_OPORTUNIDAD_ESTADO_BADGES[estado] ?? "bg-slate-200 text-slate-800";
+const cnBadge = (estado: string, selected = false) => {
+  const base = CRM_OPORTUNIDAD_ESTADO_BADGES[estado as CRMOportunidadEstado] ?? "bg-slate-200 text-slate-800";
   return selected
     ? `${base} border-transparent ring-1 ring-offset-1 ring-offset-background`
     : `${base} border-transparent`;

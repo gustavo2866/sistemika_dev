@@ -30,7 +30,7 @@ import {
 type ChatFilter = "todos" | "no_leidos";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const getAuthHeaders = () => {
+const getAuthHeaders = (): HeadersInit => {
   if (typeof window === "undefined") return {};
   const token = localStorage.getItem("auth_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -86,7 +86,7 @@ export const CRMChatList = () => {
         setLoadingMore(false);
       }
     },
-    [notify]
+    [notify, ownerValue]
   );
 
   useEffect(() => {

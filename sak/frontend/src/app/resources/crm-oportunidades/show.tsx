@@ -185,8 +185,8 @@ const CRMOportunidadDetails = () => {
                       <TableCell>
                         {evento.fecha_evento ? new Date(evento.fecha_evento).toLocaleString("es-AR") : "-"}
                       </TableCell>
-                      <TableCell>{evento.tipo?.nombre ?? `#${evento.tipo_id}`}</TableCell>
-                      <TableCell>{evento.motivo?.nombre ?? `#${evento.motivo_id}`}</TableCell>
+                      <TableCell>{evento.tipo_catalogo?.nombre ?? evento.tipo_evento ?? evento.titulo ?? `#${evento.tipo_id}`}</TableCell>
+                      <TableCell>{evento.motivo_id ? `#${evento.motivo_id}` : "-"}</TableCell>
                       <TableCell>{evento.descripcion}</TableCell>
                       <TableCell>{evento.estado_evento}</TableCell>
                     </TableRow>

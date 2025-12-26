@@ -40,12 +40,12 @@ export const KanbanCollapseToggle = ({
     };
 
     return (
-      <button
-        type="button"
-        onClick={handleClick}
-        aria-label={computedLabel}
-        className={cn(
-          "inline-flex flex-col items-center justify-center gap-0.5 transition hover:opacity-80",
+        <button
+          type="button"
+          onClick={handleClick}
+          aria-label={computedLabel}
+          className={cn(
+          "inline-flex flex-col items-center justify-center gap-0.5 transition hover:opacity-80 shrink-0",
           className,
         )}
       >
@@ -73,7 +73,7 @@ export const KanbanCollapseToggle = ({
       aria-label={computedLabel}
       title={computedLabel}
       className={cn(
-        "inline-flex items-center justify-center border border-slate-300 bg-white/80 text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        "inline-flex items-center justify-center border border-slate-300 bg-white/80 text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 shrink-0",
         baseClass,
         className,
       )}

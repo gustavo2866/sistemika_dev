@@ -169,7 +169,7 @@ const applyFechaEstadoFilterOption = (
   option: FechaEstadoFilterOption,
   skipBounds = false
 ) => {
-  const nextFilters = { ...filters, [FECHA_ESTADO_FILTER_KEY]: option };
+  const nextFilters: Record<string, unknown> = { ...filters, [FECHA_ESTADO_FILTER_KEY]: option };
   delete nextFilters.fecha_estado__gte;
   delete nextFilters.fecha_estado__lte;
 
@@ -460,7 +460,7 @@ export const CRMMensajeList = () => {
   return (
     <>
       <List
-        title={<ResourceTitle icon={Mail} text="CRM - Mensajes" compact />}
+        title={<ResourceTitle icon={Mail} text="CRM - Mensajes" />}
         filters={filters}
         actions={<ListActions />}
         filterDefaultValues={{ tipo: ["entrada"], estado: ["nuevo"] }}

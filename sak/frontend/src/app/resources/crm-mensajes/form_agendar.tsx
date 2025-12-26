@@ -9,7 +9,7 @@ import { EVENT_TYPE_CHOICES, DEFAULT_EVENT_STATE, getDefaultDateTime } from "./m
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const getAuthHeaders = () => {
+const getAuthHeaders = (): HeadersInit => {
   if (typeof window === "undefined") return {};
   const token = localStorage.getItem("auth_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -62,10 +62,6 @@ export const ScheduleDialog = ({ open, onOpenChange, mensaje, onSuccess }: Sched
     mensaje?.origen_externo_id ??
     mensaje?.contacto_alias ??
     "Sin referencia";
-
-  const oportunidadBadge = mensaje?.oportunidad_id
-    ? `#${mensaje.oportunidad_id}`
-    : "Se creara al agendar";
 
   const oportunidadLabel =
     mensaje?.oportunidad?.descripcion_estado ??

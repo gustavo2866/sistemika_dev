@@ -63,11 +63,7 @@ const createEstadoBadge = (estado: CRMOportunidadEstado) => (
   </Badge>
 );
 
-const createResponsableBlock = (
-  oportunidad: CRMOportunidad,
-  isGanada: boolean,
-  isPerdida: boolean
-) => {
+const createResponsableBlock = (oportunidad: CRMOportunidad) => {
   const { name: responsableName, avatarUrl, initials } = getResponsableAvatarInfo(oportunidad);
   const contactoName = getContactoName(oportunidad);
   const truncatedContacto = contactoName.length > 20 ? contactoName.substring(0, 20) + '...' : contactoName;
@@ -156,11 +152,9 @@ const getCardConfig = (
   handlers: CardHandlers,
   updating: boolean
 ): CardConfig => {
-  const isGanada = estado === "5-ganada";
-  const isPerdida = estado === "6-perdida";
 
   // Elementos base
-  const responsableBlock = createResponsableBlock(oportunidad, isGanada, isPerdida);
+  const responsableBlock = createResponsableBlock(oportunidad);
   const checkIcon = createCheckIcon();
   const lostIcon = createLostIcon();
   const estadoBadge = createEstadoBadge(estado);

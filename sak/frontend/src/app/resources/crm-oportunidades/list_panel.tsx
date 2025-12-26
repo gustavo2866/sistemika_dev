@@ -395,7 +395,6 @@ const CRMOportunidadKanbanSection = ({
       bucketItems={bucketItems}
       renderCard={(record) => renderCardContent(record)}
       dragOverBucket={hoveredEstado}
-      interactiveBuckets={visibleEstados}
       emptyMessage="Sin oportunidades"
       onBucketDragOver={(event, estado) => handleDragOver(event, estado)}
       onBucketDrop={(event, estado) => handleDrop(event, estado)}

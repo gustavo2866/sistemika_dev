@@ -131,7 +131,7 @@ export const KanbanBucketCounter = ({
   </Badge>
 );
 
-export interface KanbanBucketBodyProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type KanbanBucketBodyProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const KanbanBucketBody = React.forwardRef<HTMLDivElement, KanbanBucketBodyProps>(
   ({ className, children, ...props }, ref) => (

@@ -22,7 +22,7 @@ export const SoloActivasToggle = () => {
   };
 
   return (
-    <div className="flex items-center gap-2 rounded-md border px-3 py-1.5">
+    <div className="flex items-center gap-2 rounded-md border px-3 py-1.5 shrink-0">
       <Switch id="solo-activas-kanban" checked={isSoloActivas} onCheckedChange={handleToggle} />
       <Label htmlFor="solo-activas-kanban" className="text-sm font-medium">
         Solo activas
@@ -93,7 +93,7 @@ export const OperacionToggle = () => {
   };
 
   return (
-    <div className="flex items-center rounded-full border border-slate-200/80 bg-white/80 shadow-sm overflow-hidden">
+    <div className="flex items-center rounded-full border border-slate-200/80 bg-white/80 shadow-sm overflow-hidden shrink-0">
       {renderToggle("venta", "Venta", !ventaId, "rounded-l-full")}
       {renderToggle("alquiler", "Alquiler", !alquilerId, "rounded-r-full")}
     </div>
@@ -108,7 +108,7 @@ export interface OportunidadCustomFiltersProps {
 
 export const OportunidadCustomFilters = ({}: OportunidadCustomFiltersProps) => {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 shrink-0">
       <OperacionToggle />
       <SoloActivasToggle />
     </div>

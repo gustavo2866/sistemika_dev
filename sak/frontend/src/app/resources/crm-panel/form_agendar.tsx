@@ -12,20 +12,22 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
+type AgendarFormValues = {
+  titulo: string;
+  descripcion: string;
+  tipoEvento: string;
+  datetime: string;
+  asignadoId: string;
+};
+
 interface AgendarDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  formValues: {
-    titulo: string;
-    descripcion: string;
-    tipoEvento: string;
-    datetime: string;
-    asignadoId: string;
-  };
+  formValues: AgendarFormValues;
   onFormChange: (
     updater:
-      | typeof formValues
-      | ((prev: AgendarDialogProps["formValues"]) => AgendarDialogProps["formValues"]),
+      | AgendarFormValues
+      | ((prev: AgendarFormValues) => AgendarFormValues),
   ) => void;
   tipoEventoOptions: Array<{ value: string; label: string }>;
   responsableOptions: Array<{ value: string; label: string }>;

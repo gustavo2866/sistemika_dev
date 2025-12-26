@@ -13,7 +13,7 @@ export interface UseKanbanDragDropOptions<TItem, K extends string> {
   /**
    * Extract a unique identifier from an item for drag data transfer.
    */
-  getItemId?: (item: TItem) => string | number;
+  getItemId?: (item: TItem) => string | number | null | undefined;
   
   /**
    * Buckets that should not accept drops (e.g., "overdue", "completed").

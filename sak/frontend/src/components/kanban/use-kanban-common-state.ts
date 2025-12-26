@@ -36,14 +36,14 @@ export const useKanbanCommonState = (
   const [ownerFilter, setOwnerFilter] = useState(initialOwnerFilter);
   const [collapsedAll, setCollapsedAllInternal] = useState(getInitialCollapsed);
   
-  const setCollapsedAll = (value: boolean) => {
+  const setCollapsedAll = useCallback((value: boolean) => {
     setCollapsedAllInternal(value);
     if (storageKey) {
       try {
         localStorage.setItem(`kanban-collapsed-${storageKey}`, String(value));
       } catch {}
     }
-  };
+  }, [storageKey]);
   const [cardCollapseOverrides, setCardCollapseOverrides] = useState<Record<string | number, boolean>>({});
 
   const normalizeId = (id: string | number | undefined | null) => (id != null ? (typeof id === "number" ? id : String(id)) : null);
@@ -83,7 +83,7 @@ export const useKanbanCommonState = (
   const toggleCollapsedAll = useCallback(() => {
     setCollapsedAll(!collapsedAll);
     setCardCollapseOverrides({});
-  }, [collapsedAll]);
+  }, [collapsedAll, setCollapsedAll]);
 
   return {
     searchValue,

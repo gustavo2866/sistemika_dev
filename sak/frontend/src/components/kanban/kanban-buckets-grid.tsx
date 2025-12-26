@@ -1,7 +1,6 @@
 "use client";
 
 import type { DragEvent as ReactDragEvent } from "react";
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KanbanBucket, KanbanBucketBody, KanbanBucketEmpty, KanbanBucketHeader } from "./bucket";
 
@@ -43,7 +42,7 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
   bucketItems,
   renderCard,
   dragOverBucket,
-  draggedItem,
+  draggedItem: _draggedItem,
   onCardDragStart,
   emptyMessage = "Sin elementos",
   onBucketDragOver,
@@ -60,30 +59,6 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
       const isLast = index === bucketDefinitions.length - 1;
       const showPrevControl = Boolean(bucketNavigation?.canPrev && isFirst);
       const showNextControl = Boolean(bucketNavigation?.canNext && isLast);
-      const renderNavButton = (direction: "prev" | "next") => {
-        const clickHandler =
-          direction === "prev" ? bucketNavigation?.onPrev : bucketNavigation?.onNext;
-        return (
-          <button
-            type="button"
-            aria-label={direction === "prev" ? "Buckets anteriores" : "Buckets siguientes"}
-            onClick={clickHandler}
-            disabled={!clickHandler}
-            className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-500 shadow-sm transition",
-              clickHandler
-                ? "hover:border-slate-300 hover:text-slate-700"
-                : "cursor-not-allowed opacity-50"
-            )}
-          >
-            {direction === "prev" ? (
-              <ChevronsLeft className="h-4 w-4" />
-            ) : (
-              <ChevronsRight className="h-4 w-4" />
-            )}
-          </button>
-        );
-      };
       return (
         <KanbanBucket key={key} accentClass={accentClass} className={bucketClassName}>
           <KanbanBucketHeader

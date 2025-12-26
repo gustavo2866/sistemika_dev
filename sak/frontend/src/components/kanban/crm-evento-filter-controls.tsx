@@ -1,6 +1,6 @@
 "use client";
 
-import type { Identity } from "ra-core";
+import type { UserIdentity } from "ra-core";
 import { Button } from "@/components/ui/button";
 import { UserSelector } from "@/components/forms";
 import type { CRMEvento } from "@/app/resources/crm-eventos/model";
@@ -16,7 +16,7 @@ interface CRMEventoFilterControlsProps {
   ownerFilter: string;
   onOwnerFilterChange: (value: string) => void;
   eventos: CRMEvento[];
-  identity?: Identity | null;
+  identity?: UserIdentity | null;
   collapsedAll: boolean;
   onToggleCollapsed: () => void;
 }

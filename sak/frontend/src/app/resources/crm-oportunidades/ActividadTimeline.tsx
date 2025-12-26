@@ -68,9 +68,9 @@ const ActividadTimeline = () => {
           id: `evento-${evento.id}`,
           kind: "evento" as const,
           date: evento.fecha_evento || "",
-          title: evento.tipo?.nombre ?? "Evento",
+          title: evento.tipo_catalogo?.nombre ?? evento.tipo_evento ?? evento.titulo ?? "Evento",
           description: evento.descripcion,
-          meta: [evento.motivo?.nombre, evento.estado_evento].filter(Boolean).join(" · "),
+          meta: [evento.estado_evento].filter(Boolean).join(" · "),
         })),
         ...mensajes.map((mensaje) => ({
           id: `mensaje-${mensaje.id}`,

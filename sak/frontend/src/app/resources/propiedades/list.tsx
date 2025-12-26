@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
@@ -16,10 +15,8 @@ import {
   formatEstadoPropiedad,
   ESTADOS_PROPIEDAD_OPTIONS,
   type Propiedad,
-  type PropiedadEstado,
 } from "./model";
 import {
-  useListContext,
   useRecordContext,
   useRefresh,
   useRedirect,
@@ -39,8 +36,6 @@ import { MoreHorizontal, Home } from "lucide-react";
 import { ResourceTitle } from "@/components/resource-title";
 import { ChangeStateDialog } from "./components/change-state-dialog";
 import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar por nombre o propietario" alwaysOn />,

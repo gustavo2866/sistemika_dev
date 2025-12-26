@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNotify, useRefresh, useGetIdentity, useGetList } from "ra-core";
 import { cn } from "@/lib/utils";
-import { Mail, Phone, CheckCircle2, Clock, NotebookPen, MessageCircle, Calendar, CalendarPlus, X, Send } from "lucide-react";
+import { Mail, CheckCircle2, Clock, NotebookPen, MessageCircle, Calendar, CalendarPlus, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -348,10 +348,6 @@ export const ActividadesPanel = ({
     const contactoContextId = contactoIdValue;
     const trimmedContent = respuestaContent.trim();
     const trimmedNombre = contactoNombre.trim();
-    const subjectValue = respuestaSubject?.trim()
-      ? respuestaSubject.trim()
-      : ensureReplySubject(asuntoMensaje);
-
     if (!mensajeContextId && !oportunidadContextId) {
       notify("Guarda el mensaje u oportunidad para responder desde este panel.", { type: "warning" });
       return;
@@ -452,7 +448,7 @@ export const ActividadesPanel = ({
     <div className="space-y-4">
       {isScheduleReadOnly && (
         <p className="text-xs italic text-muted-foreground">
-          Modo solo lectura. Usa "Agendar" para crear o editar actividades.
+          Modo solo lectura. Usa &quot;Agendar&quot; para crear o editar actividades.
         </p>
       )}
       <div className="space-y-1">
@@ -626,7 +622,7 @@ export const ActividadesPanel = ({
       </div>
       {isReplyReadOnly && (
         <p className="text-xs italic text-muted-foreground">
-          Modo solo lectura. Usa "Responder" para redactar una respuesta.
+          Modo solo lectura. Usa &quot;Responder&quot; para redactar una respuesta.
         </p>
       )}
       <div className="space-y-3">

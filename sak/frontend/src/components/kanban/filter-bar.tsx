@@ -11,9 +11,12 @@ export interface KanbanFilterBarProps extends React.HTMLAttributes<HTMLDivElemen
   searchPlaceholder?: string;
   leftContent?: React.ReactNode;
   rightContent?: React.ReactNode;
+  rightEdgeContent?: React.ReactNode;
   searchClassName?: string;
   searchInputClassName?: string;
   rightContentClassName?: string;
+  wrap?: boolean;
+  spread?: boolean;
 }
 
 export const KanbanFilterBar = ({
@@ -23,9 +26,12 @@ export const KanbanFilterBar = ({
   searchPlaceholder = "Buscar...",
   leftContent,
   rightContent,
+  rightEdgeContent,
   searchClassName,
   searchInputClassName,
   rightContentClassName,
+  wrap = true,
+  spread = true,
   ...props
 }: KanbanFilterBarProps) => (
   <div
@@ -35,9 +41,15 @@ export const KanbanFilterBar = ({
     )}
     {...props}
   >
-    <div className="flex flex-wrap items-center justify-between gap-2.5">
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <div className={cn("relative flex-1 min-w-[200px] max-w-md", searchClassName)}>
+    <div
+      className={cn(
+        "flex items-center gap-2.5",
+        wrap ? "flex-wrap" : "flex-nowrap",
+        spread ? "justify-between" : "justify-start"
+      )}
+    >
+      <div className={cn("flex items-center gap-2 sm:gap-3", wrap ? "flex-wrap" : "flex-nowrap")}>
+        <div className={cn("relative min-w-[200px] max-w-md", wrap ? "flex-1" : "flex-none", searchClassName)}>
         <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400 sm:h-3.5 sm:w-3.5" />
           <Input
             type="search"
@@ -52,10 +64,9 @@ export const KanbanFilterBar = ({
         />
         </div>
         {leftContent}
-      </div>
-      <div className={cn("flex flex-wrap items-center gap-1.5", rightContentClassName)}>
         {rightContent}
       </div>
+      {rightEdgeContent ? <div className="flex items-center gap-1.5 ml-auto">{rightEdgeContent}</div> : null}
     </div>
   </div>
 );

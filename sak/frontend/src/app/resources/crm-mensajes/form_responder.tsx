@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useState, useEffect } from "react";
-import { useNotify, useGetIdentity, useDataProvider } from "ra-core";
+import { useNotify, useDataProvider } from "ra-core";
+import { useGetOne } from "ra-core";
+import { useNavigate, useParams } from "react-router-dom";
 import type { CRMMensaje } from "./model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +36,6 @@ interface CRMMensajeReplyDialogProps {
 
 export const CRMMensajeReplyDialog = ({ open, onOpenChange, mensaje, onSuccess }: CRMMensajeReplyDialogProps) => {
   const notify = useNotify();
-  const { data: identity } = useGetIdentity();
   const dataProvider = useDataProvider();
   const [reply, setReply] = useState("");
   const [subject, setSubject] = useState("");
@@ -158,7 +159,7 @@ export const CRMMensajeReplyDialog = ({ open, onOpenChange, mensaje, onSuccess }
     } finally {
       setLoading(false);
     }
-  }, [mensaje, reply, subject, contactoNombre, notify, onOpenChange, onSuccess, identity?.id, tipoOperacionId]);
+  }, [mensaje, reply, contactoNombre, notify, onOpenChange, onSuccess, tipoOperacionId]);
 
   const handleCancel = () => {
     setTipoOperacionId("");
@@ -274,5 +275,35 @@ export const CRMMensajeReplyDialog = ({ open, onOpenChange, mensaje, onSuccess }
   );
 };
 
-// Page component wrapper (alias for routing)
-export const CRMMensajeReply = CRMMensajeReplyDialog;
+const useMensajeId = () => {
+  const { id } = useParams<{ id: string }>();
+  return id ?? "";
+};
+
+export const CRMMensajeReply = () => {
+  const navigate = useNavigate();
+  const mensajeId = useMensajeId();
+  const mensajeIdNumber = Number(mensajeId);
+  const [open, setOpen] = useState(true);
+  const { data: mensaje } = useGetOne<CRMMensaje>(
+    "crm/mensajes",
+    { id: mensajeIdNumber },
+    { enabled: Number.isFinite(mensajeIdNumber) && mensajeIdNumber > 0 }
+  );
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      navigate(-1);
+    }
+  };
+
+  return (
+    <CRMMensajeReplyDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      mensaje={mensaje ?? null}
+      onSuccess={() => navigate(-1)}
+    />
+  );
+};
