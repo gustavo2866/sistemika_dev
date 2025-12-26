@@ -76,7 +76,7 @@ def eventos_default_list(
     _order: str = Query(None, pattern="^(ASC|DESC)$", description="Sort direction ra-data-json-server"),
     q: Optional[str] = Query(None, description="Busqueda de texto"),
     page: int = Query(1, ge=1, description="Numero de pagina"),
-    perPage: int = Query(25, ge=1, le=100, description="Items por pagina"),
+    perPage: int = Query(25, ge=1, le=300, description="Items por pagina"),
     sortBy: str = Query("created_at", description="Campo para ordenar"),
     sortDir: str = Query("asc", pattern="^(asc|desc)$", description="Direccion del ordenamiento"),
     fields: Optional[str] = Query(None, description="Campos a incluir (CSV)"),

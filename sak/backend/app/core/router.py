@@ -232,7 +232,7 @@ def create_generic_router(
                 }
             )
 
-    @router.get("/{obj_id}")
+    @router.get("/{obj_id:int}")
     def get_one(
         obj_id: int, 
         session: Session = Depends(get_session),
@@ -256,7 +256,7 @@ def create_generic_router(
         response_data = filtrar_respuesta(obj) if filter_responses else obj
         return response_data
 
-    @router.put("/{obj_id}")
+    @router.put("/{obj_id:int}")
     def update_full(
         obj_id: int,
         payload: Dict = Body(...),
@@ -305,7 +305,7 @@ def create_generic_router(
                 }
             )
 
-    @router.patch("/{obj_id}")
+    @router.patch("/{obj_id:int}")
     def update_partial(
         obj_id: int,
         payload: Dict = Body(...),
@@ -340,7 +340,7 @@ def create_generic_router(
                 }
             )
 
-    @router.delete("/{obj_id}")
+    @router.delete("/{obj_id:int}")
     def delete(
         obj_id: int, 
         session: Session = Depends(get_session),

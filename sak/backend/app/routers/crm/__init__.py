@@ -12,7 +12,6 @@ from .crm_catalogos_router import (
 from .crm_contacto_router import crm_contacto_router
 from .crm_oportunidad_router import crm_oportunidad_router
 from .crm_evento_router import crm_evento_router
-from .crm_gestion_router import router as crm_gestion_router
 from app.routers.crm_mensaje_router import router as crm_mensaje_router
 
 __all__ = [
@@ -28,6 +27,5 @@ __all__ = [
     "crm_contacto_router",
     "crm_oportunidad_router",
     "crm_evento_router",
-    "crm_gestion_router",
     "crm_mensaje_router",
 ]

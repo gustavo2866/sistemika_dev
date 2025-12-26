@@ -25,7 +25,6 @@ from .crm import (
     cotizacion_conversion_router,
     crm_contacto_router,
     crm_evento_router,
-    crm_gestion_router,
 )
 from .emprendimiento_router import emprendimiento_router
 
@@ -55,6 +54,5 @@ __all__ = [
     "cotizacion_conversion_router",
     "crm_contacto_router",
     "crm_evento_router",
-    "crm_gestion_router",
     "emprendimiento_router",
 ]

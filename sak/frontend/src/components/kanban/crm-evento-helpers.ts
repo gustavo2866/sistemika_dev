@@ -1,6 +1,6 @@
 "use client";
 
-import type { CRMEvento } from "../crm-eventos/model";
+import type { CRMEvento } from "@/app/resources/crm-eventos/model";
 
 export type CanonicalEstado = "1-pendiente" | "2-realizado" | "3-cancelado" | "4-reagendar";
 
@@ -58,7 +58,7 @@ export const formatHeaderTimestamp = (dateStr?: string): string => {
     const minutes = String(dt.getMinutes()).padStart(2, "0");
     return `${day}/${month}/${year} ${hours}:${minutes}`;
   } catch {
-    return "Fecha inválida";
+    return "Fecha invǭlida";
   }
 };
 

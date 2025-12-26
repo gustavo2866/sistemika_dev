@@ -62,7 +62,6 @@ from app.routers.crm import (
     crm_contacto_router,
     crm_oportunidad_router,
     crm_evento_router,
-    crm_gestion_router,
     crm_mensaje_router,
 )
 from app.routers.crm_celular_router import router as crm_celular_router
@@ -171,7 +170,6 @@ app.include_router(cotizacion_moneda_router)
 app.include_router(crm_contacto_router)
 app.include_router(crm_oportunidad_router)
 app.include_router(crm_evento_router)
-app.include_router(crm_gestion_router)
 app.include_router(crm_mensaje_router)
 app.include_router(crm_celular_router)
 app.include_router(meta_webhook_router, prefix="/api")

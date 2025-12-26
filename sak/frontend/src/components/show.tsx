@@ -16,7 +16,7 @@ import {
   type ShowBaseProps,
 } from "ra-core";
 import { ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import { EditButton } from "@/components/edit-button";
 
@@ -76,8 +76,6 @@ export const ShowView = ({
       "The ShowView component must be used within a ResourceContextProvider",
     );
   }
-  const location = useLocation();
-  const fromTodo = Boolean(location.state && (location.state as any).fromTodo);
   const getResourceLabel = useGetResourceLabel();
   const listLabel = getResourceLabel(resource, 2);
   const createPath = useCreatePath();
@@ -85,7 +83,7 @@ export const ShowView = ({
     resource,
     type: "list",
   });
-  const listLink = fromTodo ? "/crm/todo" : defaultListLink;
+  const listLink = defaultListLink;
 
   const getRecordRepresentation = useGetRecordRepresentation(resource);
   const recordRepresentation = getRecordRepresentation(context.record);

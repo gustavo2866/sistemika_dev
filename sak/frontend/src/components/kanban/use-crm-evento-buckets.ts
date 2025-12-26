@@ -8,7 +8,7 @@ import {
   getOportunidadName,
   normalizeEstado,
   type BucketKey,
-} from "@/app/resources/crm-todo/crm-todo-helpers";
+} from "./crm-evento-helpers";
 import { formatDateRange, getNextWeekStart } from "./utils";
 
 export type FocusFilter = "activos" | "todos";

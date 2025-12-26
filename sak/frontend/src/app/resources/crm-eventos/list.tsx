@@ -134,7 +134,7 @@ export const CRMEventoList = () => {
       filters={filters}
       filterDefaultValues={defaultFilters}
       actions={<ListActions />}
-      perPage={1000}
+      perPage={300}
       pagination={false}
       sort={{ field: "fecha_evento", order: "DESC" }}
       className="space-y-5"

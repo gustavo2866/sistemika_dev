@@ -30,7 +30,7 @@ const CRMEventoFormContent = () => {
     filter: { activo: true },
     sort: { field: "nombre", order: "ASC" },
   });
-  const { data: contactosActivos = [] } = useGetList<any>("crm/gestion/contactos-activos", {
+  const { data: contactosActivos = [] } = useGetList<any>("crm/contactos", {
     pagination: { page: 1, perPage: 200 },
     filter: {},
     sort: { field: "nombre_completo", order: "ASC" },
@@ -120,7 +120,7 @@ const CRMEventoFormContent = () => {
         <Label className="text-sm text-muted-foreground">Contacto</Label>
         <ComboboxQuery
           source="contacto_id"
-          resource="crm/gestion/contactos-activos"
+          resource="crm/contactos"
           labelField="nombre_completo"
           limit={200}
           placeholder="Selecciona un contacto"
