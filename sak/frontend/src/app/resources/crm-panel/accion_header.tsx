@@ -4,6 +4,7 @@ import { useGetOne } from "ra-core";
 import { Card } from "@/components/ui/card";
 import type { CRMOportunidad } from "../crm-oportunidades/model";
 
+
 type AccionOportunidadHeaderProps = {
   oportunidad?: Pick<
     CRMOportunidad,
