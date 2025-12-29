@@ -18,6 +18,23 @@ class Base(SQLModel):
 STAMP_FIELDS = {"id", "created_at", "updated_at", "deleted_at", "version"}
 VISIBLE_STAMP_FIELDS = {"created_at", "updated_at"}
 
+def normalize_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+def serialize_datetime(value: datetime) -> str:
+    return normalize_datetime(value).isoformat().replace("+00:00", "Z")
+
+def normalize_payload_datetimes(payload: Any) -> Any:
+    if isinstance(payload, datetime):
+        return serialize_datetime(payload)
+    if isinstance(payload, dict):
+        return {key: normalize_payload_datetimes(val) for key, val in payload.items()}
+    if isinstance(payload, list):
+        return [normalize_payload_datetimes(item) for item in payload]
+    return payload
+
 def campos_editables(model_cls: type[SQLModel]) -> set[str]:
     """Campos editables por el usuario (para formularios de edición)"""
     return set(model_cls.model_fields.keys()) - STAMP_FIELDS
@@ -109,6 +126,6 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
                 if calculated_value is not None:
                     result[field_name] = calculated_value
     
-    return result 
+    return normalize_payload_datetimes(result)
 
 
