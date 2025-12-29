@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { humanize, singularize } from "inflection";
 import {
   useDeleteWithUndoController,
@@ -40,8 +41,11 @@ export const DeleteButton = (props: DeleteButtonProps) => {
     redirect = "list",
     successMessage,
     variant = "outline",
-    className = "cursor-pointer hover:bg-destructive/10! text-destructive! border-destructive! focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
+    className: classNameProp,
   } = props;
+  const baseClassName =
+    classNameProp ??
+    "cursor-pointer hover:bg-destructive/10! text-destructive! border-destructive! focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40";
   const record = useRecordContext(props);
   const resource = useResourceContext(props);
 
@@ -88,7 +92,10 @@ export const DeleteButton = (props: DeleteButtonProps) => {
       disabled={isPending}
       aria-label={typeof label === "string" ? label : undefined}
       size={size}
-      className={className}
+      className={cn(
+        baseClassName,
+        "h-8 px-3 text-xs sm:h-9 sm:px-4 sm:text-sm"
+      )}
     >
       <Trash />
       {label}

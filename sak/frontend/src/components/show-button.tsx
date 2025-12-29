@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router";
 import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Eye } from "lucide-react";
 import {
   Translate,
@@ -23,10 +24,14 @@ export const ShowButton = (props: ShowButtonProps) => {
     type: "show",
     id: record?.id,
   });
-  const { label, icon, ...rest } = props;
+  const { label, icon, className, ...rest } = props;
   return (
     <Link
-      className={buttonVariants({ variant: "outline" })}
+      className={cn(
+        buttonVariants({ variant: "outline" }),
+        "h-8 px-3 text-xs sm:h-9 sm:px-4 sm:text-sm",
+        className
+      )}
       to={link}
       onClick={stopPropagation}
       {...rest}

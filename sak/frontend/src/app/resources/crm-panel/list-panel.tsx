@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
+import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -19,19 +20,14 @@ import {
   Target,
   XCircle,
 } from "lucide-react";
-import { useListContext, useDataProvider, useNotify, useRefresh, useGetList, useGetIdentity } from "ra-core";
+import { useListContext, useGetIdentity } from "ra-core";
 import type { CRMOportunidad } from "../crm-oportunidades/model";
 import { CRM_OPORTUNIDAD_ESTADOS } from "../crm-oportunidades/model";
 import { CRMOportunidadKanbanCard } from "./crm-panel-card";
 import { KanbanBoardView } from "@/components/kanban";
 import { calculateOportunidadBucketKey, prepareMoveOportunidadPayload, getBucketLabel } from "./model";
-import { ESTADO_BG_COLORS, getResponsableName, getContactoName, type BucketKey } from "./crm-panel-helpers";
+import { ESTADO_BG_COLORS, type BucketKey } from "./crm-panel-helpers";
 import { OportunidadCustomFilters } from "./crm-panel-customFilters";
-import { CRMOportunidadDescartarDialog } from "./form_descartar";
-import { CRMOportunidadAgendarDialog } from "./form_agendar";
-import { CRMOportunidadCotizarDialog } from "./form_cotizar";
-import { CRMOportunidadCerrarDialog } from "./form_cerrar";
-import { CRMOportunidadAceptarDialog } from "./form_aceptar";
 
 // Definición de buckets (usando todos los estados)
 const getBucketHeader = (estado: BucketKey, label: string) => {
@@ -102,34 +98,14 @@ const getBuckets = () => {
       title: label,
       helper: "",
       accentClass: ESTADO_BG_COLORS[estado] ?? "from-white/95 to-slate-50/70",
-      bucketClassName: "max-w-[260px] w-full justify-self-center",
+      bucketClassName: "w-full min-w-[240px]",
       headerContent: getBucketHeader(estado as BucketKey, label),
     };
   });
 };
 
-// Filtro de búsqueda
-const searchFilterFn = (oportunidad: CRMOportunidad, searchTerm: string) => {
-  const titulo = oportunidad.titulo ?? "";
-  const contacto = getContactoName(oportunidad);
-  const responsable = getResponsableName(oportunidad);
-  const id = String(oportunidad.id);
-  
-  return (
-    titulo.toLowerCase().includes(searchTerm) ||
-    contacto.toLowerCase().includes(searchTerm) ||
-    responsable.toLowerCase().includes(searchTerm) ||
-    id.includes(searchTerm)
-  );
-};
-
-// Filtro de responsable
-const ownerFilterFn = (oportunidad: CRMOportunidad, ownerId: string) => {
-  const oportunidadOwnerId = (oportunidad as any).responsable?.id ?? oportunidad.responsable_id;
-  return String(oportunidadOwnerId ?? "") === ownerId;
-};
-
 const filters = [
+  <TextInput key="q" source="q" label={false} placeholder="Buscar oportunidades" alwaysOn />,
   <ReferenceInput key="contacto_id" source="contacto_id" reference="crm/contactos" label="Contacto">
     <SelectInput optionText="nombre_completo" emptyText="Todos" />
   </ReferenceInput>,
@@ -158,276 +134,50 @@ const ListActions = () => (
 );
 
 const OportunidadListContent = () => {
-  const { data: oportunidades = [], isLoading } = useListContext<CRMOportunidad>();
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const refresh = useRefresh();
+  const { data: oportunidades = [], isLoading, filterValues, setFilters } =
+    useListContext<CRMOportunidad>();
   const { identity } = useGetIdentity();
   const navigate = useNavigate();
-
-  // Obtener catálogos necesarios
-  const { data: tiposEvento = [] } = useGetList("crm/catalogos/tipos-evento", {
-    pagination: { page: 1, perPage: 100 },
-  });
-  const { data: usuarios = [] } = useGetList("users", {
-    pagination: { page: 1, perPage: 100 },
-  });
-  const { data: propiedades = [] } = useGetList("propiedades", {
-    pagination: { page: 1, perPage: 500 },
-  });
-  const { data: tiposPropiedad = [] } = useGetList("tipos-propiedad", {
-    pagination: { page: 1, perPage: 100 },
-  });
-  const { data: monedas = [] } = useGetList("monedas", {
-    pagination: { page: 1, perPage: 50 },
-  });
-  const { data: condicionesPago = [] } = useGetList("crm/catalogos/condiciones-pago", {
-    pagination: { page: 1, perPage: 100 },
-  });
-  const { data: motivos = [] } = useGetList("crm/catalogos/motivos-perdida", {
-    pagination: { page: 1, perPage: 100 },
-  });
-
-  const ownerOptions = useMemo(
-    () => [
-      { value: "todos", label: "Todos", avatar: null },
-      ...usuarios.map((user: any) => ({
-        value: String(user.id),
-        label: user.nombre ?? user.email ?? `Usuario #${user.id}`,
-        avatar: user.url_foto ?? user.avatar ?? null,
-      })),
-    ],
-    [usuarios]
-  );
-
-  // Estado para diálogo descartar
-  const [descartarDialogOpen, setDescartarDialogOpen] = useState(false);
-  const [descartarLoading, setDescartarLoading] = useState(false);
-
-  // Estado para diálogo agendar
-  const [agendarDialogOpen, setAgendarDialogOpen] = useState(false);
-  const [agendarLoading, setAgendarLoading] = useState(false);
-  const [agendarForm, setAgendarForm] = useState({
-    titulo: "",
-    descripcion: "",
-    tipoEvento: "",
-    datetime: "",
-    asignadoId: "",
-  });
-
-  // Estado para diálogo cotizar
-  const [cotizarDialogOpen, setCotizarDialogOpen] = useState(false);
-  const [cotizarLoading, setCotizarLoading] = useState(false);
-  const [cotizarForm, setCotizarForm] = useState({
-    propiedadId: "",
-    tipoPropiedadId: "",
-    monto: "",
-    monedaId: "",
-    condicionPagoId: "",
-    formaPagoDescripcion: "",
-  });
-
-  const { data: emprendimientos = [] } = useGetList("emprendimientos", {
-    pagination: { page: 1, perPage: 500 },
-  });
-
-  // Estado para diálogo cerrar
-  const [cerrarDialogOpen, setCerrarDialogOpen] = useState(false);
-  const [cerrarLoading, setCerrarLoading] = useState(false);
-  const [perderMotivoId, setPerderMotivoId] = useState("");
-  const [perderNota, setPerderNota] = useState("");
-  const [aceptarDialogOpen, setAceptarDialogOpen] = useState(false);
-  const [aceptarLoading, setAceptarLoading] = useState(false);
-
-  const [selectedOportunidad, setSelectedOportunidad] = useState<CRMOportunidad | null>(null);
-
-  // Handler para descartar oportunidad
-  const handleDescartarConfirm = useCallback(async () => {
-    if (!selectedOportunidad) return;
-
-    setDescartarLoading(true);
-    try {
-      await dataProvider.update("crm/oportunidades", {
-        id: selectedOportunidad.id,
-        data: { activo: false },
-        previousData: selectedOportunidad,
-      });
-      notify("Oportunidad descartada exitosamente", { type: "success" });
-      refresh();
-      setDescartarDialogOpen(false);
-      setSelectedOportunidad(null);
-    } catch (error: any) {
-      notify(error.message || "Error al descartar la oportunidad", { type: "error" });
-    } finally {
-      setDescartarLoading(false);
-    }
-  }, [selectedOportunidad, dataProvider, notify, refresh]);
-
-  // Handler para agendar visita
-  const handleAgendarSubmit = useCallback(async () => {
-    if (!selectedOportunidad) return;
-    if (!agendarForm.titulo || !agendarForm.tipoEvento || !agendarForm.datetime || !agendarForm.asignadoId) {
-      notify("Por favor completa todos los campos requeridos", { type: "warning" });
-      return;
-    }
-
-    setAgendarLoading(true);
-    try {
-      // Crear evento
-      await dataProvider.create("crm/eventos", {
-        data: {
-          titulo: agendarForm.titulo,
-          descripcion: agendarForm.descripcion,
-          tipo_evento_id: agendarForm.tipoEvento,
-          fecha: agendarForm.datetime,
-          asignado_id: agendarForm.asignadoId,
-          oportunidad_id: selectedOportunidad.id,
-          estado: 1, // Pendiente
-        },
-      });
-
-      // Actualizar estado de oportunidad a "visita" (estado 2)
-      await dataProvider.update("crm/oportunidades", {
-        id: selectedOportunidad.id,
-        data: { estado: 2, fecha_estado: new Date().toISOString() },
-        previousData: selectedOportunidad,
-      });
-
-      notify("Visita agendada exitosamente", { type: "success" });
-      refresh();
-      setAgendarDialogOpen(false);
-      setSelectedOportunidad(null);
-      setAgendarForm({
-        titulo: "",
-        descripcion: "",
-        tipoEvento: "",
-        datetime: "",
-        asignadoId: "",
-      });
-    } catch (error: any) {
-      notify(error.message || "Error al agendar la visita", { type: "error" });
-    } finally {
-      setAgendarLoading(false);
-    }
-  }, [selectedOportunidad, agendarForm, dataProvider, notify, refresh]);
-
-  // Handler para cotizar
-  const handleCotizarSubmit = useCallback(async () => {
-    if (!selectedOportunidad) return;
-    if (!cotizarForm.propiedadId || !cotizarForm.monto || !cotizarForm.monedaId) {
-      notify("Por favor completa todos los campos requeridos", { type: "warning" });
-      return;
-    }
-
-    setCotizarLoading(true);
-    try {
-      // Actualizar oportunidad con datos de cotización y cambiar estado a "cotiza" (estado 3)
-      await dataProvider.update("crm/oportunidades", {
-        id: selectedOportunidad.id,
-        data: {
-          propiedad_id: cotizarForm.propiedadId,
-          tipo_propiedad_id: cotizarForm.tipoPropiedadId || null,
-          monto: parseFloat(cotizarForm.monto),
-          moneda_id: cotizarForm.monedaId,
-          condicion_pago_id: cotizarForm.condicionPagoId || null,
-          forma_pago_descripcion: cotizarForm.formaPagoDescripcion || null,
-          estado: 3,
-          fecha_estado: new Date().toISOString(),
-        },
-        previousData: selectedOportunidad,
-      });
-
-      notify("Cotización registrada exitosamente", { type: "success" });
-      refresh();
-      setCotizarDialogOpen(false);
-      setSelectedOportunidad(null);
-      setCotizarForm({
-        propiedadId: "",
-        tipoPropiedadId: "",
-        monto: "",
-        monedaId: "",
-        condicionPagoId: "",
-        formaPagoDescripcion: "",
-      });
-    } catch (error: any) {
-      notify(error.message || "Error al registrar la cotización", { type: "error" });
-    } finally {
-      setCotizarLoading(false);
-    }
-  }, [selectedOportunidad, cotizarForm, dataProvider, notify, refresh]);
-
-  // Handler para cerrar como perdida
-  const handleCerrarConfirm = useCallback(async () => {
-    if (!selectedOportunidad) return;
-    if (!perderMotivoId) {
-      notify("Por favor selecciona un motivo", { type: "warning" });
-      return;
-    }
-
-    setCerrarLoading(true);
-    try {
-      await dataProvider.update("crm/oportunidades", {
-        id: selectedOportunidad.id,
-        data: {
-          estado: 6, // Perdida
-          fecha_estado: new Date().toISOString(),
-          perder_motivo_id: perderMotivoId,
-          perder_nota: perderNota || null,
-        },
-        previousData: selectedOportunidad,
-      });
-
-      notify("Oportunidad cerrada como perdida", { type: "success" });
-      refresh();
-      setCerrarDialogOpen(false);
-      setSelectedOportunidad(null);
-      setPerderMotivoId("");
-      setPerderNota("");
-    } catch (error: any) {
-      notify(error.message || "Error al cerrar la oportunidad", { type: "error" });
-    } finally {
-      setCerrarLoading(false);
-    }
-  }, [selectedOportunidad, perderMotivoId, perderNota, dataProvider, notify, refresh]);
-
-  const handleAceptarOpenChange = useCallback((open: boolean) => {
-    setAceptarDialogOpen(open);
-    if (!open) {
-      setSelectedOportunidad(null);
-    }
+  const soloActivas = Boolean(filterValues.activo);
+  const cutoffDate = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date;
   }, []);
 
-  const handleAceptarSubmit = useCallback(
-    async (payload: {
-      titulo: string;
-      tipo_operacion_id: number | null;
-      tipo_propiedad_id: number | null;
-      emprendimiento_id: number | null;
-      descripcion_estado: string;
-    }) => {
-      if (!selectedOportunidad) return;
-      setAceptarLoading(true);
-      try {
-        await dataProvider.update("crm/oportunidades", {
-          id: selectedOportunidad.id,
-          data: {
-            ...payload,
-            estado: "1-abierta",
-            fecha_estado: new Date().toISOString(),
-          },
-          previousData: selectedOportunidad,
-        });
-        notify("Oportunidad confirmada y movida a Abierta", { type: "success" });
-        refresh();
-        handleAceptarOpenChange(false);
-      } catch (error: any) {
-        notify(error.message || "Error al confirmar la oportunidad", { type: "error" });
-      } finally {
-        setAceptarLoading(false);
+  const shouldIncludeOportunidad = useCallback(
+    (oportunidad: CRMOportunidad) => {
+      if (soloActivas) {
+        return oportunidad.activo !== false;
       }
+      if (oportunidad.activo !== false) {
+        return true;
+      }
+      if (!oportunidad.fecha_estado) {
+        return false;
+      }
+      const parsed = new Date(oportunidad.fecha_estado);
+      if (Number.isNaN(parsed.getTime())) {
+        return false;
+      }
+      return parsed >= cutoffDate;
     },
-    [selectedOportunidad, dataProvider, notify, refresh, handleAceptarOpenChange]
+    [soloActivas, cutoffDate]
   );
+
+  const handleSoloActivasChange = useCallback(
+    (next: boolean) => {
+      const nextFilters = { ...filterValues };
+      if (next) {
+        nextFilters.activo = true;
+      } else {
+        delete nextFilters.activo;
+      }
+      setFilters(nextFilters, {});
+    },
+    [filterValues, setFilters]
+  );
+
 
   // Renderizado de tarjeta
   const renderCard = useCallback(
@@ -440,48 +190,26 @@ const OportunidadListContent = () => {
         updating={false}
         onToggleCollapse={onToggleCollapse}
         onEdit={(opp) => {
-          navigate(`/crm/oportunidades/${opp.id}`, { state: { fromPanel: true } });
+          navigate(`/crm/panel/${opp.id}/edit`);
         }}
         onAceptar={(opp) => {
-          setSelectedOportunidad(opp);
-          setAceptarDialogOpen(true);
+          navigate(`/crm/panel/${opp.id}/accion_aceptar`);
         }}
         onAgendar={(opp) => {
-          setSelectedOportunidad(opp);
-          setAgendarForm({
-            titulo: `Visita ${opp.titulo || ""}`,
-            descripcion: "",
-            tipoEvento: tiposEvento[0]?.id?.toString() || "",
-            datetime: "",
-            asignadoId: identity?.id?.toString() || "",
-          });
-          setAgendarDialogOpen(true);
+          navigate(`/crm/panel/${opp.id}/accion_agendar`);
         }}
         onCotizar={(opp) => {
-          setSelectedOportunidad(opp);
-          setCotizarForm({
-            propiedadId: opp.propiedad_id?.toString() || "",
-            tipoPropiedadId: "",
-            monto: opp.monto?.toString() || "",
-            monedaId: opp.moneda_id?.toString() || monedas[0]?.id?.toString() || "",
-            condicionPagoId: "",
-            formaPagoDescripcion: "",
-          });
-          setCotizarDialogOpen(true);
+          navigate(`/crm/panel/${opp.id}/accion_cotizar`);
         }}
         onCerrar={(opp) => {
-          setSelectedOportunidad(opp);
-          setPerderMotivoId("");
-          setPerderNota("");
-          setCerrarDialogOpen(true);
+          navigate(`/crm/panel/${opp.id}/accion_cerrar`);
         }}
         onDescartar={(opp) => {
-          setSelectedOportunidad(opp);
-          setDescartarDialogOpen(true);
+          navigate(`/crm/panel/${opp.id}/accion_descartar`);
         }}
       />
     ),
-    [tiposEvento, identity, monedas, navigate]
+    [navigate]
   );
 
   // Definición de buckets
@@ -489,109 +217,52 @@ const OportunidadListContent = () => {
 
   return (
     <>
-      <KanbanBoardView<CRMOportunidad, BucketKey>
-        items={oportunidades}
-        buckets={buckets}
-        getBucketKey={calculateOportunidadBucketKey}
-        maxBucketsPerPage={4}
-        bucketGridClassName="gap-2 md:gap-3 xl:gap-3"
+      <div className="mx-auto w-full max-w-6xl">
+        <KanbanBoardView<CRMOportunidad, BucketKey>
+          items={oportunidades}
+          buckets={buckets}
+          getBucketKey={calculateOportunidadBucketKey}
+          maxBucketsPerPage={4}
+          bucketGridClassName="gap-3 md:gap-4 xl:gap-4"
         onItemMove={prepareMoveOportunidadPayload}
         resource="crm/oportunidades"
         getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}
-        searchFilter={searchFilterFn}
-        ownerFilter={ownerFilterFn}
-        autoSelectOwnerId={identity?.id ? String(identity.id) : undefined}
-        identity={identity}
+          identity={identity}
+        customFilter={(oportunidad) => shouldIncludeOportunidad(oportunidad)}
         filterConfig={{
-          enableSearch: true,
-          searchPlaceholder: "Buscar oportunidades...",
-          searchClassName: "w-[180px] max-w-[220px] min-w-0 sm:w-[220px] flex-none",
-          searchInputClassName: "!h-5 !py-0 !text-[9px] sm:!h-9 sm:!text-sm",
+          enableSearch: false,
           filterBarSpread: false,
           filterBarWrap: false,
-          collapseToggleAlignRight: true,
-          enableOwnerFilter: true,
-          ownerFilterPlaceholder: "Responsable",
-          ownerFilterClassName: "w-[150px] min-w-0 sm:w-[180px]",
-          ownerTriggerClassName: "!h-5 !py-0 !text-[9px] sm:!h-9 sm:!text-sm !px-2",
-          ownerHideLabel: true,
-          ownerHideLabelOnSmall: true,
-          ownerFilterPlacement: "left",
-          ownerOptions,
+          filterBarClassName: "w-fit px-2 py-1.5",
+          collapseToggleAlignRight: false,
+          enableOwnerFilter: false,
           enableCollapseToggle: true,
         }}
-        customFilters={() => <OportunidadCustomFilters />}
+        customFilters={() => (
+          <OportunidadCustomFilters
+            soloActivas={soloActivas}
+            onSoloActivasChange={handleSoloActivasChange}
+          />
+        )}
         renderCard={renderCard}
-        isLoading={isLoading}
-        loadingMessage="Cargando oportunidades..."
-        emptyMessage="Sin oportunidades"
-        noResultsMessage="No se encontraron oportunidades con los filtros aplicados"
-      />
-
-      {/* Diálogo de descartar */}
-      <CRMOportunidadDescartarDialog
-        open={descartarDialogOpen}
-        onOpenChange={setDescartarDialogOpen}
-        onConfirm={handleDescartarConfirm}
-        disabled={descartarLoading}
-      />
-
-      {/* Diálogo de agendar */}
-      <CRMOportunidadAgendarDialog
-        open={agendarDialogOpen}
-        onOpenChange={setAgendarDialogOpen}
-        formValues={agendarForm}
-        onFormChange={setAgendarForm}
-        tipoEventoOptions={tiposEvento.map((t: any) => ({ value: t.id.toString(), label: t.nombre }))}
-        responsableOptions={usuarios.map((u: any) => ({ value: u.id.toString(), label: u.nombre }))}
-        onSubmit={handleAgendarSubmit}
-        disabled={agendarLoading}
-      />
-
-      {/* Diálogo de cotizar */}
-      <CRMOportunidadCotizarDialog
-        open={cotizarDialogOpen}
-        onOpenChange={setCotizarDialogOpen}
-        formValues={cotizarForm}
-        onFormChange={setCotizarForm}
-        propiedades={propiedades.map((p: any) => ({ value: p.id.toString(), label: p.nombre }))}
-        tiposPropiedad={tiposPropiedad.map((t: any) => ({ value: t.id.toString(), label: t.nombre }))}
-        monedas={monedas.map((m: any) => ({ value: m.id.toString(), label: m.nombre }))}
-        condicionesPago={condicionesPago.map((c: any) => ({ value: c.id.toString(), label: c.nombre }))}
-        onSubmit={handleCotizarSubmit}
-        disabled={cotizarLoading}
-      />
-
-      {/* Diálogo de cerrar como perdida */}
-      <CRMOportunidadCerrarDialog
-        open={cerrarDialogOpen}
-        onOpenChange={setCerrarDialogOpen}
-        motivoOptions={motivos.map((m: any) => ({ value: m.id.toString(), label: m.nombre }))}
-        perderMotivoId={perderMotivoId}
-        onPerderMotivoChange={setPerderMotivoId}
-        perderNota={perderNota}
-        onPerderNotaChange={setPerderNota}
-        onConfirm={handleCerrarConfirm}
-        disabled={cerrarLoading}
-      />
-
-      {/* Diálogo de confirmar prospecto */}
-      {selectedOportunidad && (
-        <CRMOportunidadAceptarDialog
-          open={aceptarDialogOpen}
-          onOpenChange={handleAceptarOpenChange}
-          record={selectedOportunidad}
-          onComplete={handleAceptarSubmit}
-          isProcessing={aceptarLoading}
-          tipoPropiedadOptions={tiposPropiedad}
-          emprendimientoOptions={emprendimientos}
+          isLoading={isLoading}
+          loadingMessage="Cargando oportunidades..."
+          emptyMessage="Sin oportunidades"
+          noResultsMessage="No se encontraron oportunidades con los filtros aplicados"
         />
-      )}
+      </div>
+
     </>
   );
 };
 
 export const CRMOportunidadListKanban = () => {
+  const { identity } = useGetIdentity();
+  const defaultFilters = {
+    panel_window_days: 30,
+    ...(identity?.id ? { responsable_id: identity.id } : {}),
+  };
+
   return (
     <List
       resource="crm/oportunidades"
@@ -601,6 +272,7 @@ export const CRMOportunidadListKanban = () => {
       actions={<ListActions />}
       perPage={500}
       pagination={false}
+      filterDefaultValues={defaultFilters}
       sort={{ field: "fecha_estado", order: "DESC" }}
       className="space-y-5"
     >

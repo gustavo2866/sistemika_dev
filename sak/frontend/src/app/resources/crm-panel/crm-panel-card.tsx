@@ -1,8 +1,25 @@
 "use client";
 
-import { Calendar, Check, X, FileText, ChevronRight, Building2, Home, Pencil } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  X,
+  FileText,
+  ChevronRight,
+  Building2,
+  Home,
+  Pencil,
+  MoreHorizontal,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { CRMOportunidad, CRMOportunidadEstado } from "../crm-oportunidades/model";
 import {
   KanbanCardWithCollapse,
@@ -42,6 +59,13 @@ interface CardHandlers {
   onCotizar?: (oportunidad: CRMOportunidad) => void;
   onCerrar?: (oportunidad: CRMOportunidad) => void;
   onDescartar?: (oportunidad: CRMOportunidad) => void;
+}
+
+interface CardMenuAction {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
 }
 
 // Elementos reutilizables
@@ -85,64 +109,110 @@ const createResponsableBlock = (oportunidad: CRMOportunidad) => {
   );
 };
 
+const createActionsMenu = (onEdit: (() => void) | undefined, actions: CardMenuAction[]) => {
+  const hasActions = actions.length > 0;
+  if (!onEdit && !hasActions) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          onClick={(event) => event.stopPropagation()}
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-transparent text-slate-500 transition-colors hover:bg-slate-100"
+          aria-label="Acciones"
+          type="button"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {onEdit && (
+          <DropdownMenuItem
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            className="gap-2"
+          >
+            <Pencil className="h-3.5 w-3.5 text-slate-500" />
+            Editar
+          </DropdownMenuItem>
+        )}
+        {onEdit && hasActions ? <DropdownMenuSeparator /> : null}
+        {actions.map((action) => (
+          <DropdownMenuItem
+            key={action.label}
+            onClick={(event) => {
+              event.stopPropagation();
+              action.onClick();
+            }}
+            disabled={action.disabled}
+            className="gap-2"
+          >
+            {action.icon}
+            {action.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
 const createAgendarAction = (
   oportunidad: CRMOportunidad,
   onAgendar: (oportunidad: CRMOportunidad) => void,
   updating: boolean
-): KanbanCardAction => ({
+): CardMenuAction => ({
   label: "Agendar",
-  icon: <Calendar className="h-3 w-3 text-blue-600" />,
+  icon: <Calendar className="h-3.5 w-3.5 text-blue-600" />,
   onClick: () => onAgendar(oportunidad),
   disabled: updating,
-  variant: "default",
 });
 
 const createConfirmarAction = (
   oportunidad: CRMOportunidad,
   onAceptar: (oportunidad: CRMOportunidad) => void,
   updating: boolean
-): KanbanCardAction => ({
+): CardMenuAction => ({
   label: "Confirmar",
-  icon: <Check className="h-3 w-3 text-emerald-600" />,
+  icon: <Check className="h-3.5 w-3.5 text-emerald-600" />,
   onClick: () => onAceptar(oportunidad),
   disabled: updating,
-  variant: "default",
 });
 
 const createCotizarAction = (
   oportunidad: CRMOportunidad,
   onCotizar: (oportunidad: CRMOportunidad) => void,
   updating: boolean
-): KanbanCardAction => ({
+): CardMenuAction => ({
   label: "Cotizar",
-  icon: <FileText className="h-3 w-3 text-amber-600" />,
+  icon: <FileText className="h-3.5 w-3.5 text-amber-600" />,
   onClick: () => onCotizar(oportunidad),
   disabled: updating,
-  variant: "default",
 });
 
 const createCerrarAction = (
   oportunidad: CRMOportunidad,
   onCerrar: (oportunidad: CRMOportunidad) => void,
   updating: boolean
-): KanbanCardAction => ({
+): CardMenuAction => ({
   label: "Cerrar",
-  icon: <Check className="h-3 w-3 text-emerald-600" />,
+  icon: <Check className="h-3.5 w-3.5 text-emerald-600" />,
   onClick: () => onCerrar(oportunidad),
   disabled: updating,
-  variant: "success",
 });
 
 const createDescartarAction = (
   oportunidad: CRMOportunidad,
   onDescartar: (oportunidad: CRMOportunidad) => void,
   updating: boolean
-): KanbanCardAction => ({
+): CardMenuAction => ({
   label: "Descartar",
-  icon: <X className="h-3 w-3 text-rose-500" />,
+  icon: <X className="h-3.5 w-3.5 text-rose-500" />,
   onClick: () => onDescartar(oportunidad),
   disabled: updating,
-  variant: "danger",
 });
 
 // Configuración declarativa por estado
@@ -158,6 +228,7 @@ const getCardConfig = (
   const checkIcon = createCheckIcon();
   const lostIcon = createLostIcon();
   const estadoBadge = createEstadoBadge(estado);
+  const onEdit = handlers.onEdit ? () => handlers.onEdit!(oportunidad) : undefined;
 
   // Mapeo estado → configuración visual
   const stateConfigs: Record<string, CardConfig> = {
@@ -173,102 +244,57 @@ const getCardConfig = (
     },
     "0-prospect": {
       headerLeft: responsableBlock,
-      headerRight: (
-        handlers.onEdit && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlers.onEdit!(oportunidad);
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
-          >
-            <Pencil className="h-3 w-3 text-slate-500" />
-          </button>
-        )
+      headerRight: createActionsMenu(
+        onEdit,
+        [
+          handlers.onAceptar && createConfirmarAction(oportunidad, handlers.onAceptar, updating),
+          handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
+        ].filter(Boolean) as CardMenuAction[]
       ),
-      actions: [
-        handlers.onAceptar && createConfirmarAction(oportunidad, handlers.onAceptar, updating),
-        handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-      ].filter(Boolean) as KanbanCardAction[],
+      actions: [],
     },
     "1-abierta": {
       headerLeft: responsableBlock,
-      headerRight: (
-        handlers.onEdit && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlers.onEdit!(oportunidad);
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
-          >
-            <Pencil className="h-3 w-3 text-slate-500" />
-          </button>
-        )
+      headerRight: createActionsMenu(
+        onEdit,
+        [
+          handlers.onAgendar && createAgendarAction(oportunidad, handlers.onAgendar, updating),
+          handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
+        ].filter(Boolean) as CardMenuAction[]
       ),
-      actions: [
-        handlers.onAgendar && createAgendarAction(oportunidad, handlers.onAgendar, updating),
-        handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-      ].filter(Boolean) as KanbanCardAction[],
+      actions: [],
     },
     "2-visita": {
       headerLeft: responsableBlock,
-      headerRight: (
-        handlers.onEdit && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlers.onEdit!(oportunidad);
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
-          >
-            <Pencil className="h-3 w-3 text-slate-500" />
-          </button>
-        )
+      headerRight: createActionsMenu(
+        onEdit,
+        [
+          handlers.onCotizar && createCotizarAction(oportunidad, handlers.onCotizar, updating),
+          handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
+        ].filter(Boolean) as CardMenuAction[]
       ),
-      actions: [
-        handlers.onCotizar && createCotizarAction(oportunidad, handlers.onCotizar, updating),
-        handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-      ].filter(Boolean) as KanbanCardAction[],
+      actions: [],
     },
     "3-cotiza": {
       headerLeft: responsableBlock,
-      headerRight: (
-        handlers.onEdit && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlers.onEdit!(oportunidad);
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
-          >
-            <Pencil className="h-3 w-3 text-slate-500" />
-          </button>
-        )
+      headerRight: createActionsMenu(
+        onEdit,
+        [
+          handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating),
+          handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
+        ].filter(Boolean) as CardMenuAction[]
       ),
-      actions: [
-        handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating),
-        handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-      ].filter(Boolean) as KanbanCardAction[],
+      actions: [],
     },
     "4-reserva": {
       headerLeft: responsableBlock,
-      headerRight: (
-        handlers.onEdit && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handlers.onEdit!(oportunidad);
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded hover:bg-slate-100 transition-colors"
-          >
-            <Pencil className="h-3 w-3 text-slate-500" />
-          </button>
-        )
+      headerRight: createActionsMenu(
+        onEdit,
+        [handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating)].filter(
+          Boolean
+        ) as CardMenuAction[]
       ),
-      actions: [
-        handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating),
-      ].filter(Boolean) as KanbanCardAction[],
+      actions: [],
     },
   };
 

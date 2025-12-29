@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useDataProvider, useGetList, useGetOne, useNotify, useRefresh } from "ra-core";
@@ -166,12 +166,12 @@ export const FormCompletarDialog = ({
               <span className="font-semibold text-slate-700">
                 {getTipoLabel(selectedEvento.tipo_evento)}
               </span>
-              <span className="text-slate-400">•</span>
+              <span className="text-slate-400">·</span>
               <span className="truncate">{selectedEvento.titulo || "Sin titulo"}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span>Contacto: {getContactNameSafe(selectedEvento)}</span>
-              <span className="text-slate-400">•</span>
+              <span className="text-slate-400">·</span>
               <span>
                 Oportunidad:{" "}
                 {oportunidadId

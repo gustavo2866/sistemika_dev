@@ -177,6 +177,12 @@ import {
   CRMOportunidadShow,
   CRMOportunidadPanelPage,
 } from "@/app/resources/crm-oportunidades";
+import { CRMOportunidadPanelEdit } from "@/app/resources/crm-panel/edit";
+import { CRMOportunidadAccionCotizar } from "@/app/resources/crm-panel/accion_cotizar";
+import { CRMOportunidadAccionAgendar } from "@/app/resources/crm-panel/accion_agendar";
+import { CRMOportunidadAccionCerrar } from "@/app/resources/crm-panel/accion_cerrar";
+import { CRMOportunidadAccionDescartar } from "@/app/resources/crm-panel/accion_descartar";
+import { CRMOportunidadAccionAceptar } from "@/app/resources/crm-panel/accion_aceptar";
 import {
   CRMEventoList,
   CRMEventoCreate,
@@ -555,6 +561,12 @@ const AdminApp = () => {
         <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
+        <Route path="/crm/panel/:id/edit" element={<CRMOportunidadPanelEdit />} />
+        <Route path="/crm/panel/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
+        <Route path="/crm/panel/:id/accion_agendar" element={<CRMOportunidadAccionAgendar />} />
+        <Route path="/crm/panel/:id/accion_cerrar" element={<CRMOportunidadAccionCerrar />} />
+        <Route path="/crm/panel/:id/accion_descartar" element={<CRMOportunidadAccionDescartar />} />
+        <Route path="/crm/panel/:id/accion_aceptar" element={<CRMOportunidadAccionAceptar />} />
         <Route path="/crm/mensajes/:id/responder" element={<CRMMensajeReply />} />
       </CustomRoutes>
     </Admin>
