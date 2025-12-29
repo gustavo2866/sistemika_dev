@@ -445,7 +445,7 @@ class CRMMensajeService:
             "asunto": asunto,
             "contenido": contenido.strip(),
             "estado": EstadoMensaje.PENDIENTE_ENVIO.value,
-            "fecha_mensaje": datetime.now(UTC).isoformat(),
+            "fecha_mensaje": datetime.now(UTC),  # Pasar datetime, no string
             "responsable_id": responsable_id,
             "contacto_referencia": mensaje.contacto_referencia,
         }
@@ -525,7 +525,7 @@ class CRMMensajeService:
             "asunto": asunto,
             "contenido": contenido.strip(),
             "estado": EstadoMensaje.PENDIENTE_ENVIO.value,
-            "fecha_mensaje": datetime.now(UTC).isoformat(),
+            "fecha_mensaje": datetime.now(UTC),  # Pasar datetime, no string
             "responsable_id": responsable_id,
             "contacto_referencia": payload.get("contacto_referencia"),
         }

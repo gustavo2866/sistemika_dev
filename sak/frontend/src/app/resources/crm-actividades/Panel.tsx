@@ -366,6 +366,7 @@ export const ActividadesPanel = ({
       : `${ACTIVIDADES_API_BASE}/crm/mensajes/acciones/enviar`;
 
     const payload: Record<string, unknown> = {
+      contenido: trimmedContent,
       texto: trimmedContent,
     };
 

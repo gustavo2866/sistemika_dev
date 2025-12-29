@@ -230,15 +230,23 @@ export const CRMChatShow = () => {
       return;
     }
     try {
-      const response = await fetch(`${API_URL}/crm/mensajes/acciones/enviar`, {
+      const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
+      const endpoint = lastMessageId
+        ? `${API_URL}/crm/mensajes/${lastMessageId}/responder`
+        : `${API_URL}/crm/mensajes/acciones/enviar`;
+      const payload = lastMessageId
+        ? { texto: trimmed }
+        : {
+            contenido: trimmed,
+            texto: trimmed,
+            oportunidad_id: resolveOportunidadId,
+            responsable_id: identity?.id,
+            canal: "whatsapp",
+          };
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          contenido: trimmed,
-          oportunidad_id: resolveOportunidadId,
-          responsable_id: identity?.id,
-          canal: "whatsapp",
-        }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
