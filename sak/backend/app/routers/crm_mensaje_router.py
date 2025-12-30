@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 import httpx
 
 from app.core.router import create_generic_router, flatten_nested_filters
+from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
 from app.models import CRMMensaje, CRMCelular, CRMOportunidad
@@ -644,9 +645,10 @@ def mensajes_cursor(
         last = data[-1]
         last_time = last.fecha_mensaje or last.created_at
         if last_time:
-            next_cursor = f"{last_time.isoformat()}|{last.id}"
+            next_cursor = f"{serialize_datetime(last_time)}|{last.id}"
 
-    return {"data": data, "next_cursor": next_cursor, "has_more": has_more}
+    filtered_data = [filtrar_respuesta(item) for item in data]
+    return {"data": filtered_data, "next_cursor": next_cursor, "has_more": has_more}
 
 
 @router.post("/acciones/marcar-leidos")
@@ -702,7 +704,7 @@ def conversaciones_cursor(
         last_time = row.fecha_mensaje or row.created_at
         if not last_time:
             return None
-        return f"{last_time.isoformat()}|{row.id}"
+        return f"{serialize_datetime(last_time)}|{row.id}"
 
     def apply_cursor(stmt, cursor_value: str | None):
         if not cursor_value:
@@ -757,8 +759,8 @@ def conversaciones_cursor(
                 "oportunidad_id": msg.oportunidad_id,
                 "contacto_referencia": msg.contacto_referencia,
                 "contacto_nombre": msg.contacto.nombre_completo if msg.contacto else None,
-                "ultimo_mensaje": msg,
-                "fecha": (msg.fecha_mensaje or msg.created_at).isoformat() if (msg.fecha_mensaje or msg.created_at) else None,
+                "ultimo_mensaje": filtrar_respuesta(msg),
+                "fecha": serialize_datetime(msg.fecha_mensaje or msg.created_at) if (msg.fecha_mensaje or msg.created_at) else None,
                 "unread_count": 0,
             })
             if len(conversations) >= limit:

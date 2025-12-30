@@ -141,6 +141,18 @@ class MetaWebhookService:
                 )
                 oportunidad = self.session.exec(stmt_oport).first()
 
+                # Normalizar meta_timestamp: Meta-w envía en hora Argentina (UTC-3)
+                # Necesitamos convertir a UTC para consistencia
+                from datetime import UTC
+                from zoneinfo import ZoneInfo
+                
+                fecha_mensaje_utc = msg.meta_timestamp
+                if fecha_mensaje_utc.tzinfo is None:
+                    # Asumir que es hora Argentina y convertir a UTC
+                    argentina_tz = ZoneInfo("America/Argentina/Buenos_Aires")
+                    fecha_mensaje_arg = fecha_mensaje_utc.replace(tzinfo=argentina_tz)
+                    fecha_mensaje_utc = fecha_mensaje_arg.astimezone(UTC)
+                
                 mensaje_data = {
                     "tipo": TipoMensaje.ENTRADA.value,
                     "canal": CanalMensaje.WHATSAPP.value,
@@ -151,7 +163,7 @@ class MetaWebhookService:
                     "origen_externo_id": msg.meta_message_id,
                     "adjuntos": adjuntos,
                     "celular_id": celular.id,
-                    "fecha_mensaje": msg.meta_timestamp,
+                    "fecha_mensaje": fecha_mensaje_utc,
                     "estado_meta": msg.status,
                     "metadata_json": {
                         "from_name": msg.from_name,
@@ -173,10 +185,26 @@ class MetaWebhookService:
                 mensaje = self.session.exec(stmt).first()
                 
                 if mensaje:
+                    # Actualizar estado_meta
                     mensaje.estado_meta = msg.status
+                    
+                    # Actualizar fecha_estado con el timestamp de Meta (normalizado a UTC)
+                    from datetime import UTC
+                    from zoneinfo import ZoneInfo
+                    
+                    fecha_estado_utc = msg.meta_timestamp
+                    if fecha_estado_utc and fecha_estado_utc.tzinfo is None:
+                        # Asumir que es hora Argentina y convertir a UTC
+                        argentina_tz = ZoneInfo("America/Argentina/Buenos_Aires")
+                        fecha_estado_arg = fecha_estado_utc.replace(tzinfo=argentina_tz)
+                        fecha_estado_utc = fecha_estado_arg.astimezone(UTC)
+                    
+                    if fecha_estado_utc:
+                        mensaje.fecha_estado = fecha_estado_utc
+                    
                     self.session.add(mensaje)
                     self.session.commit()
-                    logger.info(f"Estado actualizado para mensaje {mensaje.id}: {msg.status}")
+                    logger.info(f"Estado actualizado para mensaje {mensaje.id}: {msg.status} a las {mensaje.fecha_estado}")
                 else:
                     logger.warning(f"Mensaje saliente no encontrado para meta_message_id: {msg.meta_message_id}")
 
