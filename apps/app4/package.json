@@ -11,7 +11,7 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@workspace/ui": "workspace:*",
     "@workspace/core": "workspace:*",
-    "next": "latest",
+    "next": "15.5.8",
     "react": "latest",
     "react-dom": "latest"
   }
