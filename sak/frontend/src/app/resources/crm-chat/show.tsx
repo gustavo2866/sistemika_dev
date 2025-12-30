@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
-  ArrowUpRight,
-  BookOpen,
-  Copy,
+  Calendar,
   Image as ImageIcon,
   Mic,
   Paperclip,
   Plus,
   Send,
+  User,
+  Briefcase,
 } from "lucide-react";
 import { useNotify, useGetIdentity } from "ra-core";
 
@@ -335,6 +335,15 @@ export const CRMChatShow = () => {
             <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
               <ImageIcon className="h-3.5 w-3.5" />
             </Button>
+            <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
+              <User className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
+              <Briefcase className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
+              <Calendar className="h-3.5 w-3.5" />
+            </Button>
           </div>
           <div className="flex items-end gap-2">
             <DropdownMenu>
@@ -370,25 +379,6 @@ export const CRMChatShow = () => {
               disabled={!canSend || !draft.trim() || sending}
             >
               <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="mx-6 mt-1.5 rounded-[24px] border border-slate-200/80 bg-white/95 px-3 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)] sm:mt-2 sm:px-3.5 sm:py-1.5">
-          <div className="flex items-center justify-between text-slate-700">
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <span className="text-sm font-semibold sm:text-base">›</span>
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
           </div>
         </div>
