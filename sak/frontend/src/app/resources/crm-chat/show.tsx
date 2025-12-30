@@ -373,6 +373,25 @@ export const CRMChatShow = () => {
             </Button>
           </div>
         </div>
+        <div className="mx-6 mt-1.5 rounded-[24px] border border-slate-200/80 bg-white/95 px-3 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)] sm:mt-2 sm:px-3.5 sm:py-1.5">
+          <div className="flex items-center justify-between text-slate-700">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
+              <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
+              <span className="text-sm font-semibold sm:text-base">›</span>
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
+              <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
+              <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
+              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
