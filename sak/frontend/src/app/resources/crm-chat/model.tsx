@@ -36,7 +36,7 @@ export const getConversationDisplayName = (mensaje: CRMMensaje) =>
 const DEFAULT_TIMEZONE_OFFSET = "-03:00";
 
 const parseMensajeDate = (
-  value?: string | number | null,
+  value?: string | number | Date | null,
   options?: { assumeUtc?: boolean; assumeOffset?: string }
 ) => {
   if (value == null) return null;
