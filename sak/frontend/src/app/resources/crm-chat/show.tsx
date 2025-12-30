@@ -99,6 +99,7 @@ export const CRMChatShow = () => {
   const [messages, setMessages] = useState<CRMMensaje[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [sending, setSending] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -224,11 +225,12 @@ export const CRMChatShow = () => {
 
   const handleSend = async () => {
     const trimmed = draft.trim();
-    if (!trimmed) return;
+    if (!trimmed || sending) return;
     if (!resolveOportunidadId) {
       notify("No se puede enviar sin oportunidad asociada.", { type: "warning" });
       return;
     }
+    setSending(true);
     try {
       const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
       const endpoint = lastMessageId
@@ -255,6 +257,8 @@ export const CRMChatShow = () => {
       refreshLatest();
     } catch (error: any) {
       notify(error?.message ?? "No se pudo enviar el mensaje.", { type: "warning" });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -355,36 +359,17 @@ export const CRMChatShow = () => {
               onChange={(event) => setDraft(event.target.value)}
               rows={1}
               placeholder={canSend ? "Responder..." : "Sin oportunidad asociada"}
-              className="min-h-[34px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] shadow-sm sm:min-h-[38px] sm:text-xs"
-              disabled={!canSend}
+              className="min-h-[34px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base shadow-sm sm:min-h-[38px] sm:text-xs"
+              disabled={!canSend || sending}
             />
             <Button
               type="button"
               size="icon"
               className="h-8 w-8 rounded-full bg-[#e3a78c] text-white shadow-sm hover:bg-[#d99677] sm:h-9 sm:w-9"
               onClick={handleSend}
-              disabled={!canSend || !draft.trim()}
+              disabled={!canSend || !draft.trim() || sending}
             >
               <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="mx-6 mt-1.5 rounded-[24px] border border-slate-200/80 bg-white/95 px-3 py-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)] sm:mt-2 sm:px-3.5 sm:py-1.5">
-          <div className="flex items-center justify-between text-slate-700">
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <span className="text-sm font-semibold sm:text-base">›</span>
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full sm:h-9 sm:w-9">
-              <Copy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
           </div>
         </div>
