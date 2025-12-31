@@ -6,6 +6,9 @@ export type CRMChatConversation = {
   id: string;
   contacto_id?: number | null;
   oportunidad_id?: number | null;
+  oportunidad_titulo?: string | null;
+  oportunidad_estado?: string | null;
+  oportunidad_activo?: boolean | null;
   contacto_referencia?: string | null;
   contacto_nombre?: string | null;
   ultimo_mensaje?: CRMMensaje | null;

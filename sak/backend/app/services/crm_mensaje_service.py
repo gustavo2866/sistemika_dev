@@ -5,9 +5,11 @@ from typing import Any, Dict, Optional
 import os
 import json
 
+import httpx
 from sqlmodel import Session, select
 
 from app.services.pdf_extraction_service import OPENAI_AVAILABLE
+from app.services.metaw_client import metaw_client
 from app.crud.crm_contacto_crud import crm_contacto_crud
 from app.crud.crm_evento_crud import crm_evento_crud
 from app.crud.crm_oportunidad_crud import crm_oportunidad_crud
@@ -17,7 +19,9 @@ from app.models import (
     CRMContacto,
     CRMOportunidad,
     CRMEvento,
+    CRMCelular,
     CRMTipoEvento,
+    CRMTipoOperacion,
     CRMMotivoEvento,
     EstadoMensaje,
     TipoMensaje,
@@ -468,7 +472,7 @@ class CRMMensajeService:
             "oportunidad_id": oportunidad_id,
         }
 
-    def enviar_mensaje(
+    async def enviar_mensaje(
         self,
         session: Session,
         payload: Dict[str, Any],
@@ -477,39 +481,94 @@ class CRMMensajeService:
         if not contenido or not contenido.strip():
             raise ValueError("El contenido del mensaje es obligatorio")
 
-        oportunidad_id = payload.get("oportunidad_id")
-        if not oportunidad_id:
-            raise ValueError("oportunidad_id es obligatorio")
-
-        oportunidad = session.get(CRMOportunidad, oportunidad_id)
-        if not oportunidad:
-            raise ValueError("Oportunidad no encontrada")
-
-        responsable_id = payload.get("responsable_id") or oportunidad.responsable_id
-        if not responsable_id:
-            raise ValueError("No se pudo determinar el responsable del mensaje")
-
-        contacto_id = payload.get("contacto_id") or oportunidad.contacto_id
+        responsable_id = payload.get("responsable_id")
+        contacto_id = payload.get("contacto_id")
+        if contacto_id is not None:
+            try:
+                contacto_id = int(contacto_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("contacto_id es invalido") from exc
         contacto_creado = False
+        oportunidad_creada = False
 
         if contacto_id is None:
             contacto_nombre = payload.get("contacto_nombre")
+            contacto_referencia = payload.get("contacto_referencia")
             if not contacto_nombre or not contacto_nombre.strip():
-                raise ValueError(
-                    "El campo contacto_nombre es obligatorio cuando la oportunidad no tiene contacto asignado"
-                )
-            referencia = payload.get("contacto_referencia") or oportunidad.descripcion_estado or contacto_nombre
+                raise ValueError("El campo contacto_nombre es obligatorio si no existe contacto seleccionado")
+            if not contacto_referencia or not str(contacto_referencia).strip():
+                raise ValueError("El campo contacto_referencia es obligatorio si no existe contacto seleccionado")
+            if not responsable_id:
+                raise ValueError("responsable_id es obligatorio para crear un contacto nuevo")
             contacto_payload = {
                 "nombre": contacto_nombre.strip(),
-                "referencia": referencia,
+                "referencia": str(contacto_referencia).strip(),
                 "responsable_id": responsable_id,
             }
             contacto = self._crear_contacto_si_necesario(session, contacto_payload)
             contacto_id = contacto.id
             contacto_creado = True
-            if oportunidad.contacto_id is None:
-                oportunidad.contacto_id = contacto_id
-                session.add(oportunidad)
+
+        contacto = session.get(CRMContacto, contacto_id)
+        if not contacto:
+            raise ValueError("Contacto no encontrado")
+
+        if not responsable_id:
+            responsable_id = contacto.responsable_id
+        if not responsable_id:
+            raise ValueError("No se pudo determinar el responsable del mensaje")
+
+        oportunidad_id = payload.get("oportunidad_id")
+        oportunidad = None
+
+        if oportunidad_id:
+            oportunidad = session.get(CRMOportunidad, oportunidad_id)
+            if not oportunidad:
+                raise ValueError("Oportunidad no encontrada")
+        else:
+            oportunidad = session.exec(
+                select(CRMOportunidad)
+                .where(CRMOportunidad.contacto_id == contacto_id)
+                .where(CRMOportunidad.activo == True)  # noqa: E712
+                .order_by(CRMOportunidad.fecha_estado.desc())
+            ).first()
+            if not oportunidad:
+                tipo_operacion_id = payload.get("tipo_operacion_id")
+                if not tipo_operacion_id:
+                    tipo_operacion_id = self._obtener_catalogo_id(
+                        session, CRMTipoOperacion, "venta", "tipos de operacion"
+                    )
+                oportunidad_titulo = (
+                    payload.get("oportunidad_titulo")
+                    or contacto.nombre_completo
+                    or "Nueva oportunidad"
+                )
+                oportunidad_payload = {
+                    "contacto_id": contacto_id,
+                    "tipo_operacion_id": tipo_operacion_id,
+                    "responsable_id": responsable_id,
+                    "titulo": oportunidad_titulo,
+                    "descripcion_estado": oportunidad_titulo,
+                    "descripcion": payload.get("oportunidad_descripcion"),
+                    "fecha_estado": datetime.now(UTC),
+                    "activo": True,
+                }
+                oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
+                oportunidad_creada = True
+            oportunidad_id = oportunidad.id
+
+        contacto_referencia = payload.get("contacto_referencia")
+        if not contacto_referencia:
+            telefonos = contacto.telefonos or []
+            contacto_referencia = telefonos[0] if telefonos else None
+        if not contacto_referencia:
+            raise ValueError("No se encontro un telefono para enviar el mensaje")
+
+        celular = session.exec(
+            select(CRMCelular).where(CRMCelular.activo == True).limit(1)  # noqa: E712
+        ).first()
+        if not celular:
+            raise ValueError("No hay celular (canal WhatsApp) activo configurado")
 
         asunto = payload.get("asunto")
         if not asunto:
@@ -527,18 +586,80 @@ class CRMMensajeService:
             "estado": EstadoMensaje.PENDIENTE_ENVIO.value,
             "fecha_mensaje": datetime.now(UTC),  # Pasar datetime, no string
             "responsable_id": responsable_id,
-            "contacto_referencia": payload.get("contacto_referencia"),
+            "contacto_referencia": contacto_referencia,
+            "celular_id": celular.id,
+            "estado_meta": "pending",
         }
         mensaje = crm_mensaje_crud.create(session, mensaje_payload)
 
         session.commit()
         session.refresh(mensaje)
-        return {
-            "mensaje_salida": mensaje,
-            "contacto_id": contacto_id,
-            "contacto_creado": contacto_creado,
-            "oportunidad_id": oportunidad_id,
-        }
+        try:
+            if not celular.meta_celular_id:
+                raise ValueError(f"Celular {celular.id} no tiene meta_celular_id configurado")
+
+            EMPRESA_ID = "692d787d-06c4-432e-a94e-cf0686e593eb"
+            telefono_limpio = str(contacto_referencia).replace("+", "")
+            nombre_contacto = contacto.nombre_completo if contacto else None
+
+            resultado_metaw = await metaw_client.enviar_mensaje(
+                empresa_id=EMPRESA_ID,
+                celular_id=celular.meta_celular_id,
+                telefono_destino=telefono_limpio,
+                texto=contenido.strip(),
+                nombre_contacto=nombre_contacto,
+                template_fallback_name=payload.get("template_fallback_name", "notificacion_general"),
+                template_fallback_language=payload.get("template_fallback_language", "es_AR"),
+            )
+
+            mensaje.estado_meta = resultado_metaw.get("status", "sent")
+            mensaje.origen_externo_id = resultado_metaw.get("meta_message_id")
+            mensaje.estado = EstadoMensaje.ENVIADO.value
+            session.commit()
+            session.refresh(mensaje)
+
+            return {
+                "mensaje_salida": mensaje,
+                "contacto_id": contacto_id,
+                "contacto_creado": contacto_creado,
+                "oportunidad_id": oportunidad_id,
+                "oportunidad_creada": oportunidad_creada,
+                "status": mensaje.estado_meta,
+                "meta_message_id": mensaje.origen_externo_id,
+            }
+        except httpx.HTTPStatusError as exc:
+            error_msg = f"Error meta-w: {exc.response.status_code} - {exc.response.text}"
+            mensaje.estado = EstadoMensaje.ERROR_ENVIO.value
+            mensaje.estado_meta = "failed"
+            mensaje.metadata_json = {
+                "error": error_msg,
+                "error_code": exc.response.status_code,
+            }
+            session.commit()
+            return {
+                "mensaje_salida": mensaje,
+                "contacto_id": contacto_id,
+                "contacto_creado": contacto_creado,
+                "oportunidad_id": oportunidad_id,
+                "oportunidad_creada": oportunidad_creada,
+                "status": "failed",
+                "error_message": error_msg,
+            }
+        except Exception as exc:
+            error_msg = f"Error al enviar mensaje: {str(exc)}"
+            mensaje.estado = EstadoMensaje.ERROR_ENVIO.value
+            mensaje.estado_meta = "failed"
+            mensaje.metadata_json = {"error": error_msg}
+            session.commit()
+            return {
+                "mensaje_salida": mensaje,
+                "contacto_id": contacto_id,
+                "contacto_creado": contacto_creado,
+                "oportunidad_id": oportunidad_id,
+                "oportunidad_creada": oportunidad_creada,
+                "status": "failed",
+                "error_message": error_msg,
+            }
 
     def _normalize_datetime(self, value: Any) -> datetime:
         if isinstance(value, datetime):

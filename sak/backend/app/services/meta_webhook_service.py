@@ -50,7 +50,7 @@ class MetaWebhookService:
         logger.info(f"CRMCelular auto-creado: {celular.id} - {numero_celular}")
         return celular
 
-    def _find_or_create_contacto(self, numero_telefono: str) -> CRMContacto:
+    def _find_or_create_contacto(self, numero_telefono: str, nombre_from_meta: Optional[str] = None) -> CRMContacto:
         """
         Busca o crea un contacto por número de teléfono.
         Busca en el array telefonos del contacto usando operador @> de PostgreSQL.
@@ -79,14 +79,17 @@ class MetaWebhookService:
         if not usuario_default:
             raise ValueError("No hay usuarios activos para asignar como responsable")
 
+        # Usar el nombre que viene de Meta (from_name) o generar uno por defecto
+        nombre_contacto = nombre_from_meta or f"Contacto {numero_telefono}"
+        
         # Crear nuevo contacto
         contacto_data = {
-            "nombre_completo": f"Contacto {numero_telefono}",
+            "nombre_completo": nombre_contacto,
             "telefonos": [numero_telefono],
             "responsable_id": usuario_default.id,
         }
         contacto = crm_contacto_crud.create(self.session, contacto_data)
-        logger.info(f"Contacto auto-creado: {contacto.id} - {numero_telefono}, responsable: {usuario_default.id}")
+        logger.info(f"Contacto auto-creado: {contacto.id} - {nombre_contacto} ({numero_telefono}), responsable: {usuario_default.id}")
         return contacto
 
     def process_webhook(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -114,8 +117,8 @@ class MetaWebhookService:
             
             # Si es mensaje entrante (direccion=in)
             if msg.direccion == "in":
-                # Buscar o crear contacto
-                contacto = self._find_or_create_contacto(msg.from_phone)
+                # Buscar o crear contacto (pasar from_name para usar el nombre de WhatsApp)
+                contacto = self._find_or_create_contacto(msg.from_phone, msg.from_name)
                 
                 # Extraer contenido
                 contenido = msg.texto or ""
@@ -140,6 +143,28 @@ class MetaWebhookService:
                     CRMOportunidad.activo == True
                 )
                 oportunidad = self.session.exec(stmt_oport).first()
+                
+                # Si no existe oportunidad activa, crear una nueva en estado 0-prospect
+                if not oportunidad:
+                    from app.models.user import User
+                    from app.models.enums import EstadoOportunidad
+                    
+                    # Obtener usuario por defecto para responsable
+                    usuario_default = self.session.exec(select(User).limit(1)).first()
+                    if not usuario_default:
+                        raise ValueError("No hay usuarios activos para asignar como responsable")
+                    
+                    oportunidad = CRMOportunidad(
+                        titulo="Nueva oportunidad desde WhatsApp",
+                        contacto_id=contacto.id,
+                        tipo_operacion_id=None,  # Se definirá cuando se califique la oportunidad
+                        estado=EstadoOportunidad.PROSPECT.value,
+                        responsable_id=usuario_default.id,
+                        activo=True
+                    )
+                    self.session.add(oportunidad)
+                    self.session.flush()  # Para obtener el ID
+                    logger.info(f"Oportunidad auto-creada: {oportunidad.id} para contacto {contacto.id} en estado {EstadoOportunidad.PROSPECT.value}")
 
                 # Normalizar meta_timestamp: Meta-w envía en hora Argentina (UTC-3)
                 # Necesitamos convertir a UTC para consistencia
@@ -165,17 +190,15 @@ class MetaWebhookService:
                     "celular_id": celular.id,
                     "fecha_mensaje": fecha_mensaje_utc,
                     "estado_meta": msg.status,
+                    "oportunidad_id": oportunidad.id,  # Siempre hay oportunidad ahora
                     "metadata_json": {
                         "from_name": msg.from_name,
                         "metaw_id": str(msg.id),
                     }
                 }
-                # Si hay oportunidad activa, asociarla al mensaje
-                if oportunidad:
-                    mensaje_data["oportunidad_id"] = oportunidad.id
 
                 crm_mensaje = crm_mensaje_crud.create(self.session, mensaje_data)
-                logger.info(f"Mensaje entrante creado: {crm_mensaje.id} de contacto {contacto.id} (oportunidad: {oportunidad.id if oportunidad else 'ninguna'})")
+                logger.info(f"Mensaje entrante creado: {crm_mensaje.id} de contacto {contacto.id} con oportunidad {oportunidad.id}")
             
             elif msg.direccion == "out":
                 # Es un mensaje saliente, actualizar estado

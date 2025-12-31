@@ -48,9 +48,10 @@ class CRMEvento(Base, table=True):
         foreign_key="crm_tipos_evento.id",
         description="Tipo histórico del evento (catálogo)"
     )
-    motivo_id: int = Field(
+    motivo_id: Optional[int] = Field(
+        default=None,
         foreign_key="crm_motivos_evento.id",
-        description="Motivo histórico del evento (catálogo)"
+        description="Motivo histórico del evento (catálogo) - requerido solo en oportunidades perdidas"
     )
     titulo: str = Field(
         max_length=255,

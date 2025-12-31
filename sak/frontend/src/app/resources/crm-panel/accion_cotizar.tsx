@@ -14,6 +14,7 @@ import { CancelButton } from "@/components/cancel-button";
 import { Card } from "@/components/ui/card";
 import type { CRMOportunidad } from "../crm-oportunidades/model";
 import { AccionOportunidadHeader } from "./accion_header";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
@@ -30,11 +31,14 @@ const normalizeNumber = (value: unknown) => {
 export const CRMOportunidadAccionCotizar = () => {
   const notify = useNotify();
   const refresh = useRefresh();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/panel";
 
   return (
     <Edit
       resource="crm/oportunidades"
-      redirect="/crm/panel"
+      redirect={false}
       mutationMode="pessimistic"
       actions={false}
       transform={(data) => ({
@@ -52,19 +56,21 @@ export const CRMOportunidadAccionCotizar = () => {
         onSuccess: () => {
           notify("Cotizacion registrada exitosamente", { type: "success" });
           refresh();
+          navigate(returnTo, { replace: true });
         },
       }}
       title={<ResourceTitle icon={Target} text="Cotizar oportunidad" />}
     >
-      <AccionCotizarContent />
+      <AccionCotizarContent returnTo={returnTo} />
     </Edit>
   );
 };
 
 export default CRMOportunidadAccionCotizar;
 
-const AccionCotizarContent = () => {
+const AccionCotizarContent = ({ returnTo }: { returnTo: string }) => {
   const record = useRecordContext<CRMOportunidad>();
+  const navigate = useNavigate();
 
   return (
     <div className="w-full max-w-3xl mr-auto ml-0">
@@ -73,7 +79,7 @@ const AccionCotizarContent = () => {
         toolbar={
           <FormToolbar className="mt-4 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm md:flex md:items-center md:justify-end md:py-3">
             <div className="flex justify-end gap-2">
-              <CancelButton />
+              <CancelButton onClick={() => navigate(returnTo, { replace: true })} />
               <SaveButton label="Guardar y avanzar" />
             </div>
           </FormToolbar>

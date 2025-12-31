@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, SyntheticEvent } from "react";
 import { List } from "@/components/list";
 import { ReferenceInput } from "@/components/reference-input";
@@ -36,9 +36,10 @@ import {
   Phone,
   StickyNote,
   Trash2,
+  ArrowLeft,
 } from "lucide-react";
-import { useDataProvider, useGetIdentity, useListContext, useNotify, useRefresh } from "ra-core";
-import { useNavigate } from "react-router-dom";
+import { useDataProvider, useGetIdentity, useGetOne, useListContext, useNotify, useRefresh } from "ra-core";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { CRMEvento } from "./model";
 import { FormCompletarDialog } from "./form_completar";
 
@@ -99,7 +100,7 @@ const filters = [
   />,
 ];
 
-const ListActions = () => (
+const ListActions = ({ createState }: { createState?: Record<string, unknown> }) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={filters}
@@ -109,6 +110,7 @@ const ListActions = () => (
     <CreateButton
       size="sm"
       className="h-7 px-2 gap-1 text-[10px] sm:h-9 sm:px-3 sm:gap-2 sm:text-sm [&_svg]:size-3 sm:[&_svg]:size-4"
+      state={createState}
     />
     <ExportButton
       size="sm"
@@ -117,15 +119,127 @@ const ListActions = () => (
   </div>
 );
 
+const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) => {
+  const state = location.state as { filter?: Record<string, any>; oportunidad_id?: number | string } | null;
+  if (state?.oportunidad_id) {
+    return state.oportunidad_id;
+  }
+  const stateFilter = state?.filter;
+  if (stateFilter?.oportunidad_id) {
+    return stateFilter.oportunidad_id;
+  }
+  const params = new URLSearchParams(location.search);
+  const rawFilter = params.get("filter");
+  if (rawFilter) {
+    try {
+      const parsed = JSON.parse(rawFilter);
+      if (parsed?.oportunidad_id) return parsed.oportunidad_id;
+    } catch {
+      // ignore invalid filter param
+    }
+  }
+  const direct = params.get("oportunidad_id");
+  if (direct) return direct;
+  return undefined;
+};
+
+const getContactoIdFromLocation = (location: ReturnType<typeof useLocation>) => {
+  const state = location.state as { filter?: Record<string, any>; contacto_id?: number | string } | null;
+  if (state?.contacto_id) {
+    return state.contacto_id;
+  }
+  const stateFilter = state?.filter;
+  if (stateFilter?.contacto_id) {
+    return stateFilter.contacto_id;
+  }
+  const params = new URLSearchParams(location.search);
+  const rawFilter = params.get("filter");
+  if (rawFilter) {
+    try {
+      const parsed = JSON.parse(rawFilter);
+      if (parsed?.contacto_id) return parsed.contacto_id;
+    } catch {
+      // ignore invalid filter param
+    }
+  }
+  const direct = params.get("contacto_id");
+  if (direct) return direct;
+  return undefined;
+};
+
 export const CRMEventoList = () => {
   const { data: identity } = useGetIdentity();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const locationState = location.state as {
+    contacto_nombre?: string;
+    returnTo?: string;
+    fromChat?: boolean;
+    contacto_id?: number;
+  } | null;
   const [completarDialogOpen, setCompletarDialogOpen] = useState(false);
   const [selectedCompletar, setSelectedCompletar] = useState<CRMEvento | null>(null);
-  const defaultFilters = {
-    default_scope: "pendientes_mes",
-    ...(identity?.id ? { asignado_a_id: identity.id } : {}),
-  };
-  const listKey = identity?.id ? `crm-eventos-${identity.id}` : "crm-eventos";
+  const oportunidadIdFilter = getOportunidadIdFromLocation(location);
+  const fromChat = Boolean(locationState?.fromChat);
+  const contactoIdFromLocation = getContactoIdFromLocation(location);
+  const { data: oportunidad } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadIdFilter ?? 0 },
+    { enabled: Boolean(oportunidadIdFilter) }
+  );
+  const contactoId = (oportunidad as any)?.contacto_id ?? null;
+
+  useEffect(() => {
+    if (fromChat) return;
+    if (!oportunidadIdFilter && !contactoIdFromLocation) return;
+    navigate("/crm/eventos", { replace: true });
+  }, [contactoIdFromLocation, fromChat, navigate, oportunidadIdFilter]);
+  const defaultFilters = useMemo(() => {
+    if (oportunidadIdFilter) {
+      const base: Record<string, unknown> = {
+        default_scope: "pendientes_mes",
+        oportunidad_id: oportunidadIdFilter,
+      };
+      if (fromChat && contactoId) {
+        base.contacto_id = contactoId;
+      }
+      return base;
+    }
+    return {
+      default_scope: "pendientes_mes",
+      ...(identity?.id ? { asignado_a_id: identity.id } : {}),
+    };
+  }, [contactoId, fromChat, identity?.id, oportunidadIdFilter]);
+  const listKey = oportunidadIdFilter
+    ? `crm-eventos-op-${oportunidadIdFilter}${fromChat && contactoId ? `-co-${contactoId}` : ""}`
+    : identity?.id
+      ? `crm-eventos-${identity.id}`
+      : "crm-eventos";
+  const { data: contacto } = useGetOne(
+    "crm/contactos",
+    { id: contactoId ?? 0 },
+    { enabled: Boolean(contactoId) }
+  );
+  const contactoNombre =
+    (contacto as any)?.nombre_completo ??
+    (contacto as any)?.nombre ??
+    (oportunidad as any)?.contacto?.nombre_completo ??
+    (oportunidad as any)?.contacto?.nombre ??
+    (oportunidad as any)?.contacto_nombre ??
+    locationState?.contacto_nombre ??
+    null;
+  const oportunidadTitulo =
+    (oportunidad as any)?.titulo ??
+    (oportunidad as any)?.descripcion_estado ??
+    (oportunidadIdFilter ? `Oportunidad #${oportunidadIdFilter}` : "");
+  const returnTo = locationState?.returnTo;
+  const createState = useMemo(() => {
+    if (!oportunidadIdFilter) return undefined;
+    return {
+      oportunidad_id: oportunidadIdFilter,
+      ...(contactoId ? { contacto_id: contactoId } : {}),
+    };
+  }, [oportunidadIdFilter, contactoId]);
 
   return (
     <List
@@ -133,13 +247,51 @@ export const CRMEventoList = () => {
       title={<ResourceTitle icon={CalendarCheck} text="CRM - Eventos" />}
       filters={filters}
       filterDefaultValues={defaultFilters}
-      actions={<ListActions />}
+      actions={<ListActions createState={createState} />}
       perPage={300}
       pagination={false}
       sort={{ field: "fecha_evento", order: "DESC" }}
       className="space-y-5"
     >
+      <EventosFilterSync fromChat={fromChat} responsableId={typeof identity?.id === 'number' ? identity.id : undefined} />
       <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3">
+        {oportunidadIdFilter ? (
+          <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => {
+                if (returnTo) {
+                  navigate(returnTo);
+                } else {
+                  navigate(-1);
+                }
+              }}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Avatar className="size-9 border border-slate-200">
+              <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
+                {(contactoNombre ?? "Contacto")
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .map((part: string) => part[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {contactoNombre ?? "Contacto"}
+              </p>
+              <p className="truncate text-[10px] text-slate-500">
+                {oportunidadTitulo} ({oportunidadIdFilter})
+              </p>
+            </div>
+          </div>
+        ) : null}
         <EventosTodoList
           onCompletar={(evento) => {
             setSelectedCompletar(evento);
@@ -160,6 +312,37 @@ export const CRMEventoList = () => {
       />
     </List>
   );
+};
+
+const EventosFilterSync = ({
+  fromChat,
+  responsableId,
+}: {
+  fromChat: boolean;
+  responsableId?: number;
+}) => {
+  const { filterValues, setFilters } = useListContext<CRMEvento>();
+
+  useEffect(() => {
+    if (fromChat) return;
+    const nextFilters = { ...filterValues };
+    const hadContacto = "contacto_id" in nextFilters;
+    const hadOportunidad = "oportunidad_id" in nextFilters;
+    const shouldAssign = Boolean(responsableId) && nextFilters.asignado_a_id !== responsableId;
+
+    if (hadContacto) delete nextFilters.contacto_id;
+    if (hadOportunidad) delete nextFilters.oportunidad_id;
+    if (responsableId) {
+      nextFilters.asignado_a_id = responsableId;
+    }
+    nextFilters.default_scope = nextFilters.default_scope ?? "pendientes_mes";
+
+    if (hadContacto || hadOportunidad || shouldAssign) {
+      setFilters(nextFilters, {});
+    }
+  }, [filterValues, fromChat, responsableId, setFilters]);
+
+  return null;
 };
 
 type SeguimientoOptionId = "hoy" | "manana" | "semana" | "siguiente";
@@ -377,14 +560,20 @@ const getFechaBucketLabel = (fecha?: string | null): FechaBucket => {
   startToday.setHours(0, 0, 0, 0);
   const endToday = new Date(startToday);
   endToday.setHours(23, 59, 59, 999);
+  
   const startTomorrow = new Date(startToday);
   startTomorrow.setDate(startTomorrow.getDate() + 1);
   const endTomorrow = new Date(startTomorrow);
   endTomorrow.setHours(23, 59, 59, 999);
+  
+  // "Esta semana" = desde pasado mañana hasta el próximo domingo (fin de semana)
   const startWeek = new Date(startToday);
   startWeek.setDate(startWeek.getDate() + 2);
+  
+  // Calcular el final de la semana (domingo)
   const endWeek = new Date(startToday);
-  endWeek.setDate(endWeek.getDate() + 7);
+  const daysUntilSunday = (7 - endWeek.getDay()) % 7; // Días hasta el domingo
+  endWeek.setDate(endWeek.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday));
   endWeek.setHours(23, 59, 59, 999);
 
   if (date < startToday) return "vencido";
@@ -533,7 +722,7 @@ const EventoTodoRow = ({ record, onCompletar }: { record: CRMEvento; onCompletar
 
   return (
     <div
-      className="flex items-center gap-1 border-b border-slate-100 px-2.5 py-1 last:border-b-0 hover:bg-slate-50/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300 sm:gap-1.5 sm:px-4 sm:py-2"
+      className="flex items-center gap-1 border-b border-slate-100 px-2.5 py-1 last:border-b-0 hover:bg-slate-50/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300 sm:gap-1.5 sm:px-4 sm:py-2"
       role="button"
       tabIndex={0}
       onClick={handleOpen}

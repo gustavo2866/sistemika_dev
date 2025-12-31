@@ -189,6 +189,24 @@ export const CRMChatShow = () => {
           listRef.current.scrollTop = listRef.current.scrollHeight;
         }
       });
+      
+      // Marcar mensajes como leídos después de cargar
+      if (!markReadRef.current) {
+        try {
+          await fetch(`${API_URL}/crm/mensajes/acciones/marcar-leidos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            body: JSON.stringify({
+              oportunidad_id: target.oportunidad_id,
+              contacto_id: target.contacto_id,
+              contacto_referencia: target.contacto_referencia,
+            }),
+          });
+          markReadRef.current = true;
+        } catch {
+          // ignore mark read errors
+        }
+      }
     } catch (error: any) {
       notify(error?.message ?? "No se pudieron cargar los mensajes.", { type: "warning" });
     } finally {
@@ -232,27 +250,6 @@ export const CRMChatShow = () => {
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
-
-  useEffect(() => {
-    if (!initialLoadedRef.current || markReadRef.current) return;
-    const markRead = async () => {
-      try {
-        await fetch(`${API_URL}/crm/mensajes/acciones/marcar-leidos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-          body: JSON.stringify({
-            oportunidad_id: target.oportunidad_id,
-            contacto_id: target.contacto_id,
-            contacto_referencia: target.contacto_referencia,
-          }),
-        });
-      } catch {
-        // ignore mark read errors
-      }
-    };
-    markRead();
-    markReadRef.current = true;
-  }, [target]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -325,16 +322,24 @@ export const CRMChatShow = () => {
       resource: "crm/eventos",
       type: "list",
     });
+    const contactoId = oportunidadContactoId ?? undefined;
     const filterParam = encodeURIComponent(
-      JSON.stringify({ oportunidad_id: resolveOportunidadId }),
+      JSON.stringify({
+        oportunidad_id: resolveOportunidadId,
+        ...(contactoId ? { contacto_id: contactoId } : {}),
+      }),
     );
     navigate(`${path}?filter=${filterParam}`, {
       state: {
         fromChat: true,
         oportunidad_id: resolveOportunidadId,
+        contacto_id: contactoId,
         returnTo: `/crm/chat/${id}/show`,
         contacto_nombre: displayName,
-        filter: { oportunidad_id: resolveOportunidadId },
+        filter: {
+          oportunidad_id: resolveOportunidadId,
+          ...(contactoId ? { contacto_id: contactoId } : {}),
+        },
       },
     });
   };

@@ -99,7 +99,7 @@ const CRMMensajeMinimalView = () => {
       ? `${referenciaBase} -> ${contactoNombreReal}`
       : referenciaBase;
   const oportunidadTexto = record.oportunidad_id
-    ? `#${record.oportunidad_id} -> ${record.oportunidad?.descripcion_estado ?? "Oportunidad"}`
+    ? `${record.oportunidad?.descripcion_estado ?? record.oportunidad?.nombre ?? "Sin titulo"} (${record.oportunidad_id})`
     : "";
   const hasOportunidad = Boolean(record.oportunidad_id);
   const estadoOportunidad = hasOportunidad ? (record.oportunidad?.estado as CRMOportunidadEstado | undefined) : undefined;

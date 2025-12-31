@@ -13,6 +13,7 @@ import { CancelButton } from "@/components/cancel-button";
 import { Card } from "@/components/ui/card";
 import type { CRMOportunidad } from "../crm-oportunidades/model";
 import { AccionOportunidadHeader } from "./accion_header";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
@@ -23,11 +24,14 @@ const normalizeId = (value: unknown) => {
 export const CRMOportunidadAccionAceptar = () => {
   const notify = useNotify();
   const refresh = useRefresh();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/panel";
 
   return (
     <Edit
       resource="crm/oportunidades"
-      redirect="/crm/panel"
+      redirect={false}
       mutationMode="pessimistic"
       actions={false}
       transform={(data) => ({
@@ -42,18 +46,20 @@ export const CRMOportunidadAccionAceptar = () => {
         onSuccess: () => {
           notify("Oportunidad confirmada y movida a Abierta", { type: "success" });
           refresh();
+          navigate(returnTo);
         },
       }}
       title={<ResourceTitle icon={Target} text="Confirmar oportunidad" />}
     >
-      <AccionAceptarContent />
+      <AccionAceptarContent returnTo={returnTo} />
     </Edit>
   );
 };
 
 export default CRMOportunidadAccionAceptar;
 
-const AccionAceptarContent = () => {
+const AccionAceptarContent = ({ returnTo }: { returnTo: string }) => {
+  const navigate = useNavigate();
   const record = useRecordContext<CRMOportunidad>();
 
   return (
@@ -63,7 +69,7 @@ const AccionAceptarContent = () => {
         toolbar={
           <FormToolbar className="mt-4 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm md:flex md:items-center md:justify-end md:py-3">
             <div className="flex justify-end gap-2">
-              <CancelButton className="h-8 px-3 text-xs" />
+              <CancelButton className="h-8 px-3 text-xs" onClick={() => navigate(returnTo)} />
               <SaveButton label="Confirmar" className="h-8 px-3 text-xs" />
             </div>
           </FormToolbar>
