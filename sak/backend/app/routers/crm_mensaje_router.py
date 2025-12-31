@@ -434,12 +434,12 @@ def agendar_evento_mensaje(
 
 
 @router.post("/acciones/enviar")
-def enviar_mensaje_desde_panel(
+async def enviar_mensaje_desde_panel(
     payload: dict = Body(...),
     session: Session = Depends(get_session),
 ):
     try:
-        return crm_mensaje_service.enviar_mensaje(session, payload)
+        return await crm_mensaje_service.enviar_mensaje(session, payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -656,6 +656,8 @@ def marcar_mensajes_leidos(
     payload: dict = Body(...),
     session: Session = Depends(get_session),
 ):
+    logger.info(f"[marcar-leidos] Payload recibido: {payload}")
+    
     contacto_id = payload.get("contacto_id")
     oportunidad_id = payload.get("oportunidad_id")
     contacto_referencia = payload.get("contacto_referencia")
@@ -682,6 +684,8 @@ def marcar_mensajes_leidos(
     )
     result = session.exec(stmt)
     session.commit()
+    
+    logger.info(f"[marcar-leidos] Mensajes actualizados: {result.rowcount}")
 
     return {"updated": result.rowcount or 0}
 
@@ -757,6 +761,9 @@ def conversaciones_cursor(
                 "id": key,
                 "contacto_id": msg.contacto_id,
                 "oportunidad_id": msg.oportunidad_id,
+                "oportunidad_titulo": None,
+                "oportunidad_estado": None,
+                "oportunidad_activo": None,
                 "contacto_referencia": msg.contacto_referencia,
                 "contacto_nombre": msg.contacto.nombre_completo if msg.contacto else None,
                 "ultimo_mensaje": filtrar_respuesta(msg),
@@ -813,6 +820,42 @@ def conversaciones_cursor(
         for conv in conversations:
             conv_id = conv.get("id")
             conv["unread_count"] = unread_map.get(conv_id, 0)
+
+        if opp_ids:
+            opp_rows = session.exec(
+                select(
+                    CRMOportunidad.id,
+                    CRMOportunidad.titulo,
+                    CRMOportunidad.descripcion_estado,
+                    CRMOportunidad.descripcion,
+                    CRMOportunidad.estado,
+                    CRMOportunidad.activo,
+                ).where(CRMOportunidad.id.in_(opp_ids))
+            ).all()
+            opp_map = {
+                row[0]: {
+                    "titulo": row[1],
+                    "descripcion_estado": row[2],
+                    "descripcion": row[3],
+                    "estado": row[4],
+                    "activo": row[5],
+                }
+                for row in opp_rows
+            }
+            for conv in conversations:
+                opp_id = conv.get("oportunidad_id")
+                if not opp_id:
+                    continue
+                opp = opp_map.get(opp_id)
+                if not opp:
+                    continue
+                conv["oportunidad_titulo"] = (
+                    opp.get("titulo")
+                    or opp.get("descripcion_estado")
+                    or opp.get("descripcion")
+                )
+                conv["oportunidad_estado"] = opp.get("estado")
+                conv["oportunidad_activo"] = opp.get("activo")
 
     return {
         "data": conversations,

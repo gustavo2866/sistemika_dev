@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { required, useGetIdentity, useGetList, useRecordContext } from "ra-core";
 import { useController, useFormContext, useWatch } from "react-hook-form";
 
@@ -19,6 +19,8 @@ const CRMEventoFormContent = () => {
   const isEdit = Boolean(record?.id);
   const descripcionValue = useWatch({ control: form.control, name: "descripcion" });
   const contactoIdRaw = useWatch({ control: form.control, name: "contacto_id" });
+  const initialOportunidadIdRef = useRef(form.getValues("oportunidad_id"));
+  const fechaTransformadaRef = useRef(false);
 
   const { data: tiposEventoCatalogo = [] } = useGetList("crm/catalogos/tipos-evento", {
     pagination: { page: 1, perPage: 200 },
@@ -48,6 +50,30 @@ const CRMEventoFormContent = () => {
       ),
     [contactosActivos, contactoIdRaw]
   );
+
+  const formatDateTimeInput = (date: Date | string | null | undefined) => {
+    if (!date) return "";
+    const d = typeof date === "string" ? new Date(date) : date;
+    if (isNaN(d.getTime())) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Transformar fecha_evento al formato datetime-local cuando se carga el record en modo edit
+  useEffect(() => {
+    if (!isEdit || !record?.fecha_evento || fechaTransformadaRef.current) return;
+
+    const currentValue = form.getValues("fecha_evento");
+    const formattedDate = formatDateTimeInput(record.fecha_evento);
+    if (formattedDate && currentValue !== formattedDate) {
+      form.setValue("fecha_evento", formattedDate, { shouldDirty: false });
+      fechaTransformadaRef.current = true;
+    }
+  }, [isEdit, record?.fecha_evento, form]);
 
   useEffect(() => {
     if (isEdit) return;
@@ -100,7 +126,12 @@ const CRMEventoFormContent = () => {
   useEffect(() => {
     if (selectedContacto?.oportunidad_id) {
       form.setValue("oportunidad_id", selectedContacto.oportunidad_id, { shouldDirty: true });
-    } else if (!isEdit) {
+      return;
+    }
+    if (!isEdit) {
+      if (initialOportunidadIdRef.current != null) {
+        return;
+      }
       form.setValue("oportunidad_id", null, { shouldDirty: true });
     }
   }, [form, isEdit, selectedContacto]);
@@ -116,22 +147,24 @@ const CRMEventoFormContent = () => {
       >
         <SelectInput optionText="nombre" className="w-full" validate={required()} />
       </ReferenceInput>
-      <div className="space-y-1">
-        <Label className="text-sm text-muted-foreground">Contacto</Label>
-        <ComboboxQuery
-          source="contacto_id"
-          resource="crm/contactos"
-          labelField="nombre_completo"
-          limit={200}
-          placeholder="Selecciona un contacto"
-          className="w-full"
-          clearable
+      <ReferenceInput
+        source="contacto_id"
+        reference="crm/contactos"
+        label="Contacto"
+        perPage={200}
+        sort={{ field: "nombre_completo", order: "ASC" }}
+      >
+        <SelectInput 
+          optionText="nombre_completo" 
+          className="w-full" 
+          validate={required()} 
         />
-      </div>
+      </ReferenceInput>
       <TextInput
         source="fecha_evento"
         label="Fecha y hora"
         type="datetime-local"
+        format={formatDateTimeInput}
         className="w-full"
         validate={required()}
       />
@@ -147,6 +180,7 @@ const CRMEventoFormContent = () => {
       </div>
       <TextInput source="tipo_evento" label={false} className="hidden" />
       <TextInput source="motivo_id" label={false} className="hidden" />
+      <TextInput source="contacto_id" label={false} className="hidden" />
       <TextInput source="oportunidad_id" label={false} className="hidden" />
       <TextInput source="estado_evento" label={false} className="hidden" defaultValue="1-pendiente" />
     </div>

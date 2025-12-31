@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   required,
   useDataProvider,
@@ -36,7 +36,10 @@ export const CRMOportunidadAccionAgendar = () => {
   const notify = useNotify();
   const redirect = useRedirect();
   const refresh = useRefresh();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { identity } = useGetIdentity();
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/panel";
 
   const { data: oportunidad, isLoading } = useGetOne(
     "crm/oportunidades",
@@ -73,7 +76,7 @@ export const CRMOportunidadAccionAgendar = () => {
             });
             notify("Visita agendada exitosamente", { type: "success" });
             refresh();
-            redirect("/crm/panel");
+            navigate(returnTo);
           } catch (error: any) {
             notify(error.message || "Error al actualizar la oportunidad", { type: "error" });
           }
@@ -83,9 +86,12 @@ export const CRMOportunidadAccionAgendar = () => {
         },
       }}
       transform={(data) => ({
-        ...data,
-        tipo_evento_id: normalizeId((data as any).tipo_evento_id),
-        asignado_id: normalizeId((data as any).asignado_id),
+        titulo: (data as any).titulo,
+        descripcion: (data as any).descripcion,
+        tipo_id: normalizeId((data as any).tipo_evento_id),
+        asignado_a_id: normalizeId((data as any).asignado_id),
+        fecha_evento: (data as any).fecha,
+        contacto_id: oportunidad?.contacto_id,
         oportunidad_id: oportunidadId,
         estado: 1,
       })}
@@ -99,7 +105,7 @@ export const CRMOportunidadAccionAgendar = () => {
           toolbar={
             <FormToolbar className="mt-4 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm md:flex md:items-center md:justify-end md:py-3">
               <div className="flex justify-end gap-2">
-                <CancelButton />
+                <CancelButton onClick={() => navigate(returnTo)} />
                 <SaveButton label="Agendar visita" />
               </div>
             </FormToolbar>

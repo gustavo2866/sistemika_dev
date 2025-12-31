@@ -10,16 +10,19 @@ import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/data-table";
-import { useListContext, useRecordContext, useRefresh } from "ra-core";
+import { useGetOne, useListContext, useRecordContext, useRefresh } from "ra-core";
 import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 import { ResourceTitle } from "@/components/resource-title";
-import { Mail, MessageCircle, Trash2, ArrowDownLeft, ArrowUpRight, CalendarPlus } from "lucide-react";
+import { Mail, MessageCircle, Trash2, ArrowDownLeft, ArrowUpRight, CalendarPlus, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CRMMensaje } from "./model";
 import { CRMMensajeReplyDialog } from "./form_responder";
 import { ScheduleDialog } from "./form_agendar";
 import { DiscardDialog } from "./form_descartar";
 import { ButtonToggle, type ButtonToggleOption } from "@/components/forms/button-toggle";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   CRM_MENSAJE_TIPO_CHOICES,
   CRM_MENSAJE_CANAL_CHOICES,
@@ -429,6 +432,25 @@ export const CRMMensajeList = () => {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleMensaje, setScheduleMensaje] = useState<CRMMensaje | null>(null);
   const refresh = useRefresh();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const contextState = location.state as { oportunidad_id?: number; returnTo?: string } | null;
+  const oportunidadId = contextState?.oportunidad_id;
+  const returnTo = contextState?.returnTo;
+  const { data: oportunidad } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadId ?? 0 },
+    { enabled: Boolean(oportunidadId) }
+  );
+  const contactoNombre =
+    (oportunidad as any)?.contacto?.nombre_completo ??
+    (oportunidad as any)?.contacto?.nombre ??
+    (oportunidad as any)?.contacto_nombre ??
+    null;
+  const oportunidadTitulo =
+    (oportunidad as any)?.titulo ??
+    (oportunidad as any)?.descripcion_estado ??
+    (oportunidadId ? `Oportunidad #${oportunidadId}` : "");
 
   const handleReplyClick = (mensaje: CRMMensaje) => {
     setSelectedMensaje(mensaje);
@@ -459,6 +481,43 @@ export const CRMMensajeList = () => {
 
   return (
     <>
+      {oportunidadId ? (
+        <div className="mb-3 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              if (returnTo) {
+                navigate(returnTo, { replace: true });
+              } else {
+                navigate("/crm/mensajes", { replace: true });
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Avatar className="size-9 border border-slate-200">
+            <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
+              {(contactoNombre ?? "Contacto")
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((part: string) => part[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {contactoNombre ?? "Contacto"}
+            </p>
+            <p className="truncate text-[10px] text-slate-500">
+              {oportunidadTitulo}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <List
         title={<ResourceTitle icon={Mail} text="CRM - Mensajes" />}
         filters={filters}

@@ -4,6 +4,7 @@ import { Create } from "@/components/create";
 import { CRMEventoForm } from "./form";
 import { ResourceTitle } from "@/components/resource-title";
 import { CalendarCheck } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const formatDateTimeInput = (date: Date) => {
   const year = date.getFullYear();
@@ -20,15 +21,33 @@ const buildDefaultFechaEvento = () => {
   return formatDateTimeInput(next);
 };
 
-export const CRMEventoCreate = () => (
-  <Create
-    redirect="list"
-    title={<ResourceTitle icon={CalendarCheck} text="Crear Evento CRM" />}
-  >
-    <CRMEventoForm
-      defaultValues={{
-        fecha_evento: buildDefaultFechaEvento(),
+export const CRMEventoCreate = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state as {
+    oportunidad_id?: number | string;
+    contacto_id?: number | string;
+  } | null;
+  const oportunidadId = state?.oportunidad_id;
+  const contactoId = state?.contacto_id;
+
+  return (
+    <Create
+      redirect={false}
+      mutationOptions={{
+        onSuccess: () => {
+          navigate(-1);
+        },
       }}
-    />
-  </Create>
-);
+      title={<ResourceTitle icon={CalendarCheck} text="Crear Evento CRM" />}
+    >
+      <CRMEventoForm
+        defaultValues={{
+          fecha_evento: buildDefaultFechaEvento(),
+          ...(oportunidadId ? { oportunidad_id: Number(oportunidadId) } : {}),
+          ...(contactoId ? { contacto_id: Number(contactoId) } : {}),
+        }}
+      />
+    </Create>
+  );
+};

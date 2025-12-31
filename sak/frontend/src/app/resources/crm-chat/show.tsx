@@ -4,16 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
-  ArrowUpRight,
-  BookOpen,
-  Copy,
+  Calendar,
+  CalendarPlus,
+  House,
+  MessageCircle,
   Image as ImageIcon,
   Mic,
   Paperclip,
   Plus,
   Send,
+  ArrowRightCircle,
+  Trash2,
+  X,
 } from "lucide-react";
-import { useNotify, useGetIdentity } from "ra-core";
+import { useCreatePath, useNotify, useGetIdentity, useGetOne } from "ra-core";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -91,6 +95,7 @@ export const CRMChatShow = () => {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const createPath = useCreatePath();
   const notify = useNotify();
   const { data: identity } = useGetIdentity();
   const conversationState = (location.state as { conversation?: CRMChatConversation } | null)?.conversation;
@@ -110,12 +115,6 @@ export const CRMChatShow = () => {
     markReadRef.current = false;
   }, [id]);
 
-  const displayName = useMemo(() => {
-    if (conversationState?.contacto_nombre) return conversationState.contacto_nombre;
-    if (messages.length) return getConversationDisplayName(messages[messages.length - 1]);
-    return "Conversacion";
-  }, [conversationState?.contacto_nombre, messages]);
-
   const canSend = useMemo(() => {
     if (target.oportunidad_id) return true;
     return messages.some((msg) => Boolean(msg.oportunidad_id));
@@ -126,6 +125,52 @@ export const CRMChatShow = () => {
     const found = [...messages].reverse().find((msg) => msg.oportunidad_id);
     return found?.oportunidad_id ?? null;
   }, [messages, target.oportunidad_id]);
+
+  const { data: oportunidad } = useGetOne(
+    "crm/oportunidades",
+    { id: resolveOportunidadId ?? 0 },
+    { enabled: Boolean(resolveOportunidadId) }
+  );
+
+  const oportunidadContactoId = (oportunidad as any)?.contacto_id ?? null;
+  const { data: contacto } = useGetOne(
+    "crm/contactos",
+    { id: oportunidadContactoId ?? 0 },
+    { enabled: Boolean(oportunidadContactoId) }
+  );
+
+  const displayName = useMemo(() => {
+    const contactoNombre =
+      (contacto as any)?.nombre_completo ??
+      (contacto as any)?.nombre ??
+      (oportunidad as any)?.contacto?.nombre_completo ??
+      (oportunidad as any)?.contacto?.nombre ??
+      null;
+    if (contactoNombre) return contactoNombre;
+    if (conversationState?.contacto_nombre) return conversationState.contacto_nombre;
+    if (messages.length) return getConversationDisplayName(messages[messages.length - 1]);
+    return "Conversacion";
+  }, [contacto, conversationState?.contacto_nombre, messages, oportunidad]);
+
+  const resolveOportunidadTitle = useMemo(() => {
+    const found = [...messages]
+      .reverse()
+      .find(
+        (msg) =>
+          (msg.oportunidad as any)?.titulo ||
+          msg.oportunidad?.descripcion_estado
+      );
+    return (
+      (found?.oportunidad as any)?.titulo ??
+      found?.oportunidad?.descripcion_estado ??
+      null
+    );
+  }, [messages]);
+
+  const oportunidadTitle =
+    (oportunidad as any)?.titulo ??
+    (oportunidad as any)?.descripcion_estado ??
+    resolveOportunidadTitle;
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
@@ -144,6 +189,24 @@ export const CRMChatShow = () => {
           listRef.current.scrollTop = listRef.current.scrollHeight;
         }
       });
+      
+      // Marcar mensajes como leídos después de cargar
+      if (!markReadRef.current) {
+        try {
+          await fetch(`${API_URL}/crm/mensajes/acciones/marcar-leidos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            body: JSON.stringify({
+              oportunidad_id: target.oportunidad_id,
+              contacto_id: target.contacto_id,
+              contacto_referencia: target.contacto_referencia,
+            }),
+          });
+          markReadRef.current = true;
+        } catch {
+          // ignore mark read errors
+        }
+      }
     } catch (error: any) {
       notify(error?.message ?? "No se pudieron cargar los mensajes.", { type: "warning" });
     } finally {
@@ -187,27 +250,6 @@ export const CRMChatShow = () => {
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
-
-  useEffect(() => {
-    if (!initialLoadedRef.current || markReadRef.current) return;
-    const markRead = async () => {
-      try {
-        await fetch(`${API_URL}/crm/mensajes/acciones/marcar-leidos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-          body: JSON.stringify({
-            oportunidad_id: target.oportunidad_id,
-            contacto_id: target.contacto_id,
-            contacto_referencia: target.contacto_referencia,
-          }),
-        });
-      } catch {
-        // ignore mark read errors
-      }
-    };
-    markRead();
-    markReadRef.current = true;
-  }, [target]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -262,6 +304,55 @@ export const CRMChatShow = () => {
     }
   };
 
+  const handleChatFocus = () => {
+    if (!listRef.current) return;
+    listRef.current.scrollTop = listRef.current.scrollHeight;
+  };
+
+  const handleOpenOportunidad = () => {
+    if (!resolveOportunidadId) return;
+    navigate(`/crm/panel/${resolveOportunidadId}/edit`, {
+      state: { returnTo: `/crm/chat/${id}/show` },
+    });
+  };
+
+  const handleOpenEventos = () => {
+    if (!resolveOportunidadId) return;
+    const path = createPath({
+      resource: "crm/eventos",
+      type: "list",
+    });
+    const contactoId = oportunidadContactoId ?? undefined;
+    const filterParam = encodeURIComponent(
+      JSON.stringify({
+        oportunidad_id: resolveOportunidadId,
+        ...(contactoId ? { contacto_id: contactoId } : {}),
+      }),
+    );
+    navigate(`${path}?filter=${filterParam}`, {
+      state: {
+        fromChat: true,
+        oportunidad_id: resolveOportunidadId,
+        contacto_id: contactoId,
+        returnTo: `/crm/chat/${id}/show`,
+        contacto_nombre: displayName,
+        filter: {
+          oportunidad_id: resolveOportunidadId,
+          ...(contactoId ? { contacto_id: contactoId } : {}),
+        },
+      },
+    });
+  };
+
+  const chatReturnTo = id ? `/crm/chat/${id}/show` : "/crm/chat";
+
+  const handleOpenAccion = (accion: "accion_descartar" | "accion_aceptar" | "accion_agendar" | "accion_cerrar") => {
+    if (!resolveOportunidadId) return;
+    navigate(`/crm/panel/${resolveOportunidadId}/${accion}`, {
+      state: { returnTo: chatReturnTo },
+    });
+  };
+
   return (
     <div className="mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200/70 bg-white/80 px-3 py-2 backdrop-blur">
@@ -269,7 +360,7 @@ export const CRMChatShow = () => {
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => navigate(-1)}
+          onClick={() => navigate("/crm/chat")}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -278,15 +369,49 @@ export const CRMChatShow = () => {
             {displayName
               .split(/\s+/)
               .filter(Boolean)
-              .map((part) => part[0])
+              .map((part: string) => part[0])
               .slice(0, 2)
               .join("")
               .toUpperCase()}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
-          <p className="text-[10px] text-slate-500">WhatsApp</p>
+          <p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+            {displayName}
+          </p>
+          <p className="text-[9px] text-slate-500 sm:text-[10px]">
+            {resolveOportunidadId
+              ? `${oportunidadTitle ?? "Sin titulo"} (${resolveOportunidadId})`
+              : "Sin oportunidad"}
+          </p>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5 text-slate-400">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-emerald-600 sm:h-8 sm:w-8"
+            onClick={handleChatFocus}
+          >
+            <MessageCircle className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
+            onClick={handleOpenOportunidad}
+            disabled={!resolveOportunidadId}
+          >
+            <House className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
+            onClick={handleOpenEventos}
+            disabled={!resolveOportunidadId}
+          >
+            <Calendar className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
@@ -325,16 +450,18 @@ export const CRMChatShow = () => {
 
       <div className="sticky bottom-0 bg-[#f6f2e8] pb-2 pt-1.5">
         <div className="mx-3 rounded-2xl border border-slate-200/70 bg-white/90 px-2 py-1 shadow-[0_12px_22px_rgba(15,23,42,0.12)] sm:px-3 sm:py-1.5">
-          <div className="flex items-center gap-1.5 pb-1 text-[9px] text-slate-400 sm:pb-1.5 sm:text-[10px]">
-            <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
-              <Mic className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
-              <Paperclip className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
-              <ImageIcon className="h-3.5 w-3.5" />
-            </Button>
+          <div className="flex items-center gap-2 pb-1 text-[9px] text-slate-400 sm:pb-1.5 sm:text-[10px]">
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
+                <Mic className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
+                <Paperclip className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
+                <ImageIcon className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
           <div className="flex items-end gap-2">
             <DropdownMenu>
@@ -349,9 +476,38 @@ export const CRMChatShow = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-40 text-xs">
-                <DropdownMenuItem>Adjuntar archivo</DropdownMenuItem>
-                <DropdownMenuItem>Enviar imagen</DropdownMenuItem>
-                <DropdownMenuItem>Nota interna</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleOpenAccion("accion_descartar")}
+                  disabled={!resolveOportunidadId}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Descartar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleOpenAccion("accion_aceptar")}
+                  disabled={!resolveOportunidadId}
+                  className="flex items-center gap-2"
+                >
+                  <ArrowRightCircle className="h-3.5 w-3.5" />
+                  Confirmar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleOpenAccion("accion_agendar")}
+                  disabled={!resolveOportunidadId}
+                  className="flex items-center gap-2"
+                >
+                  <CalendarPlus className="h-3.5 w-3.5" />
+                  Agendar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleOpenAccion("accion_cerrar")}
+                  disabled={!resolveOportunidadId}
+                  className="flex items-center gap-2"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cerrar
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Textarea

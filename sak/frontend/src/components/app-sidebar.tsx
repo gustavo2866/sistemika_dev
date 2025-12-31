@@ -49,6 +49,7 @@ import {
   Handshake,
   LayoutGrid,
   Mail,
+  MessageCircle,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
@@ -59,7 +60,6 @@ const CRM_RESOURCES = [
   "crm/eventos",
   "crm/oportunidades",
   "crm/contactos",
-  "crm/chat",
   "dashboard-crm",
 ] as const;
 const CRM_CUSTOM_LINKS: Array<{
@@ -68,8 +68,9 @@ const CRM_CUSTOM_LINKS: Array<{
   icon: ComponentType;
   position: "top" | "bottom";
 }> = [
+  { label: "CRM Chat", to: "/crm/chat", icon: MessageCircle, position: "top" },
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
-  { label: "CRM Mensajes", to: "/crm/mensajes", icon: Mail, position: "top" },
+  { label: "CRM Mensajes", to: "/crm/mensajes", icon: Mail, position: "bottom" },
   { label: "Setup", to: "/crm/setup", icon: Settings, position: "bottom" },
 ] as const;
 const CRM_TOP_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "top");

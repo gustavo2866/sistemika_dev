@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ResponsableSelector } from "@/components/forms";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { CRMMensaje } from "../crm-mensajes/model";
 import {
   formatMensajeDate,
@@ -27,7 +28,7 @@ import {
   getMensajeTimestamp,
   type CRMChatConversation,
 } from "./model";
-type ChatFilter = "todos" | "no_leidos";
+type ChatFilter = "todos" | "no_leidos" | "activas";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const getAuthHeaders = (): HeadersInit => {
@@ -108,7 +109,9 @@ export const CRMChatList = () => {
     const needle = search.trim().toLowerCase();
     const base = filter === "no_leidos"
       ? conversations.filter((item) => (item.unread_count ?? 0) > 0)
-      : conversations;
+      : filter === "activas"
+        ? conversations.filter((item) => item.oportunidad_activo === true)
+        : conversations;
     if (!needle) return base;
     return base.filter((item) => {
       const name = item.contacto_nombre?.toLowerCase() ?? "";
@@ -125,6 +128,11 @@ export const CRMChatList = () => {
   const handleOpen = (conversation: CRMChatConversation) => {
     const path = createPath({ resource: "crm/chat", type: "show", id: conversation.id });
     navigate(path, { state: { conversation } });
+  };
+
+  const handleCreateMensaje = () => {
+    const path = createPath({ resource: "crm/mensajes", type: "create" });
+    navigate(path, { state: { returnTo: "/crm/chat" } });
   };
 
   return (
@@ -149,6 +157,7 @@ export const CRMChatList = () => {
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-full bg-emerald-500 text-white shadow-sm sm:h-9 sm:w-9"
+            onClick={handleCreateMensaje}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -194,9 +203,14 @@ export const CRMChatList = () => {
         </button>
         <button
           type="button"
-          className="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs text-slate-600 sm:px-4 sm:py-1.5 sm:text-sm"
+          onClick={() => setFilter("activas")}
+          className={`rounded-full px-3 py-1 text-xs sm:px-4 sm:py-1.5 sm:text-sm ${
+            filter === "activas"
+              ? "bg-emerald-100 text-emerald-800"
+              : "border border-slate-200/80 bg-white/80 text-slate-600"
+          }`}
         >
-          Favoritos
+          Activas
         </button>
         <button
           type="button"
@@ -230,12 +244,38 @@ export const CRMChatList = () => {
                 const timeLabel = mensaje ? formatMensajeTime(mensaje) : "";
                 const dateLabel = mensaje ? formatMensajeDate(mensaje) : "";
                 const isOutgoing = mensaje?.tipo === "salida";
+                const oportunidadId =
+                  conversation.oportunidad_id ??
+                  mensaje?.oportunidad_id ??
+                  mensaje?.oportunidad?.id ??
+                  null;
+                const oportunidadTitle =
+                  conversation.oportunidad_titulo ??
+                  mensaje?.oportunidad?.descripcion_estado ??
+                  mensaje?.oportunidad?.descripcion ??
+                  mensaje?.oportunidad?.nombre ??
+                  null;
+                const oportunidadEstado =
+                  conversation.oportunidad_estado ??
+                  mensaje?.oportunidad?.estado ??
+                  null;
+                const oportunidadActiva =
+                  conversation.oportunidad_activo ??
+                  true;
+                const isOportunidadInactiva = oportunidadActiva === false;
+                const oportunidadMeta = oportunidadEstado
+                  ? `${oportunidadId} - ${oportunidadEstado}`
+                  : `${oportunidadId}`;
                 return (
                   <button
                     key={conversation.id}
                     type="button"
                     onClick={() => handleOpen(conversation)}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                    className={cn(
+                      "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50",
+                      isOportunidadInactiva &&
+                        "bg-slate-100/80 text-slate-500 hover:bg-slate-200/80"
+                    )}
                   >
                     <Avatar className="size-9 border border-slate-200">
                       <AvatarFallback className="bg-slate-100 text-[11px] font-semibold text-slate-600">
@@ -253,6 +293,16 @@ export const CRMChatList = () => {
                         <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
                         <span className="text-[10px] text-slate-400">{timeLabel || dateLabel}</span>
                       </div>
+                      {oportunidadId ? (
+                        <p
+                          className={cn(
+                            "truncate text-[9px] text-slate-400",
+                            isOportunidadInactiva && "text-rose-600"
+                          )}
+                        >
+                          {oportunidadTitle ?? "Sin titulo"} ({oportunidadMeta})
+                        </p>
+                      ) : null}
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                         {isOutgoing ? (
                           <ArrowUpRight className="h-3 w-3 text-slate-400" />
@@ -272,30 +322,6 @@ export const CRMChatList = () => {
               })}
           </div>
         )}
-      </div>
-      <div className="sticky bottom-3 z-10">
-        <div className="mx-auto flex w-full max-w-[320px] items-center justify-between rounded-[24px] border border-slate-200/70 bg-white/95 px-3 py-1.5 shadow-[0_10px_20px_rgba(15,23,42,0.12)]">
-          <button className="flex flex-col items-center gap-0.5 text-[9px] text-slate-500">
-            <Bell className="h-3.5 w-3.5 text-slate-700" />
-            Novedades
-          </button>
-          <button className="flex flex-col items-center gap-0.5 text-[9px] text-slate-500">
-            <Phone className="h-3.5 w-3.5 text-slate-700" />
-            Llamadas
-          </button>
-          <button className="flex flex-col items-center gap-0.5 text-[9px] text-slate-500">
-            <Users className="h-3.5 w-3.5 text-slate-700" />
-            Comunidades
-          </button>
-          <button className="flex flex-col items-center gap-0.5 text-[9px] text-emerald-600">
-            <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
-            Chats
-          </button>
-          <button className="flex flex-col items-center gap-0.5 text-[9px] text-slate-500">
-            <User className="h-3.5 w-3.5 text-slate-700" />
-            Tu
-          </button>
-        </div>
       </div>
     </div>
   );
