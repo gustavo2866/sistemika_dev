@@ -67,6 +67,7 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
     setCustomState: (key: string, value: any) => void;
   }) => ReactNode;
   initialCustomState?: Record<string, any>;
+  initialCollapsedAll?: boolean;
   
   // Board configuration
   bucketGridClassName?: string;
@@ -99,6 +100,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   filterConfig = {},
   customFilters,
   initialCustomState = {},
+  initialCollapsedAll,
   bucketGridClassName,
   renderCard,
   isLoading,
@@ -193,7 +195,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     toggleCollapsedAll,
     isCardCollapsed,
     toggleCardCollapse,
-  } = useKanbanCommonState({ storageKey: resource });
+  } = useKanbanCommonState({ storageKey: resource, initialCollapsedAll });
 
   const autoSelectedOwnerRef = useRef(false);
   useEffect(() => {

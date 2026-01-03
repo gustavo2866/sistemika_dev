@@ -30,11 +30,6 @@ const catalogLinks = [
     resource: "crm/catalogos/motivos-evento",
   },
   {
-    label: "Orígenes de Lead",
-    description: "Canales desde donde llegan los contactos.",
-    resource: "crm/catalogos/origenes-lead",
-  },
-  {
     label: "Monedas",
     description: "Monedas disponibles (entidad cross).",
     resource: "monedas",

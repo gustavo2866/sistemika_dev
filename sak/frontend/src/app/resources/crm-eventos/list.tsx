@@ -322,25 +322,32 @@ const EventosFilterSync = ({
   responsableId?: number;
 }) => {
   const { filterValues, setFilters } = useListContext<CRMEvento>();
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
     if (fromChat) return;
     const nextFilters = { ...filterValues };
     const hadContacto = "contacto_id" in nextFilters;
     const hadOportunidad = "oportunidad_id" in nextFilters;
-    const shouldAssign = Boolean(responsableId) && nextFilters.asignado_a_id !== responsableId;
+    const hasResponsable = "asignado_a_id" in nextFilters;
+    const needsScope = !("default_scope" in nextFilters);
 
     if (hadContacto) delete nextFilters.contacto_id;
     if (hadOportunidad) delete nextFilters.oportunidad_id;
-    if (responsableId) {
+    if (!hasInitialized && !hasResponsable && responsableId) {
       nextFilters.asignado_a_id = responsableId;
     }
-    nextFilters.default_scope = nextFilters.default_scope ?? "pendientes_mes";
+    if (needsScope) {
+      nextFilters.default_scope = "pendientes_mes";
+    }
 
-    if (hadContacto || hadOportunidad || shouldAssign) {
+    if (hadContacto || hadOportunidad || (!hasInitialized && !hasResponsable && responsableId) || needsScope) {
       setFilters(nextFilters, {});
     }
-  }, [filterValues, fromChat, responsableId, setFilters]);
+    if (!hasInitialized) {
+      setHasInitialized(true);
+    }
+  }, [filterValues, fromChat, hasInitialized, responsableId, setFilters]);
 
   return null;
 };

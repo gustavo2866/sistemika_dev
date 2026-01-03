@@ -18,9 +18,6 @@ export const CRMContactoForm = () => (
     </ArrayInput>
     <TextInput source="email" label="Email" type="email" className="w-full" />
     <TextInput source="red_social" label="Usuario / red social" className="w-full" />
-    <ReferenceInput source="origen_lead_id" reference="crm/catalogos/origenes-lead" label="Origen del lead">
-      <SelectInput optionText="nombre" emptyText="Sin especificar" className="w-full" />
-    </ReferenceInput>
     <ReferenceInput source="responsable_id" reference="users" label="Responsable">
       <SelectInput optionText="nombre" className="w-full" validate={required()} />
     </ReferenceInput>

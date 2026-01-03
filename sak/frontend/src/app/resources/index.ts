@@ -16,7 +16,6 @@ export * from "./crm-catalogos/crm-catalogos-motivos-perdida";
 export * from "./crm-catalogos/crm-catalogos-condiciones-pago";
 export * from "./crm-catalogos/crm-catalogos-tipos-evento";
 export * from "./crm-catalogos/crm-catalogos-motivos-evento";
-export * from "./crm-catalogos/crm-catalogos-origenes-lead";
 export * from "./monedas";
 export * from "./crm-cotizaciones";
 export * from "./crm-contactos";

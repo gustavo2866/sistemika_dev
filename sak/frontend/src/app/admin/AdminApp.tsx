@@ -30,7 +30,6 @@ import {
   CalendarDays,
   ListChecks,
   Mail,
-  Megaphone,
   LineChart,
   Target,
   CalendarCheck,
@@ -146,12 +145,6 @@ import {
   CRMMotivoEventoEdit,
   CRMMotivoEventoShow,
 } from "@/app/resources/crm-catalogos/crm-catalogos-motivos-evento";
-import {
-  CRMOrigenLeadList,
-  CRMOrigenLeadCreate,
-  CRMOrigenLeadEdit,
-  CRMOrigenLeadShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-origenes-lead";
 import {
   MonedaList,
   MonedaCreate,
@@ -467,16 +460,6 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={ListChecks}
         options={{ label: "CRM · Motivos de Evento" }}
-      />
-      <Resource
-        name="crm/catalogos/origenes-lead"
-        list={CRMOrigenLeadList}
-        create={CRMOrigenLeadCreate}
-        edit={CRMOrigenLeadEdit}
-        show={CRMOrigenLeadShow}
-        recordRepresentation="nombre"
-        icon={Megaphone}
-        options={{ label: "CRM · Orígenes de Lead" }}
       />
       <Resource
         name="monedas"

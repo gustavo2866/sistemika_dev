@@ -45,6 +45,16 @@ const getAuthHeaders = (): HeadersInit => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+const getTipoOperacionBadgeClasses = (value: string | null | undefined) => {
+  if (!value) return "bg-slate-100 text-slate-600";
+  const normalized = value.toLowerCase();
+  if (normalized.includes("venta")) return "bg-emerald-100 text-emerald-700";
+  if (normalized.includes("alquiler")) return "bg-sky-100 text-sky-700";
+  if (normalized.includes("mantenimiento")) return "bg-amber-100 text-amber-700";
+  if (normalized.includes("emprendimiento")) return "bg-violet-100 text-violet-700";
+  return "bg-slate-100 text-slate-600";
+};
+
 type ConversationTarget = {
   contacto_id?: number;
   oportunidad_id?: number;
@@ -167,10 +177,22 @@ export const CRMChatShow = () => {
     );
   }, [messages]);
 
+  const resolveOportunidadEstado = useMemo(() => {
+    const found = [...messages].reverse().find((msg) => msg.oportunidad?.estado);
+    return found?.oportunidad?.estado ?? null;
+  }, [messages]);
+
   const oportunidadTitle =
     (oportunidad as any)?.titulo ??
     (oportunidad as any)?.descripcion_estado ??
     resolveOportunidadTitle;
+  const oportunidadEstado =
+    (oportunidad as any)?.estado ??
+    resolveOportunidadEstado;
+  const tipoOperacionLabel =
+    (oportunidad as any)?.tipo_operacion?.nombre ??
+    (oportunidad as any)?.tipo_operacion?.codigo ??
+    null;
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
@@ -379,11 +401,27 @@ export const CRMChatShow = () => {
           <p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[13px]">
             {displayName}
           </p>
-          <p className="text-[9px] text-slate-500 sm:text-[10px]">
-            {resolveOportunidadId
-              ? `${oportunidadTitle ?? "Sin titulo"} (${resolveOportunidadId})`
-              : "Sin oportunidad"}
-          </p>
+          <div className="flex flex-wrap items-center gap-1 text-[9px] text-slate-500 sm:text-[10px]">
+            {resolveOportunidadId ? (
+              <>
+                <span className="truncate">
+                  {resolveOportunidadId} - {oportunidadTitle ?? "Sin titulo"}
+                </span>
+                {oportunidadEstado ? (
+                  <span className="text-slate-400">- {oportunidadEstado}</span>
+                ) : null}
+                {tipoOperacionLabel ? (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide ${getTipoOperacionBadgeClasses(tipoOperacionLabel)}`}
+                  >
+                    {tipoOperacionLabel}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <span>Sin oportunidad</span>
+            )}
+          </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-slate-400">
           <Button

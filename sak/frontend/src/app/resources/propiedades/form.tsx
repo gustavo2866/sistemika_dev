@@ -208,6 +208,13 @@ const PropiedadFormContent = () => {
                   type="date"
                   className="w-full"
                 />
+                <ReferenceInput
+                  source="contacto_id"
+                  reference="crm/contactos"
+                  label="Contacto propietario"
+                >
+                  <SelectInput optionText="nombre_completo" emptyText="Sin asignar" className="w-full" />
+                </ReferenceInput>
               </div>
             </FormSimpleSection>
           ),

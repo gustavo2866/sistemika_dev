@@ -63,6 +63,18 @@ class Solicitud(Base, table=True):
         foreign_key="centros_costo.id",
         description="Centro de costo al que se imputa la solicitud"
     )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        index=True,
+        description="Oportunidad CRM asociada a la solicitud"
+    )
+    proveedor_id: Optional[int] = Field(
+        default=None,
+        foreign_key="proveedores.id",
+        index=True,
+        description="Proveedor asociado a la solicitud"
+    )
 
     solicitante: User = Relationship(back_populates="solicitudes")
     centro_costo: "CentroCosto" = Relationship(back_populates="solicitudes")

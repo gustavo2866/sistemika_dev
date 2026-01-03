@@ -34,6 +34,8 @@ import {
   ARTICULOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   CENTROS_COSTO_REFERENCE,
+  OPORTUNIDADES_REFERENCE,
+  PROVEEDORES_REFERENCE,
   VALIDATION_RULES,
   solicitudCabeceraSchema,
   solicitudDetalleSchema,
@@ -257,8 +259,9 @@ const SolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }
   </>
 );
 
-const DatosGeneralesContent = () => (
-  <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
+const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<string, unknown> }) => {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
     <div className="min-w-0">
       <ReferenceInput
         source="tipo_solicitud_id"
@@ -302,6 +305,28 @@ const DatosGeneralesContent = () => (
         />
       </ReferenceInput>
     </div>
+
+    <FormField label="Oportunidad">
+      <ComboboxQuery
+        {...OPORTUNIDADES_REFERENCE}
+        source="oportunidad_id"
+        placeholder="Selecciona una oportunidad"
+        className="w-full"
+        clearable
+        filter={oportunidadFilter}
+        dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
+      />
+    </FormField>
+
+    <FormField label="Proveedor">
+      <ComboboxQuery
+        {...PROVEEDORES_REFERENCE}
+        source="proveedor_id"
+        placeholder="Selecciona un proveedor"
+        className="w-full"
+        clearable
+      />
+    </FormField>
     
     <div className="min-w-0">
       <SelectInput
@@ -345,7 +370,8 @@ const DatosGeneralesContent = () => (
       className="md:col-span-2"
     />
   </div>
-);
+  );
+};
 
 const SolicitudFormFields = () => {
   const form = useFormContext<Solicitud>();
@@ -373,9 +399,35 @@ const SolicitudFormFields = () => {
     },
     staleTime: TIPOS_SOLICITUD_REFERENCE.staleTime,
   });
+  const { data: tiposOperacionData } = useQuery<{ id: number; nombre?: string; codigo?: string }[]>({
+    queryKey: ["crm-tipos-operacion", "mantenimiento"],
+    queryFn: async () => {
+      const { data } = await dataProvider.getList("crm/catalogos/tipos-operacion", {
+        pagination: { page: 1, perPage: 200 },
+        sort: { field: "nombre", order: "ASC" },
+        filter: {},
+      });
+      return data as { id: number; nombre?: string; codigo?: string }[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
   const tiposSolicitudCatalog = useMemo(
     () => tiposSolicitudData ?? [],
     [tiposSolicitudData]
+  );
+  const mantenimientoTipoOperacionId = useMemo(() => {
+    const mantenimiento = tiposOperacionData?.find(
+      (tipo) =>
+        tipo?.codigo?.toLowerCase().includes("mantenimiento") ||
+        tipo?.nombre?.toLowerCase().includes("mantenimiento")
+    );
+    return mantenimiento?.id;
+  }, [tiposOperacionData]);
+  const oportunidadFilter = useMemo(
+    () => ({
+      tipo_operacion_id: mantenimientoTipoOperacionId ?? -1,
+    }),
+    [mantenimientoTipoOperacionId]
   );
 
   const articuloFilter = useMemo(() => {
@@ -466,7 +518,7 @@ const SolicitudFormFields = () => {
           defaultOpen: !idValue,
           children: (
             <FormSimpleSection>
-              <DatosGeneralesContent />
+              <DatosGeneralesContent oportunidadFilter={oportunidadFilter} />
             </FormSimpleSection>
           ),
         },

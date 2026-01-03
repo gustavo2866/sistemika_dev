@@ -27,7 +27,6 @@ class CRMMensaje(Base, table=True):
         default=None, max_length=255, description="Valor externo segun canal (tel/email/handle)", index=True
     )
     contacto_nombre_propuesto: Optional[str] = Field(default=None, max_length=255)
-    oportunidad_generar: bool = Field(default=False)
     evento_id: Optional[int] = Field(default=None, foreign_key="crm_eventos.id", index=True)
     estado: str = Field(default=EstadoMensaje.NUEVO.value, max_length=30, index=True)
     prioridad: str = Field(default=PrioridadMensaje.MEDIA.value, max_length=20, index=True)

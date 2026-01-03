@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
 import { ReferenceInput } from "@/components/reference-input";
@@ -20,7 +20,7 @@ import {
   Target,
   XCircle,
 } from "lucide-react";
-import { useListContext, useGetIdentity } from "ra-core";
+import { useListContext, useGetIdentity, useGetList } from "ra-core";
 import type { CRMOportunidad } from "../crm-oportunidades/model";
 import { CRM_OPORTUNIDAD_ESTADOS } from "../crm-oportunidades/model";
 import { CRMOportunidadKanbanCard } from "./crm-panel-card";
@@ -138,12 +138,40 @@ const OportunidadListContent = () => {
     useListContext<CRMOportunidad>();
   const { identity } = useGetIdentity();
   const navigate = useNavigate();
+  const appliedDefaultTipoRef = useRef(false);
+  const { data: tiposOperacion } = useGetList("crm/catalogos/tipos-operacion", {
+    pagination: { page: 1, perPage: 500 },
+    sort: { field: "nombre", order: "ASC" },
+  });
   const soloActivas = Boolean(filterValues.activo);
   const cutoffDate = useMemo(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30);
     return date;
   }, []);
+  const alquilerId = useMemo(() => {
+    const alquiler = tiposOperacion?.find(
+      (tipo: any) =>
+        tipo?.codigo?.toLowerCase().includes("alquiler") ||
+        tipo?.nombre?.toLowerCase().includes("alquiler")
+    );
+    return alquiler?.id ? String(alquiler.id) : undefined;
+  }, [tiposOperacion]);
+
+  useEffect(() => {
+    if (appliedDefaultTipoRef.current) {
+      return;
+    }
+    if (filterValues.tipo_operacion_id) {
+      appliedDefaultTipoRef.current = true;
+      return;
+    }
+    if (!alquilerId) {
+      return;
+    }
+    setFilters({ ...filterValues, tipo_operacion_id: alquilerId }, {});
+    appliedDefaultTipoRef.current = true;
+  }, [alquilerId, filterValues, setFilters]);
 
   const shouldIncludeOportunidad = useCallback(
     (oportunidad: CRMOportunidad) => {
@@ -224,27 +252,28 @@ const OportunidadListContent = () => {
           getBucketKey={calculateOportunidadBucketKey}
           maxBucketsPerPage={4}
           bucketGridClassName="gap-3 md:gap-4 xl:gap-4"
-        onItemMove={prepareMoveOportunidadPayload}
-        resource="crm/oportunidades"
-        getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}
+          onItemMove={prepareMoveOportunidadPayload}
+          resource="crm/oportunidades"
+          getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}
           identity={identity}
-        customFilter={(oportunidad) => shouldIncludeOportunidad(oportunidad)}
-        filterConfig={{
-          enableSearch: false,
-          filterBarSpread: false,
-          filterBarWrap: false,
-          filterBarClassName: "w-fit px-2 py-1.5",
-          collapseToggleAlignRight: false,
-          enableOwnerFilter: false,
-          enableCollapseToggle: true,
-        }}
-        customFilters={() => (
-          <OportunidadCustomFilters
-            soloActivas={soloActivas}
-            onSoloActivasChange={handleSoloActivasChange}
-          />
-        )}
-        renderCard={renderCard}
+          initialCollapsedAll={true}
+          customFilter={(oportunidad) => shouldIncludeOportunidad(oportunidad)}
+          filterConfig={{
+            enableSearch: false,
+            filterBarSpread: false,
+            filterBarWrap: false,
+            filterBarClassName: "w-fit px-2 py-1.5",
+            collapseToggleAlignRight: false,
+            enableOwnerFilter: false,
+            enableCollapseToggle: true,
+          }}
+          customFilters={() => (
+            <OportunidadCustomFilters
+              soloActivas={soloActivas}
+              onSoloActivasChange={handleSoloActivasChange}
+            />
+          )}
+          renderCard={renderCard}
           isLoading={isLoading}
           loadingMessage="Cargando oportunidades..."
           emptyMessage="Sin oportunidades"
@@ -260,6 +289,7 @@ export const CRMOportunidadListKanban = () => {
   const { identity } = useGetIdentity();
   const defaultFilters = {
     panel_window_days: 30,
+    activo: true,
     ...(identity?.id ? { responsable_id: identity.id } : {}),
   };
 

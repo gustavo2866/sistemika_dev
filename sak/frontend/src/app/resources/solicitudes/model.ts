@@ -107,6 +107,20 @@ export const CENTROS_COSTO_REFERENCE = {
   filter: { activo: true },
 } as const;
 
+export const OPORTUNIDADES_REFERENCE = {
+  resource: "crm/oportunidades",
+  labelField: "titulo",
+  limit: 200,
+  staleTime: 5 * 60 * 1000,
+} as const;
+
+export const PROVEEDORES_REFERENCE = {
+  resource: "proveedores",
+  labelField: "nombre",
+  limit: 100,
+  staleTime: 5 * 60 * 1000,
+} as const;
+
 // ============================================
 // 2. TIPOS
 // ============================================
@@ -153,6 +167,8 @@ export type Solicitud = {
   fecha_necesidad: string;
   solicitante_id: number;
   comentario?: string;
+  oportunidad_id?: number | null;
+  proveedor_id?: number | null;
   detalles: SolicitudDetalle[];
   
   // Relaciones expandidas
@@ -177,6 +193,14 @@ export type Solicitud = {
     tipo?: string;
     codigo_contable?: string;
   };
+  oportunidad?: {
+    id: number;
+    titulo?: string | null;
+  };
+  proveedor?: {
+    id: number;
+    nombre: string;
+  };
 };
 
 export type SolicitudCabeceraFormValues = {
@@ -187,6 +211,8 @@ export type SolicitudCabeceraFormValues = {
   fecha_necesidad: string;
   solicitante_id: string;
   comentario: string;
+  oportunidad_id: string;
+  proveedor_id: string;
 };
 
 // ============================================
@@ -321,7 +347,18 @@ export const solicitudDetalleSchema = createDetailSchema<
 
 export const solicitudCabeceraSchema = createEntitySchema<
   SolicitudCabeceraFormValues,
-  Pick<Solicitud, "tipo_solicitud_id" | "departamento_id" | "centro_costo_id" | "estado" | "fecha_necesidad" | "solicitante_id" | "comentario">
+  Pick<
+    Solicitud,
+    | "tipo_solicitud_id"
+    | "departamento_id"
+    | "centro_costo_id"
+    | "estado"
+    | "fecha_necesidad"
+    | "solicitante_id"
+    | "comentario"
+    | "oportunidad_id"
+    | "proveedor_id"
+  >
 >({
   fields: {
     tipo_solicitud_id: referenceField({
@@ -360,6 +397,18 @@ export const solicitudCabeceraSchema = createEntitySchema<
     comentario: stringField({
       trim: true,
       maxLength: VALIDATION_RULES.GENERAL.MAX_COMENTARIO_LENGTH,
+      defaultValue: "",
+    }),
+    oportunidad_id: referenceField({
+      resource: OPORTUNIDADES_REFERENCE.resource,
+      labelField: OPORTUNIDADES_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
+    proveedor_id: referenceField({
+      resource: PROVEEDORES_REFERENCE.resource,
+      labelField: PROVEEDORES_REFERENCE.labelField,
+      required: false,
       defaultValue: "",
     }),
   },
@@ -446,6 +495,8 @@ export const SolicitudModel = {
   TIPOS_SOLICITUD_REFERENCE,
   DEPARTAMENTOS_REFERENCE,
   CENTROS_COSTO_REFERENCE,
+  OPORTUNIDADES_REFERENCE,
+  PROVEEDORES_REFERENCE,
   // Funciones
   validateDetalle,
   getArticuloLabel,

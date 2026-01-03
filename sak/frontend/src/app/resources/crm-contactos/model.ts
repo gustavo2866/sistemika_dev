@@ -17,8 +17,6 @@ export type CRMContacto = {
   telefonos: string[];
   email?: string | null;
   red_social?: string | null;
-  origen_lead_id?: number | null;
-  origen_lead_nombre?: string | null;
   responsable_id: number;
   responsable_nombre?: string | null;
   notas?: string | null;
@@ -29,7 +27,6 @@ export type CRMContactoFormValues = {
   telefonos: string[];
   email?: string | null;
   red_social?: string | null;
-  origen_lead_id?: number | null;
   responsable_id: number | null;
   notas?: string | null;
 };
@@ -39,7 +36,6 @@ export const CRM_CONTACTO_DEFAULTS: CRMContactoFormValues = {
   telefonos: [],
   email: "",
   red_social: "",
-  origen_lead_id: null,
   responsable_id: null,
   notas: "",
 };
@@ -63,11 +59,6 @@ export const crmContactoSchema = createEntitySchema<
       required: false,
       maxLength: CRM_CONTACTO_VALIDATIONS.RED_SOCIAL_MAX,
       defaultValue: "",
-    }),
-    origen_lead_id: referenceField({
-      required: false,
-      resource: "crm/catalogos/origenes-lead",
-      labelField: "nombre",
     }),
     responsable_id: referenceField({
       required: true,

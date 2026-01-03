@@ -17,9 +17,6 @@ export const CRMContactoShow = () => (
       </ArrayField>
       <TextField source="email" label="Email" />
       <TextField source="red_social" label="Red social" />
-      <ReferenceField source="origen_lead_id" reference="crm/catalogos/origenes-lead" label="Origen">
-        <TextField source="nombre" />
-      </ReferenceField>
       <ReferenceField source="responsable_id" reference="users" label="Responsable">
         <TextField source="nombre" />
       </ReferenceField>

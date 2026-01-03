@@ -42,7 +42,6 @@ const CRMMensajeSections = () => {
   const responsableWatch = useWatch({ control, name: "responsable_id" });
   const oportunidadWatch = useWatch({ control, name: "oportunidad_id" });
   const eventoWatch = useWatch({ control, name: "evento_id" });
-  const oportunidadGenerarWatch = useWatch({ control, name: "oportunidad_generar" });
 
   const contactoLabel =
     record?.contacto?.nombre_completo ||
@@ -73,7 +72,6 @@ const CRMMensajeSections = () => {
       ? `Op #${oportunidadWatch}`
       : record?.oportunidad?.id && `Op #${record.oportunidad.id}`,
     eventoWatch ? `Evento #${eventoWatch}` : record?.evento_id && `Evento #${record.evento_id}`,
-    (oportunidadGenerarWatch ?? record?.oportunidad_generar) ? "Generar oportunidad" : null,
   ]
     .filter(Boolean)
     .join(" - ");
@@ -208,11 +206,6 @@ const CRMMensajeSections = () => {
                   className="w-full"
                 />
               </ReferenceInput>
-              <BooleanInput
-                source="oportunidad_generar"
-                label="Generar oportunidad desde este mensaje"
-                helperText="Se analizará el mensaje para crear una oportunidad en caso necesario."
-              />
             </FormSimpleSection>
           ),
         },

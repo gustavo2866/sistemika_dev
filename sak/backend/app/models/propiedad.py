@@ -86,6 +86,12 @@ class Propiedad(Base, table=True):
         max_length=500,
         description="Comentario sobre el cambio de estado"
     )
+    contacto_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_contactos.id",
+        index=True,
+        description="Contacto propietario o interesado principal",
+    )
     tipo_operacion_id: Optional[int] = Field(
         default=None,
         foreign_key="crm_tipos_operacion.id",

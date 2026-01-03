@@ -25,6 +25,34 @@ class MetaWebhookService:
     def __init__(self, session: Session):
         self.session = session
 
+    def _determinar_tipo_operacion_contacto(self, contacto_id: int) -> Optional[int]:
+        """
+        Determina el tipo de operación basado en propiedades activas del contacto.
+        
+        Retorna:
+            - 3 (mantenimiento) si el contacto tiene propiedad con tipo_operacion_id=1 (alquiler)
+              en estados operativos (3-disponible o 4-alquilada)
+            - None en caso contrario
+        """
+        from app.models.propiedad import Propiedad
+        
+        # Buscar propiedades en alquiler activas y en estados operativos
+        stmt = select(Propiedad).where(
+            Propiedad.contacto_id == contacto_id,
+            Propiedad.tipo_operacion_id == 1,  # Alquiler
+            Propiedad.estado.in_(["3-disponible", "4-alquilada"])  # Estados operativos
+        )
+        propiedad_alquiler = self.session.exec(stmt).first()
+        
+        if propiedad_alquiler:
+            logger.info(
+                f"Contacto {contacto_id} tiene propiedad en alquiler (ID: {propiedad_alquiler.id}) "
+                f"→ tipo_operacion=3 (mantenimiento)"
+            )
+            return 3
+        
+        return None
+
     def _ensure_crm_celular(self, meta_celular_id: str, numero_celular: str) -> CRMCelular:
         """
         Asegura que exista el CRMCelular.
@@ -154,17 +182,24 @@ class MetaWebhookService:
                     if not usuario_default:
                         raise ValueError("No hay usuarios activos para asignar como responsable")
                     
+                    # Determinar tipo_operacion según propiedades del contacto
+                    tipo_operacion_id = self._determinar_tipo_operacion_contacto(contacto.id)
+                    
                     oportunidad = CRMOportunidad(
                         titulo="Nueva oportunidad desde WhatsApp",
                         contacto_id=contacto.id,
-                        tipo_operacion_id=None,  # Se definirá cuando se califique la oportunidad
+                        tipo_operacion_id=tipo_operacion_id,
                         estado=EstadoOportunidad.PROSPECT.value,
                         responsable_id=usuario_default.id,
                         activo=True
                     )
                     self.session.add(oportunidad)
                     self.session.flush()  # Para obtener el ID
-                    logger.info(f"Oportunidad auto-creada: {oportunidad.id} para contacto {contacto.id} en estado {EstadoOportunidad.PROSPECT.value}")
+                    logger.info(
+                        f"Oportunidad auto-creada: {oportunidad.id} para contacto {contacto.id} "
+                        f"en estado {EstadoOportunidad.PROSPECT.value} "
+                        f"con tipo_operacion_id={tipo_operacion_id}"
+                    )
 
                 # Normalizar meta_timestamp: Meta-w envía en hora Argentina (UTC-3)
                 # Necesitamos convertir a UTC para consistencia

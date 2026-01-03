@@ -37,6 +37,16 @@ const getAuthHeaders = (): HeadersInit => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+const getTipoOperacionBadgeClasses = (value: string | null | undefined) => {
+  if (!value) return "bg-slate-100 text-slate-600";
+  const normalized = value.toLowerCase();
+  if (normalized.includes("venta")) return "bg-emerald-100 text-emerald-700";
+  if (normalized.includes("alquiler")) return "bg-sky-100 text-sky-700";
+  if (normalized.includes("mantenimiento")) return "bg-amber-100 text-amber-700";
+  if (normalized.includes("emprendimiento")) return "bg-violet-100 text-violet-700";
+  return "bg-slate-100 text-slate-600";
+};
+
 export const CRMChatList = () => {
   const notify = useNotify();
   const navigate = useNavigate();
@@ -259,6 +269,12 @@ export const CRMChatList = () => {
                   conversation.oportunidad_estado ??
                   mensaje?.oportunidad?.estado ??
                   null;
+                const tipoOperacionLabel =
+                  conversation.oportunidad_tipo_operacion_nombre ??
+                  conversation.oportunidad_tipo_operacion_codigo ??
+                  (mensaje?.oportunidad as any)?.tipo_operacion?.nombre ??
+                  (mensaje?.oportunidad as any)?.tipo_operacion?.codigo ??
+                  null;
                 const oportunidadActiva =
                   conversation.oportunidad_activo ??
                   true;
@@ -294,14 +310,26 @@ export const CRMChatList = () => {
                         <span className="text-[10px] text-slate-400">{timeLabel || dateLabel}</span>
                       </div>
                       {oportunidadId ? (
-                        <p
+                        <div
                           className={cn(
-                            "truncate text-[9px] text-slate-400",
+                            "flex items-center gap-1 text-[9px] text-slate-400",
                             isOportunidadInactiva && "text-rose-600"
                           )}
                         >
-                          {oportunidadTitle ?? "Sin titulo"} ({oportunidadMeta})
-                        </p>
+                          <span className="truncate">
+                            {oportunidadTitle ?? "Sin titulo"} ({oportunidadMeta})
+                          </span>
+                          {tipoOperacionLabel ? (
+                            <span
+                              className={cn(
+                                "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide",
+                                getTipoOperacionBadgeClasses(tipoOperacionLabel)
+                              )}
+                            >
+                              {tipoOperacionLabel}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : null}
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                         {isOutgoing ? (

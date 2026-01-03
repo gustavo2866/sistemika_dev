@@ -25,7 +25,6 @@ export type CRMMensaje = {
   contacto?: CRMReference | null;
   contacto_referencia?: string | null;
   contacto_nombre_propuesto?: string | null;
-  oportunidad_generar?: boolean;
   evento_id?: number | null;
   estado: CRMMensajeEstado;
   prioridad: CRMMensajePrioridad;

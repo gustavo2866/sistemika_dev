@@ -11,7 +11,7 @@ from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
-from app.models import CRMMensaje, CRMCelular, CRMOportunidad
+from app.models import CRMMensaje, CRMCelular, CRMOportunidad, CRMTipoOperacion
 from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
 from app.services.crm_mensaje_service import crm_mensaje_service
 from app.services.metaw_client import metaw_client
@@ -830,7 +830,11 @@ def conversaciones_cursor(
                     CRMOportunidad.descripcion,
                     CRMOportunidad.estado,
                     CRMOportunidad.activo,
-                ).where(CRMOportunidad.id.in_(opp_ids))
+                    CRMTipoOperacion.nombre,
+                    CRMTipoOperacion.codigo,
+                )
+                .join(CRMTipoOperacion, CRMOportunidad.tipo_operacion_id == CRMTipoOperacion.id, isouter=True)
+                .where(CRMOportunidad.id.in_(opp_ids))
             ).all()
             opp_map = {
                 row[0]: {
@@ -839,6 +843,8 @@ def conversaciones_cursor(
                     "descripcion": row[3],
                     "estado": row[4],
                     "activo": row[5],
+                    "tipo_operacion_nombre": row[6],
+                    "tipo_operacion_codigo": row[7],
                 }
                 for row in opp_rows
             }
@@ -856,6 +862,8 @@ def conversaciones_cursor(
                 )
                 conv["oportunidad_estado"] = opp.get("estado")
                 conv["oportunidad_activo"] = opp.get("activo")
+                conv["oportunidad_tipo_operacion_nombre"] = opp.get("tipo_operacion_nombre")
+                conv["oportunidad_tipo_operacion_codigo"] = opp.get("tipo_operacion_codigo")
 
     return {
         "data": conversations,

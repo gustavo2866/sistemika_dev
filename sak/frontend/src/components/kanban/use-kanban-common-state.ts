@@ -6,6 +6,7 @@ export interface KanbanCommonStateOptions {
   initialSearch?: string;
   initialOwnerFilter?: string;
   storageKey?: string;
+  initialCollapsedAll?: boolean;
 }
 
 export interface KanbanCommonState {
@@ -20,15 +21,23 @@ export interface KanbanCommonState {
 }
 
 export const useKanbanCommonState = (
-  { initialSearch = "", initialOwnerFilter = "todos", storageKey }: KanbanCommonStateOptions = {},
+  {
+    initialSearch = "",
+    initialOwnerFilter = "todos",
+    storageKey,
+    initialCollapsedAll = false,
+  }: KanbanCommonStateOptions = {},
 ): KanbanCommonState => {
   const getInitialCollapsed = () => {
-    if (!storageKey) return false;
+    if (!storageKey) return initialCollapsedAll;
     try {
       const saved = localStorage.getItem(`kanban-collapsed-${storageKey}`);
-      return saved === 'true';
+      if (saved === null) {
+        return initialCollapsedAll;
+      }
+      return saved === "true";
     } catch {
-      return false;
+      return initialCollapsedAll;
     }
   };
   
