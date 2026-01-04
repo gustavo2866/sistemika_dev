@@ -34,13 +34,14 @@ import {
   getContactoName,
   getEmprendimientoName,
   getPropiedadName,
+  getTipoOperacionName,
   formatMonto,
   formatEstadoLabel,
   formatCreatedDate,
   getEstadoBadgeClass,
   getResponsableAvatarInfo,
   type BucketKey,
-} from "./crm-panel-helpers";
+} from "../crm-oportunidades/model";
 
 // ============================================================================
 // Card Configuration (inline)
@@ -86,6 +87,16 @@ const createEstadoBadge = (estado: CRMOportunidadEstado) => (
     {formatEstadoLabel(estado)}
   </Badge>
 );
+
+const getTipoOperacionBadgeClasses = (value: string | null | undefined) => {
+  if (!value) return "bg-slate-100 text-slate-600";
+  const normalized = value.toLowerCase();
+  if (normalized.includes("venta")) return "bg-emerald-100 text-emerald-700";
+  if (normalized.includes("alquiler")) return "bg-sky-100 text-sky-700";
+  if (normalized.includes("mantenimiento")) return "bg-amber-100 text-amber-700";
+  if (normalized.includes("emprendimiento")) return "bg-violet-100 text-violet-700";
+  return "bg-slate-100 text-slate-600";
+};
 
 const createResponsableBlock = (oportunidad: CRMOportunidad) => {
   const { name: responsableName, avatarUrl, initials } = getResponsableAvatarInfo(oportunidad);
@@ -375,6 +386,7 @@ export const CRMOportunidadKanbanCard = ({
   const isInactive = oportunidad.activo === false;
   const fullTitle = formatOportunidadTitulo(oportunidad);
   const truncatedTitle = fullTitle.length > 40 ? fullTitle.substring(0, 40) + '...' : fullTitle;
+  const tipoOperacionLabel = getTipoOperacionName(oportunidad);
 
   return (
     <KanbanCardWithCollapse
@@ -385,7 +397,21 @@ export const CRMOportunidadKanbanCard = ({
         left: config.headerLeft,
         right: config.headerRight,
       }}
-      title={<span title={fullTitle}>{truncatedTitle}</span>}
+      title={
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <span title={fullTitle}>{truncatedTitle}</span>
+          {tipoOperacionLabel ? (
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide",
+                getTipoOperacionBadgeClasses(tipoOperacionLabel)
+              )}
+            >
+              {tipoOperacionLabel}
+            </span>
+          ) : null}
+        </span>
+      }
       body={body}
       actions={config.actions}
       className={cn(

@@ -2,6 +2,7 @@
 
 import { useFormContext, useWatch } from "react-hook-form";
 import { required, useRecordContext, useGetOne } from "ra-core";
+import type { ReactNode } from "react";
 
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
@@ -15,21 +16,10 @@ import type { CRMOportunidad, CRMOportunidadEstado } from "./model";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   formatEstadoOportunidad,
+  formatDateTimeValue,
+  parseNumericId,
 } from "./model";
 import { ActividadesPanel } from "../crm-actividades/Panel";
-
-const parseNumericId = (value?: unknown) => {
-  if (value == null || value === "") return undefined;
-  const numeric = typeof value === "string" ? Number(value) : (value as number);
-  return Number.isFinite(numeric) ? Number(numeric) : undefined;
-};
-
-const formatDateTimeValue = (value?: string | null, options?: Intl.DateTimeFormatOptions) => {
-  if (!value) return "sin fecha";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "sin fecha";
-  return date.toLocaleString("es-AR", options ?? { dateStyle: "short", timeStyle: "short" });
-};
 
 type SummaryItemProps = {
   label: string;
@@ -47,12 +37,16 @@ const SummaryItem = ({ label, value, helper }: SummaryItemProps) => (
   </div>
 );
 
-export const CRMOportunidadForm = () => (
+export const CRMOportunidadForm = ({ toolbar }: { toolbar?: ReactNode }) => (
   <div className="w-full max-w-6xl mr-auto ml-0">
     <SimpleForm
       className="w-full max-w-none"
       warnWhenUnsavedChanges
-      toolbar={<FormToolbar className="mt-6 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm" />}
+      toolbar={
+        toolbar ?? (
+          <FormToolbar className="mt-6 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm" />
+        )
+      }
     >
       <OportunidadFormSections />
     </SimpleForm>

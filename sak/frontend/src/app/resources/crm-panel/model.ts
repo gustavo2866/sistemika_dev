@@ -1,5 +1,5 @@
 import type { CRMOportunidad } from "../crm-oportunidades/model";
-import type { BucketKey } from "./crm-panel-helpers";
+import type { BucketKey } from "../crm-oportunidades/model";
 
 // Calcular bucket key basado en el estado de la oportunidad
 export const calculateOportunidadBucketKey = (oportunidad: CRMOportunidad): BucketKey => {

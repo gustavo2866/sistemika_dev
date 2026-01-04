@@ -17,8 +17,6 @@ import { Mail, MessageCircle, Trash2, ArrowDownLeft, ArrowUpRight, CalendarPlus,
 import { cn } from "@/lib/utils";
 import type { CRMMensaje } from "./model";
 import { CRMMensajeReplyDialog } from "./form_responder";
-import { ScheduleDialog } from "./form_agendar";
-import { DiscardDialog } from "./form_descartar";
 import { ButtonToggle, type ButtonToggleOption } from "@/components/forms/button-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -427,10 +425,6 @@ const FechaEstadoFilter = () => {
 export const CRMMensajeList = () => {
   const [replyOpen, setReplyOpen] = useState(false);
   const [selectedMensaje, setSelectedMensaje] = useState<CRMMensaje | null>(null);
-  const [discardOpen, setDiscardOpen] = useState(false);
-  const [mensajeDescartar, setMensajeDescartar] = useState<CRMMensaje | null>(null);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleMensaje, setScheduleMensaje] = useState<CRMMensaje | null>(null);
   const refresh = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
@@ -458,25 +452,25 @@ export const CRMMensajeList = () => {
   };
 
   const handleDiscardClick = (mensaje: CRMMensaje) => {
-    setMensajeDescartar(mensaje);
-    setDiscardOpen(true);
+    const oportunidadId = mensaje.oportunidad_id ?? (mensaje.oportunidad as any)?.id ?? null;
+    if (!oportunidadId) return;
+    navigate(`/crm/oportunidades/${oportunidadId}/accion_descartar`, {
+      state: { returnTo: returnTo ?? "/crm/mensajes" },
+    });
   };
 
   const handleScheduleClick = (mensaje: CRMMensaje) => {
-    setScheduleMensaje(mensaje);
-    setScheduleOpen(true);
+    const oportunidadId = mensaje.oportunidad_id ?? (mensaje.oportunidad as any)?.id ?? null;
+    if (!oportunidadId) return;
+    navigate(`/crm/oportunidades/${oportunidadId}/accion_agendar`, {
+      state: { returnTo: returnTo ?? "/crm/mensajes" },
+    });
   };
 
   const handleReplySuccess = () => {
     refresh();
     setReplyOpen(false);
     setSelectedMensaje(null);
-  };
-
-  const handleScheduleSuccess = () => {
-    refresh();
-    setScheduleOpen(false);
-    setScheduleMensaje(null);
   };
 
   return (
@@ -587,26 +581,15 @@ export const CRMMensajeList = () => {
       </div>
     </div>
       </List>
-      <CRMMensajeReplyDialog
-        open={replyOpen}
-        onOpenChange={setReplyOpen}
-        mensaje={selectedMensaje}
-        onSuccess={handleReplySuccess}
-      />
-      <ScheduleDialog
-        open={scheduleOpen}
-        onOpenChange={setScheduleOpen}
-        mensaje={scheduleMensaje}
-        onSuccess={handleScheduleSuccess}
-      />
-      <DiscardDialog
-        open={discardOpen}
-        onOpenChange={setDiscardOpen}
-        mensaje={mensajeDescartar}
-      />
-    </>
-  );
-};
+        <CRMMensajeReplyDialog
+          open={replyOpen}
+          onOpenChange={setReplyOpen}
+          mensaje={selectedMensaje}
+          onSuccess={handleReplySuccess}
+        />
+      </>
+    );
+  };
 
 // ============================================================================
 // COMPONENTS - Table Cells

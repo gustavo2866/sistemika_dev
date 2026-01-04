@@ -2,24 +2,14 @@
 
 import { useGetOne } from "ra-core";
 import { Card } from "@/components/ui/card";
-import type { CRMOportunidad } from "../crm-oportunidades/model";
+import type { CRMOportunidad } from "./model";
+import { formatDateValue } from "./model";
 
 type AccionOportunidadHeaderProps = {
   oportunidad?: Pick<
     CRMOportunidad,
     "id" | "fecha_estado" | "created_at" | "contacto_id" | "titulo" | "descripcion_estado"
   > | null;
-};
-
-const formatDate = (value?: string | null) => {
-  if (!value) return "Sin fecha";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Sin fecha";
-  return parsed.toLocaleDateString("es-ES", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 };
 
 export const AccionOportunidadHeader = ({ oportunidad }: AccionOportunidadHeaderProps) => {
@@ -34,7 +24,7 @@ export const AccionOportunidadHeader = ({ oportunidad }: AccionOportunidadHeader
     contacto?.nombre ??
     (contactoId ? `Contacto #${contactoId}` : "Sin contacto");
   const oportunidadId = oportunidad?.id ? `#${String(oportunidad.id).padStart(6, "0")}` : "Sin oportunidad";
-  const fechaLabel = formatDate(oportunidad?.fecha_estado ?? oportunidad?.created_at ?? null);
+  const fechaLabel = formatDateValue(oportunidad?.fecha_estado ?? oportunidad?.created_at ?? null);
   const oportunidadTitulo = oportunidad?.titulo ?? oportunidad?.descripcion_estado ?? "Sin titulo";
 
   return (
@@ -66,3 +56,4 @@ export const AccionOportunidadHeader = ({ oportunidad }: AccionOportunidadHeader
 };
 
 export default AccionOportunidadHeader;
+

@@ -333,7 +333,7 @@ export const CRMChatShow = () => {
 
   const handleOpenOportunidad = () => {
     if (!resolveOportunidadId) return;
-    navigate(`/crm/panel/${resolveOportunidadId}/edit`, {
+    navigate(`/crm/oportunidades/${resolveOportunidadId}`, {
       state: { returnTo: `/crm/chat/${id}/show` },
     });
   };
@@ -370,7 +370,7 @@ export const CRMChatShow = () => {
 
   const handleOpenAccion = (accion: "accion_descartar" | "accion_aceptar" | "accion_agendar" | "accion_cerrar") => {
     if (!resolveOportunidadId) return;
-    navigate(`/crm/panel/${resolveOportunidadId}/${accion}`, {
+    navigate(`/crm/oportunidades/${resolveOportunidadId}/${accion}`, {
       state: { returnTo: chatReturnTo },
     });
   };
@@ -398,9 +398,20 @@ export const CRMChatShow = () => {
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[13px]">
-            {displayName}
-          </p>
+          <div className="flex flex-wrap items-center gap-1">
+            <p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+              {displayName}
+            </p>
+            {tipoOperacionLabel ? (
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide ${getTipoOperacionBadgeClasses(
+                  tipoOperacionLabel
+                )}`}
+              >
+                {tipoOperacionLabel}
+              </span>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-1 text-[9px] text-slate-500 sm:text-[10px]">
             {resolveOportunidadId ? (
               <>
@@ -409,13 +420,6 @@ export const CRMChatShow = () => {
                 </span>
                 {oportunidadEstado ? (
                   <span className="text-slate-400">- {oportunidadEstado}</span>
-                ) : null}
-                {tipoOperacionLabel ? (
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide ${getTipoOperacionBadgeClasses(tipoOperacionLabel)}`}
-                  >
-                    {tipoOperacionLabel}
-                  </span>
                 ) : null}
               </>
             ) : (

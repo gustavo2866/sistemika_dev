@@ -39,7 +39,7 @@ export const CRMOportunidadAccionAgendar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { identity } = useGetIdentity();
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/panel";
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
 
   const { data: oportunidad, isLoading } = useGetOne(
     "crm/oportunidades",
@@ -148,3 +148,4 @@ export const CRMOportunidadAccionAgendar = () => {
 };
 
 export default CRMOportunidadAccionAgendar;
+

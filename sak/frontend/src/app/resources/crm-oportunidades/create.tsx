@@ -2,7 +2,7 @@
 
 import { Create } from "@/components/create";
 import { CRMOportunidadForm } from "./form";
-import { CRMOportunidadPanelForm } from "../crm-panel/form";
+import { CRMOportunidadPanelForm } from "./form_panel";
 import { ResourceTitle } from "@/components/resource-title";
 import { Target } from "lucide-react";
 import { useLocation } from "react-router";

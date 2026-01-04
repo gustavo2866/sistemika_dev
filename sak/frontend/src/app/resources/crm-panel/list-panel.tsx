@@ -26,7 +26,7 @@ import { CRM_OPORTUNIDAD_ESTADOS } from "../crm-oportunidades/model";
 import { CRMOportunidadKanbanCard } from "./crm-panel-card";
 import { KanbanBoardView } from "@/components/kanban";
 import { calculateOportunidadBucketKey, prepareMoveOportunidadPayload, getBucketLabel } from "./model";
-import { ESTADO_BG_COLORS, type BucketKey } from "./crm-panel-helpers";
+import { ESTADO_BG_COLORS, type BucketKey } from "../crm-oportunidades/model";
 import { OportunidadCustomFilters } from "./crm-panel-customFilters";
 
 // Definición de buckets (usando todos los estados)
@@ -218,22 +218,22 @@ const OportunidadListContent = () => {
         updating={false}
         onToggleCollapse={onToggleCollapse}
         onEdit={(opp) => {
-          navigate(`/crm/panel/${opp.id}/edit`);
+          navigate(`/crm/oportunidades/${opp.id}`, { state: { fromPanel: true, returnTo: "/crm/panel" } });
         }}
         onAceptar={(opp) => {
-          navigate(`/crm/panel/${opp.id}/accion_aceptar`);
+          navigate(`/crm/oportunidades/${opp.id}/accion_aceptar`, { state: { returnTo: "/crm/panel" } });
         }}
         onAgendar={(opp) => {
-          navigate(`/crm/panel/${opp.id}/accion_agendar`);
+          navigate(`/crm/oportunidades/${opp.id}/accion_agendar`, { state: { returnTo: "/crm/panel" } });
         }}
         onCotizar={(opp) => {
-          navigate(`/crm/panel/${opp.id}/accion_cotizar`);
+          navigate(`/crm/oportunidades/${opp.id}/accion_cotizar`, { state: { returnTo: "/crm/panel" } });
         }}
         onCerrar={(opp) => {
-          navigate(`/crm/panel/${opp.id}/accion_cerrar`);
+          navigate(`/crm/oportunidades/${opp.id}/accion_cerrar`, { state: { returnTo: "/crm/panel" } });
         }}
         onDescartar={(opp) => {
-          navigate(`/crm/panel/${opp.id}/accion_descartar`);
+          navigate(`/crm/oportunidades/${opp.id}/accion_descartar`, { state: { returnTo: "/crm/panel" } });
         }}
       />
     ),

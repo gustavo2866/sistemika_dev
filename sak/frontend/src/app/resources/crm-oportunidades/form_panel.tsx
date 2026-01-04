@@ -12,7 +12,7 @@ import { SelectInput } from "@/components/select-input";
 import { NumberInput } from "@/components/number-input";
 import { Card } from "@/components/ui/card";
 import { ComboboxQuery, FormField, FormLayout, FormSimpleSection } from "@/components/forms";
-import type { CRMOportunidad } from "../crm-oportunidades/model";
+import type { CRMOportunidad } from "./model";
 
 const compactSelectTrigger = {
   className: "h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm",
@@ -34,6 +34,7 @@ export const CRMOportunidadPanelForm = ({ toolbar }: CRMOportunidadPanelFormProp
       <SimpleForm
         className="w-full max-w-none"
         defaultValues={defaultValues}
+        sectionHeaderDensity="compact"
         toolbar={
           toolbar ?? (
             <FormToolbar className="mt-3 rounded-2xl border border-border/50 bg-background/80 p-2 shadow-sm sm:mt-4 sm:p-3" />
@@ -251,3 +252,4 @@ function EstadoSection() {
     </FormSimpleSection>
   );
 }
+

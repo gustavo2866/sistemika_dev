@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFormHeaderDensity } from "./form-header-density-context";
 
 interface CollapsibleSectionProps {
   /** Título de la sección */
@@ -49,6 +50,8 @@ export const CollapsibleSection = ({
   onClose,
 }: CollapsibleSectionProps) => {
   const [open, setOpen] = useState(defaultOpen);
+  const headerDensity = useFormHeaderDensity();
+  const isCompactHeader = headerDensity === "compact";
 
   const handleToggle = () => {
     if (!collapsible) return;
@@ -84,29 +87,32 @@ export const CollapsibleSection = ({
 
   return (
     <Card className={cn(variantClasses[variant], className)}>
-      <div className="border-b px-4 py-2">
+      <div className={cn("border-b", isCompactHeader ? "px-3 py-1.5 sm:px-4 sm:py-2" : "px-4 py-2")}>
         <div className="flex items-start gap-2">
           {collapsible && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7 flex-shrink-0"
+              className={cn("flex-shrink-0", isCompactHeader ? "h-6 w-6" : "h-7 w-7")}
               onClick={handleToggle}
               aria-label={open ? `Colapsar ${title}` : `Expandir ${title}`}
             >
               <ChevronDown
                 className={cn(
-                  "h-4 w-4 transition-transform duration-200",
+                  "transition-transform duration-200",
+                  isCompactHeader ? "h-3.5 w-3.5" : "h-4 w-4",
                   open ? "" : "-rotate-90"
                 )}
               />
             </Button>
           )}
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold truncate">{title}</h3>
+            <h3 className={cn("font-semibold truncate", isCompactHeader ? "text-sm" : "text-base")}>
+              {title}
+            </h3>
             {resolvedSubtitle && (
-              <p className="text-xs text-muted-foreground truncate">
+              <p className={cn("text-muted-foreground truncate", isCompactHeader ? "text-[11px]" : "text-xs")}>
                 {resolvedSubtitle}
               </p>
             )}

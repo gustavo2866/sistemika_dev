@@ -12,7 +12,7 @@ import { TextInput } from "@/components/text-input";
 import { SaveButton } from "@/components/form";
 import { CancelButton } from "@/components/cancel-button";
 import { Card } from "@/components/ui/card";
-import type { CRMOportunidad } from "../crm-oportunidades/model";
+import type { CRMOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -33,7 +33,7 @@ export const CRMOportunidadAccionCotizar = () => {
   const refresh = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/panel";
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
 
   return (
     <Edit
@@ -132,3 +132,5 @@ const AccionCotizarContent = ({ returnTo }: { returnTo: string }) => {
     </div>
   );
 };
+
+
