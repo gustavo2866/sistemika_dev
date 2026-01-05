@@ -1,200 +1,251 @@
 "use client";
 
-import { useFormContext, useWatch } from "react-hook-form";
-import { required, useRecordContext, useGetOne } from "ra-core";
+import { required, useGetIdentity, useGetOne, useRecordContext } from "ra-core";
 import type { ReactNode } from "react";
+import { useEffect, useRef } from "react";
+import { useFormContext } from "react-hook-form";
+import { useLocation, useNavigate } from "react-router";
 
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
+
 import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
-import { NumberInput } from "@/components/number-input";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { FormLayout, FormSimpleSection } from "@/components/forms";
+
+import {
+  CompactComboboxQuery,
+  CompactFormCard,
+  CompactFormField,
+  CompactFormGrid,
+  CompactFormSection,
+  CompactNumberInput,
+  CompactSelectInput,
+  CompactTextInput,
+  FormLayout,
+} from "@/components/forms";
 import type { CRMOportunidad, CRMOportunidadEstado } from "./model";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
+  formatDateValue,
   formatEstadoOportunidad,
-  formatDateTimeValue,
-  parseNumericId,
 } from "./model";
-import { ActividadesPanel } from "../crm-actividades/Panel";
+import { Badge } from "@/components/ui/badge";
+import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
+import { Calendar, FileText, MessageCircle } from "lucide-react";
 
-type SummaryItemProps = {
-  label: string;
-  value: string;
-  helper?: string;
+type CRMOportunidadFormProps = {
+  toolbar?: ReactNode;
 };
 
-const SummaryItem = ({ label, value, helper }: SummaryItemProps) => (
-  <div className="space-y-1">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-      {label}
-    </p>
-    <p className="text-base font-semibold text-foreground line-clamp-2">{value}</p>
-    {helper ? <p className="text-xs text-muted-foreground">{helper}</p> : null}
-  </div>
-);
+export const CRMOportunidadForm = ({ toolbar }: CRMOportunidadFormProps = {}) => {
+  const record = useRecordContext<CRMOportunidad>();
+  const { identity } = useGetIdentity();
+  const defaultValues = record?.id
+    ? undefined
+    : { responsable_id: identity?.id ?? undefined };
 
-export const CRMOportunidadForm = ({ toolbar }: { toolbar?: ReactNode }) => (
-  <div className="w-full max-w-6xl mr-auto ml-0">
-    <SimpleForm
-      className="w-full max-w-none"
-      warnWhenUnsavedChanges
-      toolbar={
-        toolbar ?? (
-          <FormToolbar className="mt-6 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm" />
-        )
-      }
-    >
-      <OportunidadFormSections />
-    </SimpleForm>
-  </div>
-);
+  return (
+    <div className="w-full max-w-4xl mr-auto ml-0">
+      <SimpleForm
+        className="w-full max-w-none"
+        defaultValues={defaultValues}
+        sectionHeaderDensity="compact"
+        toolbar={
+          toolbar ?? (
+            <FormToolbar className="mt-3 rounded-2xl border border-border/50 bg-background/80 p-2 shadow-sm sm:mt-4 sm:p-3" />
+          )
+        }
+      >
+        <OportunidadFormSections />
+      </SimpleForm>
+    </div>
+  );
+};
 
 const OportunidadFormSections = () => {
   const record = useRecordContext<CRMOportunidad>();
-  const form = useFormContext();
-  const control = form.control;
-  const isEditMode = Boolean(record?.id);
 
-  const contactoWatch = useWatch({ control, name: "contacto_id" });
-  const propiedadWatch = useWatch({ control, name: "propiedad_id" });
-  const estadoWatch = useWatch({ control, name: "estado" });
-  const fechaEstadoWatch = useWatch({ control, name: "fecha_estado" });
-  const tipoOperacionWatch = useWatch({ control, name: "tipo_operacion_id" });
-  const descripcionWatch = useWatch({ control, name: "descripcion_estado" });
-  const tituloWatch = useWatch({ control, name: "titulo" });
-
-  const contactoId = parseNumericId(contactoWatch ?? record?.contacto_id);
-  const propiedadId = parseNumericId(propiedadWatch ?? record?.propiedad_id);
-  const tipoOperacionId = parseNumericId(tipoOperacionWatch ?? record?.tipo_operacion_id);
-  const oportunidadId = parseNumericId(record?.id);
-
-  const { data: contacto } = useGetOne(
-    "crm/contactos",
-    { id: contactoId ?? 0 },
-    { enabled: Boolean(contactoId) }
+  return (
+    <CompactFormCard className="rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 shadow-lg">
+      <DatosGeneralesSection />
+      <FormLayout
+        spacing="lg"
+        sections={[
+          {
+            id: "cotizacion",
+            title: "COTIZACION",
+            defaultOpen: false,
+            contentPadding: "lg",
+            children: <CotizacionSection />,
+          },
+          {
+            id: "estado",
+            title: "SEGUIMIENTO",
+            defaultOpen: false,
+            contentPadding: "lg",
+            children: (
+              <EstadoSection />
+            ),
+          },
+        ]}
+      />
+    </CompactFormCard>
   );
-  const { data: propiedad } = useGetOne(
-    "propiedades",
-    { id: propiedadId ?? 0 },
-    { enabled: Boolean(propiedadId) }
-  );
+};
+
+function DatosGeneralesSection() {
+  const record = useRecordContext<CRMOportunidad>();
+  const { formState, setValue, watch } = useFormContext<CRMOportunidad>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const hasInitializedRef = useRef(false);
+  const lastAutoTitleRef = useRef<string | null>(null);
+  const tipoOperacionId = watch("tipo_operacion_id");
+  const tipoPropiedadId = watch("tipo_propiedad_id");
+  const emprendimientoId = watch("emprendimiento_id");
+  const contactoId = watch("contacto_id") ?? record?.contacto_id ?? null;
+  const tituloValue = watch("titulo") ?? "";
+  const estadoValue = (watch("estado") ?? record?.estado) as CRMOportunidadEstado | undefined;
+  const fechaEstadoValue = watch("fecha_estado") ?? record?.fecha_estado ?? null;
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+
   const { data: tipoOperacion } = useGetOne(
     "crm/catalogos/tipos-operacion",
     { id: tipoOperacionId ?? 0 },
     { enabled: Boolean(tipoOperacionId) }
   );
-
-  const estadoValue = (estadoWatch as string) || record?.estado;
-  const fechaEstadoValue = fechaEstadoWatch ?? record?.fecha_estado;
-
-  const contactName =
-    contacto?.nombre_completo ??
-    (contactoId ? `Contacto #${contactoId}` : "Seleccioná un contacto");
-  const propiedadName =
-    propiedad?.nombre ?? (propiedadId ? `Propiedad #${propiedadId}` : "Propiedad sin asignar");
-  const fechaEstadoFormatted = formatDateTimeValue(fechaEstadoValue);
-  const estadoLabel = formatEstadoOportunidad(estadoValue as CRMOportunidadEstado);
-  const estadoBadgeClass =
-    CRM_OPORTUNIDAD_ESTADO_BADGES[estadoValue as CRMOportunidadEstado] ??
-    "bg-slate-100 text-slate-800";
-  const tipoOperacionLabel =
-    tipoOperacion?.nombre ?? (tipoOperacionId ? `Tipo #${tipoOperacionId}` : "Tipo desconocido");
-  const descripcionNecesidad =
-    (descripcionWatch ?? record?.descripcion_estado ?? "").trim() || "Sin descripción";
-  return (
-    <div className="mr-auto flex w-full max-w-6xl flex-col gap-6 rounded-[32px] border border-border/60 bg-background/80 p-4 shadow-lg backdrop-blur lg:flex-row lg:items-stretch">
-      <Card className="flex w-full flex-col gap-6 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-8 shadow-xl lg:basis-[64%] lg:self-stretch">
-        <div className="space-y-6 rounded-[28px] border border-border/40 bg-background/80 p-6 shadow-inner">
-          <div className="flex items-center justify-between border-b border-border/30 pb-4">
-            {record?.id ? (
-              <h2 className="text-lg font-semibold text-foreground">#{record.id} {tituloWatch || record?.titulo || "Sin título"}</h2>
-            ) : (
-              <h2 className="text-lg font-semibold text-foreground">Nueva Oportunidad</h2>
-            )}
-            <div className="flex flex-col items-end gap-0.5">
-              <Badge
-                variant="outline"
-                className={`${estadoBadgeClass} border border-border/40 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide shadow-sm`}
-              >
-                {estadoLabel}
-              </Badge>
-              <p className="text-[10px] text-muted-foreground">{fechaEstadoFormatted}</p>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SummaryItem label="Contacto" value={contactName} />
-            <SummaryItem label="Tipo de operación" value={tipoOperacionLabel} />
-            <SummaryItem label="Propiedad" value={propiedadName} />
-          </div>
-        </div>
-        <FormLayout
-          spacing="lg"
-          sections={[
-            {
-              id: "datos-generales",
-              title: "Datos generales",
-              defaultOpen: !isEditMode,
-              contentPadding: "lg",
-              children: <DatosGeneralesSection />,
-            },
-            {
-              id: "cotizacion",
-              title: "Cotizaci?n",
-              defaultOpen: false,
-              contentPadding: "lg",
-              children: <CotizacionSection />,
-            },
-            {
-              id: "estado",
-              title: "Seguimiento",
-              defaultOpen: false,
-              contentPadding: "lg",
-              children: (
-                <EstadoSection />
-              ),
-            },
-          ]}
-        />
-      </Card>
-      <Card className="flex w-full flex-col gap-4 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-7 shadow-xl lg:basis-[36%] lg:self-stretch">
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-            Acciones pendientes
-          </p>
-          <h3 className="text-xl font-semibold text-foreground">Actividades</h3>
-        </div>
-        <div className="flex-1 h-full">
-          <ActividadesPanel
-            oportunidadId={oportunidadId}
-            contactoId={contactoId}
-            contactoNombre={contactName}
-            asuntoMensaje={descripcionNecesidad}
-            forceShowActions
-            className="bg-gradient-to-b from-white/80 to-slate-50/60"
-          />
-        </div>
-      </Card>
-    </div>
+  const { data: tipoPropiedad } = useGetOne(
+    "tipos-propiedad",
+    { id: tipoPropiedadId ?? 0 },
+    { enabled: Boolean(tipoPropiedadId) }
   );
-};
+  const { data: emprendimiento } = useGetOne(
+    "emprendimientos",
+    { id: emprendimientoId ?? 0 },
+    { enabled: Boolean(emprendimientoId) }
+  );
 
-function DatosGeneralesSection() {
+  const titleParts: string[] = [];
+  if (tipoOperacion?.nombre) {
+    titleParts.push(tipoOperacion.nombre);
+  }
+  if (emprendimiento?.nombre) {
+    titleParts.push(emprendimiento.nombre);
+  } else if (tipoPropiedad?.nombre) {
+    titleParts.push(tipoPropiedad.nombre);
+  }
+  const computedTitle = titleParts.join(" - ").trim();
+
+  useEffect(() => {
+    if (!record || hasInitializedRef.current) return;
+    if (record.tipo_propiedad_id != null) {
+      setValue("tipo_propiedad_id", record.tipo_propiedad_id, { shouldDirty: false });
+    }
+    if (record.emprendimiento_id != null) {
+      setValue("emprendimiento_id", record.emprendimiento_id, { shouldDirty: false });
+    }
+    hasInitializedRef.current = true;
+  }, [record, setValue]);
+
+  useEffect(() => {
+    if (!computedTitle) return;
+    const isTituloDirty = Boolean(formState.dirtyFields?.titulo);
+    const canAutoUpdate =
+      !isTituloDirty &&
+      (!tituloValue || tituloValue === lastAutoTitleRef.current);
+    if (canAutoUpdate && computedTitle !== tituloValue) {
+      setValue("titulo", computedTitle, { shouldDirty: false });
+      lastAutoTitleRef.current = computedTitle;
+    }
+  }, [computedTitle, formState.dirtyFields, setValue, tituloValue]);
+
+  const handleOpenEventos = () => {
+    if (!record?.id) return;
+    const filter = {
+      oportunidad_id: record.id,
+      ...(contactoId ? { contacto_id: contactoId } : {}),
+    };
+    const filterParam = encodeURIComponent(JSON.stringify(filter));
+    navigate(`/crm/eventos?filter=${filterParam}`, {
+      state: {
+        fromOportunidad: true,
+        oportunidad_id: record.id,
+        contacto_id: contactoId ?? undefined,
+        returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
+        filter,
+      },
+    });
+  };
+
+  const handleOpenSolicitudes = () => {
+    if (!record?.id) return;
+    const filter = { oportunidad_id: record.id };
+    const filterParam = encodeURIComponent(JSON.stringify(filter));
+    navigate(`/solicitudes?filter=${filterParam}`, {
+      state: {
+        oportunidad_id: record.id,
+        returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
+        filter,
+      },
+    });
+  };
+
+  const handleOpenChat = () => {
+    if (!record?.id) return;
+    navigate(`/crm/chat/op-${record.id}/show`, {
+      state: { returnTo: returnTo ?? `/crm/oportunidades/${record.id}` },
+    });
+  };
+
   return (
-    <FormSimpleSection className="space-y-6">
-      <div className="grid grid-cols-1 gap-5">
-        <TextInput source="titulo" label="Título" className="w-full" placeholder="Ingrese un título para la oportunidad" />
+    <>
+      <CompactFormSection>
+      <div className="flex items-center justify-end gap-1.5 pb-1">
+        <IconButtonWithTooltip
+          label="Chat"
+          onClick={handleOpenChat}
+          disabled={!record?.id}
+          className="h-7 w-7"
+        >
+          <MessageCircle className="h-4 w-4" />
+        </IconButtonWithTooltip>
+        <IconButtonWithTooltip
+          label="Eventos"
+          onClick={handleOpenEventos}
+          disabled={!record?.id}
+          className="h-7 w-7"
+        >
+          <Calendar className="h-4 w-4" />
+        </IconButtonWithTooltip>
+        <IconButtonWithTooltip
+          label="Solicitudes"
+          onClick={handleOpenSolicitudes}
+          disabled={!record?.id}
+          className="h-7 w-7"
+        >
+          <FileText className="h-4 w-4" />
+        </IconButtonWithTooltip>
       </div>
-      <div className="grid grid-cols-1 gap-5">
+      <CompactFormGrid columns="two">
+        <CompactFormField
+          label="Contacto"
+          error={formState.errors.contacto_id}
+          required
+        >
+          <CompactComboboxQuery
+            source="contacto_id"
+            resource="crm/contactos"
+            labelField="nombre_completo"
+            limit={200}
+            placeholder="Selecciona un contacto"
+            className="w-full"
+            clearable
+          />
+        </CompactFormField>
         <ReferenceInput
           source="tipo_operacion_id"
           reference="crm/catalogos/tipos-operacion"
-          label="Tipo de operación"
+          label="Tipo de operaci?n"
         >
-          <SelectInput
+          <CompactSelectInput
             optionText={(record) =>
               record?.id
                 ? `${record.id} - ${record.nombre ?? record.descripcion ?? record.codigo ?? ""}`
@@ -204,34 +255,80 @@ function DatosGeneralesSection() {
             validate={required()}
           />
         </ReferenceInput>
-      </div>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo de propiedad">
-          <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
-        </ReferenceInput>
-        <ReferenceInput source="emprendimiento_id" reference="emprendimientos" label="Emprendimiento">
-          <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
-        </ReferenceInput>
-      </div>
-      <div className="grid grid-cols-1 gap-5">
-        <TextInput source="descripcion_estado" label="Descripción" multiline className="w-full" />
-      </div>
-    </FormSimpleSection>
+      </CompactFormGrid>
+      <CompactFormGrid columns="two">
+        <CompactTextInput
+          source="titulo"
+          label="Titulo"
+          className="w-full"
+          placeholder="Se completa automaticamente"
+        />
+        <div className="space-y-1">
+          <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
+            Estado
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className={CRM_OPORTUNIDAD_ESTADO_BADGES[estadoValue ?? "1-abierta"] ?? "bg-slate-100 text-slate-800"}
+            >
+              {formatEstadoOportunidad(estadoValue)}
+            </Badge>
+            <span className="text-[11px] text-muted-foreground">
+              {formatDateValue(typeof fechaEstadoValue === "string" ? fechaEstadoValue : null)}
+            </span>
+          </div>
+        </div>
+      </CompactFormGrid>
+      </CompactFormSection>
+      <FormLayout
+        spacing="lg"
+        sections={[
+          {
+            id: "propiedad",
+            title: "PROPIEDAD",
+            defaultOpen: false,
+            contentPadding: "lg",
+            children: (
+              <CompactFormSection>
+                <CompactFormGrid columns="two">
+                  <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo de propiedad">
+                    <CompactSelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+                  </ReferenceInput>
+                  <ReferenceInput source="emprendimiento_id" reference="emprendimientos" label="Emprendimiento">
+                    <CompactSelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+                  </ReferenceInput>
+                </CompactFormGrid>
+                <CompactFormGrid>
+                  <CompactTextInput
+                    source="descripcion_estado"
+                    label="Descripcion"
+                    multiline
+                    rows={2}
+                    className="w-full"
+                  />
+                </CompactFormGrid>
+              </CompactFormSection>
+            ),
+          },
+        ]}
+      />
+    </>
   );
 }
 
 function CotizacionSection() {
   return (
-    <FormSimpleSection className="space-y-6">
-      <div className="grid gap-5" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
+    <CompactFormSection>
+      <CompactFormGrid style={{ gridTemplateColumns: "1fr auto 1fr" }}>
         <div>
           <ReferenceInput source="propiedad_id" reference="propiedades" label="Propiedad">
-            <SelectInput optionText="nombre" className="w-full" />
+            <CompactSelectInput optionText="nombre" className="w-full" />
           </ReferenceInput>
         </div>
         <div className="min-w-[80px]">
           <ReferenceInput source="moneda_id" reference="monedas" label=" ">
-            <SelectInput
+            <CompactSelectInput
               optionText={(record) =>
                 record?.simbolo ? `${record.simbolo}` : record?.codigo || record?.nombre
               }
@@ -241,48 +338,50 @@ function CotizacionSection() {
           </ReferenceInput>
         </div>
         <div>
-          <NumberInput source="monto" label="Monto" className="w-full" step="any" />
+          <CompactNumberInput source="monto" label="Monto" className="w-full" step="any" />
         </div>
-      </div>
-      <div className="grid grid-cols-1 gap-5">
+      </CompactFormGrid>
+      <CompactFormGrid>
         <div>
           <ReferenceInput
             source="condicion_pago_id"
             reference="crm/catalogos/condiciones-pago"
-            label="Condición de pago"
+            label="Condicion de pago"
           >
-            <SelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
+            <CompactSelectInput optionText="nombre" emptyText="Seleccionar" className="w-full" />
           </ReferenceInput>
         </div>
         <div>
-          <TextInput 
+          <CompactTextInput 
             source="forma_pago_descripcion" 
+            rows={2}
             label="Descripción forma de pago" 
             multiline 
             className="w-full" 
             placeholder="Detalles adicionales sobre la forma de pago"
           />
         </div>
-      </div>
-    </FormSimpleSection>
+      </CompactFormGrid>
+    </CompactFormSection>
   );
 }
 
 function EstadoSection() {
   return (
-    <FormSimpleSection className="space-y-6">
-      <div className="grid grid-cols-1 gap-5">
+    <CompactFormSection>
+      <CompactFormGrid>
         <ReferenceInput source="responsable_id" reference="users" label="Responsable">
-          <SelectInput optionText="nombre" className="w-full" validate={required()} />
+          <CompactSelectInput optionText="nombre" className="w-full" validate={required()} />
         </ReferenceInput>
-      </div>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      </CompactFormGrid>
+      <CompactFormGrid columns="three">
         <ReferenceInput source="motivo_perdida_id" reference="crm/catalogos/motivos-perdida" label="Motivo pérdida">
-          <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
+          <CompactSelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
         </ReferenceInput>
-        <NumberInput source="probabilidad" label="Probabilidad (%)" min={0} max={100} className="w-full" />
-        <TextInput source="fecha_cierre_estimada" label="Cierre estimado" type="date" className="w-full" />
-      </div>
-    </FormSimpleSection>
+        <CompactNumberInput source="probabilidad" label="Probabilidad (%)" min={0} max={100} className="w-full" />
+        <CompactTextInput source="fecha_cierre_estimada" label="Cierre estimado" type="date" className="w-full" />
+      </CompactFormGrid>
+    </CompactFormSection>
   );
 }
+

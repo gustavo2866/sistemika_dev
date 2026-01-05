@@ -85,40 +85,70 @@ export const CollapsibleSection = ({
     ghost: "border-0 shadow-none",
   };
 
+  const showSubtitle = Boolean(
+    resolvedSubtitle && (!isCompactHeader || open),
+  );
+
   return (
-    <Card className={cn(variantClasses[variant], className)}>
-      <div className={cn("border-b", isCompactHeader ? "px-3 py-1.5 sm:px-4 sm:py-2" : "px-4 py-2")}>
-        <div className="flex items-start gap-2">
+    <Card
+      className={cn(
+        variantClasses[variant],
+        isCompactHeader && "gap-0 py-1 sm:py-1.5",
+        className
+      )}
+    >
+      <div
+        role={collapsible ? "button" : undefined}
+        tabIndex={collapsible ? 0 : undefined}
+        onClick={collapsible ? handleToggle : undefined}
+        onKeyDown={
+          collapsible
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleToggle();
+                }
+              }
+            : undefined
+        }
+        className={cn(
+          "border-b transition-colors",
+          collapsible && "cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          isCompactHeader ? "px-2.5 pt-1 pb-1 sm:px-3 sm:pt-2 sm:pb-2" : "px-4 py-2",
+        )}
+      >
+        <div className={cn("flex", isCompactHeader ? "gap-1 items-center h-[16px]" : "gap-1.5 items-start")}>
           {collapsible && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn("flex-shrink-0", isCompactHeader ? "h-6 w-6" : "h-7 w-7")}
-              onClick={handleToggle}
-              aria-label={open ? `Colapsar ${title}` : `Expandir ${title}`}
-            >
-              <ChevronDown
-                className={cn(
-                  "transition-transform duration-200",
-                  isCompactHeader ? "h-3.5 w-3.5" : "h-4 w-4",
-                  open ? "" : "-rotate-90"
-                )}
-              />
-            </Button>
+            <ChevronDown
+              className={cn(
+                "transition-transform duration-200",
+                isCompactHeader ? "h-2.5 w-2.5" : "h-4 w-4",
+                open ? "" : "-rotate-90"
+              )}
+            />
           )}
-          <div className="flex-1 min-w-0">
-            <h3 className={cn("font-semibold truncate", isCompactHeader ? "text-sm" : "text-base")}>
+          <div className={cn("flex-1 min-w-0 flex items-center", isCompactHeader ? "h-full" : "")}>
+            <h3
+              className={cn(
+                "truncate",
+                isCompactHeader ? "text-[11px] font-medium leading-none !m-0 !p-0" : "text-base font-semibold",
+              )}
+            >
               {title}
             </h3>
-            {resolvedSubtitle && (
-              <p className={cn("text-muted-foreground truncate", isCompactHeader ? "text-[11px]" : "text-xs")}>
+            {showSubtitle && (
+              <p
+                className={cn(
+                  "text-muted-foreground truncate",
+                  isCompactHeader ? "text-[9px] leading-none" : "text-xs",
+                )}
+              >
                 {resolvedSubtitle}
               </p>
             )}
           </div>
         </div>
-        {headerContent && <div className="mt-2">{headerContent}</div>}
+        {headerContent && <div className={cn(isCompactHeader ? "mt-0" : "mt-2")}>{headerContent}</div>}
       </div>
       <CardContent
         className={cn(

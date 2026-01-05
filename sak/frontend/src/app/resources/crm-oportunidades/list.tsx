@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useListContext } from "ra-core";
 import { Target } from "lucide-react";
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
@@ -40,6 +42,28 @@ const filters = [
   </ReferenceInput>,
 ];
 
+// Filtros válidos para esta lista
+const VALID_FILTERS = ['q', 'estado', 'contacto_id', 'tipo_operacion_id', 'propiedad_id', 'propiedad.tipo', 'emprendimiento_id'];
+
+const FilterCleaner = () => {
+  const { filterValues, setFilters } = useListContext();
+
+  useEffect(() => {
+    // Limpiar filtros no válidos que vienen del localStorage o URL
+    const invalidFilters = Object.keys(filterValues).filter(key => !VALID_FILTERS.includes(key));
+    
+    if (invalidFilters.length > 0) {
+      console.log('Limpiando filtros no válidos:', invalidFilters);
+      const cleanedFilters = Object.fromEntries(
+        Object.entries(filterValues).filter(([key]) => VALID_FILTERS.includes(key))
+      );
+      setFilters(cleanedFilters, {});
+    }
+  }, [filterValues, setFilters]);
+
+  return null;
+};
+
 const ListActions = () => (
   <div className="flex items-center gap-2 flex-wrap">
     <FilterButton filters={filters} />
@@ -56,6 +80,7 @@ export const CRMOportunidadList = () => (
     perPage={10}
     sort={{ field: "created_at", order: "DESC" }}
   >
+    <FilterCleaner />
     <DataTable rowClick="edit">
       <DataTable.Col source="id" label="ID">
         <TextField source="id" />

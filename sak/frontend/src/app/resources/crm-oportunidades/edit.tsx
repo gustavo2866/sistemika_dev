@@ -5,9 +5,74 @@ import { FormToolbar } from "@/components/simple-form";
 import { SaveButton } from "@/components/form";
 import { CancelButton } from "@/components/cancel-button";
 import { CRMOportunidadForm } from "./form";
-import { CRMOportunidadPanelForm } from "./form_panel";
 import { useLocation, useNavigate } from "react-router";
 import { normalizeOportunidadId } from "./model";
+import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
+import { Calendar, FileText } from "lucide-react";
+import { useRecordContext } from "ra-core";
+import { ShowButton } from "@/components/show-button";
+import { DeleteButton } from "@/components/delete-button";
+import type { CRMOportunidad } from "./model";
+
+const OportunidadHeaderActions = ({
+  returnTo,
+}: {
+  returnTo?: string;
+}) => {
+  const record = useRecordContext<CRMOportunidad>();
+  const navigate = useNavigate();
+
+  if (!record?.id) {
+    return (
+      <div className="flex items-center gap-2">
+        <ShowButton />
+        <DeleteButton />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <IconButtonWithTooltip
+        label="Eventos"
+        onClick={() => {
+          const filterParam = encodeURIComponent(
+            JSON.stringify({ oportunidad_id: record.id })
+          );
+          navigate(`/crm/eventos?filter=${filterParam}`, {
+            state: {
+              fromOportunidad: true,
+              oportunidad_id: record.id,
+              returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
+              filter: { oportunidad_id: record.id },
+            },
+          });
+        }}
+      >
+        <Calendar className="h-4 w-4" />
+      </IconButtonWithTooltip>
+      <IconButtonWithTooltip
+        label="Solicitudes"
+        onClick={() => {
+          const filterParam = encodeURIComponent(
+            JSON.stringify({ oportunidad_id: record.id })
+          );
+          navigate(`/solicitudes?filter=${filterParam}`, {
+            state: {
+              oportunidad_id: record.id,
+              returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
+              filter: { oportunidad_id: record.id },
+            },
+          });
+        }}
+      >
+        <FileText className="h-4 w-4" />
+      </IconButtonWithTooltip>
+      <ShowButton />
+      <DeleteButton />
+    </div>
+  );
+};
 
 export const CRMOportunidadEdit = () => {
   const location = useLocation();
@@ -32,6 +97,8 @@ export const CRMOportunidadEdit = () => {
   return (
     <Edit
       redirect={useCustomToolbar ? false : "list"}
+      mutationMode="pessimistic"
+      actions={<OportunidadHeaderActions returnTo={returnTo ?? (fromPanel ? "/crm/panel" : undefined)} />}
       transform={
         fromPanel
           ? (data) => ({
@@ -42,11 +109,7 @@ export const CRMOportunidadEdit = () => {
           : undefined
       }
     >
-      {fromPanel ? (
-        <CRMOportunidadPanelForm toolbar={toolbar} />
-      ) : (
-        <CRMOportunidadForm toolbar={toolbar} />
-      )}
+      <CRMOportunidadForm toolbar={toolbar} />
     </Edit>
   );
 };

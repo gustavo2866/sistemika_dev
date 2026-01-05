@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { required, useDataProvider } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
+import { useLocation } from "react-router-dom";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { SelectInput } from "@/components/select-input";
 import { TextInput } from "@/components/text-input";
@@ -572,11 +573,25 @@ const FormFooter = () => (
 );
 
 export const Form = () => {
+  const location = useLocation();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const cabeceraDefaults = useMemo(
     () => solicitudCabeceraSchema.defaults(),
     []
   );
+  const oportunidadIdFromLocation = useMemo(() => {
+    const state = location.state as
+      | { oportunidad_id?: number | string; filter?: Record<string, unknown> }
+      | null;
+    if (state?.oportunidad_id != null) {
+      return Number(state.oportunidad_id);
+    }
+    const stateFilter = state?.filter;
+    if (stateFilter?.oportunidad_id != null) {
+      return Number(stateFilter.oportunidad_id);
+    }
+    return undefined;
+  }, [location.state]);
   const defaultValues = useMemo(() => {
     const solicitanteDefault =
       cabeceraDefaults.solicitante_id &&
@@ -591,15 +606,19 @@ export const Form = () => {
     const centroCostoDefault = Number.isFinite(centroCostoParsed)
       ? centroCostoParsed
       : 1;
+    const oportunidadDefault = Number.isFinite(oportunidadIdFromLocation)
+      ? oportunidadIdFromLocation
+      : undefined;
     return {
       ...cabeceraDefaults,
       fecha_necesidad: cabeceraDefaults.fecha_necesidad || today,
       solicitante_id: solicitanteDefault,
       centro_costo_id: centroCostoDefault,
+      oportunidad_id: oportunidadDefault ?? cabeceraDefaults.oportunidad_id,
       total: 0,
       detalles: [] as SolicitudDetalle[],
     };
-  }, [cabeceraDefaults, today]);
+  }, [cabeceraDefaults, today, oportunidadIdFromLocation]);
 
   return (
     <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>

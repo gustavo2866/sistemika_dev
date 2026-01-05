@@ -23,6 +23,14 @@ export { SectionCard, SummaryList, MessagePreview } from "./form-wizard/sections
 export { UserSelect } from "./user-select";
 export { UserSelector } from "./user-selector";
 export { ResponsableSelector } from "./responsable-selector";
+export { CompactFormCard } from "./compact/compact-form-card";
+export { CompactFormField } from "./compact/compact-form-field";
+export { CompactComboboxQuery } from "./compact/compact-combobox-query";
+export { CompactSelectInput } from "./compact/compact-select-input";
+export { CompactFormSection } from "./compact/compact-form-section";
+export { CompactFormGrid } from "./compact/compact-form-grid";
+export { CompactTextInput } from "./compact/compact-text-input";
+export { CompactNumberInput } from "./compact/compact-number-input";
 
 // Types
 export type { FormSection, FormLayoutProps } from "./form-layout";

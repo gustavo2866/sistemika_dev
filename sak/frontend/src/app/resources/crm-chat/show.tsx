@@ -108,7 +108,9 @@ export const CRMChatShow = () => {
   const createPath = useCreatePath();
   const notify = useNotify();
   const { data: identity } = useGetIdentity();
-  const conversationState = (location.state as { conversation?: CRMChatConversation } | null)?.conversation;
+  const locationState = location.state as { conversation?: CRMChatConversation; returnTo?: string } | null;
+  const conversationState = locationState?.conversation;
+  const returnTo = locationState?.returnTo;
 
   const target = useMemo(() => parseConversationId(id), [id]);
   const [messages, setMessages] = useState<CRMMensaje[]>([]);
@@ -382,7 +384,7 @@ export const CRMChatShow = () => {
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => navigate("/crm/chat")}
+          onClick={() => navigate(returnTo ?? "/crm/chat")}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>

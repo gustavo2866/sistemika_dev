@@ -175,12 +175,14 @@ export const CRMEventoList = () => {
     contacto_nombre?: string;
     returnTo?: string;
     fromChat?: boolean;
+    fromOportunidad?: boolean;
     contacto_id?: number;
   } | null;
   const [completarDialogOpen, setCompletarDialogOpen] = useState(false);
   const [selectedCompletar, setSelectedCompletar] = useState<CRMEvento | null>(null);
   const oportunidadIdFilter = getOportunidadIdFromLocation(location);
   const fromChat = Boolean(locationState?.fromChat);
+  const fromOportunidad = Boolean(locationState?.fromOportunidad);
   const contactoIdFromLocation = getContactoIdFromLocation(location);
   const { data: oportunidad } = useGetOne(
     "crm/oportunidades",
@@ -190,10 +192,10 @@ export const CRMEventoList = () => {
   const contactoId = (oportunidad as any)?.contacto_id ?? null;
 
   useEffect(() => {
-    if (fromChat) return;
+    if (fromChat || fromOportunidad || locationState?.returnTo) return;
     if (!oportunidadIdFilter && !contactoIdFromLocation) return;
     navigate("/crm/eventos", { replace: true });
-  }, [contactoIdFromLocation, fromChat, navigate, oportunidadIdFilter]);
+  }, [contactoIdFromLocation, fromChat, fromOportunidad, locationState?.returnTo, navigate, oportunidadIdFilter]);
   const defaultFilters = useMemo(() => {
     if (oportunidadIdFilter) {
       const base: Record<string, unknown> = {
@@ -253,7 +255,11 @@ export const CRMEventoList = () => {
       sort={{ field: "fecha_evento", order: "DESC" }}
       className="space-y-5"
     >
-      <EventosFilterSync fromChat={fromChat} responsableId={typeof identity?.id === 'number' ? identity.id : undefined} />
+      <EventosFilterSync
+        fromChat={fromChat}
+        fromOportunidad={fromOportunidad}
+        responsableId={typeof identity?.id === "number" ? identity.id : undefined}
+      />
       <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3">
         {oportunidadIdFilter ? (
           <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-3">
@@ -316,16 +322,18 @@ export const CRMEventoList = () => {
 
 const EventosFilterSync = ({
   fromChat,
+  fromOportunidad,
   responsableId,
 }: {
   fromChat: boolean;
+  fromOportunidad: boolean;
   responsableId?: number;
 }) => {
   const { filterValues, setFilters } = useListContext<CRMEvento>();
   const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
-    if (fromChat) return;
+    if (fromChat || fromOportunidad) return;
     const nextFilters = { ...filterValues };
     const hadContacto = "contacto_id" in nextFilters;
     const hadOportunidad = "oportunidad_id" in nextFilters;
