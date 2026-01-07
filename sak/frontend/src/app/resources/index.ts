@@ -16,6 +16,7 @@ export * from "./crm-catalogos/crm-catalogos-motivos-perdida";
 export * from "./crm-catalogos/crm-catalogos-condiciones-pago";
 export * from "./crm-catalogos/crm-catalogos-tipos-evento";
 export * from "./crm-catalogos/crm-catalogos-motivos-evento";
+export * from "./crm-catalogos/crm-catalogos-respuestas";
 export * from "./monedas";
 export * from "./crm-cotizaciones";
 export * from "./crm-contactos";
@@ -24,6 +25,7 @@ export * from "./crm-eventos";
 export * from "./crm-chat";
 export * from "./crm-mensajes";
 export * from "./emprendimientos";
-// Los dashboards no necesitan ser exportados aqu??
+export * from "./calculadora-financiera";
+// Los dashboards no necesitan ser exportados aquí
 // export * from "./dashboard-proyectos";
 // export * from "./dashboard-vacancias";

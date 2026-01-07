@@ -4,13 +4,23 @@ import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-function Select({
-  value,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  // Ensure value is always defined to prevent controlled/uncontrolled switch
-  const controlledValue = value ?? "";
-  return <SelectPrimitive.Root data-slot="select" value={controlledValue} {...props} />
+function Select(props: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  const hasValueProp = Object.prototype.hasOwnProperty.call(props, "value")
+  const { value, ...rest } = props
+
+  if (!hasValueProp) {
+    return <SelectPrimitive.Root data-slot="select" {...rest} />
+  }
+
+  // Keep controlled selects stable when value is explicitly provided.
+  const controlledValue = value ?? ""
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      value={controlledValue}
+      {...rest}
+    />
+  )
 }
 
 function SelectGroup({

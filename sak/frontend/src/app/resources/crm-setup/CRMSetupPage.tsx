@@ -30,6 +30,11 @@ const catalogLinks = [
     resource: "crm/catalogos/motivos-evento",
   },
   {
+    label: "Respuestas",
+    description: "Respuestas rapidas para el equipo.",
+    resource: "crm/catalogos/respuestas",
+  },
+  {
     label: "Monedas",
     description: "Monedas disponibles (entidad cross).",
     resource: "monedas",

@@ -130,7 +130,7 @@ const StyledForm = (props: React.FormHTMLAttributes<HTMLFormElement>) => {
     <form
       {...props}
       className={cn(
-        "flex flex-row justify-start items-end gap-x-2 gap-y-3 pointer-events-none flex-wrap",
+        "flex flex-row justify-start items-center gap-x-3 gap-y-3 pointer-events-none flex-wrap",
         "[&_.form-helper-text]:hidden",
         props.className,
       )}
@@ -163,8 +163,9 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
     <div
       data-source={filterElement.props.source}
       className={cn(
-        "filter-field flex flex-row pointer-events-auto gap-2 relative",
+        "filter-field flex flex-row items-center pointer-events-auto gap-2 relative",
         className,
+        filterElement.props.className,
       )}
     >
       {React.cloneElement(filterElement, {
@@ -179,7 +180,7 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
           type="button"
           variant="ghost"
           size="sm"
-          className="hide-filter h-9 w-9 cursor-pointer mt-auto"
+          className="hide-filter h-8 w-8 cursor-pointer flex-shrink-0"
           onClick={handleHide}
           data-key={filterElement.props.source}
           title={translate("ra.action.remove_filter")}

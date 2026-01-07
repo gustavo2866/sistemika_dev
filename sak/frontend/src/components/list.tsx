@@ -113,12 +113,9 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
 
       <FilterContext.Provider value={filters}>
         <div className="flex flex-wrap items-center justify-between gap-3 my-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight">
-              {finalTitle}
-            </h2>
-            <FilterForm className="pointer-events-auto flex flex-wrap items-center gap-2" />
-          </div>
+          <h2 className="text-2xl font-bold tracking-tight">
+            {finalTitle}
+          </h2>
           {actions ?? (
             <div className="flex items-center gap-2">
               {hasCreate ? <CreateButton /> : null}
@@ -126,8 +123,10 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             </div>
           )}
         </div>
-        <div className="h-2" />
-        <div className={cn("my-2", props.className)}>{children}</div>
+        <div className="bg-muted/30 rounded-lg p-4 mb-4">
+          <FilterForm className="pointer-events-auto flex w-full flex-wrap items-center gap-3" />
+        </div>
+        <div className={cn(props.className)}>{children}</div>
         {pagination}
       </FilterContext.Provider>
     </>

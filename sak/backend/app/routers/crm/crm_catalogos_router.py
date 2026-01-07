@@ -14,6 +14,7 @@ from app.models import (
     CRMMotivoEvento,
     Moneda,
     CotizacionMoneda,
+    CRMCatalogoRespuesta,
 )
 from app.crud.crm_tipo_operacion_crud import crm_tipo_operacion_crud
 from app.crud.crm_motivo_perdida_crud import crm_motivo_perdida_crud
@@ -22,6 +23,7 @@ from app.crud.crm_tipo_evento_crud import crm_tipo_evento_crud
 from app.crud.crm_motivo_evento_crud import crm_motivo_evento_crud
 from app.crud.moneda_crud import moneda_crud
 from app.crud.cotizacion_moneda_crud import cotizacion_moneda_crud
+from app.crud.crm_catalogo_respuesta_crud import crm_catalogo_respuesta_crud
 from app.services.cotizacion_service import cotizacion_service
 
 
@@ -57,6 +59,13 @@ crm_motivo_evento_router = create_generic_router(
     model=CRMMotivoEvento,
     crud=crm_motivo_evento_crud,
     prefix="/crm/catalogos/motivos-evento",
+    tags=["crm-catalogos"],
+)
+
+crm_catalogo_respuesta_router = create_generic_router(
+    model=CRMCatalogoRespuesta,
+    crud=crm_catalogo_respuesta_crud,
+    prefix="/crm/catalogos/respuestas",
     tags=["crm-catalogos"],
 )
 

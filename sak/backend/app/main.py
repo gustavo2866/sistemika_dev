@@ -55,6 +55,7 @@ from app.routers.crm import (
     crm_condicion_pago_router,
     crm_tipo_evento_router,
     crm_motivo_evento_router,
+    crm_catalogo_respuesta_router,
     moneda_router,
     crm_moneda_router,
     cotizacion_moneda_router,
@@ -66,6 +67,7 @@ from app.routers.crm import (
 )
 from app.routers.crm_celular_router import router as crm_celular_router
 from app.routers.meta_webhook_router import router as meta_webhook_router
+from app.routers.calculadora_router import router as calculadora_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
 from app.api.auth import router as auth_router
@@ -163,6 +165,7 @@ app.include_router(crm_motivo_perdida_router)
 app.include_router(crm_condicion_pago_router)
 app.include_router(crm_tipo_evento_router)
 app.include_router(crm_motivo_evento_router)
+app.include_router(crm_catalogo_respuesta_router)
 app.include_router(moneda_router)
 app.include_router(crm_moneda_router)
 app.include_router(cotizacion_conversion_router)
@@ -173,6 +176,7 @@ app.include_router(crm_evento_router)
 app.include_router(crm_mensaje_router)
 app.include_router(crm_celular_router)
 app.include_router(meta_webhook_router, prefix="/api")
+app.include_router(calculadora_router)
 app.include_router(emprendimiento_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)

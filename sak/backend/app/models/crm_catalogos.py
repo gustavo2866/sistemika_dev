@@ -89,3 +89,12 @@ class Moneda(Base, table=True):
     activo: bool = Field(default=True)
 
     oportunidades: list["CRMOportunidad"] = Relationship(back_populates="moneda")
+
+
+class CRMCatalogoRespuesta(Base, table=True):
+    __tablename__ = "crm_catalogo_respuestas"
+    __searchable_fields__ = ["titulo", "texto"]
+
+    titulo: str = Field(max_length=255, description="Título de la respuesta")
+    texto: str = Field(default="", description="Contenido de la respuesta")
+    activo: bool = Field(default=True, description="Indica si la respuesta está activa")

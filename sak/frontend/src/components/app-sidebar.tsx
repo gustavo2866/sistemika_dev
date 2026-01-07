@@ -50,6 +50,7 @@ import {
   LayoutGrid,
   Mail,
   MessageCircle,
+  Calculator,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
@@ -70,6 +71,7 @@ const CRM_CUSTOM_LINKS: Array<{
 }> = [
   { label: "CRM Chat", to: "/crm/chat", icon: MessageCircle, position: "top" },
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
+  { label: "Calculadora Financiera", to: "/calculadora-financiera", icon: Calculator, position: "top" },
   { label: "CRM Mensajes", to: "/crm/mensajes", icon: Mail, position: "bottom" },
   { label: "Setup", to: "/crm/setup", icon: Settings, position: "bottom" },
 ] as const;
@@ -84,6 +86,11 @@ const CRM_CATALOG_RESOURCES = [
   "monedas",
   "crm/catalogos/monedas",
   "crm/cotizaciones",
+] as const;
+const HIDDEN_RESOURCES = [
+  "crm/catalogos/respuestas",
+  "crm/chat",
+  "crm/mensajes",
 ] as const;
 
 type ResourceName = string;
@@ -146,7 +153,8 @@ export function AppSidebar() {
     () =>
       Object.keys(resources)
         .filter((name) => resources[name].hasList)
-        .filter((name) => !groupedNames.has(name)),
+        .filter((name) => !groupedNames.has(name))
+        .filter((name) => !HIDDEN_RESOURCES.includes(name)),
     [resources, groupedNames],
   );
 

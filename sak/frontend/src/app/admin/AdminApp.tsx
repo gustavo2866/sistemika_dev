@@ -146,6 +146,13 @@ import {
   CRMMotivoEventoShow,
 } from "@/app/resources/crm-catalogos/crm-catalogos-motivos-evento";
 import {
+  CRMCatalogoRespuestaList,
+  CRMCatalogoRespuestaCreate,
+  CRMCatalogoRespuestaEdit,
+  CRMCatalogoRespuestaShow,
+} from "@/app/resources/crm-catalogos/crm-catalogos-respuestas";
+import { CalculadoraFinanciera } from "@/app/resources/calculadora-financiera";
+import {
   MonedaList,
   MonedaCreate,
   MonedaEdit,
@@ -458,7 +465,17 @@ const AdminApp = () => {
         show={CRMMotivoEventoShow}
         recordRepresentation="nombre"
         icon={ListChecks}
-        options={{ label: "CRM · Motivos de Evento" }}
+        options={{ label: "CRM ?? Motivos de Evento" }}
+      />
+      <Resource
+        name="crm/catalogos/respuestas"
+        list={CRMCatalogoRespuestaList}
+        create={CRMCatalogoRespuestaCreate}
+        edit={CRMCatalogoRespuestaEdit}
+        show={CRMCatalogoRespuestaShow}
+        recordRepresentation="titulo"
+        icon={MessageCircle}
+        options={{ label: "CRM - Respuestas" }}
       />
       <Resource
         name="monedas"
@@ -468,7 +485,7 @@ const AdminApp = () => {
         show={MonedaShow}
         recordRepresentation="nombre"
         icon={Coins}
-        options={{ label: "CRM · Monedas" }}
+        options={{ label: "CRM ?? Monedas" }}
       />
       <Resource
         name="crm/cotizaciones"
@@ -549,10 +566,13 @@ const AdminApp = () => {
         <Route path="/crm/oportunidades/:id/accion_descartar" element={<CRMOportunidadAccionDescartar />} />
         <Route path="/crm/oportunidades/:id/accion_aceptar" element={<CRMOportunidadAccionAceptar />} />
         <Route path="/crm/mensajes/:id/responder" element={<CRMMensajeReply />} />
+        <Route path="/calculadora-financiera" element={<CalculadoraFinanciera />} />
       </CustomRoutes>
     </Admin>
   );
 };
 
 export default AdminApp;
+
+
 

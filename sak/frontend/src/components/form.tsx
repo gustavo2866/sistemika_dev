@@ -76,7 +76,7 @@ export function FormField({ className, id, name, ...props }: FormItemProps) {
     <FormItemContext.Provider value={contextValue}>
       <div
         data-slot="form-item"
-        className={cn("grid gap-2", className)}
+        className={cn("grid gap-1.5", className)}
         role="group"
         {...props}
       />
