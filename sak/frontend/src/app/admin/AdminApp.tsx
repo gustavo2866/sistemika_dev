@@ -81,6 +81,11 @@ import {
   SolicitudEdit,
 } from "@/app/resources/solicitudes";
 import {
+  PoSolicitudList,
+  PoSolicitudCreate,
+  PoSolicitudEdit,
+} from "@/app/resources/po-solicitudes";
+import {
   DepartamentoList,
   DepartamentoCreate,
   DepartamentoEdit,
@@ -356,6 +361,15 @@ const AdminApp = () => {
         options={{ label: "Solicitudes" }}
       />
       <Resource
+        name="po-solicitudes"
+        list={PoSolicitudList}
+        create={PoSolicitudCreate}
+        edit={PoSolicitudEdit}
+        recordRepresentation="id"
+        icon={ListChecks}
+        options={{ label: "Solicitudes" }}
+      />
+      <Resource
         name="recepciones"
         list={RecepcionesList}
         recordRepresentation="id"
@@ -558,6 +572,8 @@ const AdminApp = () => {
       <CustomRoutes>
         <Route path="/solicitudes/create-mb" element={<SolicitudCreate />} />
         <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
+        <Route path="/po-solicitudes/create-mb" element={<PoSolicitudCreate />} />
+        <Route path="/po-solicitudes/:id/edit-mb" element={<PoSolicitudEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />

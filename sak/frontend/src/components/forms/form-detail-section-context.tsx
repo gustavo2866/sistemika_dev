@@ -21,6 +21,7 @@ export interface FormDetailSectionContextValue<
   handleEditBySortedIndex: (sortedIndex: number) => void;
   handleDeleteByOriginalIndex: (originalIndex: number) => void;
   handleDeleteBySortedIndex: (sortedIndex: number) => void;
+  handleClearAll: () => void;
   handleFormSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   handleCancel: () => void;
   resolveAction: () => FormDetailSectionAction;

@@ -11,6 +11,9 @@ import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Trash2 } from "lucide-react";
 import {
   ComboboxQuery,
   FormLayout,
@@ -18,17 +21,18 @@ import {
   FormChoiceSelect,
   FormSimpleSection,
   FormDetailSection,
-  FormDetailSectionAddButton,
   FormDetailCardList,
-  FormDetailCard,
+  FormDetailCardCompact,
   FormDetailSectionMinItems,
   FormDetailFormDialog,
+  FormDetailClearAllButton,
+  AddItemButton,
   useAutoInitializeField,
   useFormDetailSectionContext,
 } from "@/components/forms";
 import {
-  type Solicitud,
-  type SolicitudDetalle,
+  type PoSolicitud,
+  type PoSolicitudDetalle,
   type DetalleFormValues,
   ESTADO_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
@@ -38,8 +42,8 @@ import {
   OPORTUNIDADES_REFERENCE,
   PROVEEDORES_REFERENCE,
   VALIDATION_RULES,
-  solicitudCabeceraSchema,
-  solicitudDetalleSchema,
+  poSolicitudCabeceraSchema,
+  poSolicitudDetalleSchema,
   getArticuloFilterByTipo,
   getDepartamentoDefaultByTipo,
 } from "./model";
@@ -53,6 +57,23 @@ const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
   minimumFractionDigits: 2,
 });
 
+const ARTICLE_NAME_LIMIT = 30;
+const DESCRIPTION_LIMIT = 90;
+
+const truncateText = (value: string, limit: number) => {
+  if (!value) return "";
+  if (value.length <= limit) return value;
+  return `${value.slice(0, Math.max(0, limit - 3))}...`;
+};
+
+const ESTADO_BADGES: Record<string, string> = {
+  pendiente: "bg-amber-100 text-amber-800",
+  aprobada: "bg-emerald-100 text-emerald-800",
+  rechazada: "bg-rose-100 text-rose-800",
+  en_proceso: "bg-sky-100 text-sky-800",
+  finalizada: "bg-slate-200 text-slate-800",
+};
+
 const buildGeneralSubtitle = (
   id: number | undefined,
   estado: string | undefined,
@@ -60,7 +81,7 @@ const buildGeneralSubtitle = (
   comentarioSnippetLength: number = GENERAL_SUBTITLE_COMMENT_SNIPPET
 ): string => {
   const snippet = comentario ? comentario.slice(0, comentarioSnippetLength) : "";
-  return [id, estado, snippet].filter(Boolean).join(" - ") || "Sin datos";
+  return snippet || "";
 };
 
 type TipoSolicitudCatalog = Pick<
@@ -68,51 +89,98 @@ type TipoSolicitudCatalog = Pick<
   "id" | "tipo_articulo_filter" | "departamento_default_id"
 >;
 
-const SolicitudDetalleCard = ({ item }: { item: SolicitudDetalle }) => {
+const PoSolicitudDetalleCard = ({
+  item,
+  onDelete,
+}: {
+  item: PoSolicitudDetalle;
+  onDelete: () => void;
+}) => {
   const { getReferenceLabel } = useFormDetailSectionContext();
   const articuloLabel =
     item.articulo_nombre ||
     getReferenceLabel("articulo_id", item.articulo_id) ||
     `ID: ${item.articulo_id}`;
+  const articuloTitle = truncateText(articuloLabel, ARTICLE_NAME_LIMIT);
+  const descripcion = (item.descripcion || "").trim();
+  const descripcionTruncada = truncateText(descripcion, DESCRIPTION_LIMIT);
+  const showVerMas = descripcion.length > descripcionTruncada.length;
+  const unidadMedida = item.unidad_medida || "-";
+  const cantidadValue = item.cantidad ?? "-";
+  const precioValue = CURRENCY_FORMATTER.format(Number(item.precio ?? 0));
+  const importeFormatted = CURRENCY_FORMATTER.format(
+    Number(
+      typeof item.importe === "number"
+        ? item.importe
+        : (item.cantidad ?? 0) * (item.precio ?? 0)
+    ) || 0
+  );
 
   return (
-    <FormDetailCard
-      title={articuloLabel}
-      subtitle={item.descripcion || "Artículo sin descripción"}
-      meta={[
-        { label: "Unidad", value: item.unidad_medida || "-" },
-        { label: "Cantidad", value: item.cantidad },
-        { label: "Precio", value: CURRENCY_FORMATTER.format(Number(item.precio ?? 0)) },
-        {
-          label: "Importe",
-          value: CURRENCY_FORMATTER.format(
-            Number(
-              typeof item.importe === "number"
-                ? item.importe
-                : (item.cantidad ?? 0) * (item.precio ?? 0)
-            ) || 0
-          ),
-        },
-      ]}
-    />
+    <FormDetailCardCompact
+      title={
+        <div className="flex w-full items-center gap-2">
+          <span className="text-[12px] font-semibold sm:text-[13px]">
+            {articuloTitle}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="ml-auto h-4 w-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Eliminar"
+          >
+            <Trash2 className="h-2.5 w-2.5" />
+          </Button>
+        </div>
+      }
+      subtitle={
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[10px] sm:text-[11px]">
+            UM: {unidadMedida}, Precio: {precioValue},{" "}
+          </span>
+          <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
+            Cantidad: {cantidadValue}
+          </span>
+          <span className="ml-auto rounded bg-muted/60 px-1.5 py-0.5 text-right text-[10px] font-semibold sm:text-[11px]">
+            {importeFormatted}
+          </span>
+        </div>
+      }
+    >
+      {descripcion ? (
+        <>
+          <span>{descripcionTruncada}</span>
+          {showVerMas ? (
+            <span className="ml-1 text-[10px] underline">ver mas</span>
+          ) : null}
+        </>
+      ) : (
+        "Artículo sin descripción"
+      )}
+    </FormDetailCardCompact>
   );
 };
 
-interface SolicitudDetalleFormProps {
+interface PoSolicitudDetalleFormProps {
   articuloFilter?: string;
 }
 
-type SolicitudDetalleDialogContentProps = {
+type PoSolicitudDetalleDialogContentProps = {
   detalleForm: UseFormReturn<DetalleFormValues>;
   articuloFilterQuery?: Record<string, unknown>;
   articuloFilter?: string;
 };
 
-const SolicitudDetalleDialogContent = ({
+const PoSolicitudDetalleDialogContent = ({
   detalleForm,
   articuloFilterQuery,
   articuloFilter,
-}: SolicitudDetalleDialogContentProps) => {
+}: PoSolicitudDetalleDialogContentProps) => {
   const cantidadValue = detalleForm.watch("cantidad");
   const precioValue = detalleForm.watch("precio");
   const importeValue = detalleForm.watch("importe");
@@ -223,7 +291,7 @@ const SolicitudDetalleDialogContent = ({
   );
 };
 
-const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => {
+const PoSolicitudDetalleForm = ({ articuloFilter }: PoSolicitudDetalleFormProps) => {
   const articuloFilterQuery = useMemo(
     () => (articuloFilter ? { tipo_articulo: articuloFilter } : undefined),
     [articuloFilter]
@@ -237,7 +305,7 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
       description="Completa los datos del artículo para la solicitud."
     >
       {(detalleForm) => (
-        <SolicitudDetalleDialogContent
+        <PoSolicitudDetalleDialogContent
           detalleForm={detalleForm as unknown as UseFormReturn<DetalleFormValues>}
           articuloFilterQuery={articuloFilterQuery}
           articuloFilter={articuloFilter}
@@ -247,22 +315,64 @@ const SolicitudDetalleForm = ({ articuloFilter }: SolicitudDetalleFormProps) => 
   );
 };
 
-const SolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }) => (
-  <>
-    <FormDetailSectionAddButton label="Agregar artículo" />
-    <FormDetailCardList<SolicitudDetalle>
-      emptyMessage="Todavía no agregaste artículos."
-    >
-      {(item, _index) => <SolicitudDetalleCard item={item} />}
-    </FormDetailCardList>
-    <FormDetailSectionMinItems itemName="artículo" />
-    <SolicitudDetalleForm articuloFilter={articuloFilter} />
-  </>
-);
+const PoSolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }) => {
+  const { handleStartCreate, handleDeleteBySortedIndex } = useFormDetailSectionContext();
 
-const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<string, unknown> }) => {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 -mt-4 pb-0 pt-0">
+        <FormDetailClearAllButton
+          size="sm"
+          className="h-8 px-3 text-xs"
+          confirmMessage="Seguro que deseas eliminar todos los articulos? Esto tambien desbloqueara el tipo de solicitud."
+        />
+        <AddItemButton
+          label="Agregar articulo"
+          onClick={handleStartCreate}
+          className="h-8 px-3 text-xs"
+        />
+      </div>
+      <FormDetailCardList<PoSolicitudDetalle>
+        emptyMessage="Todavia no agregaste articulos."
+        showEditAction={false}
+        showDeleteAction={false}
+        contentClassName="px-2 py-2 sm:px-3"
+        gridClassName="grid-cols-[minmax(0,1fr)] items-start gap-2"
+        listClassName="mt-1 space-y-1"
+        variant="row"
+      >
+        {(item, index) => (
+          <PoSolicitudDetalleCard
+            item={item}
+            onDelete={() => handleDeleteBySortedIndex(index)}
+          />
+        )}
+      </FormDetailCardList>
+      <FormDetailSectionMinItems itemName="articulo" />
+      <PoSolicitudDetalleForm articuloFilter={articuloFilter} />
+    </>
+  );
+};
+
+const DatosGeneralesContent = ({ 
+  oportunidadFilter, 
+  tipoSolicitudBloqueado 
+}: { 
+  oportunidadFilter?: Record<string, unknown>;
+  tipoSolicitudBloqueado?: boolean;
+}) => {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
+    <div className="min-w-0 md:col-span-2">
+      <TextInput
+        source="titulo"
+        label="Titulo"
+        className="w-full"
+        validate={required()}
+        maxLength={50}
+      />
+    </div>
+    
     <div className="min-w-0">
       <ReferenceInput
         source="tipo_solicitud_id"
@@ -273,72 +383,23 @@ const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Reco
           optionText="nombre" 
           className="w-full" 
           validate={required()} 
+          disabled={tipoSolicitudBloqueado}
         />
       </ReferenceInput>
     </div>
-    
+
     <div className="min-w-0">
-      <ReferenceInput
-        source="departamento_id"
-        reference="departamentos"
-        label="Departamento"
-      >
-        <SelectInput 
-          optionText="nombre" 
-          className="w-full" 
-          validate={required()} 
-        />
-      </ReferenceInput>
-    </div>
-    
-    <div className="min-w-0 overflow-hidden">
-      <ReferenceInput
-        source="centro_costo_id"
-        reference={CENTROS_COSTO_REFERENCE.resource}
-        label="Centro de costo"
-        filter={CENTROS_COSTO_REFERENCE.filter}
-      >
-        <SelectInput
-          optionText="nombre"
+      <FormField label="Proveedor">
+        <ComboboxQuery
+          {...PROVEEDORES_REFERENCE}
+          source="proveedor_id"
+          placeholder="Selecciona un proveedor"
           className="w-full"
-          triggerProps={{ className: "w-full truncate text-left" }}
-          validate={required()}
+          clearable
         />
-      </ReferenceInput>
+      </FormField>
     </div>
 
-    <FormField label="Oportunidad">
-      <ComboboxQuery
-        {...OPORTUNIDADES_REFERENCE}
-        source="oportunidad_id"
-        placeholder="Selecciona una oportunidad"
-        className="w-full"
-        clearable
-        filter={oportunidadFilter}
-        dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
-      />
-    </FormField>
-
-    <FormField label="Proveedor">
-      <ComboboxQuery
-        {...PROVEEDORES_REFERENCE}
-        source="proveedor_id"
-        placeholder="Selecciona un proveedor"
-        className="w-full"
-        clearable
-      />
-    </FormField>
-    
-    <div className="min-w-0">
-      <SelectInput
-        source="estado"
-        label="Estado"
-        choices={ESTADO_CHOICES}
-        className="w-full"
-        disabled
-      />
-    </div>
-    
     <div className="min-w-0">
       <TextInput
         source="fecha_necesidad"
@@ -362,7 +423,7 @@ const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Reco
         />
       </ReferenceInput>
     </div>
-    
+
     <TextInput
       source="comentario"
       label="Comentarios"
@@ -374,8 +435,57 @@ const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Reco
   );
 };
 
-const SolicitudFormFields = () => {
-  const form = useFormContext<Solicitud>();
+const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<string, unknown> }) => {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
+      <div className="min-w-0">
+        <ReferenceInput
+          source="departamento_id"
+          reference="departamentos"
+          label="Departamento"
+        >
+          <SelectInput 
+            optionText="nombre" 
+            className="w-full" 
+            validate={required()} 
+          />
+        </ReferenceInput>
+      </div>
+      
+      <div className="min-w-0 overflow-hidden">
+        <ReferenceInput
+          source="centro_costo_id"
+          reference={CENTROS_COSTO_REFERENCE.resource}
+          label="Centro de costo"
+          filter={CENTROS_COSTO_REFERENCE.filter}
+        >
+          <SelectInput
+            optionText="nombre"
+            className="w-full"
+            triggerProps={{ className: "w-full truncate text-left" }}
+            validate={required()}
+          />
+        </ReferenceInput>
+      </div>
+
+      <FormField label="Oportunidad">
+        <ComboboxQuery
+          {...OPORTUNIDADES_REFERENCE}
+          source="oportunidad_id"
+          placeholder="Selecciona una oportunidad"
+          className="w-full"
+          clearable
+          filter={oportunidadFilter}
+          dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
+        />
+      </FormField>
+
+    </div>
+  );
+};
+
+const PoSolicitudFormFields = () => {
+  const form = useFormContext<PoSolicitud>();
   const dataProvider = useDataProvider();
   const tipoSolicitudPreviousRef = useRef<string | undefined>(undefined);
   const { control } = form;
@@ -439,6 +549,22 @@ const SolicitudFormFields = () => {
     const normalized = rawFilter?.trim();
     return normalized ? normalized : undefined;
   }, [tipoSolicitudValue, tiposSolicitudCatalog]);
+
+  // Filtros dinámicos para referencias del schema
+  const dynamicReferenceFilters = useMemo(() => {
+    if (!articuloFilter) return {};
+    return {
+      articulo_id: {
+        tipo_articulo: articuloFilter,
+      },
+    };
+  }, [articuloFilter]);
+
+  // Determinar si el tipo de solicitud debe estar bloqueado
+  const tipoSolicitudBloqueado = useMemo(() => {
+    const detalles = Array.isArray(detallesValue) ? detallesValue : [];
+    return detalles.length > 0;
+  }, [detallesValue]);
 
   useEffect(() => {
     const currentTipo = tipoSolicitudValue
@@ -514,26 +640,48 @@ const SolicitudFormFields = () => {
       sections={[
         {
           id: "datos-generales",
-          title: "Datos generales",
+          title: "Cabecera",
           subtitle: generalSubtitle,
           defaultOpen: !idValue,
+          headerContent: <PoSolicitudHeaderInline />,
+          headerContentPosition: "inline",
+          contentPadding: "none",
+          contentClassName: "space-y-2 px-4 py-2",
           children: (
             <FormSimpleSection>
-              <DatosGeneralesContent oportunidadFilter={oportunidadFilter} />
+              <DatosGeneralesContent 
+                oportunidadFilter={oportunidadFilter} 
+                tipoSolicitudBloqueado={tipoSolicitudBloqueado}
+              />
+            </FormSimpleSection>
+          ),
+        },
+        {
+          id: "imputacion",
+          title: "Imputación",
+          defaultOpen: false,
+          children: (
+            <FormSimpleSection>
+              <ImputacionContent oportunidadFilter={oportunidadFilter} />
             </FormSimpleSection>
           ),
         },
         {
           id: "articulos",
-          title: "Artículos seleccionados",
+          title: "Detalle",
           defaultOpen: true,
+          contentPadding: "none",
+          contentClassName: "space-y-2 px-1 sm:px-1",
+          headerContent: <PoSolicitudTotalInline />,
+          headerContentPosition: "inline",
           children: (
             <FormDetailSection
               name="detalles"
-              schema={solicitudDetalleSchema}
+              schema={poSolicitudDetalleSchema}
               minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
+              dynamicFilters={dynamicReferenceFilters}
             >
-              <SolicitudDetalleContent articuloFilter={articuloFilter} />
+              <PoSolicitudDetalleContent articuloFilter={articuloFilter} />
             </FormDetailSection>
           ),
         },
@@ -542,8 +690,8 @@ const SolicitudFormFields = () => {
   );
 };
 
-const SolicitudTotals = () => {
-  const { control } = useFormContext<Solicitud>();
+const PoSolicitudTotalInline = () => {
+  const { control } = useFormContext<PoSolicitud>();
   const total = useWatch({ control, name: "total" }) ?? 0;
   const formattedTotal = useMemo(
     () => CURRENCY_FORMATTER.format(Number(total) || 0),
@@ -551,32 +699,40 @@ const SolicitudTotals = () => {
   );
 
   return (
-    <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-2 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="h-10 w-1 rounded-full bg-primary" aria-hidden="true" />
-          <p className="text-[11px] font-medium uppercase leading-4 tracking-wider text-muted-foreground">
-            Total estimado
-          </p>
-        </div>
-        <p className="text-lg font-semibold text-primary sm:text-xl">{formattedTotal}</p>
-      </div>
+    <div className="flex w-full items-center justify-end gap-2 text-[11px] leading-none text-muted-foreground">
+      <span className="uppercase tracking-wider">Total estimado</span>
+      <span className="font-semibold text-primary">{formattedTotal}</span>
+    </div>
+  );
+};
+
+const PoSolicitudHeaderInline = () => {
+  const { control } = useFormContext<PoSolicitud>();
+  const estadoValue = useWatch({ control, name: "estado" });
+  if (!estadoValue) {
+    return null;
+  }
+  const estadoKey = String(estadoValue);
+  const estadoLabel =
+    ESTADO_CHOICES.find((choice) => choice.id === estadoKey)?.name ||
+    estadoKey;
+  const badgeClass = ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800";
+  return (
+    <div className="flex w-full items-center justify-end">
+      <Badge className={badgeClass}>{estadoLabel}</Badge>
     </div>
   );
 };
 
 const FormFooter = () => (
-  <div className="flex flex-col gap-4">
-    <SolicitudTotals />
-    <FormToolbar />
-  </div>
+  <FormToolbar />
 );
 
-export const Form = () => {
+export const PoSolicitudForm = () => {
   const location = useLocation();
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const cabeceraDefaults = useMemo(
-    () => solicitudCabeceraSchema.defaults(),
+    () => poSolicitudCabeceraSchema.defaults(),
     []
   );
   const oportunidadIdFromLocation = useMemo(() => {
@@ -616,15 +772,21 @@ export const Form = () => {
       centro_costo_id: centroCostoDefault,
       oportunidad_id: oportunidadDefault ?? cabeceraDefaults.oportunidad_id,
       total: 0,
-      detalles: [] as SolicitudDetalle[],
+      detalles: [] as PoSolicitudDetalle[],
     };
   }, [cabeceraDefaults, today, oportunidadIdFromLocation]);
 
   return (
     <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>
-      <SolicitudFormFields />
+      <PoSolicitudFormFields />
     </SimpleForm>
   );
 };
+
+
+
+
+
+
 
 

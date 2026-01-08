@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
+const COMPRAS_RESOURCES = ["po-solicitudes"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
 const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
 const CONFIG_RESOURCES = ["users", "departamentos", "tipos-operacion", "tipos-solicitud", "metodos-pago", "tipos-comprobante"] as const;
@@ -91,7 +92,7 @@ const HIDDEN_RESOURCES = [
   "crm/catalogos/respuestas",
   "crm/chat",
   "crm/mensajes",
-] as const;
+];
 
 type ResourceName = string;
 
@@ -108,6 +109,10 @@ export function AppSidebar() {
 
   const constructoraResources = useMemo(
     () => CONSTRUCTORA_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
+  const comprasResources = useMemo(
+    () => COMPRAS_RESOURCES.filter((name) => resources[name]?.hasList),
     [resources],
   );
 
@@ -135,6 +140,7 @@ export function AppSidebar() {
     () =>
       new Set<ResourceName>([
         ...constructoraResources,
+        ...comprasResources,
         ...operationsResources,
         ...adminResources,
         ...configResources,
@@ -159,6 +165,7 @@ export function AppSidebar() {
   );
 
   const [constructoraOpen, setConstructoraOpen] = useState(false);
+  const [comprasOpen, setComprasOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(true);
   const [crmOpen, setCrmOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -197,6 +204,23 @@ export function AppSidebar() {
                   onToggle={() => setConstructoraOpen((open) => !open)}
                 >
                   {constructoraResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                </GroupMenuItem>
+              ) : null}
+
+              {comprasResources.length > 0 ? (
+                <GroupMenuItem
+                  label="Compras"
+                  icon={ShoppingCart}
+                  isOpen={comprasOpen}
+                  onToggle={() => setComprasOpen((open) => !open)}
+                >
+                  {comprasResources.map((name) => (
                     <ResourceSubMenuItem
                       key={name}
                       name={name}

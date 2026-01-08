@@ -165,7 +165,7 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
       className={cn(
         "filter-field flex flex-row items-center pointer-events-auto gap-2 relative",
         className,
-        filterElement.props.className,
+        typeof filterElement.props.className === 'string' ? filterElement.props.className : undefined,
       )}
     >
       {React.cloneElement(filterElement, {

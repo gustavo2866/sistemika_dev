@@ -8,6 +8,7 @@ export * from "./parte-diario";
 export * from "./departamentos";
 export * from "./tipos-solicitud";
 export * from "./solicitudes";
+export * from "./po-solicitudes";
 export * from "./centros-costo";
 export * from "./propiedades";
 export * from "./vacancias";

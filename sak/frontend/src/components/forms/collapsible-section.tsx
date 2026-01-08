@@ -18,6 +18,8 @@ interface CollapsibleSectionProps {
   children: ReactNode;
   /** Contenido adicional en el header */
   headerContent?: ReactNode;
+  /** Posicion del contenido adicional */
+  headerContentPosition?: "inline" | "below";
   /** Variante de estilo */
   variant?: "default" | "outlined" | "ghost";
   /** Tamaño del padding del contenido */
@@ -41,6 +43,7 @@ export const CollapsibleSection = ({
   defaultOpen = true,
   children,
   headerContent,
+  headerContentPosition = "below",
   variant = "default",
   contentPadding = "md",
   className,
@@ -114,10 +117,10 @@ export const CollapsibleSection = ({
         className={cn(
           "border-b transition-colors",
           collapsible && "cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-          isCompactHeader ? "px-2.5 pt-1 pb-1 sm:px-3 sm:pt-2 sm:pb-2" : "px-4 py-2",
+          isCompactHeader ? "px-2.5 pt-0 pb-1 sm:px-3 sm:pt-0.5 sm:pb-2" : "px-4 pt-0.5 pb-1.5",
         )}
       >
-        <div className={cn("flex", isCompactHeader ? "gap-1 items-center h-[16px]" : "gap-1.5 items-start")}>
+        <div className={cn("flex w-full", isCompactHeader ? "gap-1 items-center h-[16px]" : "gap-1.5 items-center")}>
           {collapsible && (
             <ChevronDown
               className={cn(
@@ -147,8 +150,15 @@ export const CollapsibleSection = ({
               </p>
             )}
           </div>
+          {headerContent && headerContentPosition === "inline" && (
+            <div className={cn(isCompactHeader ? "ml-2" : "ml-4")}>
+              {headerContent}
+            </div>
+          )}
         </div>
-        {headerContent && <div className={cn(isCompactHeader ? "mt-0" : "mt-2")}>{headerContent}</div>}
+        {headerContent && headerContentPosition === "below" && (
+          <div className={cn(isCompactHeader ? "mt-0" : "mt-2")}>{headerContent}</div>
+        )}
       </div>
       <CardContent
         className={cn(

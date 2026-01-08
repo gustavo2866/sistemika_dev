@@ -1,18 +1,14 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import type { ReactNode } from "react";
-import type { UserIdentity } from "ra-core";
 import { useDataProvider, useNotify, useRefresh } from "ra-core";
 import type { KanbanBucketDefinition } from "./kanban-buckets-grid";
 import { KanbanBoard } from "./kanban-board";
 import { KanbanFilterBar } from "./filter-bar";
 import { KanbanCollapseToggle } from "./collapse-toggle";
-import { UserSelect, UserSelector } from "@/components/forms";
-import type { UserSelectOption } from "@/components/forms/user-select";
 import { useKanbanCommonState } from "./use-kanban-common-state";
 import { useKanbanDragDrop } from "./use-kanban-drag-drop";
-import { useKanbanMoveController } from "./use-kanban-move-controller";
 import { cn } from "@/lib/utils";
 
 export interface KanbanBoardViewFilterConfig {
@@ -24,14 +20,6 @@ export interface KanbanBoardViewFilterConfig {
   filterBarWrap?: boolean;
   filterBarSpread?: boolean;
   collapseToggleAlignRight?: boolean;
-  enableOwnerFilter?: boolean;
-  ownerFilterPlaceholder?: string;
-  ownerFilterClassName?: string;
-  ownerTriggerClassName?: string;
-  ownerHideLabel?: boolean;
-  ownerHideLabelOnSmall?: boolean;
-  ownerFilterPlacement?: "left" | "right";
-  ownerOptions?: UserSelectOption[];
   enableCollapseToggle?: boolean;
   collapseToggleLabels?: { collapsed: string; expanded: string };
 }
@@ -54,12 +42,8 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
   // Optional filtering
   customFilter?: (item: TItem, customFilters: Record<string, any>) => boolean;
   searchFilter?: (item: TItem, searchTerm: string) => boolean;
-  ownerFilter?: (item: TItem, ownerId: string) => boolean;
   
   // UI
-  identity?: UserIdentity | null;
-  autoSelectOwnerId?: string | null;
-  
   // Filter configuration
   filterConfig?: KanbanBoardViewFilterConfig;
   customFilters?: (params: {
@@ -94,9 +78,6 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   getMoveSuccessMessage,
   customFilter,
   searchFilter,
-  ownerFilter,
-  identity,
-  autoSelectOwnerId,
   filterConfig = {},
   customFilters,
   initialCustomState = {},
@@ -144,34 +125,34 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
-  const { handleItemMove } = useKanbanMoveController<TItem, K>({
-    canMove: canItemMove,
-    onMove: async (item, bucket) => {
-      if (!item.id || !onItemMove) return false;
-      const payload = await Promise.resolve(onItemMove(item, bucket));
-      if (!payload) return false;
+  const handleItemMove = React.useCallback(
+    async (item: TItem, bucket: K) => {
+      const allowed = canItemMove ? await Promise.resolve(canItemMove(item, bucket)) : true;
+      if (!allowed) return;
 
-      if (resource) {
-        await dataProvider.update<TItem & { id: number }>(resource, {
-          id: item.id!,
-          data: payload,
-          previousData: item,
-        });
+      try {
+        if (!item.id || !onItemMove) return;
+        const payload = await Promise.resolve(onItemMove(item, bucket));
+        if (!payload) return;
+
+        if (resource) {
+          await dataProvider.update<TItem & { id: number }>(resource, {
+            id: item.id!,
+            data: payload,
+            previousData: item,
+          });
+        }
+
+        const message = getMoveSuccessMessage?.(item, bucket) ?? "Item movido correctamente";
+        notify(message, { type: "info" });
+        refresh();
+      } catch (err) {
+        console.error("Error al mover item:", err);
+        notify((err as any)?.message ?? "No se pudo mover el item", { type: "error" });
       }
     },
-    onMoveSuccess: (item, bucket) => {
-      const message = getMoveSuccessMessage?.(item, bucket) ?? "Item movido correctamente";
-      notify(message, { type: "info" });
-    },
-    onMoveError: (err) => {
-      console.error("Error al mover item:", err);
-      notify((err as any)?.message ?? "No se pudo mover el item", { type: "error" });
-    },
-    onAfterMove: () => {
-      refresh();
-    },
-    getItemId: (item) => item.id ?? null,
-  });
+    [canItemMove, dataProvider, getMoveSuccessMessage, notify, onItemMove, refresh, resource]
+  );
 
   const {
     draggedItem,
@@ -189,25 +170,11 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   const {
     searchValue,
     setSearchValue,
-    ownerFilter: ownerFilterValue,
-    setOwnerFilter: setOwnerFilterValue,
     collapsedAll,
     toggleCollapsedAll,
     isCardCollapsed,
     toggleCardCollapse,
   } = useKanbanCommonState({ storageKey: resource, initialCollapsedAll });
-
-  const autoSelectedOwnerRef = useRef(false);
-  useEffect(() => {
-    if (
-      autoSelectOwnerId &&
-      ownerFilterValue === "todos" &&
-      !autoSelectedOwnerRef.current
-    ) {
-      setOwnerFilterValue(autoSelectOwnerId);
-      autoSelectedOwnerRef.current = true;
-    }
-  }, [autoSelectOwnerId, ownerFilterValue, setOwnerFilterValue]);
 
   // Filtrado
   const filteredItems = useMemo(() => {
@@ -222,14 +189,9 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
         return false;
       }
       
-      // Owner filter
-      if (ownerFilterValue !== "todos" && ownerFilter && !ownerFilter(item, ownerFilterValue)) {
-        return false;
-      }
-      
       return true;
     });
-  }, [items, customState, searchValue, ownerFilterValue, customFilter, searchFilter, ownerFilter]);
+  }, [items, customState, searchValue, customFilter, searchFilter]);
 
   // Agrupación por buckets
   const bucketItems = useMemo(() => {
@@ -308,44 +270,9 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     filterBarWrap,
     filterBarSpread,
     collapseToggleAlignRight,
-    enableOwnerFilter = true,
-    ownerFilterPlaceholder = "Asignado",
-    ownerFilterClassName,
-    ownerTriggerClassName,
-    ownerHideLabel,
-    ownerHideLabelOnSmall,
-    ownerFilterPlacement = "right",
-    ownerOptions,
     enableCollapseToggle = true,
     collapseToggleLabels: _collapseToggleLabels = { collapsed: "Expandir todo", expanded: "Contraer todo" },
   } = filterConfig;
-
-  const ownerSelector = enableOwnerFilter ? (
-    <div className={cn("min-w-[170px]", ownerFilterClassName)}>
-      {ownerOptions ? (
-        <UserSelect
-          options={ownerOptions}
-          value={ownerFilterValue}
-          onValueChange={setOwnerFilterValue}
-          placeholder={ownerFilterPlaceholder}
-          triggerClassName={ownerTriggerClassName}
-          hideLabel={ownerHideLabel}
-          hideLabelOnSmall={ownerHideLabelOnSmall}
-        />
-      ) : (
-        <UserSelector
-          records={items as any[]}
-          identity={identity}
-          value={ownerFilterValue}
-          onValueChange={setOwnerFilterValue}
-          placeholder={ownerFilterPlaceholder}
-          triggerClassName={ownerTriggerClassName}
-          hideLabel={ownerHideLabel}
-          hideLabelOnSmall={ownerHideLabelOnSmall}
-        />
-      )}
-    </div>
-  ) : null;
 
   const collapseToggle = enableCollapseToggle ? (
     <KanbanCollapseToggle
@@ -365,11 +292,9 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       searchInputClassName={searchInputClassName}
       wrap={filterBarWrap}
       spread={filterBarSpread}
-      leftContent={ownerFilterPlacement === "left" ? ownerSelector : null}
       rightContent={
         <>
           {customFilters?.({ customState, setCustomState })}
-          {ownerFilterPlacement === "right" ? ownerSelector : null}
           {!collapseToggleAlignRight ? collapseToggle : null}
         </>
       }

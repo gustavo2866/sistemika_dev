@@ -9,6 +9,7 @@ export interface FormSection {
   defaultOpen?: boolean;
   children: ReactNode;
   headerContent?: ReactNode;
+  headerContentPosition?: "inline" | "below";
   variant?: "default" | "outlined" | "ghost";
   contentPadding?: "none" | "sm" | "md" | "lg";
   className?: string;

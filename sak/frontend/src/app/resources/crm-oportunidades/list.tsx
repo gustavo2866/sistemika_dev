@@ -70,7 +70,6 @@ const filters = [
     reference="crm/catalogos/tipos-operacion"
     label="Tipo de operación"
     alwaysOn
-    className="w-[160px] flex-shrink-0 [&_.form-label]:text-xs [&_.form-label]:mb-1 [&_button]:h-8 [&_button]:text-sm"
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
@@ -164,7 +163,7 @@ export const CRMOportunidadList = () => (
         source="estado"
         label="Estado"
         className="w-[140px] min-w-[140px]"
-        render={(record: { estado?: string; activo?: boolean }) => (
+        render={(record: any) => (
           record.activo === false ? (
             <div className="flex items-center gap-2">
               <CircleOff className="h-4 w-4 text-red-600" aria-label="Inactivo" />

@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 
 export interface KanbanCommonStateOptions {
   initialSearch?: string;
-  initialOwnerFilter?: string;
   storageKey?: string;
   initialCollapsedAll?: boolean;
 }
@@ -12,8 +11,6 @@ export interface KanbanCommonStateOptions {
 export interface KanbanCommonState {
   searchValue: string;
   setSearchValue: (value: string) => void;
-  ownerFilter: string;
-  setOwnerFilter: (value: string) => void;
   collapsedAll: boolean;
   toggleCollapsedAll: () => void;
   isCardCollapsed: (id: string | number | undefined | null) => boolean;
@@ -23,7 +20,6 @@ export interface KanbanCommonState {
 export const useKanbanCommonState = (
   {
     initialSearch = "",
-    initialOwnerFilter = "todos",
     storageKey,
     initialCollapsedAll = false,
   }: KanbanCommonStateOptions = {},
@@ -42,7 +38,6 @@ export const useKanbanCommonState = (
   };
   
   const [searchValue, setSearchValue] = useState(initialSearch);
-  const [ownerFilter, setOwnerFilter] = useState(initialOwnerFilter);
   const [collapsedAll, setCollapsedAllInternal] = useState(getInitialCollapsed);
   
   const setCollapsedAll = useCallback((value: boolean) => {
@@ -97,8 +92,6 @@ export const useKanbanCommonState = (
   return {
     searchValue,
     setSearchValue,
-    ownerFilter,
-    setOwnerFilter,
     collapsedAll,
     toggleCollapsedAll,
     isCardCollapsed,

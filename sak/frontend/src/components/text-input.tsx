@@ -33,7 +33,7 @@ export const TextInput = (props: TextInputProps) => {
     defaultValue: _defaultValue,
     ...rest
   } = props;
-  const { id, field } = useInput(props);
+  const { id, field, isRequired } = useInput(props);
 
   return (
     <FormField id={id} className={className} name={field.name}>
@@ -43,6 +43,7 @@ export const TextInput = (props: TextInputProps) => {
             label={label}
             source={source}
             resource={resource}
+            isRequired={isRequired}
             
           />
         </FormLabel>

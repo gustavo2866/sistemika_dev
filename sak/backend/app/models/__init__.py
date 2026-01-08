@@ -33,6 +33,18 @@ from .articulo import Articulo
 from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
+from .compras import (
+    EstadoPoSolicitud,
+    EstadoPoOrdenCompra,
+    EstadoPoFactura,
+    PoSolicitud,
+    PoSolicitudDetalle,
+    PoOrdenCompra,
+    PoOrdenCompraDetalle,
+    PoFactura,
+    PoFacturaDetalle,
+    PoFacturaImpuesto,
+)
 from .departamento import Departamento
 from .tipo_solicitud import TipoSolicitud
 from .solicitud import Solicitud, EstadoSolicitud
@@ -93,6 +105,16 @@ __all__ = [
     "Factura",
     "FacturaDetalle",
     "FacturaImpuesto",
+    "EstadoPoSolicitud",
+    "EstadoPoOrdenCompra",
+    "EstadoPoFactura",
+    "PoSolicitud",
+    "PoSolicitudDetalle",
+    "PoOrdenCompra",
+    "PoOrdenCompraDetalle",
+    "PoFactura",
+    "PoFacturaDetalle",
+    "PoFacturaImpuesto",
     "Departamento",
     "TipoSolicitud",
     "Solicitud",

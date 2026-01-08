@@ -11,6 +11,7 @@ export interface UseDetailCRUDReturn<_TForm extends FieldValues, TDetail> {
   handleAdd: () => void;
   handleEdit: (index: number) => void;
   handleDelete: (index: number) => void;
+  handleClearAll: () => void;
   handleSubmit: (normalized: TDetail, callback?: () => void) => void;
   handleCancel: () => void;
 }
@@ -63,6 +64,17 @@ export function useDetailCRUD<TForm extends FieldValues, TDetail extends { id?: 
     remove(index);
   };
 
+  const handleClearAll = () => {
+    // Eliminar todos los elementos del array
+    for (let i = fields.length - 1; i >= 0; i--) {
+      remove(i);
+    }
+    // Cerrar dialog si está abierto y resetear estado
+    setDialogOpen(false);
+    setEditingIndex(null);
+    detalleForm.reset(defaultValues);
+  };
+
   const handleSubmit = (normalized: TDetail, callback?: () => void) => {
     if (editingIndex == null) {
       append(
@@ -100,6 +112,7 @@ export function useDetailCRUD<TForm extends FieldValues, TDetail extends { id?: 
     handleAdd,
     handleEdit,
     handleDelete,
+    handleClearAll,
     handleSubmit,
     handleCancel,
   };

@@ -13,7 +13,8 @@ import { useDataProvider } from "ra-core";
 type ReferenceOption = { id: number; nombre: string };
 
 const useSchemaReferenceOptions = (
-  referenceFields: DetailSchemaReferenceField[] = []
+  referenceFields: DetailSchemaReferenceField[] = [],
+  dynamicFilters: Record<string, Record<string, any>> = {}
 ) => {
   const dataProvider = useDataProvider();
   const [optionsMap, setOptionsMap] = useState<
@@ -29,8 +30,9 @@ const useSchemaReferenceOptions = (
         sortField: field.sortField,
         sortOrder: field.sortOrder ?? "ASC",
         transformOption: field.transformOption,
+        dynamicFilter: dynamicFilters[field.fieldName] || {},
       })),
-    [referenceFields]
+    [referenceFields, dynamicFilters]
   );
 
   useEffect(() => {
@@ -49,7 +51,7 @@ const useSchemaReferenceOptions = (
             field: field.sortField ?? optionTextField,
             order: field.sortOrder,
           },
-          filter: {},
+          filter: field.dynamicFilter,
         })
         .then(({ data }) => {
           if (!mounted) return;
@@ -101,6 +103,7 @@ export interface FormDetailSectionProps<TSchema extends FormDetailSchema<any, an
   name: string;
   schema: TSchema;
   minItems?: number;
+  dynamicFilters?: Record<string, Record<string, any>>;
   onAfterSubmit?: (payload: FormDetailSectionSubmitPayload<
     SchemaDetail<TSchema>
   >) => void;
@@ -112,6 +115,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
   name,
   schema,
   minItems,
+  dynamicFilters,
   onAfterSubmit,
   onAfterDelete,
   children,
@@ -124,7 +128,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
   });
 
   const referenceFields = schema.referenceFields ?? [];
-  const referenceOptionsMap = useSchemaReferenceOptions(referenceFields);
+  const referenceOptionsMap = useSchemaReferenceOptions(referenceFields, dynamicFilters);
 
   const getReferenceOptions = (fieldName: string) =>
     referenceOptionsMap[fieldName] ?? [];
@@ -147,6 +151,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
     setEditingIndex,
     handleAdd,
     handleDelete,
+    handleClearAll,
     handleSubmit,
     handleCancel,
   } = useDetailCRUD<TForm, TDetail>({
@@ -232,6 +237,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
     handleEditBySortedIndex: editBySortedIndex,
     handleDeleteByOriginalIndex: deleteByOriginalIndex,
     handleDeleteBySortedIndex: deleteBySortedIndex,
+    handleClearAll,
     handleFormSubmit: submitHandler,
     handleCancel,
     resolveAction: actionRef,

@@ -136,7 +136,6 @@ const ListActions = () => (
 const OportunidadListContent = () => {
   const { data: oportunidades = [], isLoading, filterValues, setFilters } =
     useListContext<CRMOportunidad>();
-  const { identity } = useGetIdentity();
   const navigate = useNavigate();
   const appliedDefaultTipoRef = useRef(false);
   const { data: tiposOperacion } = useGetList("crm/catalogos/tipos-operacion", {
@@ -255,7 +254,6 @@ const OportunidadListContent = () => {
           onItemMove={prepareMoveOportunidadPayload}
           resource="crm/oportunidades"
           getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}
-          identity={identity}
           initialCollapsedAll={true}
           customFilter={(oportunidad) => shouldIncludeOportunidad(oportunidad)}
           filterConfig={{
@@ -264,7 +262,6 @@ const OportunidadListContent = () => {
             filterBarWrap: false,
             filterBarClassName: "w-fit px-2 py-1.5",
             collapseToggleAlignRight: false,
-            enableOwnerFilter: false,
             enableCollapseToggle: true,
           }}
           customFilters={() => (
