@@ -31,7 +31,7 @@ export const TipoSolicitudList = () => (
         <TextField source="nombre" />
       </DataTable.Col>
       <DataTable.Col source="descripcion" label="Descripción">
-        <TextField source="descripcion" />
+        <TextField source="descripcion" className="block max-w-[260px] truncate" />
       </DataTable.Col>
       <DataTable.Col source="tipo_articulo_filter" label="Filtro Artículo">
         <TextField source="tipo_articulo_filter" />
@@ -50,3 +50,5 @@ export const TipoSolicitudList = () => (
     </DataTable>
   </List>
 );
+
+

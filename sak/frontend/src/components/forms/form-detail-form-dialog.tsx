@@ -15,6 +15,7 @@ export interface FormDetailFormDialogProps<TForm extends FieldValues> {
   updateLabel?: string;
   children: FormDetailFormChildren<TForm>;
   showFooter?: boolean;
+  compact?: boolean;
 }
 
 export const FormDetailFormDialog = <TForm extends FieldValues>({
@@ -24,6 +25,7 @@ export const FormDetailFormDialog = <TForm extends FieldValues>({
   updateLabel = "Actualizar",
   children,
   showFooter = true,
+  compact = true,
 }: FormDetailFormDialogProps<TForm>) => {
   const {
     dialogOpen,
@@ -56,6 +58,7 @@ export const FormDetailFormDialog = <TForm extends FieldValues>({
       onCancel={handleCancel}
       submitLabel={resolvedSubmitLabel}
       showFooter={showFooter}
+      compact={compact}
     >
       <FormProvider {...detalleForm}>
         {typeof children === "function" ? children(detalleForm) : children}

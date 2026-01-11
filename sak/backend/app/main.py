@@ -34,9 +34,11 @@ from app.routers.metodo_pago_router import metodo_pago_router
 from app.routers.propiedad_router import propiedad_router
 from app.routers.setting_router import setting_router
 from app.routers.articulo_router import articulo_router
+from app.routers.tipo_articulo_router import tipo_articulo_router
 from app.routers.factura_router import factura_router
 from app.routers.factura_detalle_router import factura_detalle_router
 from app.routers.factura_impuesto_router import factura_impuesto_router
+from app.routers.comprobante_router import comprobante_router, file_router
 from app.routers.departamento_router import departamento_router
 from app.routers.tipo_solicitud_router import tipo_solicitud_router
 from app.routers.solicitud_router import solicitud_router
@@ -152,9 +154,12 @@ app.include_router(metodo_pago_router)
 app.include_router(propiedad_router)
 app.include_router(setting_router)
 app.include_router(articulo_router)
+app.include_router(tipo_articulo_router)
 app.include_router(factura_router)
 app.include_router(factura_detalle_router)
 app.include_router(factura_impuesto_router)
+app.include_router(comprobante_router)
+app.include_router(file_router)
 app.include_router(departamento_router)
 app.include_router(tipo_solicitud_router)
 app.include_router(solicitud_router)

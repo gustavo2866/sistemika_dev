@@ -5,21 +5,22 @@ import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
 import { FormLayout, FormSimpleSection } from "@/components/forms";
-import { TIPO_ARTICULO_CHOICES } from "./model";
+import { SelectInput } from "@/components/select-input";
 
 const ArticuloDatosGeneralesSection = () => (
   <FormSimpleSection>
     <div className="grid gap-4 md:grid-cols-2">
       <TextInput source="nombre" label="Nombre" validate={required()} className="w-full" />
-      <SelectInput
-        source="tipo_articulo"
-        label="Tipo de artículo"
-        choices={TIPO_ARTICULO_CHOICES}
-        className="w-full"
-        validate={required()}
-      />
+      <ReferenceInput
+        source="tipo_articulo_id"
+        reference="tipos-articulo"
+        label="Tipos de articulo"
+        filter={{ activo: true }}
+        perPage={200}
+      >
+        <SelectInput optionText="nombre" emptyText="Sin tipo" className="w-full" />
+      </ReferenceInput>
       <TextInput source="unidad_medida" label="Unidad de medida" validate={required()} className="w-full" />
       <TextInput source="marca" label="Marca" className="w-full" />
     </div>
@@ -60,3 +61,4 @@ export const ArticuloForm = () => (
     />
   </SimpleForm>
 );
+

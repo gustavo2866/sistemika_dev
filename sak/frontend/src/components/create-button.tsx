@@ -3,6 +3,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { Translate, useCreatePath, useResourceContext } from "ra-core";
 import { Link } from "react-router";
+import { cn } from "@/lib/utils";
 
 export type CreateButtonProps = {
   label?: string;
@@ -19,6 +20,11 @@ export const CreateButton = ({
   size,
   className,
 }: CreateButtonProps) => {
+  const resolvedSize = size ?? "sm";
+  const resolvedClassName = cn(
+    size == null && "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm",
+    className,
+  );
   const resource = useResourceContext();
   const createPath = useCreatePath();
   const link = createPath({
@@ -27,7 +33,11 @@ export const CreateButton = ({
   });
   return (
     <Link
-      className={buttonVariants({ variant: "outline", size, className })}
+      className={buttonVariants({
+        variant: "outline",
+        size: resolvedSize,
+        className: resolvedClassName,
+      })}
       to={link}
       state={state}
       onClick={stopPropagation}

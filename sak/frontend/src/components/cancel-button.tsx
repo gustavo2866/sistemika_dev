@@ -11,10 +11,10 @@ export function CancelButton(props: React.ComponentProps<"button">) {
       type="button"
       variant="ghost"
       onClick={() => navigate(-1)}
-      className="cursor-pointer"
+      className="h-7 px-2 text-[11px] sm:h-9 sm:px-4 sm:text-sm cursor-pointer"
       {...props}
     >
-      <CircleX />
+      <CircleX className="size-3 sm:size-4" />
       <Translate i18nKey="ra.action.cancel">Cancel</Translate>
     </Button>
   );

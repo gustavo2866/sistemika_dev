@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
+import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
 import { NumberField } from "@/components/number-field";
 import { DateField } from "@/components/date-field";
@@ -204,31 +204,31 @@ export const PoSolicitudList = () => {
           </div>
         </div>
       ) : null}
-      <DataTable rowClick="edit">
-        <DataTable.Col source="titulo" label="Titulo" className="min-w-[240px] max-w-[280px]">
+      <ResponsiveDataTable rowClick="edit">
+        <ResponsiveDataTable.Col source="titulo" label="Titulo" className="min-w-[240px] max-w-[280px]">
           <TextField source="titulo" className="truncate max-w-[280px]" />
-        </DataTable.Col>
-        <DataTable.Col source="solicitante_id" label="Solicitante" className="w-[200px]">
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col source="solicitante_id" label="Solicitante" className="w-[200px]">
           <ReferenceField source="solicitante_id" reference="users">
             <TextField
               source="nombre"
               className="truncate inline-block max-w-[180px]"
             />
           </ReferenceField>
-        </DataTable.Col>
-        <DataTable.Col source="fecha_necesidad" label="Fecha necesidad" className="w-[140px]">
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col source="fecha_necesidad" label="Fecha necesidad" className="w-[140px]">
           <DateField source="fecha_necesidad" />
-        </DataTable.Col>
-        <DataTable.Col source="estado" label="Estado" className="w-[120px]">
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[120px]">
           <BadgeField source="estado" />
-        </DataTable.Col>
-        <DataTable.Col source="total" label="Importe" className="w-[140px]">
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col source="total" label="Importe" className="w-[140px]">
           <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
-        </DataTable.Col>
-        <DataTable.Col label="Acciones" className="w-[120px]">
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
           <PoSolicitudActionsMenu />
-        </DataTable.Col>
-      </DataTable>
+        </ResponsiveDataTable.Col>
+      </ResponsiveDataTable>
     </List>
   );
 };

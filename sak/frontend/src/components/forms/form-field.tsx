@@ -35,8 +35,11 @@ export const FormField = ({
   const resolvedError = resolveErrorMessage(error);
 
   return (
-    <div className={className || "space-y-2"}>
-      <Label htmlFor={htmlFor} className="flex items-center gap-1">
+    <div className={className || "space-y-1 sm:space-y-2"}>
+      <Label
+        htmlFor={htmlFor}
+        className="flex items-center gap-1 text-[11px] leading-none sm:text-sm"
+      >
         {label}
         {required && <span className="text-destructive">*</span>}
       </Label>

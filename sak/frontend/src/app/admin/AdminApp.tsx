@@ -37,6 +37,7 @@ import {
   Factory,
   HandCoins,
   MessageCircle,
+  Settings,
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -44,6 +45,12 @@ import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users"
 import { TipoComprobanteList, TipoComprobanteCreate, TipoComprobanteEdit, TipoComprobanteShow } from "@/app/resources/tipos-comprobante";
 import { MetodoPagoList, MetodoPagoCreate, MetodoPagoEdit, MetodoPagoShow } from "@/app/resources/metodos-pago";
 import { ArticuloList, ArticuloCreate, ArticuloEdit, ArticuloShow } from "@/app/resources/articulos";
+import {
+  TipoArticuloList,
+  TipoArticuloCreate,
+  TipoArticuloEdit,
+  TipoArticuloShow,
+} from "@/app/resources/tipos-articulo";
 import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
   TipoPropiedadList,
@@ -85,6 +92,16 @@ import {
   PoSolicitudCreate,
   PoSolicitudEdit,
 } from "@/app/resources/po-solicitudes";
+import {
+  PoOrdenCompraList,
+  PoOrdenCompraCreate,
+  PoOrdenCompraEdit,
+} from "@/app/resources/po-ordenes-compra";
+import {
+  PoFacturaList,
+  PoFacturaCreate,
+  PoFacturaEdit,
+} from "@/app/resources/po-facturas";
 import {
   DepartamentoList,
   DepartamentoCreate,
@@ -208,6 +225,7 @@ import {
   EmprendimientoShow,
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
+import { PoSetupPage } from "@/app/resources/po-setup/PoSetupPage";
 
 declare const window: Window | undefined;
 
@@ -286,6 +304,16 @@ const AdminApp = () => {
         show={ArticuloShow}
         recordRepresentation="nombre"
         icon={Package}
+      />
+      <Resource
+        name="tipos-articulo"
+        list={TipoArticuloList}
+        create={TipoArticuloCreate}
+        edit={TipoArticuloEdit}
+        show={TipoArticuloShow}
+        recordRepresentation="nombre"
+        icon={Package}
+        options={{ label: "Tipos de Articulo" }}
       />
       <Resource
         name="propiedades"
@@ -368,6 +396,31 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={ListChecks}
         options={{ label: "Solicitudes" }}
+      />
+      <Resource
+        name="po-ordenes-compra"
+        list={PoOrdenCompraList}
+        create={PoOrdenCompraCreate}
+        edit={PoOrdenCompraEdit}
+        recordRepresentation="id"
+        icon={ShoppingCart}
+        options={{ label: "Ordenes de Compra" }}
+      />
+      <Resource
+        name="po-facturas"
+        list={PoFacturaList}
+        create={PoFacturaCreate}
+        edit={PoFacturaEdit}
+        recordRepresentation="id"
+        icon={Receipt}
+        options={{ label: "Facturas" }}
+      />
+      <Resource
+        name="po-setup"
+        list={PoSetupPage}
+        recordRepresentation="id"
+        icon={Settings}
+        options={{ label: "Setup" }}
       />
       <Resource
         name="recepciones"
@@ -574,6 +627,10 @@ const AdminApp = () => {
         <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
         <Route path="/po-solicitudes/create-mb" element={<PoSolicitudCreate />} />
         <Route path="/po-solicitudes/:id/edit-mb" element={<PoSolicitudEdit />} />
+        <Route path="/po-ordenes-compra/create-mb" element={<PoOrdenCompraCreate />} />
+        <Route path="/po-ordenes-compra/:id/edit-mb" element={<PoOrdenCompraEdit />} />
+        <Route path="/po-facturas/create-mb" element={<PoFacturaCreate />} />
+        <Route path="/po-facturas/:id/edit-mb" element={<PoFacturaEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />

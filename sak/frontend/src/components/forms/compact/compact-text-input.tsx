@@ -16,7 +16,7 @@ type CompactTextInputProps = TextInputProps & {
   textareaClassName?: string;
 };
 
-const compactInputClass = "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm";
+const compactInputClass = "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm min-h-[1.75rem] sm:min-h-[2rem]";
 const compactTextareaClass =
   "min-h-9 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm";
 
@@ -36,13 +36,18 @@ export const CompactTextInput = (props: CompactTextInputProps) => {
     defaultValue: _defaultValue,
     ...rest
   } = props;
-  const { id, field } = useInput(props);
+  const { id, field, isRequired } = useInput(props);
 
   return (
     <FormField id={id} className={className} name={field.name}>
       {label !== false && (
         <FormLabel>
-          <FieldTitle label={label} source={source} resource={resource} />
+          <FieldTitle
+            label={label}
+            source={source}
+            resource={resource}
+            isRequired={isRequired}
+          />
         </FormLabel>
       )}
       <FormControl>

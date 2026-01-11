@@ -10,6 +10,7 @@ import {
   Translate,
 } from "ra-core";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const ExportButton = (props: ExportButtonProps) => {
   const {
@@ -22,6 +23,11 @@ export const ExportButton = (props: ExportButtonProps) => {
     className = "cursor-pointer",
     size,
   } = props;
+  const resolvedSize = size ?? "sm";
+  const resolvedClassName = cn(
+    size == null && "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm",
+    className,
+  );
   const {
     filter,
     filterValues,
@@ -79,8 +85,8 @@ export const ExportButton = (props: ExportButtonProps) => {
       variant="outline"
       onClick={handleClick}
       disabled={total === 0}
-      className={className}
-      size={size}
+      className={resolvedClassName}
+      size={resolvedSize}
     >
       {icon}
       <Translate i18nKey={label}>Export</Translate>

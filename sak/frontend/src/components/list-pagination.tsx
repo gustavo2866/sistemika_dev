@@ -85,10 +85,13 @@ export const ListPagination = ({
 
   return (
     <div
-      className={`flex items-center justify-end space-x-2 gap-4 ${className}`}
+      className={cn(
+        "flex items-center justify-end gap-2 text-[11px] sm:gap-4 sm:text-sm",
+        className
+      )}
     >
       <div className="hidden md:flex items-center space-x-2">
-        <p className="text-sm font-medium">
+        <p className="text-[11px] font-medium sm:text-sm">
           <Translate i18nKey="ra.navigation.page_rows_per_page">
             Rows per page
           </Translate>
@@ -99,7 +102,7 @@ export const ListPagination = ({
             setPerPage(Number(value));
           }}
         >
-          <SelectTrigger className="h-8 w-[70px]">
+          <SelectTrigger className="h-8 w-[70px] text-[11px] sm:text-sm">
             <SelectValue placeholder={perPage} />
           </SelectTrigger>
           <SelectContent side="top">
@@ -111,7 +114,7 @@ export const ListPagination = ({
           </SelectContent>
         </Select>
       </div>
-      <div className="text-sm text-muted-foreground">
+      <div className="text-[11px] text-muted-foreground sm:text-sm">
         <Translate
           i18nKey="ra.navigation.page_range_info"
           options={{
@@ -132,7 +135,7 @@ export const ListPagination = ({
               href="#"
               onClick={pageChangeHandler(page - 1)}
               className={cn(
-                "gap-1 px-2.5 sm:pr-2.5",
+                "gap-1 px-2 h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:px-2.5 sm:text-sm",
                 !hasPreviousPage ? "opacity-50 cursor-not-allowed" : ""
               )}
               aria-label={translate("ra.navigation.previous", {
@@ -148,6 +151,7 @@ export const ListPagination = ({
                 href="#"
                 onClick={pageChangeHandler(pageNumber)}
                 isActive={pageNumber === page}
+                className="h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:text-sm"
               >
                 {pageNumber}
               </PaginationLink>
@@ -163,6 +167,7 @@ export const ListPagination = ({
                 href="#"
                 onClick={pageChangeHandler(boundaryCount + 1)}
                 isActive={boundaryCount + 1 === page}
+                className="h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:text-sm"
               >
                 {boundaryCount + 1}
               </PaginationLink>
@@ -174,6 +179,7 @@ export const ListPagination = ({
                 href="#"
                 onClick={pageChangeHandler(pageNumber)}
                 isActive={pageNumber === page}
+                className="h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:text-sm"
               >
                 {pageNumber}
               </PaginationLink>
@@ -189,6 +195,7 @@ export const ListPagination = ({
                 href="#"
                 onClick={pageChangeHandler(count - boundaryCount)}
                 isActive={count - boundaryCount === page}
+                className="h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:text-sm"
               >
                 {count - boundaryCount}
               </PaginationLink>
@@ -200,6 +207,7 @@ export const ListPagination = ({
                 href="#"
                 onClick={pageChangeHandler(pageNumber)}
                 isActive={pageNumber === page}
+                className="h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:text-sm"
               >
                 {pageNumber}
               </PaginationLink>
@@ -211,7 +219,7 @@ export const ListPagination = ({
               onClick={pageChangeHandler(page + 1)}
               size="default"
               className={cn(
-                "gap-1 px-2.5 sm:pr-2.5",
+                "gap-1 px-2 h-7 w-7 text-[11px] sm:h-9 sm:w-9 sm:px-2.5 sm:text-sm",
                 !hasNextPage ? "opacity-50 cursor-not-allowed" : ""
               )}
               aria-label={translate("ra.navigation.next", { _: "Next" })}

@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 interface FormDialogProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface FormDialogProps {
   submitLabel?: string;
   isSubmitting?: boolean;
   showFooter?: boolean;
+  compact?: boolean;
 }
 
 export const FormDialog = ({
@@ -33,23 +35,39 @@ export const FormDialog = ({
   submitLabel = "Guardar",
   isSubmitting = false,
   showFooter = true,
+  compact = false,
 }: FormDialogProps) => {
+  const contentClassName = compact ? "p-4 gap-3 sm:max-w-md" : "sm:max-w-lg";
+  const headerClassName = compact ? "gap-1" : undefined;
+  const titleClassName = compact ? "text-base" : undefined;
+  const descriptionClassName = compact ? "text-xs" : undefined;
+  const formClassName = compact ? "space-y-3" : "space-y-4";
+  const footerClassName = compact
+    ? "flex flex-col gap-1 sm:flex-row sm:justify-end"
+    : "flex flex-col gap-2 sm:flex-row sm:justify-end";
+  const buttonClassName = compact ? "h-8 text-xs" : undefined;
+  const buttonSize = compact ? "sm" : undefined;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+      <DialogContent className={contentClassName}>
+        <DialogHeader className={headerClassName}>
+          <DialogTitle className={titleClassName}>{title}</DialogTitle>
+          {description && (
+            <DialogDescription className={descriptionClassName}>
+              {description}
+            </DialogDescription>
+          )}
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className={formClassName}>
           {children}
           {showFooter && (
-            <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <DialogFooter className={footerClassName}>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={onCancel}
-                className="w-full sm:w-auto"
+                className={cn("w-full sm:w-auto", buttonClassName)}
+                size={buttonSize}
                 tabIndex={-1}
                 disabled={isSubmitting}
               >
@@ -57,7 +75,8 @@ export const FormDialog = ({
               </Button>
               <Button
                 type="submit"
-                className="w-full sm:w-auto"
+                className={cn("w-full sm:w-auto", buttonClassName)}
+                size={buttonSize}
                 tabIndex={0}
                 disabled={isSubmitting}
               >

@@ -6,8 +6,6 @@ import { required, useDataProvider } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { useLocation } from "react-router-dom";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
-import { SelectInput } from "@/components/select-input";
-import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -15,21 +13,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2 } from "lucide-react";
 import {
-  ComboboxQuery,
-  FormLayout,
-  FormField,
-  FormChoiceSelect,
-  FormSimpleSection,
-  FormDetailSection,
-  FormDetailCardList,
-  FormDetailCardCompact,
-  FormDetailSectionMinItems,
-  FormDetailFormDialog,
-  FormDetailClearAllButton,
   AddItemButton,
+  CompactComboboxQuery,
+  CompactFormField,
+  CompactFormGrid,
+  CompactFormSection,
+  CompactSelectInput,
+  CompactTextInput,
+  FormDetailCardCompact,
+  FormDetailCardList,
+  FormDetailClearAllButton,
+  FormDetailFormDialog,
+  FormDetailSection,
+  FormDetailSectionMinItems,
+  FormLayout,
   useAutoInitializeField,
   useFormDetailSectionContext,
 } from "@/components/forms";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   type PoSolicitud,
   type PoSolicitudDetalle,
@@ -86,7 +93,7 @@ const buildGeneralSubtitle = (
 
 type TipoSolicitudCatalog = Pick<
   TipoSolicitud,
-  "id" | "tipo_articulo_filter" | "departamento_default_id"
+  "id" | "tipo_articulo_filter_id" | "departamento_default_id"
 >;
 
 const PoSolicitudDetalleCard = ({
@@ -98,7 +105,6 @@ const PoSolicitudDetalleCard = ({
 }) => {
   const { getReferenceLabel } = useFormDetailSectionContext();
   const articuloLabel =
-    item.articulo_nombre ||
     getReferenceLabel("articulo_id", item.articulo_id) ||
     `ID: ${item.articulo_id}`;
   const articuloTitle = truncateText(articuloLabel, ARTICLE_NAME_LIMIT);
@@ -167,23 +173,30 @@ const PoSolicitudDetalleCard = ({
 };
 
 interface PoSolicitudDetalleFormProps {
-  articuloFilter?: string;
+  articuloFilterId?: number;
 }
 
 type PoSolicitudDetalleDialogContentProps = {
   detalleForm: UseFormReturn<DetalleFormValues>;
   articuloFilterQuery?: Record<string, unknown>;
-  articuloFilter?: string;
+  articuloFilterId?: number;
 };
 
 const PoSolicitudDetalleDialogContent = ({
   detalleForm,
   articuloFilterQuery,
-  articuloFilter,
+  articuloFilterId,
 }: PoSolicitudDetalleDialogContentProps) => {
   const cantidadValue = detalleForm.watch("cantidad");
   const precioValue = detalleForm.watch("precio");
   const importeValue = detalleForm.watch("importe");
+
+  // Debug log para ver si el filtro está llegando correctamente
+  useEffect(() => {
+    console.log("🔍 PoSolicitudDetalleDialogContent - articuloFilterId:", articuloFilterId);
+    console.log("🔍 PoSolicitudDetalleDialogContent - articuloFilterQuery:", articuloFilterQuery);
+  }, [articuloFilterId, articuloFilterQuery]);
+
   const importeDisplay = useMemo(() => {
     const asNumber = Number(importeValue ?? 0);
     return Number.isFinite(asNumber) ? asNumber.toFixed(2) : "0.00";
@@ -209,12 +222,12 @@ const PoSolicitudDetalleDialogContent = ({
 
   return (
     <>
-      <FormField
+      <CompactFormField
         label="Artículo"
         error={detalleForm.formState.errors.articulo_id}
         required
       >
-        <ComboboxQuery
+        <CompactComboboxQuery
           {...ARTICULOS_REFERENCE}
           value={detalleForm.watch("articulo_id")}
           onChange={(value: string) =>
@@ -224,34 +237,50 @@ const PoSolicitudDetalleDialogContent = ({
           }
           placeholder="Selecciona un artículo"
           filter={articuloFilterQuery}
-          dependsOn={articuloFilter ?? "all"}
+          dependsOn={articuloFilterId ?? "all"}
         />
-      </FormField>
+      </CompactFormField>
 
-      <FormField
+      <CompactFormField
         label="Descripción"
         error={detalleForm.formState.errors.descripcion}
         required
       >
-        <Textarea rows={3} {...detalleForm.register("descripcion")} />
-      </FormField>
+        <Textarea
+          rows={3}
+          className="min-h-9 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
+          {...detalleForm.register("descripcion")}
+        />
+      </CompactFormField>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormChoiceSelect
+      <CompactFormGrid columns="two">
+        <CompactFormField
           label="Unidad de medida"
           error={detalleForm.formState.errors.unidad_medida}
           required
-          choices={UNIDAD_MEDIDA_CHOICES}
-          value={detalleForm.watch("unidad_medida")}
-          onChange={(value) =>
-            detalleForm.setValue("unidad_medida", value, {
-              shouldValidate: true,
-            })
-          }
-          placeholder="Selecciona unidad"
-        />
+        >
+          <Select
+            value={detalleForm.watch("unidad_medida") ?? ""}
+            onValueChange={(value) =>
+              detalleForm.setValue("unidad_medida", value, {
+                shouldValidate: true,
+              })
+            }
+          >
+            <SelectTrigger className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm">
+              <SelectValue placeholder="Selecciona unidad" />
+            </SelectTrigger>
+            <SelectContent>
+              {UNIDAD_MEDIDA_CHOICES.map((choice) => (
+                <SelectItem key={String(choice.id)} value={String(choice.id)}>
+                  {choice.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CompactFormField>
 
-        <FormField
+        <CompactFormField
           label="Cantidad"
           error={detalleForm.formState.errors.cantidad}
           required
@@ -260,13 +289,14 @@ const PoSolicitudDetalleDialogContent = ({
             type="number"
             step="0.01"
             min="0"
+            className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
             {...detalleForm.register("cantidad", { valueAsNumber: true })}
           />
-        </FormField>
-      </div>
+        </CompactFormField>
+      </CompactFormGrid>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField
+      <CompactFormGrid columns="two">
+        <CompactFormField
           label="Precio unitario"
           error={detalleForm.formState.errors.precio}
           required
@@ -275,27 +305,39 @@ const PoSolicitudDetalleDialogContent = ({
             type="number"
             step="0.01"
             min="0"
+            className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
             {...detalleForm.register("precio", { valueAsNumber: true, min: 0 })}
           />
-        </FormField>
+        </CompactFormField>
 
-        <FormField
+        <CompactFormField
           label="Importe"
           error={detalleForm.formState.errors.importe}
         >
-          <Input type="text" value={importeDisplay} readOnly className="bg-muted/50" />
+          <Input
+            type="text"
+            value={importeDisplay}
+            readOnly
+            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+          />
           <input type="hidden" {...detalleForm.register("importe", { valueAsNumber: true })} />
-        </FormField>
-      </div>
+        </CompactFormField>
+      </CompactFormGrid>
     </>
   );
 };
 
-const PoSolicitudDetalleForm = ({ articuloFilter }: PoSolicitudDetalleFormProps) => {
+const PoSolicitudDetalleForm = ({ articuloFilterId }: PoSolicitudDetalleFormProps) => {
   const articuloFilterQuery = useMemo(
-    () => (articuloFilter ? { tipo_articulo: articuloFilter } : undefined),
-    [articuloFilter]
+    () => (articuloFilterId ? { tipo_articulo_id: articuloFilterId } : undefined),
+    [articuloFilterId]
   );
+
+  // Debug log para verificar el filtro
+  useEffect(() => {
+    console.log("🔍 PoSolicitudDetalleForm - articuloFilterId:", articuloFilterId);
+    console.log("🔍 PoSolicitudDetalleForm - articuloFilterQuery:", articuloFilterQuery);
+  }, [articuloFilterId, articuloFilterQuery]);
 
   return (
     <FormDetailFormDialog
@@ -308,14 +350,14 @@ const PoSolicitudDetalleForm = ({ articuloFilter }: PoSolicitudDetalleFormProps)
         <PoSolicitudDetalleDialogContent
           detalleForm={detalleForm as unknown as UseFormReturn<DetalleFormValues>}
           articuloFilterQuery={articuloFilterQuery}
-          articuloFilter={articuloFilter}
+          articuloFilterId={articuloFilterId}
         />
       )}
     </FormDetailFormDialog>
   );
 };
 
-const PoSolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string }) => {
+const PoSolicitudDetalleContent = ({ articuloFilterId }: { articuloFilterId?: number }) => {
   const { handleStartCreate, handleDeleteBySortedIndex } = useFormDetailSectionContext();
 
   return (
@@ -323,13 +365,13 @@ const PoSolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string
       <div className="flex items-center justify-between gap-2 border-b border-border/60 -mt-4 pb-0 pt-0">
         <FormDetailClearAllButton
           size="sm"
-          className="h-8 px-3 text-xs"
+          className="h-6 gap-1 px-2 text-[10px] sm:h-7 sm:px-2.5 sm:text-[11px]"
           confirmMessage="Seguro que deseas eliminar todos los articulos? Esto tambien desbloqueara el tipo de solicitud."
         />
         <AddItemButton
           label="Agregar articulo"
           onClick={handleStartCreate}
-          className="h-8 px-3 text-xs"
+          className="h-6 gap-1 px-2 text-[10px] sm:h-7 sm:px-2.5 sm:text-[11px]"
         />
       </div>
       <FormDetailCardList<PoSolicitudDetalle>
@@ -349,7 +391,7 @@ const PoSolicitudDetalleContent = ({ articuloFilter }: { articuloFilter?: string
         )}
       </FormDetailCardList>
       <FormDetailSectionMinItems itemName="articulo" />
-      <PoSolicitudDetalleForm articuloFilter={articuloFilter} />
+      <PoSolicitudDetalleForm articuloFilterId={articuloFilterId} />
     </>
   );
 };
@@ -362,9 +404,9 @@ const DatosGeneralesContent = ({
   tipoSolicitudBloqueado?: boolean;
 }) => {
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
+    <CompactFormGrid columns="two">
     <div className="min-w-0 md:col-span-2">
-      <TextInput
+      <CompactTextInput
         source="titulo"
         label="Titulo"
         className="w-full"
@@ -379,29 +421,29 @@ const DatosGeneralesContent = ({
         reference="tipos-solicitud"
         label="Tipo de solicitud"
       >
-        <SelectInput 
-          optionText="nombre" 
-          className="w-full" 
-          validate={required()} 
-          disabled={tipoSolicitudBloqueado}
+        <CompactSelectInput
+          optionText="nombre"
+          className="w-full"
+          validate={required()}
+          triggerProps={{ disabled: tipoSolicitudBloqueado }}
         />
       </ReferenceInput>
     </div>
 
     <div className="min-w-0">
-      <FormField label="Proveedor">
-        <ComboboxQuery
+      <CompactFormField label="Proveedor">
+        <CompactComboboxQuery
           {...PROVEEDORES_REFERENCE}
           source="proveedor_id"
           placeholder="Selecciona un proveedor"
           className="w-full"
           clearable
         />
-      </FormField>
+      </CompactFormField>
     </div>
 
     <div className="min-w-0">
-      <TextInput
+      <CompactTextInput
         source="fecha_necesidad"
         label="Fecha de necesidad"
         type="date"
@@ -416,7 +458,7 @@ const DatosGeneralesContent = ({
         reference="users"
         label="Solicitante"
       >
-        <SelectInput 
+        <CompactSelectInput 
           optionText="nombre" 
           className="w-full" 
           validate={required()} 
@@ -424,27 +466,27 @@ const DatosGeneralesContent = ({
       </ReferenceInput>
     </div>
 
-    <TextInput
+    <CompactTextInput
       source="comentario"
       label="Comentarios"
       multiline
       rows={3}
       className="md:col-span-2"
     />
-  </div>
+  </CompactFormGrid>
   );
 };
 
 const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<string, unknown> }) => {
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
+    <CompactFormGrid columns="two">
       <div className="min-w-0">
         <ReferenceInput
           source="departamento_id"
           reference="departamentos"
           label="Departamento"
         >
-          <SelectInput 
+          <CompactSelectInput 
             optionText="nombre" 
             className="w-full" 
             validate={required()} 
@@ -459,7 +501,7 @@ const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<s
           label="Centro de costo"
           filter={CENTROS_COSTO_REFERENCE.filter}
         >
-          <SelectInput
+          <CompactSelectInput
             optionText="nombre"
             className="w-full"
             triggerProps={{ className: "w-full truncate text-left" }}
@@ -468,8 +510,8 @@ const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<s
         </ReferenceInput>
       </div>
 
-      <FormField label="Oportunidad">
-        <ComboboxQuery
+      <CompactFormField label="Oportunidad">
+        <CompactComboboxQuery
           {...OPORTUNIDADES_REFERENCE}
           source="oportunidad_id"
           placeholder="Selecciona una oportunidad"
@@ -478,9 +520,9 @@ const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<s
           filter={oportunidadFilter}
           dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
         />
-      </FormField>
+      </CompactFormField>
 
-    </div>
+    </CompactFormGrid>
   );
 };
 
@@ -504,6 +546,9 @@ const PoSolicitudFormFields = () => {
           pagination: { page: 1, perPage: TIPOS_SOLICITUD_REFERENCE.limit },
           sort: { field: "nombre", order: "ASC" },
           filter: {},
+          meta: {
+            __expanded_list_relations__: ["tipo_articulo_filter_rel"]
+          }
         }
       );
       return data as TipoSolicitudCatalog[];
@@ -541,24 +586,22 @@ const PoSolicitudFormFields = () => {
     [mantenimientoTipoOperacionId]
   );
 
-  const articuloFilter = useMemo(() => {
-    const rawFilter = getArticuloFilterByTipo(
+  const articuloFilterId = useMemo(() => {
+    return getArticuloFilterByTipo(
       tipoSolicitudValue ? String(tipoSolicitudValue) : undefined,
       tiposSolicitudCatalog
     );
-    const normalized = rawFilter?.trim();
-    return normalized ? normalized : undefined;
   }, [tipoSolicitudValue, tiposSolicitudCatalog]);
 
   // Filtros dinámicos para referencias del schema
   const dynamicReferenceFilters = useMemo(() => {
-    if (!articuloFilter) return {};
+    if (!articuloFilterId) return {};
     return {
       articulo_id: {
-        tipo_articulo: articuloFilter,
+        tipo_articulo_id: articuloFilterId,
       },
     };
-  }, [articuloFilter]);
+  }, [articuloFilterId]);
 
   // Determinar si el tipo de solicitud debe estar bloqueado
   const tipoSolicitudBloqueado = useMemo(() => {
@@ -648,12 +691,12 @@ const PoSolicitudFormFields = () => {
           contentPadding: "none",
           contentClassName: "space-y-2 px-4 py-2",
           children: (
-            <FormSimpleSection>
+            <CompactFormSection>
               <DatosGeneralesContent 
                 oportunidadFilter={oportunidadFilter} 
                 tipoSolicitudBloqueado={tipoSolicitudBloqueado}
               />
-            </FormSimpleSection>
+            </CompactFormSection>
           ),
         },
         {
@@ -661,9 +704,9 @@ const PoSolicitudFormFields = () => {
           title: "Imputación",
           defaultOpen: false,
           children: (
-            <FormSimpleSection>
+            <CompactFormSection>
               <ImputacionContent oportunidadFilter={oportunidadFilter} />
-            </FormSimpleSection>
+            </CompactFormSection>
           ),
         },
         {
@@ -681,7 +724,7 @@ const PoSolicitudFormFields = () => {
               minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
               dynamicFilters={dynamicReferenceFilters}
             >
-              <PoSolicitudDetalleContent articuloFilter={articuloFilter} />
+              <PoSolicitudDetalleContent articuloFilterId={articuloFilterId} />
             </FormDetailSection>
           ),
         },

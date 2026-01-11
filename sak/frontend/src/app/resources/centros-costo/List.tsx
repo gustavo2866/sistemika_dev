@@ -12,7 +12,6 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
-import { ShowButton } from "@/components/show-button";
 import { CENTRO_COSTO_TIPO_CHOICES } from "./model";
 
 const filters = [
@@ -49,30 +48,38 @@ const ListActions = () => (
 export const CentroCostoList = () => (
   <List filters={filters} actions={<ListActions />} debounce={300} perPage={25}>
     <DataTable rowClick="edit">
-      <DataTable.Col source="nombre" label="Nombre" className="min-w-[220px]">
-        <TextField source="nombre" />
+      <DataTable.Col source="nombre" label="Nombre" className="w-[220px]">
+        <TextField source="nombre" className="block max-w-[220px] truncate" />
       </DataTable.Col>
-      <DataTable.Col source="tipo" label="Tipo" className="w-[160px]">
+      <DataTable.Col source="tipo" label="Tipo" className="w-[120px]">
         <BadgeField source="tipo" />
       </DataTable.Col>
-      <DataTable.Col source="codigo_contable" label="Código contable" className="w-[180px]">
+      <DataTable.Col source="codigo_contable" label="Código contable" className="w-[140px]">
         <TextField source="codigo_contable" />
       </DataTable.Col>
-      <DataTable.Col source="descripcion" label="Descripción" className="min-w-[260px]">
-        <TextField source="descripcion" />
+      <DataTable.Col
+        source="descripcion"
+        label="DescripciИn"
+        className="w-[260px]"
+        headerClassName="whitespace-normal break-words"
+      >
+        <TextField source="descripcion" className="block max-w-[260px] truncate" />
       </DataTable.Col>
       <DataTable.Col source="activo" label="Estado" className="w-[140px]">
         <BadgeField source="activo" />
       </DataTable.Col>
-      <DataTable.Col source="updated_at" label="Actualizado" className="w-[160px]">
-        <DateField source="updated_at" />
-      </DataTable.Col>
       <DataTable.Col label="Acciones" className="w-[140px]">
         <div className="flex items-center gap-2">
           <EditButton />
-          <ShowButton />
         </div>
       </DataTable.Col>
     </DataTable>
   </List>
 );
+
+
+
+
+
+
+

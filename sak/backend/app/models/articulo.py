@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Optional, TYPE_CHECKING
+from typing import ClassVar, List, Optional, TYPE_CHECKING
 
 from sqlalchemy import DECIMAL, Column
 from sqlmodel import Field, Relationship
@@ -8,7 +8,7 @@ from .base import Base
 from .proveedor import Proveedor
 
 if TYPE_CHECKING:
-    pass
+    from .tipo_articulo import TipoArticulo
 
 DEFAULT_ARTICULOS = (
     ('Cemento Portland 50kg', 'Material', 'bolsa', 'Holcim', 'CEM-PORT-50', 12500.00, 1),
@@ -57,9 +57,10 @@ DEFAULT_ARTICULOS = (
 
 class Articulo(Base, table=True):
     __tablename__ = "articulos"
+    __searchable_fields__: ClassVar[List[str]] = ["nombre", "sku", "marca"]
 
     nombre: str = Field(max_length=255, index=True)
-    tipo_articulo: str = Field(max_length=100, description="Categoria del articulo")
+    tipo_articulo_id: Optional[int] = Field(default=None, foreign_key="tipos_articulo.id", description="ID del tipo de artículo")
     unidad_medida: str = Field(max_length=50, description="Unidad de medida principal")
     marca: Optional[str] = Field(default=None, max_length=100)
     sku: Optional[str] = Field(default=None, max_length=100)
@@ -67,6 +68,7 @@ class Articulo(Base, table=True):
     proveedor_id: Optional[int] = Field(default=None, foreign_key="proveedores.id")
 
     proveedor: Optional[Proveedor] = Relationship(back_populates="articulos")
+    tipo_articulo_rel: Optional["TipoArticulo"] = Relationship(back_populates="articulos")
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Articulo(id={self.id}, nombre='{self.nombre}')"

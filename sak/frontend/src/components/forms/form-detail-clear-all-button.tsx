@@ -40,7 +40,7 @@ export const FormDetailClearAllButton = ({
       className={className}
       onClick={handleClick}
     >
-      <Trash2 className="h-4 w-4 mr-1" />
+      <Trash2 className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5" />
       {children || "Limpiar todo"}
     </Button>
   );

@@ -30,6 +30,7 @@ from .crm_celular import CRMCelular
 from .webhook_log import WebhookLog
 from .emprendimiento import Emprendimiento
 from .articulo import Articulo
+from .tipo_articulo import TipoArticulo
 from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
@@ -101,7 +102,8 @@ __all__ = [
     "CRMCelular",
     "WebhookLog",
     "Emprendimiento",
-    "Articulo", 
+    "Articulo",
+    "TipoArticulo", 
     "Factura",
     "FacturaDetalle",
     "FacturaImpuesto",

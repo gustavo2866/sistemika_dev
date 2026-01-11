@@ -208,10 +208,13 @@ export const SolicitudList = () => {
         <DataTable.Col source="id" label="ID" className="w-[80px]">
           <TextField source="id" />
         </DataTable.Col>
-        <DataTable.Col source="tipo_solicitud_id" label="Tipo" className="w-[180px]">
-          <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud">
-            <TextField source="nombre" />
-          </ReferenceField>
+        <DataTable.Col source="tipo_solicitud_id" label="Tipo" className="w-[200px]">
+          <div className="flex flex-col">
+            <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud">
+              <TextField source="nombre" />
+            </ReferenceField>
+            <DateField source="fecha_necesidad" className="text-xs text-slate-500" />
+          </div>
         </DataTable.Col>
         <DataTable.Col source="departamento_id" label="Departamento" className="w-[180px]">
           <ReferenceField source="departamento_id" reference="departamentos">
@@ -225,9 +228,6 @@ export const SolicitudList = () => {
         </DataTable.Col>
         <DataTable.Col source="estado" label="Estado" className="w-[120px]">
           <BadgeField source="estado" />
-        </DataTable.Col>
-        <DataTable.Col source="fecha_necesidad" label="Fecha necesidad" className="w-[140px]">
-          <DateField source="fecha_necesidad" />
         </DataTable.Col>
         <DataTable.Col source="solicitante_id" label="Solicitante" className="w-[200px]">
           <ReferenceField source="solicitante_id" reference="users">

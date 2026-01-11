@@ -34,15 +34,17 @@ export const FormDetailCardCompact = ({
 
   return (
     <div className={cn("space-y-1", className)}>
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2 sm:gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm leading-4 text-foreground">{title}</div>
+          <div className="truncate text-[12px] leading-4 text-foreground sm:text-sm">
+            {title}
+          </div>
           {subtitle ? (
-            <div className="text-[11px] leading-4 text-muted-foreground">
+            <div className="text-[10px] leading-4 text-muted-foreground sm:text-[11px]">
               {subtitle}
             </div>
           ) : metaInline ? (
-            <div className="truncate text-[11px] leading-4 text-muted-foreground">
+            <div className="truncate text-[10px] leading-4 text-muted-foreground sm:text-[11px]">
               {metaInline}
             </div>
           ) : null}
@@ -51,7 +53,7 @@ export const FormDetailCardCompact = ({
       </div>
 
       {children ? (
-        <div className="text-[10px] leading-4 text-muted-foreground">
+        <div className="text-[9px] leading-4 text-muted-foreground sm:text-[10px]">
           {children}
         </div>
       ) : null}

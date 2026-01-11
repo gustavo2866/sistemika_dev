@@ -117,7 +117,9 @@ export const CollapsibleSection = ({
         className={cn(
           "border-b transition-colors",
           collapsible && "cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-          isCompactHeader ? "px-2.5 pt-0 pb-1 sm:px-3 sm:pt-0.5 sm:pb-2" : "px-4 pt-0.5 pb-1.5",
+          isCompactHeader
+            ? "px-2.5 pt-0 pb-1 sm:px-3 sm:pt-0.5 sm:pb-2"
+            : "px-2.5 pt-0 pb-1 sm:px-4 sm:pt-0.5 sm:pb-1.5",
         )}
       >
         <div className={cn("flex w-full", isCompactHeader ? "gap-1 items-center h-[16px]" : "gap-1.5 items-center")}>
@@ -125,7 +127,7 @@ export const CollapsibleSection = ({
             <ChevronDown
               className={cn(
                 "transition-transform duration-200",
-                isCompactHeader ? "h-2.5 w-2.5" : "h-4 w-4",
+                isCompactHeader ? "h-2.5 w-2.5" : "h-3.5 w-3.5 sm:h-4 sm:w-4",
                 open ? "" : "-rotate-90"
               )}
             />
@@ -134,7 +136,9 @@ export const CollapsibleSection = ({
             <h3
               className={cn(
                 "truncate",
-                isCompactHeader ? "text-[11px] font-medium leading-none !m-0 !p-0" : "text-base font-semibold",
+                isCompactHeader
+                  ? "text-[11px] font-medium leading-none !m-0 !p-0"
+                  : "text-[12px] font-semibold sm:text-base",
               )}
             >
               {title}
@@ -143,7 +147,9 @@ export const CollapsibleSection = ({
               <p
                 className={cn(
                   "text-muted-foreground truncate",
-                  isCompactHeader ? "text-[9px] leading-none" : "text-xs",
+                  isCompactHeader
+                    ? "text-[9px] leading-none"
+                    : "text-[10px] leading-none sm:text-xs",
                 )}
               >
                 {resolvedSubtitle}

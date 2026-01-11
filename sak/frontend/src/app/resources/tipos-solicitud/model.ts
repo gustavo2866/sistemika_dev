@@ -53,6 +53,7 @@ export type TipoSolicitud = {
   nombre: string;
   descripcion?: string;
   tipo_articulo_filter?: TipoArticuloValue | null;
+  tipo_articulo_filter_id?: number | null;
   articulo_default_id?: number;
   departamento_default_id?: number;
   activo: boolean;
@@ -68,12 +69,16 @@ export type TipoSolicitud = {
     id: number;
     nombre: string;
   };
+  tipo_articulo_filter_rel?: {
+    id: number;
+    nombre: string;
+  };
 };
 
 export type TipoSolicitudFormValues = {
   nombre: string;
   descripcion?: string;
-  tipo_articulo_filter?: TipoArticuloValue | "";
+  tipo_articulo_filter_id?: string; // string para ComboboxQuery
   articulo_default_id?: string; // string para ComboboxQuery
   departamento_default_id?: string; // string para ComboboxQuery
   activo: boolean;
@@ -98,10 +103,11 @@ export const tipoSolicitudSchema = createEntitySchema<
       maxLength: VALIDATION_RULES.DESCRIPCION.MAX_LENGTH,
       defaultValue: "",
     }),
-    tipo_articulo_filter: stringField({
+    tipo_articulo_filter_id: referenceField({
+      resource: "tipos-articulo",
+      labelField: "nombre",
       required: false,
-      maxLength: VALIDATION_RULES.TIPO_ARTICULO_FILTER.MAX_LENGTH,
-      defaultValue: "" as TipoArticuloValue | "",
+      defaultValue: "",
     }),
     articulo_default_id: referenceField({
       resource: ARTICULOS_REFERENCE.resource,
@@ -125,7 +131,7 @@ export const tipoSolicitudSchema = createEntitySchema<
 export const TIPO_SOLICITUD_DEFAULT: TipoSolicitudFormValues = {
   nombre: "",
   descripcion: "",
-  tipo_articulo_filter: "" as TipoArticuloValue | "",
+  tipo_articulo_filter_id: undefined,
   articulo_default_id: undefined,
   departamento_default_id: undefined,
   activo: true,

@@ -30,7 +30,7 @@ export const DepartamentoList = () => (
         <TextField source="nombre" />
       </DataTable.Col>
       <DataTable.Col source="descripcion" label="Descripción">
-        <TextField source="descripcion" />
+        <TextField source="descripcion" className="block max-w-[260px] truncate" />
       </DataTable.Col>
       <DataTable.Col source="activo" label="Estado">
         <BadgeField source="activo" />
@@ -41,5 +41,6 @@ export const DepartamentoList = () => (
     </DataTable>
   </List>
 );
+
 
 

@@ -130,7 +130,12 @@ const StyledForm = (props: React.FormHTMLAttributes<HTMLFormElement>) => {
     <form
       {...props}
       className={cn(
-        "flex flex-row justify-start items-center gap-x-3 gap-y-3 pointer-events-none flex-wrap",
+        "flex flex-row justify-start items-center gap-x-2 gap-y-2 pointer-events-none flex-wrap sm:gap-x-3 sm:gap-y-3",
+        "[&_input]:h-7 [&_input]:px-2 [&_input]:text-[11px] sm:[&_input]:h-9 sm:[&_input]:px-3 sm:[&_input]:text-sm",
+        "[&_button]:h-7 [&_button]:px-2 [&_button]:text-[11px] sm:[&_button]:h-9 sm:[&_button]:px-3 sm:[&_button]:text-sm",
+        "[&_[data-slot=form-label]]:text-[11px] sm:[&_[data-slot=form-label]]:text-sm",
+        "[&_[data-slot=select-trigger]]:h-7 [&_[data-slot=select-trigger]]:px-2 [&_[data-slot=select-trigger]]:text-[11px] sm:[&_[data-slot=select-trigger]]:h-9 sm:[&_[data-slot=select-trigger]]:px-3 sm:[&_[data-slot=select-trigger]]:text-sm",
+        "[&_[data-slot=select-value]]:text-[11px] sm:[&_[data-slot=select-value]]:text-sm",
         "[&_.form-helper-text]:hidden",
         props.className,
       )}
@@ -163,7 +168,7 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
     <div
       data-source={filterElement.props.source}
       className={cn(
-        "filter-field flex flex-row items-center pointer-events-auto gap-2 relative",
+        "filter-field flex flex-row items-center pointer-events-auto gap-1 relative sm:gap-2",
         className,
         typeof filterElement.props.className === 'string' ? filterElement.props.className : undefined,
       )}
@@ -180,7 +185,7 @@ export const FilterFormInput = (inProps: FilterFormInputProps) => {
           type="button"
           variant="ghost"
           size="sm"
-          className="hide-filter h-8 w-8 cursor-pointer flex-shrink-0"
+          className="hide-filter h-6 w-6 cursor-pointer flex-shrink-0 sm:h-8 sm:w-8"
           onClick={handleHide}
           data-key={filterElement.props.source}
           title={translate("ra.action.remove_filter")}
@@ -314,9 +319,12 @@ export const FilterButton = (props: FilterButtonProps) => {
           <Button
             type="button"
             variant={variant}
-            size={size}
+            size={size ?? "sm"}
             aria-haspopup="true"
-            className={cn("add-filter", buttonClassName)}
+            className={cn(
+              "add-filter h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm",
+              buttonClassName
+            )}
           >
             <Filter className="h-4 w-4" />
             {translate("ra.action.add_filter")}

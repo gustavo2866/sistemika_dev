@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
@@ -28,20 +28,20 @@ const ListActions = () => (
 export const ProveedorList = () => (
   <List filters={filters} actions={<ListActions />} debounce={300} perPage={25}>
     <DataTable rowClick="edit">
-      <DataTable.Col source="nombre">
-        <TextField source="nombre" />
+      <DataTable.Col source="nombre" className="w-[160px]">
+        <TextField source="nombre" className="block max-w-[160px] whitespace-normal break-words" />
       </DataTable.Col>
-      <DataTable.Col source="razon_social" label="Razon social">
-        <TextField source="razon_social" />
+      <DataTable.Col source="razon_social" label="Razon social" className="w-[220px]">
+        <TextField source="razon_social" className="block max-w-[220px] whitespace-normal break-words" />
       </DataTable.Col>
-      <DataTable.Col source="cuit" label="CUIT">
-        <TextField source="cuit" />
+      <DataTable.Col source="cuit" label="CUIT" className="w-[160px]">
+        <TextField source="cuit" className="block max-w-[160px] truncate" />
       </DataTable.Col>
-      <DataTable.Col source="email">
-        <TextField source="email" />
+      <DataTable.Col source="email" label="Email" className="w-[220px]">
+        <TextField source="email" className="block max-w-[220px] truncate" />
       </DataTable.Col>
-      <DataTable.Col source="telefono" label="Telefono">
-        <TextField source="telefono" />
+      <DataTable.Col source="telefono" label="Telefono" className="w-[160px]">
+        <TextField source="telefono" className="block max-w-[160px] truncate" />
       </DataTable.Col>
       <DataTable.Col source="activo" label="Estado">
         <BadgeField source="activo" />
@@ -52,3 +52,5 @@ export const ProveedorList = () => (
     </DataTable>
   </List>
 );
+
+

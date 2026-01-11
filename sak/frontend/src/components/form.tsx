@@ -76,7 +76,7 @@ export function FormField({ className, id, name, ...props }: FormItemProps) {
     <FormItemContext.Provider value={contextValue}>
       <div
         data-slot="form-item"
-        className={cn("grid gap-1.5", className)}
+        className={cn("grid gap-1 sm:gap-1.5", className)}
         role="group"
         {...props}
       />
@@ -99,7 +99,10 @@ export function FormLabel({
     <Label
       data-slot="form-label"
       data-error={!!error}
-      className={cn("data-[error=true]:text-destructive", className)}
+      className={cn(
+        "text-[11px] leading-none sm:text-sm data-[error=true]:text-destructive",
+        className
+      )}
       htmlFor={formItemId}
       {...props}
     />
@@ -248,25 +251,33 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
 
   const displayedLabel = label && translate(label, { _: label });
 
+  const resolvedClassName = cn(
+    "h-7 px-2 text-[11px] sm:h-9 sm:px-4 sm:text-sm",
+    disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+    className,
+  );
+  const resolvedIcon = isSubmitting ? (
+    <Loader2 className="mr-2 size-3 animate-spin sm:size-4" />
+  ) : (
+    icon
+  );
+
   return (
     <Button
       variant={variant}
       type={type}
       disabled={disabled}
       onClick={handleClick}
-      className={cn(
-        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-        className,
-      )}
+      className={resolvedClassName}
       {...rest}
     >
-      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : icon}
+      {resolvedIcon}
       {displayedLabel}
     </Button>
   );
 };
 
-const defaultIcon = <Save className="h-4 w-4" />;
+const defaultIcon = <Save className="size-3 sm:size-4" />;
 
 interface Props<
   RecordType extends RaRecord = RaRecord,

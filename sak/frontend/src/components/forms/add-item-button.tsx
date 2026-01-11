@@ -19,7 +19,7 @@ export const AddItemButton = forwardRef<HTMLButtonElement, AddItemButtonProps>(
         className={className || "mt-3 w-full"}
         disabled={disabled}
       >
-        <Plus className="mr-2 h-4 w-4" />
+        <Plus className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5" />
         {label}
       </Button>
     );

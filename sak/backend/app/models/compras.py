@@ -164,15 +164,11 @@ class PoOrdenCompra(Base, table=True):
 
     __tablename__ = "po_ordenes_compra"
 
-    __searchable_fields__ = ["numero"]
+    __searchable_fields__ = ["titulo"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
 
-    numero: str = Field(max_length=50, description="Numero de orden de compra")
-    fecha_emision: date = Field(description="Fecha de emision")
-    fecha_recepcion: datetime = Field(
-        default_factory=datetime.now,
-        description="Fecha de recepcion en sistema",
-    )
+    titulo: str = Field(max_length=50, description="Titulo de orden de compra")
+
     estado: str = Field(
         default="borrador",
         sa_column=Column(String(20), nullable=False),
@@ -187,12 +183,22 @@ class PoOrdenCompra(Base, table=True):
     proveedor_id: int = Field(foreign_key="proveedores.id", description="ID del proveedor")
     usuario_responsable_id: int = Field(foreign_key="users.id", description="ID del usuario responsable")
     metodo_pago_id: int = Field(default=1, foreign_key="metodos_pago.id", description="ID del metodo de pago")
-    registrado_por_id: int = Field(default=1, foreign_key="users.id", description="Usuario que registro la OC")
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo asociado (opcional)"
+    )
+    tipo_solicitud_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_solicitud.id",
+        description="Tipo de solicitud asociado (opcional)"
+    )
 
     proveedor: "Proveedor" = Relationship()
     metodo_pago: "MetodoPago" = Relationship()
     usuario_responsable: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoOrdenCompra.usuario_responsable_id"})
-    registrado_por: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoOrdenCompra.registrado_por_id"})
+    centro_costo: Optional["CentroCosto"] = Relationship()
+    tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
     detalles: List["PoOrdenCompraDetalle"] = Relationship(
         back_populates="orden_compra",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -204,9 +210,8 @@ class PoOrdenCompraDetalle(Base, table=True):
 
     __tablename__ = "po_orden_compra_detalles"
 
-    __searchable_fields__ = ["descripcion", "codigo_producto"]
+    __searchable_fields__ = ["descripcion"]
 
-    codigo_producto: Optional[str] = Field(default=None, max_length=50, description="Codigo del producto")
     descripcion: str = Field(max_length=500, description="Descripcion del producto/servicio")
     cantidad: Decimal = Field(sa_column=Column(DECIMAL(10, 3)), description="Cantidad")
     unidad_medida: Optional[str] = Field(default=None, max_length=10, description="Unidad de medida")
@@ -225,13 +230,32 @@ class PoOrdenCompraDetalle(Base, table=True):
     porcentaje_iva: Decimal = Field(sa_column=Column(DECIMAL(5, 2)), description="Porcentaje de IVA aplicado")
     importe_iva: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Importe de IVA")
     total_linea: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Total de la linea")
-    orden: int = Field(description="Orden de la linea en la OC")
+    cantidad_recibida: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(10, 3), nullable=False, server_default="0"),
+        description="Cantidad recibida"
+    )
+    cantidad_facturada: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(10, 3), nullable=False, server_default="0"),
+        description="Cantidad facturada"
+    )
 
     orden_compra_id: int = Field(foreign_key="po_ordenes_compra.id", description="ID de la orden de compra")
-    solicitud_detalle_id: int = Field(foreign_key="po_solicitud_detalles.id", description="ID del detalle de solicitud")
+    articulo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="articulos.id",
+        description="ID del articulo (opcional)"
+    )
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo asociado (opcional)"
+    )
 
     orden_compra: "PoOrdenCompra" = Relationship(back_populates="detalles")
-    solicitud_detalle: "PoSolicitudDetalle" = Relationship()
+    articulo: Optional["Articulo"] = Relationship()
+    centro_costo: Optional["CentroCosto"] = Relationship()
 
 
 class PoFactura(Base, table=True):
@@ -251,7 +275,6 @@ class PoFactura(Base, table=True):
 
     fecha_emision: str = Field(description="Fecha de emision (formato ISO: YYYY-MM-DD)")
     fecha_vencimiento: Optional[str] = Field(default=None, description="Fecha de vencimiento (formato ISO: YYYY-MM-DD)")
-    fecha_recepcion: datetime = Field(default_factory=datetime.now, description="Fecha de recepcion en sistema")
 
     subtotal: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Subtotal sin impuestos")
     total_impuestos: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Total de impuestos")
@@ -269,20 +292,26 @@ class PoFactura(Base, table=True):
         description="ID del comprobante asociado",
     )
     proveedor_id: int = Field(foreign_key="proveedores.id", description="ID del proveedor")
-    tipo_operacion_id: int = Field(foreign_key="tipos_operacion.id", description="ID del tipo de operacion")
     usuario_responsable_id: int = Field(foreign_key="users.id", description="ID del usuario responsable del gasto")
     metodo_pago_id: int = Field(default=1, foreign_key="metodos_pago.id", description="ID del metodo de pago")
-    registrado_por_id: int = Field(default=1, foreign_key="users.id", description="Usuario que registro la factura")
-    propiedad_id: Optional[int] = Field(default=None, foreign_key="propiedades.id", description="Propiedad asociada si corresponde")
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo asociado (opcional)"
+    )
+    tipo_solicitud_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_solicitud.id",
+        description="Tipo de solicitud asociado (opcional)"
+    )
 
     proveedor: "Proveedor" = Relationship()
     comprobante: Optional["Comprobante"] = Relationship()
     tipo_comprobante: "TipoComprobante" = Relationship()
     metodo_pago: "MetodoPago" = Relationship()
-    propiedad: Optional["Propiedad"] = Relationship()
-    tipo_operacion: "TipoOperacion" = Relationship()
     usuario_responsable: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoFactura.usuario_responsable_id"})
-    registrado_por: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoFactura.registrado_por_id"})
+    centro_costo: Optional["CentroCosto"] = Relationship()
+    tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
     detalles: List["PoFacturaDetalle"] = Relationship(back_populates="factura")
     impuestos: List["PoFacturaImpuesto"] = Relationship(back_populates="factura")
 
@@ -313,16 +342,23 @@ class PoFacturaDetalle(Base, table=True):
     porcentaje_iva: Decimal = Field(sa_column=Column(DECIMAL(5, 2)), description="Porcentaje de IVA aplicado")
     importe_iva: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Importe de IVA")
     total_linea: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Total de la linea")
-    orden: int = Field(description="Orden de la linea en la factura")
+    orden: int = Field(description="Orden del item")
 
     factura_id: int = Field(foreign_key="po_facturas.id", description="ID de la factura")
-    orden_compra_detalle_id: int = Field(
-        foreign_key="po_orden_compra_detalles.id",
-        description="ID del detalle de la orden de compra",
+    articulo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="articulos.id",
+        description="ID del articulo (opcional)",
+    )
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo asociado (opcional)"
     )
 
     factura: "PoFactura" = Relationship(back_populates="detalles")
-    orden_compra_detalle: "PoOrdenCompraDetalle" = Relationship()
+    articulo: Optional["Articulo"] = Relationship()
+    centro_costo: Optional["CentroCosto"] = Relationship()
 
 
 class PoFacturaImpuesto(Base, table=True):

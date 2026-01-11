@@ -1,9 +1,12 @@
 """
 Modelo para Tipo de Solicitud
 """
-from typing import Optional
-from sqlmodel import Field
+from typing import Optional, TYPE_CHECKING
+from sqlmodel import Field, Relationship
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from .tipo_articulo import TipoArticulo
 
 
 class TipoSolicitud(Base, table=True):
@@ -15,7 +18,7 @@ class TipoSolicitud(Base, table=True):
     valores default, etc.
     """
     __tablename__ = "tipos_solicitud"
-    __searchable_fields__ = ["nombre", "descripcion", "tipo_articulo_filter"]
+    __searchable_fields__ = ["nombre", "descripcion"]
     
     nombre: str = Field(
         max_length=100,
@@ -31,7 +34,12 @@ class TipoSolicitud(Base, table=True):
     tipo_articulo_filter: Optional[str] = Field(
         default=None,
         max_length=50,
-        description="Filtro para tipo de artículo (string simple)"
+        description="Filtro para tipo de artículo (string simple - DEPRECATED)"
+    )
+    tipo_articulo_filter_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_articulo.id",
+        description="ID del tipo de artículo para filtrar"
     )
     articulo_default_id: Optional[int] = Field(
         default=None,
@@ -47,3 +55,6 @@ class TipoSolicitud(Base, table=True):
         default=True,
         description="Indica si el tipo de solicitud está activo"
     )
+
+    # Relationships
+    tipo_articulo_filter_rel: Optional["TipoArticulo"] = Relationship()

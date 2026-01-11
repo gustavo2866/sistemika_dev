@@ -9,11 +9,7 @@ import { BooleanInput } from "@/components/boolean-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
 import { FormLayout, FormSimpleSection, FormField, ComboboxQuery } from "@/components/forms";
-import {
-  ARTICULOS_REFERENCE,
-  TIPO_SOLICITUD_TIPO_ARTICULO_CHOICES,
-  type TipoSolicitudFormValues,
-} from "./model";
+import { ARTICULOS_REFERENCE, type TipoSolicitudFormValues } from "./model";
 
 const TipoSolicitudDatosSection = () => (
   <FormSimpleSection>
@@ -25,13 +21,15 @@ const TipoSolicitudDatosSection = () => (
         validate={required()}
       />
 
-      <SelectInput
-        source="tipo_articulo_filter"
-        label="Filtro de tipo artículo"
-        choices={TIPO_SOLICITUD_TIPO_ARTICULO_CHOICES}
-        className="w-full"
-        emptyText="Sin filtro"
-      />
+      <ReferenceInput
+        source="tipo_articulo_filter_id"
+        reference="tipos-articulo"
+        label="Filtro de tipo articulo"
+        filter={{ activo: true }}
+        perPage={200}
+      >
+        <SelectInput optionText="nombre" className="w-full" emptyText="Sin filtro" />
+      </ReferenceInput>
 
       <TextInput
         source="descripcion"
@@ -48,12 +46,12 @@ const TipoSolicitudConfiguracionSection = () => {
   const { control, formState } = useFormContext<TipoSolicitudFormValues>();
   const tipoArticuloFilterValue = useWatch({
     control,
-    name: "tipo_articulo_filter",
+    name: "tipo_articulo_filter_id",
   });
-  const trimmedFilter = (tipoArticuloFilterValue ?? "").trim();
+  const tipoArticuloId = tipoArticuloFilterValue ? Number(tipoArticuloFilterValue) : undefined;
   const articuloFilter = useMemo(
-    () => (trimmedFilter ? { tipo_articulo: trimmedFilter } : undefined),
-    [trimmedFilter]
+    () => (tipoArticuloId ? { tipo_articulo_id: tipoArticuloId } : undefined),
+    [tipoArticuloId]
   );
 
   return (
@@ -68,7 +66,7 @@ const TipoSolicitudConfiguracionSection = () => {
             source="articulo_default_id"
             placeholder="Selecciona un artículo (opcional)"
             filter={articuloFilter}
-            dependsOn={trimmedFilter || undefined}
+            dependsOn={tipoArticuloId}
             className="w-full justify-between"
           />
         </FormField>
@@ -109,3 +107,6 @@ export const TipoSolicitudForm = () => (
     />
   </SimpleForm>
 );
+
+
+

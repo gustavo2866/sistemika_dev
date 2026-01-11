@@ -46,6 +46,11 @@ export const DeleteButton = (props: DeleteButtonProps) => {
   const baseClassName =
     classNameProp ??
     "cursor-pointer hover:bg-destructive/10! text-destructive! border-destructive! focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40";
+  const resolvedSize = size ?? "sm";
+  const resolvedClassName = cn(
+    size == null && "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm",
+    baseClassName
+  );
   const record = useRecordContext(props);
   const resource = useResourceContext(props);
 
@@ -91,13 +96,10 @@ export const DeleteButton = (props: DeleteButtonProps) => {
       onClick={handleDelete}
       disabled={isPending}
       aria-label={typeof label === "string" ? label : undefined}
-      size={size}
-      className={cn(
-        baseClassName,
-        "h-8 px-3 text-xs sm:h-9 sm:px-4 sm:text-sm"
-      )}
+      size={resolvedSize}
+      className={resolvedClassName}
     >
-      <Trash />
+      <Trash className="size-3 sm:size-4" />
       {label}
     </Button>
   );

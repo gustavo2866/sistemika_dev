@@ -145,8 +145,8 @@ export type DetalleFormValues = {
 export type PoSolicitudDetalle = {
   id?: number;
   tempId?: number;
-  articulo_id: number | null;     // number en BD
-  articulo_nombre?: string;       // campo enriquecido
+  solicitud_id?: number;
+  articulo_id: number | null;
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
@@ -181,7 +181,11 @@ export type PoSolicitud = {
   tipo_solicitud?: {                // ✅ NUEVO
     id: number;
     nombre: string;
-    tipo_articulo_filter?: string;
+    tipo_articulo_filter_id?: number | null;
+    tipo_articulo_filter_rel?: {
+      id: number;
+      nombre: string;
+    };
     articulo_default_id?: number;
   };
   departamento?: {                  // ✅ NUEVO
@@ -312,7 +316,6 @@ export const poSolicitudDetalleSchema = createDetailSchema<
     articulo_id: referenceField({
       resource: ARTICULOS_REFERENCE.resource,
       labelField: ARTICULOS_REFERENCE.labelField,
-      persistLabelAs: "articulo_nombre",
       perPage: ARTICULOS_REFERENCE.limit,
       sortField: ARTICULOS_REFERENCE.labelField,
       sortOrder: "ASC",
@@ -452,13 +455,12 @@ export function getArticuloLabel(
  */
 export const getArticuloFilterByTipo = (
   tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; tipo_articulo_filter?: string | null }> | undefined
-): string | undefined => {
+  tiposSolicitud: Array<{ id: number; tipo_articulo_filter_id?: number | null }> | undefined,
+  _tiposArticulo?: Array<{ id: number; nombre: string }> | undefined
+): number | undefined => {
   if (!tipoSolicitudId || !tiposSolicitud) return undefined;
-  
-  const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
-  const filter = tipo?.tipo_articulo_filter;
-  return typeof filter === "string" ? filter : undefined;
+  const tipo = tiposSolicitud.find((item) => item.id === Number(tipoSolicitudId));
+  return tipo?.tipo_articulo_filter_id ?? undefined;
 };
 
 /**

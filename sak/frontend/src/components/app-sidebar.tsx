@@ -54,10 +54,10 @@ import {
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
-const COMPRAS_RESOURCES = ["po-solicitudes"] as const;
+const COMPRAS_RESOURCES = ["po-solicitudes", "po-ordenes-compra", "po-facturas", "proveedores", "po-setup"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
-const ADMIN_RESOURCES = ["facturas", "proveedores", "articulos", "orden-compra", "nominas", "centros-costo"] as const;
-const CONFIG_RESOURCES = ["users", "departamentos", "tipos-operacion", "tipos-solicitud", "metodos-pago", "tipos-comprobante"] as const;
+const ADMIN_RESOURCES = ["facturas", "orden-compra", "nominas", "centros-costo"] as const;
+const CONFIG_RESOURCES = ["users", "tipos-operacion", "metodos-pago", "tipos-comprobante", "tipos-articulo"] as const;
 const CRM_RESOURCES = [
   "crm/eventos",
   "crm/oportunidades",
@@ -92,6 +92,9 @@ const HIDDEN_RESOURCES = [
   "crm/catalogos/respuestas",
   "crm/chat",
   "crm/mensajes",
+  "departamentos",
+  "articulos",
+  "tipos-solicitud",
 ];
 
 type ResourceName = string;
