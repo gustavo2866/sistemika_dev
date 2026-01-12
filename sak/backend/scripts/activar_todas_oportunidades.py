@@ -3,7 +3,7 @@ Script para asignar true al campo activo de todas las oportunidades.
 """
 from sqlmodel import Session, select
 from app.db import engine
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMOportunidad
 
 def main():
     with Session(engine) as session:

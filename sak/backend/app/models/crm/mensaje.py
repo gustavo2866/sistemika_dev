@@ -4,13 +4,13 @@ from typing import Optional, TYPE_CHECKING
 from sqlalchemy import Column, JSON, event
 from sqlmodel import Field, SQLModel, Relationship
 
-from .base import Base, current_utc_time
-from .enums import EstadoMensaje, PrioridadMensaje, CanalMensaje, TipoMensaje
+from ..base import Base, current_utc_time
+from ..enums import EstadoMensaje, PrioridadMensaje, CanalMensaje, TipoMensaje
 
 if TYPE_CHECKING:
-    from .crm_oportunidad import CRMOportunidad
-    from .crm_contacto import CRMContacto
-    from .crm_celular import CRMCelular
+    from .oportunidad import CRMOportunidad
+    from .contacto import CRMContacto
+    from .celular import CRMCelular
 
 
 class CRMMensaje(Base, table=True):
@@ -50,7 +50,7 @@ class CRMMensaje(Base, table=True):
     oportunidad_id: Optional[int] = Field(
         default=None, foreign_key="crm_oportunidades.id", index=True
     )
-    
+
     # Nuevos campos para integración Meta WhatsApp
     estado_meta: Optional[str] = Field(
         default=None,
@@ -64,7 +64,7 @@ class CRMMensaje(Base, table=True):
         index=True,
         description="Celular/canal por el que se envió/recibió"
     )
-    
+
     contacto: Optional["CRMContacto"] = Relationship(back_populates="mensajes")
     oportunidad: Optional["CRMOportunidad"] = Relationship(back_populates="mensajes")
     celular: Optional["CRMCelular"] = Relationship(back_populates="mensajes")
@@ -80,7 +80,7 @@ def receive_before_update(mapper, connection, target):
     """Actualiza fecha_estado cuando cambia el estado del mensaje."""
     state = target._sa_instance_state
     history = state.get_history('estado', True)
-    
+
     if history.has_changes():
         target.fecha_estado = current_utc_time()
 

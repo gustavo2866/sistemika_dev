@@ -48,13 +48,14 @@ from app.routers.proyecto_router import proyecto_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
 from app.routers.vacancia_router import vacancia_router
+from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.vacancia_dashboard_router import router as vacancia_dashboard_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
-from app.routers.cliente_router import router as cliente_router
 # Routers módulo de compras (PO)
 from app.routers.po_solicitud_router import po_solicitud_router
 from app.routers.po_orden_compra_router import po_orden_compra_router
 from app.routers.po_factura_router import po_factura_router
+from app.routers.po_factura_total_router import po_factura_total_router
 from app.routers.crm import (
     crm_tipo_operacion_router,
     crm_motivo_perdida_router,
@@ -166,9 +167,9 @@ app.include_router(solicitud_router)
 app.include_router(solicitud_detalle_router)
 app.include_router(centro_costo_router)
 app.include_router(vacancia_router)
+app.include_router(adm_concepto_router)
 app.include_router(vacancia_dashboard_router)
 app.include_router(crm_dashboard_router)
-app.include_router(cliente_router)
 app.include_router(crm_tipo_operacion_router)
 app.include_router(crm_motivo_perdida_router)
 app.include_router(crm_condicion_pago_router)
@@ -191,6 +192,7 @@ app.include_router(emprendimiento_router)
 app.include_router(po_solicitud_router)
 app.include_router(po_orden_compra_router)
 app.include_router(po_factura_router)
+app.include_router(po_factura_total_router)
 app.include_router(proyecto_router)
 app.include_router(nomina_router)
 app.include_router(parte_diario_router)

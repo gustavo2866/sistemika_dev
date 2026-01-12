@@ -9,6 +9,28 @@ from sqlmodel import Session, select
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from app.models import TipoArticulo
+from app.models.adm import AdmConcepto
+
+
+DEFAULT_CONCEPTO_NOMBRE = "Concepto default"
+DEFAULT_CONCEPTO_CUENTA = "DEFAULT"
+
+def get_default_concepto_id(session: Session) -> int:
+    concepto = session.exec(
+        select(AdmConcepto).where(AdmConcepto.cuenta == DEFAULT_CONCEPTO_CUENTA)
+    ).first()
+    if concepto:
+        return concepto.id
+    concepto = AdmConcepto(
+        nombre=DEFAULT_CONCEPTO_NOMBRE,
+        descripcion="Concepto por defecto para tipos de articulo",
+        cuenta=DEFAULT_CONCEPTO_CUENTA,
+    )
+    session.add(concepto)
+    session.commit()
+    session.refresh(concepto)
+    return concepto.id
+
 
 def migrar_datos_articulos():
     """Migra los datos existentes de tipo_articulo string a foreign key"""
@@ -73,7 +95,7 @@ def migrar_datos_articulos():
                 nuevo_tipo = TipoArticulo(
                     nombre=nombre_tipo,
                     descripcion=f"Tipo {nombre_tipo} migrado automáticamente",
-                    codigo_contable=f"{nombre_tipo[:3].upper()}-MIG",
+                    adm_concepto_id=default_concepto_id,
                     activo=True
                 )
                 session.add(nuevo_tipo)

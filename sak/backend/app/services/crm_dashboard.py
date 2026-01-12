@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
 from app.models.propiedad import Propiedad
 

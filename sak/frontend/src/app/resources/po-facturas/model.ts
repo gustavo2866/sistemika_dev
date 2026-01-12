@@ -33,8 +33,8 @@ export const VALIDATION_RULES = {
     MIN_CANTIDAD: 0,
     MAX_DESCRIPCION_LENGTH: 500,
   },
-  IMPUESTO: {
-    MAX_DESCRIPCION_LENGTH: 255,
+  TOTAL: {
+    MAX_DESCRIPCION_LENGTH: 50,
   },
   GENERAL: {
     MAX_OBSERVACIONES_LENGTH: 1000,
@@ -89,6 +89,13 @@ export const TIPOS_COMPROBANTE_REFERENCE = {
   staleTime: 10 * 60 * 1000,
 } as const;
 
+export const ADM_CONCEPTOS_REFERENCE = {
+  resource: "api/v1/adm/conceptos",
+  labelField: "nombre",
+  limit: 100,
+  staleTime: 10 * 60 * 1000,
+} as const;
+
 export const COMPROBANTES_REFERENCE = {
   resource: "comprobantes",
   labelField: "numero",
@@ -113,16 +120,11 @@ export type DetalleFormValues = {
   centro_costo_id: string;
 };
 
-export type ImpuestoFormValues = {
-  tipo_impuesto: string;
+export type TotalFormValues = {
+  concepto_id: string;
+  centro_costo_id: string;
   descripcion: string;
-  base_imponible: number;
-  porcentaje: number;
   importe: number;
-  es_retencion: string;
-  es_percepcion: string;
-  codigo_afip: string;
-  numero_certificado: string;
 };
 
 export type PoFacturaDetalle = {
@@ -144,18 +146,14 @@ export type PoFacturaDetalle = {
   centro_costo_id?: number | null;
 };
 
-export type PoFacturaImpuesto = {
+export type PoFacturaTotal = {
   id?: number;
   tempId?: number;
-  tipo_impuesto: string;
-  descripcion: string;
-  base_imponible: number;
-  porcentaje: number;
+  concepto_id: number;
+  centro_costo_id?: number | null;
+  tipo: "subtotal" | "impuesto";
+  descripcion?: string | null;
   importe: number;
-  es_retencion: boolean;
-  es_percepcion: boolean;
-  codigo_afip?: string | null;
-  numero_certificado?: string | null;
 };
 
 export type PoFactura = {
@@ -179,7 +177,7 @@ export type PoFactura = {
   centro_costo_id?: number | null;
   tipo_solicitud_id?: number | null;
   detalles: PoFacturaDetalle[];
-  impuestos: PoFacturaImpuesto[];
+  totales: PoFacturaTotal[];
 
   proveedor?: { id: number; nombre: string };
   usuario_responsable?: { id: number; nombre: string };
@@ -288,96 +286,50 @@ export const poFacturaDetalleSchema = createDetailSchema<
   },
 });
 
-export const poFacturaImpuestoSchema = createDetailSchema<
-  ImpuestoFormValues,
-  PoFacturaImpuesto
+export const poFacturaTotalSchema = createDetailSchema<
+  TotalFormValues,
+  PoFacturaTotal
 >({
   fields: {
-    tipo_impuesto: stringField({
+    concepto_id: referenceField({
+      resource: ADM_CONCEPTOS_REFERENCE.resource,
+      labelField: ADM_CONCEPTOS_REFERENCE.labelField,
       required: true,
-      trim: true,
-      maxLength: 50,
+      defaultValue: "",
+    }),
+    centro_costo_id: referenceField({
+      resource: CENTROS_COSTO_REFERENCE.resource,
+      labelField: CENTROS_COSTO_REFERENCE.labelField,
+      required: false,
       defaultValue: "",
     }),
     descripcion: stringField({
-      required: true,
+      required: false,
       trim: true,
-      maxLength: VALIDATION_RULES.IMPUESTO.MAX_DESCRIPCION_LENGTH,
+      maxLength: VALIDATION_RULES.TOTAL.MAX_DESCRIPCION_LENGTH,
       defaultValue: "",
-    }),
-    base_imponible: numberField({
-      required: true,
-      min: 0,
-      defaultValue: 0,
-    }),
-    porcentaje: numberField({
-      required: true,
-      min: 0,
-      max: 100,
-      defaultValue: 0,
     }),
     importe: numberField({
       required: true,
       min: 0,
       defaultValue: 0,
     }),
-    es_retencion: selectField({
-      required: false,
-      options: [
-        { id: "true", name: "Si" },
-        { id: "false", name: "No" },
-      ],
-      defaultValue: "false",
-    }),
-    es_percepcion: selectField({
-      required: false,
-      options: [
-        { id: "true", name: "Si" },
-        { id: "false", name: "No" },
-      ],
-      defaultValue: "false",
-    }),
-    codigo_afip: stringField({
-      required: false,
-      maxLength: 20,
-      defaultValue: "",
-    }),
-    numero_certificado: stringField({
-      required: false,
-      maxLength: 50,
-      defaultValue: "",
-    }),
   },
   toForm: (detalle) => ({
-    tipo_impuesto: detalle.tipo_impuesto ?? "",
+    concepto_id: detalle.concepto_id?.toString() ?? "",
+    centro_costo_id: detalle.centro_costo_id?.toString() ?? "",
     descripcion: detalle.descripcion ?? "",
-    base_imponible: detalle.base_imponible ?? 0,
-    porcentaje: detalle.porcentaje ?? 0,
     importe: detalle.importe ?? 0,
-    es_retencion: detalle.es_retencion ? "true" : "false",
-    es_percepcion: detalle.es_percepcion ? "true" : "false",
-    codigo_afip: detalle.codigo_afip ?? "",
-    numero_certificado: detalle.numero_certificado ?? "",
   }),
   toModel: (values) => {
     const errors: Record<string, string> = {};
-    const tipoImpuesto = String(values.tipo_impuesto ?? "").trim();
+    const conceptoId = Number(values.concepto_id ?? 0);
+    const centroCostoId = String(values.centro_costo_id ?? "").trim();
     const descripcion = String(values.descripcion ?? "").trim();
-    const baseImponible = Number(values.base_imponible ?? 0);
-    const porcentaje = Number(values.porcentaje ?? 0);
     const importe = Number(values.importe ?? 0);
 
-    if (!tipoImpuesto) {
-      errors.tipo_impuesto = "Campo requerido";
-    }
-    if (!descripcion) {
-      errors.descripcion = "Campo requerido";
-    }
-    if (!Number.isFinite(baseImponible) || baseImponible < 0) {
-      errors.base_imponible = "Debe ser un numero valido";
-    }
-    if (!Number.isFinite(porcentaje) || porcentaje < 0) {
-      errors.porcentaje = "Debe ser un numero valido";
+    if (!Number.isFinite(conceptoId) || conceptoId <= 0) {
+      errors.concepto_id = "Campo requerido";
     }
     if (!Number.isFinite(importe) || importe < 0) {
       errors.importe = "Debe ser un numero valido";
@@ -388,17 +340,11 @@ export const poFacturaImpuestoSchema = createDetailSchema<
     }
 
     return {
-      tipo_impuesto: tipoImpuesto,
-      descripcion,
-      base_imponible: baseImponible,
-      porcentaje,
+      concepto_id: conceptoId,
+      centro_costo_id: centroCostoId ? Number(centroCostoId) : null,
+      descripcion: descripcion || null,
       importe,
-      es_retencion: String(values.es_retencion ?? "false") === "true",
-      es_percepcion: String(values.es_percepcion ?? "false") === "true",
-      codigo_afip: values.codigo_afip ? String(values.codigo_afip) : null,
-      numero_certificado: values.numero_certificado
-        ? String(values.numero_certificado)
-        : null,
+      tipo: "impuesto",
     };
   },
 });
@@ -522,8 +468,9 @@ export const PoFacturaModel = {
   TIPOS_SOLICITUD_REFERENCE,
   TIPOS_COMPROBANTE_REFERENCE,
   COMPROBANTES_REFERENCE,
+  ADM_CONCEPTOS_REFERENCE,
   poFacturaDetalleSchema,
-  poFacturaImpuestoSchema,
+  poFacturaTotalSchema,
   poFacturaCabeceraSchema,
 } as const;
 

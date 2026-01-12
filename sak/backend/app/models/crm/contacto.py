@@ -3,13 +3,13 @@ from typing import Optional, TYPE_CHECKING
 from sqlalchemy import Column, JSON
 from sqlmodel import Field, Relationship
 
-from .base import Base
+from ..base import Base
 
 if TYPE_CHECKING:
-    from .crm_catalogos import CRMOrigenLead
-    from .crm_oportunidad import CRMOportunidad
-    from .crm_mensaje import CRMMensaje
-    from .user import User
+    from .catalogos import CRMOrigenLead
+    from .oportunidad import CRMOportunidad
+    from .mensaje import CRMMensaje
+    from ..user import User
 
 
 class CRMContacto(Base, table=True):

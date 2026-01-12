@@ -10,6 +10,7 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .articulo import Articulo
+    from .adm import AdmConcepto
     from .centro_costo import CentroCosto
     from .comprobante import Comprobante
     from .departamento import Departamento
@@ -264,7 +265,7 @@ class PoFactura(Base, table=True):
     __tablename__ = "po_facturas"
 
     __searchable_fields__ = ["numero", "punto_venta"]
-    __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "impuestos"}
+    __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "totales"}
 
     numero: str = Field(max_length=50, description="Numero de factura")
     punto_venta: str = Field(max_length=10, description="Punto de venta")
@@ -312,8 +313,14 @@ class PoFactura(Base, table=True):
     usuario_responsable: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoFactura.usuario_responsable_id"})
     centro_costo: Optional["CentroCosto"] = Relationship()
     tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
-    detalles: List["PoFacturaDetalle"] = Relationship(back_populates="factura")
-    impuestos: List["PoFacturaImpuesto"] = Relationship(back_populates="factura")
+    detalles: List["PoFacturaDetalle"] = Relationship(
+        back_populates="factura",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    totales: List["PoFacturaTotal"] = Relationship(
+        back_populates="factura",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class PoFacturaDetalle(Base, table=True):
@@ -361,23 +368,34 @@ class PoFacturaDetalle(Base, table=True):
     centro_costo: Optional["CentroCosto"] = Relationship()
 
 
-class PoFacturaImpuesto(Base, table=True):
-    """Impuestos de factura (modulo PO)."""
+class PoFacturaTotal(Base, table=True):
+    """Totales de factura (modulo PO)."""
 
-    __tablename__ = "po_factura_impuestos"
+    __tablename__ = "po_factura_totales"
 
-    __searchable_fields__ = ["tipo_impuesto", "descripcion"]
-
-    tipo_impuesto: str = Field(max_length=50, description="Tipo de impuesto")
-    descripcion: str = Field(max_length=255, description="Descripcion del impuesto")
-    base_imponible: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Base imponible")
-    porcentaje: Decimal = Field(sa_column=Column(DECIMAL(5, 4)), description="Porcentaje del impuesto")
-    importe: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Importe del impuesto")
-    es_retencion: bool = Field(default=False, description="Si es una retencion")
-    es_percepcion: bool = Field(default=False, description="Si es una percepcion")
-    codigo_afip: Optional[str] = Field(default=None, max_length=20, description="Codigo AFIP del impuesto")
-    numero_certificado: Optional[str] = Field(default=None, max_length=50, description="Numero de certificado (retenciones)")
+    __searchable_fields__ = ["descripcion"]
 
     factura_id: int = Field(foreign_key="po_facturas.id", description="ID de la factura")
+    concepto_id: int = Field(foreign_key="adm_conceptos.id", description="ID del concepto")
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo asociado (opcional)",
+    )
+    tipo: str = Field(
+        sa_column=Column(String(20), nullable=False),
+        description="Tipo de total (subtotal o impuesto)",
+    )
+    descripcion: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="Descripcion libre del total",
+    )
+    importe: Decimal = Field(
+        sa_column=Column(DECIMAL(15, 2), nullable=False),
+        description="Importe del total",
+    )
 
-    factura: "PoFactura" = Relationship(back_populates="impuestos")
+    factura: "PoFactura" = Relationship(back_populates="totales")
+    concepto: "AdmConcepto" = Relationship()
+    centro_costo: Optional["CentroCosto"] = Relationship()

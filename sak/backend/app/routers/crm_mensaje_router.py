@@ -33,7 +33,7 @@ def _fetch_event_rows_dynamic(session: Session, oportunidad_id: int) -> list[dic
     Obtiene eventos del esquema refactorizado.
     Devuelve una lista de dicts normalizados para el panel de actividades.
     """
-    from app.models.crm_evento import CRMEvento
+    from app.models.crm import CRMEvento
     
     stmt = (
         select(CRMEvento)

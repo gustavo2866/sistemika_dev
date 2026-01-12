@@ -51,6 +51,12 @@ import {
   TipoArticuloEdit,
   TipoArticuloShow,
 } from "@/app/resources/tipos-articulo";
+import {
+  AdmConceptoList,
+  AdmConceptoCreate,
+  AdmConceptoEdit,
+  AdmConceptoShow,
+} from "@/app/resources/adm-conceptos";
 import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
   TipoPropiedadList,
@@ -285,6 +291,16 @@ const AdminApp = () => {
         show={MetodoPagoShow}
         recordRepresentation="nombre"
         icon={CreditCard}
+      />
+      <Resource
+        name="api/v1/adm/conceptos"
+        list={AdmConceptoList}
+        create={AdmConceptoCreate}
+        edit={AdmConceptoEdit}
+        show={AdmConceptoShow}
+        recordRepresentation="nombre"
+        icon={FileText}
+        options={{ label: "Conceptos" }}
       />
       <Resource
         name="proyectos"

@@ -5,12 +5,12 @@ from typing import Optional, TYPE_CHECKING
 from sqlalchemy import Column, DECIMAL
 from sqlmodel import Field, Relationship
 
-from .base import Base
+from ..base import Base
 
 if TYPE_CHECKING:
-    from .crm_catalogos import CRMCondicionPago, CRMMotivoPerdida, Moneda
-    from .crm_oportunidad import CRMOportunidad
-    from .user import User
+    from .catalogos import CRMCondicionPago, CRMMotivoPerdida, Moneda
+    from .oportunidad import CRMOportunidad
+    from ..user import User
 
 
 class CRMOportunidadLogEstado(Base, table=True):
@@ -32,4 +32,3 @@ class CRMOportunidadLogEstado(Base, table=True):
     motivo_perdida: Optional["CRMMotivoPerdida"] = Relationship()
     moneda: Optional["Moneda"] = Relationship()
     condicion_pago: Optional["CRMCondicionPago"] = Relationship()
-    usuario: Optional["User"] = Relationship()

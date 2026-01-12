@@ -4,6 +4,8 @@ import { required } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
 import { TextInput } from "@/components/text-input";
 import { BooleanInput } from "@/components/boolean-input";
+import { ReferenceInput } from "@/components/reference-input";
+import { SelectInput } from "@/components/select-input";
 
 export const TipoArticuloForm = () => (
   <SimpleForm className="w-full max-w-4xl">
@@ -13,11 +15,13 @@ export const TipoArticuloForm = () => (
       validate={required()}
     />
 
-    <TextInput
-      source="codigo_contable"
-      label="Codigo contable"
-      validate={required()}
-    />
+    <ReferenceInput
+      source="adm_concepto_id"
+      reference="api/v1/adm/conceptos"
+      label="Concepto"
+    >
+      <SelectInput optionText="nombre" validate={required()} />
+    </ReferenceInput>
 
     <TextInput
       source="descripcion"

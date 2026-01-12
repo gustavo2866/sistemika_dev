@@ -11,6 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Trash2, Upload } from "lucide-react";
 import {
   AddItemButton,
@@ -31,19 +38,13 @@ import {
   useFormDetailSectionContext,
 } from "@/components/forms";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   type DetalleFormValues,
-  type ImpuestoFormValues,
+  type TotalFormValues,
   type PoFactura,
   type PoFacturaDetalle,
-  type PoFacturaImpuesto,
+  type PoFacturaTotal,
   ARTICULOS_REFERENCE,
+  ADM_CONCEPTOS_REFERENCE,
   CENTROS_COSTO_REFERENCE,
   ESTADO_CHOICES,
   getArticuloFilterByTipo,
@@ -56,7 +57,7 @@ import {
   VALIDATION_RULES,
   poFacturaCabeceraSchema,
   poFacturaDetalleSchema,
-  poFacturaImpuestoSchema,
+  poFacturaTotalSchema,
 } from "./model";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
 
@@ -92,6 +93,14 @@ const emptyToNull = (value: unknown) => (value === "" ? null : value);
 const normalizeNumber = (value: unknown) => {
   const numeric = Number(value ?? 0);
   return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const normalizeCentroCostoId = (value: unknown) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 };
 
 const computeLineAmounts = (values: {
@@ -130,6 +139,9 @@ const PoFacturaDetalleCard = ({
   const centroCostoLabel = item.centro_costo_id
     ? getReferenceLabel("centro_costo_id", item.centro_costo_id)
     : undefined;
+  const articuloLabel = item.articulo_id
+    ? getReferenceLabel("articulo_id", item.articulo_id)
+    : undefined;
   const descripcion = (item.descripcion || "").trim();
   const totalLinea = CURRENCY_FORMATTER.format(
     Number(item.total_linea ?? 0)
@@ -142,7 +154,7 @@ const PoFacturaDetalleCard = ({
       title={
         <div className="flex w-full items-center gap-2">
           <span className="truncate text-[12px] font-semibold sm:text-[13px]">
-            {descripcion || "Item sin descripcion"}
+            {articuloLabel || "Articulo sin nombre"}
           </span>
           <Button
             type="button"
@@ -175,7 +187,9 @@ const PoFacturaDetalleCard = ({
         </div>
       }
     >
-      Detalle del articulo
+      <div className="text-[11px] text-muted-foreground">
+        {descripcion || "Sin descripcion"}
+      </div>
     </FormDetailCardCompact>
   );
 };
@@ -551,13 +565,61 @@ const PoFacturaDetalleContent = ({
   );
 };
 
-const PoFacturaImpuestoCard = ({
+type PoFacturaSubtotalDisplay = {
+  concepto_id: number;
+  centro_costo_id?: number | null;
+  concepto_label: string;
+  centro_costo_label?: string;
+  importe: number;
+};
+
+const PoFacturaSubtotalCard = ({
+  item,
+}: {
+  item: PoFacturaSubtotalDisplay;
+}) => {
+  const importe = CURRENCY_FORMATTER.format(Number(item.importe ?? 0));
+
+  return (
+    <FormDetailCardCompact
+      title={
+        <div className="flex w-full items-center gap-2">
+          <span className="truncate text-[12px] font-semibold sm:text-[13px]">
+            {item.concepto_label || ""}
+          </span>
+          {item.centro_costo_label ? (
+            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+              {item.centro_costo_label}
+            </span>
+          ) : null}
+          <span className="ml-auto rounded bg-muted/60 px-1.5 py-0.5 text-right text-[10px] font-semibold sm:text-[11px]">
+            {importe}
+          </span>
+        </div>
+      }
+    >
+    </FormDetailCardCompact>
+  );
+};
+
+const PoFacturaTotalCard = ({
   item,
   onDelete,
+  resolveCentroCostoLabel,
 }: {
-  item: PoFacturaImpuesto;
+  item: PoFacturaTotal;
   onDelete: () => void;
+  resolveCentroCostoLabel?: (
+    value: number | string | null | undefined
+  ) => string | undefined;
 }) => {
+  const { getReferenceLabel } = useFormDetailSectionContext();
+  const conceptoLabel = getReferenceLabel("concepto_id", item.concepto_id);
+  const centroCostoLabel =
+    resolveCentroCostoLabel?.(item.centro_costo_id) ??
+    (item.centro_costo_id
+      ? getReferenceLabel("centro_costo_id", item.centro_costo_id)
+      : undefined);
   const descripcion = (item.descripcion || "").trim();
   const importe = CURRENCY_FORMATTER.format(Number(item.importe ?? 0));
 
@@ -566,8 +628,13 @@ const PoFacturaImpuestoCard = ({
       title={
         <div className="flex w-full items-center gap-2">
           <span className="truncate text-[12px] font-semibold sm:text-[13px]">
-            {item.tipo_impuesto || "Impuesto"}
+            {conceptoLabel || ""}
           </span>
+          {centroCostoLabel ? (
+            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+              {centroCostoLabel}
+            </span>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -594,74 +661,57 @@ const PoFacturaImpuestoCard = ({
         </div>
       }
     >
-      Impuesto aplicado
     </FormDetailCardCompact>
   );
 };
 
-const PoFacturaImpuestoDialogContent = ({
-  impuestoForm,
+const PoFacturaTotalDialogContent = ({
+  totalForm,
 }: {
-  impuestoForm: UseFormReturn<ImpuestoFormValues>;
+  totalForm: UseFormReturn<TotalFormValues>;
 }) => (
   <>
     <CompactFormGrid columns="two">
-      <CompactFormField
-        label="Tipo"
-        error={impuestoForm.formState.errors.tipo_impuesto}
-        required
+      <ReferenceInput
+        source="concepto_id"
+        reference={ADM_CONCEPTOS_REFERENCE.resource}
+        label="Concepto"
       >
-        <Input
-          className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("tipo_impuesto")}
+        <CompactSelectInput
+          optionText={ADM_CONCEPTOS_REFERENCE.labelField}
+          className="w-full"
+          validate={required()}
         />
-      </CompactFormField>
+      </ReferenceInput>
 
-      <CompactFormField
-        label="Descripcion"
-        error={impuestoForm.formState.errors.descripcion}
-        required
+      <ReferenceInput
+        source="centro_costo_id"
+        reference={CENTROS_COSTO_REFERENCE.resource}
+        label="Centro de costo"
+        filter={CENTROS_COSTO_REFERENCE.filter}
       >
-        <Input
-          className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("descripcion")}
+        <CompactSelectInput
+          optionText={CENTROS_COSTO_REFERENCE.labelField}
+          className="w-full"
+          parse={emptyToNull}
         />
-      </CompactFormField>
+      </ReferenceInput>
     </CompactFormGrid>
 
-    <CompactFormGrid columns="three">
+    <CompactFormGrid columns="two">
       <CompactFormField
-        label="Base imponible"
-        error={impuestoForm.formState.errors.base_imponible}
-        required
+        label="Descripcion"
+        error={totalForm.formState.errors.descripcion}
       >
         <Input
-          type="number"
-          step="0.01"
-          min="0"
           className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("base_imponible", { valueAsNumber: true })}
-        />
-      </CompactFormField>
-
-      <CompactFormField
-        label="Porcentaje"
-        error={impuestoForm.formState.errors.porcentaje}
-        required
-      >
-        <Input
-          type="number"
-          step="0.01"
-          min="0"
-          max="100"
-          className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("porcentaje", { valueAsNumber: true })}
+          {...totalForm.register("descripcion")}
         />
       </CompactFormField>
 
       <CompactFormField
         label="Importe"
-        error={impuestoForm.formState.errors.importe}
+        error={totalForm.formState.errors.importe}
         required
       >
         <Input
@@ -669,97 +719,79 @@ const PoFacturaImpuestoDialogContent = ({
           step="0.01"
           min="0"
           className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("importe", { valueAsNumber: true })}
-        />
-      </CompactFormField>
-    </CompactFormGrid>
-
-    <CompactFormGrid columns="two">
-      <CompactFormField label="Es retencion">
-        <Select
-          value={impuestoForm.watch("es_retencion") ?? "false"}
-          onValueChange={(value) =>
-            impuestoForm.setValue("es_retencion", value, {
-              shouldValidate: true,
-            })
-          }
-        >
-          <SelectTrigger className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm">
-            <SelectValue placeholder="Selecciona" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">Si</SelectItem>
-            <SelectItem value="false">No</SelectItem>
-          </SelectContent>
-        </Select>
-      </CompactFormField>
-
-      <CompactFormField label="Es percepcion">
-        <Select
-          value={impuestoForm.watch("es_percepcion") ?? "false"}
-          onValueChange={(value) =>
-            impuestoForm.setValue("es_percepcion", value, {
-              shouldValidate: true,
-            })
-          }
-        >
-          <SelectTrigger className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm">
-            <SelectValue placeholder="Selecciona" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">Si</SelectItem>
-            <SelectItem value="false">No</SelectItem>
-          </SelectContent>
-        </Select>
-      </CompactFormField>
-    </CompactFormGrid>
-
-    <CompactFormGrid columns="two">
-      <CompactFormField
-        label="Codigo AFIP"
-        error={impuestoForm.formState.errors.codigo_afip}
-      >
-        <Input
-          className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("codigo_afip")}
-        />
-      </CompactFormField>
-
-      <CompactFormField
-        label="Numero certificado"
-        error={impuestoForm.formState.errors.numero_certificado}
-      >
-        <Input
-          className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          {...impuestoForm.register("numero_certificado")}
+          {...totalForm.register("importe", { valueAsNumber: true })}
         />
       </CompactFormField>
     </CompactFormGrid>
   </>
 );
 
-const PoFacturaImpuestoForm = () => (
+const PoFacturaTotalForm = () => (
   <FormDetailFormDialog
     title={({ action }) =>
       action === "create" ? "Agregar impuesto" : "Editar impuesto"
     }
     description="Completa los datos del impuesto."
   >
-    {(impuestoForm) => (
-      <PoFacturaImpuestoDialogContent
-        impuestoForm={impuestoForm as unknown as UseFormReturn<ImpuestoFormValues>}
+    {(totalForm) => (
+      <PoFacturaTotalDialogContent
+        totalForm={totalForm as unknown as UseFormReturn<TotalFormValues>}
       />
     )}
   </FormDetailFormDialog>
 );
 
-const PoFacturaImpuestoContent = () => {
-  const { handleStartCreate, handleDeleteBySortedIndex } =
+const PoFacturaTotalesContent = ({
+  subtotalItems,
+  centrosCostoById,
+}: {
+  subtotalItems: PoFacturaSubtotalDisplay[];
+  centrosCostoById: Map<number, string>;
+}) => {
+  const { handleStartCreate, handleDeleteByOriginalIndex, sortedEntries, getReferenceLabel } =
     useFormDetailSectionContext();
+
+  const impuestoEntries = useMemo(() => {
+    return [...sortedEntries]
+      .map((entry) => ({
+        ...entry,
+        conceptoLabel: getReferenceLabel("concepto_id", entry.item?.concepto_id) ?? "",
+      }))
+      .sort((a, b) => a.conceptoLabel.localeCompare(b.conceptoLabel));
+  }, [sortedEntries, getReferenceLabel]);
+
+  const resolveCentroCostoLabel = (value: number | string | null | undefined) => {
+    const normalized = normalizeCentroCostoId(value);
+    if (normalized == null) return undefined;
+    return (
+      getReferenceLabel("centro_costo_id", normalized) ??
+      centrosCostoById.get(normalized)
+    );
+  };
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 -mt-4 pb-0 pt-0">
+      <div className="space-y-2 px-2 pt-1">
+        <div className="text-[10px] font-semibold text-muted-foreground sm:text-[11px]">
+          Subtotales calculados
+        </div>
+        {subtotalItems.length === 0 ? (
+          <div className="text-[10px] text-muted-foreground sm:text-[11px]">
+            No hay subtotales calculados.
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {subtotalItems.map((item) => (
+              <PoFacturaSubtotalCard
+                key={`${item.concepto_id}-${item.centro_costo_id ?? "none"}`}
+                item={item}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-b border-border/60 pb-0 pt-0">
         <FormDetailClearAllButton
           size="sm"
           className="h-6 gap-1 px-2 text-[10px] sm:h-7 sm:px-2.5 sm:text-[11px]"
@@ -771,23 +803,25 @@ const PoFacturaImpuestoContent = () => {
           className="h-6 gap-1 px-2 text-[10px] sm:h-7 sm:px-2.5 sm:text-[11px]"
         />
       </div>
-      <FormDetailCardList<PoFacturaImpuesto>
-        emptyMessage="Todavia no agregaste impuestos."
-        showEditAction={false}
-        showDeleteAction={false}
-        contentClassName="px-2 py-2 sm:px-3"
-        gridClassName="grid-cols-[minmax(0,1fr)] items-start gap-2"
-        listClassName="mt-1 space-y-1"
-        variant="row"
-      >
-        {(item, index) => (
-          <PoFacturaImpuestoCard
-            item={item}
-            onDelete={() => handleDeleteBySortedIndex(index)}
-          />
+      <div className="px-2 py-2 sm:px-3">
+        {impuestoEntries.length === 0 ? (
+          <div className="text-[10px] text-muted-foreground sm:text-[11px]">
+            Todavia no agregaste impuestos.
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {impuestoEntries.map((entry) => (
+              <PoFacturaTotalCard
+                key={entry.item.id ?? entry.item.tempId ?? entry.originalIndex}
+                item={entry.item}
+                onDelete={() => handleDeleteByOriginalIndex(entry.originalIndex)}
+                resolveCentroCostoLabel={resolveCentroCostoLabel}
+              />
+            ))}
+          </div>
         )}
-      </FormDetailCardList>
-      <PoFacturaImpuestoForm />
+      </div>
+      <PoFacturaTotalForm />
     </>
   );
 };
@@ -833,11 +867,11 @@ const CabeceraContent = ({
 
       {/* Segunda fila: Punto, Numero y Fecha emision */}
       <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
-        <div className="shrink-0 w-[5ch]">
+        <div className="shrink-0 w-[7ch]">
           <CompactTextInput
             source="punto_venta"
             label="Punto"
-            className="w-[5ch] min-w-[5ch]"
+            className="w-[7ch] min-w-[7ch]"
             validate={required()}
             maxLength={10}
           />
@@ -968,7 +1002,7 @@ const PoFacturaFormFields = () => {
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
   const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
   const detallesValue = useWatch({ control, name: "detalles" });
-  const impuestosValue = useWatch({ control, name: "impuestos" });
+  const totalesValue = useWatch({ control, name: "totales" });
 
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
     queryKey: ["tipos-solicitud", "defaults"],
@@ -986,20 +1020,73 @@ const PoFacturaFormFields = () => {
     staleTime: TIPOS_SOLICITUD_REFERENCE.staleTime,
   });
 
-  const { data: tiposArticuloData } = useQuery<{ id: number; nombre: string }[]>(
-    {
-      queryKey: ["tipos-articulo", "catalog"],
-      queryFn: async () => {
-        const { data } = await dataProvider.getList("tipos-articulo", {
-          pagination: { page: 1, perPage: 100 },
+  const { data: tiposArticuloData } = useQuery<
+    { id: number; nombre: string; adm_concepto_id?: number | null }[]
+  >({
+    queryKey: ["tipos-articulo", "catalog"],
+    queryFn: async () => {
+      const { data } = await dataProvider.getList("tipos-articulo", {
+        pagination: { page: 1, perPage: 100 },
+        sort: { field: "nombre", order: "ASC" },
+        filter: { activo: true },
+      });
+      return data as { id: number; nombre: string; adm_concepto_id?: number | null }[];
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const articuloIds = useMemo(() => {
+    const detalles = Array.isArray(detallesValue) ? detallesValue : [];
+    const ids = detalles
+      .map((detalle) => Number(detalle?.articulo_id ?? 0))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    return Array.from(new Set(ids));
+  }, [detallesValue]);
+
+  const { data: articulosData } = useQuery<
+    { id: number; tipo_articulo_id?: number | null }[]
+  >({
+    queryKey: ["articulos", "map", articuloIds],
+    queryFn: async () => {
+      if (articuloIds.length === 0) return [];
+      const { data } = await dataProvider.getMany("articulos", { ids: articuloIds });
+      return data as { id: number; tipo_articulo_id?: number | null }[];
+    },
+    enabled: articuloIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: conceptosData } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["adm-conceptos", "catalog"],
+    queryFn: async () => {
+      const { data } = await dataProvider.getList(
+        ADM_CONCEPTOS_REFERENCE.resource,
+        {
+          pagination: { page: 1, perPage: ADM_CONCEPTOS_REFERENCE.limit },
           sort: { field: "nombre", order: "ASC" },
-          filter: { activo: true },
-        });
-        return data as { id: number; nombre: string }[];
-      },
-      staleTime: 10 * 60 * 1000,
-    }
-  );
+          filter: {},
+        }
+      );
+      return data as { id: number; nombre: string }[];
+    },
+    staleTime: ADM_CONCEPTOS_REFERENCE.staleTime,
+  });
+
+  const { data: centrosCostoData } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["centros-costo", "catalog"],
+    queryFn: async () => {
+      const { data } = await dataProvider.getList(
+        CENTROS_COSTO_REFERENCE.resource,
+        {
+          pagination: { page: 1, perPage: CENTROS_COSTO_REFERENCE.limit },
+          sort: { field: "nombre", order: "ASC" },
+          filter: CENTROS_COSTO_REFERENCE.filter ?? {},
+        }
+      );
+      return data as { id: number; nombre: string }[];
+    },
+    staleTime: CENTROS_COSTO_REFERENCE.staleTime,
+  });
 
   const tiposSolicitudCatalog = useMemo(
     () => tiposSolicitudData ?? [],
@@ -1009,6 +1096,44 @@ const PoFacturaFormFields = () => {
     () => tiposArticuloData ?? [],
     [tiposArticuloData]
   );
+  const articulosCatalog = useMemo(() => articulosData ?? [], [articulosData]);
+  const conceptosCatalog = useMemo(() => conceptosData ?? [], [conceptosData]);
+  const centrosCostoCatalog = useMemo(
+    () => centrosCostoData ?? [],
+    [centrosCostoData]
+  );
+
+  const conceptosById = useMemo(() => {
+    const map = new Map<number, string>();
+    conceptosCatalog.forEach((item) => {
+      map.set(item.id, item.nombre);
+    });
+    return map;
+  }, [conceptosCatalog]);
+
+  const centrosCostoById = useMemo(() => {
+    const map = new Map<number, string>();
+    centrosCostoCatalog.forEach((item) => {
+      map.set(item.id, item.nombre);
+    });
+    return map;
+  }, [centrosCostoCatalog]);
+
+  const articulosById = useMemo(() => {
+    const map = new Map<number, { id: number; tipo_articulo_id?: number | null }>();
+    articulosCatalog.forEach((item) => {
+      map.set(item.id, item);
+    });
+    return map;
+  }, [articulosCatalog]);
+
+  const tiposArticuloById = useMemo(() => {
+    const map = new Map<number, { adm_concepto_id?: number | null }>();
+    tiposArticuloCatalog.forEach((item) => {
+      map.set(item.id, { adm_concepto_id: item.adm_concepto_id ?? null });
+    });
+    return map;
+  }, [tiposArticuloCatalog]);
 
   const articuloFilterId = useMemo(() => {
     return getArticuloFilterByTipo(
@@ -1032,11 +1157,79 @@ const PoFacturaFormFields = () => {
     return detalles.length > 0;
   }, [detallesValue]);
 
+  const subtotalItems = useMemo(() => {
+    const detalles = Array.isArray(detallesValue) ? detallesValue : [];
+    const grouped = new Map<
+      string,
+      { concepto_id: number; centro_costo_id?: number | null; importe: number }
+    >();
+
+    detalles.forEach((detalle) => {
+      if (!detalle) return;
+      const articuloId = Number(detalle.articulo_id ?? 0);
+      if (!Number.isFinite(articuloId) || articuloId <= 0) return;
+      const articulo = articulosById.get(articuloId);
+      const tipoArticuloId = Number(articulo?.tipo_articulo_id ?? 0);
+      if (!Number.isFinite(tipoArticuloId) || tipoArticuloId <= 0) return;
+      const conceptoId = tiposArticuloById.get(tipoArticuloId)?.adm_concepto_id;
+      if (!conceptoId) return;
+
+      const centroCostoId =
+        normalizeCentroCostoId(detalle.centro_costo_id) ??
+        normalizeCentroCostoId(centroCostoValue);
+
+      const subtotal = normalizeNumber(detalle.subtotal);
+      const descuento = normalizeNumber(detalle.importe_descuento);
+      const neto = roundCurrency(subtotal - descuento);
+
+      const key = `${conceptoId}:${centroCostoId ?? "none"}`;
+      const current = grouped.get(key);
+      if (current) {
+        current.importe = roundCurrency(current.importe + neto);
+      } else {
+        grouped.set(key, {
+          concepto_id: conceptoId,
+          centro_costo_id: Number.isFinite(centroCostoId as number)
+            ? (centroCostoId as number)
+            : null,
+          importe: neto,
+        });
+      }
+    });
+
+    return Array.from(grouped.values())
+      .map((item) => ({
+        ...item,
+        concepto_label: conceptosById.get(item.concepto_id) || "",
+        centro_costo_label: item.centro_costo_id
+          ? centrosCostoById.get(item.centro_costo_id)
+          : undefined,
+      }))
+      .sort((a, b) => a.concepto_label.localeCompare(b.concepto_label));
+  }, [
+    detallesValue,
+    articulosById,
+    tiposArticuloById,
+    conceptosById,
+    centrosCostoById,
+    centroCostoValue,
+  ]);
+
   useAutoInitializeField("usuario_responsable_id", "id", !idValue);
 
   useEffect(() => {
+    const totales = Array.isArray(totalesValue) ? totalesValue : [];
+    const filtered = totales.filter((item) => item?.tipo !== "subtotal");
+    if (filtered.length !== totales.length) {
+      form.setValue("totales", filtered, { shouldDirty: false });
+    }
+  }, [totalesValue, form]);
+
+  useEffect(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
-    const impuestos = Array.isArray(impuestosValue) ? impuestosValue : [];
+    const impuestos = Array.isArray(totalesValue)
+      ? totalesValue.filter((item) => item?.tipo === "impuesto")
+      : [];
 
     const totals = detalles.reduce(
       (acc, detalle) => {
@@ -1055,9 +1248,9 @@ const PoFacturaFormFields = () => {
       { subtotal: 0, total_impuestos: 0, total: 0 }
     );
 
-    const impuestosTotal = impuestos.reduce((acc, impuesto) => {
-      if (!impuesto) return acc;
-      return acc + normalizeNumber(impuesto.importe);
+    const impuestosTotal = impuestos.reduce((acc, total) => {
+      if (!total) return acc;
+      return acc + normalizeNumber(total.importe);
     }, 0);
 
     totals.total_impuestos = roundCurrency(
@@ -1081,7 +1274,7 @@ const PoFacturaFormFields = () => {
     if (roundCurrency(normalizeNumber(form.getValues("total"))) !== normalizedTotal) {
       form.setValue("total", normalizedTotal, { shouldDirty: true });
     }
-  }, [detallesValue, impuestosValue, form]);
+  }, [detallesValue, totalesValue, form]);
 
   const generalSubtitle = useMemo(
     () => buildGeneralSubtitle(observacionesValue),
@@ -1094,7 +1287,6 @@ const PoFacturaFormFields = () => {
         {
           id: "cabecera",
           title: "Cabecera",
-          subtitle: generalSubtitle,
           defaultOpen: !idValue,
           headerContent: <PoFacturaHeaderInline />,
           headerContentPosition: "inline",
@@ -1112,7 +1304,7 @@ const PoFacturaFormFields = () => {
           defaultOpen: true,
           contentPadding: "none",
           contentClassName: "space-y-2 px-1 sm:px-1",
-          headerContent: <PoFacturaTotalsInline />,
+          headerContent: <PoFacturaSubtotalInline />,
           headerContentPosition: "inline",
           children: (
             <FormDetailSection
@@ -1136,17 +1328,22 @@ const PoFacturaFormFields = () => {
           ),
         },
         {
-          id: "impuestos",
-          title: "Impuestos",
+          id: "totales",
+          title: "Totales",
           defaultOpen: false,
           contentPadding: "none",
           contentClassName: "space-y-2 px-1 sm:px-1",
+          headerContent: <PoFacturaTotalesInline />,
+          headerContentPosition: "inline",
           children: (
             <FormDetailSection
-              name="impuestos"
-              schema={poFacturaImpuestoSchema}
+              name="totales"
+              schema={poFacturaTotalSchema}
             >
-              <PoFacturaImpuestoContent />
+              <PoFacturaTotalesContent
+                subtotalItems={subtotalItems}
+                centrosCostoById={centrosCostoById}
+              />
             </FormDetailSection>
           ),
         },
@@ -1154,32 +1351,39 @@ const PoFacturaFormFields = () => {
     />
   );
 };
-const PoFacturaTotalsInline = () => {
+const PoFacturaSubtotalInline = () => {
   const { control } = useFormContext<PoFactura>();
   const subtotal = useWatch({ control, name: "subtotal" }) ?? 0;
-  const impuestos = useWatch({ control, name: "total_impuestos" }) ?? 0;
+
+  return (
+    <div className="flex w-full items-center justify-end text-[9px] leading-none text-muted-foreground sm:text-[11px]">
+      <span>Subtotal:&nbsp;</span>
+      <strong className="text-foreground">
+        {CURRENCY_FORMATTER.format(Number(subtotal) || 0)}
+      </strong>
+    </div>
+  );
+};
+
+const PoFacturaTotalesInline = () => {
+  const { control } = useFormContext<PoFactura>();
+  const totalImpuestos = useWatch({ control, name: "total_impuestos" }) ?? 0;
   const total = useWatch({ control, name: "total" }) ?? 0;
 
   return (
-    <div className="flex w-full items-center justify-end gap-5 sm:gap-8 text-[9px] leading-none text-muted-foreground sm:text-[11px]">
-      <div className="flex flex-col items-center">
-        <span>Subtotal:</span>
+    <div className="flex w-full items-center justify-end gap-3 text-[9px] leading-none text-muted-foreground sm:text-[11px]">
+      <span>
+        Impuestos:&nbsp;
         <strong className="text-foreground">
-          {CURRENCY_FORMATTER.format(Number(subtotal) || 0)}
+          {CURRENCY_FORMATTER.format(Number(totalImpuestos) || 0)}
         </strong>
-      </div>
-      <div className="flex flex-col items-center">
-        <span>Impuestos:</span>
+      </span>
+      <span>
+        Total:&nbsp;
         <strong className="text-foreground">
-          {CURRENCY_FORMATTER.format(Number(impuestos) || 0)}
-        </strong>
-      </div>
-      <div className="flex flex-col items-center">
-        <span>Total:</span>
-        <span className="font-semibold text-primary">
           {CURRENCY_FORMATTER.format(Number(total) || 0)}
-        </span>
-      </div>
+        </strong>
+      </span>
     </div>
   );
 };
@@ -1280,7 +1484,7 @@ export const PoFacturaForm = () => {
       total_impuestos: 0,
       total: 0,
       detalles: [] as PoFacturaDetalle[],
-      impuestos: [] as PoFacturaImpuesto[],
+      totales: [] as PoFacturaTotal[],
     };
   }, [cabeceraDefaults]);
 

@@ -11,7 +11,7 @@ from .tipo_propiedad import TipoPropiedad
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
 from .setting import Setting
-from .crm_catalogos import (
+from .crm import (
     CRMTipoOperacion,
     CRMMotivoPerdida,
     CRMCondicionPago,
@@ -19,14 +19,17 @@ from .crm_catalogos import (
     CRMMotivoEvento,
     Moneda,
     CRMCatalogoRespuesta,
+    CRMContacto,
+    CRMOportunidad,
+    CRMOportunidadLogEstado,
+    CRMEvento,
+    CRMMensaje,
+    CRMCelular,
+)
+from .adm import (
+    AdmConcepto,
 )
 from .cotizacion_moneda import CotizacionMoneda
-from .crm_contacto import CRMContacto
-from .crm_oportunidad import CRMOportunidad
-from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
-from .crm_evento import CRMEvento
-from .crm_mensaje import CRMMensaje
-from .crm_celular import CRMCelular
 from .webhook_log import WebhookLog
 from .emprendimiento import Emprendimiento
 from .articulo import Articulo
@@ -44,7 +47,7 @@ from .compras import (
     PoOrdenCompraDetalle,
     PoFactura,
     PoFacturaDetalle,
-    PoFacturaImpuesto,
+    PoFacturaTotal,
 )
 from .departamento import Departamento
 from .tipo_solicitud import TipoSolicitud
@@ -86,6 +89,7 @@ __all__ = [
     "MetodoPago", 
     "Propiedad",
     "Setting",
+    "AdmConcepto",
     "CRMTipoOperacion",
     "CRMMotivoPerdida",
     "CRMCondicionPago",
@@ -116,7 +120,7 @@ __all__ = [
     "PoOrdenCompraDetalle",
     "PoFactura",
     "PoFacturaDetalle",
-    "PoFacturaImpuesto",
+    "PoFacturaTotal",
     "Departamento",
     "TipoSolicitud",
     "Solicitud",

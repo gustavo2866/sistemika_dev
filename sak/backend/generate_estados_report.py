@@ -3,7 +3,7 @@ Reporte detallado de oportunidades con estados inválidos
 """
 from sqlmodel import Session, select
 from app.db import engine
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
 
 

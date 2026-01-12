@@ -10,10 +10,7 @@ sys.path.insert(0, str(backend_dir))
 
 from sqlmodel import Session, select
 from app.db import engine
-from app.models.crm_oportunidad import CRMOportunidad
-from app.models.crm_evento import CRMEvento
-from app.models.crm_mensaje import CRMMensaje
-from app.models.crm_oportunidad_log_estado import CRMOportunidadLogEstado
+from app.models.crm import CRMOportunidad, CRMEvento, CRMMensaje, CRMOportunidadLogEstado
 
 
 def delete_oportunidad(oportunidad_id: int):

@@ -36,7 +36,6 @@ except ImportError:
 from pydantic import BaseModel, validator
 from sqlmodel import Session, select
 from app.db import get_session
-from app.models.cliente import Cliente
 
 logger = logging.getLogger(__name__)
 
@@ -119,26 +118,13 @@ class PDFExtractionService:
     
     def _get_clientes_conocidos(self) -> List[Dict[str, str]]:
         """Obtiene lista de clientes conocidos de la base de datos"""
-        try:
-            # Crear sesión de base de datos
-            from app.db import engine
-            with Session(engine) as session:
-                clientes = session.exec(select(Cliente).where(Cliente.activo == True)).all()
-                return [
-                    {
-                        "cuit": cliente.cuit,
-                        "razon_social": cliente.razon_social,
-                        "direccion": cliente.direccion or ""
-                    }
-                    for cliente in clientes
-                ]
-        except Exception as e:
-            logger.warning(f"No se pudieron cargar clientes conocidos: {e}")
-            return []
+        # Método deshabilitado - entidad Cliente eliminada
+        logger.warning("Método _get_clientes_conocidos deshabilitado - entidad Cliente no disponible")
+        return []
     
     def _identificar_emisor_receptor(self, extracted_data: Dict[str, Any], texto_completo: str) -> Dict[str, Any]:
         """
-        Identifica correctamente emisor vs receptor usando base de datos de clientes
+        Identifica correctamente emisor vs receptor (método simplificado sin base de datos de clientes)
         """
         clientes_conocidos = self._get_clientes_conocidos()
         

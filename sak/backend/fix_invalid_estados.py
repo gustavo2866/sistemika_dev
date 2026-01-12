@@ -3,7 +3,7 @@ Script para corregir oportunidades con estados inválidos en la base de datos.
 """
 from sqlmodel import Session, update
 from app.db import engine
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
 
 

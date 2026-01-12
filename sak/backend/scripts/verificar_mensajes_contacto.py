@@ -9,9 +9,7 @@ sys.path.insert(0, str(backend_dir))
 
 from sqlmodel import Session, select
 from app.db import engine
-from app.models.crm_mensaje import CRMMensaje
-from app.models.crm_contacto import CRMContacto
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMMensaje, CRMContacto, CRMOportunidad
 
 
 def verificar_mensajes_contacto(nombre_contacto: str):

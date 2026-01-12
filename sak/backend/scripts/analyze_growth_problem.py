@@ -16,7 +16,7 @@ if env_file.exists():
 
 from sqlmodel import Session, select
 from app.db import engine
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
 
 print("\n" + "=" * 80)

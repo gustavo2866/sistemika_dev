@@ -5,24 +5,24 @@ from typing import Optional, TYPE_CHECKING
 from sqlalchemy import Column, DECIMAL, Index
 from sqlmodel import Field, Relationship
 
-from .base import Base
-from .enums import EstadoOportunidad
+from ..base import Base
+from ..enums import EstadoOportunidad
 
 if TYPE_CHECKING:
-    from .crm_catalogos import (
+    from .catalogos import (
         CRMCondicionPago,
         CRMMotivoPerdida,
         CRMTipoOperacion,
         Moneda,
     )
-    from .crm_contacto import CRMContacto
-    from .crm_evento import CRMEvento
-    from .crm_mensaje import CRMMensaje
-    from .crm_oportunidad_log_estado import CRMOportunidadLogEstado
-    from .emprendimiento import Emprendimiento
-    from .propiedad import Propiedad
-    from .tipo_propiedad import TipoPropiedad
-    from .user import User
+    from .contacto import CRMContacto
+    from .evento import CRMEvento
+    from .mensaje import CRMMensaje
+    from .log_estado import CRMOportunidadLogEstado
+    from ..emprendimiento import Emprendimiento
+    from ..propiedad import Propiedad
+    from ..tipo_propiedad import TipoPropiedad
+    from ..user import User
 
 
 class CRMOportunidad(Base, table=True):

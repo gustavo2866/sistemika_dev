@@ -44,7 +44,7 @@ def verificar_filtros_tipos():
         
         print(f"\n📋 Encontrados {len(tipos_articulo)} tipos de artículo:")
         for tipo in tipos_articulo:
-            print(f"  ID: {tipo.id} - Nombre: '{tipo.nombre}' - Código: '{tipo.codigo_contable}'")
+            print(f"  ID: {tipo.id} - Nombre: '{tipo.nombre}' - Concepto ID: {tipo.adm_concepto_id}")
         
         # Verificar qué artículos están asociados a cada tipo
         print("\n🔍 Verificando artículos por tipo...")

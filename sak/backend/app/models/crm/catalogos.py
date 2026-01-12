@@ -2,12 +2,12 @@ from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import Field, Relationship
 
-from .base import Base
+from ..base import Base
 
 if TYPE_CHECKING:
-    from .crm_contacto import CRMContacto
-    from .crm_evento import CRMEvento
-    from .crm_oportunidad import CRMOportunidad
+    from .contacto import CRMContacto
+    from .evento import CRMEvento
+    from .oportunidad import CRMOportunidad
 
 
 class CRMTipoOperacion(Base, table=True):
@@ -74,8 +74,6 @@ class CRMMotivoEvento(Base, table=True):
     nombre: str = Field(max_length=150)
     descripcion: Optional[str] = Field(default=None, max_length=500)
     activo: bool = Field(default=True)
-
-
 
 
 class Moneda(Base, table=True):

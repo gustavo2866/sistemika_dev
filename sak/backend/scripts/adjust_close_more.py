@@ -20,10 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlmodel import Session, create_engine, select
 from dotenv import load_dotenv
-from app.models.crm_oportunidad import CRMOportunidad
-from app.models.crm_oportunidad_log_estado import CRMOportunidadLogEstado
+from app.models.crm import CRMOportunidad, CRMOportunidadLogEstado, CRMMotivoPerdida
 from app.models.user import User
-from app.models.crm_catalogos import CRMMotivoPerdida
 from app.models.enums import EstadoOportunidad, EstadoPropiedad
 from app.models.propiedad import Propiedad
 

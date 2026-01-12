@@ -22,12 +22,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlmodel import Session, create_engine, select
 from dotenv import load_dotenv
-from app.models.crm_oportunidad import CRMOportunidad
-from app.models.crm_oportunidad_log_estado import CRMOportunidadLogEstado
-from app.models.crm_contacto import CRMContacto
+from app.models.crm import (
+    CRMOportunidad,
+    CRMOportunidadLogEstado,
+    CRMContacto,
+    CRMTipoOperacion,
+    CRMMotivoPerdida,
+    Moneda,
+)
 from app.models.propiedad import Propiedad
 from app.models.user import User
-from app.models.crm_catalogos import CRMTipoOperacion, CRMMotivoPerdida, Moneda
 from app.models.enums import EstadoOportunidad, EstadoPropiedad
 
 # Cargar variables de entorno

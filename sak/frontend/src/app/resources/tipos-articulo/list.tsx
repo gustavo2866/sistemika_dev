@@ -6,6 +6,9 @@ import { TextField } from "@/components/text-field";
 import { BadgeField } from "@/components/badge-field";
 import { TextInput } from "@/components/text-input";
 import { BooleanInput } from "@/components/boolean-input";
+import { ReferenceInput } from "@/components/reference-input";
+import { ReferenceField } from "@/components/reference-field";
+import { SelectInput } from "@/components/select-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -14,7 +17,14 @@ import { EditButton } from "@/components/edit-button";
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar tipos de articulo" alwaysOn />,
   <TextInput key="nombre" source="nombre" label="Nombre" />,
-  <TextInput key="codigo_contable" source="codigo_contable" label="Codigo contable" />,
+  <ReferenceInput
+    key="adm_concepto_id"
+    source="adm_concepto_id"
+    reference="api/v1/adm/conceptos"
+    label="Concepto"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
   <BooleanInput key="activo" source="activo" label="Activo" />,
 ];
 
@@ -32,8 +42,10 @@ export const TipoArticuloList = () => (
       <DataTable.Col source="nombre" label="Nombre">
         <TextField source="nombre" />
       </DataTable.Col>
-      <DataTable.Col source="codigo_contable" label="Codigo contable">
-        <TextField source="codigo_contable" />
+      <DataTable.Col source="adm_concepto_id" label="Concepto">
+        <ReferenceField source="adm_concepto_id" reference="api/v1/adm/conceptos">
+          <TextField source="nombre" />
+        </ReferenceField>
       </DataTable.Col>
       <DataTable.Col source="descripcion" label="Descripcion">
         <TextField source="descripcion" className="block max-w-[260px] truncate" />

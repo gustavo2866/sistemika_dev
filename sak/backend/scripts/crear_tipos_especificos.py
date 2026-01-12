@@ -9,6 +9,28 @@ from sqlmodel import Session, select
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from app.models import TipoSolicitud, TipoArticulo
+from app.models.adm import AdmConcepto
+
+
+DEFAULT_CONCEPTO_NOMBRE = "Concepto default"
+DEFAULT_CONCEPTO_CUENTA = "DEFAULT"
+
+def get_default_concepto_id(session: Session) -> int:
+    concepto = session.exec(
+        select(AdmConcepto).where(AdmConcepto.cuenta == DEFAULT_CONCEPTO_CUENTA)
+    ).first()
+    if concepto:
+        return concepto.id
+    concepto = AdmConcepto(
+        nombre=DEFAULT_CONCEPTO_NOMBRE,
+        descripcion="Concepto por defecto para tipos de articulo",
+        cuenta=DEFAULT_CONCEPTO_CUENTA,
+    )
+    session.add(concepto)
+    session.commit()
+    session.refresh(concepto)
+    return concepto.id
+
 
 def crear_tipos_especificos():
     """Crea tipos de artículo específicos y corrige filtros"""
@@ -24,6 +46,7 @@ def crear_tipos_especificos():
     engine = create_engine(db_url)
     
     with Session(engine) as session:
+        default_concepto_id = get_default_concepto_id(session)
         print("🔄 Creando tipos de artículo específicos...")
         
         # Verificar si ya existen los tipos
@@ -35,7 +58,7 @@ def crear_tipos_especificos():
             transporte = TipoArticulo(
                 nombre="Transporte",
                 descripcion="Servicios de transporte y movilidad",
-                codigo_contable="TRANS",
+                adm_concepto_id=default_concepto_id,
                 activo=True
             )
             session.add(transporte)
@@ -50,7 +73,7 @@ def crear_tipos_especificos():
             mensajeria = TipoArticulo(
                 nombre="Mensajería",
                 descripcion="Servicios de mensajería y paquetería",
-                codigo_contable="MENSJ",
+                adm_concepto_id=default_concepto_id,
                 activo=True
             )
             session.add(mensajeria)

@@ -4,7 +4,7 @@ Script para identificar oportunidades con estados inválidos en la base de datos
 import asyncio
 from sqlmodel import select, Session
 from app.db import engine
-from app.models.crm_oportunidad import CRMOportunidad
+from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
 
 

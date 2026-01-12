@@ -7,6 +7,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from .articulo import Articulo
+    from .adm import AdmConcepto
 
 
 class TipoArticulo(Base, table=True):
@@ -17,7 +18,7 @@ class TipoArticulo(Base, table=True):
     Define categorías como Material, Ferretería, Herramienta, etc.
     """
     __tablename__ = "tipos_articulo"
-    __searchable_fields__: ClassVar[List[str]] = ["nombre", "descripcion", "codigo_contable"]
+    __searchable_fields__: ClassVar[List[str]] = ["nombre", "descripcion"]
     
     nombre: str = Field(
         max_length=100,
@@ -30,10 +31,9 @@ class TipoArticulo(Base, table=True):
         max_length=500,
         description="Descripción detallada del tipo de artículo"
     )
-    codigo_contable: str = Field(
-        max_length=50,
-        index=True,
-        description="Código contable del tipo de artículo"
+    adm_concepto_id: int = Field(
+        foreign_key="adm_conceptos.id",
+        description="ID del concepto administrativo asociado",
     )
     activo: bool = Field(
         default=True,
@@ -42,6 +42,7 @@ class TipoArticulo(Base, table=True):
 
     # Relationships
     articulos: List["Articulo"] = Relationship(back_populates="tipo_articulo_rel")
+    concepto: Optional["AdmConcepto"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"TipoArticulo(id={self.id}, nombre='{self.nombre}', codigo='{self.codigo_contable}')"
+        return f"TipoArticulo(id={self.id}, nombre='{self.nombre}', concepto_id={self.adm_concepto_id})"

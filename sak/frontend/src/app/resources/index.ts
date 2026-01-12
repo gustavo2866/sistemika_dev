@@ -29,6 +29,7 @@ export * from "./crm-chat";
 export * from "./crm-mensajes";
 export * from "./emprendimientos";
 export * from "./calculadora-financiera";
+export * from "./adm-conceptos";
 // Los dashboards no necesitan ser exportados aquí
 // export * from "./dashboard-proyectos";
 // export * from "./dashboard-vacancias";
