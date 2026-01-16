@@ -9,6 +9,7 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { TextInput } from "@/components/text-input";
+import { cn } from "@/lib/utils";
 import { ResourceTitle } from "@/components/resource-title";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -52,9 +53,9 @@ const filters = [
   <TextInput
     key="q"
     source="q"
-    label={false}
+    label="Buscar"
     placeholder="Buscar eventos"
-    className="w-full [&_input]:h-7 [&_input]:px-2.5 [&_input]:py-1 [&_input]:text-[10px] [&_input]:leading-none sm:[&_input]:h-9 sm:[&_input]:px-3 sm:[&_input]:py-2 sm:[&_input]:text-sm sm:[&_input]:leading-normal"
+    className="w-[120px] sm:w-[170px] [&_input]:h-7 [&_input]:px-2.5 [&_input]:py-1 [&_input]:text-[10px] [&_input]:leading-none sm:[&_input]:h-9 sm:[&_input]:px-3 sm:[&_input]:py-2 sm:[&_input]:text-sm sm:[&_input]:leading-normal"
     alwaysOn
   />,
   <ReferenceInput
@@ -67,7 +68,7 @@ const filters = [
     <SelectInput
       optionText="nombre"
       emptyText="Todos"
-      label={false}
+      label="Responsable"
       triggerProps={{
         size: "sm",
         className:
@@ -98,6 +99,13 @@ const filters = [
         "h-7 gap-1 px-2 py-0.5 text-[10px] leading-none text-left [&_[data-slot=select-value]]:text-left sm:h-9 sm:px-3 sm:py-2 sm:text-sm sm:leading-normal",
     }}
   />,
+  <SoloPendientesToggle
+    key="solo_pendientes"
+    source="solo_pendientes"
+    label="Activos"
+    alwaysOn
+    className="ml-auto"
+  />,
 ];
 
 const ListActions = ({ createState }: { createState?: Record<string, unknown> }) => (
@@ -118,6 +126,65 @@ const ListActions = ({ createState }: { createState?: Record<string, unknown> })
     />
   </div>
 );
+
+function SoloPendientesToggle({
+  source,
+  label,
+  className,
+  alwaysOn: _alwaysOn,
+}: {
+  source: string;
+  label: string;
+  className?: string;
+  alwaysOn?: boolean;
+}) {
+  const { filterValues, setFilters } = useListContext<CRMEvento>();
+  const checked = Boolean((filterValues as Record<string, unknown>)[source]);
+
+  const handleToggle = (value: boolean) => {
+    const nextFilters = { ...filterValues } as Record<string, unknown>;
+    if (value) {
+      nextFilters[source] = true;
+    } else {
+      delete nextFilters[source];
+    }
+    setFilters(nextFilters, {});
+  };
+
+  return (
+    <div className={cn("flex flex-col items-start gap-1", className)}>
+      <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+        {label}
+      </span>
+      <div className="flex items-center rounded-full border border-slate-200 bg-white/90 p-[2px] shadow-sm">
+        <button
+          type="button"
+          onClick={() => handleToggle(true)}
+          className={cn(
+            "rounded-full !h-auto px-1.5 py-1 !text-[10px] font-semibold uppercase tracking-[0.12em] leading-none transition",
+            checked
+              ? "bg-slate-900 text-white shadow-sm"
+              : "text-slate-400 hover:text-slate-600"
+          )}
+        >
+          On
+        </button>
+        <button
+          type="button"
+          onClick={() => handleToggle(false)}
+          className={cn(
+            "rounded-full !h-auto px-1.5 py-1 !text-[10px] font-semibold uppercase tracking-[0.12em] leading-none transition",
+            !checked
+              ? "bg-slate-900 text-white shadow-sm"
+              : "text-slate-400 hover:text-slate-600"
+          )}
+        >
+          Off
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) => {
   const state = location.state as { filter?: Record<string, any>; oportunidad_id?: number | string } | null;
@@ -201,6 +268,7 @@ export const CRMEventoList = () => {
       const base: Record<string, unknown> = {
         default_scope: "pendientes_mes",
         oportunidad_id: oportunidadIdFilter,
+        solo_pendientes: true,
       };
       if (fromChat && contactoId) {
         base.contacto_id = contactoId;
@@ -209,6 +277,7 @@ export const CRMEventoList = () => {
     }
     return {
       default_scope: "pendientes_mes",
+      solo_pendientes: true,
       ...(identity?.id ? { asignado_a_id: identity.id } : {}),
     };
   }, [contactoId, fromChat, identity?.id, oportunidadIdFilter]);
@@ -331,9 +400,10 @@ const EventosFilterSync = ({
 }) => {
   const { filterValues, setFilters } = useListContext<CRMEvento>();
   const [hasInitialized, setHasInitialized] = useState(false);
+  const shouldSkipSync = fromChat || fromOportunidad;
 
   useEffect(() => {
-    if (fromChat || fromOportunidad) return;
+    if (shouldSkipSync) return;
     const nextFilters = { ...filterValues };
     const hadContacto = "contacto_id" in nextFilters;
     const hadOportunidad = "oportunidad_id" in nextFilters;
@@ -355,7 +425,7 @@ const EventosFilterSync = ({
     if (!hasInitialized) {
       setHasInitialized(true);
     }
-  }, [filterValues, fromChat, hasInitialized, responsableId, setFilters]);
+  }, [filterValues, shouldSkipSync, hasInitialized, responsableId, setFilters]);
 
   return null;
 };
@@ -565,6 +635,11 @@ const formatDateTimeShort = (value?: string | null) => {
   return `${datePart} ${timePart}`;
 };
 
+const isEventoCompleted = (record: CRMEvento) =>
+  record.estado_evento === "2-realizado" ||
+  record.estado_evento?.includes("realizado") ||
+  record.estado_evento?.includes("hecho");
+
 const getFechaBucketLabel = (fecha?: string | null): FechaBucket => {
   if (!fecha) return "siguientes";
   const date = new Date(fecha);
@@ -599,7 +674,7 @@ const getFechaBucketLabel = (fecha?: string | null): FechaBucket => {
 };
 
 const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => void }) => {
-  const { data = [], isLoading } = useListContext<CRMEvento>();
+  const { data = [], isLoading, filterValues } = useListContext<CRMEvento>();
   const [collapsed, setCollapsed] = useState<Record<FechaBucket, boolean>>({
     vencido: false,
     hoy: false,
@@ -607,6 +682,12 @@ const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => 
     semana: true,
     siguientes: true,
   });
+  const soloPendientes = Boolean((filterValues as { solo_pendientes?: boolean })?.solo_pendientes);
+
+  const filteredData = useMemo(
+    () => (soloPendientes ? data.filter((evento) => !isEventoCompleted(evento)) : data),
+    [data, soloPendientes]
+  );
 
   const grouped = useMemo(() => {
     const base: Record<FechaBucket, CRMEvento[]> = {
@@ -616,7 +697,7 @@ const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => 
       semana: [],
       siguientes: [],
     };
-    data.forEach((evento) => {
+    filteredData.forEach((evento) => {
       const bucket = getFechaBucketLabel(evento.fecha_evento);
       base[bucket].push(evento);
     });
@@ -628,13 +709,13 @@ const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => 
       });
     });
     return base;
-  }, [data]);
+  }, [filteredData]);
 
   if (isLoading) {
     return <div className="py-6 text-sm text-muted-foreground">Cargando eventos...</div>;
   }
 
-  if (!data.length) {
+  if (!filteredData.length) {
     return <div className="py-6 text-sm text-muted-foreground">Sin eventos</div>;
   }
 
@@ -691,10 +772,7 @@ const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => 
 
 const EventoTodoRow = ({ record, onCompletar }: { record: CRMEvento; onCompletar: (evento: CRMEvento) => void }) => {
   const navigate = useNavigate();
-  const isCompleted =
-    record.estado_evento === "2-realizado" ||
-    record.estado_evento?.includes("realizado") ||
-    record.estado_evento?.includes("hecho");
+  const isCompleted = isEventoCompleted(record);
   const contactoName =
     record.contacto?.nombre_completo?.trim() ||
     record.contacto?.nombre?.trim() ||

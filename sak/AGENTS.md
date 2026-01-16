@@ -15,6 +15,7 @@ Instrucciones para agentes automatizados que trabajen en este repo.
 ## Patrones
 - CRUD backend: ver doc/patrones/crud_backend.md
 - CRUD frontend: ver doc/patrones/crud_frontend.md
+- Migraciones: ver doc/patrones/migraciones.md
 
 ## Componentes UI
 - Priorizar componentes reutilizables de `frontend/src/components`.

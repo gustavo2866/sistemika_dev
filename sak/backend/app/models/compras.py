@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, ClassVar, List, Optional
 from sqlalchemy import Column, DECIMAL, String
 from sqlmodel import Field, Relationship
 
-from .base import Base
+from .base import Base, current_utc_time
 
 if TYPE_CHECKING:
     from .articulo import Articulo
@@ -193,6 +193,15 @@ class PoOrdenCompra(Base, table=True):
         default=None,
         foreign_key="tipos_solicitud.id",
         description="Tipo de solicitud asociado (opcional)"
+    )
+    
+    fecha: Optional[date] = Field(
+        default=None,
+        description="Fecha de la orden de compra"
+    )
+    fecha_estado: Optional[datetime] = Field(
+        default=None,
+        description="Fecha del ultimo estado"
     )
 
     proveedor: "Proveedor" = Relationship()

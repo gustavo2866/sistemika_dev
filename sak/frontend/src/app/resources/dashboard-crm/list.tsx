@@ -243,13 +243,13 @@ export default function DashboardCrmList() {
               placeholder="Propietario contiene..."
               value={filters.propietario}
               onChange={(event) => handleFilterChange("propietario", event.target.value)}
-              className="h-9 w-[220px]"
+              className="h-9 w-[180px]"
             />
             <Input
               placeholder="Tipos de propiedad (coma)"
               value={filters.tipoPropiedad}
               onChange={(event) => handleFilterChange("tipoPropiedad", event.target.value)}
-              className="h-9 w-[220px]"
+              className="h-9 w-[180px]"
             />
             <div className="flex flex-col gap-1">
               <Label className="text-xs uppercase text-muted-foreground">Tipo de operacion</Label>
@@ -257,7 +257,7 @@ export default function DashboardCrmList() {
                 value={filters.tipoOperacionId}
                 onValueChange={(value) => handleFilterChange("tipoOperacionId", value)}
               >
-                <SelectTrigger className="h-9 w-[220px]">
+                <SelectTrigger className="h-9 w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -275,7 +275,7 @@ export default function DashboardCrmList() {
                 value={filters.emprendimientoId}
                 onValueChange={(value) => handleFilterChange("emprendimientoId", value)}
               >
-                <SelectTrigger className="h-9 w-[220px]">
+                <SelectTrigger className="h-9 w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -320,16 +320,24 @@ export default function DashboardCrmList() {
               <div className="flex flex-col gap-3">
                 <div className="flex items-baseline justify-between gap-4">
                   <div>
-                    <p className="text-[30px] font-semibold leading-none">{formatInteger(kpi.count ?? 0)}</p>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Cantidad</p>
+                    <p className="text-[16px] font-semibold leading-none sm:text-[20px]">
+                      {formatInteger(kpi.count ?? 0)}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-[11px]">
+                      Cantidad
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[30px] font-semibold leading-none">{formatCurrency(kpi.amount ?? 0)}</p>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Monto</p>
+                    <p className="text-[16px] font-semibold leading-none sm:text-[20px]">
+                      {formatCurrency(kpi.amount ?? 0)}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-[11px]">
+                      Monto
+                    </p>
                   </div>
                 </div>
                 {variation !== undefined && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground sm:text-[11px]">
                     <span>{card.key === "ganadas" ? "Conversion" : "Incremento"}</span>
                     <span className="font-semibold text-foreground">{formatPercent(variation)}%</span>
                   </div>

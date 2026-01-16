@@ -3,6 +3,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from .base import Base
 
 if TYPE_CHECKING:
+    from .adm import AdmConcepto
     from .factura import Factura
     from .articulo import Articulo
 
@@ -26,11 +27,19 @@ class Proveedor(Base, table=True):
     # Datos bancarios
     cbu: Optional[str] = Field(default=None, max_length=22, description="CBU")
     alias_bancario: Optional[str] = Field(default=None, max_length=100, description="Alias bancario")
+
+    # Concepto administrativo (opcional)
+    adm_concepto_id: Optional[int] = Field(
+        default=None,
+        foreign_key="adm_conceptos.id",
+        description="ID del concepto administrativo asociado",
+    )
     
     # Estado
     activo: bool = Field(default=True, description="Si el proveedor está activo")
     
     # Relaciones
+    concepto: Optional["AdmConcepto"] = Relationship()
     facturas: List["Factura"] = Relationship(back_populates="proveedor")
     articulos: List["Articulo"] = Relationship(back_populates="proveedor")
     

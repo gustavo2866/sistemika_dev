@@ -34,7 +34,8 @@ class CRMEvento(Base, table=True):
     ]
 
     # Campos obligatorios
-    oportunidad_id: int = Field(
+    oportunidad_id: Optional[int] = Field(
+        default=None,
         foreign_key="crm_oportunidades.id",
         index=True,
         description="Oportunidad a la que pertenece el evento"

@@ -7,6 +7,7 @@ import { TextField } from "@/components/text-field";
 import { NumberField } from "@/components/number-field";
 import { DateField } from "@/components/date-field";
 import { ReferenceField } from "@/components/reference-field";
+import { KanbanAvatar } from "@/components/kanban/card";
 import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
@@ -46,6 +47,24 @@ const ESTADO_BADGES: Record<string, string> = {
 const formatNumero = (value?: string | number) => {
   if (value == null || value === "") return "";
   return String(value);
+};
+
+const getResponsableAvatarInfo = (record?: PoFactura) => {
+  const responsable = (record as { usuario_responsable?: { nombre?: string; nombre_completo?: string; email?: string; avatar?: string; url_foto?: string } })
+    ?.usuario_responsable;
+  const name =
+    responsable?.nombre_completo ||
+    responsable?.nombre ||
+    responsable?.email ||
+    (record?.usuario_responsable_id ? `Usuario #${record.usuario_responsable_id}` : "Usuario");
+  const avatarUrl = responsable?.avatar || responsable?.url_foto || null;
+  const initials = name
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase())
+    .slice(0, 2)
+    .join("");
+
+  return { name, avatarUrl, initials };
 };
 
 const filters = [
@@ -122,30 +141,46 @@ export const PoFacturaList = () => (
     sort={{ field: "id", order: "DESC" }}
     filterDefaultValues={{ estado: "pendiente" }}
   >
-    <ResponsiveDataTable rowClick="edit">
+    <ResponsiveDataTable
+      rowClick="edit"
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
       <ResponsiveDataTable.Col
         source="numero"
         label="Numero"
-        className="w-[140px]"
+        className="w-[100px]"
         render={(record) => formatNumero(record?.numero)}
       />
-      <ResponsiveDataTable.Col source="proveedor_id" label="Proveedor" className="w-[220px]">
+      <ResponsiveDataTable.Col source="proveedor_id" label="Proveedor" className="w-[150px]">
         <ReferenceField source="proveedor_id" reference="proveedores">
           <TextField source="nombre" />
         </ReferenceField>
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="usuario_responsable_id" label="Responsable" className="w-[200px]">
-        <ReferenceField source="usuario_responsable_id" reference="users">
-          <TextField source="nombre" />
-        </ReferenceField>
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="fecha_emision" label="Fecha" className="w-[130px]">
+      <ResponsiveDataTable.Col
+        source="usuario_responsable_id"
+        label="Resp"
+        className="w-[80px]"
+        render={(record) => {
+          const { name, avatarUrl, initials } = getResponsableAvatarInfo(record);
+          return (
+            <div className="flex w-full items-center justify-start">
+              <KanbanAvatar
+                src={avatarUrl}
+                alt={name}
+                fallback={initials}
+                className="border-white/70 shadow-sm"
+              />
+            </div>
+          );
+        }}
+      />
+      <ResponsiveDataTable.Col source="fecha_emision" label="Fecha" className="w-[70px]">
         <DateField source="fecha_emision" />
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[140px]">
+      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[80px]">
         <EstadoBadge />
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="total" label="Total" className="w-[140px]">
+      <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
         <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">

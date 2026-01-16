@@ -41,6 +41,7 @@ import {
   type PoSolicitud,
   type PoSolicitudDetalle,
   type DetalleFormValues,
+  ESTADO_BADGES,
   ESTADO_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
@@ -71,14 +72,6 @@ const truncateText = (value: string, limit: number) => {
   if (!value) return "";
   if (value.length <= limit) return value;
   return `${value.slice(0, Math.max(0, limit - 3))}...`;
-};
-
-const ESTADO_BADGES: Record<string, string> = {
-  pendiente: "bg-amber-100 text-amber-800",
-  aprobada: "bg-emerald-100 text-emerald-800",
-  rechazada: "bg-rose-100 text-rose-800",
-  en_proceso: "bg-sky-100 text-sky-800",
-  finalizada: "bg-slate-200 text-slate-800",
 };
 
 const buildGeneralSubtitle = (
@@ -145,28 +138,32 @@ const PoSolicitudDetalleCard = ({
         </div>
       }
       subtitle={
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[10px] sm:text-[11px]">
-            UM: {unidadMedida}, Precio: {precioValue},{" "}
-          </span>
-          <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
-            Cantidad: {cantidadValue}
-          </span>
-          <span className="ml-auto rounded bg-muted/60 px-1.5 py-0.5 text-right text-[10px] font-semibold sm:text-[11px]">
-            {importeFormatted}
+        <div className="flex items-center gap-2 text-[9px] text-muted-foreground sm:text-[10px]">
+          <span className="truncate">
+            Cantidad {cantidadValue} {unidadMedida}{" "}
+            <span className="mx-1">Precio {precioValue}</span>
+            <span className="font-semibold text-foreground">
+              Importe {importeFormatted}
+            </span>
           </span>
         </div>
       }
     >
       {descripcion ? (
         <>
-          <span>{descripcionTruncada}</span>
+          <span className="text-[9px] text-muted-foreground sm:text-[10px]">
+            {descripcionTruncada}
+          </span>
           {showVerMas ? (
-            <span className="ml-1 text-[10px] underline">ver mas</span>
+            <span className="ml-1 text-[9px] underline sm:text-[10px]">
+              ver mas
+            </span>
           ) : null}
         </>
       ) : (
-        "Artículo sin descripción"
+        <span className="text-[9px] text-muted-foreground sm:text-[10px]">
+          Articulo sin descripcion
+        </span>
       )}
     </FormDetailCardCompact>
   );

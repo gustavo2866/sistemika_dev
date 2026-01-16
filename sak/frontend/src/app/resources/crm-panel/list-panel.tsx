@@ -105,7 +105,7 @@ const getBuckets = () => {
 };
 
 const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar oportunidades" alwaysOn />,
+  <TextInput key="q" source="q" label="Buscar" placeholder="Buscar oportunidades" alwaysOn />,
   <ReferenceInput key="contacto_id" source="contacto_id" reference="crm/contactos" label="Contacto">
     <SelectInput optionText="nombre_completo" emptyText="Todos" />
   </ReferenceInput>,

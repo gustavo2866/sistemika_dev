@@ -8,7 +8,7 @@ from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
 from app.db import get_session
 from app.core.responses import ErrorCodes
-from app.models.base import filtrar_respuesta
+from app.models.base import current_utc_time, filtrar_respuesta
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ def create_orden_compra_debug(
     try:
         _sanitize_detalle_payloads(payload)
         logger.info(f"DEBUG: Received payload for po-ordenes-compra: {payload}")
+        # No asignar defaults en backend para validar el payload recibido.
         
         # Validar campos obligatorios
         required_fields = [
@@ -111,6 +112,9 @@ def update_orden_compra_debug(
         orden_existente = session.exec(select(PoOrdenCompra).where(PoOrdenCompra.id == id)).first()
         if not orden_existente:
             raise HTTPException(status_code=404, detail="Orden de compra no encontrada")
+
+        if payload.get("estado") and payload.get("estado") != orden_existente.estado:
+            payload["fecha_estado"] = current_utc_time()
         
         obj = po_orden_compra_crud.update(session, id, payload)
         logger.info(f"DEBUG PUT: Successfully updated orden de compra with ID: {obj.id}")

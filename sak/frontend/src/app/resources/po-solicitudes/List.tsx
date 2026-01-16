@@ -16,6 +16,7 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Button } from "@/components/ui/button";
+import { KanbanAvatar } from "@/components/kanban/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -35,7 +36,7 @@ import {
 } from "ra-core";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import type { PoSolicitud } from "./model";
-import { ESTADO_CHOICES } from "./model";
+import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
 
 const filters = [
   <TextInput
@@ -118,6 +119,25 @@ const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) 
   if (direct) return direct;
   return undefined;
 };
+
+const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
+  const solicitante = (record as { solicitante?: { nombre?: string; nombre_completo?: string; email?: string; avatar?: string; url_foto?: string } })
+    ?.solicitante;
+  const name =
+    solicitante?.nombre_completo ||
+    solicitante?.nombre ||
+    solicitante?.email ||
+    (record?.solicitante_id ? `Usuario #${record.solicitante_id}` : "Usuario");
+  const avatarUrl = solicitante?.avatar || solicitante?.url_foto || null;
+  const initials = name
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase())
+    .slice(0, 2)
+    .join("");
+
+  return { name, avatarUrl, initials };
+};
+
 
 export const PoSolicitudList = () => {
   const location = useLocation();
@@ -204,24 +224,57 @@ export const PoSolicitudList = () => {
           </div>
         </div>
       ) : null}
-      <ResponsiveDataTable rowClick="edit">
-        <ResponsiveDataTable.Col source="titulo" label="Titulo" className="min-w-[240px] max-w-[280px]">
-          <TextField source="titulo" className="truncate max-w-[280px]" />
+    <ResponsiveDataTable
+      rowClick="edit"
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+        <ResponsiveDataTable.Col
+          source="titulo"
+          label="Titulo"
+          className="w-[160px] whitespace-normal break-words"
+        >
+          <TextField source="titulo" className="whitespace-normal break-words" />
         </ResponsiveDataTable.Col>
-        <ResponsiveDataTable.Col source="solicitante_id" label="Solicitante" className="w-[200px]">
-          <ReferenceField source="solicitante_id" reference="users">
-            <TextField
-              source="nombre"
-              className="truncate inline-block max-w-[180px]"
-            />
-          </ReferenceField>
+        <ResponsiveDataTable.Col
+          source="solicitante_id"
+          label="Solicitante"
+          className="w-[80px]"
+          render={(record) => {
+            const { name, avatarUrl, initials } = getSolicitanteAvatarInfo(record);
+            return (
+              <div className="flex w-full items-center justify-start">
+                <KanbanAvatar
+                  src={avatarUrl}
+                  alt={name}
+                  fallback={initials}
+                  className="border-white/70 shadow-sm"
+                />
+              </div>
+            );
+          }}
+        />
+        <ResponsiveDataTable.Col
+          source="fecha_necesidad"
+          label="Fecha necesidad"
+          className="w-[110px] text-center"
+        >
+          <DateField source="fecha_necesidad" className="inline-block text-center w-full" />
         </ResponsiveDataTable.Col>
-        <ResponsiveDataTable.Col source="fecha_necesidad" label="Fecha necesidad" className="w-[140px]">
-          <DateField source="fecha_necesidad" />
-        </ResponsiveDataTable.Col>
-        <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[120px]">
-          <BadgeField source="estado" />
-        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
+          source="estado"
+          label="Estado"
+          className="w-[120px]"
+          render={(record) => {
+            const estadoKey = String(record?.estado ?? "");
+            return (
+              <BadgeField
+                source="estado"
+                record={record}
+                className={ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800"}
+              />
+            );
+          }}
+        />
         <ResponsiveDataTable.Col source="total" label="Importe" className="w-[140px]">
           <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
         </ResponsiveDataTable.Col>

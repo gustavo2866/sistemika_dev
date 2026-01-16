@@ -128,6 +128,8 @@ export type PoOrdenCompra = {
   titulo: string;
   estado: string;
   observaciones?: string | null;
+  fecha?: string | null;
+  fecha_estado?: string | null;
   subtotal: number;
   total_impuestos: number;
   total: number;
@@ -165,6 +167,8 @@ export type PoOrdenCompra = {
 export type PoOrdenCompraCabeceraFormValues = {
   titulo: string;
   estado: string;
+  fecha: string;
+  fecha_estado: string;
   proveedor_id: string;
   usuario_responsable_id: string;
   metodo_pago_id: string;
@@ -258,6 +262,8 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
     PoOrdenCompra,
     | "titulo"
     | "estado"
+    | "fecha"
+    | "fecha_estado"
     | "proveedor_id"
     | "usuario_responsable_id"
     | "metodo_pago_id"
@@ -277,6 +283,14 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
       required: true,
       options: ESTADO_CHOICES,
       defaultValue: "borrador",
+    }),
+    fecha: stringField({
+      required: false,
+      defaultValue: "",
+    }),
+    fecha_estado: stringField({
+      required: false,
+      defaultValue: "",
     }),
     proveedor_id: referenceField({
       resource: PROVEEDORES_REFERENCE.resource,

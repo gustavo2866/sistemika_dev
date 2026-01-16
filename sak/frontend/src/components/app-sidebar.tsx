@@ -18,6 +18,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -67,9 +68,9 @@ const CONFIG_RESOURCES = [
 ] as const;
 const CRM_RESOURCES = [
   "crm/eventos",
-  "crm/oportunidades",
-  "crm/contactos",
   "dashboard-crm",
+  "crm/contactos",
+  "crm/oportunidades",
 ] as const;
 const CRM_CUSTOM_LINKS: Array<{
   label: string;
@@ -79,8 +80,8 @@ const CRM_CUSTOM_LINKS: Array<{
 }> = [
   { label: "CRM Chat", to: "/crm/chat", icon: MessageCircle, position: "top" },
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
-  { label: "Calculadora Financiera", to: "/calculadora-financiera", icon: Calculator, position: "top" },
   { label: "CRM Mensajes", to: "/crm/mensajes", icon: Mail, position: "bottom" },
+  { label: "Calculadora Financiera", to: "/calculadora-financiera", icon: Calculator, position: "bottom" },
   { label: "Setup", to: "/crm/setup", icon: Settings, position: "bottom" },
 ] as const;
 const CRM_TOP_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "top");
@@ -274,11 +275,12 @@ export function AppSidebar() {
                     />
                   ))}
                   {crmResources.map((name) => (
-                    <ResourceSubMenuItem
-                      key={name}
-                      name={name}
-                      onClick={handleItemClick}
-                    />
+                    <div key={name}>
+                      <ResourceSubMenuItem name={name} onClick={handleItemClick} />
+                      {name === "dashboard-crm" ? (
+                        <SidebarSeparator className="my-1" />
+                      ) : null}
+                    </div>
                   ))}
                   {CRM_BOTTOM_CUSTOM_LINKS.map((link) => (
                     <SidebarCustomMenuItem

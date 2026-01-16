@@ -45,7 +45,6 @@ import {
   ESTADO_CHOICES,
   getArticuloFilterByTipo,
   METODOS_PAGO_REFERENCE,
-  PO_SOLICITUDES_REFERENCE,
   PROVEEDORES_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   UNIDAD_MEDIDA_CHOICES,
@@ -55,8 +54,6 @@ import {
   poOrdenCompraDetalleSchema,
 } from "./model";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
-
-const GENERAL_SUBTITLE_SNIPPET = 25;
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
   style: "currency",
@@ -72,13 +69,6 @@ const ESTADO_BADGES: Record<string, string> = {
   recibida: "bg-amber-100 text-amber-800",
   cerrada: "bg-indigo-100 text-indigo-800",
   anulada: "bg-slate-200 text-slate-600",
-};
-
-const buildGeneralSubtitle = (observaciones: string | undefined) => {
-  const snippet = observaciones
-    ? observaciones.slice(0, GENERAL_SUBTITLE_SNIPPET)
-    : "";
-  return snippet || "";
 };
 
 const roundCurrency = (value: number) =>
@@ -127,6 +117,9 @@ const PoOrdenCompraDetalleCard = ({
   const centroCostoLabel = item.centro_costo_id
     ? getReferenceLabel("centro_costo_id", item.centro_costo_id)
     : undefined;
+  const articuloLabel = item.articulo_id
+    ? getReferenceLabel("articulo_id", item.articulo_id)
+    : undefined;
   const descripcion = (item.descripcion || "").trim();
   const totalLinea = CURRENCY_FORMATTER.format(
     Number(item.total_linea ?? 0)
@@ -136,10 +129,11 @@ const PoOrdenCompraDetalleCard = ({
 
   return (
     <FormDetailCardCompact
+      className="space-y-0.5"
       title={
         <div className="flex w-full items-center gap-2">
           <span className="truncate text-[12px] font-semibold sm:text-[13px]">
-            {descripcion || "Item sin descripcion"}
+            {articuloLabel || "Articulo sin nombre"}
           </span>
           <Button
             type="button"
@@ -157,22 +151,26 @@ const PoOrdenCompraDetalleCard = ({
         </div>
       }
       subtitle={
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[10px] sm:text-[11px]">
-            Cantidad: {cantidad} | Precio: {precio}
-          </span>
+        <div className="flex flex-col gap-0">
+          <div className="flex items-center justify-between gap-2 sm:gap-3">
+            <span className="truncate text-[10px] leading-none sm:text-[11px]">
+              Cantidad: {cantidad} | Precio: {precio}
+            </span>
+            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-right text-[10px] font-semibold sm:text-[11px]">
+              {totalLinea}
+            </span>
+          </div>
           {centroCostoLabel ? (
-            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+            <span className="text-[8px] leading-none text-muted-foreground sm:rounded sm:bg-muted/60 sm:px-1.5 sm:py-0.5 sm:text-[9px]">
               {centroCostoLabel}
             </span>
           ) : null}
-          <span className="ml-auto rounded bg-muted/60 px-1.5 py-0.5 text-right text-[10px] font-semibold sm:text-[11px]">
-            {totalLinea}
-          </span>
         </div>
       }
     >
-      Detalle del articulo
+      <div className="text-[9px] leading-none text-muted-foreground sm:text-[10px]">
+        {descripcion || "Sin descripcion"}
+      </div>
     </FormDetailCardCompact>
   );
 };
@@ -187,6 +185,7 @@ type PoOrdenCompraDetalleDialogContentProps = {
   articuloFilterQuery?: Record<string, unknown>;
   articuloFilterId?: number;
   hasTipoSolicitud?: boolean;
+  defaultCentroCostoId?: number | null;
 };
 
 const PoOrdenCompraDetalleDialogContent = ({
@@ -194,6 +193,7 @@ const PoOrdenCompraDetalleDialogContent = ({
   articuloFilterQuery,
   articuloFilterId,
   hasTipoSolicitud,
+  defaultCentroCostoId,
 }: PoOrdenCompraDetalleDialogContentProps) => {
   const { resolveAction, items } = useFormDetailSectionContext<
     DetalleFormValues,
@@ -283,18 +283,25 @@ const PoOrdenCompraDetalleDialogContent = ({
     });
   }, [detalleForm, items.length, resolveAction]);
 
+  useEffect(() => {
+    if (resolveAction() !== "create") {
+      return;
+    }
+    if (defaultCentroCostoId == null) {
+      return;
+    }
+    const currentCentroCosto = detalleForm.getValues("centro_costo_id");
+    if (currentCentroCosto !== undefined && currentCentroCosto !== "") {
+      return;
+    }
+    detalleForm.setValue("centro_costo_id", String(defaultCentroCostoId), {
+      shouldDirty: true,
+    });
+  }, [defaultCentroCostoId, detalleForm, resolveAction]);
+
   return (
     <>
-      <CompactFormField label="PO Solicitud">
-        <CompactComboboxQuery
-          {...PO_SOLICITUDES_REFERENCE}
-          value={detalleForm.watch("po_solicitud_id") ?? ""}
-          placeholder="Selecciona una solicitud"
-          disabled
-        />
-      </CompactFormField>
-
-      <CompactFormGrid columns="two">
+      <CompactFormGrid columns="one">
         <CompactFormField
           label="Articulo"
           error={detalleForm.formState.errors.articulo_id}
@@ -329,49 +336,56 @@ const PoOrdenCompraDetalleDialogContent = ({
         />
       </CompactFormField>
 
-      <CompactFormGrid columns="two">
-        <CompactFormField
-          label="Unidad de medida"
-          error={detalleForm.formState.errors.unidad_medida}
-          required
-        >
-          <Select
-            value={detalleForm.watch("unidad_medida") ?? ""}
-            onValueChange={(value) =>
-              detalleForm.setValue("unidad_medida", value, {
-                shouldValidate: true,
-              })
-            }
+      <div className="flex flex-nowrap items-baseline gap-2 w-full">
+        <div className="flex-1 min-w-0">
+          <CompactFormField
+            label="Cantidad"
+            error={detalleForm.formState.errors.cantidad}
+            required
           >
-            <SelectTrigger className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm">
-              <SelectValue placeholder="Selecciona unidad" />
-            </SelectTrigger>
-            <SelectContent>
-              {UNIDAD_MEDIDA_CHOICES.map((choice) => (
-                <SelectItem key={String(choice.id)} value={String(choice.id)}>
-                  {choice.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CompactFormField>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              className="!h-7 px-2 text-[11px] sm:!h-8 sm:px-3 sm:text-sm w-full"
+              {...detalleForm.register("cantidad", { valueAsNumber: true })}
+            />
+          </CompactFormField>
+        </div>
 
-        <CompactFormField
-          label="Cantidad"
-          error={detalleForm.formState.errors.cantidad}
-          required
-        >
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            {...detalleForm.register("cantidad", { valueAsNumber: true })}
-          />
-        </CompactFormField>
-      </CompactFormGrid>
+        <div className="w-[7ch] sm:w-[8ch] shrink-0">
+          <CompactFormField
+            label="Unidad"
+            error={detalleForm.formState.errors.unidad_medida}
+            required
+          >
+            <Select
+              value={detalleForm.watch("unidad_medida") ?? ""}
+              onValueChange={(value) =>
+                detalleForm.setValue("unidad_medida", value, {
+                  shouldValidate: true,
+                })
+              }
+            >
+              <SelectTrigger
+                className="!h-7 px-2 text-[11px] sm:!h-8 sm:px-3 sm:text-sm w-full"
+                tabIndex={-1}
+              >
+                <SelectValue placeholder="Unidad" />
+              </SelectTrigger>
+              <SelectContent>
+                {UNIDAD_MEDIDA_CHOICES.map((choice) => (
+                  <SelectItem key={String(choice.id)} value={String(choice.id)}>
+                    {choice.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CompactFormField>
+        </div>
+      </div>
 
-      <CompactFormGrid columns="two">
+      <CompactFormGrid columns="one">
         <CompactFormField
           label="Precio unitario"
           error={detalleForm.formState.errors.precio_unitario}
@@ -388,44 +402,44 @@ const PoOrdenCompraDetalleDialogContent = ({
             })}
           />
         </CompactFormField>
+      </CompactFormGrid>
+      <input
+        type="hidden"
+        {...detalleForm.register("porcentaje_descuento", { valueAsNumber: true })}
+      />
+      <input
+        type="hidden"
+        {...detalleForm.register("porcentaje_iva", { valueAsNumber: true })}
+      />
+      <input
+        type="hidden"
+        {...detalleForm.register("importe_descuento", { valueAsNumber: true })}
+      />
+      <input
+        type="hidden"
+        {...detalleForm.register("importe_iva", { valueAsNumber: true })}
+      />
+      <input
+        type="hidden"
+        {...detalleForm.register("subtotal", { valueAsNumber: true })}
+      />
 
-        <CompactFormField
-          label="% Descuento"
-          error={detalleForm.formState.errors.porcentaje_descuento}
-        >
+      <CompactFormGrid columns="two">
+        <CompactFormField label="Total linea">
           <Input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            {...detalleForm.register("porcentaje_descuento", {
-              valueAsNumber: true,
-              min: 0,
-            })}
+            type="text"
+            value={computedDisplay.totalLinea}
+            readOnly
+            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+          />
+          <input
+            type="hidden"
+            {...detalleForm.register("total_linea", { valueAsNumber: true })}
           />
         </CompactFormField>
       </CompactFormGrid>
 
-      <CompactFormGrid columns="two">
-        <CompactFormField
-          label="% IVA"
-          error={detalleForm.formState.errors.porcentaje_iva}
-          required
-        >
-          <Input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            {...detalleForm.register("porcentaje_iva", {
-              valueAsNumber: true,
-              min: 0,
-            })}
-          />
-        </CompactFormField>
-
+      <CompactFormGrid columns="one">
         <CompactFormField label="Centro de costo">
           <CompactComboboxQuery
             {...CENTROS_COSTO_REFERENCE}
@@ -441,62 +455,6 @@ const PoOrdenCompraDetalleDialogContent = ({
           />
         </CompactFormField>
       </CompactFormGrid>
-
-      <CompactFormGrid columns="two">
-        <CompactFormField label="Subtotal">
-          <Input
-            type="text"
-            value={computedDisplay.subtotal}
-            readOnly
-            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          />
-          <input
-            type="hidden"
-            {...detalleForm.register("subtotal", { valueAsNumber: true })}
-          />
-        </CompactFormField>
-
-        <CompactFormField label="Desc. importe">
-          <Input
-            type="text"
-            value={computedDisplay.importeDescuento}
-            readOnly
-            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          />
-          <input
-            type="hidden"
-            {...detalleForm.register("importe_descuento", { valueAsNumber: true })}
-          />
-        </CompactFormField>
-      </CompactFormGrid>
-
-      <CompactFormGrid columns="two">
-        <CompactFormField label="IVA importe">
-          <Input
-            type="text"
-            value={computedDisplay.importeIva}
-            readOnly
-            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          />
-          <input
-            type="hidden"
-            {...detalleForm.register("importe_iva", { valueAsNumber: true })}
-          />
-        </CompactFormField>
-
-        <CompactFormField label="Total linea">
-          <Input
-            type="text"
-            value={computedDisplay.totalLinea}
-            readOnly
-            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          />
-          <input
-            type="hidden"
-            {...detalleForm.register("total_linea", { valueAsNumber: true })}
-          />
-        </CompactFormField>
-      </CompactFormGrid>
     </>
   );
 };
@@ -504,9 +462,11 @@ const PoOrdenCompraDetalleDialogContent = ({
 const PoOrdenCompraDetalleForm = ({
   articuloFilterId,
   hasTipoSolicitud,
+  defaultCentroCostoId,
 }: {
   articuloFilterId?: number;
   hasTipoSolicitud?: boolean;
+  defaultCentroCostoId?: number | null;
 }) => {
   const articuloFilterQuery = useMemo(
     () => (articuloFilterId ? { tipo_articulo_id: articuloFilterId } : undefined),
@@ -526,6 +486,7 @@ const PoOrdenCompraDetalleForm = ({
           articuloFilterQuery={articuloFilterQuery}
           articuloFilterId={articuloFilterId}
           hasTipoSolicitud={hasTipoSolicitud}
+          defaultCentroCostoId={defaultCentroCostoId}
         />
       )}
     </FormDetailFormDialog>
@@ -535,9 +496,11 @@ const PoOrdenCompraDetalleForm = ({
 const PoOrdenCompraDetalleContent = ({
   articuloFilterId,
   hasTipoSolicitud,
+  defaultCentroCostoId,
 }: {
   articuloFilterId?: number;
   hasTipoSolicitud?: boolean;
+  defaultCentroCostoId?: number | null;
 }) => {
   const { handleStartCreate, handleDeleteBySortedIndex } =
     useFormDetailSectionContext();
@@ -576,6 +539,7 @@ const PoOrdenCompraDetalleContent = ({
       <PoOrdenCompraDetalleForm
         articuloFilterId={articuloFilterId}
         hasTipoSolicitud={hasTipoSolicitud}
+        defaultCentroCostoId={defaultCentroCostoId}
       />
     </>
   );
@@ -583,9 +547,12 @@ const PoOrdenCompraDetalleContent = ({
 
 const CabeceraContent = ({
   tipoSolicitudBloqueado,
+  showFechaEstado,
 }: {
   tipoSolicitudBloqueado?: boolean;
+  showFechaEstado?: boolean;
 }) => {
+  const form = useFormContext<PoOrdenCompra>();
   return (
     <CompactFormGrid columns="two">
       <div className="min-w-0 md:col-span-2">
@@ -599,15 +566,32 @@ const CabeceraContent = ({
       </div>
 
       <div className="min-w-0">
-        <CompactSelectInput
-          source="estado"
-          label="Estado"
-          choices={ESTADO_CHOICES}
+        <CompactTextInput
+          source="fecha"
+          label="Fecha"
+          type="date"
           className="w-full"
-          validate={required()}
-          disabled={true}
         />
       </div>
+
+      {showFechaEstado ? (
+        <div className="min-w-0">
+          <CompactTextInput
+            source="fecha_estado"
+            label="Fecha estado"
+            type="date"
+            className="w-full"
+            inputClassName="bg-muted/50"
+            readOnly
+            disabled
+            format={(value) =>
+              typeof value === "string" ? value.slice(0, 10) : value
+            }
+          />
+        </div>
+      ) : (
+        <input type="hidden" {...form.register("fecha_estado")} />
+      )}
 
       <div className="min-w-0">
         <ReferenceInput
@@ -652,19 +636,6 @@ const CabeceraContent = ({
         </ReferenceInput>
       </div>
 
-      <div className="min-w-0">
-        <ReferenceInput
-          source="metodo_pago_id"
-          reference={METODOS_PAGO_REFERENCE.resource}
-          label="Metodo de pago"
-        >
-          <CompactSelectInput
-            optionText={METODOS_PAGO_REFERENCE.labelField}
-            className="w-full"
-            validate={required()}
-          />
-        </ReferenceInput>
-      </div>
     </CompactFormGrid>
   );
 };
@@ -690,7 +661,21 @@ const ImputacionContent = () => {
         </ReferenceInput>
       </div>
 
-      <CompactFormField label="Observaciones">
+      <div className="min-w-0">
+        <ReferenceInput
+          source="metodo_pago_id"
+          reference={METODOS_PAGO_REFERENCE.resource}
+          label="Metodo de pago"
+        >
+          <CompactSelectInput
+            optionText={METODOS_PAGO_REFERENCE.labelField}
+            className="w-full"
+            validate={required()}
+          />
+        </ReferenceInput>
+      </div>
+
+      <CompactFormField label="Observaciones" className="md:col-span-2">
         <Textarea
           rows={3}
           className="min-h-10 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
@@ -745,8 +730,9 @@ const PoOrdenCompraFormFields = () => {
   const { control } = form;
   const idValue = useWatch({ control, name: "id" });
   const estadoValue = useWatch({ control, name: "estado" });
-  const observacionesValue = useWatch({ control, name: "observaciones" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
+  const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
+  const fechaEstadoValue = useWatch({ control, name: "fecha_estado" });
   const detallesValue = useWatch({ control, name: "detalles" });
 
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
@@ -812,6 +798,12 @@ const PoOrdenCompraFormFields = () => {
   useAutoInitializeField("usuario_responsable_id", "id", !idValue);
 
   useEffect(() => {
+    if (idValue) return;
+    if (fechaEstadoValue) return;
+    form.setValue("fecha_estado", new Date().toISOString(), { shouldDirty: false });
+  }, [fechaEstadoValue, form, idValue]);
+
+  useEffect(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
     const totals = detalles.reduce(
       (acc, detalle) => {
@@ -848,18 +840,12 @@ const PoOrdenCompraFormFields = () => {
     }
   }, [detallesValue, form]);
 
-  const generalSubtitle = useMemo(
-    () => buildGeneralSubtitle(observacionesValue),
-    [observacionesValue]
-  );
-
   return (
     <FormLayout
       sections={[
         {
           id: "cabecera",
           title: "Cabecera",
-          subtitle: generalSubtitle,
           defaultOpen: !idValue,
           headerContent: <PoOrdenCompraHeaderInline />,
           headerContentPosition: "inline",
@@ -867,7 +853,10 @@ const PoOrdenCompraFormFields = () => {
           contentClassName: "space-y-2 px-4 py-2",
           children: (
             <CompactFormSection>
-              <CabeceraContent tipoSolicitudBloqueado={tipoSolicitudBloqueado} />
+              <CabeceraContent
+                tipoSolicitudBloqueado={tipoSolicitudBloqueado}
+                showFechaEstado={Boolean(idValue)}
+              />
             </CompactFormSection>
           ),
         },
@@ -899,6 +888,13 @@ const PoOrdenCompraFormFields = () => {
               <PoOrdenCompraDetalleContent
                 articuloFilterId={articuloFilterId}
                 hasTipoSolicitud={Boolean(tipoSolicitudValue)}
+                defaultCentroCostoId={
+                  typeof centroCostoValue === "number"
+                    ? centroCostoValue
+                    : centroCostoValue
+                      ? Number(centroCostoValue)
+                      : null
+                }
               />
             </FormDetailSection>
           ),
@@ -911,8 +907,6 @@ const PoOrdenCompraFormFields = () => {
 const PoOrdenCompraTotalsInline = () => {
   const { control } = useFormContext<PoOrdenCompra>();
   const subtotal = useWatch({ control, name: "subtotal" }) ?? 0;
-  const impuestos = useWatch({ control, name: "total_impuestos" }) ?? 0;
-  const total = useWatch({ control, name: "total" }) ?? 0;
 
   return (
     <div className="flex w-full items-center justify-end gap-3 text-[10px] leading-none text-muted-foreground sm:text-[11px]">
@@ -921,15 +915,6 @@ const PoOrdenCompraTotalsInline = () => {
         <strong className="text-foreground">
           {CURRENCY_FORMATTER.format(Number(subtotal) || 0)}
         </strong>
-      </span>
-      <span>
-        Impuestos:{" "}
-        <strong className="text-foreground">
-          {CURRENCY_FORMATTER.format(Number(impuestos) || 0)}
-        </strong>
-      </span>
-      <span className="font-semibold text-primary">
-        Total: {CURRENCY_FORMATTER.format(Number(total) || 0)}
       </span>
     </div>
   );
@@ -962,6 +947,7 @@ export const PoOrdenCompraForm = () => {
     () => poOrdenCompraCabeceraSchema.defaults(),
     []
   );
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const defaultValues = useMemo(() => {
     const metodoPagoParsed =
@@ -1007,6 +993,7 @@ export const PoOrdenCompraForm = () => {
 
     return {
       ...cabeceraDefaults,
+      fecha: cabeceraDefaults.fecha || today,
       proveedor_id: proveedorDefault,
       usuario_responsable_id: usuarioDefault,
       metodo_pago_id: metodoPagoDefault,
@@ -1017,7 +1004,7 @@ export const PoOrdenCompraForm = () => {
       total: 0,
       detalles: [] as PoOrdenCompraDetalle[],
     };
-  }, [cabeceraDefaults]);
+  }, [cabeceraDefaults, today]);
 
   return (
     <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>

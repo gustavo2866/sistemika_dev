@@ -60,7 +60,7 @@ const buildGeneralSubtitle = (
   comentarioSnippetLength: number = GENERAL_SUBTITLE_COMMENT_SNIPPET
 ): string => {
   const snippet = comentario ? comentario.slice(0, comentarioSnippetLength) : "";
-  return [id, estado, snippet].filter(Boolean).join(" - ") || "Sin datos";
+  return snippet || "";
 };
 
 type TipoSolicitudCatalog = Pick<

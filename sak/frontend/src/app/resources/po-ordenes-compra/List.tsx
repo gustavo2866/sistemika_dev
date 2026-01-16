@@ -32,6 +32,7 @@ import {
   useResourceContext,
 } from "ra-core";
 import { MoreHorizontal } from "lucide-react";
+import { KanbanAvatar } from "@/components/kanban/card";
 import type { PoOrdenCompra } from "./model";
 import { ESTADO_CHOICES } from "./model";
 
@@ -45,9 +46,22 @@ const ESTADO_BADGES: Record<string, string> = {
   anulada: "bg-slate-200 text-slate-600",
 };
 
-const formatNumero = (value?: string | number) => {
-  if (value == null || value === "") return "";
-  return String(value);
+const getResponsableAvatarInfo = (record?: PoOrdenCompra) => {
+  const responsable = (record as { usuario_responsable?: { nombre?: string; nombre_completo?: string; email?: string; avatar?: string; url_foto?: string } })
+    ?.usuario_responsable;
+  const name =
+    responsable?.nombre_completo ||
+    responsable?.nombre ||
+    responsable?.email ||
+    (record?.usuario_responsable_id ? `Usuario #${record.usuario_responsable_id}` : "Usuario");
+  const avatarUrl = responsable?.avatar || responsable?.url_foto || null;
+  const initials = name
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase())
+    .slice(0, 2)
+    .join("");
+
+  return { name, avatarUrl, initials };
 };
 
 const filters = [
@@ -117,30 +131,58 @@ export const PoOrdenCompraList = () => (
     filterDefaultValues={{ estado: "borrador" }}
   >
     <ResponsiveDataTable rowClick="edit">
+      <ResponsiveDataTable.Col source="id" label="ID" className="w-[70px]">
+        <NumberField source="id" />
+      </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col
-        source="numero"
-        label="Numero"
-        className="w-[140px]"
-        render={(record) => formatNumero(record?.numero)}
-      />
-      <ResponsiveDataTable.Col source="proveedor_id" label="Proveedor" className="w-[220px]">
+        source="titulo"
+        label="Titulo"
+        className="w-[180px] whitespace-normal break-words"
+      >
+        <TextField source="titulo" className="text-[11px]" />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="fecha" label="Fecha" className="w-[90px]">
+        <DateField source="fecha" className="text-[11px]" />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col
+        source="proveedor_id"
+        label="Proveedor"
+        className="w-[140px] whitespace-normal break-words"
+      >
         <ReferenceField source="proveedor_id" reference="proveedores">
-          <TextField source="nombre" />
+          <TextField source="nombre" className="text-[11px]" />
         </ReferenceField>
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="usuario_responsable_id" label="Responsable" className="w-[200px]">
-        <ReferenceField source="usuario_responsable_id" reference="users">
-          <TextField source="nombre" />
-        </ReferenceField>
+      <ResponsiveDataTable.Col
+        source="usuario_responsable_id"
+        label="Resp"
+        className="w-[80px]"
+        render={(record) => {
+          const { name, avatarUrl, initials } = getResponsableAvatarInfo(record);
+          return (
+            <div className="flex w-full items-center justify-start">
+              <KanbanAvatar
+                src={avatarUrl}
+                alt={name}
+                fallback={initials}
+                className="border-white/70 shadow-sm"
+              />
+            </div>
+          );
+        }}
+      />
+      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[120px]">
+        <div className="flex flex-col gap-1">
+          <EstadoBadge />
+          <DateField source="fecha_estado" className="text-[10px] text-muted-foreground" />
+        </div>
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="fecha_emision" label="Fecha" className="w-[130px]">
-        <DateField source="fecha_emision" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[140px]">
-        <EstadoBadge />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="total" label="Total" className="w-[140px]">
-        <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
+      <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
+        <NumberField
+          source="total"
+          options={{ style: "currency", currency: "ARS" }}
+          className="text-[11px]"
+        />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
         <PoOrdenCompraActionsMenu />

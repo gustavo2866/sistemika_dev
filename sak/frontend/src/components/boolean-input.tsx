@@ -85,4 +85,5 @@ export interface BooleanInputProps {
   resource?: string;
   source: string;
   validate?: any;
+  alwaysOn?: boolean;
 }
