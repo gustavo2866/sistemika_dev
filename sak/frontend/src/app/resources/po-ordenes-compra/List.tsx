@@ -158,7 +158,7 @@ export const PoOrdenCompraList = () => (
         label="Resp"
         className="w-[80px]"
         render={(record) => {
-          const { name, avatarUrl, initials } = getResponsableAvatarInfo(record);
+          const { name, avatarUrl, initials } = getResponsableAvatarInfo(record as PoOrdenCompra);
           return (
             <div className="flex w-full items-center justify-start">
               <KanbanAvatar

@@ -274,11 +274,11 @@ const PoOrdenCompraDetalleDialogContent = ({
     if (resolveAction() !== "create") {
       return;
     }
-    const currentOrden = normalizeNumber(detalleForm.getValues("orden"));
+    const currentOrden = normalizeNumber((detalleForm.getValues as any)("orden"));
     if (currentOrden > 0) {
       return;
     }
-    detalleForm.setValue("orden", items.length + 1, {
+    (detalleForm.setValue as any)("orden", items.length + 1, {
       shouldDirty: true,
     });
   }, [detalleForm, items.length, resolveAction]);
@@ -781,7 +781,7 @@ const PoOrdenCompraFormFields = () => {
     );
   }, [tipoSolicitudValue, tiposSolicitudCatalog, tiposArticuloCatalog]);
 
-  const dynamicReferenceFilters = useMemo(() => {
+  const dynamicReferenceFilters = useMemo((): Record<string, Record<string, any>> => {
     if (!articuloFilterId) return {};
     return {
       articulo_id: {

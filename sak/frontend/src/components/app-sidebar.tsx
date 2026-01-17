@@ -54,7 +54,7 @@ import {
   Calculator,
 } from "lucide-react";
 
-const CONSTRUCTORA_RESOURCES = ["proyectos", "recepciones", "dashboard-proyectos", "tarjas", "parte-diario"] as const;
+const CONSTRUCTORA_RESOURCES: readonly string[] = [];
 const COMPRAS_RESOURCES = ["po-solicitudes", "po-ordenes-compra", "po-facturas", "proveedores", "po-setup"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
 const ADMIN_RESOURCES = ["facturas", "orden-compra", "nominas", "centros-costo"] as const;

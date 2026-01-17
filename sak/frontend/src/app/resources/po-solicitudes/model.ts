@@ -452,7 +452,7 @@ export function getArticuloLabel(
   articuloOptions: Array<{ id: number; nombre: string }>
 ): string {
   return (
-    item.articulo_nombre ||
+    (item as any).articulo_nombre ||
     articuloOptions.find((option) => option.id === item.articulo_id)?.nombre ||
     "Sin articulo"
   );

@@ -591,7 +591,7 @@ const PoSolicitudFormFields = () => {
   }, [tipoSolicitudValue, tiposSolicitudCatalog]);
 
   // Filtros dinámicos para referencias del schema
-  const dynamicReferenceFilters = useMemo(() => {
+  const dynamicReferenceFilters = useMemo((): Record<string, Record<string, any>> => {
     if (!articuloFilterId) return {};
     return {
       articulo_id: {

@@ -240,7 +240,7 @@ export const PoSolicitudList = () => {
           label="Solicitante"
           className="w-[80px]"
           render={(record) => {
-            const { name, avatarUrl, initials } = getSolicitanteAvatarInfo(record);
+            const { name, avatarUrl, initials } = getSolicitanteAvatarInfo(record as PoSolicitud);
             return (
               <div className="flex w-full items-center justify-start">
                 <KanbanAvatar

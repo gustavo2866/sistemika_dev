@@ -12,7 +12,7 @@ import { FileText } from "lucide-react";
 const PoFacturaEditTitle = () => "Editar Factura";
 
 const PoFacturaEditActions = () => {
-  const { record } = useEditContext<PoFactura>();
+  const { record } = useEditContext<PoFactura & { id: number }>();
   const { hasShow } = useResourceDefinition();
   const idLabel =
     record?.id != null ? `#${String(record.id).padStart(5, "0")}` : "";

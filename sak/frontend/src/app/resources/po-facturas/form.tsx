@@ -755,7 +755,7 @@ const PoFacturaTotalesContent = ({
     return [...sortedEntries]
       .map((entry) => ({
         ...entry,
-        conceptoLabel: getReferenceLabel("concepto_id", entry.item?.concepto_id) ?? "",
+        conceptoLabel: getReferenceLabel("concepto_id", (entry.item as any)?.concepto_id) ?? "",
       }))
       .sort((a, b) => a.conceptoLabel.localeCompare(b.conceptoLabel));
   }, [sortedEntries, getReferenceLabel]);
@@ -812,8 +812,8 @@ const PoFacturaTotalesContent = ({
           <div className="space-y-1">
             {impuestoEntries.map((entry) => (
               <PoFacturaTotalCard
-                key={entry.item.id ?? entry.item.tempId ?? entry.originalIndex}
-                item={entry.item}
+                key={(entry.item as any).id ?? (entry.item as any).tempId ?? entry.originalIndex}
+                item={entry.item as PoFacturaTotal}
                 onDelete={() => handleDeleteByOriginalIndex(entry.originalIndex)}
                 resolveCentroCostoLabel={resolveCentroCostoLabel}
               />
@@ -1143,7 +1143,7 @@ const PoFacturaFormFields = () => {
     );
   }, [tipoSolicitudValue, tiposSolicitudCatalog, tiposArticuloCatalog]);
 
-  const dynamicReferenceFilters = useMemo(() => {
+  const dynamicReferenceFilters = useMemo((): Record<string, Record<string, any>> => {
     if (!articuloFilterId) return {};
     return {
       articulo_id: {

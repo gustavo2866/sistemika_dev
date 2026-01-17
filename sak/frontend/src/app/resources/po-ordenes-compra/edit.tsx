@@ -10,7 +10,7 @@ import { PoOrdenCompraForm } from "./form";
 const PoOrdenCompraEditTitle = () => "Editar Orden de Compra";
 
 const PoOrdenCompraEditActions = () => {
-  const { record } = useEditContext<PoOrdenCompra>();
+  const { record } = useEditContext<PoOrdenCompra & { id: number }>();
   const { hasShow } = useResourceDefinition();
   const idLabel =
     record?.id != null ? `#${String(record.id).padStart(5, "0")}` : "";

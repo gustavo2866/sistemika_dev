@@ -10,7 +10,7 @@ import { PoSolicitudForm } from "./form";
 const PoSolicitudEditTitle = () => "Editar Solicitud";
 
 const PoSolicitudEditActions = () => {
-  const { record } = useEditContext<PoSolicitud>();
+  const { record } = useEditContext<PoSolicitud & { id: number }>();
   const { hasShow } = useResourceDefinition();
   const idLabel =
     record?.id != null ? `#${String(record.id).padStart(5, "0")}` : "";
