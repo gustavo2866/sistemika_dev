@@ -52,6 +52,8 @@ export interface KanbanBoardViewProps<TItem extends { id?: number }, K extends s
   }) => ReactNode;
   initialCustomState?: Record<string, any>;
   initialCollapsedAll?: boolean;
+  enableBucketCollapseToggle?: boolean;
+  bucketCollapseToggleLabel?: string;
   
   // Board configuration
   bucketGridClassName?: string;
@@ -82,6 +84,8 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
   customFilters,
   initialCustomState = {},
   initialCollapsedAll,
+  enableBucketCollapseToggle = true,
+  bucketCollapseToggleLabel,
   bucketGridClassName,
   renderCard,
   isLoading,
@@ -175,6 +179,31 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     isCardCollapsed,
     toggleCardCollapse,
   } = useKanbanCommonState({ storageKey: resource, initialCollapsedAll });
+
+  const [bucketCollapseOverrides, setBucketCollapseOverrides] = React.useState<
+    Record<string, boolean | undefined>
+  >({});
+
+  const getBucketCollapsed = React.useCallback(
+    (bucketKey: K) => {
+      const key = String(bucketKey);
+      const override = bucketCollapseOverrides[key];
+      return override ?? collapsedAll;
+    },
+    [bucketCollapseOverrides, collapsedAll],
+  );
+
+  const handleToggleBucketCollapse = React.useCallback(
+    (bucketKey: K) => {
+      setBucketCollapseOverrides((prev) => {
+        const key = String(bucketKey);
+        const current = prev[key];
+        const effective = current ?? collapsedAll;
+        return { ...prev, [key]: !effective };
+      });
+    },
+    [collapsedAll],
+  );
 
   // Filtrado
   const filteredItems = useMemo(() => {
@@ -282,7 +311,8 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
     />
   ) : null;
 
-  const filterBar = (
+  const hasFilterBarContent = Boolean(enableSearch) || Boolean(customFilters) || Boolean(enableCollapseToggle);
+  const filterBar = hasFilterBarContent ? (
     <KanbanFilterBar
       className={filterBarClassName}
       searchValue={enableSearch ? searchValue : ""}
@@ -300,7 +330,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       }
       rightEdgeContent={collapseToggleAlignRight ? collapseToggle : null}
     />
-  );
+  ) : null;
 
   return (
     <KanbanBoard<TItem, K>
@@ -310,8 +340,26 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       loadingMessage={loadingMessage}
       bucketDefinitions={visibleBuckets}
       bucketItems={bucketItems}
+      bucketCollapsed={
+        enableBucketCollapseToggle
+          ? (Object.fromEntries(
+              Object.keys(bucketCollapseOverrides).map((key) => [key, getBucketCollapsed(key as K)]),
+            ) as Record<K, boolean>)
+          : undefined
+      }
+      onToggleBucketCollapse={enableBucketCollapseToggle ? handleToggleBucketCollapse : undefined}
+      bucketCollapseToggleVariant="icon"
+      bucketCollapseToggleLabel={bucketCollapseToggleLabel}
+      bucketCollapseToggleClassName="h-7 w-7"
+      bucketCollapseToggleStopPropagation
       renderCard={(item, bucketKey) => {
-        const collapsed = item.id ? isCardCollapsed(item.id) : false;
+        const bucketOverride = bucketKey ? bucketCollapseOverrides[String(bucketKey)] : undefined;
+        const collapsed =
+          bucketOverride != null
+            ? bucketOverride
+            : item.id
+              ? isCardCollapsed(item.id)
+              : false;
         const onToggle = item.id ? () => toggleCardCollapse(item.id!) : undefined;
         return renderCard(item, bucketKey, collapsed, onToggle);
       }}

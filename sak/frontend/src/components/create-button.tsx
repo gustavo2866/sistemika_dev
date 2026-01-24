@@ -9,6 +9,7 @@ export type CreateButtonProps = {
   label?: string;
   resource?: string;
   state?: Record<string, unknown>;
+  to?: string;
   size?: "default" | "sm" | "lg" | "icon";
   className?: string;
 };
@@ -17,6 +18,7 @@ export const CreateButton = ({
   label,
   resource: targetResource,
   state,
+  to,
   size,
   className,
 }: CreateButtonProps) => {
@@ -27,10 +29,12 @@ export const CreateButton = ({
   );
   const resource = useResourceContext();
   const createPath = useCreatePath();
-  const link = createPath({
-    resource: targetResource ?? resource,
-    type: "create",
-  });
+  const link =
+    to ??
+    createPath({
+      resource: targetResource ?? resource,
+      type: "create",
+    });
   return (
     <Link
       className={buttonVariants({

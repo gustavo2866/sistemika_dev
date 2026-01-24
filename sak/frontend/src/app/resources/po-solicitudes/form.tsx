@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { required, useDataProvider } from "ra-core";
+import { required, useDataProvider, useGetOne } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { useLocation } from "react-router-dom";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
@@ -474,7 +474,37 @@ const DatosGeneralesContent = ({
   );
 };
 
-const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<string, unknown> }) => {
+const ImputacionContent = ({
+  oportunidadFilter,
+  lockedOportunidadId,
+}: {
+  oportunidadFilter?: Record<string, unknown>;
+  lockedOportunidadId?: number;
+}) => {
+  const { register, setValue, getValues } = useFormContext<PoSolicitud>();
+  const shouldLockOportunidad =
+    typeof lockedOportunidadId === "number" && Number.isFinite(lockedOportunidadId);
+  const { data: oportunidadLocked } = useGetOne(
+    "crm/oportunidades",
+    { id: lockedOportunidadId ?? 0 },
+    { enabled: Boolean(shouldLockOportunidad) }
+  );
+  const oportunidadLabel =
+    (oportunidadLocked as any)?.titulo ??
+    (oportunidadLocked as any)?.descripcion_estado ??
+    (shouldLockOportunidad ? `Oportunidad #${lockedOportunidadId}` : "");
+
+  useEffect(() => {
+    if (!shouldLockOportunidad) return;
+    const currentValue = getValues("oportunidad_id");
+    if (currentValue !== lockedOportunidadId) {
+      setValue("oportunidad_id", lockedOportunidadId, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+    }
+  }, [getValues, lockedOportunidadId, setValue, shouldLockOportunidad]);
+
   return (
     <CompactFormGrid columns="two">
       <div className="min-w-0">
@@ -508,22 +538,40 @@ const ImputacionContent = ({ oportunidadFilter }: { oportunidadFilter?: Record<s
       </div>
 
       <CompactFormField label="Oportunidad">
-        <CompactComboboxQuery
-          {...OPORTUNIDADES_REFERENCE}
-          source="oportunidad_id"
-          placeholder="Selecciona una oportunidad"
-          className="w-full"
-          clearable
-          filter={oportunidadFilter}
-          dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
-        />
+        {shouldLockOportunidad ? (
+          <>
+            <Input
+              value={oportunidadLabel}
+              readOnly
+              className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+            />
+            <input
+              type="hidden"
+              {...register("oportunidad_id", { valueAsNumber: true })}
+            />
+          </>
+        ) : (
+          <CompactComboboxQuery
+            {...OPORTUNIDADES_REFERENCE}
+            source="oportunidad_id"
+            placeholder="Selecciona una oportunidad"
+            className="w-full"
+            clearable
+            filter={oportunidadFilter}
+            dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
+          />
+        )}
       </CompactFormField>
 
     </CompactFormGrid>
   );
 };
 
-const PoSolicitudFormFields = () => {
+const PoSolicitudFormFields = ({
+  lockedOportunidadId,
+}: {
+  lockedOportunidadId?: number;
+}) => {
   const form = useFormContext<PoSolicitud>();
   const dataProvider = useDataProvider();
   const tipoSolicitudPreviousRef = useRef<string | undefined>(undefined);
@@ -702,7 +750,10 @@ const PoSolicitudFormFields = () => {
           defaultOpen: false,
           children: (
             <CompactFormSection>
-              <ImputacionContent oportunidadFilter={oportunidadFilter} />
+              <ImputacionContent
+                oportunidadFilter={oportunidadFilter}
+                lockedOportunidadId={lockedOportunidadId}
+              />
             </CompactFormSection>
           ),
         },
@@ -776,18 +827,24 @@ export const PoSolicitudForm = () => {
     []
   );
   const oportunidadIdFromLocation = useMemo(() => {
-    const state = location.state as
-      | { oportunidad_id?: number | string; filter?: Record<string, unknown> }
-      | null;
-    if (state?.oportunidad_id != null) {
-      return Number(state.oportunidad_id);
+    const params = new URLSearchParams(location.search);
+    const rawFilter = params.get("filter");
+    if (rawFilter) {
+      try {
+        const parsed = JSON.parse(rawFilter);
+        if (parsed?.oportunidad_id != null) {
+          return Number(parsed.oportunidad_id);
+        }
+      } catch {
+        // ignore invalid filter param
+      }
     }
-    const stateFilter = state?.filter;
-    if (stateFilter?.oportunidad_id != null) {
-      return Number(stateFilter.oportunidad_id);
+    const direct = params.get("oportunidad_id");
+    if (direct != null) {
+      return Number(direct);
     }
     return undefined;
-  }, [location.state]);
+  }, [location.search]);
   const defaultValues = useMemo(() => {
     const solicitanteDefault =
       cabeceraDefaults.solicitante_id &&
@@ -818,7 +875,7 @@ export const PoSolicitudForm = () => {
 
   return (
     <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>
-      <PoSolicitudFormFields />
+      <PoSolicitudFormFields lockedOportunidadId={oportunidadIdFromLocation} />
     </SimpleForm>
   );
 };

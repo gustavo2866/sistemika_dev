@@ -146,11 +146,12 @@ class CRMMensajeService:
         evento_data = payload.get("evento") or {}
         evento = self._crear_evento(session, contacto_id, oportunidad_id, evento_data)
 
-        mensaje.contacto_id = contacto_id
-        mensaje.evento_id = evento.id
-        mensaje.oportunidad_id = oportunidad_id
-        mensaje.set_estado(EstadoMensaje.RECIBIDO.value)
-        session.add(mensaje)
+        mensaje = crm_mensaje_crud.update(session, mensaje.id, {
+            "contacto_id": contacto_id,
+            "evento_id": evento.id,
+            "oportunidad_id": oportunidad_id,
+            "estado": EstadoMensaje.RECIBIDO.value
+        })
         session.commit()
         session.refresh(mensaje)
         return mensaje
@@ -211,14 +212,11 @@ class CRMMensajeService:
         }
         oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
 
-        mensaje.contacto_id = contacto_id
-        mensaje.oportunidad_id = oportunidad.id
-        
-        # Cambiar estado a "recibido" solo si el estado actual es "nuevo"
+        # Actualizar mensaje con la oportunidad y cambiar estado si es necesario
+        updates = {"contacto_id": contacto_id, "oportunidad_id": oportunidad.id}
         if mensaje.estado == EstadoMensaje.NUEVO.value:
-            mensaje.estado = EstadoMensaje.RECIBIDO.value
-        
-        session.add(mensaje)
+            updates["estado"] = EstadoMensaje.RECIBIDO.value
+        mensaje = crm_mensaje_crud.update(session, mensaje.id, updates)
         try:
             tipo_evento_id = self._obtener_catalogo_id(
                 session, CRMTipoEvento, "crear", "tipos de evento"
@@ -299,10 +297,7 @@ class CRMMensajeService:
             raise ValueError("Solo aplica a mensajes de salida")
         if mensaje.estado != EstadoMensaje.ERROR_ENVIO.value:
             raise ValueError("Solo se puede reintentar desde estado error_envio")
-        mensaje.set_estado(EstadoMensaje.PENDIENTE_ENVIO.value)
-        session.add(mensaje)
-        session.commit()
-        session.refresh(mensaje)
+        mensaje = crm_mensaje_crud.update(session, mensaje.id, {"estado": EstadoMensaje.PENDIENTE_ENVIO.value})
         return mensaje
 
     def responder_mensaje(
@@ -457,9 +452,8 @@ class CRMMensajeService:
         
         # Actualizar estado del mensaje original si es necesario
         if mensaje.estado == EstadoMensaje.NUEVO.value:
-            mensaje.estado = EstadoMensaje.RECIBIDO.value
+            mensaje = crm_mensaje_crud.update(session, mensaje.id, {"estado": EstadoMensaje.RECIBIDO.value})
         
-        session.add(mensaje)
         session.commit()
         session.refresh(mensaje)
         session.refresh(mensaje_salida)
@@ -787,11 +781,11 @@ class CRMMensajeService:
             descripcion=descripcion_evento,
         )
 
-        mensaje.contacto_id = contacto_id
-        mensaje.oportunidad_id = oportunidad_id
+        # Actualizar mensaje con contacto y oportunidad
+        updates = {"contacto_id": contacto_id, "oportunidad_id": oportunidad_id}
         if mensaje.estado == EstadoMensaje.NUEVO.value:
-            mensaje.estado = EstadoMensaje.RECIBIDO.value
-        session.add(mensaje)
+            updates["estado"] = EstadoMensaje.RECIBIDO.value
+        mensaje = crm_mensaje_crud.update(session, mensaje.id, updates)
         session.add(evento)
         session.commit()
         session.refresh(mensaje)
@@ -805,6 +799,22 @@ class CRMMensajeService:
             "contacto_creado": contacto_creado,
             "oportunidad_creada": oportunidad_creada,
         }
+
+    @staticmethod
+    def actualizar_ultimo_mensaje_oportunidad(session: Session, mensaje: CRMMensaje):
+        """
+        Función utilitaria para actualizar ultimo_mensaje cuando se crea un mensaje
+        directamente (sin pasar por CRUD).
+        
+        Esta función debe llamarse después de hacer session.add() y session.commit()
+        para mensajes creados manualmente en routers.
+        """
+        if not mensaje.oportunidad_id:
+            return
+        
+        # Usar la misma lógica que el CRUD extendido
+        from app.crud.crm_mensaje_crud import crm_mensaje_crud
+        crm_mensaje_crud._actualizar_ultimo_mensaje_oportunidad(session, mensaje)
 
 
 crm_mensaje_service = CRMMensajeService()

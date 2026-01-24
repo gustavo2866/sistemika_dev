@@ -17,43 +17,7 @@ import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
 import { ResourceTitle } from "@/components/resource-title";
 import { CRM_OPORTUNIDAD_ESTADO_CHOICES } from "./model";
-import { ButtonToggle } from "@/components/forms/button-toggle";
-
-const ActivasToggleFilter = ({
-  className,
-}: {
-  className?: string;
-  source: string;
-  [key: string]: unknown;
-}) => {
-  const { filterValues, setFilters } = useListContext();
-  const value = filterValues.activo === true ? "activas" : "todas";
-
-  const handleChange = (nextValue: "activas" | "todas") => {
-    if (nextValue === "activas") {
-      setFilters({ ...filterValues, activo: true }, {});
-      return;
-    }
-
-    const { activo, ...rest } = filterValues;
-    setFilters(rest, {});
-  };
-
-  return (
-    <ButtonToggle
-      aria-label="Filtrar activas"
-      className={className}
-      size="sm"
-      variant="rounded"
-      value={value}
-      options={[
-        { id: "activas", label: "Activas" },
-        { id: "todas", label: "Todas" },
-      ]}
-      onChange={handleChange}
-    />
-  );
-};
+import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 
 const filters = [
   <TextInput 
@@ -82,7 +46,7 @@ const filters = [
     className="w-[140px] flex-shrink-0 [&_.form-label]:text-xs [&_.form-label]:mb-1 [&_button]:h-8 [&_button]:text-sm" 
     alwaysOn
   />,
-  <ActivasToggleFilter
+  <SoloActivasToggleFilter
     key="activo"
     source="activo"
     alwaysOn

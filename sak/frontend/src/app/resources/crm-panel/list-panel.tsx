@@ -27,7 +27,7 @@ import { CRMOportunidadKanbanCard } from "./crm-panel-card";
 import { KanbanBoardView } from "@/components/kanban";
 import { calculateOportunidadBucketKey, prepareMoveOportunidadPayload, getBucketLabel } from "./model";
 import { ESTADO_BG_COLORS, type BucketKey } from "../crm-oportunidades/model";
-import { OportunidadCustomFilters } from "./crm-panel-customFilters";
+import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 
 // Definición de buckets (usando todos los estados)
 const getBucketHeader = (estado: BucketKey, label: string) => {
@@ -114,15 +114,23 @@ const filters = [
     source="tipo_operacion_id"
     reference="crm/catalogos/tipos-operacion"
     label="Tipo de operación"
+    alwaysOn
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
   <ReferenceInput key="propiedad_id" source="propiedad_id" reference="propiedades" label="Propiedad">
     <SelectInput optionText="nombre" emptyText="Todas" />
   </ReferenceInput>,
-  <ReferenceInput key="responsable_id" source="responsable_id" reference="users" label="Responsable">
+  <ReferenceInput
+    key="responsable_id"
+    source="responsable_id"
+    reference="users"
+    label="Responsable"
+    alwaysOn
+  >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
+  <SoloActivasToggleFilter key="solo_activas" className="ml-auto" alwaysOn />,
 ];
 
 const ListActions = () => (
@@ -192,20 +200,6 @@ const OportunidadListContent = () => {
     [soloActivas, cutoffDate]
   );
 
-  const handleSoloActivasChange = useCallback(
-    (next: boolean) => {
-      const nextFilters = { ...filterValues };
-      if (next) {
-        nextFilters.activo = true;
-      } else {
-        delete nextFilters.activo;
-      }
-      setFilters(nextFilters, {});
-    },
-    [filterValues, setFilters]
-  );
-
-
   // Renderizado de tarjeta
   const renderCard = useCallback(
     (oportunidad: CRMOportunidad, bucketKey?: BucketKey, collapsed?: boolean, onToggleCollapse?: () => void) => (
@@ -262,14 +256,8 @@ const OportunidadListContent = () => {
             filterBarWrap: false,
             filterBarClassName: "w-fit px-2 py-1.5",
             collapseToggleAlignRight: false,
-            enableCollapseToggle: true,
+            enableCollapseToggle: false,
           }}
-          customFilters={() => (
-            <OportunidadCustomFilters
-              soloActivas={soloActivas}
-              onSoloActivasChange={handleSoloActivasChange}
-            />
-          )}
           renderCard={renderCard}
           isLoading={isLoading}
           loadingMessage="Cargando oportunidades..."
@@ -280,6 +268,28 @@ const OportunidadListContent = () => {
 
     </>
   );
+};
+
+const OportunidadFilterDefaults = ({
+  defaultFilters,
+}: {
+  defaultFilters: Record<string, unknown>;
+}) => {
+  const { setFilters } = useListContext<CRMOportunidad>();
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    setFilters(
+      { ...defaultFilters },
+      {
+        responsable_id: true,
+      },
+    );
+    initializedRef.current = true;
+  }, [defaultFilters, setFilters]);
+
+  return null;
 };
 
 export const CRMOportunidadListKanban = () => {
@@ -303,6 +313,7 @@ export const CRMOportunidadListKanban = () => {
       sort={{ field: "fecha_estado", order: "DESC" }}
       className="space-y-5"
     >
+      <OportunidadFilterDefaults defaultFilters={defaultFilters} />
       <OportunidadListContent />
     </List>
   );

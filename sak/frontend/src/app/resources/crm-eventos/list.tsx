@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ResourceTitle } from "@/components/resource-title";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +31,9 @@ import {
   ChevronDown,
   ChevronRight,
   Check,
+  FileText,
   Flag,
+  House,
   Mail,
   MessageCircle,
   Pencil,
@@ -43,6 +46,7 @@ import { useDataProvider, useGetIdentity, useGetOne, useListContext, useNotify, 
 import { useLocation, useNavigate } from "react-router-dom";
 import type { CRMEvento } from "./model";
 import { FormCompletarDialog } from "./form_completar";
+import { Confirm } from "@/components/confirm";
 
 const estadoChoices = [
   { id: "pendiente", name: "Pendiente" },
@@ -99,7 +103,7 @@ const filters = [
         "h-7 gap-1 px-2 py-0.5 text-[10px] leading-none text-left [&_[data-slot=select-value]]:text-left sm:h-9 sm:px-3 sm:py-2 sm:text-sm sm:leading-normal",
     }}
   />,
-  <SoloPendientesToggle
+  <SoloActivasToggleFilter
     key="solo_pendientes"
     source="solo_pendientes"
     label="Activos"
@@ -108,7 +112,7 @@ const filters = [
   />,
 ];
 
-const ListActions = ({ createState }: { createState?: Record<string, unknown> }) => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={filters}
@@ -118,7 +122,7 @@ const ListActions = ({ createState }: { createState?: Record<string, unknown> })
     <CreateButton
       size="sm"
       className="h-7 px-2 gap-1 text-[10px] sm:h-9 sm:px-3 sm:gap-2 sm:text-sm [&_svg]:size-3 sm:[&_svg]:size-4"
-      state={createState}
+      to={createTo}
     />
     <ExportButton
       size="sm"
@@ -127,74 +131,7 @@ const ListActions = ({ createState }: { createState?: Record<string, unknown> })
   </div>
 );
 
-function SoloPendientesToggle({
-  source,
-  label,
-  className,
-  alwaysOn: _alwaysOn,
-}: {
-  source: string;
-  label: string;
-  className?: string;
-  alwaysOn?: boolean;
-}) {
-  const { filterValues, setFilters } = useListContext<CRMEvento>();
-  const checked = Boolean((filterValues as Record<string, unknown>)[source]);
-
-  const handleToggle = (value: boolean) => {
-    const nextFilters = { ...filterValues } as Record<string, unknown>;
-    if (value) {
-      nextFilters[source] = true;
-    } else {
-      delete nextFilters[source];
-    }
-    setFilters(nextFilters, {});
-  };
-
-  return (
-    <div className={cn("flex flex-col items-start gap-1", className)}>
-      <span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-        {label}
-      </span>
-      <div className="flex items-center rounded-full border border-slate-200 bg-white/90 p-[2px] shadow-sm">
-        <button
-          type="button"
-          onClick={() => handleToggle(true)}
-          className={cn(
-            "rounded-full !h-auto px-1.5 py-1 !text-[10px] font-semibold uppercase tracking-[0.12em] leading-none transition",
-            checked
-              ? "bg-slate-900 text-white shadow-sm"
-              : "text-slate-400 hover:text-slate-600"
-          )}
-        >
-          On
-        </button>
-        <button
-          type="button"
-          onClick={() => handleToggle(false)}
-          className={cn(
-            "rounded-full !h-auto px-1.5 py-1 !text-[10px] font-semibold uppercase tracking-[0.12em] leading-none transition",
-            !checked
-              ? "bg-slate-900 text-white shadow-sm"
-              : "text-slate-400 hover:text-slate-600"
-          )}
-        >
-          Off
-        </button>
-      </div>
-    </div>
-  );
-}
-
 const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) => {
-  const state = location.state as { filter?: Record<string, any>; oportunidad_id?: number | string } | null;
-  if (state?.oportunidad_id) {
-    return state.oportunidad_id;
-  }
-  const stateFilter = state?.filter;
-  if (stateFilter?.oportunidad_id) {
-    return stateFilter.oportunidad_id;
-  }
   const params = new URLSearchParams(location.search);
   const rawFilter = params.get("filter");
   if (rawFilter) {
@@ -211,14 +148,6 @@ const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) 
 };
 
 const getContactoIdFromLocation = (location: ReturnType<typeof useLocation>) => {
-  const state = location.state as { filter?: Record<string, any>; contacto_id?: number | string } | null;
-  if (state?.contacto_id) {
-    return state.contacto_id;
-  }
-  const stateFilter = state?.filter;
-  if (stateFilter?.contacto_id) {
-    return stateFilter.contacto_id;
-  }
   const params = new URLSearchParams(location.search);
   const rawFilter = params.get("filter");
   if (rawFilter) {
@@ -234,22 +163,27 @@ const getContactoIdFromLocation = (location: ReturnType<typeof useLocation>) => 
   return undefined;
 };
 
+const getReturnToFromLocation = (location: ReturnType<typeof useLocation>) => {
+  const params = new URLSearchParams(location.search);
+  return params.get("returnTo") ?? undefined;
+};
+
+const getContextFromLocation = (location: ReturnType<typeof useLocation>) => {
+  const params = new URLSearchParams(location.search);
+  return params.get("context") ?? undefined;
+};
+
 export const CRMEventoList = () => {
   const { data: identity } = useGetIdentity();
   const location = useLocation();
   const navigate = useNavigate();
-  const locationState = location.state as {
-    contacto_nombre?: string;
-    returnTo?: string;
-    fromChat?: boolean;
-    fromOportunidad?: boolean;
-    contacto_id?: number;
-  } | null;
   const [completarDialogOpen, setCompletarDialogOpen] = useState(false);
   const [selectedCompletar, setSelectedCompletar] = useState<CRMEvento | null>(null);
   const oportunidadIdFilter = getOportunidadIdFromLocation(location);
-  const fromChat = Boolean(locationState?.fromChat);
-  const fromOportunidad = Boolean(locationState?.fromOportunidad);
+  const context = getContextFromLocation(location);
+  const fromChat = context === "chat";
+  const fromOportunidad = context === "oportunidad";
+  const fromSolicitudes = context === "solicitudes";
   const contactoIdFromLocation = getContactoIdFromLocation(location);
   const { data: oportunidad } = useGetOne(
     "crm/oportunidades",
@@ -258,11 +192,6 @@ export const CRMEventoList = () => {
   );
   const contactoId = (oportunidad as any)?.contacto_id ?? null;
 
-  useEffect(() => {
-    if (fromChat || fromOportunidad || locationState?.returnTo) return;
-    if (!oportunidadIdFilter && !contactoIdFromLocation) return;
-    navigate("/crm/eventos", { replace: true });
-  }, [contactoIdFromLocation, fromChat, fromOportunidad, locationState?.returnTo, navigate, oportunidadIdFilter]);
   const defaultFilters = useMemo(() => {
     if (oportunidadIdFilter) {
       const base: Record<string, unknown> = {
@@ -297,20 +226,69 @@ export const CRMEventoList = () => {
     (oportunidad as any)?.contacto?.nombre_completo ??
     (oportunidad as any)?.contacto?.nombre ??
     (oportunidad as any)?.contacto_nombre ??
-    locationState?.contacto_nombre ??
     null;
   const oportunidadTitulo =
     (oportunidad as any)?.titulo ??
     (oportunidad as any)?.descripcion_estado ??
     (oportunidadIdFilter ? `Oportunidad #${oportunidadIdFilter}` : "");
-  const returnTo = locationState?.returnTo;
-  const createState = useMemo(() => {
-    if (!oportunidadIdFilter) return undefined;
-    return {
-      oportunidad_id: oportunidadIdFilter,
-      ...(contactoId ? { contacto_id: contactoId } : {}),
-    };
-  }, [oportunidadIdFilter, contactoId]);
+  const returnTo = getReturnToFromLocation(location);
+  const handleOpenChat = () => {
+    if (!oportunidadIdFilter) return;
+    const params = new URLSearchParams();
+    params.set(
+      "returnTo",
+      returnTo ??
+        `/crm/eventos?filter=${encodeURIComponent(
+          JSON.stringify({ oportunidad_id: oportunidadIdFilter }),
+        )}`,
+    );
+    navigate(`/crm/chat/op-${oportunidadIdFilter}/show?${params.toString()}`);
+  };
+  const handleOpenOportunidad = () => {
+    if (!oportunidadIdFilter) return;
+    const params = new URLSearchParams();
+    params.set(
+      "returnTo",
+      returnTo ??
+        `/crm/eventos?filter=${encodeURIComponent(
+          JSON.stringify({ oportunidad_id: oportunidadIdFilter }),
+        )}`,
+    );
+    navigate(`/crm/oportunidades/${oportunidadIdFilter}?${params.toString()}`);
+  };
+  const handleOpenSolicitudes = () => {
+    if (!oportunidadIdFilter) return;
+    const params = new URLSearchParams();
+    params.set("filter", JSON.stringify({ oportunidad_id: oportunidadIdFilter }));
+    params.set(
+      "returnTo",
+      returnTo ??
+        `/crm/eventos?filter=${encodeURIComponent(
+          JSON.stringify({ oportunidad_id: oportunidadIdFilter }),
+        )}`,
+    );
+    navigate(`/po-solicitudes?${params.toString()}`);
+  };
+  const createTo = useMemo(() => {
+    const createPath = "/crm/eventos/create";
+    if (!oportunidadIdFilter) return createPath;
+    const params = new URLSearchParams();
+    params.set(
+      "filter",
+      JSON.stringify({
+        oportunidad_id: oportunidadIdFilter,
+        ...(contactoId ? { contacto_id: contactoId } : {}),
+      }),
+    );
+    params.set(
+      "returnTo",
+      returnTo ??
+        `/crm/eventos?filter=${encodeURIComponent(
+          JSON.stringify({ oportunidad_id: oportunidadIdFilter }),
+        )}`,
+    );
+    return `${createPath}?${params.toString()}`;
+  }, [contactoId, oportunidadIdFilter, returnTo]);
 
   return (
     <List
@@ -318,7 +296,7 @@ export const CRMEventoList = () => {
       title={<ResourceTitle icon={CalendarCheck} text="CRM - Eventos" />}
       filters={filters}
       filterDefaultValues={defaultFilters}
-      actions={<ListActions createState={createState} />}
+      actions={<ListActions createTo={createTo} />}
       perPage={300}
       pagination={false}
       sort={{ field: "fecha_evento", order: "DESC" }}
@@ -327,6 +305,7 @@ export const CRMEventoList = () => {
       <EventosFilterSync
         fromChat={fromChat}
         fromOportunidad={fromOportunidad}
+        fromSolicitudes={fromSolicitudes}
         responsableId={typeof identity?.id === "number" ? identity.id : undefined}
       />
       <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3">
@@ -365,6 +344,35 @@ export const CRMEventoList = () => {
                 {oportunidadTitulo} ({oportunidadIdFilter})
               </p>
             </div>
+            <div className="ml-auto flex items-center gap-1 text-slate-400">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleOpenChat}
+                disabled={!oportunidadIdFilter}
+              >
+                <MessageCircle className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleOpenOportunidad}
+                disabled={!oportunidadIdFilter}
+              >
+                <House className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleOpenSolicitudes}
+                disabled={!oportunidadIdFilter}
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         ) : null}
         <EventosTodoList
@@ -392,34 +400,55 @@ export const CRMEventoList = () => {
 const EventosFilterSync = ({
   fromChat,
   fromOportunidad,
+  fromSolicitudes,
   responsableId,
 }: {
   fromChat: boolean;
   fromOportunidad: boolean;
+  fromSolicitudes: boolean;
   responsableId?: number;
 }) => {
   const { filterValues, setFilters } = useListContext<CRMEvento>();
   const [hasInitialized, setHasInitialized] = useState(false);
-  const shouldSkipSync = fromChat || fromOportunidad;
+  const shouldSkipSync = fromChat || fromOportunidad || fromSolicitudes;
 
   useEffect(() => {
-    if (shouldSkipSync) return;
+    if (shouldSkipSync) {
+      if (!hasInitialized) {
+        setHasInitialized(true);
+      }
+      return;
+    }
     const nextFilters = { ...filterValues };
     const hadContacto = "contacto_id" in nextFilters;
     const hadOportunidad = "oportunidad_id" in nextFilters;
     const hasResponsable = "asignado_a_id" in nextFilters;
     const needsScope = !("default_scope" in nextFilters);
+    const needsSoloPendientes = !("solo_pendientes" in nextFilters);
+    let didChange = false;
 
-    if (hadContacto) delete nextFilters.contacto_id;
-    if (hadOportunidad) delete nextFilters.oportunidad_id;
+    if (!hasInitialized && needsSoloPendientes) {
+      nextFilters.solo_pendientes = true;
+      didChange = true;
+    }
+
+    if (hadContacto) {
+      delete nextFilters.contacto_id;
+      didChange = true;
+    }
+    if (hadOportunidad) {
+      delete nextFilters.oportunidad_id;
+      didChange = true;
+    }
     if (!hasInitialized && !hasResponsable && responsableId) {
       nextFilters.asignado_a_id = responsableId;
+      didChange = true;
     }
     if (needsScope) {
       nextFilters.default_scope = "pendientes_mes";
+      didChange = true;
     }
-
-    if (hadContacto || hadOportunidad || (!hasInitialized && !hasResponsable && responsableId) || needsScope) {
+    if (didChange) {
       setFilters(nextFilters, {});
     }
     if (!hasInitialized) {
@@ -432,11 +461,11 @@ const EventosFilterSync = ({
 
 type SeguimientoOptionId = "hoy" | "manana" | "semana" | "siguiente";
 
-const seguimientoOptions: Array<{ id: SeguimientoOptionId; label: string; daysToAdd: number }> = [
-  { id: "hoy", label: "Hoy", daysToAdd: 0 },
-  { id: "manana", label: "Manana", daysToAdd: 1 },
-  { id: "semana", label: "Semana", daysToAdd: 7 },
-  { id: "siguiente", label: "Siguiente", daysToAdd: 14 },
+const seguimientoOptions: Array<{ id: SeguimientoOptionId; label: string }> = [
+  { id: "hoy", label: "Hoy" },
+  { id: "manana", label: "Manana" },
+  { id: "semana", label: "Semana" },
+  { id: "siguiente", label: "Siguiente" },
 ];
 
 const normalizeFechaBase = (record?: CRMEvento) => {
@@ -453,9 +482,53 @@ const normalizeFechaBase = (record?: CRMEvento) => {
 const computeSeguimientoDate = (optionId: SeguimientoOptionId, record?: CRMEvento) => {
   const option = seguimientoOptions.find((item) => item.id === optionId);
   if (!option) return null;
-  const target = normalizeFechaBase(record);
-  target.setDate(target.getDate() + option.daysToAdd);
-  return target;
+
+  const base = normalizeFechaBase(record);
+  const now = new Date();
+
+  const copyTime = (target: Date) => {
+    target.setHours(
+      base.getHours(),
+      base.getMinutes(),
+      base.getSeconds(),
+      base.getMilliseconds()
+    );
+  };
+
+  if (optionId === "hoy") {
+    return base;
+  }
+
+  if (optionId === "manana") {
+    const target = new Date(base);
+    target.setDate(target.getDate() + 1);
+    return target;
+  }
+
+  // "Semana": desde pasado mañana hasta el próximo domingo
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const startWeek = new Date(startToday);
+  startWeek.setDate(startWeek.getDate() + 2);
+
+  if (optionId === "semana") {
+    // Si hoy es viernes/sábado/domingo, mantener el mismo día
+    if (now.getDay() >= 5) {
+      return base;
+    }
+    copyTime(startWeek);
+    return startWeek;
+  }
+
+  // "Siguiente": el día siguiente al próximo domingo
+  const endWeek = new Date(startToday);
+  const daysUntilSunday = (7 - endWeek.getDay()) % 7;
+  endWeek.setDate(endWeek.getDate() + (daysUntilSunday === 0 ? 7 : daysUntilSunday));
+  endWeek.setHours(23, 59, 59, 999);
+  const nextAfterWeek = new Date(endWeek);
+  nextAfterWeek.setDate(nextAfterWeek.getDate() + 1);
+  copyTime(nextAfterWeek);
+  return nextAfterWeek;
 };
 
 const SeguimientoMenu = ({
@@ -470,6 +543,7 @@ const SeguimientoMenu = ({
   const notify = useNotify();
   const refresh = useRefresh();
   const navigate = useNavigate();
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const stopRowClick = (event: ReactMouseEvent) => {
@@ -532,10 +606,12 @@ const SeguimientoMenu = ({
     onCompletar();
   };
 
-  const handleDelete = async (event: Event | SyntheticEvent) => {
-    event.preventDefault();
-    if ("stopPropagation" in event) {
-      event.stopPropagation();
+  const handleDelete = async (event?: Event | SyntheticEvent) => {
+    if (event) {
+      event.preventDefault();
+      if ("stopPropagation" in event) {
+        event.stopPropagation();
+      }
     }
     if (!record?.id) return;
     setLoading(true);
@@ -549,51 +625,72 @@ const SeguimientoMenu = ({
       notify(message, { type: "warning" });
     } finally {
       setLoading(false);
+      setConfirmDeleteOpen(false);
     }
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={stopRowClick} disabled={loading}>
-          <Flag className="h-4 w-4" />
-          <span className="sr-only">Opciones de seguimiento</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-40 text-xs sm:w-44 sm:text-sm"
-        onClick={stopMenuClick}
-        onPointerDown={stopMenuClick}
-      >
-        {seguimientoOptions.map((option) => (
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={stopRowClick} disabled={loading}>
+            <Flag className="h-4 w-4" />
+            <span className="sr-only">Opciones de seguimiento</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-40 text-xs sm:w-44 sm:text-sm"
+          onClick={stopMenuClick}
+          onPointerDown={stopMenuClick}
+        >
+          {seguimientoOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.id}
+              onSelect={(event) => handleSelection(option.id, event)}
+              className="flex items-center gap-2"
+            >
+              {option.id === "hoy" ? <CalendarDays className="h-3.5 w-3.5" /> : null}
+              {option.id === "manana" ? <Calendar className="h-3.5 w-3.5" /> : null}
+              {option.id === "semana" ? <CalendarRange className="h-3.5 w-3.5" /> : null}
+              {option.id === "siguiente" ? <CalendarClock className="h-3.5 w-3.5" /> : null}
+              <span>{option.label}</span>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={handleEdit} className="flex items-center gap-2">
+            <Pencil className="h-3.5 w-3.5" />
+            <span>Editar</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={handleComplete} className="flex items-center gap-2">
+            <Check className="h-3.5 w-3.5" />
+            <span>Completar</span>
+          </DropdownMenuItem>
           <DropdownMenuItem
-            key={option.id}
-            onSelect={(event) => handleSelection(option.id, event)}
+            onSelect={(event) => {
+              event.preventDefault();
+              if ("stopPropagation" in event) {
+                event.stopPropagation();
+              }
+              setConfirmDeleteOpen(true);
+            }}
             className="flex items-center gap-2"
           >
-            {option.id === "hoy" ? <CalendarDays className="h-3.5 w-3.5" /> : null}
-            {option.id === "manana" ? <Calendar className="h-3.5 w-3.5" /> : null}
-            {option.id === "semana" ? <CalendarRange className="h-3.5 w-3.5" /> : null}
-            {option.id === "siguiente" ? <CalendarClock className="h-3.5 w-3.5" /> : null}
-            <span>{option.label}</span>
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Eliminar</span>
           </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={handleEdit} className="flex items-center gap-2">
-          <Pencil className="h-3.5 w-3.5" />
-          <span>Editar</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleComplete} className="flex items-center gap-2">
-          <Check className="h-3.5 w-3.5" />
-          <span>Completar</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleDelete} className="flex items-center gap-2">
-          <Trash2 className="h-3.5 w-3.5" />
-          <span>Eliminar</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Confirm
+        isOpen={confirmDeleteOpen}
+        title="Eliminar evento"
+        content="¿Seguro que deseas eliminar este evento?"
+        confirm="Eliminar"
+        confirmColor="warning"
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={() => handleDelete()}
+      />
+    </>
   );
 };
 
@@ -676,8 +773,8 @@ const getFechaBucketLabel = (fecha?: string | null): FechaBucket => {
 const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => void }) => {
   const { data = [], isLoading, filterValues } = useListContext<CRMEvento>();
   const [collapsed, setCollapsed] = useState<Record<FechaBucket, boolean>>({
-    vencido: false,
-    hoy: false,
+    vencido: true,
+    hoy: true,
     manana: true,
     semana: true,
     siguientes: true,

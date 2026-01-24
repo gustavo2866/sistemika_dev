@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import and_, func, or_, update
@@ -11,7 +11,7 @@ from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
-from app.models import CRMMensaje, CRMCelular, CRMOportunidad, CRMTipoOperacion
+from app.models import CRMMensaje, CRMCelular, CRMContacto, CRMOportunidad, CRMTipoOperacion
 from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
 from app.services.crm_mensaje_service import crm_mensaje_service
 from app.services.metaw_client import metaw_client
@@ -297,6 +297,10 @@ async def responder_mensaje_whatsapp(
     session.add(mensaje_salida)
     session.commit()
     session.refresh(mensaje_salida)
+    
+    # Actualizar ultimo_mensaje en oportunidad
+    from app.services.crm_mensaje_service import CRMMensajeService
+    CRMMensajeService.actualizar_ultimo_mensaje_oportunidad(session, mensaje_salida)
     
     # 7. Enviar a través de meta-w
     try:
@@ -695,6 +699,7 @@ def conversaciones_cursor(
     session: Session = Depends(get_session),
     canal: str | None = None,
     responsable_id: int | None = None,
+    estado_oportunidad: str | None = None,
     cursor: str | None = None,
     limit: int = 30,
 ):
@@ -702,171 +707,117 @@ def conversaciones_cursor(
     Devuelve conversaciones agrupadas por oportunidad/contacto con cursor.
     """
     limit = max(1, min(limit, 100))
-    fecha_ref = func.coalesce(CRMMensaje.fecha_mensaje, CRMMensaje.created_at)
-
-    def build_cursor_value(row: CRMMensaje) -> str | None:
-        last_time = row.fecha_mensaje or row.created_at
-        if not last_time:
-            return None
-        return f"{serialize_datetime(last_time)}|{row.id}"
-
-    def apply_cursor(stmt, cursor_value: str | None):
-        if not cursor_value:
-            return stmt
-        parsed = _parse_cursor(cursor_value)
-        if not parsed:
-            return stmt
-        cursor_time, cursor_id = parsed
-        return stmt.where(
-            or_(
-                fecha_ref < cursor_time,
-                and_(fecha_ref == cursor_time, CRMMensaje.id < cursor_id),
-            )
-        )
-
-    base_stmt = select(CRMMensaje).where(CRMMensaje.deleted_at.is_(None))
-    if canal:
-        base_stmt = base_stmt.where(CRMMensaje.canal == canal)
+    cutoff_activo = datetime.now(UTC) - timedelta(days=30)
+    base_where = [
+        CRMOportunidad.ultimo_mensaje_id.is_not(None),
+        CRMOportunidad.ultimo_mensaje_at.is_not(None),
+        CRMMensaje.deleted_at.is_(None),
+        or_(
+            CRMOportunidad.activo.is_(True),
+            and_(
+                CRMOportunidad.activo.is_(False),
+                CRMOportunidad.fecha_estado >= cutoff_activo,
+            ),
+        ),
+    ]
     if responsable_id is not None:
-        base_stmt = base_stmt.join(CRMOportunidad, CRMMensaje.oportunidad_id == CRMOportunidad.id)
-        base_stmt = base_stmt.where(CRMOportunidad.responsable_id == responsable_id)
-        base_stmt = base_stmt.where(CRMOportunidad.activo.is_(True))
+        base_where.append(CRMOportunidad.responsable_id == responsable_id)
+        base_where.append(CRMOportunidad.activo.is_(True))
 
-    conversations: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    next_cursor: str | None = None
-    current_cursor = cursor
+    if estado_oportunidad:
+        base_where.append(CRMOportunidad.estado == estado_oportunidad)
 
-    for _ in range(5):
-        page_size = max(limit * 3, 50)
-        stmt = apply_cursor(base_stmt, current_cursor).order_by(fecha_ref.desc(), CRMMensaje.id.desc()).limit(page_size)
-        rows = session.exec(stmt).all()
-        if not rows:
-            next_cursor = None
-            break
+    if canal:
+        base_where.append(CRMMensaje.canal == canal)
 
-        for msg in rows:
-            if msg.oportunidad_id:
-                key = f"op-{msg.oportunidad_id}"
-            elif msg.contacto_id:
-                key = f"co-{msg.contacto_id}"
-            elif msg.contacto_referencia:
-                key = f"ref-{msg.contacto_referencia}"
-            else:
-                key = f"msg-{msg.id}"
-            if key in seen:
-                continue
-            seen.add(key)
-            conversations.append({
-                "id": key,
-                "contacto_id": msg.contacto_id,
-                "oportunidad_id": msg.oportunidad_id,
-                "oportunidad_titulo": None,
-                "oportunidad_estado": None,
-                "oportunidad_activo": None,
-                "contacto_referencia": msg.contacto_referencia,
-                "contacto_nombre": msg.contacto.nombre_completo if msg.contacto else None,
-                "ultimo_mensaje": filtrar_respuesta(msg),
-                "fecha": serialize_datetime(msg.fecha_mensaje or msg.created_at) if (msg.fecha_mensaje or msg.created_at) else None,
-                "unread_count": 0,
-            })
-            if len(conversations) >= limit:
-                break
-
-        next_cursor = build_cursor_value(rows[-1])
-        if len(conversations) >= limit or len(rows) < page_size:
-            break
-        current_cursor = next_cursor
-
-    if conversations:
-        opp_ids = [conv.get("oportunidad_id") for conv in conversations if conv.get("oportunidad_id")]
-        contact_ids = [conv.get("contacto_id") for conv in conversations if conv.get("contacto_id")]
-        refs = [conv.get("contacto_referencia") for conv in conversations if conv.get("contacto_referencia")]
-
-        unread_map: dict[str, int] = {}
-        base_unread = [
+    unread_count_subq = (
+        select(func.count())
+        .select_from(CRMMensaje)
+        .where(
             CRMMensaje.deleted_at.is_(None),
             CRMMensaje.tipo == TipoMensaje.ENTRADA.value,
             CRMMensaje.estado == EstadoMensaje.NUEVO.value,
-        ]
+            CRMMensaje.oportunidad_id == CRMOportunidad.id,
+        )
+        .correlate(CRMOportunidad)
+        .scalar_subquery()
+    )
 
-        if opp_ids:
-            rows = session.exec(
-                select(CRMMensaje.oportunidad_id, func.count())
-                .where(*base_unread, CRMMensaje.oportunidad_id.in_(opp_ids))
-                .group_by(CRMMensaje.oportunidad_id)
-            ).all()
-            for opp_id, total in rows:
-                unread_map[f"op-{opp_id}"] = total
+    base_stmt = (
+        select(
+            CRMOportunidad,
+            CRMMensaje,
+            CRMContacto,
+            CRMTipoOperacion.nombre.label("tipo_operacion_nombre"),
+            CRMTipoOperacion.codigo.label("tipo_operacion_codigo"),
+            unread_count_subq.label("unread_count"),
+        )
+        .join(CRMMensaje, CRMOportunidad.ultimo_mensaje_id == CRMMensaje.id)
+        .join(CRMContacto, CRMMensaje.contacto_id == CRMContacto.id, isouter=True)
+        .join(CRMTipoOperacion, CRMOportunidad.tipo_operacion_id == CRMTipoOperacion.id, isouter=True)
+        .where(*base_where)
+    )
 
-        if contact_ids:
-            rows = session.exec(
-                select(CRMMensaje.contacto_id, func.count())
-                .where(*base_unread, CRMMensaje.contacto_id.in_(contact_ids))
-                .group_by(CRMMensaje.contacto_id)
-            ).all()
-            for contact_id, total in rows:
-                unread_map[f"co-{contact_id}"] = total
-
-        if refs:
-            rows = session.exec(
-                select(CRMMensaje.contacto_referencia, func.count())
-                .where(*base_unread, CRMMensaje.contacto_referencia.in_(refs))
-                .group_by(CRMMensaje.contacto_referencia)
-            ).all()
-            for ref, total in rows:
-                unread_map[f"ref-{ref}"] = total
-
-        for conv in conversations:
-            conv_id = conv.get("id")
-            conv["unread_count"] = unread_map.get(conv_id, 0)
-
-        if opp_ids:
-            opp_rows = session.exec(
-                select(
-                    CRMOportunidad.id,
-                    CRMOportunidad.titulo,
-                    CRMOportunidad.descripcion_estado,
-                    CRMOportunidad.descripcion,
-                    CRMOportunidad.estado,
-                    CRMOportunidad.activo,
-                    CRMTipoOperacion.nombre,
-                    CRMTipoOperacion.codigo,
+    if cursor:
+        parsed = _parse_cursor(cursor)
+        if parsed:
+            cursor_time, cursor_id = parsed
+            base_stmt = base_stmt.where(
+                or_(
+                    CRMOportunidad.ultimo_mensaje_at < cursor_time,
+                    and_(
+                        CRMOportunidad.ultimo_mensaje_at == cursor_time,
+                        CRMOportunidad.ultimo_mensaje_id < cursor_id,
+                    ),
                 )
-                .join(CRMTipoOperacion, CRMOportunidad.tipo_operacion_id == CRMTipoOperacion.id, isouter=True)
-                .where(CRMOportunidad.id.in_(opp_ids))
-            ).all()
-            opp_map = {
-                row[0]: {
-                    "titulo": row[1],
-                    "descripcion_estado": row[2],
-                    "descripcion": row[3],
-                    "estado": row[4],
-                    "activo": row[5],
-                    "tipo_operacion_nombre": row[6],
-                    "tipo_operacion_codigo": row[7],
-                }
-                for row in opp_rows
-            }
-            for conv in conversations:
-                opp_id = conv.get("oportunidad_id")
-                if not opp_id:
-                    continue
-                opp = opp_map.get(opp_id)
-                if not opp:
-                    continue
-                conv["oportunidad_titulo"] = (
-                    opp.get("titulo")
-                    or opp.get("descripcion_estado")
-                    or opp.get("descripcion")
-                )
-                conv["oportunidad_estado"] = opp.get("estado")
-                conv["oportunidad_activo"] = opp.get("activo")
-                conv["oportunidad_tipo_operacion_nombre"] = opp.get("tipo_operacion_nombre")
-                conv["oportunidad_tipo_operacion_codigo"] = opp.get("tipo_operacion_codigo")
+            )
+
+    ordered_rows = session.exec(
+        base_stmt.order_by(
+            CRMOportunidad.ultimo_mensaje_at.desc(),
+            CRMOportunidad.ultimo_mensaje_id.desc(),
+        ).limit(limit + 1)
+    ).all()
+    if not ordered_rows:
+        return {"data": [], "next_cursor": None, "has_more": False}
+
+    has_more = len(ordered_rows) > limit
+    if has_more:
+        ordered_rows = ordered_rows[:limit]
+
+    last_row = ordered_rows[-1]
+    next_cursor = None
+    if has_more:
+        last_opp = last_row[0]
+        if last_opp.ultimo_mensaje_at and last_opp.ultimo_mensaje_id:
+            next_cursor = f"{serialize_datetime(last_opp.ultimo_mensaje_at)}|{last_opp.ultimo_mensaje_id}"
+
+    conversations: list[dict[str, Any]] = []
+    for opp, msg, contacto, tipo_nombre, tipo_codigo, unread_count in ordered_rows:
+        oportunidad_titulo = (
+            opp.titulo or opp.descripcion_estado or opp.descripcion
+        )
+        contacto_nombre = None
+        if contacto:
+            contacto_nombre = contacto.nombre_completo or contacto.nombre
+        conversations.append({
+            "id": f"op-{opp.id}",
+            "contacto_id": msg.contacto_id,
+            "oportunidad_id": opp.id,
+            "oportunidad_titulo": oportunidad_titulo,
+            "oportunidad_estado": opp.estado,
+            "oportunidad_activo": opp.activo,
+            "oportunidad_tipo_operacion_nombre": tipo_nombre,
+            "oportunidad_tipo_operacion_codigo": tipo_codigo,
+            "contacto_referencia": msg.contacto_referencia,
+            "contacto_nombre": contacto_nombre,
+            "ultimo_mensaje": filtrar_respuesta(msg),
+            "fecha": serialize_datetime(msg.fecha_mensaje or msg.created_at) if (msg.fecha_mensaje or msg.created_at) else None,
+            "unread_count": int(unread_count or 0),
+        })
 
     return {
         "data": conversations,
         "next_cursor": next_cursor,
-        "has_more": bool(next_cursor),
+        "has_more": has_more,
     }

@@ -54,7 +54,14 @@ import {
   Calculator,
 } from "lucide-react";
 
-const CONSTRUCTORA_RESOURCES: readonly string[] = [];
+const CONSTRUCTORA_RESOURCES = [
+  "proyectos",
+  "solicitudes",
+  "recepciones",
+  "dashboard-proyectos",
+  "tarjas",
+  "parte-diario",
+] as const;
 const COMPRAS_RESOURCES = ["po-solicitudes", "po-ordenes-compra", "po-facturas", "proveedores", "po-setup"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
 const ADMIN_RESOURCES = ["facturas", "orden-compra", "nominas", "centros-costo"] as const;
@@ -177,8 +184,8 @@ export function AppSidebar() {
 
   const [constructoraOpen, setConstructoraOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
-  const [operationsOpen, setOperationsOpen] = useState(true);
-  const [crmOpen, setCrmOpen] = useState(true);
+  const [operationsOpen, setOperationsOpen] = useState(false);
+  const [crmOpen, setCrmOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
 

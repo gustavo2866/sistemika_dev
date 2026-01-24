@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import { Edit } from "@/components/edit";
 import { DeleteButton } from "@/components/delete-button";
 import { ShowButton } from "@/components/show-button";
@@ -28,13 +30,22 @@ const PoSolicitudEditActions = () => {
   );
 };
 
-export const PoSolicitudEdit = () => (
-  <Edit
-    title={<PoSolicitudEditTitle />}
-    actions={<PoSolicitudEditActions />}
-    className="w-full max-w-lg"
-  >
-    <PoSolicitudForm />
-  </Edit>
-);
+export const PoSolicitudEdit = () => {
+  const location = useLocation();
+  const redirectTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("returnTo") ?? "list";
+  }, [location.search]);
+
+  return (
+    <Edit
+      title={<PoSolicitudEditTitle />}
+      actions={<PoSolicitudEditActions />}
+      className="w-full max-w-lg"
+      redirect={redirectTo}
+    >
+      <PoSolicitudForm />
+    </Edit>
+  );
+};
 

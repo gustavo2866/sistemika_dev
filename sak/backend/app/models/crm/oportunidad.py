@@ -81,6 +81,8 @@ class CRMOportunidad(Base, table=True):
     responsable_id: int = Field(foreign_key="users.id")
     descripcion_estado: Optional[str] = Field(default=None, max_length=255)
     descripcion: Optional[str] = Field(default=None, max_length=1000)
+    ultimo_mensaje_id: Optional[int] = Field(default=None, foreign_key="crm_mensajes.id", index=True)
+    ultimo_mensaje_at: Optional[datetime] = Field(default=None, index=True)
 
     contacto: Optional["CRMContacto"] = Relationship(back_populates="oportunidades")
     tipo_operacion: Optional["CRMTipoOperacion"] = Relationship(back_populates="oportunidades")
@@ -96,7 +98,16 @@ class CRMOportunidad(Base, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     eventos: list["CRMEvento"] = Relationship(back_populates="oportunidad")
-    mensajes: list["CRMMensaje"] = Relationship(back_populates="oportunidad")
+    mensajes: list["CRMMensaje"] = Relationship(
+        back_populates="oportunidad",
+        sa_relationship_kwargs={"foreign_keys": "[CRMMensaje.oportunidad_id]"}
+    )
+    ultimo_mensaje: Optional["CRMMensaje"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[CRMOportunidad.ultimo_mensaje_id]",
+            "post_update": True
+        }
+    )
 
     def __str__(self) -> str:  # pragma: no cover
         return f"CRMOportunidad(id={self.id}, estado='{self.estado}')"

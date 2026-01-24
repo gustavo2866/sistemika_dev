@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
 import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
@@ -27,14 +27,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   useDataProvider,
+  useGetIdentity,
   useGetOne,
   useNotify,
   useRecordContext,
   useRefresh,
   useRedirect,
+  useListContext,
   useResourceContext,
 } from "ra-core";
-import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, Calendar, House, MessageCircle, MoreHorizontal } from "lucide-react";
 import type { PoSolicitud } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
 
@@ -83,41 +85,49 @@ const filters = [
     source="solicitante_id"
     reference="users"
     label="Solicitante"
+    alwaysOn
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
 ];
 
-const ListActions = ({ createState }: { createState?: Record<string, unknown> }) => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} />
-    <CreateButton state={createState} />
+    <CreateButton to={createTo} />
     <ExportButton />
   </div>
 );
 
 const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) => {
-  const state = location.state as { filter?: Record<string, any>; oportunidad_id?: number | string } | null;
-  if (state?.oportunidad_id) {
-    return state.oportunidad_id;
-  }
-  const stateFilter = state?.filter;
-  if (stateFilter?.oportunidad_id) {
-    return stateFilter.oportunidad_id;
-  }
   const params = new URLSearchParams(location.search);
   const rawFilter = params.get("filter");
   if (rawFilter) {
     try {
       const parsed = JSON.parse(rawFilter);
-      if (parsed?.oportunidad_id) return parsed.oportunidad_id;
+      if (parsed?.oportunidad_id != null) {
+        const numeric = Number(parsed.oportunidad_id);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          return numeric;
+        }
+      }
     } catch {
       // ignore invalid filter param
     }
   }
   const direct = params.get("oportunidad_id");
-  if (direct) return direct;
+  if (direct != null) {
+    const numeric = Number(direct);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+  }
   return undefined;
+};
+
+const getReturnToFromLocation = (location: ReturnType<typeof useLocation>) => {
+  const params = new URLSearchParams(location.search);
+  return params.get("returnTo") ?? undefined;
 };
 
 const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
@@ -142,92 +152,47 @@ const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
 export const PoSolicitudList = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const locationState = location.state as {
-    returnTo?: string;
-    oportunidad_id?: number;
-    contacto_nombre?: string;
-  } | null;
+  const { data: identity } = useGetIdentity();
   const oportunidadIdFilter = getOportunidadIdFromLocation(location);
-  const createState = oportunidadIdFilter
-    ? { oportunidad_id: oportunidadIdFilter }
-    : undefined;
-  const returnTo = locationState?.returnTo;
-  const showContextHeader = Boolean(returnTo || oportunidadIdFilter);
-  const { data: oportunidad } = useGetOne(
-    "crm/oportunidades",
-    { id: oportunidadIdFilter ?? 0 },
-    { enabled: Boolean(oportunidadIdFilter) }
+  const returnTo = getReturnToFromLocation(location);
+  const defaultFilters = useMemo(
+    () => ({
+      estado: "pendiente",
+      ...(identity?.id ? { solicitante_id: identity.id } : {}),
+    }),
+    [identity?.id]
   );
-  const contactoId = (oportunidad as any)?.contacto_id ?? null;
-  const { data: contacto } = useGetOne(
-    "crm/contactos",
-    { id: contactoId ?? 0 },
-    { enabled: Boolean(contactoId) }
-  );
-  const contactoNombre =
-    (contacto as any)?.nombre_completo ??
-    (contacto as any)?.nombre ??
-    (oportunidad as any)?.contacto?.nombre_completo ??
-    (oportunidad as any)?.contacto?.nombre ??
-    locationState?.contacto_nombre ??
-    null;
-  const oportunidadTitulo =
-    (oportunidad as any)?.titulo ??
-    (oportunidad as any)?.descripcion_estado ??
-    (oportunidadIdFilter ? `Oportunidad #${oportunidadIdFilter}` : "");
-  const contactoInitials = useMemo(() => {
-    const base = contactoNombre ?? "Contacto";
-    return base
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part: string) => part[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-  }, [contactoNombre]);
+  const createTo = useMemo(() => {
+    const createPath = "/po-solicitudes/create";
+    if (!oportunidadIdFilter) return createPath;
+    const params = new URLSearchParams();
+    params.set("filter", JSON.stringify({ oportunidad_id: oportunidadIdFilter }));
+    params.set("returnTo", `${location.pathname}${location.search}`);
+    return `${createPath}?${params.toString()}`;
+  }, [location.pathname, location.search, oportunidadIdFilter]);
 
   return (
     <List
       filters={filters}
-      actions={<ListActions createState={createState} />}
+      actions={<ListActions createTo={createTo} />}
       perPage={25}
-      filterDefaultValues={{ estado: "pendiente" }}
+      filterDefaultValues={defaultFilters}
+      storeKey={false}
     >
-      {showContextHeader ? (
-        <div className="mb-3 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              if (returnTo) {
-                navigate(returnTo);
-              } else {
-                navigate(-1);
-              }
-            }}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Avatar className="size-9 border border-slate-200">
-            <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
-              {contactoInitials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900">
-              {contactoNombre ?? "Contacto"}
-            </p>
-            <p className="truncate text-[10px] text-slate-500">
-              {oportunidadTitulo} ({oportunidadIdFilter ?? ""})
-            </p>
-          </div>
-        </div>
-      ) : null}
-    <ResponsiveDataTable
-      rowClick="edit"
-      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
-    >
+      <PoSolicitudesFilterSync
+        oportunidadIdFilter={oportunidadIdFilter}
+        defaultFilters={defaultFilters}
+      />
+      <PoSolicitudesContextHeader
+        location={location}
+        navigate={navigate}
+        returnTo={returnTo}
+        oportunidadId={oportunidadIdFilter}
+      />
+      <ResponsiveDataTable
+        rowClick="edit"
+        className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+      >
         <ResponsiveDataTable.Col
           source="titulo"
           label="Titulo"
@@ -283,6 +248,187 @@ export const PoSolicitudList = () => {
         </ResponsiveDataTable.Col>
       </ResponsiveDataTable>
     </List>
+  );
+};
+
+const PoSolicitudesFilterSync = ({
+  oportunidadIdFilter,
+  defaultFilters,
+}: {
+  oportunidadIdFilter?: number | string;
+  defaultFilters: Record<string, unknown>;
+}) => {
+  const { filterValues, setFilters } = useListContext<PoSolicitud>();
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (initialized) return;
+    if (oportunidadIdFilter) {
+      const needsOportunidad =
+        filterValues?.oportunidad_id == null ||
+        String(filterValues.oportunidad_id) !== String(oportunidadIdFilter);
+      if (needsOportunidad) {
+        setFilters(
+          {
+            ...filterValues,
+            oportunidad_id: oportunidadIdFilter,
+          },
+          {}
+        );
+      }
+      setInitialized(true);
+      return;
+    }
+
+    setFilters(
+      { ...defaultFilters },
+      {
+        estado: true,
+        solicitante_id: true,
+      }
+    );
+    setInitialized(true);
+  }, [defaultFilters, filterValues, initialized, oportunidadIdFilter, setFilters]);
+
+  return null;
+};
+
+const PoSolicitudesContextHeader = ({
+  location,
+  navigate,
+  returnTo,
+  oportunidadId,
+}: {
+  location: ReturnType<typeof useLocation>;
+  navigate: ReturnType<typeof useNavigate>;
+  returnTo?: string;
+  oportunidadId?: number | string;
+}) => {
+  const oportunidadIdNumeric =
+    oportunidadId != null && Number.isFinite(Number(oportunidadId))
+      ? Number(oportunidadId)
+      : undefined;
+  const shouldLoadOportunidad = typeof oportunidadIdNumeric === "number" && oportunidadIdNumeric > 0;
+  const showContextHeader = Boolean(shouldLoadOportunidad);
+
+  const { data: oportunidad } = useGetOne(
+    "crm/oportunidades",
+    { id: shouldLoadOportunidad ? oportunidadIdNumeric : undefined },
+    { enabled: Boolean(shouldLoadOportunidad) }
+  );
+  const contactoId = (oportunidad as any)?.contacto_id ?? null;
+  const { data: contacto } = useGetOne(
+    "crm/contactos",
+    { id: contactoId ?? 0 },
+    { enabled: Boolean(contactoId) }
+  );
+  const contactoNombre =
+    (contacto as any)?.nombre_completo ??
+    (contacto as any)?.nombre ??
+    (oportunidad as any)?.contacto?.nombre_completo ??
+    (oportunidad as any)?.contacto?.nombre ??
+    null;
+  const oportunidadTitulo =
+    (oportunidad as any)?.titulo ??
+    (oportunidad as any)?.descripcion_estado ??
+    (oportunidadIdNumeric ? `Oportunidad #${oportunidadIdNumeric}` : "");
+  const contactoInitials = useMemo(() => {
+    const base = contactoNombre ?? "Contacto";
+    return base
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part: string) => part[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  }, [contactoNombre]);
+
+  const handleOpenChat = () => {
+    if (oportunidadIdNumeric) {
+      const params = new URLSearchParams();
+      params.set("returnTo", `${location.pathname}${location.search}`);
+      navigate(`/crm/chat/op-${oportunidadIdNumeric}/show?${params.toString()}`);
+      return;
+    }
+    navigate(returnTo ?? "/crm/chat");
+  };
+
+  const handleOpenOportunidad = () => {
+    if (!oportunidadIdNumeric) return;
+    const params = new URLSearchParams();
+    params.set("returnTo", `${location.pathname}${location.search}`);
+    navigate(`/crm/oportunidades/${oportunidadIdNumeric}?${params.toString()}`);
+  };
+
+  const handleOpenEventos = () => {
+    if (!oportunidadIdNumeric) return;
+    const params = new URLSearchParams();
+    params.set("filter", JSON.stringify({ oportunidad_id: oportunidadIdNumeric }));
+    params.set("context", "solicitudes");
+    params.set("returnTo", `${location.pathname}${location.search}`);
+    navigate(`/crm/eventos?${params.toString()}`);
+  };
+
+  if (!showContextHeader) return null;
+
+  return (
+    <div className="mb-3 flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-4">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        onClick={() => {
+          if (returnTo) {
+            navigate(returnTo);
+          } else {
+            navigate(-1);
+          }
+        }}
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </Button>
+      <Avatar className="size-9 border border-slate-200">
+        <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
+          {contactoInitials}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-900">
+          {contactoNombre ?? "Contacto"}
+        </p>
+        <p className="truncate text-[10px] text-slate-500">
+          {oportunidadTitulo} ({oportunidadIdNumeric ?? ""})
+        </p>
+      </div>
+      <div className="ml-auto flex items-center gap-1 text-slate-400">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={handleOpenChat}
+        >
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={handleOpenOportunidad}
+          disabled={!oportunidadIdNumeric}
+        >
+          <House className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={handleOpenEventos}
+          disabled={!oportunidadIdNumeric}
+        >
+          <Calendar className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   );
 };
 

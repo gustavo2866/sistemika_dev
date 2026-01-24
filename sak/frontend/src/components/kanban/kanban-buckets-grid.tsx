@@ -181,6 +181,13 @@ interface KanbanBucketsGridProps<TItem, K extends string> {
   bucketDefinitions: KanbanBucketDefinition<K>[];
   bucketItems: Record<K, TItem[]>;
   renderCard: (item: TItem, bucketKey: K) => React.ReactNode;
+  bucketCollapsed?: Partial<Record<K, boolean>>;
+  onToggleBucketCollapse?: (bucketKey: K) => void;
+  bucketCollapseToggleVariant?: KanbanCollapseToggleProps["variant"];
+  bucketCollapseToggleLabel?: string;
+  bucketCollapseToggleClassName?: string;
+  bucketCollapseToggleContent?: React.ReactNode;
+  bucketCollapseToggleStopPropagation?: boolean;
   dragOverBucket?: K | null;
   draggedItem?: TItem | null;
   onCardDragStart?: (event: ReactDragEvent<HTMLDivElement>, item: TItem) => void;
@@ -203,6 +210,13 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
   bucketDefinitions,
   bucketItems,
   renderCard,
+  bucketCollapsed,
+  onToggleBucketCollapse,
+  bucketCollapseToggleVariant,
+  bucketCollapseToggleLabel,
+  bucketCollapseToggleClassName,
+  bucketCollapseToggleContent,
+  bucketCollapseToggleStopPropagation,
   dragOverBucket,
   draggedItem: _draggedItem,
   onCardDragStart,
@@ -219,6 +233,8 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
       const bodyClass = dragOverBucket === key ? "ring-1 ring-primary/40 bg-primary/5" : "";
       const isFirst = index === 0;
       const isLast = index === bucketDefinitions.length - 1;
+      const isCollapsed = Boolean(bucketCollapsed?.[key]);
+      const handleToggle = onToggleBucketCollapse ? () => onToggleBucketCollapse(key) : undefined;
       const showPrevControl = Boolean(bucketNavigation?.canPrev && isFirst);
       const showNextControl = Boolean(bucketNavigation?.canNext && isLast);
       return (
@@ -232,6 +248,14 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
             showNextControl={showNextControl}
             onPrev={bucketNavigation?.onPrev}
             onNext={bucketNavigation?.onNext}
+            collapsible={Boolean(onToggleBucketCollapse)}
+            collapsed={isCollapsed}
+            onToggleCollapse={handleToggle}
+            collapseToggleVariant={bucketCollapseToggleVariant}
+            collapseToggleLabel={bucketCollapseToggleLabel}
+            collapseToggleClassName={bucketCollapseToggleClassName}
+            collapseToggleContent={bucketCollapseToggleContent}
+            collapseToggleStopPropagation={bucketCollapseToggleStopPropagation}
           />
           <KanbanBucketBody
             className={bodyClass}

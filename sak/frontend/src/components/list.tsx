@@ -97,7 +97,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
   const hasDashboard = useHasDashboard();
 
   return (
-    <>
+    <div className="w-full lg:max-w-[1080px] lg:mr-auto">
       {showBreadcrumb ? (
         <Breadcrumb>
           {hasDashboard && (
@@ -139,7 +139,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
         <div className={cn(props.className)}>{children}</div>
         {pagination}
       </FilterContext.Provider>
-    </>
+    </div>
   );
 };
 

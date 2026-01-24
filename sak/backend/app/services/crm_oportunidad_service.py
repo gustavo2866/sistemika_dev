@@ -4,6 +4,7 @@ from datetime import UTC, datetime, date
 from typing import Optional
 
 from sqlmodel import Session, select
+from sqlalchemy import delete, update
 
 from app.models import (
     CRMOportunidad,
@@ -14,6 +15,12 @@ from app.models import (
     Moneda,
     Propiedad,
     Vacancia,
+    CRMMensaje,
+    CRMEvento,
+    PoSolicitud,
+    PoSolicitudDetalle,
+    Solicitud,
+    SolicitudDetalle,
 )
 from app.models.enums import (
     EstadoOportunidad,
@@ -130,7 +137,12 @@ class CRMOportunidadService:
             propiedad.estado = EstadoPropiedad.DISPONIBLE.value
             vacancia = self._vacancia_activa(session, propiedad.id)
             if not vacancia:
-                vacancia = Vacancia(propiedad_id=propiedad.id, ciclo_activo=True, fecha_recibida=hoy, fecha_disponible=hoy)
+                vacancia = Vacancia(
+                    propiedad_id=propiedad.id,
+                    ciclo_activo=True,
+                    fecha_recibida=hoy,
+                    fecha_disponible=hoy,
+                )
                 session.add(vacancia)
             else:
                 if vacancia.fecha_disponible is None:
@@ -139,6 +151,48 @@ class CRMOportunidadService:
                 session.add(vacancia)
 
         session.add(propiedad)
+
+    def eliminar_oportunidad_y_relaciones(self, session: Session, oportunidad_id: int) -> None:
+        oportunidad = session.get(CRMOportunidad, oportunidad_id)
+        if not oportunidad:
+            raise ValueError("Oportunidad no encontrada")
+        if oportunidad.estado != EstadoOportunidad.PROSPECT.value:
+            raise ValueError("Solo se puede descartar una oportunidad en estado 0-prospect")
+
+        session.exec(
+            update(CRMOportunidad)
+            .where(CRMOportunidad.id == oportunidad_id)
+            .values(ultimo_mensaje_id=None, ultimo_mensaje_at=None)
+        )
+
+        po_ids = session.exec(
+            select(PoSolicitud.id).where(PoSolicitud.oportunidad_id == oportunidad_id)
+        ).all()
+        if po_ids:
+            session.exec(
+                delete(PoSolicitudDetalle).where(PoSolicitudDetalle.solicitud_id.in_(po_ids))
+            )
+            session.exec(delete(PoSolicitud).where(PoSolicitud.id.in_(po_ids)))
+
+        solicitud_ids = session.exec(
+            select(Solicitud.id).where(Solicitud.oportunidad_id == oportunidad_id)
+        ).all()
+        if solicitud_ids:
+            session.exec(
+                delete(SolicitudDetalle).where(SolicitudDetalle.solicitud_id.in_(solicitud_ids))
+            )
+            session.exec(delete(Solicitud).where(Solicitud.id.in_(solicitud_ids)))
+
+        session.exec(delete(CRMEvento).where(CRMEvento.oportunidad_id == oportunidad_id))
+        session.exec(delete(CRMMensaje).where(CRMMensaje.oportunidad_id == oportunidad_id))
+        session.exec(
+            delete(CRMOportunidadLogEstado).where(
+                CRMOportunidadLogEstado.oportunidad_id == oportunidad_id
+            )
+        )
+        session.exec(delete(CRMOportunidad).where(CRMOportunidad.id == oportunidad_id))
+
+        session.commit()
 
     def _vacancia_activa(self, session: Session, propiedad_id: int) -> Optional[Vacancia]:
         return session.exec(

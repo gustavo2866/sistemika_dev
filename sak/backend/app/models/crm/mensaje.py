@@ -66,7 +66,10 @@ class CRMMensaje(Base, table=True):
     )
 
     contacto: Optional["CRMContacto"] = Relationship(back_populates="mensajes")
-    oportunidad: Optional["CRMOportunidad"] = Relationship(back_populates="mensajes")
+    oportunidad: Optional["CRMOportunidad"] = Relationship(
+        back_populates="mensajes",
+        sa_relationship_kwargs={"foreign_keys": "[CRMMensaje.oportunidad_id]"}
+    )
     celular: Optional["CRMCelular"] = Relationship(back_populates="mensajes")
 
     def set_estado(self, nuevo_estado: str) -> None:

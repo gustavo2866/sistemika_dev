@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   Bell,
   MessageCircle,
+  Trash2,
   Phone,
   Users,
   MoreHorizontal,
@@ -21,6 +22,7 @@ import { ResponsableSelector } from "@/components/forms";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Confirm } from "@/components/confirm";
 import type { CRMMensaje } from "../crm-mensajes/model";
 import {
   formatMensajeDate,
@@ -28,7 +30,7 @@ import {
   getMensajeTimestamp,
   type CRMChatConversation,
 } from "./model";
-type ChatFilter = "todos" | "no_leidos" | "activas";
+type ChatFilter = "todos" | "no_leidos" | "activas" | "prospect";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const getAuthHeaders = (): HeadersInit => {
@@ -59,6 +61,16 @@ export const CRMChatList = () => {
   const [filter, setFilter] = useState<ChatFilter>("todos");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [ownerValue, setOwnerValue] = useState("");
+  const PAGE_LIMIT = 20;
+  const AUTO_FILL_PAGES = 2;
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTargetId, setConfirmTargetId] = useState<number | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const dedupeById = (items: CRMChatConversation[]) => {
+    const map = new Map<string, CRMChatConversation>();
+    items.forEach((item) => map.set(String(item.id), item));
+    return Array.from(map.values());
+  };
 
   useEffect(() => {
     if (identity?.id) {
@@ -67,13 +79,25 @@ export const CRMChatList = () => {
   }, [identity?.id]);
 
   const fetchConversations = useCallback(
-    async (cursor: string | null, append: boolean) => {
-      const params = new URLSearchParams();
-      params.set("limit", "30");
-      params.set("canal", "whatsapp");
-      if (ownerValue) params.set("responsable_id", ownerValue);
-      if (cursor) params.set("cursor", cursor);
-      const url = `${API_URL}/crm/mensajes/acciones/conversaciones?${params.toString()}`;
+    async (cursor: string | null, append: boolean, autoFillRemaining = AUTO_FILL_PAGES) => {
+      const fetchPage = async (pageCursor: string | null) => {
+        const params = new URLSearchParams();
+        params.set("limit", String(PAGE_LIMIT));
+        params.set("canal", "whatsapp");
+        if (filter === "prospect") {
+          params.set("estado_oportunidad", "0-prospect");
+        }
+        if (ownerValue) params.set("responsable_id", ownerValue);
+        if (pageCursor) params.set("cursor", pageCursor);
+        const url = `${API_URL}/crm/mensajes/acciones/conversaciones?${params.toString()}`;
+        const response = await fetch(url, { headers: { ...getAuthHeaders() } });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        const rows = Array.isArray(payload.data) ? payload.data : [];
+        return { rows, next: payload.next_cursor ?? null };
+      };
 
       if (append) {
         setLoadingMore(true);
@@ -82,14 +106,27 @@ export const CRMChatList = () => {
       }
 
       try {
-        const response = await fetch(url, { headers: { ...getAuthHeaders() } });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+        if (append) {
+          const { rows, next } = await fetchPage(cursor);
+          setNextCursor(next);
+          setConversations((prev) => dedupeById([...prev, ...rows]));
+          return;
         }
-        const payload = await response.json();
-        const rows = Array.isArray(payload.data) ? payload.data : [];
-        setNextCursor(payload.next_cursor ?? null);
-        setConversations((prev) => (append ? [...prev, ...rows] : rows));
+
+        let allRows: CRMChatConversation[] = [];
+        let nextCursorValue: string | null = cursor;
+        let remaining = autoFillRemaining;
+        do {
+          const { rows, next } = await fetchPage(nextCursorValue);
+          allRows = allRows.concat(rows);
+          nextCursorValue = next;
+          if (allRows.length >= PAGE_LIMIT) break;
+          remaining -= 1;
+        } while (nextCursorValue && remaining >= 0);
+
+        const uniqueRows = dedupeById(allRows);
+        setNextCursor(nextCursorValue);
+        setConversations(uniqueRows);
       } catch (error: any) {
         notify(error?.message ?? "No se pudieron cargar las conversaciones.", { type: "warning" });
       } finally {
@@ -97,11 +134,11 @@ export const CRMChatList = () => {
         setLoadingMore(false);
       }
     },
-    [notify, ownerValue]
+    [filter, notify, ownerValue]
   );
 
   useEffect(() => {
-    fetchConversations(null, false);
+    fetchConversations(null, false, AUTO_FILL_PAGES);
   }, [fetchConversations]);
 
   useEffect(() => {
@@ -137,12 +174,39 @@ export const CRMChatList = () => {
 
   const handleOpen = (conversation: CRMChatConversation) => {
     const path = createPath({ resource: "crm/chat", type: "show", id: conversation.id });
-    navigate(path, { state: { conversation } });
+    const params = new URLSearchParams();
+    params.set("returnTo", "/crm/chat");
+    navigate(`${path}?${params.toString()}`, { state: { conversation } });
+  };
+
+  const handleConfirmDiscard = async () => {
+    if (!confirmTargetId) return;
+    setConfirmLoading(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await fetch(
+        `${API_URL}/crm/oportunidades/${confirmTargetId}/descartar`,
+        { method: "POST", headers },
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      setConfirmOpen(false);
+      setConfirmTargetId(null);
+      fetchConversations(null, false, AUTO_FILL_PAGES);
+    } catch (error: any) {
+      notify(error?.message ?? "No se pudo descartar la oportunidad.", { type: "warning" });
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const handleCreateMensaje = () => {
     const path = createPath({ resource: "crm/mensajes", type: "create" });
-    navigate(path, { state: { returnTo: "/crm/chat" } });
+    const params = new URLSearchParams();
+    params.set("returnTo", "/crm/chat");
+    navigate(`${path}?${params.toString()}`);
   };
 
   return (
@@ -224,9 +288,14 @@ export const CRMChatList = () => {
         </button>
         <button
           type="button"
-          className="rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs text-slate-600 sm:px-4 sm:py-1.5 sm:text-sm"
+          onClick={() => setFilter("prospect")}
+          className={`rounded-full px-3 py-1 text-xs sm:px-4 sm:py-1.5 sm:text-sm ${
+            filter === "prospect"
+              ? "bg-emerald-100 text-emerald-800"
+              : "border border-slate-200/80 bg-white/80 text-slate-600"
+          }`}
         >
-          Grupos
+          Prospect
         </button>
       </div>
 
@@ -279,6 +348,7 @@ export const CRMChatList = () => {
                   conversation.oportunidad_activo ??
                   true;
                 const isOportunidadInactiva = oportunidadActiva === false;
+                const isProspect = conversation.oportunidad_estado === "0-prospect";
                 const oportunidadMeta = oportunidadEstado
                   ? `${oportunidadId} - ${oportunidadEstado}`
                   : `${oportunidadId}`;
@@ -329,6 +399,33 @@ export const CRMChatList = () => {
                               {tipoOperacionLabel}
                             </span>
                           ) : null}
+                          {isProspect ? (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (typeof oportunidadId === "number") {
+                                  setConfirmTargetId(oportunidadId);
+                                  setConfirmOpen(true);
+                                }
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.stopPropagation();
+                                  event.preventDefault();
+                                  if (typeof oportunidadId === "number") {
+                                    setConfirmTargetId(oportunidadId);
+                                    setConfirmOpen(true);
+                                  }
+                                }
+                              }}
+                              className="ml-auto inline-flex cursor-pointer text-rose-500 hover:text-rose-600"
+                              aria-label="Descartar oportunidad"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </span>
+                          ) : null}
                         </div>
                       ) : null}
                       <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -351,6 +448,20 @@ export const CRMChatList = () => {
           </div>
         )}
       </div>
+      <Confirm
+        isOpen={confirmOpen}
+        loading={confirmLoading}
+        title="Descartar oportunidad"
+        content="Esto eliminara la oportunidad y todos los mensajes asociados. ¿Continuar?"
+        confirm="Descartar"
+        confirmColor="warning"
+        onConfirm={handleConfirmDiscard}
+        onClose={() => {
+          if (confirmLoading) return;
+          setConfirmOpen(false);
+          setConfirmTargetId(null);
+        }}
+      />
     </div>
   );
 };

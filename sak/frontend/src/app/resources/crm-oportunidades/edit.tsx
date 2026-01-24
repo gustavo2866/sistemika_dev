@@ -6,6 +6,7 @@ import { SaveButton } from "@/components/form";
 import { CancelButton } from "@/components/cancel-button";
 import { CRMOportunidadForm } from "./form";
 import { useLocation, useNavigate } from "react-router";
+import { useMemo } from "react";
 import { normalizeOportunidadId } from "./model";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
 import { Calendar, FileText } from "lucide-react";
@@ -36,17 +37,11 @@ const OportunidadHeaderActions = ({
       <IconButtonWithTooltip
         label="Eventos"
         onClick={() => {
-          const filterParam = encodeURIComponent(
-            JSON.stringify({ oportunidad_id: record.id })
-          );
-          navigate(`/crm/eventos?filter=${filterParam}`, {
-            state: {
-              fromOportunidad: true,
-              oportunidad_id: record.id,
-              returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
-              filter: { oportunidad_id: record.id },
-            },
-          });
+          const params = new URLSearchParams();
+          params.set("filter", JSON.stringify({ oportunidad_id: record.id }));
+          params.set("context", "oportunidad");
+          params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
+          navigate(`/crm/eventos?${params.toString()}`);
         }}
       >
         <Calendar className="h-4 w-4" />
@@ -54,16 +49,10 @@ const OportunidadHeaderActions = ({
       <IconButtonWithTooltip
         label="Solicitudes"
         onClick={() => {
-          const filterParam = encodeURIComponent(
-            JSON.stringify({ oportunidad_id: record.id })
-          );
-          navigate(`/solicitudes?filter=${filterParam}`, {
-            state: {
-              oportunidad_id: record.id,
-              returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
-              filter: { oportunidad_id: record.id },
-            },
-          });
+          const params = new URLSearchParams();
+          params.set("filter", JSON.stringify({ oportunidad_id: record.id }));
+          params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
+          navigate(`/solicitudes?${params.toString()}`);
         }}
       >
         <FileText className="h-4 w-4" />
@@ -78,7 +67,10 @@ export const CRMOportunidadEdit = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const fromPanel = Boolean((location.state as { fromPanel?: boolean } | null)?.fromPanel);
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("returnTo") ?? undefined;
+  }, [location.search]);
   const redirect = returnTo ?? (fromPanel ? "/crm/panel" : "list");
   const useCustomToolbar = Boolean(returnTo) || fromPanel;
   const toolbar = useCustomToolbar ? (

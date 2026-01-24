@@ -5,6 +5,8 @@ import { CRMEventoForm } from "./form";
 import { ResourceTitle } from "@/components/resource-title";
 import { CalendarCheck } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { useGetIdentity } from "ra-core";
 
 const formatDateTimeInput = (date: Date) => {
   const year = date.getFullYear();
@@ -24,12 +26,30 @@ const buildDefaultFechaEvento = () => {
 export const CRMEventoCreate = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const state = location.state as {
-    oportunidad_id?: number | string;
-    contacto_id?: number | string;
-  } | null;
-  const oportunidadId = state?.oportunidad_id;
-  const contactoId = state?.contacto_id;
+  const { data: identity } = useGetIdentity();
+  const { oportunidadId, contactoId } = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const rawFilter = params.get("filter");
+    if (rawFilter) {
+      try {
+        const parsed = JSON.parse(rawFilter);
+        return {
+          oportunidadId: parsed?.oportunidad_id,
+          contactoId: parsed?.contacto_id,
+        };
+      } catch {
+        // ignore invalid filter param
+      }
+    }
+    return {
+      oportunidadId: params.get("oportunidad_id"),
+      contactoId: params.get("contacto_id"),
+    };
+  }, [location.search]);
+  const lockedOportunidadId = (() => {
+    const numeric = Number(oportunidadId);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+  })();
 
   return (
     <Create
@@ -44,9 +64,11 @@ export const CRMEventoCreate = () => {
       <CRMEventoForm
         defaultValues={{
           fecha_evento: buildDefaultFechaEvento(),
+          ...(identity?.id ? { asignado_a_id: Number(identity.id) } : {}),
           ...(oportunidadId ? { oportunidad_id: Number(oportunidadId) } : {}),
           ...(contactoId ? { contacto_id: Number(contactoId) } : {}),
         }}
+        lockedOportunidadId={lockedOportunidadId}
       />
     </Create>
   );

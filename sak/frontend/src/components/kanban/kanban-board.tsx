@@ -17,6 +17,13 @@ export interface KanbanBoardProps<TItem, K extends string> {
   bucketDefinitions: KanbanBucketDefinition<K>[];
   bucketItems: Record<K, TItem[]>;
   renderCard: (item: TItem, bucketKey: K) => React.ReactNode;
+  bucketCollapsed?: Partial<Record<K, boolean>>;
+  onToggleBucketCollapse?: (bucketKey: K) => void;
+  bucketCollapseToggleVariant?: import("./collapse-toggle").KanbanCollapseToggleProps["variant"];
+  bucketCollapseToggleLabel?: string;
+  bucketCollapseToggleClassName?: string;
+  bucketCollapseToggleContent?: React.ReactNode;
+  bucketCollapseToggleStopPropagation?: boolean;
   dragOverBucket?: K | null;
   draggedItem?: TItem | null;
   onCardDragStart?: (event: React.DragEvent<HTMLDivElement>, item: TItem) => void;
@@ -39,6 +46,13 @@ export const KanbanBoard = <TItem, K extends string>({
   bucketDefinitions,
   bucketItems,
   renderCard,
+  bucketCollapsed,
+  onToggleBucketCollapse,
+  bucketCollapseToggleVariant,
+  bucketCollapseToggleLabel,
+  bucketCollapseToggleClassName,
+  bucketCollapseToggleContent,
+  bucketCollapseToggleStopPropagation,
   dragOverBucket,
   draggedItem,
   onCardDragStart,
@@ -67,6 +81,13 @@ export const KanbanBoard = <TItem, K extends string>({
           bucketDefinitions={bucketDefinitions}
           bucketItems={bucketItems}
           renderCard={renderCard}
+          bucketCollapsed={bucketCollapsed}
+          onToggleBucketCollapse={onToggleBucketCollapse}
+          bucketCollapseToggleVariant={bucketCollapseToggleVariant}
+          bucketCollapseToggleLabel={bucketCollapseToggleLabel}
+          bucketCollapseToggleClassName={bucketCollapseToggleClassName}
+          bucketCollapseToggleContent={bucketCollapseToggleContent}
+          bucketCollapseToggleStopPropagation={bucketCollapseToggleStopPropagation}
           dragOverBucket={dragOverBucket}
           draggedItem={draggedItem}
           onCardDragStart={onCardDragStart}

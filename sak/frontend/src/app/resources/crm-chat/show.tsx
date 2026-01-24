@@ -6,7 +6,9 @@ import {
   ArrowLeft,
   Calendar,
   CalendarPlus,
+  Sparkles,
   House,
+  ClipboardList,
   MessageCircle,
   Image as ImageIcon,
   Mic,
@@ -121,9 +123,12 @@ export const CRMChatShow = () => {
   const createPath = useCreatePath();
   const notify = useNotify();
   const { data: identity } = useGetIdentity();
-  const locationState = location.state as { conversation?: CRMChatConversation; returnTo?: string } | null;
+  const locationState = location.state as { conversation?: CRMChatConversation } | null;
   const conversationState = locationState?.conversation;
-  const returnTo = locationState?.returnTo;
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("returnTo") ?? undefined;
+  }, [location.search]);
 
   const target = useMemo(() => parseConversationId(id), [id]);
   const [messages, setMessages] = useState<CRMMensaje[]>([]);
@@ -215,6 +220,9 @@ export const CRMChatShow = () => {
   const oportunidadEstado =
     (oportunidad as any)?.estado ??
     resolveOportunidadEstado;
+  const isOportunidadProspect =
+    typeof oportunidadEstado === "string" &&
+    oportunidadEstado.toLowerCase() === "0-prospect";
   const tipoOperacionLabel =
     (oportunidad as any)?.tipo_operacion?.nombre ??
     (oportunidad as any)?.tipo_operacion?.codigo ??
@@ -359,9 +367,9 @@ export const CRMChatShow = () => {
 
   const handleOpenOportunidad = () => {
     if (!resolveOportunidadId) return;
-    navigate(`/crm/oportunidades/${resolveOportunidadId}`, {
-      state: { returnTo: `/crm/chat/${id}/show` },
-    });
+    const params = new URLSearchParams();
+    params.set("returnTo", `/crm/chat/${id}/show`);
+    navigate(`/crm/oportunidades/${resolveOportunidadId}?${params.toString()}`);
   };
 
   const handleOpenEventos = () => {
@@ -371,28 +379,32 @@ export const CRMChatShow = () => {
       type: "list",
     });
     const contactoId = oportunidadContactoId ?? undefined;
-    const filterParam = encodeURIComponent(
+    const params = new URLSearchParams();
+    params.set(
+      "filter",
       JSON.stringify({
         oportunidad_id: resolveOportunidadId,
         ...(contactoId ? { contacto_id: contactoId } : {}),
       }),
     );
-    navigate(`${path}?filter=${filterParam}`, {
-      state: {
-        fromChat: true,
-        oportunidad_id: resolveOportunidadId,
-        contacto_id: contactoId,
-        returnTo: `/crm/chat/${id}/show`,
-        contacto_nombre: displayName,
-        filter: {
-          oportunidad_id: resolveOportunidadId,
-          ...(contactoId ? { contacto_id: contactoId } : {}),
-        },
-      },
-    });
+    params.set("context", "chat");
+    params.set("returnTo", `/crm/chat/${id}/show`);
+    navigate(`${path}?${params.toString()}`);
   };
 
   const chatReturnTo = id ? `/crm/chat/${id}/show` : "/crm/chat";
+
+  const handleOpenSolicitudes = () => {
+    if (!resolveOportunidadId) return;
+    const path = createPath({
+      resource: "po-solicitudes",
+      type: "list",
+    });
+    const params = new URLSearchParams();
+    params.set("filter", JSON.stringify({ oportunidad_id: resolveOportunidadId }));
+    params.set("returnTo", chatReturnTo);
+    navigate(`${path}?${params.toString()}`);
+  };
 
   const handleOpenAccion = (accion: "accion_descartar" | "accion_aceptar" | "accion_agendar" | "accion_cerrar") => {
     if (!resolveOportunidadId) return;
@@ -465,10 +477,11 @@ export const CRMChatShow = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-emerald-600 sm:h-8 sm:w-8"
-            onClick={handleChatFocus}
+            className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
+            onClick={handleOpenSolicitudes}
+            disabled={!resolveOportunidadId}
           >
-            <MessageCircle className="h-4 w-4" />
+            <ClipboardList className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
@@ -492,7 +505,7 @@ export const CRMChatShow = () => {
       </header>
 
       <Dialog open={respuestasOpen} onOpenChange={setRespuestasOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Respuestas</DialogTitle>
           </DialogHeader>
@@ -586,17 +599,19 @@ export const CRMChatShow = () => {
                   disabled={!canSend}
                   className="flex items-center gap-2"
                 >
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  Responder
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Respueta Aut
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleOpenAccion("accion_descartar")}
-                  disabled={!resolveOportunidadId}
-                  className="flex items-center gap-2"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Descartar
-                </DropdownMenuItem>
+                {isOportunidadProspect ? (
+                  <DropdownMenuItem
+                    onSelect={() => handleOpenAccion("accion_descartar")}
+                    disabled={!resolveOportunidadId}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Descartar
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   onSelect={() => handleOpenAccion("accion_aceptar")}
                   disabled={!resolveOportunidadId}

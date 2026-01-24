@@ -2,7 +2,7 @@
 
 import { required, useGetIdentity, useGetOne, useRecordContext } from "ra-core";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFormContext } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router";
 
@@ -28,8 +28,9 @@ import {
   formatEstadoOportunidad,
 } from "./model";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
-import { Calendar, FileText, MessageCircle } from "lucide-react";
+import { ArrowLeft, Calendar, FileText, MessageCircle } from "lucide-react";
 
 type CRMOportunidadFormProps = {
   toolbar?: ReactNode;
@@ -105,12 +106,20 @@ function DatosGeneralesSection() {
   const tituloValue = watch("titulo") ?? "";
   const estadoValue = (watch("estado") ?? record?.estado) as CRMOportunidadEstado | undefined;
   const fechaEstadoValue = watch("fecha_estado") ?? record?.fecha_estado ?? null;
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("returnTo") ?? undefined;
+  }, [location.search]);
 
   const { data: tipoOperacion } = useGetOne(
     "crm/catalogos/tipos-operacion",
     { id: tipoOperacionId ?? 0 },
     { enabled: Boolean(tipoOperacionId) }
+  );
+  const { data: contacto } = useGetOne(
+    "crm/contactos",
+    { id: contactoId ?? 0 },
+    { enabled: Boolean(contactoId) }
   );
   const { data: tipoPropiedad } = useGetOne(
     "tipos-propiedad",
@@ -163,67 +172,104 @@ function DatosGeneralesSection() {
       oportunidad_id: record.id,
       ...(contactoId ? { contacto_id: contactoId } : {}),
     };
-    const filterParam = encodeURIComponent(JSON.stringify(filter));
-    navigate(`/crm/eventos?filter=${filterParam}`, {
-      state: {
-        fromOportunidad: true,
-        oportunidad_id: record.id,
-        contacto_id: contactoId ?? undefined,
-        returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
-        filter,
-      },
-    });
+    const params = new URLSearchParams();
+    params.set("filter", JSON.stringify(filter));
+    params.set("context", "oportunidad");
+    params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
+    navigate(`/crm/eventos?${params.toString()}`);
   };
 
   const handleOpenSolicitudes = () => {
     if (!record?.id) return;
     const filter = { oportunidad_id: record.id };
-    const filterParam = encodeURIComponent(JSON.stringify(filter));
-    navigate(`/solicitudes?filter=${filterParam}`, {
-      state: {
-        oportunidad_id: record.id,
-        returnTo: returnTo ?? `/crm/oportunidades/${record.id}`,
-        filter,
-      },
-    });
+    const params = new URLSearchParams();
+    params.set("filter", JSON.stringify(filter));
+    params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
+    navigate(`/po-solicitudes?${params.toString()}`);
   };
 
   const handleOpenChat = () => {
     if (!record?.id) return;
-    navigate(`/crm/chat/op-${record.id}/show`, {
-      state: { returnTo: returnTo ?? `/crm/oportunidades/${record.id}` },
-    });
+    const params = new URLSearchParams();
+    params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
+    navigate(`/crm/chat/op-${record.id}/show?${params.toString()}`);
   };
+
+  const contactoNombre =
+    (contacto as any)?.nombre_completo ??
+    (contacto as any)?.nombre ??
+    (record as any)?.contacto?.nombre_completo ??
+    (record as any)?.contacto?.nombre ??
+    null;
+  const contactoInitials = (contactoNombre ?? "Contacto")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+  const oportunidadTitulo = tituloValue || (record?.id ? `Oportunidad #${record.id}` : "");
+  const showContextHeader = Boolean(record?.id);
 
   return (
     <>
+      {showContextHeader ? (
+        <div className="mb-3 flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-4">
+          <IconButtonWithTooltip
+            label="Volver"
+            onClick={() => {
+              if (returnTo) {
+                navigate(returnTo);
+              } else {
+                navigate(-1);
+              }
+            }}
+            className="h-7 w-7"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </IconButtonWithTooltip>
+          <Avatar className="size-9 border border-slate-200">
+            <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
+              {contactoInitials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {contactoNombre ?? "Contacto"}
+            </p>
+            <p className="truncate text-[10px] text-slate-500">
+              {oportunidadTitulo} ({record?.id ?? ""})
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5 text-slate-400">
+            <IconButtonWithTooltip
+              label="Chat"
+              onClick={handleOpenChat}
+              disabled={!record?.id}
+              className="h-7 w-7"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </IconButtonWithTooltip>
+            <IconButtonWithTooltip
+              label="Solicitudes"
+              onClick={handleOpenSolicitudes}
+              disabled={!record?.id}
+              className="h-7 w-7"
+            >
+              <FileText className="h-4 w-4" />
+            </IconButtonWithTooltip>
+            <IconButtonWithTooltip
+              label="Eventos"
+              onClick={handleOpenEventos}
+              disabled={!record?.id}
+              className="h-7 w-7"
+            >
+              <Calendar className="h-4 w-4" />
+            </IconButtonWithTooltip>
+          </div>
+        </div>
+      ) : null}
       <CompactFormSection>
-      <div className="flex items-center justify-end gap-1.5 pb-1">
-        <IconButtonWithTooltip
-          label="Chat"
-          onClick={handleOpenChat}
-          disabled={!record?.id}
-          className="h-7 w-7"
-        >
-          <MessageCircle className="h-4 w-4" />
-        </IconButtonWithTooltip>
-        <IconButtonWithTooltip
-          label="Eventos"
-          onClick={handleOpenEventos}
-          disabled={!record?.id}
-          className="h-7 w-7"
-        >
-          <Calendar className="h-4 w-4" />
-        </IconButtonWithTooltip>
-        <IconButtonWithTooltip
-          label="Solicitudes"
-          onClick={handleOpenSolicitudes}
-          disabled={!record?.id}
-          className="h-7 w-7"
-        >
-          <FileText className="h-4 w-4" />
-        </IconButtonWithTooltip>
-      </div>
       <CompactFormGrid columns="two">
         <CompactFormField
           label="Contacto"

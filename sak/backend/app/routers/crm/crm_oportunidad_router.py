@@ -117,6 +117,21 @@ def listar_eventos_oportunidad(
     }
 
 
+@crm_oportunidad_router.post("/{oportunidad_id}/descartar")
+def descartar_oportunidad(
+    oportunidad_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        crm_oportunidad_service.eliminar_oportunidad_y_relaciones(
+            session=session,
+            oportunidad_id=oportunidad_id,
+        )
+        return {"deleted": True, "oportunidad_id": oportunidad_id}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 def _coerce_value(column, value: str):
     try:
         python_type = column.type.python_type  # type: ignore
