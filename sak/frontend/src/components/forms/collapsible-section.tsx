@@ -18,6 +18,8 @@ interface CollapsibleSectionProps {
   children: ReactNode;
   /** Contenido adicional en el header */
   headerContent?: ReactNode;
+  /** Contenido adicional debajo del header */
+  headerContentBelow?: ReactNode;
   /** Posicion del contenido adicional */
   headerContentPosition?: "inline" | "below";
   /** Variante de estilo */
@@ -43,6 +45,7 @@ export const CollapsibleSection = ({
   defaultOpen = true,
   children,
   headerContent,
+  headerContentBelow,
   headerContentPosition = "below",
   variant = "default",
   contentPadding = "md",
@@ -162,8 +165,11 @@ export const CollapsibleSection = ({
             </div>
           )}
         </div>
-        {headerContent && headerContentPosition === "below" && (
-          <div className={cn(isCompactHeader ? "mt-0" : "mt-2")}>{headerContent}</div>
+        {(headerContentPosition === "below" || headerContentBelow) && (
+          <div className={cn(isCompactHeader ? "mt-0" : "mt-2")}>
+            {headerContentPosition === "below" ? headerContent : null}
+            {headerContentBelow}
+          </div>
         )}
       </div>
       <CardContent

@@ -5,15 +5,13 @@ import { List } from "@/components/list";
 import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
 import { TextInput } from "@/components/text-input";
-import { BooleanInput } from "@/components/boolean-input";
 import { ReferenceInput } from "@/components/reference-input";
-import { ReferenceField } from "@/components/reference-field";
 import { SelectInput } from "@/components/select-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { BadgeField } from "@/components/badge-field";
 import { Button } from "@/components/ui/button";
+import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,17 +23,15 @@ import { useDataProvider, useNotify, useRecordContext, useRedirect, useRefresh, 
 import { MoreHorizontal } from "lucide-react";
 
 const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar proveedores" alwaysOn />,
+  <TextInput key="q" source="q" label="Buscar" placeholder="Buscar proveedores" alwaysOn />,
   <TextInput key="cuit" source="cuit" label="CUIT" />,
-  <ReferenceInput
-    key="concepto_id"
-    source="concepto_id"
-    reference="api/v1/adm/conceptos"
-    label="Concepto"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <BooleanInput key="activo" source="activo" label="Activo" />,
+  <SoloActivasToggleFilter
+    key="activo"
+    source="activo"
+    label="Activos"
+    alwaysOn
+    className="ml-auto"
+  />,
 ];
 
 const ListActions = () => (
@@ -47,22 +43,33 @@ const ListActions = () => (
 );
 
 export const ProveedorList = () => (
-  <List filters={filters} actions={<ListActions />} debounce={300} perPage={25}>
+  <List
+    filters={filters}
+    actions={<ListActions />}
+    debounce={300}
+    perPage={10}
+    filterDefaultValues={{ activo: true }}
+  >
     <ResponsiveDataTable rowClick="edit">
+      <ResponsiveDataTable.Col source="id" label="ID" className="w-[80px]">
+        <TextField source="id" />
+      </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="nombre" label="Nombre" className="w-[220px]">
         <TextField source="nombre" className="block w-[220px] truncate" />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="razon_social" label="Razon social" className="w-[260px]">
         <TextField source="razon_social" className="block w-[260px] truncate" />
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="concepto_id" label="Concepto" className="w-[200px]">
-        <ReferenceField source="concepto_id" reference="api/v1/adm/conceptos">
-          <TextField source="nombre" className="truncate" />
-        </ReferenceField>
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="activo" label="Estado" className="w-[120px]">
-        <BadgeField source="activo" />
-      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col
+        source="activo"
+        label="Activo"
+        className="w-[120px] text-center"
+        render={(record) => (
+          <span className="inline-flex w-full items-center justify-center">
+            {(record as { activo?: boolean })?.activo ? "Si" : "No"}
+          </span>
+        )}
+      />
       <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
         <ProveedorActionsMenu />
       </ResponsiveDataTable.Col>

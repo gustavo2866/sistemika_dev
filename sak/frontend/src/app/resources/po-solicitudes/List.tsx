@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import {
+  appendFilterParam,
+  buildOportunidadFilter,
+  getOportunidadIdFromLocation,
+  getReturnToFromLocation,
+} from "@/lib/oportunidad-context";
 import { List } from "@/components/list";
 import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
@@ -36,9 +42,20 @@ import {
   useListContext,
   useResourceContext,
 } from "ra-core";
-import { ArrowLeft, Calendar, House, MessageCircle, MoreHorizontal } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  Eye,
+  House,
+  MessageCircle,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import type { PoSolicitud } from "./model";
-import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
+import { ESTADO_BADGES, ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
 
 const filters = [
   <TextInput
@@ -99,37 +116,6 @@ const ListActions = ({ createTo }: { createTo?: string }) => (
   </div>
 );
 
-const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) => {
-  const params = new URLSearchParams(location.search);
-  const rawFilter = params.get("filter");
-  if (rawFilter) {
-    try {
-      const parsed = JSON.parse(rawFilter);
-      if (parsed?.oportunidad_id != null) {
-        const numeric = Number(parsed.oportunidad_id);
-        if (Number.isFinite(numeric) && numeric > 0) {
-          return numeric;
-        }
-      }
-    } catch {
-      // ignore invalid filter param
-    }
-  }
-  const direct = params.get("oportunidad_id");
-  if (direct != null) {
-    const numeric = Number(direct);
-    if (Number.isFinite(numeric) && numeric > 0) {
-      return numeric;
-    }
-  }
-  return undefined;
-};
-
-const getReturnToFromLocation = (location: ReturnType<typeof useLocation>) => {
-  const params = new URLSearchParams(location.search);
-  return params.get("returnTo") ?? undefined;
-};
-
 const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
   const solicitante = (record as { solicitante?: { nombre?: string; nombre_completo?: string; email?: string; avatar?: string; url_foto?: string } })
     ?.solicitante;
@@ -166,7 +152,7 @@ export const PoSolicitudList = () => {
     const createPath = "/po-solicitudes/create";
     if (!oportunidadIdFilter) return createPath;
     const params = new URLSearchParams();
-    params.set("filter", JSON.stringify({ oportunidad_id: oportunidadIdFilter }));
+    appendFilterParam(params, buildOportunidadFilter(oportunidadIdFilter));
     params.set("returnTo", `${location.pathname}${location.search}`);
     return `${createPath}?${params.toString()}`;
   }, [location.pathname, location.search, oportunidadIdFilter]);
@@ -176,6 +162,7 @@ export const PoSolicitudList = () => {
       filters={filters}
       actions={<ListActions createTo={createTo} />}
       perPage={25}
+      sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={defaultFilters}
       storeKey={false}
     >
@@ -194,6 +181,13 @@ export const PoSolicitudList = () => {
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
         <ResponsiveDataTable.Col
+          source="id"
+          label="Id"
+          className="w-[60px] text-center"
+        >
+          <NumberField source="id" className="inline-block w-full text-center" />
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
           source="titulo"
           label="Titulo"
           className="w-[160px] whitespace-normal break-words"
@@ -203,24 +197,27 @@ export const PoSolicitudList = () => {
         <ResponsiveDataTable.Col
           source="solicitante_id"
           label="Solicitante"
-          className="w-[80px]"
+          className="w-[110px] whitespace-normal break-words"
           render={(record) => {
             const { name, avatarUrl, initials } = getSolicitanteAvatarInfo(record as PoSolicitud);
             return (
-              <div className="flex w-full items-center justify-start">
+              <div className="flex w-full items-center gap-2">
                 <KanbanAvatar
                   src={avatarUrl}
                   alt={name}
                   fallback={initials}
                   className="border-white/70 shadow-sm"
                 />
+                <span className="text-[9px] leading-tight text-muted-foreground sm:text-[10px] break-words">
+                  {name}
+                </span>
               </div>
             );
           }}
         />
         <ResponsiveDataTable.Col
           source="fecha_necesidad"
-          label="Fecha necesidad"
+          label="Fecha Nec"
           className="w-[110px] text-center"
         >
           <DateField source="fecha_necesidad" className="inline-block text-center w-full" />
@@ -363,7 +360,7 @@ const PoSolicitudesContextHeader = ({
   const handleOpenEventos = () => {
     if (!oportunidadIdNumeric) return;
     const params = new URLSearchParams();
-    params.set("filter", JSON.stringify({ oportunidad_id: oportunidadIdNumeric }));
+    appendFilterParam(params, buildOportunidadFilter(oportunidadIdNumeric));
     params.set("context", "solicitudes");
     params.set("returnTo", `${location.pathname}${location.search}`);
     navigate(`/crm/eventos?${params.toString()}`);
@@ -537,13 +534,17 @@ const PoSolicitudActionsMenu = () => {
           <span className="sr-only">Acciones</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
+      <DropdownMenuContent
+        align="end"
+        className="w-40 sm:w-44 text-[10px] sm:text-xs"
+      >
         <DropdownMenuItem
           onClick={(event) =>
             handleMenuAction(event, () => redirect("edit", resource, record.id))
           }
           disabled={busyAction !== null}
         >
+          <Pencil className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Editar
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -552,13 +553,15 @@ const PoSolicitudActionsMenu = () => {
           }
           disabled={busyAction !== null}
         >
-          Mostrar
+          <Eye className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+          Preview
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={(event) => handleMenuAction(event, handleDelete)}
           disabled={busyAction !== null}
           variant="destructive"
         >
+          <Trash2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Eliminar
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -568,6 +571,7 @@ const PoSolicitudActionsMenu = () => {
           }
           disabled={!canApprove || busyAction !== null}
         >
+          <CheckCircle2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Aprobar
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -576,6 +580,7 @@ const PoSolicitudActionsMenu = () => {
           }
           disabled={!canReject || busyAction !== null}
         >
+          <XCircle className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
           Rechazar
         </DropdownMenuItem>
       </DropdownMenuContent>

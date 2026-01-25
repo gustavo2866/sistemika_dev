@@ -26,6 +26,7 @@ export interface ComboboxQueryProps {
   // Configuración de carga (definida en model.ts)
   resource: string;
   labelField: string;
+  labelFields?: string[];
   limit?: number;
   staleTime?: number;
   
@@ -41,12 +42,16 @@ export interface ComboboxQueryProps {
   value?: string;
   onChange?: (value: string) => void;
   
+  // Formatting personalizado
+  formatter?: (item: any) => string;
+  
   // UI
   placeholder?: string;
   disabled?: boolean;
   className?: string;
   clearable?: boolean;
   clearValue?: string;
+  choices?: any[];
 }
 
 /**
@@ -62,18 +67,37 @@ interface ComboboxOption {
  */
 const transformToOptions = (
   data: any[],
-  labelField: string
+  labelField: string,
+  labelFields?: string[],
+  formatter?: (item: any) => string,
 ): ComboboxOption[] => {
-  return data.map((item) => ({
-    id: String(item.id),
-    nombre: item[labelField] || "",
-  }));
+  return data.map((item) => {
+    // Si hay formatter personalizado, usarlo
+    if (formatter) {
+      return {
+        id: String(item.id),
+        nombre: formatter(item),
+      };
+    }
+    
+    // Lógica original con labelFields
+    const fields =
+      labelFields && labelFields.length > 0 ? labelFields : [labelField];
+    return {
+      id: String(item.id),
+      nombre:
+        fields
+          .map((field) => String(item?.[field] ?? "").trim())
+          .find((value) => value) || `#${item.id}`,
+    };
+  });
 };
 
 export const ComboboxQuery = (props: ComboboxQueryProps) => {
   const {
     resource,
     labelField,
+    labelFields,
     limit = 100,
     staleTime = 5 * 60 * 1000, // 5 minutos por defecto
     filter = {},
@@ -82,12 +106,15 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
     source,
     value: valueProp,
     onChange: onChangeProp,
-  placeholder,
-  disabled,
-  className,
-  clearable,
-  clearValue,
-} = props;
+    formatter,
+    placeholder,
+    disabled,
+    className,
+    popoverClassName,
+    clearable,
+    clearValue,
+    choices,
+  } = props;
 
   const dataProvider = useDataProvider();
 
@@ -116,7 +143,11 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
   });
 
   // Transformar datos a formato esperado
-  const options = rawData ? transformToOptions(rawData, labelField) : [];
+  const options = rawData
+    ? transformToOptions(rawData, labelField, labelFields, formatter)
+    : choices
+    ? transformToOptions(choices, labelField, labelFields, formatter)
+    : [];
 
   // Determinar value y onChange según el modo
   const value = source ? controller.field.value : valueProp;
@@ -132,6 +163,7 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
       placeholder={placeholder}
       disabled={disabled}
       className={className}
+      popoverClassName={popoverClassName}
       clearable={clearable}
       clearValue={clearValue}
     />

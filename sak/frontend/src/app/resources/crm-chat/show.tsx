@@ -43,6 +43,11 @@ import {
   getMensajeTimestamp,
   type CRMChatConversation,
 } from "./model";
+import {
+  appendFilterParam,
+  buildOportunidadFilter,
+  getReturnToFromLocation,
+} from "@/lib/oportunidad-context";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const POLL_MS = 5000;
@@ -125,10 +130,7 @@ export const CRMChatShow = () => {
   const { data: identity } = useGetIdentity();
   const locationState = location.state as { conversation?: CRMChatConversation } | null;
   const conversationState = locationState?.conversation;
-  const returnTo = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get("returnTo") ?? undefined;
-  }, [location.search]);
+  const returnTo = useMemo(() => getReturnToFromLocation(location), [location]);
 
   const target = useMemo(() => parseConversationId(id), [id]);
   const [messages, setMessages] = useState<CRMMensaje[]>([]);
@@ -380,12 +382,9 @@ export const CRMChatShow = () => {
     });
     const contactoId = oportunidadContactoId ?? undefined;
     const params = new URLSearchParams();
-    params.set(
-      "filter",
-      JSON.stringify({
-        oportunidad_id: resolveOportunidadId,
-        ...(contactoId ? { contacto_id: contactoId } : {}),
-      }),
+    appendFilterParam(
+      params,
+      buildOportunidadFilter(resolveOportunidadId, contactoId ? { contacto_id: contactoId } : undefined)
     );
     params.set("context", "chat");
     params.set("returnTo", `/crm/chat/${id}/show`);
@@ -401,7 +400,7 @@ export const CRMChatShow = () => {
       type: "list",
     });
     const params = new URLSearchParams();
-    params.set("filter", JSON.stringify({ oportunidad_id: resolveOportunidadId }));
+    appendFilterParam(params, buildOportunidadFilter(resolveOportunidadId));
     params.set("returnTo", chatReturnTo);
     navigate(`${path}?${params.toString()}`);
   };

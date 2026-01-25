@@ -6,7 +6,6 @@ import { useController, useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
-  ComboboxQuery,
   CompactFormField,
   CompactComboboxQuery,
   CompactFormGrid,
@@ -20,6 +19,7 @@ import { ReferenceInput } from "@/components/reference-input";
 import { TextInput } from "@/components/text-input";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { CompactOportunidadSelector } from "@/app/resources/crm-oportunidades/OportunidadSelector";
 
 const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: number }) => {
   const record = useRecordContext();
@@ -201,10 +201,6 @@ const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: n
     }
   }, [form, lockedContactoId, lockedOportunidadId, shouldLockFromOportunidad]);
 
-  const oportunidadLabel =
-    (oportunidadLocked as any)?.titulo ??
-    (oportunidadLocked as any)?.descripcion_estado ??
-    (lockedOportunidadId ? `Oportunidad #${lockedOportunidadId}` : "");
   const contactoLabel =
     (contactoLocked as any)?.nombre_completo ??
     (contactoLocked as any)?.nombre ??
@@ -228,7 +224,16 @@ const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: n
             <Input value={contactoLabel} readOnly className="w-full" />
           </CompactFormField>
           <CompactFormField label="Oportunidad">
-            <Input value={oportunidadLabel} readOnly className="w-full" />
+            <CompactOportunidadSelector
+              source="oportunidad_id"
+              placeholder="Selecciona una oportunidad"
+              className="w-full justify-between"
+              filter={{ id: lockedOportunidadId }}
+              dependsOn={`locked-${lockedOportunidadId ?? "none"}`}
+              disabled
+              clearable={false}
+              showWideDropdown={false}
+            />
           </CompactFormField>
         </CompactFormGrid>
       ) : (
@@ -253,16 +258,14 @@ const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: n
             error={form.formState.errors.oportunidad_id}
             className="space-y-1"
           >
-            <CompactComboboxQuery
-              resource="crm/oportunidades"
-              labelField="titulo"
-              limit={200}
+            <CompactOportunidadSelector
               source="oportunidad_id"
               placeholder="Selecciona una oportunidad"
               className="w-full justify-between"
               filter={selectedContactoId ? { contacto_id: selectedContactoId, activo: true } : undefined}
               dependsOn={selectedContactoId ?? "all"}
               clearable
+              showWideDropdown={false}
             />
           </FormField>
         </CompactFormGrid>

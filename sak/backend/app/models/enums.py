@@ -115,3 +115,9 @@ class EstadoEmprendimiento(str, Enum):
     CONSTRUCCION = "construccion"
     FINALIZADO = "finalizado"
     CANCELADO = "cancelado"
+
+
+class TipoCompra(str, Enum):
+    """Tipos de compra disponibles"""
+    DIRECTA = "directa"
+    NORMAL = "normal"

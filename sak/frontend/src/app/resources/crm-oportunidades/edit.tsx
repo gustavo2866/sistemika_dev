@@ -11,6 +11,7 @@ import { normalizeOportunidadId } from "./model";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
 import { Calendar, FileText } from "lucide-react";
 import { useRecordContext } from "ra-core";
+import { appendFilterParam, buildOportunidadFilter } from "@/lib/oportunidad-context";
 import { ShowButton } from "@/components/show-button";
 import { DeleteButton } from "@/components/delete-button";
 import type { CRMOportunidad } from "./model";
@@ -38,7 +39,7 @@ const OportunidadHeaderActions = ({
         label="Eventos"
         onClick={() => {
           const params = new URLSearchParams();
-          params.set("filter", JSON.stringify({ oportunidad_id: record.id }));
+          appendFilterParam(params, buildOportunidadFilter(record.id));
           params.set("context", "oportunidad");
           params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
           navigate(`/crm/eventos?${params.toString()}`);
@@ -50,7 +51,7 @@ const OportunidadHeaderActions = ({
         label="Solicitudes"
         onClick={() => {
           const params = new URLSearchParams();
-          params.set("filter", JSON.stringify({ oportunidad_id: record.id }));
+          appendFilterParam(params, buildOportunidadFilter(record.id));
           params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
           navigate(`/solicitudes?${params.toString()}`);
         }}

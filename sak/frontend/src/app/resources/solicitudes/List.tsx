@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { getOportunidadIdFromLocation, getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { List } from "@/components/list";
 import { DataTable } from "@/components/data-table";
 import { TextField } from "@/components/text-field";
@@ -95,30 +96,6 @@ const ListActions = ({ createState }: { createState?: Record<string, unknown> })
   </div>
 );
 
-const getOportunidadIdFromLocation = (location: ReturnType<typeof useLocation>) => {
-  const state = location.state as { filter?: Record<string, any>; oportunidad_id?: number | string } | null;
-  if (state?.oportunidad_id) {
-    return state.oportunidad_id;
-  }
-  const stateFilter = state?.filter;
-  if (stateFilter?.oportunidad_id) {
-    return stateFilter.oportunidad_id;
-  }
-  const params = new URLSearchParams(location.search);
-  const rawFilter = params.get("filter");
-  if (rawFilter) {
-    try {
-      const parsed = JSON.parse(rawFilter);
-      if (parsed?.oportunidad_id) return parsed.oportunidad_id;
-    } catch {
-      // ignore invalid filter param
-    }
-  }
-  const direct = params.get("oportunidad_id");
-  if (direct) return direct;
-  return undefined;
-};
-
 export const SolicitudList = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -131,7 +108,7 @@ export const SolicitudList = () => {
   const createState = oportunidadIdFilter
     ? { oportunidad_id: oportunidadIdFilter }
     : undefined;
-  const returnTo = locationState?.returnTo;
+  const returnTo = locationState?.returnTo ?? getReturnToFromLocation(location);
   const showContextHeader = Boolean(returnTo || oportunidadIdFilter);
   const { data: oportunidad } = useGetOne(
     "crm/oportunidades",

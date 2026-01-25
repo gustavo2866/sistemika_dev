@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CRM_OPORTUNIDAD_ESTADO_CHOICES } from "@/app/resources/crm-oportunidades/model";
+import { CompactFormField } from "@/components/forms";
 import type { CRMEvento } from "./model";
 
 type FormCompletarDialogProps = {
@@ -196,10 +197,9 @@ export const FormCompletarDialog = ({
               placeholder="Resultado de la actividad"
             />
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Nuevo estado de la oportunidad</Label>
+          <CompactFormField label="Nuevo estado de la oportunidad">
             <Select value={nuevoEstadoOportunidad} onValueChange={handleNuevoEstadoChange}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="h-7 w-full px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm">
                 <SelectValue placeholder="Selecciona un estado" />
               </SelectTrigger>
               <SelectContent>
@@ -210,7 +210,7 @@ export const FormCompletarDialog = ({
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </CompactFormField>
           {nuevoEstadoOportunidad === "6-perdida" ? (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Motivo de perdida</Label>

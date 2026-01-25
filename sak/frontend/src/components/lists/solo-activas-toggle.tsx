@@ -1,8 +1,8 @@
 "use client";
 
 import { useListContext } from "ra-core";
+import { FormField } from "@/components/forms";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 type SoloActivasToggleProps = {
@@ -31,21 +31,15 @@ export const SoloActivasToggleFilter = ({
   };
 
   return (
-    <div
-      className={cn(
-        "flex h-7 items-center gap-1.5 rounded-md border px-2 py-0 shrink-0 sm:h-9 sm:gap-2 sm:px-3 sm:py-0",
-        className
-      )}
-    >
-      <Switch
-        id="solo-activas-toggle"
-        checked={soloActivas}
-        onCheckedChange={handleSoloActivasChange}
-        className="!h-[1rem] !w-7 !px-0 !py-0 sm:!h-[1.15rem] sm:!w-8"
-      />
-      <Label htmlFor="solo-activas-toggle" className="text-[11px] font-medium sm:text-sm">
-        {label}
-      </Label>
-    </div>
+    <FormField label={label} className={cn("space-y-1 sm:space-y-2", className)}>
+      <div className="flex h-7 items-center gap-2 rounded-md border px-2 sm:h-9 sm:px-3">
+        <Switch
+          id="solo-activas-toggle"
+          checked={soloActivas}
+          onCheckedChange={handleSoloActivasChange}
+          className="!h-[1rem] !w-7 !px-0 !py-0 [&_[data-slot=switch-thumb]]:size-3 sm:!h-[1.15rem] sm:!w-8 sm:[&_[data-slot=switch-thumb]]:size-4"
+        />
+      </div>
+    </FormField>
   );
 };

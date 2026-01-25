@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { required, useDataProvider } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { useLocation } from "react-router-dom";
+import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { SelectInput } from "@/components/select-input";
 import { TextInput } from "@/components/text-input";
@@ -31,6 +32,7 @@ import {
   type SolicitudDetalle,
   type DetalleFormValues,
   ESTADO_CHOICES,
+  TIPO_COMPRA_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
@@ -264,6 +266,18 @@ const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Reco
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1fr]">
     <div className="min-w-0">
+      <FormField label="Proveedor">
+        <ComboboxQuery
+          {...PROVEEDORES_REFERENCE}
+          source="proveedor_id"
+          placeholder="Selecciona un proveedor"
+          className="w-full"
+          clearable
+        />
+      </FormField>
+    </div>
+
+    <div className="min-w-0">
       <ReferenceInput
         source="tipo_solicitud_id"
         reference="tipos-solicitud"
@@ -275,6 +289,16 @@ const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Reco
           validate={required()} 
         />
       </ReferenceInput>
+    </div>
+
+    <div className="min-w-0">
+      <SelectInput
+        source="tipo_compra"
+        label="Tipo de compra"
+        choices={TIPO_COMPRA_CHOICES}
+        className="w-full"
+        validate={required()}
+      />
     </div>
     
     <div className="min-w-0">
@@ -313,19 +337,30 @@ const DatosGeneralesContent = ({ oportunidadFilter }: { oportunidadFilter?: Reco
         source="oportunidad_id"
         placeholder="Selecciona una oportunidad"
         className="w-full"
+        formatter={(item) => {
+          const titulo = (item.titulo || "")?.slice(0, 20)?.trim();
+          const contacto = (item.contacto?.nombre_completo || item.contacto_nombre || "")?.slice(0, 15)?.trim();
+          const tipo = (item.tipo_operacion?.nombre || "")?.slice(0, 3)?.trim();
+          
+          const parts = [];
+          if (titulo) parts.push(titulo);
+          if (contacto) parts.push(contacto);
+          if (tipo) parts.push(`(${tipo})`);
+          
+          if (parts.length === 0) return `#${item.id}`;
+          
+          const result = parts.slice(0, -1).join(" - ");
+          const lastPart = parts[parts.length - 1];
+          
+          if (lastPart?.startsWith("(")) {
+            return result ? `${result} ${lastPart}` : lastPart;
+          }
+          
+          return parts.join(" - ");
+        }}
         clearable
         filter={oportunidadFilter}
         dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
-      />
-    </FormField>
-
-    <FormField label="Proveedor">
-      <ComboboxQuery
-        {...PROVEEDORES_REFERENCE}
-        source="proveedor_id"
-        placeholder="Selecciona un proveedor"
-        className="w-full"
-        clearable
       />
     </FormField>
     
@@ -383,6 +418,7 @@ const SolicitudFormFields = () => {
   const estadoValue = useWatch({ control, name: "estado" });
   const comentarioValue = useWatch({ control, name: "comentario" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
+  const proveedorValue = useWatch({ control, name: "proveedor_id" });
   const detallesValue = useWatch({ control, name: "detalles" });
 
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
@@ -424,6 +460,10 @@ const SolicitudFormFields = () => {
     );
     return mantenimiento?.id;
   }, [tiposOperacionData]);
+  const proveedorId = useMemo(() => {
+    const parsed = Number(proveedorValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }, [proveedorValue]);
   const oportunidadFilter = useMemo(
     () => ({
       tipo_operacion_id: mantenimientoTipoOperacionId ?? -1,
@@ -439,6 +479,26 @@ const SolicitudFormFields = () => {
     const normalized = rawFilter?.trim();
     return normalized ? normalized : undefined;
   }, [tipoSolicitudValue, tiposSolicitudCatalog]);
+
+  const { data: proveedorDefaults } = useQuery<{
+    default_tipo_solicitud_id?: number | null;
+    default_departamento_id?: number | null;
+    default_metodo_pago_id?: number | null;
+  }>({
+    queryKey: ["proveedores", "defaults", proveedorId],
+    queryFn: async () => {
+      const { data } = await dataProvider.getOne("proveedores", {
+        id: proveedorId,
+      });
+      return data as {
+        default_tipo_solicitud_id?: number | null;
+        default_departamento_id?: number | null;
+        default_metodo_pago_id?: number | null;
+      };
+    },
+    enabled: Boolean(proveedorId),
+    staleTime: PROVEEDORES_REFERENCE.staleTime,
+  });
 
   useEffect(() => {
     const currentTipo = tipoSolicitudValue
@@ -461,7 +521,8 @@ const SolicitudFormFields = () => {
     if (defaultDepartamento && (isCreate || tipoChanged)) {
       const currentDepartamento = form.getValues("departamento_id");
       const normalizedDepartamento = currentDepartamento?.toString();
-      if (normalizedDepartamento !== defaultDepartamento) {
+      const departamentoDirty = Boolean(form.formState.dirtyFields?.departamento_id);
+      if (!departamentoDirty && normalizedDepartamento !== defaultDepartamento) {
         const departamentoIdValue = Number(defaultDepartamento);
         if (!Number.isNaN(departamentoIdValue)) {
           form.setValue("departamento_id", departamentoIdValue, {
@@ -473,6 +534,40 @@ const SolicitudFormFields = () => {
 
     tipoSolicitudPreviousRef.current = currentTipo;
   }, [form, idValue, tipoSolicitudValue, tiposSolicitudCatalog]);
+
+  useEffect(() => {
+    if (!proveedorId || !proveedorDefaults) {
+      return;
+    }
+
+    const isEmptyValue = (value: unknown) =>
+      value === null ||
+      value === undefined ||
+      (typeof value === "string" && value.trim() === "");
+
+    const tipoSolicitudDefault = proveedorDefaults.default_tipo_solicitud_id;
+    const tipoSolicitudDirty = Boolean(form.formState.dirtyFields?.tipo_solicitud_id);
+    if (
+      tipoSolicitudDefault &&
+      (isEmptyValue(form.getValues("tipo_solicitud_id")) || !tipoSolicitudDirty)
+    ) {
+      form.setValue("tipo_solicitud_id", tipoSolicitudDefault, {
+        shouldDirty: true,
+      });
+    }
+
+    const departamentoDefault = proveedorDefaults.default_departamento_id;
+    const departamentoDirty = Boolean(form.formState.dirtyFields?.departamento_id);
+    if (
+      departamentoDefault &&
+      (isEmptyValue(form.getValues("departamento_id")) || !departamentoDirty)
+    ) {
+      form.setValue("departamento_id", departamentoDefault, {
+        shouldDirty: true,
+      });
+    }
+
+  }, [form, proveedorDefaults, proveedorId]);
 
   useEffect(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
@@ -579,19 +674,10 @@ export const Form = () => {
     () => solicitudCabeceraSchema.defaults(),
     []
   );
-  const oportunidadIdFromLocation = useMemo(() => {
-    const state = location.state as
-      | { oportunidad_id?: number | string; filter?: Record<string, unknown> }
-      | null;
-    if (state?.oportunidad_id != null) {
-      return Number(state.oportunidad_id);
-    }
-    const stateFilter = state?.filter;
-    if (stateFilter?.oportunidad_id != null) {
-      return Number(stateFilter.oportunidad_id);
-    }
-    return undefined;
-  }, [location.state]);
+  const oportunidadIdFromLocation = useMemo(
+    () => getOportunidadIdFromLocation(location),
+    [location]
+  );
   const defaultValues = useMemo(() => {
     const solicitanteDefault =
       cabeceraDefaults.solicitante_id &&

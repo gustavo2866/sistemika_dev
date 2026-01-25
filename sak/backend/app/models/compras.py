@@ -7,6 +7,7 @@ from sqlalchemy import Column, DECIMAL, String
 from sqlmodel import Field, Relationship
 
 from .base import Base, current_utc_time
+from .enums import TipoCompra
 
 if TYPE_CHECKING:
     from .articulo import Articulo
@@ -203,12 +204,28 @@ class PoOrdenCompra(Base, table=True):
         default=None,
         description="Fecha del ultimo estado"
     )
+    departamento_id: Optional[int] = Field(
+        default=None,
+        foreign_key="departamentos.id",
+        description="Departamento asociado"
+    )
+    tipo_compra: TipoCompra = Field(
+        default=TipoCompra.NORMAL,
+        sa_column=Column(String(20), nullable=False, server_default="normal"),
+        description="Tipo de compra: directa o normal"
+    )
+    tipo_compra: TipoCompra = Field(
+        default=TipoCompra.NORMAL,
+        sa_column=Column(String(20), nullable=False, server_default="normal"),
+        description="Tipo de compra: directa o normal"
+    )
 
     proveedor: "Proveedor" = Relationship()
     metodo_pago: "MetodoPago" = Relationship()
     usuario_responsable: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoOrdenCompra.usuario_responsable_id"})
     centro_costo: Optional["CentroCosto"] = Relationship()
     tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
+    departamento: Optional["Departamento"] = Relationship()
     detalles: List["PoOrdenCompraDetalle"] = Relationship(
         back_populates="orden_compra",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -314,6 +331,16 @@ class PoFactura(Base, table=True):
         foreign_key="tipos_solicitud.id",
         description="Tipo de solicitud asociado (opcional)"
     )
+    departamento_id: Optional[int] = Field(
+        default=None,
+        foreign_key="departamentos.id",
+        description="Departamento asociado (opcional)"
+    )
+    tipo_compra: Optional[TipoCompra] = Field(
+        default=None,
+        sa_column=Column(String(20), nullable=True),
+        description="Tipo de compra: directa o normal (opcional)"
+    )
 
     proveedor: "Proveedor" = Relationship()
     comprobante: Optional["Comprobante"] = Relationship()
@@ -322,6 +349,7 @@ class PoFactura(Base, table=True):
     usuario_responsable: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoFactura.usuario_responsable_id"})
     centro_costo: Optional["CentroCosto"] = Relationship()
     tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
+    departamento: Optional["Departamento"] = Relationship()
     detalles: List["PoFacturaDetalle"] = Relationship(
         back_populates="factura",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},

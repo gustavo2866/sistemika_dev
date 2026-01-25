@@ -17,6 +17,11 @@ export const ESTADO_CHOICES = [
   { id: "anulada", name: "Anulada" },
 ];
 
+export const TIPO_COMPRA_CHOICES = [
+  { id: "directa", name: "Directa" },
+  { id: "normal", name: "Normal" },
+];
+
 export const UNIDAD_MEDIDA_CHOICES = [
   { id: "UN", name: "Unidad" },
   { id: "KG", name: "Kilogramo" },
@@ -80,6 +85,13 @@ export const CENTROS_COSTO_REFERENCE = {
   filter: { activo: true },
 } as const;
 
+export const DEPARTAMENTOS_REFERENCE = {
+  resource: "departamentos",
+  labelField: "nombre",
+  limit: 50,
+  staleTime: 10 * 60 * 1000,
+} as const;
+
 export const TIPOS_SOLICITUD_REFERENCE = {
   resource: "tipos-solicitud",
   labelField: "nombre",
@@ -127,6 +139,7 @@ export type PoOrdenCompra = {
   id?: number;
   titulo: string;
   estado: string;
+  tipo_compra?: string | null;
   observaciones?: string | null;
   fecha?: string | null;
   fecha_estado?: string | null;
@@ -138,6 +151,7 @@ export type PoOrdenCompra = {
   metodo_pago_id: number;
   centro_costo_id?: number | null;
   tipo_solicitud_id?: number | null;
+  departamento_id?: number | null;
   detalles: PoOrdenCompraDetalle[];
 
   proveedor?: {
@@ -162,11 +176,16 @@ export type PoOrdenCompra = {
     id: number;
     nombre: string;
   };
+  departamento?: {
+    id: number;
+    nombre: string;
+  };
 };
 
 export type PoOrdenCompraCabeceraFormValues = {
   titulo: string;
   estado: string;
+  tipo_compra: string;
   fecha: string;
   fecha_estado: string;
   proveedor_id: string;
@@ -174,6 +193,7 @@ export type PoOrdenCompraCabeceraFormValues = {
   metodo_pago_id: string;
   centro_costo_id: string;
   tipo_solicitud_id: string;
+  departamento_id: string;
   observaciones: string;
 };
 
@@ -262,6 +282,7 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
     PoOrdenCompra,
     | "titulo"
     | "estado"
+    | "tipo_compra"
     | "fecha"
     | "fecha_estado"
     | "proveedor_id"
@@ -269,6 +290,7 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
     | "metodo_pago_id"
     | "centro_costo_id"
     | "tipo_solicitud_id"
+    | "departamento_id"
     | "observaciones"
   >
 >({
@@ -283,6 +305,11 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
       required: true,
       options: ESTADO_CHOICES,
       defaultValue: "borrador",
+    }),
+    tipo_compra: selectField({
+      required: true,
+      options: TIPO_COMPRA_CHOICES,
+      defaultValue: "normal",
     }),
     fecha: stringField({
       required: false,
@@ -322,6 +349,12 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
       required: false,
       defaultValue: "",
     }),
+    departamento_id: referenceField({
+      resource: DEPARTAMENTOS_REFERENCE.resource,
+      labelField: DEPARTAMENTOS_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
     observaciones: stringField({
       trim: true,
       maxLength: VALIDATION_RULES.GENERAL.MAX_OBSERVACIONES_LENGTH,
@@ -332,6 +365,7 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
 
 export const PoOrdenCompraModel = {
   ESTADO_CHOICES,
+  TIPO_COMPRA_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   VALIDATION_RULES,
   PROVEEDORES_REFERENCE,
@@ -340,6 +374,7 @@ export const PoOrdenCompraModel = {
   USERS_REFERENCE,
   METODOS_PAGO_REFERENCE,
   CENTROS_COSTO_REFERENCE,
+  DEPARTAMENTOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   poOrdenCompraDetalleSchema,
   poOrdenCompraCabeceraSchema,

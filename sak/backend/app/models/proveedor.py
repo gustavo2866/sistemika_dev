@@ -6,6 +6,10 @@ if TYPE_CHECKING:
     from .adm import AdmConcepto
     from .factura import Factura
     from .articulo import Articulo
+    from .tipo_solicitud import TipoSolicitud
+    from .departamento import Departamento
+    from .metodo_pago import MetodoPago
+    from .user import User
 
 class Proveedor(Base, table=True):
     """Modelo para proveedores"""
@@ -38,10 +42,57 @@ class Proveedor(Base, table=True):
     # Estado
     activo: bool = Field(default=True, description="Si el proveedor está activo")
     
+    # Campos default para inferencia
+    default_tipo_solicitud_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_solicitud.id",
+        description="Tipo de solicitud por defecto"
+    )
+    default_departamento_id: Optional[int] = Field(
+        default=None,
+        foreign_key="departamentos.id",
+        description="Departamento por defecto"
+    )
+    default_metodo_pago_id: Optional[int] = Field(
+        default=None,
+        foreign_key="metodos_pago.id",
+        description="Método de pago por defecto"
+    )
+    default_usuario_responsable_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+        description="Usuario responsable por defecto"
+    )
+    default_articulos_id: Optional[int] = Field(
+        default=None,
+        foreign_key="articulos.id",
+        description="Artículo por defecto"
+    )
+    
     # Relaciones
     concepto: Optional["AdmConcepto"] = Relationship()
     facturas: List["Factura"] = Relationship(back_populates="proveedor")
-    articulos: List["Articulo"] = Relationship(back_populates="proveedor")
+    articulos: List["Articulo"] = Relationship(
+        back_populates="proveedor",
+        sa_relationship_kwargs={"foreign_keys": "[Articulo.proveedor_id]"}
+    )
+    
+    # Relaciones para campos default
+    default_tipo_solicitud: Optional["TipoSolicitud"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.default_tipo_solicitud_id"}
+    )
+    default_departamento: Optional["Departamento"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.default_departamento_id"}
+    )
+    default_metodo_pago: Optional["MetodoPago"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.default_metodo_pago_id"}
+    )
+    default_usuario_responsable: Optional["User"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.default_usuario_responsable_id"}
+    )
+    default_articulos: Optional["Articulo"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.default_articulos_id"}
+    )
     
     def __str__(self) -> str:
         return f"Proveedor(id={self.id}, nombre='{self.nombre}', cuit='{self.cuit}')"

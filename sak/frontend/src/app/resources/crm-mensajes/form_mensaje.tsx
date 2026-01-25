@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGetIdentity, useNotify, required } from "ra-core";
 import { useNavigate } from "react-router-dom";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
@@ -8,6 +8,8 @@ import { SaveButton } from "@/components/form";
 import { CancelButton } from "@/components/cancel-button";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
+import { ComboboxQuery } from "@/components/forms";
+import { CompactOportunidadSelector } from "@/app/resources/crm-oportunidades/OportunidadSelector";
 import { TextInput } from "@/components/text-input";
 import { useFormContext, useWatch } from "react-hook-form";
 
@@ -85,7 +87,6 @@ export const CRMMensajeSalidaForm = () => {
 
   return (
     <SimpleForm
-      warnWhenUnsavedChanges
       onSubmit={handleSubmit}
       toolbar={
         <FormToolbar className="mt-3 flex justify-end">
@@ -97,9 +98,7 @@ export const CRMMensajeSalidaForm = () => {
       }
     >
       <ResponsableField defaultResponsableId={typeof identity?.id === 'number' ? identity.id : undefined} />
-      <ReferenceInput source="contacto_id" reference="crm/contactos" label="Contacto">
-        <SelectInput optionText="nombre_completo" emptyText="Selecciona contacto" />
-      </ReferenceInput>
+      <ContactoOportunidadFields />
       <NuevoContactoFields />
       <TextInput
         source="descripcion"
@@ -110,6 +109,44 @@ export const CRMMensajeSalidaForm = () => {
         validate={required()}
       />
     </SimpleForm>
+  );
+};
+
+const ContactoOportunidadFields = () => {
+  const form = useFormContext();
+  const contactoId = useWatch({ control: form.control, name: "contacto_id" });
+  const selectedContactoId = useMemo(() => {
+    const numeric = Number(contactoId);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+  }, [contactoId]);
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div>
+        <label className="mb-1 block text-sm font-medium">Contacto</label>
+        <ComboboxQuery
+          resource="crm/contactos"
+          labelField="nombre_completo"
+          source="contacto_id"
+          placeholder="Selecciona contacto"
+          className="w-full"
+          popoverClassName="w-96 max-w-2xl"
+          clearable
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">Oportunidad</label>
+        <CompactOportunidadSelector
+          source="oportunidad_id"
+          placeholder="Selecciona una oportunidad"
+          className="w-full justify-between"
+          filter={selectedContactoId ? { contacto_id: selectedContactoId, activo: true } : undefined}
+          dependsOn={selectedContactoId ?? "all"}
+          clearable
+          showWideDropdown={false}
+        />
+      </div>
+    </div>
   );
 };
 
@@ -156,16 +193,17 @@ const NuevoContactoFields = () => {
       <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
         Nuevo contacto
       </p>
-      <div className="flex flex-nowrap gap-2">
+      <div className="grid grid-cols-[1fr_1.4fr] items-start gap-2">
         <TextInput
           source="contacto_telefono"
           label="Telefono"
-          className={`${compactFieldClass} [&_[data-slot=input]]:w-[14ch]`}
+          className={`${compactFieldClass} w-full`}
+          helperText={<span className="invisible">0/40</span>}
         />
         <TextInput
           source="contacto_nombre"
           label="Nombre"
-          className={`${compactFieldClass} [&_[data-slot=input]]:w-[18ch]`}
+          className={`${compactFieldClass} w-full`}
           helperText={`${(contactoNombre ?? "").length}/${nombreMaxLength}`}
           maxLength={nombreMaxLength}
         />

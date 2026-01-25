@@ -16,6 +16,11 @@ export const ESTADO_CHOICES = [
   { id: "anulada", name: "Anulada" },
 ];
 
+export const TIPO_COMPRA_CHOICES = [
+  { id: "directa", name: "Directa" },
+  { id: "normal", name: "Normal" },
+];
+
 export const UNIDAD_MEDIDA_CHOICES = [
   { id: "UN", name: "Unidad" },
   { id: "KG", name: "Kilogramo" },
@@ -73,6 +78,13 @@ export const CENTROS_COSTO_REFERENCE = {
   limit: 100,
   staleTime: 5 * 60 * 1000,
   filter: { activo: true },
+} as const;
+
+export const DEPARTAMENTOS_REFERENCE = {
+  resource: "departamentos",
+  labelField: "nombre",
+  limit: 50,
+  staleTime: 10 * 60 * 1000,
 } as const;
 
 export const TIPOS_SOLICITUD_REFERENCE = {
@@ -167,6 +179,7 @@ export type PoFactura = {
   total_impuestos: number;
   total: number;
   estado: string;
+  tipo_compra?: string | null;
   observaciones?: string | null;
   nombre_archivo_pdf?: string | null;
   ruta_archivo_pdf?: string | null;
@@ -176,6 +189,7 @@ export type PoFactura = {
   metodo_pago_id: number;
   centro_costo_id?: number | null;
   tipo_solicitud_id?: number | null;
+  departamento_id?: number | null;
   detalles: PoFacturaDetalle[];
   totales: PoFacturaTotal[];
 
@@ -184,6 +198,7 @@ export type PoFactura = {
   metodo_pago?: { id: number; nombre: string };
   centro_costo?: { id: number; nombre: string };
   tipo_solicitud?: { id: number; nombre: string };
+  departamento?: { id: number; nombre: string };
 };
 
 export type PoFacturaCabeceraFormValues = {
@@ -193,11 +208,13 @@ export type PoFacturaCabeceraFormValues = {
   fecha_emision: string;
   fecha_vencimiento: string;
   estado: string;
+  tipo_compra: string;
   proveedor_id: string;
   usuario_responsable_id: string;
   metodo_pago_id: string;
   centro_costo_id: string;
   tipo_solicitud_id: string;
+  departamento_id: string;
   comprobante_id: string;
   observaciones: string;
   nombre_archivo_pdf: string;
@@ -359,11 +376,13 @@ export const poFacturaCabeceraSchema = createEntitySchema<
     | "fecha_emision"
     | "fecha_vencimiento"
     | "estado"
+    | "tipo_compra"
     | "proveedor_id"
     | "usuario_responsable_id"
     | "metodo_pago_id"
     | "centro_costo_id"
     | "tipo_solicitud_id"
+    | "departamento_id"
     | "comprobante_id"
     | "observaciones"
     | "nombre_archivo_pdf"
@@ -402,6 +421,11 @@ export const poFacturaCabeceraSchema = createEntitySchema<
       options: ESTADO_CHOICES,
       defaultValue: "pendiente",
     }),
+    tipo_compra: selectField({
+      required: true,
+      options: TIPO_COMPRA_CHOICES,
+      defaultValue: "normal",
+    }),
     proveedor_id: referenceField({
       resource: PROVEEDORES_REFERENCE.resource,
       labelField: PROVEEDORES_REFERENCE.labelField,
@@ -432,6 +456,12 @@ export const poFacturaCabeceraSchema = createEntitySchema<
       required: false,
       defaultValue: "",
     }),
+    departamento_id: referenceField({
+      resource: DEPARTAMENTOS_REFERENCE.resource,
+      labelField: DEPARTAMENTOS_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
     comprobante_id: referenceField({
       resource: COMPROBANTES_REFERENCE.resource,
       labelField: COMPROBANTES_REFERENCE.labelField,
@@ -458,6 +488,7 @@ export const poFacturaCabeceraSchema = createEntitySchema<
 
 export const PoFacturaModel = {
   ESTADO_CHOICES,
+  TIPO_COMPRA_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   VALIDATION_RULES,
   PROVEEDORES_REFERENCE,
@@ -465,6 +496,7 @@ export const PoFacturaModel = {
   USERS_REFERENCE,
   METODOS_PAGO_REFERENCE,
   CENTROS_COSTO_REFERENCE,
+  DEPARTAMENTOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   TIPOS_COMPROBANTE_REFERENCE,
   COMPROBANTES_REFERENCE,

@@ -305,28 +305,50 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
             const firstColumn = nonActionColumns[0];
             const secondColumn = nonActionColumns[1];
             const bodyColumns = nonActionColumns.slice(2);
+            const isIdPrimary =
+              firstColumn?.props.source &&
+              String(firstColumn.props.source) === "id" &&
+              secondColumn;
 
             return (
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                  {firstColumn
-                    ? renderColumnCell(
+                  {isIdPrimary ? (
+                    <>
+                      {renderInlineColumnCell(
                         firstColumn.key ?? firstColumn.props.source ?? 0,
                         firstColumn.props,
-                        { hideLabel: true, className: "text-[12px] font-semibold" }
-                      )
-                    : null}
-                  {secondColumn
-                    ? renderColumnCell(
+                        { className: "text-[12px] font-semibold" }
+                      )}
+                      <span className="text-[12px] font-semibold">-</span>
+                      {renderInlineColumnCell(
                         secondColumn.key ?? secondColumn.props.source ?? 1,
                         secondColumn.props,
-                        {
-                          hideLabel: true,
-                          className: "text-[11px] text-muted-foreground",
-                        }
-                      )
-                    : null}
+                        { className: "text-[12px] font-semibold" }
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {firstColumn
+                        ? renderColumnCell(
+                            firstColumn.key ?? firstColumn.props.source ?? 0,
+                            firstColumn.props,
+                            { hideLabel: true, className: "text-[12px] font-semibold" }
+                          )
+                        : null}
+                      {secondColumn
+                        ? renderColumnCell(
+                            secondColumn.key ?? secondColumn.props.source ?? 1,
+                            secondColumn.props,
+                            {
+                              hideLabel: true,
+                              className: "text-[11px] text-muted-foreground",
+                            }
+                          )
+                        : null}
+                    </>
+                  )}
                 </div>
                   {actionColumn
                     ? renderColumnCell(

@@ -28,6 +28,7 @@ interface ComboboxProps {
   emptyMessage?: string;
   disabled?: boolean;
   className?: string;
+  popoverClassName?: string;
   clearable?: boolean;
   clearValue?: string;
 }
@@ -43,6 +44,7 @@ export const Combobox = ({
   emptyMessage = "Sin resultados.",
   disabled = false,
   className,
+  popoverClassName,
   clearable = false,
   clearValue = "",
 }: ComboboxProps) => {
@@ -90,7 +92,7 @@ export const Combobox = ({
           <ChevronDown className="ml-1 h-4 w-4 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0">
+      <PopoverContent className={cn("w-[280px] p-0", popoverClassName)}>
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>

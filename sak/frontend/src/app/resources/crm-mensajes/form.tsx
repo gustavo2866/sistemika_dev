@@ -5,7 +5,7 @@ import { TextInput } from "@/components/text-input";
 import { SelectInput } from "@/components/select-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { BooleanInput } from "@/components/boolean-input";
-import { FormLayout, FormSimpleSection } from "@/components/forms";
+import { ComboboxQuery, FormLayout, FormSimpleSection } from "@/components/forms";
 import { required } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useRecordContext } from "ra-core";
@@ -105,13 +105,17 @@ const CRMMensajeSections = () => {
                 />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <ReferenceInput
-                  source="contacto_id"
-                  reference="crm/contactos"
-                  label="Contacto"
-                >
-                  <SelectInput optionText="nombre_completo" emptyText="Sin asignar" className="w-full" />
-                </ReferenceInput>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Contacto</label>
+                  <ComboboxQuery
+                    resource="crm/contactos"
+                    labelField="nombre_completo"
+                    source="contacto_id"
+                    placeholder="Selecciona un contacto"
+                    className="w-full"
+                    clearable
+                  />
+                </div>
                 <TextInput
                   source="contacto_referencia"
                   label="Referencia externa (tel/email)"

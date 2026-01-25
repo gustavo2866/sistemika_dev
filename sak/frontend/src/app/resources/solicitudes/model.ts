@@ -40,6 +40,11 @@ export const ESTADO_CHOICES = [
   { id: "finalizada", name: "Finalizada" },
 ];
 
+export const TIPO_COMPRA_CHOICES = [
+  { id: "directa", name: "Directa" },
+  { id: "normal", name: "Normal" },
+];
+
 /**
  * Unidades de medida permitidas
  * Usado en: Select del sub-formulario de detalles
@@ -163,6 +168,7 @@ export type Solicitud = {
   departamento_id: number;          // ✅ NUEVO - FK a departamentos
   centro_costo_id: number;
   estado: string;                   // ✅ NUEVO - enum EstadoSolicitud
+  tipo_compra?: string | null;
   total: number;                    // ✅ NUEVO - monto total
   fecha_necesidad: string;
   solicitante_id: number;
@@ -208,6 +214,7 @@ export type SolicitudCabeceraFormValues = {
   departamento_id: string;          // ✅ NUEVO
   centro_costo_id: string;
   estado: string;                   // ✅ NUEVO
+  tipo_compra: string;
   fecha_necesidad: string;
   solicitante_id: string;
   comentario: string;
@@ -353,6 +360,7 @@ export const solicitudCabeceraSchema = createEntitySchema<
     | "departamento_id"
     | "centro_costo_id"
     | "estado"
+    | "tipo_compra"
     | "fecha_necesidad"
     | "solicitante_id"
     | "comentario"
@@ -383,6 +391,11 @@ export const solicitudCabeceraSchema = createEntitySchema<
       required: false,
       options: ESTADO_CHOICES,
       defaultValue: "pendiente",
+    }),
+    tipo_compra: selectField({
+      required: true,
+      options: TIPO_COMPRA_CHOICES,
+      defaultValue: "normal",
     }),
     fecha_necesidad: stringField({
       required: true,

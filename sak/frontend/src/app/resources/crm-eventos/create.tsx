@@ -7,6 +7,7 @@ import { CalendarCheck } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMemo } from "react";
 import { useGetIdentity } from "ra-core";
+import { getContactoIdFromLocation, getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
 
 const formatDateTimeInput = (date: Date) => {
   const year = date.getFullYear();
@@ -27,25 +28,13 @@ export const CRMEventoCreate = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { data: identity } = useGetIdentity();
-  const { oportunidadId, contactoId } = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const rawFilter = params.get("filter");
-    if (rawFilter) {
-      try {
-        const parsed = JSON.parse(rawFilter);
-        return {
-          oportunidadId: parsed?.oportunidad_id,
-          contactoId: parsed?.contacto_id,
-        };
-      } catch {
-        // ignore invalid filter param
-      }
-    }
-    return {
-      oportunidadId: params.get("oportunidad_id"),
-      contactoId: params.get("contacto_id"),
-    };
-  }, [location.search]);
+  const { oportunidadId, contactoId } = useMemo(
+    () => ({
+      oportunidadId: getOportunidadIdFromLocation(location),
+      contactoId: getContactoIdFromLocation(location),
+    }),
+    [location]
+  );
   const lockedOportunidadId = (() => {
     const numeric = Number(oportunidadId);
     return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
@@ -65,8 +54,8 @@ export const CRMEventoCreate = () => {
         defaultValues={{
           fecha_evento: buildDefaultFechaEvento(),
           ...(identity?.id ? { asignado_a_id: Number(identity.id) } : {}),
-          ...(oportunidadId ? { oportunidad_id: Number(oportunidadId) } : {}),
-          ...(contactoId ? { contacto_id: Number(contactoId) } : {}),
+          ...(oportunidadId ? { oportunidad_id: oportunidadId } : {}),
+          ...(contactoId ? { contacto_id: contactoId } : {}),
         }}
         lockedOportunidadId={lockedOportunidadId}
       />

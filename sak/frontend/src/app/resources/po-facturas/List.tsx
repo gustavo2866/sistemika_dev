@@ -33,7 +33,7 @@ import {
 } from "ra-core";
 import { MoreHorizontal } from "lucide-react";
 import type { PoFactura } from "./model";
-import { ESTADO_CHOICES } from "./model";
+import { ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
 
 const ESTADO_BADGES: Record<string, string> = {
   pendiente: "bg-slate-100 text-slate-800",
@@ -123,6 +123,21 @@ const filters = [
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
+  <SelectInput
+    key="tipo_compra"
+    source="tipo_compra"
+    label="Tipo compra"
+    choices={TIPO_COMPRA_CHOICES}
+    alwaysOn
+  />,
+  <ReferenceInput
+    key="departamento_id"
+    source="departamento_id"
+    reference="departamentos"
+    label="Departamento"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
 ];
 
 const ListActions = () => (
@@ -179,6 +194,14 @@ export const PoFacturaList = () => (
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[80px]">
         <EstadoBadge />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="tipo_compra" label="Tipo compra" className="w-[110px]">
+        <TextField source="tipo_compra" />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="departamento_id" label="Departamento" className="w-[160px]">
+        <ReferenceField source="departamento_id" reference="departamentos">
+          <TextField source="nombre" />
+        </ReferenceField>
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
         <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />

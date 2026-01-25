@@ -66,8 +66,15 @@ class Articulo(Base, table=True):
     sku: Optional[str] = Field(default=None, max_length=100)
     precio: Decimal = Field(sa_column=Column(DECIMAL(15, 2)))
     proveedor_id: Optional[int] = Field(default=None, foreign_key="proveedores.id")
+    
+    # Campos booleanos
+    activo: bool = Field(default=True, description="Si el artículo está activo")
+    generico: bool = Field(default=False, description="Si el artículo es genérico")
 
-    proveedor: Optional[Proveedor] = Relationship(back_populates="articulos")
+    proveedor: Optional[Proveedor] = Relationship(
+        back_populates="articulos",
+        sa_relationship_kwargs={"foreign_keys": "[Articulo.proveedor_id]"}
+    )
     tipo_articulo_rel: Optional["TipoArticulo"] = Relationship(back_populates="articulos")
 
     def __str__(self) -> str:  # pragma: no cover

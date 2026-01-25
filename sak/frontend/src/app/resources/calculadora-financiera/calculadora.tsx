@@ -81,7 +81,7 @@ export function CalculadoraFinanciera() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 lg:max-w-[1080px] lg:mr-auto">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

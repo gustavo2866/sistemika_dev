@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCreatePath, useGetIdentity, useNotify } from "ra-core";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
   Bell,
   MessageCircle,
   Trash2,
@@ -210,39 +208,28 @@ export const CRMChatList = () => {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-3 bg-[#f6f2e8] px-4 pb-24 pt-3 sm:px-6">
+    <div className="mr-auto flex w-full max-w-xl flex-col gap-3 bg-[#f6f2e8] px-2 pb-24 pt-3 sm:px-6">
       <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-full bg-white/80 text-slate-600 shadow-sm sm:h-9 sm:w-9"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
+        <h1 className="text-2xl font-semibold text-slate-900">Chats</h1>
         <div className="flex items-center gap-2">
           <ResponsableSelector
             includeTodos={false}
             value={ownerValue}
             onValueChange={setOwnerValue}
-            hideLabel
-            triggerClassName="h-8 w-8 rounded-full border border-white/80 bg-white/90 px-0 py-0 shadow-sm [&_[data-slot=select-value]]:w-full [&_[data-slot=select-value]]:justify-center [&_[data-slot=select-value]_span]:hidden sm:h-9 sm:w-9"
+            triggerClassName="h-7 min-w-[120px] rounded-full border border-white/80 bg-white/90 px-2 py-0 text-[11px] shadow-sm sm:h-9 sm:min-w-[160px] sm:text-sm"
           />
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full bg-emerald-500 text-white shadow-sm sm:h-9 sm:w-9"
+            className="h-7 w-7 rounded-full bg-emerald-500 text-white shadow-sm sm:h-9 sm:w-9"
             onClick={handleCreateMensaje}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </Button>
         </div>
       </div>
 
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Chats</h1>
-      </div>
-
-      <div className="flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-1.5 shadow-sm">
+      <div className="flex items-center gap-2 rounded-2xl bg-white/80 px-2 py-1.5 shadow-sm">
         <Search className="h-4 w-4 text-slate-400" />
         <Input
           value={search}
@@ -256,7 +243,7 @@ export const CRMChatList = () => {
         <button
           type="button"
           onClick={() => setFilter("todos")}
-          className={`rounded-full px-3 py-1 text-xs sm:px-4 sm:py-1.5 sm:text-sm ${
+          className={`rounded-full px-2 py-1 text-[11px] sm:px-4 sm:py-1.5 sm:text-sm ${
             filter === "todos"
               ? "bg-emerald-100 text-emerald-800"
               : "border border-slate-200/80 bg-white/80 text-slate-600"
@@ -267,7 +254,7 @@ export const CRMChatList = () => {
         <button
           type="button"
           onClick={() => setFilter("no_leidos")}
-          className={`rounded-full px-3 py-1 text-xs sm:px-4 sm:py-1.5 sm:text-sm ${
+          className={`rounded-full px-2 py-1 text-[11px] sm:px-4 sm:py-1.5 sm:text-sm ${
             filter === "no_leidos"
               ? "bg-emerald-100 text-emerald-800"
               : "border border-slate-200/80 bg-white/80 text-slate-600"
@@ -278,7 +265,7 @@ export const CRMChatList = () => {
         <button
           type="button"
           onClick={() => setFilter("activas")}
-          className={`rounded-full px-3 py-1 text-xs sm:px-4 sm:py-1.5 sm:text-sm ${
+          className={`rounded-full px-2 py-1 text-[11px] sm:px-4 sm:py-1.5 sm:text-sm ${
             filter === "activas"
               ? "bg-emerald-100 text-emerald-800"
               : "border border-slate-200/80 bg-white/80 text-slate-600"
@@ -289,7 +276,7 @@ export const CRMChatList = () => {
         <button
           type="button"
           onClick={() => setFilter("prospect")}
-          className={`rounded-full px-3 py-1 text-xs sm:px-4 sm:py-1.5 sm:text-sm ${
+          className={`rounded-full px-2 py-1 text-[11px] sm:px-4 sm:py-1.5 sm:text-sm ${
             filter === "prospect"
               ? "bg-emerald-100 text-emerald-800"
               : "border border-slate-200/80 bg-white/80 text-slate-600"
@@ -358,7 +345,7 @@ export const CRMChatList = () => {
                     type="button"
                     onClick={() => handleOpen(conversation)}
                     className={cn(
-                      "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50",
+                      "flex w-full items-center gap-2 px-2 py-2 text-left hover:bg-slate-50 sm:gap-3 sm:px-4 sm:py-3",
                       isOportunidadInactiva &&
                         "bg-slate-100/80 text-slate-500 hover:bg-slate-200/80"
                     )}
@@ -429,11 +416,6 @@ export const CRMChatList = () => {
                         </div>
                       ) : null}
                       <div className="flex items-center gap-2 text-xs text-slate-500">
-                        {isOutgoing ? (
-                          <ArrowUpRight className="h-3 w-3 text-slate-400" />
-                        ) : (
-                          <ArrowDownLeft className="h-3 w-3 text-slate-400" />
-                        )}
                         <span className="truncate">{preview}</span>
                       </div>
                     </div>
@@ -465,3 +447,5 @@ export const CRMChatList = () => {
     </div>
   );
 };
+
+

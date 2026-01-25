@@ -46,10 +46,12 @@ import {
   ARTICULOS_REFERENCE,
   ADM_CONCEPTOS_REFERENCE,
   CENTROS_COSTO_REFERENCE,
+  DEPARTAMENTOS_REFERENCE,
   ESTADO_CHOICES,
   getArticuloFilterByTipo,
   METODOS_PAGO_REFERENCE,
   PROVEEDORES_REFERENCE,
+  TIPO_COMPRA_CHOICES,
   TIPOS_COMPROBANTE_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   UNIDAD_MEDIDA_CHOICES,
@@ -946,6 +948,32 @@ const CabeceraContent = ({
               optionText={TIPOS_SOLICITUD_REFERENCE.labelField}
               className="w-full"
               triggerProps={{ disabled: tipoSolicitudBloqueado }}
+              parse={emptyToNull}
+            />
+          </ReferenceInput>
+        </div>
+
+        <div className="min-w-0">
+          <CompactFormField label="Tipo de compra">
+            <CompactSelectInput
+              source="tipo_compra"
+              choices={TIPO_COMPRA_CHOICES}
+              label={false}
+              className="w-full"
+              validate={required()}
+            />
+          </CompactFormField>
+        </div>
+
+        <div className="min-w-0">
+          <ReferenceInput
+            source="departamento_id"
+            reference={DEPARTAMENTOS_REFERENCE.resource}
+            label="Departamento"
+          >
+            <CompactSelectInput
+              optionText={DEPARTAMENTOS_REFERENCE.labelField}
+              className="w-full"
               parse={emptyToNull}
             />
           </ReferenceInput>

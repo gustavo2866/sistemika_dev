@@ -40,6 +40,11 @@ export const ESTADO_CHOICES = [
   { id: "finalizada", name: "Finalizada" },
 ];
 
+export const TIPO_COMPRA_CHOICES = [
+  { id: "directa", name: "Directa" },
+  { id: "normal", name: "Normal" },
+];
+
 export const ESTADO_BADGES: Record<string, string> = {
   pendiente: "bg-slate-100 text-slate-800",
   aprobada: "bg-emerald-100 text-emerald-800",
@@ -120,6 +125,7 @@ export const OPORTUNIDADES_REFERENCE = {
   labelField: "titulo",
   limit: 200,
   staleTime: 5 * 60 * 1000,
+  filter: { activo: true },
 } as const;
 
 export const PROVEEDORES_REFERENCE = {
@@ -172,6 +178,7 @@ export type PoSolicitud = {
   departamento_id: number;          // ✅ NUEVO - FK a departamentos
   centro_costo_id: number;
   estado: string;                   // ✅ NUEVO - enum EstadoSolicitud
+  tipo_compra?: string | null;
   total: number;                    // ✅ NUEVO - monto total
   fecha_necesidad: string;
   solicitante_id: number;
@@ -222,6 +229,7 @@ export type PoSolicitudCabeceraFormValues = {
   departamento_id: string;          // ✅ NUEVO
   centro_costo_id: string;
   estado: string;                   // ✅ NUEVO
+  tipo_compra: string;
   fecha_necesidad: string;
   solicitante_id: string;
   comentario: string;
@@ -266,10 +274,8 @@ export function validateDetalle(
     errors.articulo_id = "Selecciona un articulo";
   }
 
-  // Validar descripcion
-  if (!data.descripcion.trim()) {
-    errors.descripcion = "La descripcion es requerida";
-  } else if (data.descripcion.length > VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH) {
+  // Validar descripcion (opcional, con tope de caracteres)
+  if (data.descripcion && data.descripcion.length > VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH) {
     errors.descripcion = `Máximo ${VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH} caracteres`;
   }
 
@@ -330,7 +336,7 @@ export const poSolicitudDetalleSchema = createDetailSchema<
       defaultValue: "",
     }),
     descripcion: stringField({
-      required: true,
+      required: false,
       trim: true,
       maxLength: VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH,
       defaultValue: "",
@@ -367,6 +373,7 @@ export const poSolicitudCabeceraSchema = createEntitySchema<
     | "departamento_id"
     | "centro_costo_id"
     | "estado"
+    | "tipo_compra"
     | "fecha_necesidad"
     | "solicitante_id"
     | "comentario"
@@ -403,6 +410,11 @@ export const poSolicitudCabeceraSchema = createEntitySchema<
       required: false,
       options: ESTADO_CHOICES,
       defaultValue: "pendiente",
+    }),
+    tipo_compra: selectField({
+      required: true,
+      options: TIPO_COMPRA_CHOICES,
+      defaultValue: "normal",
     }),
     fecha_necesidad: stringField({
       required: true,
@@ -525,6 +537,7 @@ export const PoSolicitudModel = {
   poSolicitudDetalleSchema,
   poSolicitudCabeceraSchema,
 } as const;
+
 
 
 

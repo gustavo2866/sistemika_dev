@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { required, useDataProvider, useGetOne } from "ra-core";
+import { required, useDataProvider, useGetOne, useGetIdentity } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { useLocation } from "react-router-dom";
+import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
+import { CompactOportunidadSelector } from "../crm-oportunidades";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -43,11 +45,11 @@ import {
   type DetalleFormValues,
   ESTADO_BADGES,
   ESTADO_CHOICES,
+  TIPO_COMPRA_CHOICES,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   CENTROS_COSTO_REFERENCE,
-  OPORTUNIDADES_REFERENCE,
   PROVEEDORES_REFERENCE,
   VALIDATION_RULES,
   poSolicitudCabeceraSchema,
@@ -56,6 +58,7 @@ import {
   getDepartamentoDefaultByTipo,
 } from "./model";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
+import { create_wizard as CreateWizard, type CreateWizardPayload } from "./create_wizard";
 
 const GENERAL_SUBTITLE_COMMENT_SNIPPET = 25;
 
@@ -184,6 +187,15 @@ const PoSolicitudDetalleDialogContent = ({
   articuloFilterQuery,
   articuloFilterId,
 }: PoSolicitudDetalleDialogContentProps) => {
+  const articuloValue = detalleForm.watch("articulo_id");
+  const articuloId = Number(articuloValue);
+  const articuloIdValid = Number.isFinite(articuloId) && articuloId > 0;
+  const { data: articulo } = useGetOne(
+    "articulos",
+    { id: articuloIdValid ? articuloId : 0 },
+    { enabled: articuloIdValid }
+  );
+  const isGenerico = Boolean((articulo as { generico?: boolean } | undefined)?.generico);
   const cantidadValue = detalleForm.watch("cantidad");
   const precioValue = detalleForm.watch("precio");
   const importeValue = detalleForm.watch("importe");
@@ -216,6 +228,18 @@ const PoSolicitudDetalleDialogContent = ({
       });
     }
   }, [cantidadValue, precioValue, importeValue, detalleForm]);
+  useEffect(() => {
+    if (!isGenerico) {
+      detalleForm.clearErrors("descripcion");
+    }
+  }, [detalleForm, isGenerico]);
+
+  const descripcionRegister = detalleForm.register("descripcion", {
+    validate: (value) => {
+      if (!isGenerico) return true;
+      return String(value ?? "").trim().length > 0 || "La descripcion es requerida";
+    },
+  });
 
   return (
     <>
@@ -241,13 +265,20 @@ const PoSolicitudDetalleDialogContent = ({
       <CompactFormField
         label="Descripción"
         error={detalleForm.formState.errors.descripcion}
-        required
+        required={isGenerico}
       >
-        <Textarea
-          rows={3}
-          className="min-h-9 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
-          {...detalleForm.register("descripcion")}
-        />
+        <>
+          <Textarea
+            rows={3}
+            className="min-h-9 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
+            {...descripcionRegister}
+          />
+          {isGenerico ? (
+            <p className="text-[9px] text-muted-foreground sm:text-[10px]">
+              Requerido para artículos genéricos
+            </p>
+          ) : null}
+        </>
       </CompactFormField>
 
       <CompactFormGrid columns="two">
@@ -413,6 +444,18 @@ const DatosGeneralesContent = ({
     </div>
     
     <div className="min-w-0">
+      <CompactFormField label="Proveedor">
+        <CompactComboboxQuery
+          {...PROVEEDORES_REFERENCE}
+          source="proveedor_id"
+          placeholder="Selecciona un proveedor"
+          className="w-full"
+          clearable
+        />
+      </CompactFormField>
+    </div>
+
+    <div className="min-w-0">
       <ReferenceInput
         source="tipo_solicitud_id"
         reference="tipos-solicitud"
@@ -428,13 +471,13 @@ const DatosGeneralesContent = ({
     </div>
 
     <div className="min-w-0">
-      <CompactFormField label="Proveedor">
-        <CompactComboboxQuery
-          {...PROVEEDORES_REFERENCE}
-          source="proveedor_id"
-          placeholder="Selecciona un proveedor"
+      <CompactFormField label="Tipo de compra">
+        <CompactSelectInput
+          source="tipo_compra"
+          choices={TIPO_COMPRA_CHOICES}
+          label={false}
           className="w-full"
-          clearable
+          validate={required()}
         />
       </CompactFormField>
     </div>
@@ -484,15 +527,11 @@ const ImputacionContent = ({
   const { register, setValue, getValues } = useFormContext<PoSolicitud>();
   const shouldLockOportunidad =
     typeof lockedOportunidadId === "number" && Number.isFinite(lockedOportunidadId);
-  const { data: oportunidadLocked } = useGetOne(
+  const { data: lockedOportunidadData } = useGetOne(
     "crm/oportunidades",
     { id: lockedOportunidadId ?? 0 },
     { enabled: Boolean(shouldLockOportunidad) }
   );
-  const oportunidadLabel =
-    (oportunidadLocked as any)?.titulo ??
-    (oportunidadLocked as any)?.descripcion_estado ??
-    (shouldLockOportunidad ? `Oportunidad #${lockedOportunidadId}` : "");
 
   useEffect(() => {
     if (!shouldLockOportunidad) return;
@@ -537,30 +576,30 @@ const ImputacionContent = ({
         </ReferenceInput>
       </div>
 
-      <CompactFormField label="Oportunidad">
+      <CompactFormField label="Oportunidad" className="md:col-span-2">
+        <CompactOportunidadSelector
+          source="oportunidad_id"
+          placeholder="Selecciona una oportunidad"
+          filter={shouldLockOportunidad ? undefined : oportunidadFilter}
+          choices={
+            shouldLockOportunidad && lockedOportunidadData
+              ? [lockedOportunidadData]
+              : undefined
+          }
+          dependsOn={
+            shouldLockOportunidad
+              ? `locked-${lockedOportunidadId ?? "none"}`
+              : "activo-true"
+          }
+          disabled={shouldLockOportunidad}
+          clearable={!shouldLockOportunidad}
+        />
         {shouldLockOportunidad ? (
-          <>
-            <Input
-              value={oportunidadLabel}
-              readOnly
-              className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            />
-            <input
-              type="hidden"
-              {...register("oportunidad_id", { valueAsNumber: true })}
-            />
-          </>
-        ) : (
-          <CompactComboboxQuery
-            {...OPORTUNIDADES_REFERENCE}
-            source="oportunidad_id"
-            placeholder="Selecciona una oportunidad"
-            className="w-full"
-            clearable
-            filter={oportunidadFilter}
-            dependsOn={oportunidadFilter?.tipo_operacion_id ?? "all"}
+          <input
+            type="hidden"
+            {...register("oportunidad_id", { valueAsNumber: true })}
           />
-        )}
+        ) : null}
       </CompactFormField>
 
     </CompactFormGrid>
@@ -569,18 +608,25 @@ const ImputacionContent = ({
 
 const PoSolicitudFormFields = ({
   lockedOportunidadId,
+  wizardOpen,
+  setWizardOpen,
 }: {
   lockedOportunidadId?: number;
+  wizardOpen: boolean;
+  setWizardOpen: (open: boolean) => void;
 }) => {
   const form = useFormContext<PoSolicitud>();
   const dataProvider = useDataProvider();
+  const { data: identity } = useGetIdentity();
   const tipoSolicitudPreviousRef = useRef<string | undefined>(undefined);
   const { control } = form;
   const idValue = useWatch({ control, name: "id" });
   const estadoValue = useWatch({ control, name: "estado" });
   const comentarioValue = useWatch({ control, name: "comentario" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
+  const proveedorValue = useWatch({ control, name: "proveedor_id" });
   const detallesValue = useWatch({ control, name: "detalles" });
+  const isCreate = !idValue;
 
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
     queryKey: ["tipos-solicitud", "defaults"],
@@ -600,35 +646,45 @@ const PoSolicitudFormFields = ({
     },
     staleTime: TIPOS_SOLICITUD_REFERENCE.staleTime,
   });
-  const { data: tiposOperacionData } = useQuery<{ id: number; nombre?: string; codigo?: string }[]>({
-    queryKey: ["crm-tipos-operacion", "mantenimiento"],
-    queryFn: async () => {
-      const { data } = await dataProvider.getList("crm/catalogos/tipos-operacion", {
-        pagination: { page: 1, perPage: 200 },
-        sort: { field: "nombre", order: "ASC" },
-        filter: {},
-      });
-      return data as { id: number; nombre?: string; codigo?: string }[];
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  
+  // NOTA: Query de tipos de operación comentada ya que no se usa para el filtro de oportunidades
+  // const { data: tiposOperacionData } = useQuery<{ id: number; nombre?: string; codigo?: string }[]>({
+  //   queryKey: ["crm-tipos-operacion", "mantenimiento"],
+  //   queryFn: async () => {
+  //     const { data } = await dataProvider.getList("crm/catalogos/tipos-operacion", {
+  //       pagination: { page: 1, perPage: 200 },
+  //       sort: { field: "nombre", order: "ASC" },
+  //       filter: {},
+  //     });
+  //     return data as { id: number; nombre?: string; codigo?: string }[];
+  //   },
+  //   staleTime: 5 * 60 * 1000,
+  // });
+  
   const tiposSolicitudCatalog = useMemo(
     () => tiposSolicitudData ?? [],
     [tiposSolicitudData]
   );
-  const mantenimientoTipoOperacionId = useMemo(() => {
-    const mantenimiento = tiposOperacionData?.find(
-      (tipo) =>
-        tipo?.codigo?.toLowerCase().includes("mantenimiento") ||
-        tipo?.nombre?.toLowerCase().includes("mantenimiento")
-    );
-    return mantenimiento?.id;
-  }, [tiposOperacionData]);
+  
+  // NOTA: Lógica de mantenimiento comentada ya que ahora mostramos todas las oportunidades activas
+  // const mantenimientoTipoOperacionId = useMemo(() => {
+  //   const mantenimiento = tiposOperacionData?.find(
+  //     (tipo) =>
+  //       tipo?.codigo?.toLowerCase().includes("mantenimiento") ||
+  //       tipo?.nombre?.toLowerCase().includes("mantenimiento")
+  //   );
+  //   return mantenimiento?.id;
+  // }, [tiposOperacionData]);
+  
+  const proveedorId = useMemo(() => {
+    const parsed = Number(proveedorValue);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }, [proveedorValue]);
   const oportunidadFilter = useMemo(
     () => ({
-      tipo_operacion_id: mantenimientoTipoOperacionId ?? -1,
+      activo: true,
     }),
-    [mantenimientoTipoOperacionId]
+    []
   );
 
   const articuloFilterId = useMemo(() => {
@@ -637,6 +693,12 @@ const PoSolicitudFormFields = ({
       tiposSolicitudCatalog
     );
   }, [tipoSolicitudValue, tiposSolicitudCatalog]);
+
+  const { data: proveedorDefaults } = useGetOne(
+    "proveedores",
+    { id: proveedorId ?? 0 },
+    { enabled: Boolean(proveedorId) }
+  );
 
   // Filtros dinámicos para referencias del schema
   const dynamicReferenceFilters = useMemo((): Record<string, Record<string, any>> => {
@@ -675,7 +737,8 @@ const PoSolicitudFormFields = ({
     if (defaultDepartamento && (isCreate || tipoChanged)) {
       const currentDepartamento = form.getValues("departamento_id");
       const normalizedDepartamento = currentDepartamento?.toString();
-      if (normalizedDepartamento !== defaultDepartamento) {
+      const departamentoDirty = Boolean(form.formState.dirtyFields?.departamento_id);
+      if (!departamentoDirty && normalizedDepartamento !== defaultDepartamento) {
         const departamentoIdValue = Number(defaultDepartamento);
         if (!Number.isNaN(departamentoIdValue)) {
           form.setValue("departamento_id", departamentoIdValue, {
@@ -687,6 +750,39 @@ const PoSolicitudFormFields = ({
 
     tipoSolicitudPreviousRef.current = currentTipo;
   }, [form, idValue, tipoSolicitudValue, tiposSolicitudCatalog]);
+
+  useEffect(() => {
+    if (!proveedorId || !proveedorDefaults) {
+      return;
+    }
+
+    const isEmptyValue = (value: unknown) =>
+      value === null ||
+      value === undefined ||
+      (typeof value === "string" && value.trim() === "");
+
+    const tipoSolicitudDefault = (proveedorDefaults as any)?.default_tipo_solicitud_id;
+    const tipoSolicitudDirty = Boolean(form.formState.dirtyFields?.tipo_solicitud_id);
+    if (
+      tipoSolicitudDefault &&
+      (isEmptyValue(form.getValues("tipo_solicitud_id")) || !tipoSolicitudDirty)
+    ) {
+      form.setValue("tipo_solicitud_id", Number(tipoSolicitudDefault), {
+        shouldDirty: true,
+      });
+    }
+
+    const departamentoDefault = (proveedorDefaults as any)?.default_departamento_id;
+    const departamentoDirty = Boolean(form.formState.dirtyFields?.departamento_id);
+    if (
+      departamentoDefault &&
+      (isEmptyValue(form.getValues("departamento_id")) || !departamentoDirty)
+    ) {
+      form.setValue("departamento_id", Number(departamentoDefault), {
+        shouldDirty: true,
+      });
+    }
+  }, [form, proveedorDefaults, proveedorId]);
 
   useEffect(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
@@ -723,16 +819,69 @@ const PoSolicitudFormFields = ({
     [idValue, estadoValue, comentarioValue]
   );
 
+  const handleApplyWizard = (payload: CreateWizardPayload) => {
+    if (!isCreate) return;
+    if (payload.proveedorId != null) {
+      form.setValue("proveedor_id", payload.proveedorId, { shouldDirty: true });
+    }
+    if (payload.tipoSolicitudId != null) {
+      form.setValue("tipo_solicitud_id", payload.tipoSolicitudId, { shouldDirty: true });
+    }
+    if (payload.departamentoId != null) {
+      form.setValue("departamento_id", payload.departamentoId, { shouldDirty: true });
+    }
+    if (payload.tipoCompra != null) {
+      form.setValue("tipo_compra", payload.tipoCompra, { shouldDirty: true });
+    }
+    if (payload.titulo !== undefined) {
+      form.setValue("titulo", payload.titulo, { shouldDirty: true });
+    }
+    if (payload.fechaNecesidad) {
+      form.setValue("fecha_necesidad", payload.fechaNecesidad, { shouldDirty: true });
+    }
+    if (payload.oportunidadId != null) {
+      form.setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+    }
+    if (identity?.id != null) {
+      form.setValue("solicitante_id", Number(identity.id), { shouldDirty: true });
+    }
+
+    if (payload.articuloId != null) {
+      const cantidad = payload.cantidad ?? 0;
+      const precio = payload.precio ?? 0;
+      const importe = Number((cantidad * precio).toFixed(2));
+      const detalle: PoSolicitudDetalle = {
+        articulo_id: payload.articuloId,
+        descripcion: payload.descripcion ?? "",
+        unidad_medida: payload.unidadMedida ?? "UN",
+        cantidad,
+        precio,
+        importe,
+      };
+      form.setValue("detalles", [detalle], { shouldDirty: true });
+    }
+  };
+
   return (
-    <FormLayout
-      sections={[
+    <>
+      {isCreate ? (
+        <CreateWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          onApply={handleApplyWizard}
+          lockedOportunidadId={lockedOportunidadId}
+          oportunidadFilter={oportunidadFilter}
+        />
+      ) : null}
+      <FormLayout
+        sections={[
         {
           id: "datos-generales",
           title: "Cabecera",
-          subtitle: generalSubtitle,
-          defaultOpen: !idValue,
+          defaultOpen: isCreate ? false : !idValue,
           headerContent: <PoSolicitudHeaderInline />,
           headerContentPosition: "inline",
+          headerContentBelow: <PoSolicitudHeaderSummary />,
           contentPadding: "none",
           contentClassName: "space-y-2 px-4 py-2",
           children: (
@@ -760,7 +909,7 @@ const PoSolicitudFormFields = ({
         {
           id: "articulos",
           title: "Detalle",
-          defaultOpen: true,
+          defaultOpen: isCreate ? false : true,
           contentPadding: "none",
           contentClassName: "space-y-2 px-1 sm:px-1",
           headerContent: <PoSolicitudTotalInline />,
@@ -776,8 +925,9 @@ const PoSolicitudFormFields = ({
             </FormDetailSection>
           ),
         },
-      ]}
-    />
+        ]}
+      />
+    </>
   );
 };
 
@@ -815,36 +965,68 @@ const PoSolicitudHeaderInline = () => {
   );
 };
 
+const PoSolicitudHeaderSummary = () => {
+  const { control } = useFormContext<PoSolicitud>();
+  const tituloValue = useWatch({ control, name: "titulo" });
+  const proveedorValue = useWatch({ control, name: "proveedor_id" });
+  const proveedorId = Number(proveedorValue);
+  const proveedorIdValid = Number.isFinite(proveedorId) && proveedorId > 0;
+  const { data: proveedor } = useGetOne(
+    "proveedores",
+    { id: proveedorIdValid ? proveedorId : 0 },
+    { enabled: proveedorIdValid }
+  );
+  const proveedorNombre = (proveedor as { nombre?: string } | undefined)?.nombre;
+  const titulo = tituloValue && String(tituloValue).trim().length > 0
+    ? String(tituloValue)
+    : "Sin titulo";
+  const proveedorLabel = proveedorNombre && proveedorNombre.trim().length > 0
+    ? proveedorNombre
+    : "Sin proveedor";
+
+  return (
+    <div className="flex w-full items-center gap-2 text-[10px] text-muted-foreground sm:text-xs">
+      <span className="min-w-0 max-w-[60%] truncate">{titulo}</span>
+      <span className="text-[10px] text-muted-foreground sm:text-xs">-</span>
+      <span className="min-w-0 max-w-[40%] truncate">{proveedorLabel}</span>
+    </div>
+  );
+};
+
 const FormFooter = () => (
   <FormToolbar />
 );
 
-export const PoSolicitudForm = () => {
+export const PoSolicitudForm = ({
+  wizardOpen: wizardOpenProp,
+  setWizardOpen: setWizardOpenProp,
+}: {
+  wizardOpen?: boolean;
+  setWizardOpen?: (open: boolean) => void;
+}) => {
   const location = useLocation();
+  const [localWizardOpen, setLocalWizardOpen] = useState(false);
+  const wizardOpen = wizardOpenProp ?? localWizardOpen;
+  const setWizardOpen = setWizardOpenProp ?? setLocalWizardOpen;
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const cabeceraDefaults = useMemo(
     () => poSolicitudCabeceraSchema.defaults(),
     []
   );
-  const oportunidadIdFromLocation = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const rawFilter = params.get("filter");
-    if (rawFilter) {
-      try {
-        const parsed = JSON.parse(rawFilter);
-        if (parsed?.oportunidad_id != null) {
-          return Number(parsed.oportunidad_id);
-        }
-      } catch {
-        // ignore invalid filter param
-      }
-    }
-    const direct = params.get("oportunidad_id");
-    if (direct != null) {
-      return Number(direct);
-    }
-    return undefined;
-  }, [location.search]);
+  const oportunidadIdFromLocation = useMemo(
+    () => getOportunidadIdFromLocation(location),
+    [location]
+  );
+  useEffect(() => {
+    console.log(
+      "[po-solicitudes/form] location",
+      location.pathname,
+      location.search,
+      location.hash,
+      "resolved oportunidad_id",
+      oportunidadIdFromLocation,
+    );
+  }, [location.hash, location.pathname, location.search, oportunidadIdFromLocation]);
   const defaultValues = useMemo(() => {
     const solicitanteDefault =
       cabeceraDefaults.solicitante_id &&
@@ -874,11 +1056,29 @@ export const PoSolicitudForm = () => {
   }, [cabeceraDefaults, today, oportunidadIdFromLocation]);
 
   return (
-    <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>
-      <PoSolicitudFormFields lockedOportunidadId={oportunidadIdFromLocation} />
+    <SimpleForm
+      defaultValues={defaultValues}
+      toolbar={<FormFooter />}
+      transform={(data) =>
+        oportunidadIdFromLocation
+          ? { ...data, oportunidad_id: oportunidadIdFromLocation }
+          : data
+      }
+    >
+      <PoSolicitudFormFields
+        lockedOportunidadId={oportunidadIdFromLocation}
+        wizardOpen={wizardOpen}
+        setWizardOpen={setWizardOpen}
+      />
     </SimpleForm>
   );
 };
+
+
+
+
+
+
 
 
 

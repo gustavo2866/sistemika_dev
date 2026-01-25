@@ -34,7 +34,7 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { KanbanAvatar } from "@/components/kanban/card";
 import type { PoOrdenCompra } from "./model";
-import { ESTADO_CHOICES } from "./model";
+import { ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
 
 const ESTADO_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",
@@ -79,11 +79,26 @@ const filters = [
     choices={ESTADO_CHOICES}
     alwaysOn
   />,
+  <SelectInput
+    key="tipo_compra"
+    source="tipo_compra"
+    label="Tipo compra"
+    choices={TIPO_COMPRA_CHOICES}
+    alwaysOn
+  />,
   <ReferenceInput
     key="proveedor_id"
     source="proveedor_id"
     reference="proveedores"
     label="Proveedor"
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" />
+  </ReferenceInput>,
+  <ReferenceInput
+    key="departamento_id"
+    source="departamento_id"
+    reference="departamentos"
+    label="Departamento"
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
@@ -176,6 +191,14 @@ export const PoOrdenCompraList = () => (
           <EstadoBadge />
           <DateField source="fecha_estado" className="text-[10px] text-muted-foreground" />
         </div>
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="tipo_compra" label="Tipo compra" className="w-[110px]">
+        <TextField source="tipo_compra" className="text-[11px]" />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="departamento_id" label="Departamento" className="w-[160px]">
+        <ReferenceField source="departamento_id" reference="departamentos">
+          <TextField source="nombre" className="text-[11px]" />
+        </ReferenceField>
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
         <NumberField

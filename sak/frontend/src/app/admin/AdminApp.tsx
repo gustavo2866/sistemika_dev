@@ -97,6 +97,7 @@ import {
   PoSolicitudList,
   PoSolicitudCreate,
   PoSolicitudEdit,
+  PoSolicitudShow,
 } from "@/app/resources/po-solicitudes";
 import {
   PoOrdenCompraList,
@@ -409,6 +410,7 @@ const AdminApp = () => {
         list={PoSolicitudList}
         create={PoSolicitudCreate}
         edit={PoSolicitudEdit}
+        show={PoSolicitudShow}
         recordRepresentation="id"
         icon={ListChecks}
         options={{ label: "Solicitudes" }}

@@ -138,3 +138,89 @@
   background-color: rgba(148, 163, 184, 0.7);
   border-radius: 9999px;
 }
+
+.wizard-compact label {
+  font-size: 9px;
+  line-height: 1;
+}
+
+@media (min-width: 640px) {
+  .wizard-compact label {
+    font-size: 10px;
+  }
+}
+
+.wizard-inline-field label {
+  font-size: 8px;
+  line-height: 1;
+}
+
+@media (min-width: 640px) {
+  .wizard-inline-field label {
+    font-size: 9px;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-root,
+  .print-root * {
+    visibility: visible;
+  }
+
+  .print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-root [data-slot="card"] {
+    page-break-inside: avoid;
+  }
+
+  .print-root .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  .print-root table {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .print-root .print-cabecera-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .print-root .print-cabecera-grid span {
+    font-size: 7px !important;
+  }
+
+  .print-root .print-cabecera-grid div {
+    font-size: 9px !important;
+  }
+
+  .print-root .print-footer-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+}

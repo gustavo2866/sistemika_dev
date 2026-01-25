@@ -8,6 +8,7 @@ from sqlmodel import Field, Relationship
 
 from .base import Base
 from .user import User
+from .enums import TipoCompra
 
 if TYPE_CHECKING:
     from .solicitud_detalle import SolicitudDetalle
@@ -74,6 +75,11 @@ class Solicitud(Base, table=True):
         foreign_key="proveedores.id",
         index=True,
         description="Proveedor asociado a la solicitud"
+    )
+    tipo_compra: TipoCompra = Field(
+        default=TipoCompra.NORMAL,
+        sa_column=Column(String(20), nullable=False, server_default="normal"),
+        description="Tipo de compra: directa o normal"
     )
 
     solicitante: User = Relationship(back_populates="solicitudes")
