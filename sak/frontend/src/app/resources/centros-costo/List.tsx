@@ -1,7 +1,7 @@
 "use client";
 
 import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
+import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
 import { DateField } from "@/components/date-field";
 import { BadgeField } from "@/components/badge-field";
@@ -11,14 +11,13 @@ import { BooleanInput } from "@/components/boolean-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
 import { CENTRO_COSTO_TIPO_CHOICES } from "./model";
 
 const filters = [
   <TextInput
     key="q"
     source="q"
-    label={false}
+    label="Buscar"
     placeholder="Buscar centros de costo"
     alwaysOn
   />,
@@ -46,34 +45,39 @@ const ListActions = () => (
 );
 
 export const CentroCostoList = () => (
-  <List filters={filters} actions={<ListActions />} debounce={300} perPage={25}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="nombre" label="Nombre" className="w-[220px]">
+  <List filters={filters} actions={<ListActions />} debounce={300} perPage={10}>
+    <ResponsiveDataTable
+      rowClick="edit"
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <ResponsiveDataTable.Col source="id" label="ID" className="w-[70px]">
+        <TextField source="id" />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="nombre" label="Nombre" className="w-[220px]">
         <TextField source="nombre" className="block max-w-[220px] truncate" />
-      </DataTable.Col>
-      <DataTable.Col source="tipo" label="Tipo" className="w-[120px]">
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="tipo" label="Tipo" className="w-[120px]">
         <BadgeField source="tipo" />
-      </DataTable.Col>
-      <DataTable.Col source="codigo_contable" label="Código contable" className="w-[140px]">
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="codigo_contable" label="Código contable" className="w-[140px]">
         <TextField source="codigo_contable" />
-      </DataTable.Col>
-      <DataTable.Col
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col
         source="descripcion"
         label="DescripciИn"
         className="w-[260px]"
         headerClassName="whitespace-normal break-words"
       >
         <TextField source="descripcion" className="block max-w-[260px] truncate" />
-      </DataTable.Col>
-      <DataTable.Col source="activo" label="Estado" className="w-[140px]">
-        <BadgeField source="activo" />
-      </DataTable.Col>
-      <DataTable.Col label="Acciones" className="w-[140px]">
-        <div className="flex items-center gap-2">
-          <EditButton />
-        </div>
-      </DataTable.Col>
-    </DataTable>
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col
+        source="activo"
+        label="Activo"
+        className="w-[100px] text-center"
+        headerClassName="text-center"
+        render={(record) => (record?.activo ? "SI" : "NO")}
+      />
+    </ResponsiveDataTable>
   </List>
 );
 

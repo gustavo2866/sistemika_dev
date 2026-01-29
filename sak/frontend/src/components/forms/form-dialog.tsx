@@ -20,6 +20,7 @@ interface FormDialogProps {
   onCancel: () => void;
   submitLabel?: string;
   isSubmitting?: boolean;
+  submitDisabled?: boolean;
   showFooter?: boolean;
   compact?: boolean;
 }
@@ -34,6 +35,7 @@ export const FormDialog = ({
   onCancel,
   submitLabel = "Guardar",
   isSubmitting = false,
+  submitDisabled = false,
   showFooter = true,
   compact = false,
 }: FormDialogProps) => {
@@ -78,7 +80,7 @@ export const FormDialog = ({
                 className={cn("w-full sm:w-auto", buttonClassName)}
                 size={buttonSize}
                 tabIndex={0}
-                disabled={isSubmitting}
+                disabled={isSubmitting || submitDisabled}
               >
                 {submitLabel}
               </Button>

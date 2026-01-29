@@ -162,7 +162,7 @@ export const PoOrdenCompraList = () => (
       <ResponsiveDataTable.Col
         source="proveedor_id"
         label="Proveedor"
-        className="w-[140px] whitespace-normal break-words"
+        className="w-[110px] whitespace-normal break-words"
       >
         <ReferenceField source="proveedor_id" reference="proveedores">
           <TextField source="nombre" className="text-[11px]" />
@@ -192,14 +192,17 @@ export const PoOrdenCompraList = () => (
           <DateField source="fecha_estado" className="text-[10px] text-muted-foreground" />
         </div>
       </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="tipo_compra" label="Tipo compra" className="w-[110px]">
-        <TextField source="tipo_compra" className="text-[11px]" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="departamento_id" label="Departamento" className="w-[160px]">
-        <ReferenceField source="departamento_id" reference="departamentos">
-          <TextField source="nombre" className="text-[11px]" />
-        </ReferenceField>
-      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col
+        source="departamento_id"
+        label="Dept"
+        className="w-[60px]"
+        render={(record) => {
+          const nombre =
+            (record as { departamento?: { nombre?: string } })?.departamento?.nombre;
+          if (!nombre) return null;
+          return <span className="text-[11px]">{String(nombre).slice(0, 4)}</span>;
+        }}
+      />
       <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
         <NumberField
           source="total"

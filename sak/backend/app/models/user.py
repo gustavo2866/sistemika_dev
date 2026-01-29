@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     from .pais import Paises
     from .tarea import Tarea
     from .solicitud import Solicitud
+    from .departamento import Departamento
+    from .centro_costo import CentroCosto
 
 class User(Base, table=True):
     """Modelo para usuarios del sistema"""
@@ -25,8 +27,16 @@ class User(Base, table=True):
     items: List["Item"] = Relationship(back_populates="user")
     tareas: List["Tarea"] = Relationship(back_populates="user")
     solicitudes: List["Solicitud"] = Relationship(back_populates="solicitante")
+    
+    # Foreign Keys
     pais_id: Optional[int] = Field(default=None, foreign_key="paises.id", description="ID del país")
+    departamento_id: Optional[int] = Field(default=None, foreign_key="departamentos.id", description="ID del departamento")
+    centro_costo_id: Optional[int] = Field(default=None, foreign_key="centros_costo.id", description="ID del centro de costo")
+    
+    # Relaciones
     pais: Optional["Paises"] = Relationship(back_populates="users")
+    departamento: Optional["Departamento"] = Relationship(back_populates="usuarios")
+    centro_costo: Optional["CentroCosto"] = Relationship(back_populates="usuarios")
     
     def __str__(self) -> str:
         return f"User(id={self.id}, nombre='{self.nombre}', email='{self.email}')"

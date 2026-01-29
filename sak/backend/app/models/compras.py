@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .adm import AdmConcepto
     from .centro_costo import CentroCosto
     from .comprobante import Comprobante
+    from .crm.oportunidad import CRMOportunidad
     from .departamento import Departamento
     from .metodo_pago import MetodoPago
     from .propiedad import Propiedad
@@ -195,6 +196,11 @@ class PoOrdenCompra(Base, table=True):
         foreign_key="tipos_solicitud.id",
         description="Tipo de solicitud asociado (opcional)"
     )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        description="ID de la oportunidad CRM asociada"
+    )
     
     fecha: Optional[date] = Field(
         default=None,
@@ -279,6 +285,11 @@ class PoOrdenCompraDetalle(Base, table=True):
         foreign_key="centros_costo.id",
         description="Centro de costo asociado (opcional)"
     )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        description="ID de la oportunidad CRM asociada"
+    )
 
     orden_compra: "PoOrdenCompra" = Relationship(back_populates="detalles")
     articulo: Optional["Articulo"] = Relationship()
@@ -341,6 +352,11 @@ class PoFactura(Base, table=True):
         sa_column=Column(String(20), nullable=True),
         description="Tipo de compra: directa o normal (opcional)"
     )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        description="ID de la oportunidad CRM asociada"
+    )
 
     proveedor: "Proveedor" = Relationship()
     comprobante: Optional["Comprobante"] = Relationship()
@@ -398,6 +414,11 @@ class PoFacturaDetalle(Base, table=True):
         default=None,
         foreign_key="centros_costo.id",
         description="Centro de costo asociado (opcional)"
+    )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        description="ID de la oportunidad CRM asociada"
     )
 
     factura: "PoFactura" = Relationship(back_populates="detalles")

@@ -1,22 +1,15 @@
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import {
   ListBase,
   ListBaseProps,
   type ListControllerResult,
   RaRecord,
-  Translate,
   useGetResourceLabel,
-  useHasDashboard,
   useResourceContext,
   useResourceDefinition,
   useTranslate,
 } from "ra-core";
 import { ReactElement, ReactNode } from "react";
-import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import { FilterContext, FilterElementProps } from "@/hooks/filter-context";
 import { CreateButton } from "@/components/create-button";
@@ -77,6 +70,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     children,
     actions,
     showBreadcrumb = true,
+    containerClassName,
   } = props;
   const translate = useTranslate();
   const resource = useResourceContext();
@@ -94,21 +88,13 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
           name: resourceLabel,
         });
   const { hasCreate } = useResourceDefinition({ resource });
-  const hasDashboard = useHasDashboard();
 
   return (
-    <div className="w-full lg:max-w-[1080px] lg:mr-auto">
+    <div className={cn("w-full lg:max-w-[1080px] lg:mr-auto", containerClassName)}>
       {showBreadcrumb ? (
-        <Breadcrumb>
-          {hasDashboard && (
-            <BreadcrumbItem>
-              <Link to="/">
-                <Translate i18nKey="ra.page.dashboard">Home</Translate>
-              </Link>
-            </BreadcrumbItem>
-          )}
-          <BreadcrumbPage>{resourceLabel}</BreadcrumbPage>
-        </Breadcrumb>
+        <AppBreadcrumb
+          items={[{ label: resourceLabel, current: true }]}
+        />
       ) : null}
 
       <FilterContext.Provider value={filters}>
@@ -154,6 +140,7 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   title?: ReactNode | string | false;
   className?: string;
   showBreadcrumb?: boolean;
+  containerClassName?: string;
 }
 
 export type FiltersType =

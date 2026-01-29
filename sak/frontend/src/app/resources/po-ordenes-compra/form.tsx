@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { required, useDataProvider } from "ra-core";
+import { required, useDataProvider, useGetIdentity, useGetOne } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
+import { CompactOportunidadSelector } from "../crm-oportunidades";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ import {
   poOrdenCompraDetalleSchema,
 } from "./model";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
+import { create_wizard_2 as CreateWizard, type CreateWizard2Payload } from "./create_wizard_2";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
   style: "currency",
@@ -441,22 +443,64 @@ const PoOrdenCompraDetalleDialogContent = ({
         </CompactFormField>
       </CompactFormGrid>
 
-      <CompactFormGrid columns="one">
-        <CompactFormField label="Centro de costo">
-          <CompactComboboxQuery
-            {...CENTROS_COSTO_REFERENCE}
-            value={detalleForm.watch("centro_costo_id") ?? ""}
-            onChange={(value: string) =>
-              detalleForm.setValue("centro_costo_id", value, {
-                shouldValidate: true,
-              })
-            }
-            placeholder="Selecciona centro"
-            clearable
-            filter={CENTROS_COSTO_REFERENCE.filter}
-          />
-        </CompactFormField>
-      </CompactFormGrid>
+      <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+        <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 sm:gap-3">
+          <CompactFormField
+            label="Centro de costo"
+            labelClassName="text-[9px] sm:text-[10px]"
+            className="space-y-0"
+          >
+            <CompactComboboxQuery
+              {...CENTROS_COSTO_REFERENCE}
+              value={detalleForm.watch("centro_costo_id") ?? ""}
+              onChange={(value: string) => {
+                detalleForm.setValue("centro_costo_id", value, {
+                  shouldValidate: true,
+                });
+                if (value) {
+                  detalleForm.setValue("oportunidad_id", "", {
+                    shouldValidate: true,
+                  });
+                }
+              }}
+              placeholder="Centro"
+              clearable
+              filter={CENTROS_COSTO_REFERENCE.filter}
+              className="h-7 w-full px-2 text-[9px] sm:h-7 sm:px-2 sm:text-[10px] md:h-7 md:text-[10px] [&_span]:text-[9px] sm:[&_span]:text-[10px] md:[&_span]:text-[10px]"
+              popoverClassName="w-72 max-w-sm text-[9px] sm:text-[10px] [&_*]:text-[9px] sm:[&_*]:text-[10px]"
+              clearButtonClassName="ml-0.5 -mr-2 h-[0.7rem] w-[0.7rem] p-0 [&_svg]:!h-[0.65rem] [&_svg]:!w-[0.65rem]"
+              clearIconClassName="!h-[0.65rem] !w-[0.65rem]"
+            />
+          </CompactFormField>
+
+          <CompactFormField
+            label="Oportunidad"
+            labelClassName="text-[9px] sm:text-[10px]"
+            className="space-y-0"
+          >
+            <CompactOportunidadSelector
+              value={detalleForm.watch("oportunidad_id") ?? ""}
+              onChange={(value: string) => {
+                detalleForm.setValue("oportunidad_id", value, {
+                  shouldValidate: true,
+                });
+                if (value) {
+                  detalleForm.setValue("centro_costo_id", "", {
+                    shouldValidate: true,
+                  });
+                }
+              }}
+              placeholder="Selecciona una oportunidad"
+              className="h-7 w-full px-2 text-[9px] sm:h-7 sm:px-2 sm:text-[10px] md:h-7 md:text-[10px] [&_span]:text-[9px] sm:[&_span]:text-[10px] md:[&_span]:text-[10px]"
+              popoverClassName="w-64 max-w-xs text-[9px] sm:text-[10px] [&_*]:text-[9px] sm:[&_*]:text-[10px]"
+              clearButtonClassName="ml-0.5 -mr-2 h-[0.7rem] w-[0.7rem] p-0 [&_svg]:!h-[0.65rem] [&_svg]:!w-[0.65rem]"
+              clearIconClassName="!h-[0.65rem] !w-[0.65rem]"
+              clearable
+              showWideDropdown={false}
+            />
+          </CompactFormField>
+        </div>
+      </div>
     </>
   );
 };
@@ -625,6 +669,80 @@ const CabeceraContent = ({
       </div>
 
       <div className="min-w-0">
+        <ReferenceInput
+          source="usuario_responsable_id"
+          reference={USERS_REFERENCE.resource}
+          label="Responsable"
+        >
+          <CompactSelectInput
+            optionText={USERS_REFERENCE.labelField}
+            className="w-full"
+            validate={required()}
+          />
+        </ReferenceInput>
+      </div>
+
+    </CompactFormGrid>
+  );
+};
+
+const ImputacionContent = () => {
+  const form = useFormContext<PoOrdenCompra>();
+  const { control } = form;
+  const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
+  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
+  const prevCentroRef = useRef<unknown>(centroCostoValue);
+  const prevOportunidadRef = useRef<unknown>(oportunidadValue);
+
+  useEffect(() => {
+    const isEmpty = (value: unknown) =>
+      value === null || value === undefined || value === "";
+
+    const centroChanged = prevCentroRef.current !== centroCostoValue;
+    const oportunidadChanged = prevOportunidadRef.current !== oportunidadValue;
+
+    if (centroChanged && !isEmpty(centroCostoValue) && !isEmpty(oportunidadValue)) {
+      form.setValue("oportunidad_id", null, { shouldDirty: true });
+    }
+
+    if (oportunidadChanged && !isEmpty(oportunidadValue) && !isEmpty(centroCostoValue)) {
+      form.setValue("centro_costo_id", null, { shouldDirty: true });
+    }
+
+    prevCentroRef.current = centroCostoValue;
+    prevOportunidadRef.current = oportunidadValue;
+  }, [centroCostoValue, form, oportunidadValue]);
+
+  return (
+    <CompactFormGrid columns="two">
+      <CompactFormField label="Centro de costo" className="min-w-0 w-full">
+        <CompactComboboxQuery
+          {...CENTROS_COSTO_REFERENCE}
+          source="centro_costo_id"
+          placeholder="Centro"
+          clearable
+          filter={CENTROS_COSTO_REFERENCE.filter}
+          className="h-7 w-full px-2 text-[9px] sm:h-7 sm:px-2 sm:text-[10px] md:h-7 md:text-[10px] [&_span]:text-[9px] sm:[&_span]:text-[10px] md:[&_span]:text-[10px]"
+          popoverClassName="w-72 max-w-sm text-[9px] sm:text-[10px] [&_*]:text-[9px] sm:[&_*]:text-[10px]"
+          clearButtonClassName="ml-0.5 -mr-2 h-[0.7rem] w-[0.7rem] p-0 [&_svg]:!h-[0.65rem] [&_svg]:!w-[0.65rem]"
+          clearIconClassName="!h-[0.65rem] !w-[0.65rem]"
+        />
+      </CompactFormField>
+
+      <CompactFormField label="Oportunidad" className="min-w-0 w-full">
+        <CompactOportunidadSelector
+          source="oportunidad_id"
+          placeholder="Selecciona una oportunidad"
+          className="h-7 w-full px-2 text-[9px] sm:h-7 sm:px-2 sm:text-[10px] md:h-7 md:text-[10px] [&_span]:text-[9px] sm:[&_span]:text-[10px] md:[&_span]:text-[10px]"
+          popoverClassName="w-64 max-w-xs text-[9px] sm:text-[10px] [&_*]:text-[9px] sm:[&_*]:text-[10px]"
+          clearButtonClassName="ml-0.5 -mr-2 h-[0.7rem] w-[0.7rem] p-0 [&_svg]:!h-[0.65rem] [&_svg]:!w-[0.65rem]"
+          clearIconClassName="!h-[0.65rem] !w-[0.65rem]"
+          clearable
+          showWideDropdown={false}
+        />
+      </CompactFormField>
+
+      <div className="min-w-0">
         <CompactFormField label="Tipo de compra">
           <CompactSelectInput
             source="tipo_compra"
@@ -645,45 +763,6 @@ const CabeceraContent = ({
           <CompactSelectInput
             optionText={DEPARTAMENTOS_REFERENCE.labelField}
             className="w-full"
-            parse={emptyToNull}
-          />
-        </ReferenceInput>
-      </div>
-
-      <div className="min-w-0">
-        <ReferenceInput
-          source="usuario_responsable_id"
-          reference={USERS_REFERENCE.resource}
-          label="Responsable"
-        >
-          <CompactSelectInput
-            optionText={USERS_REFERENCE.labelField}
-            className="w-full"
-            validate={required()}
-          />
-        </ReferenceInput>
-      </div>
-
-    </CompactFormGrid>
-  );
-};
-
-const ImputacionContent = () => {
-  const form = useFormContext<PoOrdenCompra>();
-
-  return (
-    <CompactFormGrid columns="two">
-      <div className="min-w-0">
-        <ReferenceInput
-          source="centro_costo_id"
-          reference={CENTROS_COSTO_REFERENCE.resource}
-          label="Centro de costo"
-          filter={CENTROS_COSTO_REFERENCE.filter}
-        >
-          <CompactSelectInput
-            optionText={CENTROS_COSTO_REFERENCE.labelField}
-            className="w-full"
-            triggerProps={{ className: "w-full truncate text-left" }}
             parse={emptyToNull}
           />
         </ReferenceInput>
@@ -752,9 +831,16 @@ const TotalesContent = () => {
   );
 };
 
-const PoOrdenCompraFormFields = () => {
+const PoOrdenCompraFormFields = ({
+  wizardOpen,
+  setWizardOpen,
+}: {
+  wizardOpen: boolean;
+  setWizardOpen: (open: boolean) => void;
+}) => {
   const dataProvider = useDataProvider();
   const form = useFormContext<PoOrdenCompra>();
+  const { data: identity } = useGetIdentity();
   const { control } = form;
   const idValue = useWatch({ control, name: "id" });
   const estadoValue = useWatch({ control, name: "estado" });
@@ -868,67 +954,110 @@ const PoOrdenCompraFormFields = () => {
     }
   }, [detallesValue, form]);
 
+  const handleApplyWizard = (payload: CreateWizard2Payload) => {
+    if (payload.titulo) {
+      form.setValue("titulo", payload.titulo, { shouldDirty: true });
+    }
+    if (payload.fecha) {
+      form.setValue("fecha", payload.fecha, { shouldDirty: true });
+    }
+    if (payload.proveedorId != null) {
+      form.setValue("proveedor_id", payload.proveedorId, { shouldDirty: true });
+    }
+    if (payload.tipoSolicitudId != null) {
+      form.setValue("tipo_solicitud_id", payload.tipoSolicitudId, {
+        shouldDirty: true,
+      });
+    }
+    if (payload.oportunidadId != null) {
+      form.setValue("oportunidad_id", payload.oportunidadId, {
+        shouldDirty: true,
+      });
+    }
+    if (payload.responsableId != null) {
+      form.setValue("usuario_responsable_id", payload.responsableId, {
+        shouldDirty: true,
+      });
+    } else if (identity?.id != null) {
+      form.setValue("usuario_responsable_id", Number(identity.id), {
+        shouldDirty: true,
+      });
+    }
+    if (payload.detalles?.length) {
+      form.setValue("detalles", payload.detalles, { shouldDirty: true });
+    }
+  };
+
   return (
-    <FormLayout
-      sections={[
+    <>
+      <CreateWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        onApply={handleApplyWizard}
+      />
+      <FormLayout
+        sections={[
         {
           id: "cabecera",
           title: "Cabecera",
-          defaultOpen: !idValue,
+          defaultOpen: false,
           headerContent: <PoOrdenCompraHeaderInline />,
           headerContentPosition: "inline",
-          contentPadding: "none",
-          contentClassName: "space-y-2 px-4 py-2",
-          children: (
-            <CompactFormSection>
-              <CabeceraContent
-                tipoSolicitudBloqueado={tipoSolicitudBloqueado}
-                showFechaEstado={Boolean(idValue)}
-              />
-            </CompactFormSection>
-          ),
-        },
-        {
-          id: "imputacion",
-          title: "Imputacion",
-          defaultOpen: false,
-          children: (
-            <CompactFormSection>
-              <ImputacionContent />
-            </CompactFormSection>
-          ),
-        },
-        {
-          id: "detalle",
-          title: "Detalle",
-          defaultOpen: true,
-          contentPadding: "none",
-          contentClassName: "space-y-2 px-1 sm:px-1",
-          headerContent: <PoOrdenCompraTotalsInline />,
-          headerContentPosition: "inline",
-          children: (
-            <FormDetailSection
-              name="detalles"
-              schema={poOrdenCompraDetalleSchema}
-              minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
-              dynamicFilters={dynamicReferenceFilters}
-            >
-              <PoOrdenCompraDetalleContent
-                articuloFilterId={articuloFilterId}
-                hasTipoSolicitud={Boolean(tipoSolicitudValue)}
-                defaultCentroCostoId={
-                  typeof centroCostoValue === "number"
-                    ? centroCostoValue
-                    : centroCostoValue
-                      ? Number(centroCostoValue)
-                      : null
-                }
-              />
-            </FormDetailSection>
-          ),
-        },
-      ]}
-    />
+          headerContentBelow: <PoOrdenCompraHeaderSummary />,
+            contentPadding: "none",
+            contentClassName: "space-y-2 px-4 py-2",
+            children: (
+              <CompactFormSection>
+                <CabeceraContent
+                  tipoSolicitudBloqueado={tipoSolicitudBloqueado}
+                  showFechaEstado={Boolean(idValue)}
+                />
+              </CompactFormSection>
+            ),
+          },
+          {
+            id: "imputacion",
+            title: "Imputacion",
+            defaultOpen: false,
+            headerContentBelow: <PoOrdenCompraImputacionSummary />,
+            children: (
+              <CompactFormSection>
+                <ImputacionContent />
+              </CompactFormSection>
+            ),
+          },
+          {
+            id: "detalle",
+            title: "Detalle",
+            defaultOpen: false,
+            contentPadding: "none",
+            contentClassName: "space-y-2 px-1 sm:px-1",
+            headerContent: <PoOrdenCompraTotalsInline />,
+            headerContentPosition: "inline",
+            children: (
+              <FormDetailSection
+                name="detalles"
+                schema={poOrdenCompraDetalleSchema}
+                minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
+                dynamicFilters={dynamicReferenceFilters}
+              >
+                <PoOrdenCompraDetalleContent
+                  articuloFilterId={articuloFilterId}
+                  hasTipoSolicitud={Boolean(tipoSolicitudValue)}
+                  defaultCentroCostoId={
+                    typeof centroCostoValue === "number"
+                      ? centroCostoValue
+                      : centroCostoValue
+                        ? Number(centroCostoValue)
+                        : null
+                  }
+                />
+              </FormDetailSection>
+            ),
+          },
+        ]}
+      />
+    </>
   );
 };
 
@@ -968,9 +1097,84 @@ const PoOrdenCompraHeaderInline = () => {
   );
 };
 
+const PoOrdenCompraHeaderSummary = () => {
+  const { control } = useFormContext<PoOrdenCompra>();
+  const tituloValue = useWatch({ control, name: "titulo" });
+  const proveedorValue = useWatch({ control, name: "proveedor_id" });
+  const proveedorId = Number(proveedorValue);
+  const proveedorIdValid = Number.isFinite(proveedorId) && proveedorId > 0;
+  const { data: proveedor } = useGetOne(
+    "proveedores",
+    { id: proveedorIdValid ? proveedorId : 0 },
+    { enabled: proveedorIdValid }
+  );
+  const proveedorNombre = (proveedor as { nombre?: string } | undefined)?.nombre;
+  const titulo = tituloValue && String(tituloValue).trim().length > 0
+    ? String(tituloValue)
+    : "Sin titulo";
+  const proveedorLabel = proveedorNombre && proveedorNombre.trim().length > 0
+    ? proveedorNombre
+    : "Sin proveedor";
+
+  return (
+    <div className="flex w-full items-center gap-2 text-[10px] text-muted-foreground sm:text-xs">
+      <span className="min-w-0 max-w-[60%] truncate">{titulo}</span>
+      <span className="text-[10px] text-muted-foreground sm:text-xs">-</span>
+      <span className="min-w-0 max-w-[40%] truncate">{proveedorLabel}</span>
+    </div>
+  );
+};
+
+const PoOrdenCompraImputacionSummary = () => {
+  const { control } = useFormContext<PoOrdenCompra>();
+  const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
+  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
+  const centroCostoId = Number(centroCostoValue);
+  const oportunidadId = Number(oportunidadValue);
+  const centroCostoIdValid = Number.isFinite(centroCostoId) && centroCostoId > 0;
+  const oportunidadIdValid = Number.isFinite(oportunidadId) && oportunidadId > 0;
+
+  const { data: centroCosto } = useGetOne(
+    CENTROS_COSTO_REFERENCE.resource,
+    { id: centroCostoIdValid ? centroCostoId : 0 },
+    { enabled: centroCostoIdValid }
+  );
+  const { data: oportunidad } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadIdValid ? oportunidadId : 0 },
+    { enabled: oportunidadIdValid }
+  );
+
+  const centroCostoNombre = (centroCosto as { nombre?: string } | undefined)?.nombre;
+  const oportunidadTitulo =
+    (oportunidad as { titulo?: string; descripcion_estado?: string } | undefined)?.titulo ||
+    (oportunidad as { descripcion_estado?: string } | undefined)?.descripcion_estado;
+
+  const label = centroCostoNombre && centroCostoNombre.trim().length > 0
+    ? centroCostoNombre
+    : oportunidadTitulo && oportunidadTitulo.trim().length > 0
+      ? oportunidadTitulo
+      : "Sin imputacion";
+
+  return (
+    <div className="flex w-full items-center gap-2 text-[10px] text-muted-foreground sm:text-xs">
+      <span className="min-w-0 truncate">{label}</span>
+    </div>
+  );
+};
+
 const FormFooter = () => <FormToolbar />;
 
-export const PoOrdenCompraForm = () => {
+export const PoOrdenCompraForm = ({
+  wizardOpen,
+  setWizardOpen,
+}: {
+  wizardOpen?: boolean;
+  setWizardOpen?: (open: boolean) => void;
+}) => {
+  const [localWizardOpen, setLocalWizardOpen] = useState(false);
+  const resolvedWizardOpen = wizardOpen ?? localWizardOpen;
+  const resolvedSetWizardOpen = setWizardOpen ?? setLocalWizardOpen;
   const cabeceraDefaults = useMemo(
     () => poOrdenCompraCabeceraSchema.defaults(),
     []
@@ -1036,7 +1240,10 @@ export const PoOrdenCompraForm = () => {
 
   return (
     <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>
-      <PoOrdenCompraFormFields />
+      <PoOrdenCompraFormFields
+        wizardOpen={resolvedWizardOpen}
+        setWizardOpen={resolvedSetWizardOpen}
+      />
     </SimpleForm>
   );
 };

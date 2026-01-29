@@ -181,6 +181,7 @@ import {
   CRMCatalogoRespuestaShow,
 } from "@/app/resources/crm-catalogos/crm-catalogos-respuestas";
 import { CalculadoraFinanciera } from "@/app/resources/calculadora-financiera";
+import HomeDashboard from "@/app/resources/home/HomeDashboard";
 import {
   MonedaList,
   MonedaCreate,
@@ -246,6 +247,7 @@ const AdminApp = () => {
       requireAuth
       dataProvider={dataProvider as DataProvider}
       authProvider={authProvider}
+      dashboard={HomeDashboard}
       title="WCL"
     >
       <Resource

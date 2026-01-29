@@ -31,6 +31,8 @@ interface ComboboxProps {
   popoverClassName?: string;
   clearable?: boolean;
   clearValue?: string;
+  clearButtonClassName?: string;
+  clearIconClassName?: string;
 }
 
 export const Combobox = ({
@@ -47,6 +49,8 @@ export const Combobox = ({
   popoverClassName,
   clearable = false,
   clearValue = "",
+  clearButtonClassName,
+  clearIconClassName,
 }: ComboboxProps) => {
   const [open, setOpen] = useState(false);
   
@@ -75,7 +79,10 @@ export const Combobox = ({
           {canClear ? (
             <span
               role="button"
-              className="ml-2 inline-flex h-6 w-6 items-center justify-center text-muted-foreground/70 hover:text-muted-foreground"
+              className={cn(
+                "ml-2 inline-flex h-6 w-6 items-center justify-center text-muted-foreground/70 hover:text-muted-foreground",
+                clearButtonClassName
+              )}
               onMouseDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -86,7 +93,7 @@ export const Combobox = ({
                 onChange(clearValue);
               }}
             >
-              <X className="h-4 w-4" />
+              <X className={cn("h-4 w-4", clearIconClassName)} />
             </span>
           ) : null}
           <ChevronDown className="ml-1 h-4 w-4 opacity-60" />

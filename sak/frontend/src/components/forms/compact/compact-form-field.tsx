@@ -10,6 +10,7 @@ interface CompactFormFieldProps {
   children: ReactNode;
   htmlFor?: string;
   className?: string;
+  labelClassName?: string;
 }
 
 export const CompactFormField = ({

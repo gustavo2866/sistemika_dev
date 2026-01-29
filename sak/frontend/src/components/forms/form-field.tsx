@@ -14,6 +14,7 @@ interface FormFieldProps {
   children: ReactNode;
   htmlFor?: string;
   className?: string;
+  labelClassName?: string;
 }
 
 export const FormField = ({
@@ -23,6 +24,7 @@ export const FormField = ({
   children,
   htmlFor,
   className,
+  labelClassName,
 }: FormFieldProps) => {
   const resolveErrorMessage = (err: FormFieldError) => {
     if (!err) return undefined;
@@ -38,7 +40,7 @@ export const FormField = ({
     <div className={className || "space-y-1 sm:space-y-2"}>
       <Label
         htmlFor={htmlFor}
-        className="flex items-center gap-1 text-[11px] leading-none sm:text-sm"
+        className={`flex items-center gap-1 text-[11px] leading-none sm:text-sm ${labelClassName || ""}`}
       >
         {label}
         {required && <span className="text-destructive">*</span>}

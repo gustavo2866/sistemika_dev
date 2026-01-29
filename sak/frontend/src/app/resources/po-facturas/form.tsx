@@ -1,9 +1,9 @@
 ﻿
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { required, useDataProvider } from "ra-core";
+import { required, useDataProvider, useGetOne, useGetIdentity } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
@@ -37,6 +37,7 @@ import {
   useAutoInitializeField,
   useFormDetailSectionContext,
 } from "@/components/forms";
+import { CompactOportunidadSelector, formatOportunidadLabel } from "@/app/resources/crm-oportunidades/OportunidadSelector";
 import {
   type DetalleFormValues,
   type TotalFormValues,
@@ -62,6 +63,7 @@ import {
   poFacturaTotalSchema,
 } from "./model";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
+import { create_wizard as CreateWizard, type CreateWizardPayload } from "./create_wizard";
 
 const GENERAL_SUBTITLE_SNIPPET = 25;
 
@@ -141,6 +143,19 @@ const PoFacturaDetalleCard = ({
   const centroCostoLabel = item.centro_costo_id
     ? getReferenceLabel("centro_costo_id", item.centro_costo_id)
     : undefined;
+  const oportunidadId =
+    typeof item.oportunidad_id === "number" ? item.oportunidad_id : undefined;
+  const { data: oportunidad } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadId ?? 0 },
+    { enabled: Boolean(oportunidadId) }
+  );
+  const oportunidadLabel =
+    oportunidad != null
+      ? formatOportunidadLabel(oportunidad)
+      : item.oportunidad_id
+        ? getReferenceLabel("oportunidad_id", item.oportunidad_id)
+        : undefined;
   const articuloLabel = item.articulo_id
     ? getReferenceLabel("articulo_id", item.articulo_id)
     : undefined;
@@ -183,6 +198,11 @@ const PoFacturaDetalleCard = ({
               {centroCostoLabel}
             </span>
           ) : null}
+          {oportunidadLabel ? (
+            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+              {oportunidadLabel}
+            </span>
+          ) : null}
           <span className="ml-auto rounded bg-muted/60 px-1.5 py-0.5 text-right text-[10px] font-semibold sm:text-[11px]">
             {totalLinea}
           </span>
@@ -207,6 +227,7 @@ type PoFacturaDetalleDialogContentProps = {
   articuloFilterId?: number;
   hasTipoSolicitud?: boolean;
   defaultCentroCostoId?: number | null;
+  defaultOportunidadId?: number | null;
 };
 const PoFacturaDetalleDialogContent = ({
   detalleForm,
@@ -214,6 +235,7 @@ const PoFacturaDetalleDialogContent = ({
   articuloFilterId,
   hasTipoSolicitud,
   defaultCentroCostoId,
+  defaultOportunidadId,
 }: PoFacturaDetalleDialogContentProps) => {
   const { resolveAction, items } = useFormDetailSectionContext<
     DetalleFormValues,
@@ -228,6 +250,35 @@ const PoFacturaDetalleDialogContent = ({
   const descuentoImporteValue = detalleForm.watch("importe_descuento");
   const ivaImporteValue = detalleForm.watch("importe_iva");
   const totalLineaValue = detalleForm.watch("total_linea");
+  const centroCostoIdValue = detalleForm.watch("centro_costo_id");
+  const oportunidadIdValue = detalleForm.watch("oportunidad_id");
+  const centroCostoId = Number(centroCostoIdValue);
+  const oportunidadId = Number(oportunidadIdValue);
+  const centroCostoIdValid = Number.isFinite(centroCostoId) && centroCostoId > 0;
+  const oportunidadIdValid = Number.isFinite(oportunidadId) && oportunidadId > 0;
+  const { data: centroCostoData } = useGetOne(
+    "centros-costo",
+    { id: centroCostoIdValid ? centroCostoId : 0 },
+    { enabled: Boolean(centroCostoIdValid) }
+  );
+  const { data: oportunidadData } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadIdValid ? oportunidadId : 0 },
+    { enabled: Boolean(oportunidadIdValid) }
+  );
+  const centroCostoLabel = centroCostoIdValid
+    ? (centroCostoData as { nombre?: string } | undefined)?.nombre || `#${centroCostoId}`
+    : null;
+  const oportunidadLabel = oportunidadIdValid
+    ? oportunidadData
+      ? formatOportunidadLabel(oportunidadData)
+      : `#${oportunidadId}`
+    : null;
+  const resumenLabel = centroCostoLabel
+    ? `Centro costo: ${centroCostoLabel}`
+    : oportunidadLabel
+      ? `Oportunidad: ${oportunidadLabel}`
+      : null;
 
   const computedDisplay = useMemo(() => {
     const { subtotal, importeDescuento, importeIva, totalLinea } =
@@ -318,6 +369,22 @@ const PoFacturaDetalleDialogContent = ({
       shouldDirty: true,
     });
   }, [defaultCentroCostoId, detalleForm, resolveAction]);
+
+  useEffect(() => {
+    if (resolveAction() !== "create") {
+      return;
+    }
+    if (defaultOportunidadId == null) {
+      return;
+    }
+    const currentOportunidad = detalleForm.getValues("oportunidad_id");
+    if (currentOportunidad !== undefined && currentOportunidad !== "") {
+      return;
+    }
+    detalleForm.setValue("oportunidad_id", String(defaultOportunidadId), {
+      shouldDirty: true,
+    });
+  }, [defaultOportunidadId, detalleForm, resolveAction]);
 
   return (
     <>
@@ -446,37 +513,86 @@ const PoFacturaDetalleDialogContent = ({
         {...detalleForm.register("subtotal", { valueAsNumber: true })}
       />
 
-      <CompactFormGrid columns="two">
-        <CompactFormField label="Total linea">
-          <Input
-            type="text"
-            value={computedDisplay.totalLinea}
-            readOnly
-            className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-          />
-          <input
-            type="hidden"
-            {...detalleForm.register("total_linea", { valueAsNumber: true })}
-          />
-        </CompactFormField>
-      </CompactFormGrid>
+      <div className="flex flex-col">
+        <div className="min-w-[140px]">
+          <CompactFormField label="Total linea">
+            <Input
+              type="text"
+              value={computedDisplay.totalLinea}
+              readOnly
+              className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+            />
+            <input
+              type="hidden"
+              {...detalleForm.register("total_linea", { valueAsNumber: true })}
+            />
+          </CompactFormField>
+        </div>
+        {resumenLabel ? (
+          <div className="mt-1 text-left text-[8px] leading-tight text-muted-foreground sm:text-[9px]">
+            {resumenLabel}
+          </div>
+        ) : null}
+      </div>
 
-      <CompactFormGrid columns="one">
-        <CompactFormField label="Centro de costo">
-          <CompactComboboxQuery
-            {...CENTROS_COSTO_REFERENCE}
-            value={detalleForm.watch("centro_costo_id") ?? ""}
-            onChange={(value: string) =>
-              detalleForm.setValue("centro_costo_id", value, {
-                shouldValidate: true,
-              })
-            }
-            placeholder="Selecciona centro"
-            clearable
-            filter={CENTROS_COSTO_REFERENCE.filter}
-          />
-        </CompactFormField>
-      </CompactFormGrid>
+      <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+        <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 sm:gap-3">
+          <CompactFormField
+            label="Centro de costo"
+            labelClassName="text-[9px] sm:text-[10px]"
+            className="space-y-0"
+          >
+            <CompactComboboxQuery
+              {...CENTROS_COSTO_REFERENCE}
+              value={detalleForm.watch("centro_costo_id") ?? ""}
+              onChange={(value: string) => {
+                detalleForm.setValue("centro_costo_id", value, {
+                  shouldValidate: true,
+                });
+                if (value) {
+                  detalleForm.setValue("oportunidad_id", "", {
+                    shouldValidate: true,
+                  });
+                }
+              }}
+              placeholder="Centro"
+              clearable
+              filter={CENTROS_COSTO_REFERENCE.filter}
+              className="h-7 w-full px-2 text-[9px] sm:h-7 sm:px-2 sm:text-[10px] md:h-7 md:text-[10px] [&_span]:text-[9px] sm:[&_span]:text-[10px] md:[&_span]:text-[10px]"
+              popoverClassName="w-72 max-w-sm text-[9px] sm:text-[10px] [&_*]:text-[9px] sm:[&_*]:text-[10px]"
+              clearButtonClassName="ml-0.5 -mr-2 h-[0.7rem] w-[0.7rem] p-0 [&_svg]:!h-[0.65rem] [&_svg]:!w-[0.65rem]"
+              clearIconClassName="!h-[0.65rem] !w-[0.65rem]"
+            />
+          </CompactFormField>
+
+          <CompactFormField
+            label="Oportunidad"
+            labelClassName="text-[9px] sm:text-[10px]"
+            className="space-y-0"
+          >
+            <CompactOportunidadSelector
+              value={detalleForm.watch("oportunidad_id") ?? ""}
+              onChange={(value: string) => {
+                detalleForm.setValue("oportunidad_id", value, {
+                  shouldValidate: true,
+                });
+                if (value) {
+                  detalleForm.setValue("centro_costo_id", "", {
+                    shouldValidate: true,
+                  });
+                }
+              }}
+              placeholder="Selecciona una oportunidad"
+              className="h-7 w-full px-2 text-[9px] sm:h-7 sm:px-2 sm:text-[10px] md:h-7 md:text-[10px] [&_span]:text-[9px] sm:[&_span]:text-[10px] md:[&_span]:text-[10px]"
+              popoverClassName="w-64 max-w-xs text-[9px] sm:text-[10px] [&_*]:text-[9px] sm:[&_*]:text-[10px]"
+              clearButtonClassName="ml-0.5 -mr-2 h-[0.7rem] w-[0.7rem] p-0 [&_svg]:!h-[0.65rem] [&_svg]:!w-[0.65rem]"
+              clearIconClassName="!h-[0.65rem] !w-[0.65rem]"
+              clearable
+              showWideDropdown={false}
+            />
+          </CompactFormField>
+        </div>
+      </div>
     </>
   );
 };
@@ -485,10 +601,12 @@ const PoFacturaDetalleForm = ({
   articuloFilterId,
   hasTipoSolicitud,
   defaultCentroCostoId,
+  defaultOportunidadId,
 }: {
   articuloFilterId?: number;
   hasTipoSolicitud?: boolean;
   defaultCentroCostoId?: number | null;
+  defaultOportunidadId?: number | null;
 }) => {
   const articuloFilterQuery = useMemo(
     () => (articuloFilterId ? { tipo_articulo_id: articuloFilterId } : undefined),
@@ -509,6 +627,7 @@ const PoFacturaDetalleForm = ({
           articuloFilterId={articuloFilterId}
           hasTipoSolicitud={hasTipoSolicitud}
           defaultCentroCostoId={defaultCentroCostoId}
+          defaultOportunidadId={defaultOportunidadId}
         />
       )}
     </FormDetailFormDialog>
@@ -519,10 +638,12 @@ const PoFacturaDetalleContent = ({
   articuloFilterId,
   hasTipoSolicitud,
   defaultCentroCostoId,
+  defaultOportunidadId,
 }: {
   articuloFilterId?: number;
   hasTipoSolicitud?: boolean;
   defaultCentroCostoId?: number | null;
+  defaultOportunidadId?: number | null;
 }) => {
   const { handleStartCreate, handleDeleteBySortedIndex } =
     useFormDetailSectionContext();
@@ -562,6 +683,7 @@ const PoFacturaDetalleContent = ({
         articuloFilterId={articuloFilterId}
         hasTipoSolicitud={hasTipoSolicitud}
         defaultCentroCostoId={defaultCentroCostoId}
+        defaultOportunidadId={defaultOportunidadId}
       />
     </>
   );
@@ -921,20 +1043,6 @@ const CabeceraContent = ({
             type="date"
           />
         </div>
-
-        <div className="min-w-0">
-          <ReferenceInput
-            source="metodo_pago_id"
-            reference={METODOS_PAGO_REFERENCE.resource}
-            label="Metodo de pago"
-          >
-            <CompactSelectInput
-              optionText={METODOS_PAGO_REFERENCE.labelField}
-              className="w-full"
-              validate={required()}
-            />
-          </ReferenceInput>
-        </div>
       </CompactFormGrid>
 
       <CompactFormGrid columns="two">
@@ -964,73 +1072,101 @@ const CabeceraContent = ({
             />
           </CompactFormField>
         </div>
-
-        <div className="min-w-0">
-          <ReferenceInput
-            source="departamento_id"
-            reference={DEPARTAMENTOS_REFERENCE.resource}
-            label="Departamento"
-          >
-            <CompactSelectInput
-              optionText={DEPARTAMENTOS_REFERENCE.labelField}
-              className="w-full"
-              parse={emptyToNull}
-            />
-          </ReferenceInput>
-        </div>
-
-        <div className="min-w-0">
-          <ReferenceInput
-            source="usuario_responsable_id"
-            reference={USERS_REFERENCE.resource}
-            label="Responsable"
-          >
-            <CompactSelectInput
-              optionText={USERS_REFERENCE.labelField}
-              className="w-full"
-              validate={required()}
-            />
-          </ReferenceInput>
-        </div>
       </CompactFormGrid>
 
-      <div className="min-w-0">
-        <ReferenceInput
-          source="centro_costo_id"
-          reference={CENTROS_COSTO_REFERENCE.resource}
-          label="Centro de costo"
-          filter={CENTROS_COSTO_REFERENCE.filter}
-        >
-          <CompactSelectInput
-            optionText={CENTROS_COSTO_REFERENCE.labelField}
-            className="w-full"
-            triggerProps={{ className: "w-full truncate text-left" }}
-            parse={emptyToNull}
-          />
-        </ReferenceInput>
-      </div>
-
-      <CompactFormField label="Observaciones">
-        <Textarea
-          rows={3}
-          className="min-h-10 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
-          {...form.register("observaciones")}
-        />
-      </CompactFormField>
     </>
   );
 };
 
-const PoFacturaFormFields = () => {
+const ImputacionContent = () => {
+  const form = useFormContext<PoFactura>();
+
+  return (
+  <CompactFormGrid columns="two">
+    <div className="min-w-0">
+      <ReferenceInput
+        source="departamento_id"
+        reference={DEPARTAMENTOS_REFERENCE.resource}
+        label="Departamento"
+      >
+        <CompactSelectInput
+          optionText={DEPARTAMENTOS_REFERENCE.labelField}
+          className="w-full"
+          parse={emptyToNull}
+        />
+      </ReferenceInput>
+    </div>
+
+    <div className="min-w-0">
+      <ReferenceInput
+        source="centro_costo_id"
+        reference={CENTROS_COSTO_REFERENCE.resource}
+        label="Centro de costo"
+        filter={CENTROS_COSTO_REFERENCE.filter}
+      >
+        <CompactSelectInput
+          optionText={CENTROS_COSTO_REFERENCE.labelField}
+          className="w-full"
+          triggerProps={{ className: "w-full truncate text-left" }}
+          parse={emptyToNull}
+        />
+      </ReferenceInput>
+    </div>
+
+    <div className="min-w-0">
+      <ReferenceInput
+        source="metodo_pago_id"
+        reference={METODOS_PAGO_REFERENCE.resource}
+        label="Metodo de pago"
+      >
+        <CompactSelectInput
+          optionText={METODOS_PAGO_REFERENCE.labelField}
+          className="w-full"
+          validate={required()}
+        />
+      </ReferenceInput>
+    </div>
+
+    <CompactFormField label="Oportunidad" className="md:col-span-2">
+      <CompactOportunidadSelector
+        source="oportunidad_id"
+        placeholder="Selecciona una oportunidad"
+        className="w-full justify-between"
+        clearable
+        showWideDropdown={false}
+      />
+    </CompactFormField>
+
+    <CompactFormField label="Observaciones" className="md:col-span-2">
+      <Textarea
+        rows={3}
+        className="min-h-10 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
+        {...form.register("observaciones")}
+      />
+    </CompactFormField>
+  </CompactFormGrid>
+  );
+};
+
+const PoFacturaFormFields = ({
+  wizardOpen,
+  setWizardOpen,
+}: {
+  wizardOpen: boolean;
+  setWizardOpen: (open: boolean) => void;
+}) => {
   const dataProvider = useDataProvider();
   const form = useFormContext<PoFactura>();
+  const { data: identity } = useGetIdentity();
   const { control } = form;
   const idValue = useWatch({ control, name: "id" });
   const observacionesValue = useWatch({ control, name: "observaciones" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
   const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
+  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
   const detallesValue = useWatch({ control, name: "detalles" });
   const totalesValue = useWatch({ control, name: "totales" });
+  const isCreate = !idValue;
 
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
     queryKey: ["tipos-solicitud", "defaults"],
@@ -1309,9 +1445,82 @@ const PoFacturaFormFields = () => {
     [observacionesValue]
   );
 
+  const handleApplyWizard = (payload: CreateWizardPayload) => {
+    if (!isCreate) return;
+    if (payload.proveedorId != null) {
+      form.setValue("proveedor_id", payload.proveedorId, { shouldDirty: true });
+    }
+    if (payload.tipoSolicitudId != null) {
+      form.setValue("tipo_solicitud_id", payload.tipoSolicitudId, { shouldDirty: true });
+    }
+    if (payload.departamentoId != null) {
+      form.setValue("departamento_id", payload.departamentoId, { shouldDirty: true });
+    }
+    if (payload.tipoCompra != null) {
+      form.setValue("tipo_compra", payload.tipoCompra, { shouldDirty: true });
+    }
+    if (payload.tipoComprobanteId != null) {
+      form.setValue("id_tipocomprobante", payload.tipoComprobanteId, { shouldDirty: true });
+    }
+    if (payload.puntoVenta) {
+      form.setValue("punto_venta", payload.puntoVenta, { shouldDirty: true });
+    }
+    if (payload.numero) {
+      form.setValue("numero", payload.numero, { shouldDirty: true });
+    }
+    if (payload.fechaEmision) {
+      form.setValue("fecha_emision", payload.fechaEmision, { shouldDirty: true });
+    }
+    if (payload.fechaVencimiento) {
+      form.setValue("fecha_vencimiento", payload.fechaVencimiento, { shouldDirty: true });
+    }
+    if (payload.oportunidadId != null) {
+      form.setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+    }
+    if (identity?.id != null) {
+      form.setValue("usuario_responsable_id", Number(identity.id), { shouldDirty: true });
+    }
+
+    if (payload.articuloId != null) {
+      const cantidad = payload.cantidad ?? 0;
+      const precio = payload.precio ?? 0;
+      const subtotal = Number((cantidad * precio).toFixed(2));
+      const detalle: PoFacturaDetalle = {
+        articulo_id: payload.articuloId,
+        descripcion: payload.descripcion ?? "",
+        unidad_medida: payload.unidadMedida ?? "UN",
+        cantidad,
+        precio_unitario: precio,
+        subtotal,
+        porcentaje_descuento: 0,
+        importe_descuento: 0,
+        porcentaje_iva: 0,
+        importe_iva: 0,
+        total_linea: subtotal,
+        orden: 1,
+        centro_costo_id:
+          typeof centroCostoValue === "number"
+            ? centroCostoValue
+            : centroCostoValue
+              ? Number(centroCostoValue)
+              : undefined,
+        oportunidad_id: payload.oportunidadId ?? undefined,
+      };
+      form.setValue("detalles", [detalle], { shouldDirty: true });
+    }
+  };
+
   return (
-    <FormLayout
-      sections={[
+    <>
+      {isCreate ? (
+        <CreateWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          onApply={handleApplyWizard}
+        />
+      ) : null}
+      <FormLayout
+        sections={[
         {
           id: "cabecera",
           title: "Cabecera",
@@ -1323,6 +1532,16 @@ const PoFacturaFormFields = () => {
           children: (
             <CompactFormSection>
               <CabeceraContent tipoSolicitudBloqueado={tipoSolicitudBloqueado} />
+            </CompactFormSection>
+          ),
+        },
+        {
+          id: "imputacion",
+          title: "Imputacion",
+          defaultOpen: false,
+          children: (
+            <CompactFormSection>
+              <ImputacionContent />
             </CompactFormSection>
           ),
         },
@@ -1351,6 +1570,13 @@ const PoFacturaFormFields = () => {
                       ? Number(centroCostoValue)
                       : null
                 }
+                defaultOportunidadId={
+                  typeof oportunidadValue === "number"
+                    ? oportunidadValue
+                    : oportunidadValue
+                      ? Number(oportunidadValue)
+                      : null
+                }
               />
             </FormDetailSection>
           ),
@@ -1376,7 +1602,8 @@ const PoFacturaFormFields = () => {
           ),
         },
       ]}
-    />
+      />
+    </>
   );
 };
 const PoFacturaSubtotalInline = () => {
@@ -1438,7 +1665,16 @@ const PoFacturaHeaderInline = () => {
 
 const FormFooter = () => <FormToolbar />;
 
-export const PoFacturaForm = () => {
+export const PoFacturaForm = ({
+  wizardOpen: wizardOpenProp,
+  setWizardOpen: setWizardOpenProp,
+}: {
+  wizardOpen?: boolean;
+  setWizardOpen?: (open: boolean) => void;
+}) => {
+  const [localWizardOpen, setLocalWizardOpen] = useState(false);
+  const wizardOpen = wizardOpenProp ?? localWizardOpen;
+  const setWizardOpen = setWizardOpenProp ?? setLocalWizardOpen;
   const cabeceraDefaults = useMemo(() => poFacturaCabeceraSchema.defaults(), []);
 
   const defaultValues = useMemo(() => {
@@ -1518,7 +1754,10 @@ export const PoFacturaForm = () => {
 
   return (
     <SimpleForm defaultValues={defaultValues} toolbar={<FormFooter />}>
-      <PoFacturaFormFields />
+      <PoFacturaFormFields
+        wizardOpen={wizardOpen}
+        setWizardOpen={setWizardOpen}
+      />
     </SimpleForm>
   );
 };

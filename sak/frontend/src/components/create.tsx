@@ -1,8 +1,4 @@
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import {
   CreateBase,
   type CreateBaseProps,
@@ -10,11 +6,9 @@ import {
   useCreateContext,
   useCreatePath,
   useGetResourceLabel,
-  useHasDashboard,
   useResourceContext,
 } from "ra-core";
 import { ReactNode } from "react";
-import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 
 export type CreateProps = CreateViewProps & CreateBaseProps;
@@ -61,25 +55,17 @@ export const CreateView = ({
     resource,
     type: "list",
   });
-  const hasDashboard = useHasDashboard();
-
   return (
     <>
-      <Breadcrumb>
-        {hasDashboard && (
-          <BreadcrumbItem>
-            <Link to="/">
-              <Translate i18nKey="ra.page.dashboard">Home</Translate>
-            </Link>
-          </BreadcrumbItem>
-        )}
-        <BreadcrumbItem>
-          <Link to={listLink}>{listLabel}</Link>
-        </BreadcrumbItem>
-        <BreadcrumbPage>
-          <Translate i18nKey="ra.action.create">Create</Translate>
-        </BreadcrumbPage>
-      </Breadcrumb>
+      <AppBreadcrumb
+        items={[
+          { label: listLabel, to: listLink },
+          {
+            label: <Translate i18nKey="ra.action.create">Create</Translate>,
+            current: true,
+          },
+        ]}
+      />
       <div
         className={cn(
           "flex justify-between items-start flex-wrap gap-2 my-2",

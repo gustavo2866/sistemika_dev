@@ -49,8 +49,11 @@ export interface ComboboxQueryProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  popoverClassName?: string;
   clearable?: boolean;
   clearValue?: string;
+  clearButtonClassName?: string;
+  clearIconClassName?: string;
   choices?: any[];
 }
 
@@ -113,6 +116,8 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
     popoverClassName,
     clearable,
     clearValue,
+    clearButtonClassName,
+    clearIconClassName,
     choices,
   } = props;
 
@@ -166,6 +171,8 @@ export const ComboboxQuery = (props: ComboboxQueryProps) => {
       popoverClassName={popoverClassName}
       clearable={clearable}
       clearValue={clearValue}
+      clearButtonClassName={clearButtonClassName}
+      clearIconClassName={clearIconClassName}
     />
   );
 };

@@ -1,13 +1,7 @@
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import {
   ShowBase,
-  Translate,
   useCreatePath,
-  useHasDashboard,
   useShowContext,
   useGetRecordRepresentation,
   useGetResourceLabel,
@@ -16,7 +10,6 @@ import {
   type ShowBaseProps,
 } from "ra-core";
 import { ReactNode } from "react";
-import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 import { EditButton } from "@/components/edit-button";
 
@@ -89,7 +82,6 @@ export const ShowView = ({
   const recordRepresentation = getRecordRepresentation(context.record);
 
   const { hasEdit } = useResourceDefinition({ resource });
-  const hasDashboard = useHasDashboard();
 
   if (context.isLoading || !context.record) {
     return null;
@@ -101,19 +93,12 @@ export const ShowView = ({
   return (
     <>
       {showBreadcrumb ? (
-        <Breadcrumb>
-          {hasDashboard && (
-            <BreadcrumbItem>
-              <Link to="/">
-                <Translate i18nKey="ra.page.dashboard">Home</Translate>
-              </Link>
-            </BreadcrumbItem>
-          )}
-          <BreadcrumbItem>
-            <Link to={listLink}>{listLabel}</Link>
-          </BreadcrumbItem>
-          <BreadcrumbPage>{recordRepresentation}</BreadcrumbPage>
-        </Breadcrumb>
+        <AppBreadcrumb
+          items={[
+            { label: listLabel, to: listLink },
+            { label: recordRepresentation, current: true },
+          ]}
+        />
       ) : null}
       <div
         className={cn(

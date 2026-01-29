@@ -118,6 +118,7 @@ export const COMPROBANTES_REFERENCE = {
 export type DetalleFormValues = {
   articulo_id: string;
   codigo_producto: string;
+  oportunidad_id: string;
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
@@ -144,6 +145,7 @@ export type PoFacturaDetalle = {
   tempId?: number;
   articulo_id?: number | null;
   codigo_producto?: string | null;
+  oportunidad_id?: number | null;
   descripcion: string;
   unidad_medida?: string | null;
   cantidad: number;
@@ -213,6 +215,7 @@ export type PoFacturaCabeceraFormValues = {
   usuario_responsable_id: string;
   metodo_pago_id: string;
   centro_costo_id: string;
+  oportunidad_id: string;
   tipo_solicitud_id: string;
   departamento_id: string;
   comprobante_id: string;
@@ -230,6 +233,12 @@ export const poFacturaDetalleSchema = createDetailSchema<
       resource: ARTICULOS_REFERENCE.resource,
       labelField: ARTICULOS_REFERENCE.labelField,
       required: true,
+      defaultValue: "",
+    }),
+    oportunidad_id: referenceField({
+      resource: "crm/oportunidades",
+      labelField: "titulo",
+      required: false,
       defaultValue: "",
     }),
     codigo_producto: stringField({
@@ -381,6 +390,7 @@ export const poFacturaCabeceraSchema = createEntitySchema<
     | "usuario_responsable_id"
     | "metodo_pago_id"
     | "centro_costo_id"
+    | "oportunidad_id"
     | "tipo_solicitud_id"
     | "departamento_id"
     | "comprobante_id"
@@ -447,6 +457,12 @@ export const poFacturaCabeceraSchema = createEntitySchema<
     centro_costo_id: referenceField({
       resource: CENTROS_COSTO_REFERENCE.resource,
       labelField: CENTROS_COSTO_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
+    oportunidad_id: referenceField({
+      resource: "crm/oportunidades",
+      labelField: "titulo",
       required: false,
       defaultValue: "",
     }),

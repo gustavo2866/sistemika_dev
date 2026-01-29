@@ -10,6 +10,7 @@ import { CancelButton } from "@/components/cancel-button";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { useDataProvider, useGetOne, useRecordContext } from "ra-core";
+import { formatOportunidadLabel } from "@/app/resources/crm-oportunidades/OportunidadSelector";
 import type { PoSolicitud, PoSolicitudDetalle } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
 
@@ -225,10 +226,19 @@ const PoSolicitudDetalleTable = ({
 
 const PoSolicitudShowContent = () => {
   const record = useRecordContext<PoSolicitud>();
+  const oportunidadId =
+    typeof record?.oportunidad_id === "number" && record.oportunidad_id > 0
+      ? record.oportunidad_id
+      : null;
   const proveedorId =
     typeof record?.proveedor_id === "number" && record.proveedor_id > 0
       ? record.proveedor_id
       : null;
+  const { data: oportunidadData } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadId ?? 0 },
+    { enabled: oportunidadId != null },
+  );
   const { data: proveedorData } = useGetOne(
     "proveedores",
     { id: proveedorId ?? 0 },
@@ -308,9 +318,13 @@ const PoSolicitudShowContent = () => {
             </ReferenceField>
           </LabelValueCompact>
           <LabelValueCompact label="Oportunidad">
-            <ReferenceField source="oportunidad_id" reference="crm/oportunidades">
-              <TextField source="titulo" />
-            </ReferenceField>
+            <span>
+              {oportunidadData
+                ? formatOportunidadLabel(oportunidadData)
+                : record?.oportunidad_id
+                  ? `#${record.oportunidad_id}`
+                  : "-"}
+            </span>
           </LabelValueCompact>
         </div>
       </Card>

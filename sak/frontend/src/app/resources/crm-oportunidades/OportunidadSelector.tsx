@@ -24,7 +24,7 @@ const OPORTUNIDADES_BASE_CONFIG = {
 } as const;
 
 // Formatter reutilizable para el display de oportunidades
-const formatOportunidad = (item: any): string => {
+export const formatOportunidadLabel = (item: any): string => {
   const titulo = (item.titulo || "")?.slice(0, 20)?.trim();
   const contacto = (item.contacto?.nombre_completo || item.contacto_nombre || "")?.slice(0, 15)?.trim();
   const tipo = (item.tipo_operacion?.nombre || "")?.slice(0, 3)?.trim();
@@ -74,7 +74,7 @@ export const OportunidadSelector = ({
     filter,
     placeholder,
     className,
-    formatter: formatOportunidad,
+    formatter: formatOportunidadLabel,
     popoverClassName: showWideDropdown 
       ? `w-96 max-w-2xl text-xs ${popoverClassName || ""}`.trim()
       : popoverClassName,

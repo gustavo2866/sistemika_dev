@@ -4,6 +4,7 @@ import {
   createContext,
   isValidElement,
   ReactElement,
+  useCallback,
   useContext,
   useRef,
   useState,
@@ -57,7 +58,7 @@ export const useSupportCreateSuggestion = <T = unknown,>(
   return {
     createId: createValue,
     createHintId: createHintValue,
-    getCreateItem: (filter?: string) => {
+    getCreateItem: useCallback((filter?: string) => {
       filterRef.current = filter;
 
       return set(
@@ -76,8 +77,8 @@ export const useSupportCreateSuggestion = <T = unknown,>(
             ? translate(createLabel, { _: createLabel })
             : createLabel,
       );
-    },
-    handleChange: async (eventOrValue: unknown) => {
+    }, [createItemLabel, createHintValue, createValue, optionText, createLabel, translate]),
+    handleChange: useCallback(async (eventOrValue: unknown) => {
       const rawValue =
         typeof eventOrValue === "object" &&
         eventOrValue !== null &&
@@ -113,7 +114,7 @@ export const useSupportCreateSuggestion = <T = unknown,>(
         }
       }
       onInputChange(eventOrValue as ChangeEvent | T);
-    },
+    }, [create, createValue, filter, onCreate, onInputChange]),
     createElement:
       renderOnCreate && isValidElement(create) ? (
         <CreateSuggestionContext.Provider

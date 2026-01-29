@@ -102,6 +102,7 @@ export const TIPOS_SOLICITUD_REFERENCE = {
 export type DetalleFormValues = {
   articulo_id: string;
   po_solicitud_id: string;
+  oportunidad_id: string;
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
@@ -120,6 +121,7 @@ export type PoOrdenCompraDetalle = {
   tempId?: number;
   articulo_id?: number | null;
   po_solicitud_id?: number | null;
+  oportunidad_id?: number | null;
   descripcion: string;
   unidad_medida?: string | null;
   cantidad: number;
@@ -211,6 +213,12 @@ export const poOrdenCompraDetalleSchema = createDetailSchema<
     po_solicitud_id: referenceField({
       resource: PO_SOLICITUDES_REFERENCE.resource,
       labelField: PO_SOLICITUDES_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
+    oportunidad_id: referenceField({
+      resource: "crm/oportunidades",
+      labelField: "titulo",
       required: false,
       defaultValue: "",
     }),

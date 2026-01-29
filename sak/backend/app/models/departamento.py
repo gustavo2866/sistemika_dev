@@ -1,9 +1,13 @@
 """
 Modelo para Departamento
 """
-from typing import Optional
-from sqlmodel import Field
+from typing import Optional, List, TYPE_CHECKING
+from sqlmodel import Field, Relationship
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from .centro_costo import CentroCosto
+    from .user import User
 
 
 class Departamento(Base, table=True):
@@ -22,6 +26,11 @@ class Departamento(Base, table=True):
         index=True,
         description="Nombre del departamento (único)"
     )
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="ID del centro de costo asociado"
+    )
     descripcion: Optional[str] = Field(
         default=None,
         max_length=500,
@@ -31,3 +40,7 @@ class Departamento(Base, table=True):
         default=True,
         description="Indica si el departamento está activo"
     )
+
+    # Relationships
+    centro_costo: Optional["CentroCosto"] = Relationship(back_populates="departamentos")
+    usuarios: List["User"] = Relationship(back_populates="departamento")

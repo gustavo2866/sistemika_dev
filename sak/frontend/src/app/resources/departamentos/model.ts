@@ -5,7 +5,7 @@
  * y valores por defecto para la entidad Departamento.
  */
 
-import { createEntitySchema, stringField } from "@/lib/form-detail-schema";
+import { createEntitySchema, referenceField, stringField } from "@/lib/form-detail-schema";
 
 // ============================================
 // 1. CONFIGURACIÓN
@@ -21,6 +21,14 @@ export const VALIDATION_RULES = {
   },
 } as const;
 
+export const CENTROS_COSTO_REFERENCE = {
+  resource: "centros-costo",
+  labelField: "nombre",
+  limit: 100,
+  staleTime: 5 * 60 * 1000,
+  filter: { activo: true },
+} as const;
+
 // ============================================
 // 2. TIPOS
 // ============================================
@@ -30,6 +38,7 @@ export type Departamento = {
   nombre: string;
   descripcion?: string;
   activo: boolean;
+  centro_costo_id?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -38,6 +47,7 @@ export type DepartamentoFormValues = {
   nombre: string;
   descripcion?: string;
   activo: boolean;
+  centro_costo_id?: string;
 };
 
 // ============================================
@@ -59,6 +69,12 @@ export const departamentoSchema = createEntitySchema<
       maxLength: VALIDATION_RULES.DESCRIPCION.MAX_LENGTH,
       defaultValue: "",
     }),
+    centro_costo_id: referenceField({
+      resource: CENTROS_COSTO_REFERENCE.resource,
+      labelField: CENTROS_COSTO_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
   },
 });
 
@@ -70,5 +86,6 @@ export const DEPARTAMENTO_DEFAULT: DepartamentoFormValues = {
   nombre: "",
   descripcion: "",
   activo: true,
+  centro_costo_id: "",
 };
 

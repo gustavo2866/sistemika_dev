@@ -1,22 +1,15 @@
 import {
   EditBase,
   EditBaseProps,
-  Translate,
   useCreatePath,
   useEditContext,
   useGetRecordRepresentation,
   useGetResourceLabel,
-  useHasDashboard,
   useResourceContext,
   useResourceDefinition,
 } from "ra-core";
 import { ReactNode } from "react";
-import { Link } from "react-router";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import { cn } from "@/lib/utils";
 import { ShowButton } from "@/components/show-button";
 import { DeleteButton } from "./delete-button";
@@ -76,7 +69,6 @@ export const EditView = ({
   const recordRepresentation = getRecordRepresentation(context.record);
 
   const { hasShow } = useResourceDefinition({ resource });
-  const hasDashboard = useHasDashboard();
 
   if (context.isLoading || !context.record) {
     return null;
@@ -84,19 +76,12 @@ export const EditView = ({
 
   return (
     <>
-      <Breadcrumb>
-        {hasDashboard && (
-          <BreadcrumbItem>
-            <Link to="/">
-              <Translate i18nKey="ra.page.dashboard">Home</Translate>
-            </Link>
-          </BreadcrumbItem>
-        )}
-        <BreadcrumbItem>
-          <Link to={listLink}>{listLabel}</Link>
-        </BreadcrumbItem>
-        <BreadcrumbPage>{recordRepresentation}</BreadcrumbPage>
-      </Breadcrumb>
+      <AppBreadcrumb
+        items={[
+          { label: listLabel, to: listLink },
+          { label: recordRepresentation, current: true },
+        ]}
+      />
       <div
         className={cn(
           "flex justify-between items-start flex-wrap gap-2 my-2",

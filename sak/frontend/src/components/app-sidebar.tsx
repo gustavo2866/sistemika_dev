@@ -5,7 +5,6 @@ import {
   useGetResourceLabel,
   useHasDashboard,
   useResourceDefinitions,
-  useTranslate,
 } from "ra-core";
 import { Link, useMatch } from "react-router";
 import {
@@ -216,7 +215,7 @@ export function AppSidebar() {
 
               {constructoraResources.length > 0 ? (
                 <GroupMenuItem
-                  label="Constructora"
+                  label="Proyectos"
                   icon={Building2}
                   isOpen={constructoraOpen}
                   onToggle={() => setConstructoraOpen((open) => !open)}
@@ -378,10 +377,7 @@ export function AppSidebar() {
 }
 
 export const DashboardMenuItem = ({ onClick }: { onClick?: () => void }) => {
-  const translate = useTranslate();
-  const label = translate("ra.page.dashboard", {
-    _: "Dashboard",
-  });
+  const label = "Home";
   const match = useMatch({ path: "/", end: true });
   return (
     <SidebarMenuItem>
