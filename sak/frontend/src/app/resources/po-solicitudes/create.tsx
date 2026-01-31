@@ -2,42 +2,33 @@
 
 import { Create } from "@/components/create";
 import { useLocation } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PoSolicitudForm } from "./form";
-import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
 
 export const PoSolicitudCreate = () => {
   const location = useLocation();
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const redirectTo = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get("returnTo") ?? "list";
-  }, [location.search]);
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const wizardParam = params.get("wizard");
+  const [wizardOpen, setWizardOpen] = useState(Boolean(wizardParam));
+
+  useEffect(() => {
+    if (wizardParam) {
+      setWizardOpen(true);
+    }
+  }, [wizardParam]);
 
   return (
     <Create
-      redirect={redirectTo}
+      redirect={false}
       title="Nueva Solicitud"
       className="w-full max-w-lg"
-      actions={
-        <div className="ml-auto">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            onClick={() => setWizardOpen(true)}
-          >
-            <Sparkles className="size-3 sm:size-4" />
-            Asistente
-          </Button>
-        </div>
-      }
+      actions={null}
     >
       <div className="w-full max-w-lg">
         <PoSolicitudForm
           wizardOpen={wizardOpen}
           setWizardOpen={setWizardOpen}
+          wizardVariant={wizardParam}
         />
       </div>
     </Create>

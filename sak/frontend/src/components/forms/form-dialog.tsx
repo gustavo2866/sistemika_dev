@@ -16,6 +16,7 @@ interface FormDialogProps {
   title: string;
   description?: string;
   children: ReactNode;
+  contentClassName?: string;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
   submitLabel?: string;
@@ -31,6 +32,7 @@ export const FormDialog = ({
   title,
   description,
   children,
+  contentClassName,
   onSubmit,
   onCancel,
   submitLabel = "Guardar",
@@ -39,7 +41,7 @@ export const FormDialog = ({
   showFooter = true,
   compact = false,
 }: FormDialogProps) => {
-  const contentClassName = compact ? "p-4 gap-3 sm:max-w-md" : "sm:max-w-lg";
+  const baseContentClassName = compact ? "p-4 gap-3 sm:max-w-md" : "sm:max-w-lg";
   const headerClassName = compact ? "gap-1" : undefined;
   const titleClassName = compact ? "text-base" : undefined;
   const descriptionClassName = compact ? "text-xs" : undefined;
@@ -51,7 +53,7 @@ export const FormDialog = ({
   const buttonSize = compact ? "sm" : undefined;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={contentClassName}>
+      <DialogContent className={cn(baseContentClassName, contentClassName)}>
         <DialogHeader className={headerClassName}>
           <DialogTitle className={titleClassName}>{title}</DialogTitle>
           {description && (

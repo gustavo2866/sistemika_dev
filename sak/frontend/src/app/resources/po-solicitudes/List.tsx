@@ -19,11 +19,12 @@ import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
 import { BadgeField } from "@/components/badge-field";
 import { FilterButton } from "@/components/filter-form";
-import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Button } from "@/components/ui/button";
+import { Confirm } from "@/components/confirm";
 import { KanbanAvatar } from "@/components/kanban/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { StandardFormGrid } from "@/components/generic";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -51,67 +52,141 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
+  Plus,
+  Sparkles,
+  FileText,
   Trash2,
   XCircle,
 } from "lucide-react";
 import type { PoSolicitud } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
 
+// Estilos optimizados para filtros alineados
+const compactFilterFieldClassName =
+  "gap-1 [&_label]:text-[10px] [&_label]:leading-tight [&_label]:font-medium [&_input]:h-8 [&_input]:px-3 [&_input]:text-[11px] [&_textarea]:h-8 [&_select]:h-8";
+const compactSelectClassName = "h-8 text-[11px]";
+const compactSelectTriggerProps = { className: "h-8 px-3 text-[11px]" };
+
 const filters = [
-  <TextInput
-    key="q"
-    source="q"
-    label="Buscar"
-    alwaysOn
-    placeholder="Buscar solicitudes PO"
-  />,
-  <ReferenceInput
-    key="tipo_solicitud_id"
-    source="tipo_solicitud_id"
-    reference="tipos-solicitud"
-    label="Tipo"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="departamento_id"
-    source="departamento_id"
-    reference="departamentos"
-    label="Departamento"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="centro_costo_id"
-    source="centro_costo_id"
-    reference="centros-costo"
-    label="Centro de costo"
-    filter={{ activo: true }}
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <SelectInput
-    key="estado"
-    source="estado"
-    label="Estado"
-    choices={ESTADO_CHOICES}
-    alwaysOn
-  />,
-  <ReferenceInput
-    key="solicitante_id"
-    source="solicitante_id"
-    reference="users"
-    label="Solicitante"
-    alwaysOn
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
+  <div key="buscar" className="flex-1">
+    <TextInput
+      source="q"
+      label="Buscar"
+      alwaysOn
+      placeholder="Buscar solicitudes PO"
+      className={compactFilterFieldClassName}
+    />
+  </div>,
+  <div key="tipo" className="min-w-[140px]">
+    <ReferenceInput
+      source="tipo_solicitud_id"
+      reference="tipos-solicitud"
+      label="Tipo"
+    >
+      <SelectInput
+        optionText="nombre"
+        emptyText="Todos"
+        className={compactSelectClassName}
+        triggerProps={compactSelectTriggerProps}
+      />
+    </ReferenceInput>
+  </div>,
+  <div key="departamento" className="min-w-[140px]">
+    <ReferenceInput
+      source="departamento_id"
+      reference="departamentos"
+      label="Departamento"
+    >
+      <SelectInput
+        optionText="nombre"
+        emptyText="Todos"
+        className={compactSelectClassName}
+        triggerProps={compactSelectTriggerProps}
+      />
+    </ReferenceInput>
+  </div>,
+  <div key="centro-costo" className="min-w-[160px]">
+    <ReferenceInput
+      source="centro_costo_id"
+      reference="centros-costo"
+      label="Centro de costo"
+      filter={{ activo: true }}
+    >
+      <SelectInput
+        optionText="nombre"
+        emptyText="Todos"
+        className={compactSelectClassName}
+        triggerProps={compactSelectTriggerProps}
+      />
+    </ReferenceInput>
+  </div>,
+  <div key="estado" className="min-w-[120px]">
+    <SelectInput
+      source="estado"
+      label="Estado"
+      choices={ESTADO_CHOICES}
+      alwaysOn
+      className={compactSelectClassName}
+      triggerProps={compactSelectTriggerProps}
+    />
+  </div>,
+  <div key="solicitante" className="min-w-[140px]">
+    <ReferenceInput
+      source="solicitante_id"
+      reference="users"
+      label="Solicitante"
+      alwaysOn
+    >
+      <SelectInput
+        optionText="nombre"
+        emptyText="Todos"
+        className={compactSelectClassName}
+        triggerProps={compactSelectTriggerProps}
+      />
+    </ReferenceInput>
+  </div>,
 ];
+
+const CreateMenuButton = ({ createTo }: { createTo: string }) => {
+  const navigate = useNavigate();
+  const buildCreateUrl = (wizard?: string) => {
+    const [path, query = ""] = createTo.split("?");
+    const params = new URLSearchParams(query);
+    if (wizard) {
+      params.set("wizard", wizard);
+    } else {
+      params.delete("wizard");
+    }
+    const queryString = params.toString();
+    return queryString ? `${path}?${queryString}` : path;
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button className="h-8 gap-1 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm">
+          <Plus className="h-4 w-4" />
+          Crear
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onClick={() => navigate(buildCreateUrl())}>
+          <FileText className="mr-2 h-4 w-4" />
+          Normal
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate(buildCreateUrl("asistida"))}>
+          <Sparkles className="mr-2 h-4 w-4" />
+          Asistida
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} />
-    <CreateButton to={createTo} />
+    {createTo ? <CreateMenuButton createTo={createTo} /> : null}
     <ExportButton />
   </div>
 );
@@ -143,7 +218,7 @@ export const PoSolicitudList = () => {
   const returnTo = getReturnToFromLocation(location);
   const defaultFilters = useMemo(
     () => ({
-      estado: "pendiente",
+      estado: "borrador",
       ...(identity?.id ? { solicitante_id: identity.id } : {}),
     }),
     [identity?.id]
@@ -437,15 +512,17 @@ const PoSolicitudActionsMenu = () => {
   const redirect = useRedirect();
   const resource = useResourceContext();
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   if (!record || !resource) {
     return null;
   }
 
-  const isPending = record.estado === "pendiente";
+  const isBorrador = record.estado === "borrador";
+  const isEmitida = record.estado === "emitida";
   const isApproved = record.estado === "aprobada";
-  const canApprove = isPending;
-  const canReject = isPending || isApproved;
+  const canApprove = isBorrador || isEmitida;
+  const canReject = isApproved;
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -487,10 +564,6 @@ const PoSolicitudActionsMenu = () => {
 
   const handleDelete = async () => {
     if (!record?.id) return;
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm("¿Seguro que deseas eliminar la solicitud PO?");
-      if (!confirmed) return;
-    }
     setBusyAction("delete");
     try {
       await dataProvider.delete(resource, { id: record.id });
@@ -502,6 +575,16 @@ const PoSolicitudActionsMenu = () => {
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const handleRequestDelete = () => {
+    if (!record?.id) return;
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    setConfirmDeleteOpen(false);
+    handleDelete();
   };
 
   const stopRowClick = (event: React.MouseEvent) => {
@@ -521,7 +604,8 @@ const PoSolicitudActionsMenu = () => {
   };
 
   return (
-    <DropdownMenu>
+    <>
+      <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -557,7 +641,7 @@ const PoSolicitudActionsMenu = () => {
           Preview
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={(event) => handleMenuAction(event, handleDelete)}
+          onClick={(event) => handleMenuAction(event, handleRequestDelete)}
           disabled={busyAction !== null}
           variant="destructive"
         >
@@ -584,8 +668,17 @@ const PoSolicitudActionsMenu = () => {
           Rechazar
         </DropdownMenuItem>
       </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenu>
+      <Confirm
+        isOpen={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Eliminar solicitud"
+        content="Seguro que deseas eliminar la solicitud PO?"
+        confirm="Eliminar"
+        cancel="Cancelar"
+      />
+    </>
   );
 };
-
 

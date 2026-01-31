@@ -1,11 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { useLocation } from "react-router-dom";
 import { Edit } from "@/components/edit";
-import { DeleteButton } from "@/components/delete-button";
-import { ShowButton } from "@/components/show-button";
-import { useEditContext, useResourceDefinition } from "ra-core";
+import { useEditContext } from "ra-core";
 import type { PoSolicitud } from "./model";
 import { PoSolicitudForm } from "./form";
 
@@ -13,7 +9,6 @@ const PoSolicitudEditTitle = () => "Editar Solicitud";
 
 const PoSolicitudEditActions = () => {
   const { record } = useEditContext<PoSolicitud & { id: number }>();
-  const { hasShow } = useResourceDefinition();
   const idLabel =
     record?.id != null ? `#${String(record.id).padStart(5, "0")}` : "";
 
@@ -24,25 +19,17 @@ const PoSolicitudEditActions = () => {
           {idLabel}
         </span>
       ) : null}
-      {hasShow ? <ShowButton /> : null}
-      <DeleteButton />
     </div>
   );
 };
 
 export const PoSolicitudEdit = () => {
-  const location = useLocation();
-  const redirectTo = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get("returnTo") ?? "list";
-  }, [location.search]);
-
   return (
     <Edit
       title={<PoSolicitudEditTitle />}
       actions={<PoSolicitudEditActions />}
       className="w-full max-w-lg"
-      redirect={redirectTo}
+      redirect={false}
     >
       <PoSolicitudForm />
     </Edit>

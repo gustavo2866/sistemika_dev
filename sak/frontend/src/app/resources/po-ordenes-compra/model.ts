@@ -137,6 +137,10 @@ export type PoOrdenCompraDetalle = {
   centro_costo_id?: number | null;
 };
 
+export type PoOrdenCompraWizardPayload = Partial<PoOrdenCompra> & {
+  detalles?: PoOrdenCompraDetalle[];
+};
+
 export type PoOrdenCompra = {
   id?: number;
   titulo: string;

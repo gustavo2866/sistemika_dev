@@ -15,7 +15,7 @@
  * 6. HELPERS - Utilidades específicas del dominio
  */
 
-import { UseFormReturn } from "react-hook-form";
+import { UseFormReturn, type UseFormSetValue } from "react-hook-form";
 import {
   createDetailSchema,
   createEntitySchema,
@@ -33,7 +33,8 @@ import {
  * Estados posibles de una PoSolicitud
  */
 export const ESTADO_CHOICES = [
-  { id: "pendiente", name: "Pendiente" },
+  { id: "borrador", name: "Borrador" },
+  { id: "emitida", name: "Emitida" },
   { id: "aprobada", name: "Aprobada" },
   { id: "rechazada", name: "Rechazada" },
   { id: "en_proceso", name: "En Proceso" },
@@ -46,7 +47,8 @@ export const TIPO_COMPRA_CHOICES = [
 ];
 
 export const ESTADO_BADGES: Record<string, string> = {
-  pendiente: "bg-slate-100 text-slate-800",
+  borrador: "bg-slate-100 text-slate-800",
+  emitida: "bg-sky-100 text-sky-800",
   aprobada: "bg-emerald-100 text-emerald-800",
   rechazada: "bg-rose-100 text-rose-800",
   en_proceso: "bg-sky-100 text-sky-800",
@@ -151,6 +153,22 @@ export type DetalleFormValues = {
   cantidad: number;
   precio: number;
   importe: number;
+};
+
+export type WizardPayload = {
+  proveedorId: number | null;
+  tipoSolicitudId: number | null;
+  departamentoId: number | null;
+  centroCostoId: number | null;
+  tipoCompra: string | null;
+  articuloId: number | null;
+  titulo: string;
+  descripcion: string;
+  fechaNecesidad: string | null;
+  oportunidadId: number | null;
+  cantidad: number | null;
+  precio: number | null;
+  unidadMedida: string | null;
 };
 
 /**
@@ -311,6 +329,157 @@ export function validateDetalle(
 // 5. TRANSFORMACIONES
 // ============================================
 
+/**
+ * Formateador de moneda Argentina
+ */
+export const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "ARS",
+  minimumFractionDigits: 2,
+});
+
+/**
+ * Límites para truncar texto en la UI
+ */
+export const TEXT_LIMITS = {
+  ARTICLE_NAME: 30,
+  DESCRIPTION: 90,
+} as const;
+
+/**
+ * Trunca texto a un límite específico
+ * 
+ * @param value - Texto a truncar
+ * @param limit - Límite de caracteres
+ * @returns Texto truncado con "..." si excede el límite
+ */
+export function truncateText(value: string, limit: number): string {
+  if (!value) return "";
+  if (value.length <= limit) return value;
+  return `${value.slice(0, Math.max(0, limit - 3))}...`;
+}
+
+/**
+ * Calcula el importe de un detalle (cantidad * precio)
+ * 
+ * @param cantidad - Cantidad del artículo
+ * @param precio - Precio unitario
+ * @returns Importe calculado con 2 decimales
+ */
+export function calculateImporte(cantidad: number, precio: number): number {
+  const result = (cantidad || 0) * (precio || 0);
+  return Number(result.toFixed(2));
+}
+
+/**
+ * Calcula el total de una solicitud sumando todos los detalles
+ * 
+ * @param detalles - Array de detalles de la solicitud
+ * @returns Total calculado
+ */
+export function calculateTotal(detalles: PoSolicitudDetalle[]): number {
+  if (!Array.isArray(detalles)) return 0;
+  
+  const total = detalles.reduce((acc, detalle) => {
+    if (!detalle) return acc;
+    const importe = typeof detalle.importe === "number"
+      ? detalle.importe
+      : calculateImporte(detalle.cantidad, detalle.precio);
+    
+    return Number.isFinite(importe) ? acc + importe : acc;
+  }, 0);
+  
+  return Number(total.toFixed(2));
+}
+
+type ApplyWizardPayloadArgs = {
+  isCreate: boolean;
+  setValue: UseFormSetValue<PoSolicitud>;
+  identityId?: number | null;
+  payload: WizardPayload;
+};
+
+const buildDetalleFromWizard = (
+  payload: WizardPayload
+): PoSolicitudDetalle | null => {
+  if (payload.articuloId == null) return null;
+  const cantidad = payload.cantidad ?? 0;
+  const precio = payload.precio ?? 0;
+  const importe = calculateImporte(cantidad, precio);
+
+  return {
+    articulo_id: payload.articuloId,
+    descripcion: payload.descripcion ?? "",
+    unidad_medida: payload.unidadMedida ?? "UN",
+    cantidad,
+    precio,
+    importe,
+  };
+};
+
+export const applyWizardPayload = ({
+  isCreate,
+  setValue,
+  identityId,
+  payload,
+}: ApplyWizardPayloadArgs) => {
+  if (!isCreate) return;
+
+  if (payload.proveedorId != null) {
+    setValue("proveedor_id", payload.proveedorId, { shouldDirty: true });
+  }
+  if (payload.tipoSolicitudId != null) {
+    setValue("tipo_solicitud_id", payload.tipoSolicitudId, { shouldDirty: true });
+  }
+  if (payload.departamentoId != null) {
+    setValue("departamento_id", payload.departamentoId, { shouldDirty: true });
+  }
+  if (payload.centroCostoId != null) {
+    setValue("centro_costo_id", payload.centroCostoId, { shouldDirty: true });
+  }
+  if (payload.tipoCompra != null) {
+    setValue("tipo_compra", payload.tipoCompra, { shouldDirty: true });
+  }
+  if (payload.titulo !== undefined) {
+    setValue("titulo", payload.titulo, { shouldDirty: true });
+  }
+  if (payload.fechaNecesidad) {
+    setValue("fecha_necesidad", payload.fechaNecesidad, { shouldDirty: true });
+  }
+  if (payload.oportunidadId != null) {
+    setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+  }
+  if (identityId != null) {
+    setValue("solicitante_id", Number(identityId), { shouldDirty: true });
+  }
+
+  const detalle = buildDetalleFromWizard(payload);
+  if (detalle) {
+    setValue("detalles", [detalle], { shouldDirty: true });
+  }
+};
+
+/**
+ * Formatea un valor numérico como moneda
+ * 
+ * @param value - Valor a formatear
+ * @returns String formateado como moneda argentina
+ */
+export function formatCurrency(value: number): string {
+  return CURRENCY_FORMATTER.format(Number(value) || 0);
+}
+
+/**
+ * Formatea un importe para mostrar en input
+ * 
+ * @param value - Valor del importe
+ * @returns String con 2 decimales
+ */
+export function formatImporteDisplay(value: number): string {
+  const asNumber = Number(value ?? 0);
+  return Number.isFinite(asNumber) ? asNumber.toFixed(2) : "0.00";
+}
+
 // ============================================
 
 
@@ -409,7 +578,7 @@ export const poSolicitudCabeceraSchema = createEntitySchema<
     estado: selectField({
       required: false,
       options: ESTADO_CHOICES,
-      defaultValue: "pendiente",
+      defaultValue: "borrador",
     }),
     tipo_compra: selectField({
       required: true,
@@ -528,12 +697,19 @@ export const PoSolicitudModel = {
   CENTROS_COSTO_REFERENCE,
   OPORTUNIDADES_REFERENCE,
   PROVEEDORES_REFERENCE,
+  CURRENCY_FORMATTER,
+  TEXT_LIMITS,
   // Funciones
   validateDetalle,
   getArticuloLabel,
   getArticuloFilterByTipo,
   getDepartamentoDefaultByTipo,
   getArticuloDefaultByTipo,
+  truncateText,
+  calculateImporte,
+  calculateTotal,
+  formatCurrency,
+  formatImporteDisplay,
   poSolicitudDetalleSchema,
   poSolicitudCabeceraSchema,
 } as const;

@@ -33,7 +33,7 @@ import {
 } from "ra-core";
 import { MoreHorizontal } from "lucide-react";
 import type { PoFactura } from "./model";
-import { ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
+import { ESTADO_CHOICES } from "./model";
 
 const ESTADO_BADGES: Record<string, string> = {
   pendiente: "bg-slate-100 text-slate-800",
@@ -123,21 +123,6 @@ const filters = [
   >
     <SelectInput optionText="nombre" emptyText="Todos" />
   </ReferenceInput>,
-  <SelectInput
-    key="tipo_compra"
-    source="tipo_compra"
-    label="Tipo compra"
-    choices={TIPO_COMPRA_CHOICES}
-    alwaysOn
-  />,
-  <ReferenceInput
-    key="departamento_id"
-    source="departamento_id"
-    reference="departamentos"
-    label="Departamento"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
 ];
 
 const ListActions = () => (
@@ -160,6 +145,9 @@ export const PoFacturaList = () => (
       rowClick="edit"
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
+      <ResponsiveDataTable.Col source="id" label="ID" className="w-[60px]">
+        <NumberField source="id" />
+      </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col
         source="numero"
         label="Numero"
@@ -177,14 +165,20 @@ export const PoFacturaList = () => (
         className="w-[80px]"
         render={(record) => {
           const { name, avatarUrl, initials } = getResponsableAvatarInfo(record as PoFactura);
+          const shortName = name ? String(name).slice(0, 10) : "";
           return (
-            <div className="flex w-full items-center justify-start">
+            <div className="flex w-full items-center gap-1">
               <KanbanAvatar
                 src={avatarUrl}
                 alt={name}
                 fallback={initials}
-                className="border-white/70 shadow-sm"
+                className="h-5 w-5 border-white/70 shadow-sm"
               />
+              {shortName ? (
+                <span className="text-[9px] leading-tight text-muted-foreground">
+                  {shortName}
+                </span>
+              ) : null}
             </div>
           );
         }}
@@ -194,14 +188,6 @@ export const PoFacturaList = () => (
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[80px]">
         <EstadoBadge />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="tipo_compra" label="Tipo compra" className="w-[110px]">
-        <TextField source="tipo_compra" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="departamento_id" label="Departamento" className="w-[160px]">
-        <ReferenceField source="departamento_id" reference="departamentos">
-          <TextField source="nombre" />
-        </ReferenceField>
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
         <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />

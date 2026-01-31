@@ -56,8 +56,10 @@ import {
   poOrdenCompraCabeceraSchema,
   poOrdenCompraDetalleSchema,
 } from "./model";
+import type { PoOrdenCompraWizardPayload } from "./model";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
-import { create_wizard_2 as CreateWizard, type CreateWizard2Payload } from "./create_wizard_2";
+import { create_wizard_2 as CreateWizardSolicitud } from "./create_wizard_2";
+import { create_wizard_3 as CreateWizardAsistida } from "./create_wizard_3";
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
   style: "currency",
@@ -617,6 +619,11 @@ const CabeceraContent = ({
           label="Fecha"
           type="date"
           className="w-full"
+          readOnly
+          inputClassName="bg-muted/50"
+          format={(value) =>
+            value == null ? "" : typeof value === "string" ? value.slice(0, 10) : value
+          }
         />
       </div>
 
@@ -834,9 +841,11 @@ const TotalesContent = () => {
 const PoOrdenCompraFormFields = ({
   wizardOpen,
   setWizardOpen,
+  wizardVariant = "asistida",
 }: {
   wizardOpen: boolean;
   setWizardOpen: (open: boolean) => void;
+  wizardVariant?: "asistida" | "solicitud";
 }) => {
   const dataProvider = useDataProvider();
   const form = useFormContext<PoOrdenCompra>();
@@ -954,47 +963,35 @@ const PoOrdenCompraFormFields = ({
     }
   }, [detallesValue, form]);
 
-  const handleApplyWizard = (payload: CreateWizard2Payload) => {
-    if (payload.titulo) {
-      form.setValue("titulo", payload.titulo, { shouldDirty: true });
-    }
-    if (payload.fecha) {
-      form.setValue("fecha", payload.fecha, { shouldDirty: true });
-    }
-    if (payload.proveedorId != null) {
-      form.setValue("proveedor_id", payload.proveedorId, { shouldDirty: true });
-    }
-    if (payload.tipoSolicitudId != null) {
-      form.setValue("tipo_solicitud_id", payload.tipoSolicitudId, {
-        shouldDirty: true,
-      });
-    }
-    if (payload.oportunidadId != null) {
-      form.setValue("oportunidad_id", payload.oportunidadId, {
-        shouldDirty: true,
-      });
-    }
-    if (payload.responsableId != null) {
-      form.setValue("usuario_responsable_id", payload.responsableId, {
-        shouldDirty: true,
-      });
-    } else if (identity?.id != null) {
+  const handleApplyWizard = (payload: PoOrdenCompraWizardPayload) => {
+    (Object.entries(payload) as Array<[keyof PoOrdenCompraWizardPayload, unknown]>).forEach(
+      ([key, value]) => {
+        if (value === undefined) return;
+        form.setValue(key as any, value as any, { shouldDirty: true });
+      }
+    );
+    if (payload.usuario_responsable_id == null && identity?.id != null) {
       form.setValue("usuario_responsable_id", Number(identity.id), {
         shouldDirty: true,
       });
-    }
-    if (payload.detalles?.length) {
-      form.setValue("detalles", payload.detalles, { shouldDirty: true });
     }
   };
 
   return (
     <>
-      <CreateWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        onApply={handleApplyWizard}
-      />
+      {wizardVariant === "solicitud" ? (
+        <CreateWizardSolicitud
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          onApply={handleApplyWizard}
+        />
+      ) : (
+        <CreateWizardAsistida
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          onApply={handleApplyWizard}
+        />
+      )}
       <FormLayout
         sections={[
         {
@@ -1168,9 +1165,11 @@ const FormFooter = () => <FormToolbar />;
 export const PoOrdenCompraForm = ({
   wizardOpen,
   setWizardOpen,
+  wizardVariant,
 }: {
   wizardOpen?: boolean;
   setWizardOpen?: (open: boolean) => void;
+  wizardVariant?: "asistida" | "solicitud";
 }) => {
   const [localWizardOpen, setLocalWizardOpen] = useState(false);
   const resolvedWizardOpen = wizardOpen ?? localWizardOpen;
@@ -1243,6 +1242,7 @@ export const PoOrdenCompraForm = ({
       <PoOrdenCompraFormFields
         wizardOpen={resolvedWizardOpen}
         setWizardOpen={resolvedSetWizardOpen}
+        wizardVariant={wizardVariant}
       />
     </SimpleForm>
   );

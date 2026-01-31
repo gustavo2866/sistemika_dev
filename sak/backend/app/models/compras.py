@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 
 
 class EstadoPoSolicitud(str, Enum):
-    PENDIENTE = "pendiente"
+    BORRADOR = "borrador"
+    EMITIDA = "emitida"
     APROBADA = "aprobada"
     RECHAZADA = "rechazada"
     EN_PROCESO = "en_proceso"
@@ -74,7 +75,7 @@ class PoSolicitud(Base, table=True):
         description="Identificador del departamento",
     )
     estado: str = Field(
-        default="pendiente",
+        default="borrador",
         sa_column=Column(String(20), nullable=False),
         description="Estado de la solicitud",
     )

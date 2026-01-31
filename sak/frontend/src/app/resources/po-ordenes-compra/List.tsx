@@ -13,7 +13,6 @@ import { SelectInput } from "@/components/select-input";
 import { Badge } from "@/components/ui/badge";
 import { Confirm } from "@/components/confirm";
 import { FilterButton } from "@/components/filter-form";
-import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +30,8 @@ import {
   useRedirect,
   useResourceContext,
 } from "ra-core";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { KanbanAvatar } from "@/components/kanban/card";
 import type { PoOrdenCompra } from "./model";
 import { ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
@@ -129,10 +129,39 @@ const filters = [
   </ReferenceInput>,
 ];
 
+const CreateMenuButton = () => {
+  const navigate = useNavigate();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button className="h-8 gap-1 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm">
+          <Plus className="h-4 w-4" />
+          Crear
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onClick={() => navigate("/po-ordenes-compra/create")}>
+          Normal
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => navigate("/po-ordenes-compra/create?wizard=asistida")}
+        >
+          Asistida
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => navigate("/po-ordenes-compra/create?wizard=solicitud")}
+        >
+          Desde Solicitud
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
 const ListActions = () => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} />
-    <CreateButton />
+    <CreateMenuButton />
     <ExportButton />
   </div>
 );
@@ -141,31 +170,34 @@ export const PoOrdenCompraList = () => (
   <List
     filters={filters}
     actions={<ListActions />}
-    perPage={25}
+    perPage={10}
     sort={{ field: "id", order: "DESC" }}
-    filterDefaultValues={{ estado: "borrador" }}
+    filterDefaultValues={{ estado: "borrador", tipo_compra: "normal" }}
   >
-    <ResponsiveDataTable rowClick="edit">
-      <ResponsiveDataTable.Col source="id" label="ID" className="w-[70px]">
+    <ResponsiveDataTable
+      rowClick="edit"
+      className="text-[10px] [&_th]:text-[10px] [&_th]:font-semibold [&_td]:text-[10px]"
+    >
+      <ResponsiveDataTable.Col source="id" label="ID" className="w-[50px]">
         <NumberField source="id" />
+      </ResponsiveDataTable.Col>
+      <ResponsiveDataTable.Col source="fecha" label="Fecha" className="w-[70px]">
+        <DateField source="fecha" />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col
         source="titulo"
         label="Titulo"
-        className="w-[180px] whitespace-normal break-words"
+        className="w-[140px] whitespace-normal break-words"
       >
-        <TextField source="titulo" className="text-[11px]" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="fecha" label="Fecha" className="w-[90px]">
-        <DateField source="fecha" className="text-[11px]" />
+        <TextField source="titulo" />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col
         source="proveedor_id"
         label="Proveedor"
-        className="w-[110px] whitespace-normal break-words"
+        className="w-[90px] whitespace-normal break-words"
       >
         <ReferenceField source="proveedor_id" reference="proveedores">
-          <TextField source="nombre" className="text-[11px]" />
+          <TextField source="nombre" />
         </ReferenceField>
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col
@@ -174,23 +206,26 @@ export const PoOrdenCompraList = () => (
         className="w-[80px]"
         render={(record) => {
           const { name, avatarUrl, initials } = getResponsableAvatarInfo(record as PoOrdenCompra);
+          const shortName = name ? String(name).slice(0, 10) : "";
           return (
-            <div className="flex w-full items-center justify-start">
+            <div className="flex w-full items-center gap-1">
               <KanbanAvatar
                 src={avatarUrl}
                 alt={name}
                 fallback={initials}
-                className="border-white/70 shadow-sm"
+                className="h-5 w-5 border-white/70 shadow-sm"
               />
+              {shortName ? (
+                <span className="text-[9px] leading-tight text-muted-foreground">
+                  {shortName}
+                </span>
+              ) : null}
             </div>
           );
         }}
       />
-      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[120px]">
-        <div className="flex flex-col gap-1">
-          <EstadoBadge />
-          <DateField source="fecha_estado" className="text-[10px] text-muted-foreground" />
-        </div>
+      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[70px]">
+        <EstadoBadge />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col
         source="departamento_id"
@@ -200,14 +235,13 @@ export const PoOrdenCompraList = () => (
           const nombre =
             (record as { departamento?: { nombre?: string } })?.departamento?.nombre;
           if (!nombre) return null;
-          return <span className="text-[11px]">{String(nombre).slice(0, 4)}</span>;
+          return <span>{String(nombre).slice(0, 4)}</span>;
         }}
       />
       <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
         <NumberField
           source="total"
           options={{ style: "currency", currency: "ARS" }}
-          className="text-[11px]"
         />
       </ResponsiveDataTable.Col>
       <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
