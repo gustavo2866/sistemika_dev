@@ -1,18 +1,19 @@
 /**
- * Modelo de dominio para Solicitudes
- * 
- * PATRÓN ESTÁNDAR PARA TODAS LAS ENTIDADES
- * 
- * Este archivo debe contener SOLO lógica de negocio y definiciones del modelo.
- * NO debe contener componentes React ni lógica de presentación.
- * 
- * Estructura obligatoria:
- * 1. CONFIGURACIÓN - Constantes y valores de dominio
+ * Modelo de dominio para Solicitudes.
+ *
+ * PATRON ESTANDAR PARA TODAS LAS ENTIDADES.
+ *
+ * Este archivo contiene SOLO logica de negocio y definiciones del modelo.
+ * NO contiene componentes React ni logica de presentacion.
+ *
+ * Estructura:
+ * 1. CONFIGURACION - Constantes y valores de dominio
  * 2. TIPOS - Interfaces y types del modelo
  * 3. VALORES DEFAULT - Estado inicial para formularios
  * 4. VALIDACIONES - Reglas de negocio para validar datos
  * 5. TRANSFORMACIONES - Conversiones entre formatos
- * 6. HELPERS - Utilidades específicas del dominio
+ * 6. ESQUEMAS - Declarativos para formularios
+ * 7. HELPERS - Utilidades especificas del dominio
  */
 
 import { UseFormReturn } from "react-hook-form";
@@ -30,11 +31,20 @@ import {
   formatImporteDisplay,
   roundCurrency,
 } from "@/lib/formatters";
+import {
+  calculateImporte,
+  calculateTotal,
+  getArticuloFilterByTipo,
+  normalizeId,
+  normalizeNumber,
+  normalizeOptionalNumber,
+} from "../shared/po-utils";
+import type { DetalleFormValues, PoSolicitudCabeceraFormValues } from "./form-types";
 
 // ============================================
-// 1. CONFIGURACIÓN
+// 1. CONFIGURACION
 // ============================================
-
+//#region 
 
 // Estados posibles de una PoSolicitud
 export const ESTADO_CHOICES = [
@@ -148,23 +158,12 @@ export const PROVEEDORES_REFERENCE = {
   staleTime: 5 * 60 * 1000,
 } as const;
 
+//#endregion
+
 // ============================================
 // 2. TIPOS
 // ============================================
-
-/**
- * Detalle en formato de formulario (valores temporales)
- * 
- * NOTA: Los IDs de referencias son strings para compatibilidad con Combobox
- */
-export type DetalleFormValues = {
-  articulo_id: string;      // string temporalmente
-  descripcion: string;
-  unidad_medida: string;
-  cantidad: number;
-  precio: number;
-  importe: number;
-};
+//#region 
 
 export type WizardPayload = {
   proveedorId: number | null;
@@ -184,9 +183,9 @@ export type WizardPayload = {
 
 // Detalle persistido (modelo de base de datos)
 export type PoSolicitudDetalle = {
-  id?: number;
-  tempId?: number;
-  solicitud_id?: number;
+  id: number;
+  tempId: number;
+  solicitud_id: number;
   articulo_id: number | null;
   descripcion: string;
   unidad_medida: string;
@@ -195,87 +194,78 @@ export type PoSolicitudDetalle = {
   importe: number;
 };
 
-
 // PoSolicitud completa (modelo principal)
 export type PoSolicitud = {
-  id?: number;
+  id: number;
   titulo: string;
   tipo_solicitud_id: number;        // ✅ NUEVO - FK a tipos_solicitud
   departamento_id: number;          // ✅ NUEVO - FK a departamentos
   centro_costo_id: number;
   estado: string;                   // ✅ NUEVO - enum EstadoSolicitud
-  tipo_compra?: string | null;
+  tipo_compra: string | null;
   total: number;                    // ✅ NUEVO - monto total
   fecha_necesidad: string;
   solicitante_id: number;
-  comentario?: string;
-  oportunidad_id?: number | null;
-  proveedor_id?: number | null;
+  comentario: string;
+  oportunidad_id: number | null;
+  proveedor_id: number | null;
   detalles: PoSolicitudDetalle[];
   
   // Relaciones expandidas
-  solicitante?: {
+  solicitante: {
     id: number;
     nombre: string;
     email: string;
   };
-  tipo_solicitud?: {                // ✅ NUEVO
+  tipo_solicitud: {                // ✅ NUEVO
     id: number;
     nombre: string;
-    tipo_articulo_filter_id?: number | null;
-    tipo_articulo_filter_rel?: {
+    tipo_articulo_filter_id: number | null;
+    tipo_articulo_filter_rel: {
       id: number;
       nombre: string;
     };
-    articulo_default_id?: number;
+    articulo_default_id: number;
   };
-  departamento?: {                  // ✅ NUEVO
+  departamento: {                  // ✅ NUEVO
     id: number;
     nombre: string;
   };
-  centro_costo?: {
+  centro_costo: {
     id: number;
     nombre: string;
-    tipo?: string;
-    codigo_contable?: string;
+    tipo: string;
+    codigo_contable: string;
   };
-  oportunidad?: {
+  oportunidad: {
     id: number;
-    titulo?: string | null;
+    titulo: string | null;
   };
-  proveedor?: {
+  proveedor: {
     id: number;
     nombre: string;
   };
 };
 
-// 
-export type PoSolicitudCabeceraFormValues = {
-  titulo: string;
-  tipo_solicitud_id: string;        // ✅ CAMBIO: antes era "tipo" string local
-  departamento_id: string;          // ✅ NUEVO
-  centro_costo_id: string;
-  estado: string;                   // ✅ NUEVO
-  tipo_compra: string;
-  fecha_necesidad: string;
-  solicitante_id: string;
-  comentario: string;
-  oportunidad_id: string;
-  proveedor_id: string;
-};
+//#endregion
 
 // ============================================
 // 3. VALORES DEFAULT
 // ============================================
+// #region 
+
+// #endregion
+
 
 // ============================================
 // 4. VALIDACIONES
 // ============================================
+//#region 
 
 // Tipo para errores de validación por campo
 type ValidationErrors<T> = Partial<Record<keyof T, string>>;
 
-// Valida un detalle de solicitud
+// Valida un detalle y registra errores en el formulario.
 export function validateDetalle(
   data: DetalleFormValues,
   form: UseFormReturn<DetalleFormValues>
@@ -284,7 +274,7 @@ export function validateDetalle(
 
   // Validar articulo_id
   if (!data.articulo_id) {
-    errors.articulo_id = "Selecciona un articulo";
+    errors.articulo_id = "Selecciona un artículo";
   }
 
   // Validar descripcion (opcional, con tope de caracteres)
@@ -320,10 +310,12 @@ export function validateDetalle(
   return false; // Sin errores
 }
 
+// #endregion
+
 // ============================================
 // 5. TRANSFORMACIONES
 // ============================================
-
+//#region
 
 // Límites para truncar texto en la UI
 export const TEXT_LIMITS = {
@@ -331,59 +323,18 @@ export const TEXT_LIMITS = {
   DESCRIPTION: 90,
 } as const;
 
-// Trunca texto a un límite específico
+// Trunca texto a un limite especifico.
 export function truncateText(value: string, limit: number): string {
   if (!value) return "";
   if (value.length <= limit) return value;
   return `${value.slice(0, Math.max(0, limit - 3))}...`;
 }
 
-// Calcula el importe de un detalle (cantidad * precio)
-export function calculateImporte(cantidad: number, precio: number): number {
-  const result = (cantidad || 0) * (precio || 0);
-  return Number(result.toFixed(2));
-}
-
-// Calcula el total de una solicitud sumando los importes de los detalles
-export function calculateTotal(detalles: PoSolicitudDetalle[]): number {
-  if (!Array.isArray(detalles)) return 0;
-  
-  const total = detalles.reduce((acc, detalle) => {
-    if (!detalle) return acc;
-    const importe = typeof detalle.importe === "number"
-      ? detalle.importe
-      : calculateImporte(detalle.cantidad, detalle.precio);
-    
-    return Number.isFinite(importe) ? acc + importe : acc;
-  }, 0);
-  
-  return Number(total.toFixed(2));
-}
-
-// Normaliza un ID de string a number o null
-export const normalizeId = (value: string | null | undefined): number | null => {
-  if (!value || value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-// Normaliza un valor a número, retornando 0 si no es válido
-export const normalizeNumber = (value: unknown): number => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
-
-// Normaliza un valor a número opcional, retornando null si no es válido
-export const normalizeOptionalNumber = (value: unknown): number | null => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : null;
-};
-
-// Resuelve el tipo de compra según la presencia de proveedor
+// Resuelve el tipo de compra segun la presencia de proveedor.
 export const resolveTipoCompra = (proveedorId: number | null) =>
   proveedorId ? "directa" : "normal";
 
-// Resuelve el centro de costo según reglas de negocio
+// Resuelve el centro de costo segun reglas de negocio.
 export const resolveCentroCostoId = ({
   oportunidadId,
   departamentoNombre,
@@ -391,9 +342,9 @@ export const resolveCentroCostoId = ({
   solicitanteCentroCostoId,
 }: {
   oportunidadId: string | null;
-  departamentoNombre?: string | null;
-  departamentoCentroCostoId?: number | null;
-  solicitanteCentroCostoId?: number | null;
+  departamentoNombre: string | null;
+  departamentoCentroCostoId: number | null;
+  solicitanteCentroCostoId: number | null;
 }): number | null => {
   if (oportunidadId) return null;
   const isDirector =
@@ -412,18 +363,28 @@ export const resolveCentroCostoId = ({
 };
 
 
-
 // Formatea un valor numérico como moneda
 export { CURRENCY_FORMATTER, formatCurrency, formatImporteDisplay, roundCurrency };
+export {
+  calculateImporte,
+  calculateTotal,
+  getArticuloFilterByTipo,
+  normalizeId,
+  normalizeNumber,
+  normalizeOptionalNumber,
+};
 
+//#endregion
 
 // ============================================
-// 6. ESQUEMA DECLARATIVO PARA DETALLES
+// 6. ESQUEMAS
 // ============================================
-
+//#region 
 
 // Esquema de formulario para detalles de PoSolicitud
-export const poSolicitudDetalleSchema = createDetailSchema< DetalleFormValues,  PoSolicitudDetalle
+export const poSolicitudDetalleSchema = createDetailSchema<
+  DetalleFormValues,
+  PoSolicitudDetalle
 >({
   fields: {
     articulo_id: referenceField({
@@ -545,12 +506,14 @@ export const poSolicitudCabeceraSchema = createEntitySchema<
     }),
   },
 });
+// #endregion
 
 // ============================================
-// 6. HELPERS DE PRESENTACIÓN
+// 7. HELPERS
 // ============================================
+//#region 
 
-// Obtiene etiqueta legible de un artículo
+// Obtiene etiqueta legible de un articulo.
 export function getArticuloLabel(
   item: PoSolicitudDetalle,
   articuloOptions: Array<{ id: number; nombre: string }>
@@ -558,76 +521,30 @@ export function getArticuloLabel(
   return (
     (item as any).articulo_nombre ||
     articuloOptions.find((option) => option.id === item.articulo_id)?.nombre ||
-    "Sin articulo"
+    "Sin artículo"
   );
 }
 
-// Obtiene el filtro de artículos según el tipo de PoSolicitud seleccionado
-export const getArticuloFilterByTipo = (
-  tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; tipo_articulo_filter_id?: number | null }> | undefined,
-  _tiposArticulo?: Array<{ id: number; nombre: string }> | undefined
-): number | undefined => {
-  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
-  const tipo = tiposSolicitud.find((item) => item.id === Number(tipoSolicitudId));
-  return tipo?.tipo_articulo_filter_id ?? undefined;
-};
-
-//  Obtiene el departamento default según el tipo de PoSolicitud
+// Obtiene el departamento default segun el tipo de PoSolicitud.
 export const getDepartamentoDefaultByTipo = (
   tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; departamento_default_id?: number }> | undefined
+  tiposSolicitud: Array<{ id: number; departamento_default_id: number }> | undefined
 ): string | undefined => {
   if (!tipoSolicitudId || !tiposSolicitud) return undefined;
   
   const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
-  return tipo?.departamento_default_id?.toString();
+  return tipo.departamento_default_id.toString();
 };
 
-// Obtiene el artículo default según el tipo de PoSolicitud
+// Obtiene el articulo default segun el tipo de PoSolicitud.
 export const getArticuloDefaultByTipo = (
   tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; articulo_default_id?: number }> | undefined
+  tiposSolicitud: Array<{ id: number; articulo_default_id: number }> | undefined
 ): string | undefined => {
   if (!tipoSolicitudId || !tiposSolicitud) return undefined;
   
   const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
-  return tipo?.articulo_default_id?.toString();
+  return tipo.articulo_default_id.toString();
 };
 
-// ============================================
-// EXPORTS CONSOLIDADOS (para facilitar imports)
-// ============================================
-
-// Modelo completo de PoSolicitud
-export const PoSolicitudModel = {
-  // Configuración
-  ESTADO_CHOICES,
-  UNIDAD_MEDIDA_CHOICES,
-  VALIDATION_RULES,
-  ARTICULOS_REFERENCE,
-  TIPOS_SOLICITUD_REFERENCE,
-  DEPARTAMENTOS_REFERENCE,
-  CENTROS_COSTO_REFERENCE,
-  OPORTUNIDADES_REFERENCE,
-  PROVEEDORES_REFERENCE,
-  CURRENCY_FORMATTER,
-  TEXT_LIMITS,
-  // Funciones
-  validateDetalle,
-  getArticuloLabel,
-  getArticuloFilterByTipo,
-  getDepartamentoDefaultByTipo,
-  getArticuloDefaultByTipo,
-  truncateText,
-  calculateImporte,
-  calculateTotal,
-  formatCurrency,
-  formatImporteDisplay,
-  poSolicitudDetalleSchema,
-  poSolicitudCabeceraSchema,
-} as const;
-
-
-
-
+//#endregion

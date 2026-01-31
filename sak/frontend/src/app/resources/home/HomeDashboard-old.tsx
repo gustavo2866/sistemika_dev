@@ -33,8 +33,8 @@ import { KpiTrend } from "@/components/dashboard/KpiTrend";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { CRMEvento } from "@/app/resources/crm-eventos/model";
-import type { PoSolicitud } from "@/app/resources/po-solicitudes/model";
-import { ESTADO_BADGES } from "@/app/resources/po-solicitudes/model";
+import type { PoSolicitud } from "@/app/resources/po/po-solicitudes/model";
+import { ESTADO_BADGES } from "@/app/resources/po/po-solicitudes/model";
 import type { CRMOportunidad } from "@/app/resources/crm-oportunidades/model";
 
 type SectionState<T> = {
@@ -110,7 +110,7 @@ export default function HomeDashboard() {
               asignado_a_id: userId,
             },
           }),
-          dataProvider.getList<PoSolicitud>("po-solicitudes", {
+          dataProvider.getList("po-solicitudes", {
             pagination: { page: 1, perPage: PAGE_SIZE },
             sort: { field: "fecha_necesidad", order: "ASC" },
             filter: {

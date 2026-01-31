@@ -98,17 +98,17 @@ import {
   PoSolicitudCreate,
   PoSolicitudEdit,
   PoSolicitudShow,
-} from "@/app/resources/po-solicitudes";
+} from "@/app/resources/po/po-solicitudes";
 import {
   PoOrdenCompraList,
   PoOrdenCompraCreate,
   PoOrdenCompraEdit,
-} from "@/app/resources/po-ordenes-compra";
+} from "@/app/resources/po/po-ordenes-compra";
 import {
   PoFacturaList,
   PoFacturaCreate,
   PoFacturaEdit,
-} from "@/app/resources/po-facturas";
+} from "@/app/resources/po/po-facturas";
 import {
   DepartamentoList,
   DepartamentoCreate,
@@ -233,7 +233,7 @@ import {
   EmprendimientoShow,
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
-import { PoSetupPage } from "@/app/resources/po-setup/PoSetupPage";
+import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
 
 declare const window: Window | undefined;
 

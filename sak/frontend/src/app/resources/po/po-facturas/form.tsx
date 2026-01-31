@@ -62,16 +62,12 @@ import {
   poFacturaDetalleSchema,
   poFacturaTotalSchema,
 } from "./model";
-import type { TipoSolicitud } from "../tipos-solicitud/model";
+import type { TipoSolicitud } from "../../tipos-solicitud/model";
 import { create_wizard as CreateWizard, type CreateWizardPayload } from "./create_wizard";
+import { CURRENCY_FORMATTER, roundCurrency } from "@/lib/formatters";
+import { normalizeNumber } from "../shared/po-utils";
 
 const GENERAL_SUBTITLE_SNIPPET = 25;
-
-const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  minimumFractionDigits: 2,
-});
 
 const ESTADO_BADGES: Record<string, string> = {
   pendiente: "bg-slate-100 text-slate-800",
@@ -89,15 +85,7 @@ const buildGeneralSubtitle = (observaciones: string | undefined) => {
   return snippet || "";
 };
 
-const roundCurrency = (value: number) =>
-  Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
-
 const emptyToNull = (value: unknown) => (value === "" ? null : value);
-
-const normalizeNumber = (value: unknown) => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
 
 const normalizeCentroCostoId = (value: unknown) => {
   if (value === null || value === undefined || value === "") {
@@ -1163,7 +1151,7 @@ const PoFacturaFormFields = ({
   const observacionesValue = useWatch({ control, name: "observaciones" }) || "";
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
   const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
-  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
+  // const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
   const detallesValue = useWatch({ control, name: "detalles" });
   const totalesValue = useWatch({ control, name: "totales" });
   const isCreate = !idValue;
@@ -1474,9 +1462,10 @@ const PoFacturaFormFields = ({
     if (payload.fechaVencimiento) {
       form.setValue("fecha_vencimiento", payload.fechaVencimiento, { shouldDirty: true });
     }
-    if (payload.oportunidadId != null) {
-      form.setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
-    }
+    // Commented out since oportunidad_id is not in the form schema
+    // if (payload.oportunidadId != null) {
+    //   form.setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+    // }
     if (identity?.id != null) {
       form.setValue("usuario_responsable_id", Number(identity.id), { shouldDirty: true });
     }
@@ -1570,13 +1559,7 @@ const PoFacturaFormFields = ({
                       ? Number(centroCostoValue)
                       : null
                 }
-                defaultOportunidadId={
-                  typeof oportunidadValue === "number"
-                    ? oportunidadValue
-                    : oportunidadValue
-                      ? Number(oportunidadValue)
-                      : null
-                }
+                defaultOportunidadId={null}
               />
             </FormDetailSection>
           ),

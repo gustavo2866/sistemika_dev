@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/forms/combobox";
 import { Button } from "@/components/ui/button";
 import { useDataProvider, useGetOne } from "ra-core";
-import { CompactOportunidadSelector } from "../crm-oportunidades";
+import { CompactOportunidadSelector } from "../../crm-oportunidades";
 import { useForm } from "react-hook-form";
 import {
   ARTICULOS_REFERENCE,
@@ -18,9 +18,9 @@ import {
   PROVEEDORES_REFERENCE,
   TIPO_COMPRA_CHOICES,
   TIPOS_SOLICITUD_REFERENCE,
-  getArticuloFilterByTipo,
 } from "./model";
-import type { TipoSolicitud } from "../tipos-solicitud/model";
+import { getArticuloFilterByTipo, normalizeId, normalizeNumber } from "../shared/po-utils";
+import type { TipoSolicitud } from "../../tipos-solicitud/model";
 
 type WizardValues = {
   proveedorId: string;
@@ -66,18 +66,6 @@ const defaultValues: WizardValues = {
   oportunidadId: "",
   cantidad: "1",
   precio: "",
-};
-
-const normalizeId = (value: string) => {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const normalizeNumber = (value: string) => {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const toWizardValue = (value?: number | null) =>

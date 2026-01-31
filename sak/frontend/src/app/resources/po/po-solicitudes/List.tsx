@@ -13,18 +13,13 @@ import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
 import { NumberField } from "@/components/number-field";
 import { DateField } from "@/components/date-field";
-import { ReferenceField } from "@/components/reference-field";
-import { TextInput } from "@/components/text-input";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
+import { CompactTextInput, CompactSelectInput, CompactReferenceInput } from "@/components/lists/filters";
+import { CompactFilterButton, CompactExportButton, CompactCreateButton } from "@/components/lists/actions";
 import { BadgeField } from "@/components/badge-field";
-import { FilterButton } from "@/components/filter-form";
-import { ExportButton } from "@/components/export-button";
 import { Button } from "@/components/ui/button";
 import { Confirm } from "@/components/confirm";
 import { KanbanAvatar } from "@/components/kanban/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { StandardFormGrid } from "@/components/generic";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -52,142 +47,81 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
-  Plus,
-  Sparkles,
-  FileText,
   Trash2,
   XCircle,
 } from "lucide-react";
 import type { PoSolicitud } from "./model";
-import { ESTADO_BADGES, ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
-
-// Estilos optimizados para filtros alineados
-const compactFilterFieldClassName =
-  "gap-1 [&_label]:text-[10px] [&_label]:leading-tight [&_label]:font-medium [&_input]:h-8 [&_input]:px-3 [&_input]:text-[11px] [&_textarea]:h-8 [&_select]:h-8";
-const compactSelectClassName = "h-8 text-[11px]";
-const compactSelectTriggerProps = { className: "h-8 px-3 text-[11px]" };
+import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
 
 const filters = [
-  <div key="buscar" className="flex-1">
-    <TextInput
-      source="q"
-      label="Buscar"
-      alwaysOn
-      placeholder="Buscar solicitudes PO"
-      className={compactFilterFieldClassName}
+  <CompactTextInput
+    key="buscar"
+    source="q"
+    label="Buscar"
+    alwaysOn
+    placeholder="Buscar solicitudes PO"
+    className="w-28 sm:w-32"
+  />,
+  <CompactReferenceInput
+    key="tipo"
+    source="tipo_solicitud_id"
+    reference="tipos-solicitud"
+    label="Tipo"
+  >
+    <CompactSelectInput
+      optionText="nombre"
+      emptyText="Todos"
     />
-  </div>,
-  <div key="tipo" className="min-w-[140px]">
-    <ReferenceInput
-      source="tipo_solicitud_id"
-      reference="tipos-solicitud"
-      label="Tipo"
-    >
-      <SelectInput
-        optionText="nombre"
-        emptyText="Todos"
-        className={compactSelectClassName}
-        triggerProps={compactSelectTriggerProps}
-      />
-    </ReferenceInput>
-  </div>,
-  <div key="departamento" className="min-w-[140px]">
-    <ReferenceInput
-      source="departamento_id"
-      reference="departamentos"
-      label="Departamento"
-    >
-      <SelectInput
-        optionText="nombre"
-        emptyText="Todos"
-        className={compactSelectClassName}
-        triggerProps={compactSelectTriggerProps}
-      />
-    </ReferenceInput>
-  </div>,
-  <div key="centro-costo" className="min-w-[160px]">
-    <ReferenceInput
-      source="centro_costo_id"
-      reference="centros-costo"
-      label="Centro de costo"
-      filter={{ activo: true }}
-    >
-      <SelectInput
-        optionText="nombre"
-        emptyText="Todos"
-        className={compactSelectClassName}
-        triggerProps={compactSelectTriggerProps}
-      />
-    </ReferenceInput>
-  </div>,
-  <div key="estado" className="min-w-[120px]">
-    <SelectInput
-      source="estado"
-      label="Estado"
-      choices={ESTADO_CHOICES}
-      alwaysOn
-      className={compactSelectClassName}
-      triggerProps={compactSelectTriggerProps}
+  </CompactReferenceInput>,
+  <CompactReferenceInput
+    key="departamento"
+    source="departamento_id"
+    reference="departamentos"
+    label="Departamento"
+  >
+    <CompactSelectInput
+      optionText="nombre"
+      emptyText="Todos"
     />
-  </div>,
-  <div key="solicitante" className="min-w-[140px]">
-    <ReferenceInput
-      source="solicitante_id"
-      reference="users"
-      label="Solicitante"
-      alwaysOn
-    >
-      <SelectInput
-        optionText="nombre"
-        emptyText="Todos"
-        className={compactSelectClassName}
-        triggerProps={compactSelectTriggerProps}
-      />
-    </ReferenceInput>
-  </div>,
+  </CompactReferenceInput>,
+  <CompactReferenceInput
+    key="centro-costo"
+    source="centro_costo_id"
+    reference="centros-costo"
+    label="Centro de costo"
+    filter={{ activo: true }}
+  >
+    <CompactSelectInput
+      optionText="nombre"
+      emptyText="Todos"
+    />
+  </CompactReferenceInput>,
+  <CompactSelectInput
+    key="estado"
+    source="estado"
+    label="Estado"
+    choices={ESTADO_CHOICES}
+    alwaysOn
+  />,
+  <CompactReferenceInput
+    key="solicitante"
+    source="solicitante_id"
+    reference="users"
+    label="Solicitante"
+    alwaysOn
+  >
+    <CompactSelectInput
+      optionText="nombre"
+      emptyText="Todos"
+    />
+  </CompactReferenceInput>,
 ];
 
-const CreateMenuButton = ({ createTo }: { createTo: string }) => {
-  const navigate = useNavigate();
-  const buildCreateUrl = (wizard?: string) => {
-    const [path, query = ""] = createTo.split("?");
-    const params = new URLSearchParams(query);
-    if (wizard) {
-      params.set("wizard", wizard);
-    } else {
-      params.delete("wizard");
-    }
-    const queryString = params.toString();
-    return queryString ? `${path}?${queryString}` : path;
-  };
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button className="h-8 gap-1 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm">
-          <Plus className="h-4 w-4" />
-          Crear
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onClick={() => navigate(buildCreateUrl())}>
-          <FileText className="mr-2 h-4 w-4" />
-          Normal
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => navigate(buildCreateUrl("asistida"))}>
-          <Sparkles className="mr-2 h-4 w-4" />
-          Asistida
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
-
 const ListActions = ({ createTo }: { createTo?: string }) => (
-  <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    {createTo ? <CreateMenuButton createTo={createTo} /> : null}
-    <ExportButton />
+  <div className="flex items-center justify-start gap-2">
+    <CompactFilterButton filters={filters} />
+    {createTo ? <CompactCreateButton /> : null}
+    <CompactExportButton />
   </div>
 );
 
@@ -236,7 +170,7 @@ export const PoSolicitudList = () => {
     <List
       filters={filters}
       actions={<ListActions createTo={createTo} />}
-      perPage={25}
+      perPage={10}
       sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={defaultFilters}
       storeKey={false}
@@ -334,7 +268,6 @@ const PoSolicitudesFilterSync = ({
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (initialized) return;
     if (oportunidadIdFilter) {
       const needsOportunidad =
         filterValues?.oportunidad_id == null ||
@@ -352,14 +285,29 @@ const PoSolicitudesFilterSync = ({
       return;
     }
 
-    setFilters(
-      { ...defaultFilters },
-      {
+    const desiredSolicitanteId = defaultFilters.solicitante_id;
+    const needsSolicitante =
+      desiredSolicitanteId != null &&
+      (filterValues?.solicitante_id == null ||
+        String(filterValues.solicitante_id) !==
+          String(desiredSolicitanteId));
+    const needsEstado =
+      defaultFilters.estado != null && filterValues?.estado == null;
+
+    if (!initialized || needsSolicitante || needsEstado) {
+      const nextFilters = { ...filterValues };
+      if (needsEstado) {
+        nextFilters.estado = defaultFilters.estado;
+      }
+      if (needsSolicitante) {
+        nextFilters.solicitante_id = desiredSolicitanteId;
+      }
+      setFilters(nextFilters, {
         estado: true,
         solicitante_id: true,
-      }
-    );
-    setInitialized(true);
+      });
+      setInitialized(true);
+    }
   }, [defaultFilters, filterValues, initialized, oportunidadIdFilter, setFilters]);
 
   return null;
@@ -681,4 +629,3 @@ const PoSolicitudActionsMenu = () => {
     </>
   );
 };
-

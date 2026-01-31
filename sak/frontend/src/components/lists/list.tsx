@@ -71,6 +71,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     actions,
     showBreadcrumb = true,
     containerClassName,
+    filterFormClassName,
   } = props;
   const translate = useTranslate();
   const resource = useResourceContext();
@@ -119,8 +120,13 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             </div>
           )}
         </div>
-        <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2">
-          <FilterForm className="list-filters pointer-events-auto flex w-full flex-wrap items-center gap-3" />
+        <div className="bg-muted/30 rounded-lg p-2 sm:p-2 mb-2 sm:mb-3">
+          <FilterForm
+            className={cn(
+              "list-filters pointer-events-auto flex w-full flex-wrap items-start gap-3",
+              filterFormClassName,
+            )}
+          />
         </div>
         <div className={cn(props.className)}>{children}</div>
         {pagination}
@@ -141,6 +147,7 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   className?: string;
   showBreadcrumb?: boolean;
   containerClassName?: string;
+  filterFormClassName?: string;
 }
 
 export type FiltersType =

@@ -335,9 +335,14 @@ export const FilterButton = (props: FilterButtonProps) => {
             (
               filterElement: React.ReactElement<FilterElementProps>,
               index: number,
-            ) => (
+            ) => {
+              const menuKey =
+                filterElement.key ??
+                filterElement.props.source ??
+                `filter-${index}`;
+              return (
               <FilterButtonMenuItem
-                key={filterElement.props.source}
+                key={menuKey as string}
                 filter={filterElement}
                 displayed={!!displayedFilters[filterElement.props.source]}
                 resource={resource}
@@ -345,7 +350,8 @@ export const FilterButton = (props: FilterButtonProps) => {
                 onHide={handleRemove}
                 autoFocus={index === 0}
               />
-            ),
+              );
+            },
           )}
           {(hasFilterValues || validSavedQueries.length > 0) && (
             <DropdownMenuSeparator />

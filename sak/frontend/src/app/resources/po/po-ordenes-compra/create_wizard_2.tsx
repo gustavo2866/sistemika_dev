@@ -17,20 +17,8 @@ import {
   type PoOrdenCompraWizardPayload,
 } from "./model";
 import type { PoSolicitudDetalle } from "../po-solicitudes/model";
-
-const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  minimumFractionDigits: 2,
-});
-
-const roundCurrency = (value: number) =>
-  Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
-
-const normalizeNumber = (value: unknown) => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
+import { CURRENCY_FORMATTER, roundCurrency } from "@/lib/formatters";
+import { normalizeId, normalizeNumber } from "../shared/po-utils";
 
 type WizardValues = {
   titulo: string;
@@ -43,12 +31,6 @@ type WizardValues = {
 };
 
 export type CreateWizard2Payload = PoOrdenCompraWizardPayload;
-
-const normalizeId = (value: string) => {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const CreateWizard2Component = ({
   open,
@@ -332,13 +314,13 @@ const CreateWizard2Component = ({
       onApply({
         titulo: values.titulo,
         fecha: resolvedFecha,
-        proveedor_id: normalizeId(values.proveedorId),
-        tipo_solicitud_id: normalizeId(values.tipoSolicitudId),
-        usuario_responsable_id: normalizeId(values.responsableId),
-        oportunidad_id: normalizeId(values.oportunidadId),
-        departamento_id: resolvedDepartamentoId,
-        centro_costo_id: resolvedCentroCostoId,
-        metodo_pago_id: metodoPagoId,
+        proveedor_id: normalizeId(values.proveedorId) ?? undefined,
+        tipo_solicitud_id: normalizeId(values.tipoSolicitudId) ?? undefined,
+        usuario_responsable_id: normalizeId(values.responsableId) ?? undefined,
+        // oportunidad_id: normalizeId(values.oportunidadId) ?? undefined,
+        departamento_id: resolvedDepartamentoId ?? undefined,
+        centro_costo_id: resolvedCentroCostoId ?? undefined,
+        metodo_pago_id: metodoPagoId ?? undefined,
         tipo_compra: "normal",
         detalles: detallesPayload,
       });
@@ -349,11 +331,11 @@ const CreateWizard2Component = ({
   };
 
   const handleNext = async () => {
-    const fieldsToValidate = ["responsableId", "solicitudId"];
+    const fieldsToValidate: ("responsableId" | "solicitudId" | "proveedorId")[] = ["responsableId", "solicitudId"];
     if (needsProveedor) {
       fieldsToValidate.push("proveedorId");
     }
-    const isValid = await trigger(fieldsToValidate);
+    const isValid = await trigger(fieldsToValidate as any);
     if (isValid) {
       setStep(2);
     }

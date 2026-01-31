@@ -42,7 +42,6 @@ import {
 } from "@/components/generic";
 import {
   type PoSolicitudDetalle,
-  type DetalleFormValues,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
   TEXT_LIMITS,
@@ -50,6 +49,7 @@ import {
   calculateImporte,
   formatImporteDisplay,
 } from "./model";
+import type { DetalleFormValues } from "./form-types";
 
 // ============================================
 // TYPES

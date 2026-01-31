@@ -1,61 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useGetIdentity } from "ra-core";
+import { useGetIdentity, useGetOne } from "ra-core";
 import { useNavigate } from "react-router-dom";
-import { Sparkles } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { CompactComboboxQuery, CompactFormField, CompactFormGrid, ResponsableSelector } from "@/components/forms";
 import { Input } from "@/components/ui/input";
-import {
-  CompactComboboxQuery,
-  CompactFormField,
-  CompactFormGrid,
-  ResponsableSelector,
-} from "@/components/forms";
-import { CompactOportunidadSelector } from "../crm-oportunidades";
-import {
-  ARTICULOS_REFERENCE,
-  CURRENCY_FORMATTER,
-  PROVEEDORES_REFERENCE,
-  TIPOS_SOLICITUD_REFERENCE,
-  normalizeId,
-  normalizeNumber,
-  normalizeOptionalNumber,
-  resolveCentroCostoId,
-  resolveTipoCompra,
-  roundCurrency,
-} from "./model";
-import type { WizardPayload } from "./model";
-import {
-  useArticuloById,
-  useDefaultArticuloFromProveedor,
-  useDefaultDepartamentoFromSolicitante,
-  useDefaultPrecioFromArticulo,
-  useDefaultSolicitanteFromIdentity,
-  useDepartamentoById,
-  useProveedorById,
-  useUserById,
-} from "./hooks";
+import { Button } from "@/components/ui/button";
+import { Sparkles } from "lucide-react";
+import { ARTICULOS_REFERENCE, PROVEEDORES_REFERENCE, type PoOrdenCompraDetalle, type PoOrdenCompraWizardPayload } from "./model";
+import { CompactOportunidadSelector } from "../../crm-oportunidades";
+import { CURRENCY_FORMATTER, roundCurrency } from "@/lib/formatters";
+import { normalizeId, normalizeNumber } from "../shared/po-utils";
 
 type WizardValues = {
   titulo: string;
-  fechaNecesidad: string;
+  fecha: string;
   proveedorId: string;
-  solicitanteId: string;
+  responsableId: string;
   oportunidadId: string;
-  tipoSolicitudId: string;
-  departamentoId: string;
-  tipoCompra: string;
   articuloId: string;
   cantidad: number;
   precio: number;
   descripcion: string;
 };
 
-export type CreateWizardPayload = WizardPayload;
+export type CreateWizard3Payload = PoOrdenCompraWizardPayload;
 
 const CreateWizard3Component = ({
   open,
@@ -64,22 +36,20 @@ const CreateWizard3Component = ({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApply: (payload: CreateWizardPayload) => void;
+  onApply: (payload: CreateWizard3Payload) => void;
 }) => {
   const [step, setStep] = useState<1 | 2>(1);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const { data: identity } = useGetIdentity();
   const navigate = useNavigate();
+
   const defaultValues = useMemo(
     () => ({
       titulo: "",
-      fechaNecesidad: "",
+      fecha: "",
       proveedorId: "",
-      solicitanteId: "",
+      responsableId: "",
       oportunidadId: "",
-      tipoSolicitudId: "",
-      departamentoId: "",
-      tipoCompra: "normal",
       articuloId: "",
       cantidad: 1,
       precio: 0,
@@ -92,114 +62,147 @@ const CreateWizard3Component = ({
     useForm<WizardValues>({
       defaultValues,
     });
-
-  const solicitanteIdValue = watch("solicitanteId");
+  const responsableIdValue = watch("responsableId");
   const proveedorIdValue = watch("proveedorId");
   const oportunidadIdValue = watch("oportunidadId");
-  const tipoSolicitudIdValue = watch("tipoSolicitudId");
-  const departamentoIdValue = watch("departamentoId");
   const articuloIdValue = watch("articuloId");
   const cantidadValue = watch("cantidad");
   const precioValue = watch("precio");
-  const fechaNecesidadValue = watch("fechaNecesidad");
-
-  const proveedorId = normalizeId(proveedorIdValue ?? "");
-  const { data: proveedorData } = useProveedorById(proveedorId);
-
-  const solicitanteId = normalizeId(solicitanteIdValue ?? "");
-  const { data: solicitanteData } = useUserById(solicitanteId);
-  const solicitanteDepartamentoIdValue =
-    (solicitanteData as { departamento_id?: number | null } | undefined)?.departamento_id ??
-    null;
-  const { data: departamentoData } = useDepartamentoById(
-    solicitanteDepartamentoIdValue
+  const responsableId = normalizeId(responsableIdValue ?? "");
+  const { data: responsableData } = useGetOne(
+    "users",
+    { id: responsableId ?? 0 },
+    { enabled: responsableId != null }
   );
-
+  const proveedorId = normalizeId(proveedorIdValue ?? "");
+  const { data: proveedorData } = useGetOne(
+    "proveedores",
+    { id: proveedorId ?? 0 },
+    { enabled: proveedorId != null }
+  );
+  const responsableDepartamentoIdValue =
+    (responsableData as { departamento_id?: number | null } | undefined)?.departamento_id ??
+    null;
+  const { data: departamentoData } = useGetOne(
+    "departamentos",
+    { id: responsableDepartamentoIdValue ?? 0 },
+    { enabled: responsableDepartamentoIdValue != null }
+  );
   const articuloId = normalizeId(articuloIdValue ?? "");
-  const { data: articuloData } = useArticuloById(articuloId);
-
-  const unidadMedida =
-    (articuloData as { unidad_medida?: string } | undefined)?.unidad_medida ?? "UN";
-
+  const { data: articuloData } = useGetOne(
+    "articulos",
+    { id: articuloId ?? 0 },
+    { enabled: articuloId != null }
+  );
   const identityId =
     identity && typeof identity.id !== "undefined" ? Number(identity.id) : null;
 
-  useDefaultSolicitanteFromIdentity({
-    identityId,
-    solicitanteIdValue,
-    setValue,
-  });
+  useEffect(() => {
+    const defaultArticuloId = Number((proveedorData as any)?.default_articulos_id ?? 0);
+    if (!Number.isFinite(defaultArticuloId) || defaultArticuloId <= 0) {
+      return;
+    }
+    if (articuloIdValue) {
+      return;
+    }
+    setValue("articuloId", String(defaultArticuloId), { shouldDirty: true });
+  }, [articuloIdValue, proveedorData, setValue]);
 
-  useDefaultDepartamentoFromSolicitante({
-    departamentoIdValue,
-    solicitanteDepartamentoIdValue,
-    setValue,
-  });
+  useEffect(() => {
+    const precioActual = normalizeNumber(precioValue);
+    if (precioActual > 0) {
+      return;
+    }
+    const precioArticulo = Number((articuloData as { precio?: number | string | null } | undefined)?.precio);
+    if (!Number.isFinite(precioArticulo) || precioArticulo <= 0) {
+      return;
+    }
+    setValue("precio", precioArticulo, { shouldDirty: true });
+  }, [articuloData, precioValue, setValue]);
 
-  useDefaultArticuloFromProveedor({
-    proveedorData,
-    articuloIdValue,
-    setValue,
-  });
-
-  useDefaultPrecioFromArticulo({
-    articuloData,
-    precioValue,
-    setValue,
-  });
+  useEffect(() => {
+    if (!identityId) return;
+    if (responsableIdValue) return;
+    setValue("responsableId", String(identityId), { shouldDirty: false });
+  }, [identityId, responsableIdValue, setValue]);
 
   const handleApply = async () => {
     const isValid = await trigger();
-    if (!isValid) return;
-    const values = getValues();
-    const cantidad = normalizeNumber(values.cantidad);
-    const precio = normalizeNumber(values.precio);
-    const resolvedFecha =
-      values.fechaNecesidad && String(values.fechaNecesidad).trim().length > 0
-        ? values.fechaNecesidad
-        : null;
-    const resolvedDepartamentoId =
-      normalizeId(values.departamentoId) ??
-      (solicitanteDepartamentoIdValue != null
-        ? Number(solicitanteDepartamentoIdValue)
-        : null);
-    const departamentoNombre = (departamentoData as { nombre?: string } | undefined)
-      ?.nombre;
-    const resolvedCentroCostoId = resolveCentroCostoId({
-      oportunidadId: values.oportunidadId ?? null,
-      departamentoNombre: departamentoNombre ?? null,
-      departamentoCentroCostoId: (departamentoData as { centro_costo_id?: number | null } | undefined)
-        ?.centro_costo_id ?? null,
-      solicitanteCentroCostoId: (solicitanteData as { centro_costo_id?: number | null } | undefined)
-        ?.centro_costo_id ?? null,
-    });
-    const resolvedTipoCompra = resolveTipoCompra(proveedorId);
-    onApply({
-      proveedorId: normalizeId(values.proveedorId),
-      tipoSolicitudId: normalizeId(values.tipoSolicitudId),
-      departamentoId: resolvedDepartamentoId,
-      centroCostoId: resolvedCentroCostoId,
-      tipoCompra: resolvedTipoCompra,
-      articuloId: normalizeId(values.articuloId),
-      titulo: values.titulo,
-      descripcion: values.descripcion ?? "",
-      fechaNecesidad: resolvedFecha,
-      oportunidadId: normalizeId(values.oportunidadId),
-      cantidad: values.articuloId ? normalizeOptionalNumber(cantidad) : null,
-      precio: values.articuloId ? normalizeOptionalNumber(precio) : null,
-      unidadMedida,
-    });
-    reset();
-    setStep(1);
-    onOpenChange(false);
+    if (isValid) {
+        const values = getValues();
+        const cantidad = normalizeNumber(values.cantidad);
+        const precio = normalizeNumber(values.precio);
+      const subtotal = roundCurrency(cantidad * precio);
+      const resolvedDepartamentoId =
+        responsableDepartamentoIdValue != null &&
+        Number.isFinite(Number(responsableDepartamentoIdValue))
+          ? Number(responsableDepartamentoIdValue)
+          : null;
+      const defaultCentroCostoId = Number(
+        (departamentoData as { centro_costo_id?: number | null } | undefined)
+          ?.centro_costo_id ?? 0
+      );
+      const resolvedCentroCostoId =
+        values.oportunidadId
+          ? null
+          : Number.isFinite(defaultCentroCostoId) && defaultCentroCostoId > 0
+            ? defaultCentroCostoId
+            : null;
+      const proveedorDefaults = proveedorData as {
+        default_tipo_solicitud_id?: number | null;
+        default_metodo_pago_id?: number | null;
+      };
+      const tipoSolicitudId =
+        proveedorDefaults?.default_tipo_solicitud_id != null
+          ? Number(proveedorDefaults.default_tipo_solicitud_id)
+          : null;
+        const metodoPagoId =
+          proveedorDefaults?.default_metodo_pago_id != null
+            ? Number(proveedorDefaults.default_metodo_pago_id)
+            : null;
+      const detallesPayload = values.articuloId
+        ? [
+            {
+              articulo_id: normalizeId(values.articuloId),
+              po_solicitud_id: null,
+              descripcion: values.descripcion ?? "",
+              unidad_medida: "UN",
+              cantidad,
+              precio_unitario: precio,
+              subtotal,
+              porcentaje_descuento: 0,
+              importe_descuento: 0,
+              porcentaje_iva: 0,
+              importe_iva: 0,
+              total_linea: subtotal,
+            } as PoOrdenCompraDetalle,
+          ]
+        : undefined;
+      const resolvedFecha =
+        values.fecha && String(values.fecha).trim().length > 0
+          ? values.fecha
+          : new Date().toISOString().slice(0, 10);
+      onApply({
+        titulo: values.titulo,
+        fecha: resolvedFecha,
+        proveedor_id: normalizeId(values.proveedorId) ?? undefined,
+        usuario_responsable_id: normalizeId(values.responsableId) ?? undefined,
+        // oportunidad_id: normalizeId(values.oportunidadId) ?? undefined,
+        departamento_id: resolvedDepartamentoId ?? undefined,
+        centro_costo_id: resolvedCentroCostoId ?? undefined,
+        tipo_solicitud_id: tipoSolicitudId ?? undefined,
+        metodo_pago_id: metodoPagoId ?? undefined,
+        tipo_compra: "normal",
+        detalles: detallesPayload,
+      });
+      reset();
+      setStep(1);
+      onOpenChange(false);
+    }
   };
 
   const handleNext = async () => {
-    const isValid = await trigger([
-      "titulo",
-      "tipoSolicitudId",
-      "solicitanteId",
-    ]);
+    const isValid = await trigger(["titulo", "proveedorId"]);
     if (isValid) {
       setStep(2);
     }
@@ -222,7 +225,7 @@ const CreateWizard3Component = ({
     reset();
     setStep(1);
     onOpenChange(false);
-    navigate("/po-solicitudes");
+    navigate("/po-ordenes-compra");
   };
 
   const handleConfirmCancel = () => {
@@ -230,7 +233,7 @@ const CreateWizard3Component = ({
     reset();
     setStep(1);
     onOpenChange(false);
-    navigate("/po-solicitudes");
+    navigate("/po-ordenes-compra");
   };
 
   return (
@@ -239,10 +242,10 @@ const CreateWizard3Component = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4 text-muted-foreground" />
-            <span>Crear Solicitud</span>
+            <span>Crear Orden de Compra</span>
           </DialogTitle>
         </DialogHeader>
-
+        
         <div className="space-y-2">
           {step === 1 && (
             <div className="space-y-2">
@@ -250,22 +253,15 @@ const CreateWizard3Component = ({
                 Cabecera
               </div>
               <div className="h-px w-full bg-muted/70" />
-
               <CompactFormGrid columns="one">
-                <CompactFormField label="Solicitante" required className="w-full">
+                <CompactFormField label="Responsable" required className="w-full">
                   <ResponsableSelector
                     includeTodos={false}
-                    value={solicitanteIdValue ?? ""}
+                    value={responsableIdValue ?? ""}
                     onValueChange={(value) =>
-                      setValue("solicitanteId", value ?? "", { shouldDirty: true })
+                      setValue("responsableId", value ?? "", { shouldDirty: true })
                     }
                     triggerClassName="w-full justify-between"
-                  />
-                  <input
-                    type="hidden"
-                    {...register("solicitanteId", {
-                      required: "El solicitante es obligatorio",
-                    })}
                   />
                 </CompactFormField>
               </CompactFormGrid>
@@ -281,26 +277,20 @@ const CreateWizard3Component = ({
               </CompactFormGrid>
 
               <CompactFormGrid columns="one">
-                <CompactFormField
-                  label="Tipo de solicitud"
-                  required
-                  error={formState.errors.tipoSolicitudId}
-                >
+                <CompactFormField label="Proveedor" required error={formState.errors.proveedorId}>
                   <CompactComboboxQuery
-                    {...TIPOS_SOLICITUD_REFERENCE}
-                    value={tipoSolicitudIdValue ?? ""}
+                    {...PROVEEDORES_REFERENCE}
+                    value={proveedorIdValue ?? ""}
                     onChange={(value) =>
-                      setValue("tipoSolicitudId", value, { shouldDirty: true })
+                      setValue("proveedorId", value, { shouldDirty: true })
                     }
-                    placeholder="Selecciona tipo"
+                    placeholder="Selecciona proveedor"
                     clearable
                     className="h-8 w-full"
                   />
                   <input
                     type="hidden"
-                    {...register("tipoSolicitudId", {
-                      required: "El tipo de solicitud es obligatorio",
-                    })}
+                    {...register("proveedorId", { required: "El proveedor es obligatorio" })}
                   />
                 </CompactFormField>
               </CompactFormGrid>
@@ -328,26 +318,9 @@ const CreateWizard3Component = ({
                 Detalle
               </div>
               <div className="h-px w-full bg-muted/70" />
-
-              <CompactFormGrid columns="one">
-                <CompactFormField label="Proveedor">
-                  <CompactComboboxQuery
-                    {...PROVEEDORES_REFERENCE}
-                    value={proveedorIdValue ?? ""}
-                    onChange={(value) =>
-                      setValue("proveedorId", value, { shouldDirty: true })
-                    }
-                    placeholder="Selecciona proveedor"
-                    clearable
-                    className="h-8 w-full"
-                  />
-                  <input type="hidden" {...register("proveedorId")} />
-                </CompactFormField>
-              </CompactFormGrid>
-
-              <div className="rounded-md border border-border/60 bg-muted/30 p-2">
-                <CompactFormGrid columns="one">
-                  <CompactFormField label="Articulo" required>
+                <div className="rounded-md border border-border/60 bg-muted/30 p-2">
+                  <CompactFormGrid columns="one">
+                    <CompactFormField label="Articulo" required>
                     <CompactComboboxQuery
                       {...ARTICULOS_REFERENCE}
                       value={articuloIdValue ?? ""}
@@ -357,18 +330,17 @@ const CreateWizard3Component = ({
                       placeholder="Selecciona articulo"
                       clearable
                       className="h-8 w-full"
+                      dependsOn={proveedorId ? String(proveedorId) : "all"}
                     />
                     <input
                       type="hidden"
-                      {...register("articuloId", {
-                        required: "El articulo es obligatorio",
-                      })}
+                      {...register("articuloId", { required: "El articulo es obligatorio" })}
                     />
                   </CompactFormField>
                 </CompactFormGrid>
 
-                <CompactFormGrid columns="one">
-                  <div className="grid grid-cols-3 gap-2">
+                  <CompactFormGrid columns="one">
+                    <div className="grid grid-cols-3 gap-2">
                     <CompactFormField label="Cantidad" required>
                       <Input
                         type="number"
@@ -392,8 +364,7 @@ const CreateWizard3Component = ({
                         type="text"
                         value={CURRENCY_FORMATTER.format(
                           roundCurrency(
-                            normalizeNumber(cantidadValue) *
-                              normalizeNumber(precioValue)
+                            normalizeNumber(cantidadValue) * normalizeNumber(precioValue)
                           )
                         )}
                         readOnly
@@ -401,65 +372,71 @@ const CreateWizard3Component = ({
                       />
                     </CompactFormField>
                   </div>
-                </CompactFormGrid>
+                  </CompactFormGrid>
 
-                <CompactFormField label="Descripcion">
-                  <Input
-                    id="descripcion"
-                    {...register("descripcion")}
-                    className="h-7 w-full px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-                  />
-                </CompactFormField>
-              </div>
+                  <CompactFormField label="Descripcion">
+                    <Input
+                      id="descripcion"
+                      {...register("descripcion")}
+                      className="h-7 w-full px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+                    />
+                  </CompactFormField>
+                </div>
 
               <CompactFormGrid columns="one">
-                <CompactFormField label="Fecha necesidad">
+                <CompactFormField label="Fecha necesidad" error={formState.errors.fecha}>
                   <Input
                     id="fecha"
                     type="date"
-                    value={fechaNecesidadValue ?? ""}
-                    onChange={(event) =>
-                      setValue("fechaNecesidad", event.target.value, { shouldDirty: true })
-                    }
+                    {...register("fecha")}
                     className="h-7 w-full px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
                   />
-                  <input type="hidden" {...register("fechaNecesidad")} />
                 </CompactFormField>
               </CompactFormGrid>
             </>
           )}
 
+          {/* Navegación */}
           <div className="flex items-center justify-between border-t bg-muted/30 -mx-6 px-6 py-0 min-h-8">
-            <Button
-              type="button"
-              variant="outline"
+            <Button 
+              type="button" 
+              variant="outline" 
               onClick={handleBack}
               disabled={step === 1}
               className="flex items-center gap-1 h-6 px-2 text-xs leading-none"
             >
-              {"<-"} Anterior
+              ← Anterior
             </Button>
-
+            
             <div className="text-xs text-muted-foreground leading-none">
               Paso {step} de 2
             </div>
-
-            <Button
+            
+            <Button 
               type="button"
-              variant="outline"
+              variant="outline" 
               onClick={handleNext}
               disabled={step === 2}
               className="flex items-center gap-1 h-6 px-2 text-xs leading-none"
             >
-              Siguiente {"->"}
+              Siguiente →
             </Button>
           </div>
 
+          {/* Botones de acción */}
           <div className="flex justify-end gap-2 pt-0.5 border-t">
-            <Button type="button" variant="outline" onClick={handleCancel}>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handleCancel}
+            >
               Cancelar
             </Button>
-            <Button type="button" onClick={handleApply} disabled={step !== 2}>
+            <Button 
+              type="button"
+              onClick={handleApply}
+              disabled={step !== 2}
+            >
               Aplicar
             </Button>
           </div>
@@ -470,7 +447,7 @@ const CreateWizard3Component = ({
         onClose={() => setConfirmCancelOpen(false)}
         onConfirm={handleConfirmCancel}
         title="Salir del asistente"
-        content="Hay cambios sin guardar. Deseas salir?"
+        content="Hay cambios sin guardar. ¿Deseas salir?"
         confirm="Salir"
         cancel="Volver"
       />

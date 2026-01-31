@@ -161,6 +161,21 @@
   }
 }
 
+.list-filters [data-slot="form-item"] {
+  gap: 0.125rem;
+}
+
+.list-filters [data-slot="form-label"] {
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+@media (min-width: 640px) {
+  .list-filters [data-slot="form-label"] {
+    font-size: 0.75rem;
+  }
+}
+
 @media print {
   @page {
     size: A4;
@@ -222,5 +237,101 @@
   .print-root .print-footer-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 12px !important;
+  }
+}
+
+/* Estilos para filtros compactos - Selectores más agresivos */
+.compact-filter {
+  gap: 0 !important;
+}
+
+.compact-filter * {
+  gap: 0 !important;
+}
+
+.compact-filter [data-slot="form-item"],
+.compact-filter .space-y-2,
+.compact-filter .space-y-1,
+.compact-filter > div {
+  gap: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.compact-filter [data-slot="form-label"],
+.compact-filter label {
+  font-size: 8px !important;
+  line-height: 1 !important;
+  color: #2563eb !important; /* blue-600 */
+  font-weight: 500 !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-top: 0 !important;
+}
+
+@media (min-width: 640px) {
+  .compact-filter [data-slot="form-label"] {
+    font-size: 9px !important;
+  }
+}
+
+.compact-filter input,
+.compact-filter [data-slot="select-trigger"] {
+  height: 20px !important; /* h-5 */
+  font-size: 9px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+
+.compact-filter [data-slot="select-trigger"] * {
+  font-size: 9px !important;
+}
+
+.compact-filter [data-slot="select-trigger"] svg,
+.compact-filter [data-slot="select-trigger"] .lucide {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.compact-filter [data-slot="select-trigger"] button,
+.compact-filter [data-slot="select-trigger"] [role="button"] {
+  font-size: 7px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+@media (min-width: 640px) {
+  .compact-filter input,
+  .compact-filter [data-slot="select-trigger"] {
+    height: 24px !important; /* h-6 */
+    font-size: 10px !important;
+  }
+  
+  .compact-filter [data-slot="select-trigger"] * {
+    font-size: 10px !important;
+  }
+  
+  .compact-filter [data-slot="select-trigger"] svg,
+  .compact-filter [data-slot="select-trigger"] .lucide {
+    width: 12px !important;
+    height: 12px !important;
+  }
+  
+  .compact-filter [data-slot="select-trigger"] button,
+  .compact-filter [data-slot="select-trigger"] [role="button"] {
+    font-size: 8px !important;
+  }
+}
+
+.compact-filter [data-slot="select-content"] {
+  font-size: 10px !important;
+}
+
+@media (min-width: 640px) {
+  .compact-filter [data-slot="select-content"] {
+    font-size: 12px !important;
   }
 }

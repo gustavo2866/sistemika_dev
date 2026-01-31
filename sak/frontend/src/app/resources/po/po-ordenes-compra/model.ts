@@ -6,6 +6,7 @@ import {
   selectField,
   stringField,
 } from "@/lib/form-detail-schema";
+import { getArticuloFilterByTipo } from "../shared/po-utils";
 
 export const ESTADO_CHOICES = [
   { id: "borrador", name: "Borrador" },
@@ -392,12 +393,4 @@ export const PoOrdenCompraModel = {
   poOrdenCompraCabeceraSchema,
 } as const;
 
-export const getArticuloFilterByTipo = (
-  tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; tipo_articulo_filter_id?: number | null }> | undefined,
-  _tiposArticulo?: Array<{ id: number; nombre: string }> | undefined
-): number | undefined => {
-  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
-  const tipo = tiposSolicitud.find((item) => item.id === Number(tipoSolicitudId));
-  return tipo?.tipo_articulo_filter_id ?? undefined;
-};
+export { getArticuloFilterByTipo };

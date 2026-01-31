@@ -6,7 +6,7 @@ import { required, useDataProvider, useGetIdentity, useGetOne } from "ra-core";
 import { useFormContext, useWatch, type UseFormReturn } from "react-hook-form";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
-import { CompactOportunidadSelector } from "../crm-oportunidades";
+import { CompactOportunidadSelector } from "../../crm-oportunidades";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,15 +57,11 @@ import {
   poOrdenCompraDetalleSchema,
 } from "./model";
 import type { PoOrdenCompraWizardPayload } from "./model";
-import type { TipoSolicitud } from "../tipos-solicitud/model";
+import type { TipoSolicitud } from "../../tipos-solicitud/model";
 import { create_wizard_2 as CreateWizardSolicitud } from "./create_wizard_2";
 import { create_wizard_3 as CreateWizardAsistida } from "./create_wizard_3";
-
-const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  minimumFractionDigits: 2,
-});
+import { CURRENCY_FORMATTER, roundCurrency } from "@/lib/formatters";
+import { normalizeNumber } from "../shared/po-utils";
 
 const ESTADO_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",
@@ -77,15 +73,7 @@ const ESTADO_BADGES: Record<string, string> = {
   anulada: "bg-slate-200 text-slate-600",
 };
 
-const roundCurrency = (value: number) =>
-  Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
-
 const emptyToNull = (value: unknown) => (value === "" ? null : value);
-
-const normalizeNumber = (value: unknown) => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
 
 const computeLineAmounts = (values: {
   cantidad?: number | null;
@@ -697,28 +685,28 @@ const ImputacionContent = () => {
   const form = useFormContext<PoOrdenCompra>();
   const { control } = form;
   const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
-  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
+  // const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
   const prevCentroRef = useRef<unknown>(centroCostoValue);
-  const prevOportunidadRef = useRef<unknown>(oportunidadValue);
+  // const prevOportunidadRef = useRef<unknown>(oportunidadValue);
 
   useEffect(() => {
     const isEmpty = (value: unknown) =>
       value === null || value === undefined || value === "";
 
     const centroChanged = prevCentroRef.current !== centroCostoValue;
-    const oportunidadChanged = prevOportunidadRef.current !== oportunidadValue;
+    // const oportunidadChanged = prevOportunidadRef.current !== oportunidadValue;
 
-    if (centroChanged && !isEmpty(centroCostoValue) && !isEmpty(oportunidadValue)) {
-      form.setValue("oportunidad_id", null, { shouldDirty: true });
-    }
+    // if (centroChanged && !isEmpty(centroCostoValue) && !isEmpty(oportunidadValue)) {
+    //   form.setValue("oportunidad_id", null, { shouldDirty: true });
+    // }
 
-    if (oportunidadChanged && !isEmpty(oportunidadValue) && !isEmpty(centroCostoValue)) {
-      form.setValue("centro_costo_id", null, { shouldDirty: true });
-    }
+    // if (oportunidadChanged && !isEmpty(oportunidadValue) && !isEmpty(centroCostoValue)) {
+    //   form.setValue("centro_costo_id", null, { shouldDirty: true });
+    // }
 
     prevCentroRef.current = centroCostoValue;
-    prevOportunidadRef.current = oportunidadValue;
-  }, [centroCostoValue, form, oportunidadValue]);
+    // prevOportunidadRef.current = oportunidadValue;
+  }, [centroCostoValue, form]); // Removed oportunidadValue dependency
 
   return (
     <CompactFormGrid columns="two">
@@ -1125,11 +1113,11 @@ const PoOrdenCompraHeaderSummary = () => {
 const PoOrdenCompraImputacionSummary = () => {
   const { control } = useFormContext<PoOrdenCompra>();
   const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
-  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
+  // const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
   const centroCostoId = Number(centroCostoValue);
-  const oportunidadId = Number(oportunidadValue);
+  // const oportunidadId = Number(oportunidadValue);
   const centroCostoIdValid = Number.isFinite(centroCostoId) && centroCostoId > 0;
-  const oportunidadIdValid = Number.isFinite(oportunidadId) && oportunidadId > 0;
+  // const oportunidadIdValid = Number.isFinite(oportunidadId) && oportunidadId > 0;
 
   const { data: centroCosto } = useGetOne(
     CENTROS_COSTO_REFERENCE.resource,

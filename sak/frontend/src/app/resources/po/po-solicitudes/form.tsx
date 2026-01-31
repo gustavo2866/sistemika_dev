@@ -17,7 +17,7 @@ import { useLocation } from "react-router-dom";
 import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
-import { CompactOportunidadSelector } from "../crm-oportunidades";
+import { CompactOportunidadSelector } from "../../crm-oportunidades";
 import {
   CompactComboboxQuery,
   CompactFormField,

@@ -1,10 +1,21 @@
+/**
+ * Hooks y utilidades para PoSolicitudes.
+ *
+ * Estructura:
+ * 1. TIPOS - Tipos auxiliares y contratos internos
+ * 2. CATALOGOS - Carga de catalogos y referencias
+ * 3. DEFAULTS Y SINCRONIZACION - Defaults y sync de estado del formulario
+ * 4. LOOKUPS - Consultas por id para referencias
+ * 5. WIZARD - Helpers para aplicar payloads y defaults del wizard
+ */
+
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDataProvider, useGetOne } from "ra-core";
 import type { UseFormReturn, UseFormSetValue } from "react-hook-form";
-import type { TipoSolicitud } from "../tipos-solicitud/model";
+import type { TipoSolicitud } from "../../tipos-solicitud/model";
 import {
   TIPOS_SOLICITUD_REFERENCE,
   calculateImporte,
@@ -15,17 +26,40 @@ import {
   type WizardPayload,
 } from "./model";
 
+//******************************* */
+// region 1. TIPOS
+
+// Define SetValueFn para uso en hooks de default del wizard.
 type SetValueFn = (
-  name: "titulo" | "descripcion" | "cantidad" | "precio" | "proveedorId" | "fechaNecesidad" | "solicitanteId" | "oportunidadId" | "tipoSolicitudId" | "departamentoId" | "tipoCompra" | "articuloId",
+  name:
+    | "titulo"
+    | "descripcion"
+    | "cantidad"
+    | "precio"
+    | "proveedorId"
+    | "fechaNecesidad"
+    | "solicitanteId"
+    | "oportunidadId"
+    | "tipoSolicitudId"
+    | "departamentoId"
+    | "tipoCompra"
+    | "articuloId",
   value: string | number,
   options?: { shouldDirty?: boolean }
 ) => void;
 
+// Define TipoSolicitudCatalog para carga de catalogos.
 export type TipoSolicitudCatalog = Pick<
   TipoSolicitud,
   "id" | "tipo_articulo_filter_id" | "departamento_default_id"
 >;
+// endregion
 
+//******************************* */
+// region 2. CATALOGOS
+// Carga el catalogo de tipos de solicitud para defaults y filtros.
+
+// Usa react-query para cache y performance.
 export const useTipoSolicitudCatalog = () => {
   const dataProvider = useDataProvider();
   const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
@@ -52,7 +86,11 @@ export const useTipoSolicitudCatalog = () => {
     tiposSolicitudCatalog: tiposSolicitudData ?? [],
   };
 };
+// endregion
 
+//******************************* */
+// region 3. DEFAULTS Y SINCRONIZACION
+// Indica si el tipo de solicitud debe bloquearse segun detalles.
 export const useTipoSolicitudBloqueado = (detallesValue: unknown) => {
   return useMemo(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
@@ -60,6 +98,7 @@ export const useTipoSolicitudBloqueado = (detallesValue: unknown) => {
   }, [detallesValue]);
 };
 
+// Aplica el departamento default cuando cambia el tipo de solicitud.
 export const useDepartamentoDefaultByTipo = ({
   form,
   idValue,
@@ -111,6 +150,7 @@ export const useDepartamentoDefaultByTipo = ({
   }, [form, idValue, tipoSolicitudValue, tiposSolicitudCatalog]);
 };
 
+// Aplica defaults del proveedor al formulario si no hay valores editados.
 export const useProveedorDefaults = ({
   form,
   proveedorId,
@@ -166,6 +206,7 @@ export const useProveedorDefaults = ({
   return proveedorDefaults;
 };
 
+// Sincroniza el total del formulario a partir de los detalles.
 export const useSyncTotalFromDetalles = ({
   form,
   detallesValue,
@@ -188,7 +229,11 @@ export const useSyncTotalFromDetalles = ({
     }
   }, [detallesValue, form]);
 };
+// endregion
 
+//******************************* */
+// region 4. LOOKUPS
+// Obtiene proveedor por id.
 export const useProveedorById = (proveedorId: number | null) =>
   useGetOne(
     "proveedores",
@@ -196,9 +241,11 @@ export const useProveedorById = (proveedorId: number | null) =>
     { enabled: proveedorId != null }
   );
 
+// Obtiene usuario por id.
 export const useUserById = (userId: number | null) =>
   useGetOne("users", { id: userId ?? 0 }, { enabled: userId != null });
 
+// Obtiene departamento por id.
 export const useDepartamentoById = (departamentoId: number | null) =>
   useGetOne(
     "departamentos",
@@ -206,13 +253,17 @@ export const useDepartamentoById = (departamentoId: number | null) =>
     { enabled: departamentoId != null }
   );
 
+// Obtiene articulo por id.
 export const useArticuloById = (articuloId: number | null) =>
   useGetOne(
     "articulos",
     { id: articuloId ?? 0 },
     { enabled: articuloId != null }
   );
+// endregion
 
+//******************************* */
+// region 5. WIZARD
 type ApplyWizardPayloadArgs = {
   isCreate: boolean;
   setValue: UseFormSetValue<PoSolicitud>;
@@ -220,6 +271,7 @@ type ApplyWizardPayloadArgs = {
   payload: WizardPayload;
 };
 
+// Construye un detalle desde el payload del wizard.
 const buildDetalleFromWizard = (
   payload: WizardPayload
 ): PoSolicitudDetalle | null => {
@@ -238,6 +290,7 @@ const buildDetalleFromWizard = (
   };
 };
 
+// Aplica el payload del wizard al formulario principal.
 export const applyWizardPayload = ({
   isCreate,
   setValue,
@@ -280,6 +333,7 @@ export const applyWizardPayload = ({
   }
 };
 
+// Define solicitante por default desde la identidad del usuario.
 export const useDefaultSolicitanteFromIdentity = ({
   identityId,
   solicitanteIdValue,
@@ -296,6 +350,7 @@ export const useDefaultSolicitanteFromIdentity = ({
   }, [identityId, solicitanteIdValue, setValue]);
 };
 
+// Define departamento por default a partir del solicitante.
 export const useDefaultDepartamentoFromSolicitante = ({
   departamentoIdValue,
   solicitanteDepartamentoIdValue,
@@ -314,6 +369,7 @@ export const useDefaultDepartamentoFromSolicitante = ({
   }, [departamentoIdValue, setValue, solicitanteDepartamentoIdValue]);
 };
 
+// Define articulo por default a partir del proveedor.
 export const useDefaultArticuloFromProveedor = ({
   proveedorData,
   articuloIdValue,
@@ -338,6 +394,7 @@ export const useDefaultArticuloFromProveedor = ({
   }, [articuloIdValue, proveedorData, setValue]);
 };
 
+// Define precio por default desde el articulo si no hay valor.
 export const useDefaultPrecioFromArticulo = ({
   articuloData,
   precioValue,
@@ -361,3 +418,4 @@ export const useDefaultPrecioFromArticulo = ({
     setValue("precio", precioArticulo, { shouldDirty: true });
   }, [articuloData, precioValue, setValue]);
 };
+// endregion

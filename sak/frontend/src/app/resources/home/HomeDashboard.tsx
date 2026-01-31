@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/spinner";
 import type { CRMEvento } from "@/app/resources/crm-eventos/model";
-import type { PoSolicitud } from "@/app/resources/po-solicitudes/model";
+import type { PoSolicitud } from "@/app/resources/po/po-solicitudes/model";
 import type { CRMOportunidad } from "@/app/resources/crm-oportunidades/model";
 
 type SectionState<T> = {

@@ -12,28 +12,31 @@ import {
 } from "@/components/forms";
 import { required } from "ra-core";
 
-export const CRMContactoForm = () => (
-  <SimpleForm
-    className="w-full max-w-4xl"
-    transform={(data) => {
-      const rawTelefonos = (data as { telefonos?: unknown }).telefonos;
-      let telefonoPrincipal: string | undefined;
+export const CRMContactoForm = () => {
+  const handleTransformData = (data: any) => {
+    const rawTelefonos = (data as { telefonos?: unknown }).telefonos;
+    let telefonoPrincipal: string | undefined;
 
-      if (Array.isArray(rawTelefonos)) {
-        telefonoPrincipal = rawTelefonos[0] as string | undefined;
-      } else if (rawTelefonos && typeof rawTelefonos === "object") {
-        const indexed = rawTelefonos as Record<string, unknown>;
-        telefonoPrincipal = indexed["0"] as string | undefined;
-      } else if (typeof rawTelefonos === "string") {
-        telefonoPrincipal = rawTelefonos;
-      }
+    if (Array.isArray(rawTelefonos)) {
+      telefonoPrincipal = rawTelefonos[0] as string | undefined;
+    } else if (rawTelefonos && typeof rawTelefonos === "object") {
+      const indexed = rawTelefonos as Record<string, unknown>;
+      telefonoPrincipal = indexed["0"] as string | undefined;
+    } else if (typeof rawTelefonos === "string") {
+      telefonoPrincipal = rawTelefonos;
+    }
 
-      return {
-        ...data,
-        telefonos: telefonoPrincipal ? [telefonoPrincipal] : [],
-      };
-    }}
-  >
+    return {
+      ...data,
+      telefonos: telefonoPrincipal ? [telefonoPrincipal] : [],
+    };
+  };
+
+  return (
+    <SimpleForm
+      className="w-full max-w-4xl"
+      onSubmit={handleTransformData}
+    >
     <FormLayout
       sections={[
         {
@@ -78,4 +81,5 @@ export const CRMContactoForm = () => (
       ]}
     />
   </SimpleForm>
-);
+  );
+};

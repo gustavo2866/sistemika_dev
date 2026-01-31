@@ -6,6 +6,7 @@ import {
   selectField,
   stringField,
 } from "@/lib/form-detail-schema";
+import { getArticuloFilterByTipo } from "../shared/po-utils";
 
 export const ESTADO_CHOICES = [
   { id: "pendiente", name: "Pendiente" },
@@ -390,7 +391,6 @@ export const poFacturaCabeceraSchema = createEntitySchema<
     | "usuario_responsable_id"
     | "metodo_pago_id"
     | "centro_costo_id"
-    | "oportunidad_id"
     | "tipo_solicitud_id"
     | "departamento_id"
     | "comprobante_id"
@@ -522,12 +522,5 @@ export const PoFacturaModel = {
   poFacturaCabeceraSchema,
 } as const;
 
-export const getArticuloFilterByTipo = (
-  tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; tipo_articulo_filter_id?: number | null }> | undefined,
-  _tiposArticulo?: Array<{ id: number; nombre: string }> | undefined
-): number | undefined => {
-  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
-  const tipo = tiposSolicitud.find((item) => item.id === Number(tipoSolicitudId));
-  return tipo?.tipo_articulo_filter_id ?? undefined;
-};
+export { getArticuloFilterByTipo };
+
