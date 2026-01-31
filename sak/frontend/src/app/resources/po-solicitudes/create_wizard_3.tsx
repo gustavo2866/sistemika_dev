@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useGetIdentity, useGetOne } from "ra-core";
+import { useGetIdentity } from "ra-core";
 import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { Confirm } from "@/components/confirm";
@@ -18,35 +18,27 @@ import {
 import { CompactOportunidadSelector } from "../crm-oportunidades";
 import {
   ARTICULOS_REFERENCE,
+  CURRENCY_FORMATTER,
   PROVEEDORES_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
+  normalizeId,
+  normalizeNumber,
+  normalizeOptionalNumber,
+  resolveCentroCostoId,
+  resolveTipoCompra,
+  roundCurrency,
 } from "./model";
 import type { WizardPayload } from "./model";
 import {
+  useArticuloById,
   useDefaultArticuloFromProveedor,
   useDefaultDepartamentoFromSolicitante,
   useDefaultPrecioFromArticulo,
   useDefaultSolicitanteFromIdentity,
+  useDepartamentoById,
+  useProveedorById,
+  useUserById,
 } from "./hooks";
-
-const CURRENCY_FORMATTER = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  minimumFractionDigits: 2,
-});
-
-const roundCurrency = (value: number) =>
-  Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
-
-const normalizeNumber = (value: unknown) => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
-
-const normalizeOptionalNumber = (value: unknown) => {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : null;
-};
 
 type WizardValues = {
   titulo: string;
@@ -64,12 +56,6 @@ type WizardValues = {
 };
 
 export type CreateWizardPayload = WizardPayload;
-
-const normalizeId = (value: string) => {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const CreateWizard3Component = ({
   open,
@@ -118,33 +104,19 @@ const CreateWizard3Component = ({
   const fechaNecesidadValue = watch("fechaNecesidad");
 
   const proveedorId = normalizeId(proveedorIdValue ?? "");
-  const { data: proveedorData } = useGetOne(
-    "proveedores",
-    { id: proveedorId ?? 0 },
-    { enabled: proveedorId != null }
-  );
+  const { data: proveedorData } = useProveedorById(proveedorId);
 
   const solicitanteId = normalizeId(solicitanteIdValue ?? "");
-  const { data: solicitanteData } = useGetOne(
-    "users",
-    { id: solicitanteId ?? 0 },
-    { enabled: solicitanteId != null }
-  );
+  const { data: solicitanteData } = useUserById(solicitanteId);
   const solicitanteDepartamentoIdValue =
     (solicitanteData as { departamento_id?: number | null } | undefined)?.departamento_id ??
     null;
-  const { data: departamentoData } = useGetOne(
-    "departamentos",
-    { id: solicitanteDepartamentoIdValue ?? 0 },
-    { enabled: solicitanteDepartamentoIdValue != null }
+  const { data: departamentoData } = useDepartamentoById(
+    solicitanteDepartamentoIdValue
   );
 
   const articuloId = normalizeId(articuloIdValue ?? "");
-  const { data: articuloData } = useGetOne(
-    "articulos",
-    { id: articuloId ?? 0 },
-    { enabled: articuloId != null }
-  );
+  const { data: articuloData } = useArticuloById(articuloId);
 
   const unidadMedida =
     (articuloData as { unidad_medida?: string } | undefined)?.unidad_medida ?? "UN";
@@ -193,27 +165,15 @@ const CreateWizard3Component = ({
         : null);
     const departamentoNombre = (departamentoData as { nombre?: string } | undefined)
       ?.nombre;
-    const isDirector =
-      typeof departamentoNombre === "string" &&
-      departamentoNombre.toLowerCase().includes("director");
-    const defaultCentroCostoId = Number(
-      (departamentoData as { centro_costo_id?: number | null } | undefined)
-        ?.centro_costo_id ?? 0
-    );
-    const solicitanteCentroCostoId = Number(
-      (solicitanteData as { centro_costo_id?: number | null } | undefined)
-        ?.centro_costo_id ?? 0
-    );
-    const resolvedCentroCostoId = values.oportunidadId
-      ? null
-      : isDirector
-        ? Number.isFinite(solicitanteCentroCostoId) && solicitanteCentroCostoId > 0
-          ? solicitanteCentroCostoId
-          : null
-        : Number.isFinite(defaultCentroCostoId) && defaultCentroCostoId > 0
-          ? defaultCentroCostoId
-          : null;
-    const resolvedTipoCompra = proveedorId ? "directa" : "normal";
+    const resolvedCentroCostoId = resolveCentroCostoId({
+      oportunidadId: values.oportunidadId ?? null,
+      departamentoNombre: departamentoNombre ?? null,
+      departamentoCentroCostoId: (departamentoData as { centro_costo_id?: number | null } | undefined)
+        ?.centro_costo_id ?? null,
+      solicitanteCentroCostoId: (solicitanteData as { centro_costo_id?: number | null } | undefined)
+        ?.centro_costo_id ?? null,
+    });
+    const resolvedTipoCompra = resolveTipoCompra(proveedorId);
     onApply({
       proveedorId: normalizeId(values.proveedorId),
       tipoSolicitudId: normalizeId(values.tipoSolicitudId),

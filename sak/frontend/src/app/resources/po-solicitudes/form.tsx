@@ -50,7 +50,6 @@ import {
   poSolicitudCabeceraSchema,
   poSolicitudDetalleSchema,
   getArticuloFilterByTipo,
-  applyWizardPayload,
   type WizardPayload,
 } from "./model";
 import {
@@ -58,6 +57,7 @@ import {
 } from "./create_wizard_3";
 import { PoSolicitudDetalleContent } from "./form_detalle";
 import {
+  applyWizardPayload,
   useDepartamentoDefaultByTipo,
   useProveedorDefaults,
   useSyncTotalFromDetalles,

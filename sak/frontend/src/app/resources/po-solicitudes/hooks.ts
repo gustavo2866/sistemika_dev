@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDataProvider, useGetOne } from "ra-core";
-import type { UseFormReturn } from "react-hook-form";
+import type { UseFormReturn, UseFormSetValue } from "react-hook-form";
 import type { TipoSolicitud } from "../tipos-solicitud/model";
 import {
   TIPOS_SOLICITUD_REFERENCE,
+  calculateImporte,
   calculateTotal,
   getDepartamentoDefaultByTipo,
   type PoSolicitud,
+  type PoSolicitudDetalle,
+  type WizardPayload,
 } from "./model";
 
 type SetValueFn = (
@@ -184,6 +187,97 @@ export const useSyncTotalFromDetalles = ({
       });
     }
   }, [detallesValue, form]);
+};
+
+export const useProveedorById = (proveedorId: number | null) =>
+  useGetOne(
+    "proveedores",
+    { id: proveedorId ?? 0 },
+    { enabled: proveedorId != null }
+  );
+
+export const useUserById = (userId: number | null) =>
+  useGetOne("users", { id: userId ?? 0 }, { enabled: userId != null });
+
+export const useDepartamentoById = (departamentoId: number | null) =>
+  useGetOne(
+    "departamentos",
+    { id: departamentoId ?? 0 },
+    { enabled: departamentoId != null }
+  );
+
+export const useArticuloById = (articuloId: number | null) =>
+  useGetOne(
+    "articulos",
+    { id: articuloId ?? 0 },
+    { enabled: articuloId != null }
+  );
+
+type ApplyWizardPayloadArgs = {
+  isCreate: boolean;
+  setValue: UseFormSetValue<PoSolicitud>;
+  identityId?: number | null;
+  payload: WizardPayload;
+};
+
+const buildDetalleFromWizard = (
+  payload: WizardPayload
+): PoSolicitudDetalle | null => {
+  if (payload.articuloId == null) return null;
+  const cantidad = payload.cantidad ?? 0;
+  const precio = payload.precio ?? 0;
+  const importe = calculateImporte(cantidad, precio);
+
+  return {
+    articulo_id: payload.articuloId,
+    descripcion: payload.descripcion ?? "",
+    unidad_medida: payload.unidadMedida ?? "UN",
+    cantidad,
+    precio,
+    importe,
+  };
+};
+
+export const applyWizardPayload = ({
+  isCreate,
+  setValue,
+  identityId,
+  payload,
+}: ApplyWizardPayloadArgs) => {
+  if (!isCreate) return;
+
+  if (payload.proveedorId != null) {
+    setValue("proveedor_id", payload.proveedorId, { shouldDirty: true });
+  }
+  if (payload.tipoSolicitudId != null) {
+    setValue("tipo_solicitud_id", payload.tipoSolicitudId, { shouldDirty: true });
+  }
+  if (payload.departamentoId != null) {
+    setValue("departamento_id", payload.departamentoId, { shouldDirty: true });
+  }
+  if (payload.centroCostoId != null) {
+    setValue("centro_costo_id", payload.centroCostoId, { shouldDirty: true });
+  }
+  if (payload.tipoCompra != null) {
+    setValue("tipo_compra", payload.tipoCompra, { shouldDirty: true });
+  }
+  if (payload.titulo !== undefined) {
+    setValue("titulo", payload.titulo, { shouldDirty: true });
+  }
+  if (payload.fechaNecesidad) {
+    setValue("fecha_necesidad", payload.fechaNecesidad, { shouldDirty: true });
+  }
+  if (payload.oportunidadId != null) {
+    setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+  }
+  if (identityId != null) {
+    setValue("solicitante_id", Number(identityId), { shouldDirty: true });
+  }
+
+  const detalle = buildDetalleFromWizard(payload);
+  if (detalle) {
+    setValue("detalles", [detalle], { shouldDirty: true });
+  }
 };
 
 export const useDefaultSolicitanteFromIdentity = ({
