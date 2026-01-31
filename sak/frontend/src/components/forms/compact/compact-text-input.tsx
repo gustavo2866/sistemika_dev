@@ -1,5 +1,5 @@
 import type { TextInputProps } from "@/components/text-input";
-import { useInput, useResourceContext, FieldTitle } from "ra-core";
+import { useInput, useResourceContext, FieldTitle, required } from "ra-core";
 import {
   FormControl,
   FormError,
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 type CompactTextInputProps = TextInputProps & {
   inputClassName?: string;
   textareaClassName?: string;
+  required?: boolean;
 };
 
 const compactInputClass = "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm min-h-[1.75rem] sm:min-h-[2rem]";
@@ -31,22 +32,33 @@ export const CompactTextInput = (props: CompactTextInputProps) => {
     textareaClassName,
     helperText,
     validate: _validateProp,
+    required: isRequired,
     format: _formatProp,
     isRequired: _isRequired,
     defaultValue: _defaultValue,
     ...rest
   } = props;
-  const { id, field, isRequired } = useInput(props);
+  const nextValidate = isRequired
+    ? _validateProp
+      ? Array.isArray(_validateProp)
+        ? [required(), ..._validateProp]
+        : [required(), _validateProp]
+      : required()
+    : _validateProp;
+  const { id, field, isRequired: fieldIsRequired } = useInput({
+    ...props,
+    validate: nextValidate,
+  });
 
   return (
-    <FormField id={id} className={className} name={field.name}>
+    <FormField id={id} className={cn("w-full", className)} name={field.name}>
       {label !== false && (
         <FormLabel>
           <FieldTitle
             label={label}
             source={source}
             resource={resource}
-            isRequired={isRequired}
+            isRequired={fieldIsRequired}
           />
         </FormLabel>
       )}

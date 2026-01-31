@@ -11,7 +11,7 @@ export const CompactComboboxQuery = (props: ComboboxQueryProps) => {
   return (
     <ComboboxQuery
       {...props}
-      className={cn(compactComboboxClass, props.className)}
+      className={cn(compactComboboxClass, "w-full", props.className)}
     />
   );
 };

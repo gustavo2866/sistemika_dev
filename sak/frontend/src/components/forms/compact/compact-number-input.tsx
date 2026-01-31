@@ -1,5 +1,5 @@
 import type { NumberInputProps } from "@/components/number-input";
-import { useInput, useResourceContext, FieldTitle } from "ra-core";
+import { useInput, useResourceContext, FieldTitle, required } from "ra-core";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FocusEvent } from "react";
 import { FormControl, FormError, FormField, FormLabel } from "@/components/form";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 type CompactNumberInputProps = NumberInputProps & {
   inputClassName?: string;
+  required?: boolean;
 };
 
 const compactInputClass = "h-7 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm";
@@ -21,14 +22,24 @@ export const CompactNumberInput = (props: CompactNumberInputProps) => {
     inputClassName,
     resource: resourceProp,
     validate: _validateProp,
+    required: isRequired,
     format: _formatProp,
     parse = convertStringToNumber,
     onFocus,
     ...rest
   } = props;
   const resource = useResourceContext({ resource: resourceProp });
-
-  const { id, field, isRequired } = useInput(props);
+  const nextValidate = isRequired
+    ? _validateProp
+      ? Array.isArray(_validateProp)
+        ? [required(), ..._validateProp]
+        : [required(), _validateProp]
+      : required()
+    : _validateProp;
+  const { id, field, isRequired: fieldIsRequired } = useInput({
+    ...props,
+    validate: nextValidate,
+  });
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -62,14 +73,14 @@ export const CompactNumberInput = (props: CompactNumberInputProps) => {
   }, [field.value]);
 
   return (
-    <FormField id={id} className={className} name={field.name}>
+    <FormField id={id} className={cn("w-full", className)} name={field.name}>
       {label !== false && (
         <FormLabel>
           <FieldTitle
             label={label}
             source={source}
             resource={resource}
-            isRequired={isRequired}
+            isRequired={fieldIsRequired}
           />
         </FormLabel>
       )}

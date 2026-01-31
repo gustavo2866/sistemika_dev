@@ -38,7 +38,7 @@ import {
   useDepartamentoById,
   useProveedorById,
   useUserById,
-} from "./hooks";
+} from "./form_hooks";
 
 type WizardValues = {
   titulo: string;

@@ -1,5 +1,5 @@
 /**
- * Hooks y utilidades para PoSolicitudes.
+ * Hooks y utilidades del formulario de PoSolicitudes.
  *
  * Estructura:
  * 1. TIPOS - Tipos auxiliares y contratos internos
@@ -11,20 +11,32 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { createElement, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDataProvider, useGetOne } from "ra-core";
-import type { UseFormReturn, UseFormSetValue } from "react-hook-form";
+import {
+  useFormContext,
+  useWatch,
+  type UseFormReturn,
+  type UseFormSetValue,
+} from "react-hook-form";
 import type { TipoSolicitud } from "../../tipos-solicitud/model";
 import {
   TIPOS_SOLICITUD_REFERENCE,
   calculateImporte,
   calculateTotal,
+  buildPoSolicitudCabeceraSubtitle,
+  buildPoSolicitudImputacionSubtitle,
   getDepartamentoDefaultByTipo,
   type PoSolicitud,
   type PoSolicitudDetalle,
   type WizardPayload,
+  OPORTUNIDADES_REFERENCE,
 } from "./model";
+import {
+  useReferenceFieldWatcher,
+  useCentroCostoWatcher,
+} from "@/components/generic";
 
 //******************************* */
 // region 1. TIPOS
@@ -86,6 +98,60 @@ export const useTipoSolicitudCatalog = () => {
     tiposSolicitudCatalog: tiposSolicitudData ?? [],
   };
 };
+
+// Construye subtitulos para secciones del formulario (cabecera e imputacion).
+export const usePoSolicitudSectionSubtitles = () => {
+  const { data: centroCostoData } = useCentroCostoWatcher("centro_costo_id");
+  const { data: oportunidadData } = useReferenceFieldWatcher(
+    "oportunidad_id",
+    OPORTUNIDADES_REFERENCE.resource,
+    { validation: (value) => !!value && typeof value === "object" }
+  );
+  const { tiposSolicitudCatalog } = useTipoSolicitudCatalog();
+  const { control } = useFormContext<PoSolicitud>();
+  const tituloValue = useWatch({ control, name: "titulo" });
+  const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
+
+  const tipoSolicitudNombre = useMemo(() => {
+    if (!tipoSolicitudValue || !tiposSolicitudCatalog) return undefined;
+    const match = tiposSolicitudCatalog.find(
+      (item) => item.id === Number(tipoSolicitudValue)
+    );
+    return match ? String((match as { nombre?: string }).nombre ?? "") : undefined;
+  }, [tipoSolicitudValue, tiposSolicitudCatalog]);
+
+  const cabeceraSubtitle = useMemo(
+    () =>
+      buildPoSolicitudCabeceraSubtitle({
+        titulo: tituloValue ? String(tituloValue) : undefined,
+        tipoSolicitudNombre,
+      }),
+    [tipoSolicitudNombre, tituloValue]
+  );
+
+  const imputacionSubtitle = useMemo(
+    () =>
+      buildPoSolicitudImputacionSubtitle({
+        oportunidadTitulo: (oportunidadData as { titulo?: string } | undefined)
+          ?.titulo,
+        centroCostoNombre: (centroCostoData as { nombre?: string } | undefined)
+          ?.nombre,
+      }),
+    [centroCostoData, oportunidadData]
+  );
+
+  return {
+    cabeceraSubtitle,
+    imputacionSubtitle,
+    tiposSolicitudCatalog,
+  };
+};
+
+export const PoSolicitudSectionSubtitle = ({ text }: { text: string }) =>
+  createElement("div", {
+    className: "text-[10px] leading-none text-muted-foreground sm:text-xs",
+    children: text,
+  });
 // endregion
 
 //******************************* */

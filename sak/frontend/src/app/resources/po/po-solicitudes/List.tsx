@@ -1,3 +1,13 @@
+/**
+ * Lista de PoSolicitudes.
+ *
+ * Estructura:
+ * 1. CONFIGURACION - Filtros y acciones de lista
+ * 2. HELPERS - Utilidades de presentacion locales
+ * 3. COMPONENTE - Lista principal
+ * 4. SINCRONIZACION - Sync de filtros y defaults
+ */
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,118 +23,113 @@ import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
 import { NumberField } from "@/components/number-field";
 import { DateField } from "@/components/date-field";
-import { CompactTextInput, CompactSelectInput, CompactReferenceInput } from "@/components/lists/filters";
-import { CompactFilterButton, CompactExportButton, CompactCreateButton } from "@/components/lists/actions";
+import { buildListFilters } from "@/components/lists/filters";
+import {
+  CompactFilterButton,
+  CompactExportButton,
+  CompactCreateButton,
+} from "@/components/lists/actions";
 import { BadgeField } from "@/components/badge-field";
-import { Button } from "@/components/ui/button";
-import { Confirm } from "@/components/confirm";
 import { KanbanAvatar } from "@/components/kanban/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
-  useDataProvider,
-  useGetIdentity,
-  useGetOne,
-  useNotify,
-  useRecordContext,
-  useRefresh,
-  useRedirect,
-  useListContext,
-  useResourceContext,
-} from "ra-core";
-import {
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Eye,
-  House,
-  MessageCircle,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { useGetIdentity, useListContext } from "ra-core";
 import type { PoSolicitud } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
+import { PoSolicitudActionsMenu } from "./list_actions";
+import { CrmContextHeader } from "./list_header_crm";
 
-const filters = [
-  <CompactTextInput
-    key="buscar"
-    source="q"
-    label="Buscar"
-    alwaysOn
-    placeholder="Buscar solicitudes PO"
-    className="w-28 sm:w-32"
-  />,
-  <CompactReferenceInput
-    key="tipo"
-    source="tipo_solicitud_id"
-    reference="tipos-solicitud"
-    label="Tipo"
-  >
-    <CompactSelectInput
-      optionText="nombre"
-      emptyText="Todos"
-    />
-  </CompactReferenceInput>,
-  <CompactReferenceInput
-    key="departamento"
-    source="departamento_id"
-    reference="departamentos"
-    label="Departamento"
-  >
-    <CompactSelectInput
-      optionText="nombre"
-      emptyText="Todos"
-    />
-  </CompactReferenceInput>,
-  <CompactReferenceInput
-    key="centro-costo"
-    source="centro_costo_id"
-    reference="centros-costo"
-    label="Centro de costo"
-    filter={{ activo: true }}
-  >
-    <CompactSelectInput
-      optionText="nombre"
-      emptyText="Todos"
-    />
-  </CompactReferenceInput>,
-  <CompactSelectInput
-    key="estado"
-    source="estado"
-    label="Estado"
-    choices={ESTADO_CHOICES}
-    alwaysOn
-  />,
-  <CompactReferenceInput
-    key="solicitante"
-    source="solicitante_id"
-    reference="users"
-    label="Solicitante"
-    alwaysOn
-  >
-    <CompactSelectInput
-      optionText="nombre"
-      emptyText="Todos"
-    />
-  </CompactReferenceInput>,
-];
+//********************************* */
+// region 1. CONFIGURACION
 
+// Define los filtros declarativos de la lista.
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        alwaysOn: true,
+        placeholder: "Buscar solicitudes PO",
+        className: "w-28 sm:w-32",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "tipo_solicitud_id",
+        reference: "tipos-solicitud",
+        label: "Tipo",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "departamento_id",
+        reference: "departamentos",
+        label: "Departamento",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "centro_costo_id",
+        reference: "centros-costo",
+        label: "Centro de costo",
+        filter: { activo: true },
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "estado",
+        label: "Estado",
+        choices: ESTADO_CHOICES,
+        alwaysOn: true,
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "solicitante_id",
+        reference: "users",
+        label: "Solicitante",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "po-solicitudes" }
+);
+
+// Renderiza acciones superiores de la lista.
 const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center justify-start gap-2">
     <CompactFilterButton filters={filters} />
-    {createTo ? <CompactCreateButton /> : null}
+    {createTo ? <CompactCreateButton to={createTo} /> : null}
     <CompactExportButton />
   </div>
 );
+// endregion
 
+//********************************* */
+// region 2. HELPERS
+
+// Arma datos de avatar del solicitante para la grilla.
 const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
   const solicitante = (record as { solicitante?: { nombre?: string; nombre_completo?: string; email?: string; avatar?: string; url_foto?: string } })
     ?.solicitante;
@@ -142,8 +147,12 @@ const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
 
   return { name, avatarUrl, initials };
 };
+// endregion
 
+//********************************* */
+// region 3. COMPONENTE
 
+// Renderiza la lista principal de solicitudes PO.
 export const PoSolicitudList = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -159,10 +168,12 @@ export const PoSolicitudList = () => {
   );
   const createTo = useMemo(() => {
     const createPath = "/po-solicitudes/create";
-    if (!oportunidadIdFilter) return createPath;
     const params = new URLSearchParams();
-    appendFilterParam(params, buildOportunidadFilter(oportunidadIdFilter));
-    params.set("returnTo", `${location.pathname}${location.search}`);
+    params.set("wizard", "asistida");
+    if (oportunidadIdFilter) {
+      appendFilterParam(params, buildOportunidadFilter(oportunidadIdFilter));
+      params.set("returnTo", `${location.pathname}${location.search}`);
+    }
     return `${createPath}?${params.toString()}`;
   }, [location.pathname, location.search, oportunidadIdFilter]);
 
@@ -179,7 +190,7 @@ export const PoSolicitudList = () => {
         oportunidadIdFilter={oportunidadIdFilter}
         defaultFilters={defaultFilters}
       />
-      <PoSolicitudesContextHeader
+      <CrmContextHeader
         location={location}
         navigate={navigate}
         returnTo={returnTo}
@@ -256,7 +267,12 @@ export const PoSolicitudList = () => {
     </List>
   );
 };
+// endregion
 
+//********************************* */
+// region 4. SINCRONIZACION
+
+// Sincroniza filtros iniciales con identidad y contexto de oportunidad.
 const PoSolicitudesFilterSync = ({
   oportunidadIdFilter,
   defaultFilters,
@@ -312,320 +328,4 @@ const PoSolicitudesFilterSync = ({
 
   return null;
 };
-
-const PoSolicitudesContextHeader = ({
-  location,
-  navigate,
-  returnTo,
-  oportunidadId,
-}: {
-  location: ReturnType<typeof useLocation>;
-  navigate: ReturnType<typeof useNavigate>;
-  returnTo?: string;
-  oportunidadId?: number | string;
-}) => {
-  const oportunidadIdNumeric =
-    oportunidadId != null && Number.isFinite(Number(oportunidadId))
-      ? Number(oportunidadId)
-      : undefined;
-  const shouldLoadOportunidad = typeof oportunidadIdNumeric === "number" && oportunidadIdNumeric > 0;
-  const showContextHeader = Boolean(shouldLoadOportunidad);
-
-  const { data: oportunidad } = useGetOne(
-    "crm/oportunidades",
-    { id: shouldLoadOportunidad ? oportunidadIdNumeric : undefined },
-    { enabled: Boolean(shouldLoadOportunidad) }
-  );
-  const contactoId = (oportunidad as any)?.contacto_id ?? null;
-  const { data: contacto } = useGetOne(
-    "crm/contactos",
-    { id: contactoId ?? 0 },
-    { enabled: Boolean(contactoId) }
-  );
-  const contactoNombre =
-    (contacto as any)?.nombre_completo ??
-    (contacto as any)?.nombre ??
-    (oportunidad as any)?.contacto?.nombre_completo ??
-    (oportunidad as any)?.contacto?.nombre ??
-    null;
-  const oportunidadTitulo =
-    (oportunidad as any)?.titulo ??
-    (oportunidad as any)?.descripcion_estado ??
-    (oportunidadIdNumeric ? `Oportunidad #${oportunidadIdNumeric}` : "");
-  const contactoInitials = useMemo(() => {
-    const base = contactoNombre ?? "Contacto";
-    return base
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part: string) => part[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-  }, [contactoNombre]);
-
-  const handleOpenChat = () => {
-    if (oportunidadIdNumeric) {
-      const params = new URLSearchParams();
-      params.set("returnTo", `${location.pathname}${location.search}`);
-      navigate(`/crm/chat/op-${oportunidadIdNumeric}/show?${params.toString()}`);
-      return;
-    }
-    navigate(returnTo ?? "/crm/chat");
-  };
-
-  const handleOpenOportunidad = () => {
-    if (!oportunidadIdNumeric) return;
-    const params = new URLSearchParams();
-    params.set("returnTo", `${location.pathname}${location.search}`);
-    navigate(`/crm/oportunidades/${oportunidadIdNumeric}?${params.toString()}`);
-  };
-
-  const handleOpenEventos = () => {
-    if (!oportunidadIdNumeric) return;
-    const params = new URLSearchParams();
-    appendFilterParam(params, buildOportunidadFilter(oportunidadIdNumeric));
-    params.set("context", "solicitudes");
-    params.set("returnTo", `${location.pathname}${location.search}`);
-    navigate(`/crm/eventos?${params.toString()}`);
-  };
-
-  if (!showContextHeader) return null;
-
-  return (
-    <div className="mb-3 flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-4">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        onClick={() => {
-          if (returnTo) {
-            navigate(returnTo);
-          } else {
-            navigate(-1);
-          }
-        }}
-      >
-        <ArrowLeft className="h-4 w-4" />
-      </Button>
-      <Avatar className="size-9 border border-slate-200">
-        <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
-          {contactoInitials}
-        </AvatarFallback>
-      </Avatar>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-900">
-          {contactoNombre ?? "Contacto"}
-        </p>
-        <p className="truncate text-[10px] text-slate-500">
-          {oportunidadTitulo} ({oportunidadIdNumeric ?? ""})
-        </p>
-      </div>
-      <div className="ml-auto flex items-center gap-1 text-slate-400">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={handleOpenChat}
-        >
-          <MessageCircle className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={handleOpenOportunidad}
-          disabled={!oportunidadIdNumeric}
-        >
-          <House className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={handleOpenEventos}
-          disabled={!oportunidadIdNumeric}
-        >
-          <Calendar className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-};
-
-const PoSolicitudActionsMenu = () => {
-  const record = useRecordContext<PoSolicitud>();
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const refresh = useRefresh();
-  const redirect = useRedirect();
-  const resource = useResourceContext();
-  const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-
-  if (!record || !resource) {
-    return null;
-  }
-
-  const isBorrador = record.estado === "borrador";
-  const isEmitida = record.estado === "emitida";
-  const isApproved = record.estado === "aprobada";
-  const canApprove = isBorrador || isEmitida;
-  const canReject = isApproved;
-
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-  const handleStatusChange = async (estado: "aprobada" | "rechazada") => {
-    if (!record?.id) {
-      return;
-    }
-    setBusyAction(estado);
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (typeof window !== "undefined") {
-        const token = localStorage.getItem("auth_token");
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-      }
-      const response = await fetch(`${apiBaseUrl}/po-solicitudes/${record.id}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ estado }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      notify(
-        `Solicitud PO ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
-        { type: "info" }
-      );
-      refresh();
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo actualizar la solicitud PO", { type: "warning" });
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!record?.id) return;
-    setBusyAction("delete");
-    try {
-      await dataProvider.delete(resource, { id: record.id });
-      notify("Solicitud PO eliminada", { type: "info" });
-      refresh();
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo eliminar la solicitud PO", { type: "warning" });
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const handleRequestDelete = () => {
-    if (!record?.id) return;
-    setConfirmDeleteOpen(true);
-  };
-
-  const handleConfirmDelete = () => {
-    setConfirmDeleteOpen(false);
-    handleDelete();
-  };
-
-  const stopRowClick = (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const handleMenuAction = (
-    event: React.MouseEvent,
-    callback: () => void,
-  ) => {
-    stopRowClick(event);
-    if (busyAction !== null) {
-      return;
-    }
-    callback();
-  };
-
-  return (
-    <>
-      <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          disabled={busyAction !== null}
-          onClick={stopRowClick}
-        >
-          <MoreHorizontal className="h-4 w-4" />
-          <span className="sr-only">Acciones</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-40 sm:w-44 text-[10px] sm:text-xs"
-      >
-        <DropdownMenuItem
-          onClick={(event) =>
-            handleMenuAction(event, () => redirect("edit", resource, record.id))
-          }
-          disabled={busyAction !== null}
-        >
-          <Pencil className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-          Editar
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(event) =>
-            handleMenuAction(event, () => redirect("show", resource, record.id))
-          }
-          disabled={busyAction !== null}
-        >
-          <Eye className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-          Preview
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(event) => handleMenuAction(event, handleRequestDelete)}
-          disabled={busyAction !== null}
-          variant="destructive"
-        >
-          <Trash2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-          Eliminar
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={(event) =>
-            handleMenuAction(event, () => canApprove && handleStatusChange("aprobada"))
-          }
-          disabled={!canApprove || busyAction !== null}
-        >
-          <CheckCircle2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-          Aprobar
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(event) =>
-            handleMenuAction(event, () => canReject && handleStatusChange("rechazada"))
-          }
-          disabled={!canReject || busyAction !== null}
-        >
-          <XCircle className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-          Rechazar
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-      </DropdownMenu>
-      <Confirm
-        isOpen={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
-        onConfirm={handleConfirmDelete}
-        title="Eliminar solicitud"
-        content="Seguro que deseas eliminar la solicitud PO?"
-        confirm="Eliminar"
-        cancel="Cancelar"
-      />
-    </>
-  );
-};
+// endregion

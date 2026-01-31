@@ -1,28 +1,31 @@
 /**
- * Formulario CABECERA para PoSolicitudes
- * 
- * Contiene solo la lógica relacionada con datos principales:
- * - Datos generales (título, proveedor, tipo solicitud, etc.)
- * - Imputación (departamento, centro costo, oportunidad)
- * - Headers y resúmenes
- * - Lógica principal del formulario
+ * Formulario CABECERA para PoSolicitudes.
+ *
+ * Estructura:
+ * 1. TIPOS - Tipos y contratos del formulario
+ * 2. ESQUEMAS - Schema de cabecera del formulario
+ * 3. SECCIONES - Render de secciones (cabecera e imputacion)
+ * 4. RESUMEN - Widgets de header y totales
+ * 5. FORM - Orquestacion principal del formulario
  */
+
+
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { required, useGetIdentity } from "ra-core";
+import { useMemo, type ReactNode } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useLocation } from "react-router-dom";
 import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
-import { ReferenceInput } from "@/components/reference-input";
 import { CompactOportunidadSelector } from "../../crm-oportunidades";
+import { ReferenceInput } from "@/components/reference-input";
 import {
   CompactComboboxQuery,
   CompactFormField,
   CompactFormSection,
   CompactSelectInput,
+  CompactDateInput,
   CompactTextInput,
   FormDetailSection,
   FormLayout,
@@ -30,44 +33,155 @@ import {
 } from "@/components/forms";
 import {
   HeaderSummaryDisplay,
-  useReferenceFieldWatcher,
-  useProveedorWatcher,
-  useCentroCostoWatcher,
   ConditionalFieldLock,
   StandardFormGrid,
   createTwoColumnSection,
 } from "@/components/generic";
+import { createEntitySchema, referenceField, selectField, stringField } from "@/lib/form-detail-schema";
 import {
   type PoSolicitud,
-  type PoSolicitudDetalle,
   ESTADO_BADGES,
   ESTADO_CHOICES,
   TIPO_COMPRA_CHOICES,
+  TIPOS_SOLICITUD_REFERENCE,
+  DEPARTAMENTOS_REFERENCE,
+  USERS_REFERENCE,
   CENTROS_COSTO_REFERENCE,
   OPORTUNIDADES_REFERENCE,
   PROVEEDORES_REFERENCE,
   VALIDATION_RULES,
-  poSolicitudCabeceraSchema,
-  poSolicitudDetalleSchema,
-  getArticuloFilterByTipo,
-  type WizardPayload,
+  buildPoSolicitudDefaultValues,
 } from "./model";
 import {
-  create_wizard_3 as CreateWizard3,
-} from "./create_wizard_3";
-import { PoSolicitudDetalleContent } from "./form_detalle";
+  useArticuloFilterByTipoSolicitud,
+  useLockedOportunidadField,
+  useMutuallyExclusiveFields,
+} from "../shared/po-hooks";
 import {
-  applyWizardPayload,
+  PoSolicitudDetalleContent,
+  poSolicitudDetalleSchema,
+} from "./form_detalle";
+import {
   useDepartamentoDefaultByTipo,
+  usePoSolicitudSectionSubtitles,
+  PoSolicitudSectionSubtitle,
   useProveedorDefaults,
   useSyncTotalFromDetalles,
   useTipoSolicitudBloqueado,
-  useTipoSolicitudCatalog,
-} from "./hooks";
+} from "./form_hooks";
 
-// ============================================
-// COMPONENTES DE CABECERA
-// ============================================
+const OPORTUNIDAD_FILTER = { activo: true };
+
+//*********************************
+// region 1. TIPOS
+
+// Tipos de cabecera para formulario.
+export type PoSolicitudCabeceraFormValues = {
+  titulo: string;
+  tipo_solicitud_id: string;
+  departamento_id: string;
+  centro_costo_id: string;
+  estado: string;
+  tipo_compra: string;
+  fecha_necesidad: string;
+  solicitante_id: string;
+  comentario: string;
+  oportunidad_id: string;
+  proveedor_id: string;
+};
+
+// endregion
+
+//*********************************
+// region 2. ESQUEMAS
+
+// Esquema de formulario para cabecera de PoSolicitud.
+export const poSolicitudCabeceraSchema = createEntitySchema<
+  PoSolicitudCabeceraFormValues,
+  Pick<
+    PoSolicitud,
+    | "titulo"
+    | "tipo_solicitud_id"
+    | "departamento_id"
+    | "centro_costo_id"
+    | "estado"
+    | "tipo_compra"
+    | "fecha_necesidad"
+    | "solicitante_id"
+    | "comentario"
+    | "oportunidad_id"
+    | "proveedor_id"
+  >
+>({
+  fields: {
+    titulo: stringField({
+      required: true,
+      trim: true,
+      maxLength: 200,
+      defaultValue: "",
+    }),
+    tipo_solicitud_id: referenceField({
+      resource: TIPOS_SOLICITUD_REFERENCE.resource,
+      labelField: TIPOS_SOLICITUD_REFERENCE.labelField,
+      required: true,
+      defaultValue: "",
+    }),
+    departamento_id: referenceField({
+      resource: DEPARTAMENTOS_REFERENCE.resource,
+      labelField: DEPARTAMENTOS_REFERENCE.labelField,
+      required: true,
+      defaultValue: "",
+    }),
+    centro_costo_id: referenceField({
+      resource: CENTROS_COSTO_REFERENCE.resource,
+      labelField: CENTROS_COSTO_REFERENCE.labelField,
+      required: true,
+      defaultValue: "1",
+    }),
+    estado: selectField({
+      required: false,
+      options: ESTADO_CHOICES,
+      defaultValue: "borrador",
+    }),
+    tipo_compra: selectField({
+      required: true,
+      options: TIPO_COMPRA_CHOICES,
+      defaultValue: "normal",
+    }),
+    fecha_necesidad: stringField({
+      required: true,
+      defaultValue: "",
+    }),
+    solicitante_id: referenceField({
+      resource: USERS_REFERENCE.resource,
+      labelField: USERS_REFERENCE.labelField,
+      required: true,
+      defaultValue: "",
+    }),
+    comentario: stringField({
+      trim: true,
+      maxLength: VALIDATION_RULES.GENERAL.MAX_COMENTARIO_LENGTH,
+      defaultValue: "",
+    }),
+    oportunidad_id: referenceField({
+      resource: OPORTUNIDADES_REFERENCE.resource,
+      labelField: OPORTUNIDADES_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
+    proveedor_id: referenceField({
+      resource: PROVEEDORES_REFERENCE.resource,
+      labelField: PROVEEDORES_REFERENCE.labelField,
+      required: false,
+      defaultValue: "",
+    }),
+  },
+});
+
+// endregion
+
+//*********************************
+// region 3. SECCIONES
 
 /**
  * Contenido de la sección Datos Generales (REFACTORIZADO)
@@ -79,8 +193,7 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
         <CompactTextInput
           source="titulo"
           label="Titulo"
-          className="w-full"
-          validate={required()}
+          required
           maxLength={50}
         />
       </div>,
@@ -91,13 +204,12 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
           {...PROVEEDORES_REFERENCE}
           source="proveedor_id"
           placeholder="Selecciona un proveedor"
-          className="w-full"
           clearable
         />
       </CompactFormField>,
       <ConditionalFieldLock key="tipo" isLocked={tipoSolicitudBloqueado || false} lockReason="Bloqueado por tener artículos">
         <ReferenceInput source="tipo_solicitud_id" reference="tipos-solicitud" label="Tipo de solicitud">
-          <CompactSelectInput optionText="nombre" className="w-full" validate={required()} />
+          <CompactSelectInput optionText="nombre" required />
         </ReferenceInput>
       </ConditionalFieldLock>,
       <CompactFormField key="tipo-compra" label="Tipo de compra">
@@ -105,20 +217,17 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
           source="tipo_compra"
           choices={TIPO_COMPRA_CHOICES}
           label={false}
-          className="w-full"
-          validate={required()}
+          required
         />
       </CompactFormField>,
-      <CompactTextInput
+      <CompactDateInput
         key="fecha"
         source="fecha_necesidad"
         label="Fecha de necesidad"
-        type="date"
-        className="w-full"
-        validate={required()}
+        required
       />,
       <ReferenceInput key="solicitante" source="solicitante_id" reference="users" label="Solicitante">
-        <CompactSelectInput optionText="nombre" className="w-full" validate={required()} />
+        <CompactSelectInput optionText="nombre" required />
       </ReferenceInput>,
       <CompactTextInput
         key="comentario"
@@ -126,7 +235,7 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
         label="Comentarios"
         multiline
         rows={3}
-        className="w-full md:col-span-2"
+        className="md:col-span-2"
       />,
     ]),
   ];
@@ -144,27 +253,20 @@ const ImputacionContent = ({
   oportunidadFilter?: Record<string, unknown>;
   lockedOportunidadId?: number;
 }) => {
-  const { register, setValue, getValues } = useFormContext<PoSolicitud>();
-  const shouldLockOportunidad = typeof lockedOportunidadId === "number" && Number.isFinite(lockedOportunidadId);
-  
-  // Usar el hook genérico para oportunidad locked
-  const { data: lockedOportunidadData } = useProveedorWatcher(); // Se puede crear un useOportunidadWatcher similar
+  const { shouldLockOportunidad, lockedOportunidadData, registerOportunidad } =
+    useLockedOportunidadField({ lockedOportunidadId });
 
-  useEffect(() => {
-    if (!shouldLockOportunidad) return;
-    const currentValue = getValues("oportunidad_id");
-    if (currentValue !== lockedOportunidadId) {
-      setValue("oportunidad_id", lockedOportunidadId, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
-    }
-  }, [getValues, lockedOportunidadId, setValue, shouldLockOportunidad]);
+  useMutuallyExclusiveFields({
+    fieldA: "centro_costo_id",
+    fieldB: "oportunidad_id",
+    clearAWhenB: true,
+    clearBWhenA: !shouldLockOportunidad,
+  });
 
   const formSections = [
     createTwoColumnSection("", [
       <ReferenceInput key="depto" source="departamento_id" reference="departamentos" label="Departamento">
-        <CompactSelectInput optionText="nombre" className="w-full" validate={required()} />
+        <CompactSelectInput optionText="nombre" required />
       </ReferenceInput>,
       <div key="centro" className="min-w-0 overflow-hidden">
         <ReferenceInput
@@ -175,9 +277,8 @@ const ImputacionContent = ({
         >
           <CompactSelectInput
             optionText="nombre"
-            className="w-full"
             triggerProps={{ className: "w-full truncate text-left" }}
-            validate={required()}
+            required
           />
         </ReferenceInput>
       </div>,
@@ -193,7 +294,7 @@ const ImputacionContent = ({
             clearable={!shouldLockOportunidad}
           />
           {shouldLockOportunidad ? (
-            <input type="hidden" {...register("oportunidad_id", { valueAsNumber: true })} />
+            <input type="hidden" {...registerOportunidad()} />
           ) : null}
         </CompactFormField>
       </div>,
@@ -203,20 +304,22 @@ const ImputacionContent = ({
   return <StandardFormGrid sections={formSections} />;
 };
 
-// ============================================
-// COMPONENTES DE HEADER/RESUMEN (REFACTORIZADOS)
-// ============================================
+// endregion
+
+//*********************************
+// region 4. RESUMEN
 
 /**
  * Muestra el total estimado usando HeaderSummaryDisplay
  */
 const PoSolicitudTotalInline = () => {
   const { control } = useFormContext<PoSolicitud>();
-  
+  const total = useWatch({ control, name: "total" });
+
   return (
     <HeaderSummaryDisplay
       fields={[{ 
-        value: control._formValues?.total ?? 0,
+        value: total ?? 0,
         formatter: 'currency',
         label: "TOTAL ESTIMADO",
         className: "font-semibold text-primary"
@@ -232,7 +335,7 @@ const PoSolicitudTotalInline = () => {
  */
 const PoSolicitudHeaderInline = () => {
   const { control } = useFormContext<PoSolicitud>();
-  const estadoValue = control._formValues?.estado;
+  const estadoValue = useWatch({ control, name: "estado" });
   
   if (!estadoValue) return null;
 
@@ -255,58 +358,6 @@ const PoSolicitudHeaderInline = () => {
 /**
  * Resumen de título y proveedor (REFACTORIZADO)
  */
-const PoSolicitudHeaderSummary = () => {
-  const { control } = useFormContext<PoSolicitud>();
-  const { data: proveedor } = useProveedorWatcher("proveedor_id");
-  const tituloValue = control._formValues?.titulo;
-  
-  const titulo = tituloValue && String(tituloValue).trim().length > 0
-    ? String(tituloValue)
-    : "Sin titulo";
-  const proveedorLabel = proveedor?.nombre?.trim() || "Sin proveedor";
-
-  return (
-    <HeaderSummaryDisplay
-      fields={[
-        { value: titulo, formatter: 'text', className: "min-w-0 max-w-[60%] truncate" },
-        { value: proveedorLabel, formatter: 'text', className: "min-w-0 max-w-[40%] truncate" },
-      ]}
-      separator="-"
-      layout="horizontal"
-      className="flex w-full items-center gap-2 text-[10px] text-muted-foreground sm:text-xs"
-    />
-  );
-};
-
-/**
- * Resumen de centro de costo y oportunidad (REFACTORIZADO)
- */
-const PoSolicitudImputacionSummary = () => {
-  const { data: centroCosto } = useCentroCostoWatcher("centro_costo_id");
-  const { data: oportunidad } = useReferenceFieldWatcher(
-    "oportunidad_id",
-    OPORTUNIDADES_REFERENCE.resource,
-    { validation: (value) => !!value && typeof value === "object" }
-  );
-  
-  const centroCostoNombre = (centroCosto as { nombre?: string } | undefined)?.nombre;
-  const oportunidadTitulo = (oportunidad as { titulo?: string } | undefined)?.titulo;
-  const centroCostoLabel = centroCostoNombre?.trim() || "Sin centro de costo";
-  const oportunidadLabel = oportunidadTitulo?.trim() || "Sin oportunidad";
-
-  return (
-    <HeaderSummaryDisplay
-      fields={[
-        { value: centroCostoLabel, formatter: 'text', className: "min-w-0 max-w-[55%] truncate" },
-        { value: oportunidadLabel, formatter: 'text', className: "min-w-0 max-w-[45%] truncate" },
-      ]}
-      separator="-"
-      layout="horizontal"
-      className="flex w-full items-center gap-2 text-[9px] text-muted-foreground sm:text-[10px]"
-    />
-  );
-};
-
 /**
  * Toolbar del formulario
  */
@@ -314,26 +365,20 @@ const FormFooter = () => (
   <FormToolbar />
 );
 
-// ============================================
-// COMPONENTE PRINCIPAL DE CAMPOS
-// ============================================
+// endregion
+
+//*********************************
+// region 5. FORM
 
 /**
  * Componente principal que contiene toda la lógica de campos y efectos
  */
 const PoSolicitudFormFields = ({
   lockedOportunidadId,
-  wizardOpen,
-  setWizardOpen,
-  wizardVariant,
 }: {
   lockedOportunidadId?: number;
-  wizardOpen: boolean;
-  setWizardOpen: (open: boolean) => void;
-  wizardVariant?: string | null;
 }) => {
   const form = useFormContext<PoSolicitud>();
-  const { data: identity } = useGetIdentity();
   const { control } = form;
   const idValue = useWatch({ control, name: "id" });
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
@@ -341,38 +386,23 @@ const PoSolicitudFormFields = ({
   const detallesValue = useWatch({ control, name: "detalles" });
   const isCreate = !idValue;
 
-  const { tiposSolicitudCatalog } = useTipoSolicitudCatalog();
+  const { cabeceraSubtitle, imputacionSubtitle, tiposSolicitudCatalog } =
+    usePoSolicitudSectionSubtitles();
   
   const proveedorId = useMemo(() => {
     const parsed = Number(proveedorValue);
     return Number.isFinite(parsed) ? parsed : undefined;
   }, [proveedorValue]);
   
-  const oportunidadFilter = useMemo(
-    () => ({
-      activo: true,
-    }),
-    []
-  );
+  const oportunidadFilter = OPORTUNIDAD_FILTER;
 
-  const articuloFilterId = useMemo(() => {
-    return getArticuloFilterByTipo(
-      tipoSolicitudValue ? String(tipoSolicitudValue) : undefined,
-      tiposSolicitudCatalog
-    );
-  }, [tipoSolicitudValue, tiposSolicitudCatalog]);
+  const { articuloFilterId, dynamicReferenceFilters } =
+    useArticuloFilterByTipoSolicitud({
+      tipoSolicitudId: tipoSolicitudValue ? String(tipoSolicitudValue) : undefined,
+      tiposSolicitudCatalog,
+    });
 
   useProveedorDefaults({ form, proveedorId });
-
-  // Filtros dinámicos para referencias del schema
-  const dynamicReferenceFilters = useMemo((): Record<string, Record<string, any>> => {
-    if (!articuloFilterId) return {};
-    return {
-      articulo_id: {
-        tipo_articulo_id: articuloFilterId,
-      },
-    };
-  }, [articuloFilterId]);
 
   // Determinar si el tipo de solicitud debe estar bloqueado
   const tipoSolicitudBloqueado = useTipoSolicitudBloqueado(detallesValue);
@@ -387,29 +417,8 @@ const PoSolicitudFormFields = ({
 
   useAutoInitializeField("solicitante_id", "id", !idValue);
 
-  const handleApplyWizard = (payload: WizardPayload) => {
-    const identityIdValue =
-      identity?.id != null && Number.isFinite(Number(identity.id))
-        ? Number(identity.id)
-        : null;
-    applyWizardPayload({
-      isCreate,
-      setValue: form.setValue,
-      identityId: identityIdValue,
-      payload,
-    });
-  };
-
   return (
     <>
-      {isCreate && wizardVariant === "asistida" ? (
-        <CreateWizard3
-          open={wizardOpen}
-          onOpenChange={setWizardOpen}
-          onApply={handleApplyWizard}
-        />
-      ) : null}
-      
       <FormLayout
         sections={[
           {
@@ -418,7 +427,9 @@ const PoSolicitudFormFields = ({
             defaultOpen: isCreate ? false : !idValue,
             headerContent: <PoSolicitudHeaderInline />,
             headerContentPosition: "inline",
-            headerContentBelow: <PoSolicitudHeaderSummary />,
+            headerContentBelow: (
+              <PoSolicitudSectionSubtitle text={cabeceraSubtitle} />
+            ),
             contentPadding: "none",
             contentClassName: "space-y-2 px-4 py-2",
             children: (
@@ -433,7 +444,9 @@ const PoSolicitudFormFields = ({
             id: "imputacion",
             title: "Imputación",
             defaultOpen: false,
-            headerContentBelow: <PoSolicitudImputacionSummary />,
+            headerContentBelow: (
+              <PoSolicitudSectionSubtitle text={imputacionSubtitle} />
+            ),
             children: (
               <CompactFormSection>
                 <ImputacionContent
@@ -476,18 +489,11 @@ const PoSolicitudFormFields = ({
  * Componente principal del formulario de PoSolicitudes
  */
 export const PoSolicitudForm = ({
-  wizardOpen: wizardOpenProp,
-  setWizardOpen: setWizardOpenProp,
-  wizardVariant,
+  children,
 }: {
-  wizardOpen?: boolean;
-  setWizardOpen?: (open: boolean) => void;
-  wizardVariant?: string | null;
+  children?: ReactNode;
 }) => {
   const location = useLocation();
-  const [localWizardOpen, setLocalWizardOpen] = useState(false);
-  const wizardOpen = wizardOpenProp ?? localWizardOpen;
-  const setWizardOpen = setWizardOpenProp ?? setLocalWizardOpen;
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const cabeceraDefaults = useMemo(
     () => poSolicitudCabeceraSchema.defaults(),
@@ -498,46 +504,26 @@ export const PoSolicitudForm = ({
     [location]
   );
 
-  const defaultValues = useMemo(() => {
-    const solicitanteDefault =
-      cabeceraDefaults.solicitante_id &&
-      cabeceraDefaults.solicitante_id.trim().length > 0
-        ? Number(cabeceraDefaults.solicitante_id)
-        : undefined;
-    const centroCostoParsed =
-      cabeceraDefaults.centro_costo_id &&
-      cabeceraDefaults.centro_costo_id.trim().length > 0
-        ? Number(cabeceraDefaults.centro_costo_id)
-        : 1;
-    const centroCostoDefault = Number.isFinite(centroCostoParsed)
-      ? centroCostoParsed
-      : 1;
-    const oportunidadDefault = Number.isFinite(oportunidadIdFromLocation)
-      ? oportunidadIdFromLocation
-      : undefined;
-    return {
-      ...cabeceraDefaults,
-      fecha_necesidad: cabeceraDefaults.fecha_necesidad || today,
-      solicitante_id: solicitanteDefault,
-      centro_costo_id: centroCostoDefault,
-      oportunidad_id: oportunidadDefault ?? cabeceraDefaults.oportunidad_id,
-      total: 0,
-      detalles: [] as PoSolicitudDetalle[],
-    };
-  }, [cabeceraDefaults, today, oportunidadIdFromLocation]);
+  const defaultValues = useMemo(
+    () =>
+      buildPoSolicitudDefaultValues({
+        cabeceraDefaults,
+        today,
+        oportunidadIdFromLocation,
+      }),
+    [cabeceraDefaults, today, oportunidadIdFromLocation]
+  );
 
   return (
     <SimpleForm
       defaultValues={defaultValues}
       toolbar={<FormFooter />}
     >
+      {children}
       <PoSolicitudFormFields
         lockedOportunidadId={oportunidadIdFromLocation}
-        wizardOpen={wizardOpen}
-        setWizardOpen={setWizardOpen}
-        wizardVariant={wizardVariant}
       />
     </SimpleForm>
   );
 };
-
+// endregion

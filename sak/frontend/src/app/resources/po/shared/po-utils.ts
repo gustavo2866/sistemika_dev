@@ -16,6 +16,23 @@ export const normalizeOptionalNumber = (value: unknown): number | null => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+export const parseOptionalNumber = (
+  value: string | number | undefined | null
+): number | undefined => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.trim().length === 0) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+export const parseNumberOrDefault = (
+  value: string | number | undefined | null,
+  fallback: number
+): number => {
+  const parsed = parseOptionalNumber(value);
+  return parsed ?? fallback;
+};
+
 export const calculateImporte = (cantidad: number, precio: number): number => {
   const result = (cantidad || 0) * (precio || 0);
   return roundCurrency(result);

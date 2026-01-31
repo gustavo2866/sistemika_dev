@@ -48,8 +48,117 @@ import {
   truncateText,
   calculateImporte,
   formatImporteDisplay,
+  VALIDATION_RULES,
 } from "./model";
-import type { DetalleFormValues } from "./form-types";
+import {
+  createDetailSchema,
+  numberField,
+  referenceField,
+  selectField,
+  stringField,
+} from "@/lib/form-detail-schema";
+
+// Tipos de detalle para formulario.
+export type DetalleFormValues = {
+  articulo_id: string;
+  descripcion: string;
+  unidad_medida: string;
+  cantidad: number;
+  precio: number;
+  importe: number;
+};
+
+// Tipo para errores de validacion por campo.
+type ValidationErrors<T> = Partial<Record<keyof T, string>>;
+
+// Valida un detalle y registra errores en el formulario.
+export function validateDetalle(
+  data: DetalleFormValues,
+  form: UseFormReturn<DetalleFormValues>
+): boolean {
+  const errors: ValidationErrors<DetalleFormValues> = {};
+
+  if (!data.articulo_id) {
+    errors.articulo_id = "Selecciona un articulo";
+  }
+
+  if (
+    data.descripcion &&
+    data.descripcion.length > VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH
+  ) {
+    errors.descripcion = `Maximo ${VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH} caracteres`;
+  }
+
+  if (!data.unidad_medida.trim()) {
+    errors.unidad_medida = "La unidad de medida es requerida";
+  }
+
+  if (
+    !Number.isFinite(data.cantidad) ||
+    data.cantidad <= VALIDATION_RULES.DETALLE.MIN_CANTIDAD
+  ) {
+    errors.cantidad = "La cantidad debe ser mayor a 0";
+  }
+
+  if (!Number.isFinite(data.precio) || data.precio < 0) {
+    errors.precio = "El precio debe ser mayor o igual a 0";
+  }
+
+  if (Object.keys(errors).length > 0) {
+    Object.entries(errors).forEach(([field, message]) => {
+      form.setError(field as keyof DetalleFormValues, {
+        type: "manual",
+        message,
+      });
+    });
+    return true;
+  }
+
+  return false;
+}
+
+// Esquema de formulario para detalles de PoSolicitud.
+export const poSolicitudDetalleSchema = createDetailSchema<
+  DetalleFormValues,
+  PoSolicitudDetalle
+>({
+  fields: {
+    articulo_id: referenceField({
+      resource: ARTICULOS_REFERENCE.resource,
+      labelField: ARTICULOS_REFERENCE.labelField,
+      perPage: ARTICULOS_REFERENCE.limit,
+      sortField: ARTICULOS_REFERENCE.labelField,
+      sortOrder: "ASC",
+      defaultValue: "",
+    }),
+    descripcion: stringField({
+      required: false,
+      trim: true,
+      maxLength: VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH,
+      defaultValue: "",
+    }),
+    unidad_medida: selectField({
+      required: true,
+      options: UNIDAD_MEDIDA_CHOICES,
+      defaultValue: "UN",
+    }),
+    cantidad: numberField({
+      required: true,
+      min: VALIDATION_RULES.DETALLE.MIN_CANTIDAD + 1,
+      defaultValue: 1,
+    }),
+    precio: numberField({
+      required: true,
+      min: 0,
+      defaultValue: 0,
+    }),
+    importe: numberField({
+      required: true,
+      min: 0,
+      defaultValue: 0,
+    }),
+  },
+});
 
 // ============================================
 // TYPES

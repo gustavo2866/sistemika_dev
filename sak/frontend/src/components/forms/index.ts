@@ -31,6 +31,7 @@ export { CompactSelectInput } from "./compact/compact-select-input";
 export { CompactFormSection } from "./compact/compact-form-section";
 export { CompactFormGrid } from "./compact/compact-form-grid";
 export { CompactTextInput } from "./compact/compact-text-input";
+export { CompactDateInput } from "./compact/compact-date-input";
 export { CompactNumberInput } from "./compact/compact-number-input";
 
 // Types

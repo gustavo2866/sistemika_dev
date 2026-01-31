@@ -16,15 +16,6 @@
  * 7. HELPERS - Utilidades especificas del dominio
  */
 
-import { UseFormReturn } from "react-hook-form";
-import {
-  createDetailSchema,
-  createEntitySchema,
-  numberField,
-  referenceField,
-  selectField,
-  stringField,
-} from "@/lib/form-detail-schema";
 import {
   CURRENCY_FORMATTER,
   formatCurrency,
@@ -38,8 +29,9 @@ import {
   normalizeId,
   normalizeNumber,
   normalizeOptionalNumber,
+  parseNumberOrDefault,
+  parseOptionalNumber,
 } from "../shared/po-utils";
-import type { DetalleFormValues, PoSolicitudCabeceraFormValues } from "./form-types";
 
 // ============================================
 // 1. CONFIGURACION
@@ -254,63 +246,54 @@ export type PoSolicitud = {
 // ============================================
 // #region 
 
+export type PoSolicitudCabeceraDefaults = {
+  titulo?: string;
+  tipo_solicitud_id?: string;
+  departamento_id?: string;
+  centro_costo_id?: string;
+  estado?: string;
+  tipo_compra?: string;
+  fecha_necesidad?: string;
+  solicitante_id?: string;
+  comentario?: string;
+  oportunidad_id?: number | string | null;
+  proveedor_id?: string;
+  [key: string]: unknown;
+};
+
+export const buildPoSolicitudDefaultValues = ({
+  cabeceraDefaults,
+  today,
+  oportunidadIdFromLocation,
+}: {
+  cabeceraDefaults: PoSolicitudCabeceraDefaults;
+  today: string;
+  oportunidadIdFromLocation?: number | null;
+}) => {
+  const solicitanteDefault = parseOptionalNumber(cabeceraDefaults.solicitante_id);
+  const centroCostoDefault = parseNumberOrDefault(
+    cabeceraDefaults.centro_costo_id,
+    1
+  );
+  const oportunidadDefault = parseOptionalNumber(oportunidadIdFromLocation);
+
+  return {
+    ...cabeceraDefaults,
+    fecha_necesidad: cabeceraDefaults.fecha_necesidad || today,
+    solicitante_id: solicitanteDefault,
+    centro_costo_id: centroCostoDefault,
+    oportunidad_id: oportunidadDefault ?? cabeceraDefaults.oportunidad_id,
+    total: 0,
+    detalles: [] as PoSolicitudDetalle[],
+  };
+};
+
 // #endregion
 
 
 // ============================================
 // 4. VALIDACIONES
 // ============================================
-//#region 
-
-// Tipo para errores de validación por campo
-type ValidationErrors<T> = Partial<Record<keyof T, string>>;
-
-// Valida un detalle y registra errores en el formulario.
-export function validateDetalle(
-  data: DetalleFormValues,
-  form: UseFormReturn<DetalleFormValues>
-): boolean {
-  const errors: ValidationErrors<DetalleFormValues> = {};
-
-  // Validar articulo_id
-  if (!data.articulo_id) {
-    errors.articulo_id = "Selecciona un artículo";
-  }
-
-  // Validar descripcion (opcional, con tope de caracteres)
-  if (data.descripcion && data.descripcion.length > VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH) {
-    errors.descripcion = `Máximo ${VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH} caracteres`;
-  }
-
-  // Validar unidad_medida
-  if (!data.unidad_medida.trim()) {
-    errors.unidad_medida = "La unidad de medida es requerida";
-  }
-
-  // Validar cantidad
-  if (!Number.isFinite(data.cantidad) || data.cantidad <= VALIDATION_RULES.DETALLE.MIN_CANTIDAD) {
-    errors.cantidad = "La cantidad debe ser mayor a 0";
-  }
-
-  if (!Number.isFinite(data.precio) || data.precio < 0) {
-    errors.precio = "El precio debe ser mayor o igual a 0";
-  }
-
-  // Establecer errores en el formulario si existen
-  if (Object.keys(errors).length > 0) {
-    Object.entries(errors).forEach(([field, message]) => {
-      form.setError(field as keyof DetalleFormValues, {
-        type: "manual",
-        message,
-      });
-    });
-    return true; // Hay errores
-  }
-
-  return false; // Sin errores
-}
-
-// #endregion
 
 // ============================================
 // 5. TRANSFORMACIONES
@@ -357,9 +340,38 @@ export const resolveCentroCostoId = ({
       ? solicitanteCentroCosto
       : null;
   }
-  return Number.isFinite(defaultCentroCostoId) && defaultCentroCostoId > 0
+return Number.isFinite(defaultCentroCostoId) && defaultCentroCostoId > 0
     ? defaultCentroCostoId
     : null;
+};
+
+// Arma subtitulo de cabecera combinando titulo y proveedor.
+export const buildPoSolicitudCabeceraSubtitle = ({
+  titulo,
+  tipoSolicitudNombre,
+}: {
+  titulo?: string | null;
+  tipoSolicitudNombre?: string | null;
+}) => {
+  const safeTitulo = titulo?.trim() ? titulo.trim() : "Sin titulo";
+  const safeTipo = tipoSolicitudNombre?.trim()
+    ? tipoSolicitudNombre.trim()
+    : "Sin tipo";
+  return `${safeTitulo} - ${safeTipo}`;
+};
+
+export const buildPoSolicitudImputacionSubtitle = ({
+  oportunidadTitulo,
+  centroCostoNombre,
+}: {
+  oportunidadTitulo?: string | null;
+  centroCostoNombre?: string | null;
+}) => {
+  const safeOportunidad = oportunidadTitulo?.trim();
+  if (safeOportunidad) return safeOportunidad;
+  const safeCentro = centroCostoNombre?.trim();
+  if (safeCentro) return safeCentro;
+  return "Sin imputacion";
 };
 
 
@@ -375,138 +387,6 @@ export {
 };
 
 //#endregion
-
-// ============================================
-// 6. ESQUEMAS
-// ============================================
-//#region 
-
-// Esquema de formulario para detalles de PoSolicitud
-export const poSolicitudDetalleSchema = createDetailSchema<
-  DetalleFormValues,
-  PoSolicitudDetalle
->({
-  fields: {
-    articulo_id: referenceField({
-      resource: ARTICULOS_REFERENCE.resource,
-      labelField: ARTICULOS_REFERENCE.labelField,
-      perPage: ARTICULOS_REFERENCE.limit,
-      sortField: ARTICULOS_REFERENCE.labelField,
-      sortOrder: "ASC",
-      defaultValue: "",
-    }),
-    descripcion: stringField({
-      required: false,
-      trim: true,
-      maxLength: VALIDATION_RULES.DETALLE.MAX_DESCRIPCION_LENGTH,
-      defaultValue: "",
-    }),
-    unidad_medida: selectField({
-      required: true,
-      options: UNIDAD_MEDIDA_CHOICES,
-      defaultValue: "UN",
-    }),
-    cantidad: numberField({
-      required: true,
-      min: VALIDATION_RULES.DETALLE.MIN_CANTIDAD + 1,
-      defaultValue: 1,
-    }),
-    precio: numberField({
-      required: true,
-      min: 0,
-      defaultValue: 0,
-    }),
-    importe: numberField({
-      required: true,
-      min: 0,
-      defaultValue: 0,
-    }),
-  },
-});
-
-// Esquema de formulario para cabecera de PoSolicitud
-export const poSolicitudCabeceraSchema = createEntitySchema<
-  PoSolicitudCabeceraFormValues,
-  Pick<
-    PoSolicitud,
-    | "titulo"
-    | "tipo_solicitud_id"
-    | "departamento_id"
-    | "centro_costo_id"
-    | "estado"
-    | "tipo_compra"
-    | "fecha_necesidad"
-    | "solicitante_id"
-    | "comentario"
-    | "oportunidad_id"
-    | "proveedor_id"
-  >
->({
-  fields: {
-    titulo: stringField({
-      required: true,
-      trim: true,
-      maxLength: 200,
-      defaultValue: "",
-    }),
-    tipo_solicitud_id: referenceField({
-      resource: TIPOS_SOLICITUD_REFERENCE.resource,
-      labelField: TIPOS_SOLICITUD_REFERENCE.labelField,
-      required: true,
-      defaultValue: "",
-    }),
-    departamento_id: referenceField({
-      resource: DEPARTAMENTOS_REFERENCE.resource,
-      labelField: DEPARTAMENTOS_REFERENCE.labelField,
-      required: true,
-      defaultValue: "",
-    }),
-    centro_costo_id: referenceField({
-      resource: CENTROS_COSTO_REFERENCE.resource,
-      labelField: CENTROS_COSTO_REFERENCE.labelField,
-      required: true,
-      defaultValue: "1",
-    }),
-    estado: selectField({
-      required: false,
-      options: ESTADO_CHOICES,
-      defaultValue: "borrador",
-    }),
-    tipo_compra: selectField({
-      required: true,
-      options: TIPO_COMPRA_CHOICES,
-      defaultValue: "normal",
-    }),
-    fecha_necesidad: stringField({
-      required: true,
-      defaultValue: "",
-    }),
-    solicitante_id: referenceField({
-      resource: USERS_REFERENCE.resource,
-      labelField: USERS_REFERENCE.labelField,
-      required: true,
-      defaultValue: "",
-    }),
-    comentario: stringField({
-      trim: true,
-      maxLength: VALIDATION_RULES.GENERAL.MAX_COMENTARIO_LENGTH,
-      defaultValue: "",
-    }),
-    oportunidad_id: referenceField({
-      resource: OPORTUNIDADES_REFERENCE.resource,
-      labelField: OPORTUNIDADES_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    proveedor_id: referenceField({
-      resource: PROVEEDORES_REFERENCE.resource,
-      labelField: PROVEEDORES_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-  },
-});
-// #endregion
 
 // ============================================
 // 7. HELPERS
