@@ -6,6 +6,10 @@ export interface FormDetailCardListProps<TDetail> {
   children: (item: TDetail, index: number) => ReactNode;
   emptyMessage?: string;
   EmptyIcon?: ComponentType<{ className?: string }>;
+  emptyStateClassName?: string;
+  emptyStateContentClassName?: string;
+  emptyStateIconClassName?: string;
+  emptyStateTextClassName?: string;
   keyExtractor?: (item: TDetail) => string | number;
   showEditAction?: boolean;
   showDeleteAction?: boolean;
@@ -21,6 +25,10 @@ export function FormDetailCardList<TDetail>({
   children,
   emptyMessage,
   EmptyIcon,
+  emptyStateClassName,
+  emptyStateContentClassName,
+  emptyStateIconClassName,
+  emptyStateTextClassName,
   keyExtractor,
   showEditAction,
   showDeleteAction,
@@ -47,6 +55,10 @@ export function FormDetailCardList<TDetail>({
       onDelete={(_, index) => handleDeleteBySortedIndex(index)}
       emptyMessage={emptyMessage}
       EmptyIcon={EmptyIcon}
+      emptyStateClassName={emptyStateClassName}
+      emptyStateContentClassName={emptyStateContentClassName}
+      emptyStateIconClassName={emptyStateIconClassName}
+      emptyStateTextClassName={emptyStateTextClassName}
       showEditAction={showEditAction}
       showDeleteAction={showDeleteAction}
       contentClassName={contentClassName}

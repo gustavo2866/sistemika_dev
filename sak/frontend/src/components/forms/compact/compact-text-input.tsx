@@ -38,6 +38,7 @@ export const CompactTextInput = (props: CompactTextInputProps) => {
     defaultValue: _defaultValue,
     ...rest
   } = props;
+  const isReadOnly = Boolean(rest.readOnly);
   const nextValidate = isRequired
     ? _validateProp
       ? Array.isArray(_validateProp)
@@ -49,6 +50,10 @@ export const CompactTextInput = (props: CompactTextInputProps) => {
     ...props,
     validate: nextValidate,
   });
+  const nextField =
+    isReadOnly && typeof rest.value !== "undefined"
+      ? { ...field, value: rest.value, onChange: undefined }
+      : field;
 
   return (
     <FormField id={id} className={cn("w-full", className)} name={field.name}>
@@ -66,13 +71,13 @@ export const CompactTextInput = (props: CompactTextInputProps) => {
         {multiline ? (
           <Textarea
             {...rest}
-            {...field}
+            {...nextField}
             className={cn(compactTextareaClass, textareaClassName)}
           />
         ) : (
           <Input
             {...rest}
-            {...field}
+            {...nextField}
             className={cn(compactInputClass, inputClassName)}
           />
         )}

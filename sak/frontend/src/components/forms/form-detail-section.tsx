@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type FieldValues, useForm } from "react-hook-form";
 import {
   FormDetailSectionAction,
@@ -108,6 +108,10 @@ export interface FormDetailSectionProps<TSchema extends FormDetailSchema<any, an
     SchemaDetail<TSchema>
   >) => void;
   onAfterDelete?: (payload: { item: SchemaDetail<TSchema> }) => void;
+  onRegisterActions?: (actions: {
+    handleStartCreate: () => void;
+    handleClearAll: () => void;
+  }) => void;
   children: ReactNode;
 }
 
@@ -118,6 +122,7 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
   dynamicFilters,
   onAfterSubmit,
   onAfterDelete,
+  onRegisterActions,
   children,
 }: FormDetailSectionProps<TSchema>) => {
   type TForm = SchemaFormValues<TSchema>;
@@ -163,10 +168,10 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
   const actionRef = () =>
     (editingIndex == null ? "create" : "update") as FormDetailSectionAction;
 
-  const startCreate = () => {
+  const startCreate = useCallback(() => {
     handleAdd();
     setDialogOpen(true);
-  };
+  }, [handleAdd, setDialogOpen]);
 
   const startEdit = (originalIndex: number) => {
     const current = fields[originalIndex] as unknown as TDetail | undefined;
@@ -244,6 +249,26 @@ export const FormDetailSection = <TSchema extends FormDetailSchema<any, any>>({
     getReferenceOptions,
     getReferenceLabel,
   };
+
+  const startCreateRef = useRef(startCreate);
+  const clearAllRef = useRef(handleClearAll);
+
+  useEffect(() => {
+    startCreateRef.current = startCreate;
+    clearAllRef.current = handleClearAll;
+  }, [handleClearAll, startCreate]);
+
+  const stableActions = useMemo(
+    () => ({
+      handleStartCreate: () => startCreateRef.current(),
+      handleClearAll: () => clearAllRef.current(),
+    }),
+    []
+  );
+
+  useEffect(() => {
+    onRegisterActions?.(stableActions);
+  }, [onRegisterActions, stableActions]);
 
   return (
     <FormDetailSectionContext.Provider value={contextValue as any}>

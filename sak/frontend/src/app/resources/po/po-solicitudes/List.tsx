@@ -31,10 +31,10 @@ import {
 } from "@/components/lists/actions";
 import { BadgeField } from "@/components/badge-field";
 import { KanbanAvatar } from "@/components/kanban/card";
-import { useGetIdentity, useListContext } from "ra-core";
+import { useGetIdentity, useListContext, useRefresh } from "ra-core";
 import type { PoSolicitud } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
-import { PoSolicitudActionsMenu } from "./list_actions";
+import { PoSolicitudActionsMenuList } from "./list_actions";
 import { CrmContextHeader } from "./list_header_crm";
 
 //********************************* */
@@ -156,6 +156,7 @@ const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
 export const PoSolicitudList = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const refresh = useRefresh();
   const { data: identity } = useGetIdentity();
   const oportunidadIdFilter = getOportunidadIdFromLocation(location);
   const returnTo = getReturnToFromLocation(location);
@@ -176,7 +177,6 @@ export const PoSolicitudList = () => {
     }
     return `${createPath}?${params.toString()}`;
   }, [location.pathname, location.search, oportunidadIdFilter]);
-
   return (
     <List
       filters={filters}
@@ -184,8 +184,8 @@ export const PoSolicitudList = () => {
       perPage={10}
       sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={defaultFilters}
-      storeKey={false}
     >
+      <PoSolicitudesRefreshOnReturn location={location} navigate={navigate} refresh={refresh} />
       <PoSolicitudesFilterSync
         oportunidadIdFilter={oportunidadIdFilter}
         defaultFilters={defaultFilters}
@@ -261,11 +261,33 @@ export const PoSolicitudList = () => {
           <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
-          <PoSolicitudActionsMenu />
+          <PoSolicitudActionsMenuList />
         </ResponsiveDataTable.Col>
       </ResponsiveDataTable>
     </List>
   );
+};
+
+// Fuerza refresh al volver desde create/edit cuando se pide.
+const PoSolicitudesRefreshOnReturn = ({
+  location,
+  navigate,
+  refresh,
+}: {
+  location: ReturnType<typeof useLocation>;
+  navigate: ReturnType<typeof useNavigate>;
+  refresh: () => void;
+}) => {
+  useEffect(() => {
+    const state = location.state as { refresh?: boolean } | null;
+    if (!state?.refresh) {
+      return;
+    }
+    refresh();
+    navigate(`${location.pathname}${location.search}`, { replace: true });
+  }, [location, navigate, refresh]);
+
+  return null;
 };
 // endregion
 

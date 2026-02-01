@@ -4,6 +4,7 @@ export { ComboboxQuery } from "./combobox-query";
 export { CollapsibleSection } from "./collapsible-section";
 export { FormDialog } from "./form-dialog";
 export { FormField } from "./form-field";
+export { FormActionsMenuButton } from "./form-actions-menu-button";
 export { FormChoiceSelect } from "./form-choice-select";
 export { FormLayout } from "./form-layout";
 export { AddItemButton } from "./add-item-button";

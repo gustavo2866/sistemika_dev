@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import type { FieldValues, UseFormGetValues, UseFormReset, UseFormReturn } from "react-hook-form";
 import { useFormContext, useWatch } from "react-hook-form";
 import { getArticuloFilterByTipo } from "./po-utils";
 import { useReferenceFieldWatcher } from "@/components/generic";
@@ -119,4 +120,59 @@ export const useLockedOportunidadField = ({
     registerOportunidad: () =>
       register("oportunidad_id", { valueAsNumber: true }),
   };
+};
+
+export const hasDefaultChanges = <T extends Record<string, unknown>>(
+  defaults: T,
+  values: T
+) =>
+  Object.keys(defaults).some((key) => {
+    const typedKey = key as keyof T;
+    return String(values[typedKey] ?? "") !== String(defaults[typedKey] ?? "");
+  });
+
+export const useWizardCancel = <T extends FieldValues>({
+  defaultValues,
+  formState,
+  getValues,
+  reset,
+  setStep,
+  onOpenChange,
+  navigate,
+  setConfirmCancelOpen,
+  navigateTo = "/po-solicitudes",
+}: {
+  defaultValues: T;
+  formState: UseFormReturn<T>["formState"];
+  getValues: UseFormGetValues<T>;
+  reset: UseFormReset<T>;
+  setStep: (step: 1 | 2) => void;
+  onOpenChange: (open: boolean) => void;
+  navigate: (to: string) => void;
+  setConfirmCancelOpen: (open: boolean) => void;
+  navigateTo?: string;
+}) => {
+  const resetAndClose = () => {
+    reset();
+    setStep(1);
+    onOpenChange(false);
+    navigate(navigateTo);
+  };
+
+  const handleCancel = () => {
+    const values = getValues();
+    const hasChanges = hasDefaultChanges(defaultValues, values as T);
+    if (formState.isDirty || hasChanges) {
+      setConfirmCancelOpen(true);
+      return;
+    }
+    resetAndClose();
+  };
+
+  const handleConfirmCancel = () => {
+    setConfirmCancelOpen(false);
+    resetAndClose();
+  };
+
+  return { handleCancel, handleConfirmCancel };
 };

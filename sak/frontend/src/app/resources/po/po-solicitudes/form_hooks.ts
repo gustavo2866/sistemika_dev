@@ -7,15 +7,24 @@
  * 3. DEFAULTS Y SINCRONIZACION - Defaults y sync de estado del formulario
  * 4. LOOKUPS - Consultas por id para referencias
  * 5. WIZARD - Helpers para aplicar payloads y defaults del wizard
+ * 6. EMISION - Emision y cambio de estado de la solicitud
  */
 
 "use client";
 
-import { createElement, useEffect, useMemo, useRef } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useDataProvider, useGetOne } from "ra-core";
+import {
+  useDataProvider,
+  useGetOne,
+  useRecordContext,
+  useRedirect,
+  useResourceContext,
+  useSaveContext,
+} from "ra-core";
 import {
   useFormContext,
+  useFormState,
   useWatch,
   type UseFormReturn,
   type UseFormSetValue,
@@ -37,6 +46,8 @@ import {
   useReferenceFieldWatcher,
   useCentroCostoWatcher,
 } from "@/components/generic";
+import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
+import { useLocation } from "react-router-dom";
 
 //******************************* */
 // region 1. TIPOS
@@ -140,7 +151,7 @@ export const usePoSolicitudSectionSubtitles = () => {
     [centroCostoData, oportunidadData]
   );
 
-  return {
+ return {
     cabeceraSubtitle,
     imputacionSubtitle,
     tiposSolicitudCatalog,
@@ -152,6 +163,56 @@ export const PoSolicitudSectionSubtitle = ({ text }: { text: string }) =>
     className: "text-[10px] leading-none text-muted-foreground sm:text-xs",
     children: text,
   });
+// endregion
+
+//******************************* */
+// region 3.1. VISIBILIDAD SECCIONES
+// Controla la visibilidad de Imputacion en base al estado de Detalle.
+export const useImputacionVisibilityByDetalle = () => {
+  const [showImputacion, setShowImputacion] = useState(true);
+
+  const handleDetalleOpen = () => {
+    setShowImputacion(false);
+  };
+
+  const handleDetalleClose = () => {
+    setShowImputacion(true);
+  };
+
+  return {
+    showImputacion,
+    handleDetalleOpen,
+    handleDetalleClose,
+  };
+};
+// endregion
+
+//******************************* */
+// region 3.2. CONTEXTO OPORTUNIDAD
+// Define oportunidad default usando el contexto de la URL.
+export const useDefaultOportunidadFromLocation = ({
+  setValue,
+  oportunidadIdValue,
+}: {
+  setValue: SetValueFn;
+  oportunidadIdValue?: string | null;
+}) => {
+  const location = useLocation();
+  const oportunidadIdFromLocation = useMemo(
+    () => getOportunidadIdFromLocation(location),
+    [location]
+  );
+
+  useEffect(() => {
+    if (!oportunidadIdFromLocation) return;
+    if (oportunidadIdValue) return;
+    setValue("oportunidadId", String(oportunidadIdFromLocation), {
+      shouldDirty: false,
+    });
+  }, [oportunidadIdFromLocation, oportunidadIdValue, setValue]);
+
+  return { oportunidadIdFromLocation };
+};
 // endregion
 
 //******************************* */
@@ -459,6 +520,57 @@ export const useDefaultArticuloFromProveedor = ({
     setValue("articuloId", String(defaultArticuloId), { shouldDirty: true });
   }, [articuloIdValue, proveedorData, setValue]);
 };
+
+// endregion
+
+//******************************* */
+// region 6. EMISION
+
+// Orquesta la emision de la solicitud con guardado previo si hace falta.
+export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
+  const record = useRecordContext<PoSolicitud>();
+  const resource = useResourceContext();
+  const dataProvider = useDataProvider();
+  const redirect = useRedirect();
+  const saveContext = useSaveContext();
+  const form = useFormContext<PoSolicitud>();
+  const { dirtyFields } = useFormState();
+  const [loading, setLoading] = useState(false);
+
+  const isDirty = Object.keys(dirtyFields).length > 0;
+  const canEmit = record?.estado === "borrador" || record?.estado === "emitida";
+
+  const emit = async (openShow: boolean) => {
+    if (!record?.id || !resource) return;
+    setLoading(true);
+    try {
+      if (isDirty && saveContext?.save) {
+        const errors = await saveContext.save(form.getValues());
+        if (errors) {
+          return;
+        }
+      }
+      await dataProvider.update(resource, {
+        id: record.id,
+        data: { estado: "emitida" },
+      });
+      if (openShow) {
+        redirect("show", resource, record.id);
+        return;
+      }
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    canEmit,
+    emit,
+    loading,
+  };
+};
+// endregion
 
 // Define precio por default desde el articulo si no hay valor.
 export const useDefaultPrecioFromArticulo = ({

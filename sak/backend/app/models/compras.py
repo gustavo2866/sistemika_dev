@@ -84,7 +84,10 @@ class PoSolicitud(Base, table=True):
         sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
         description="Total estimado de la solicitud",
     )
-    fecha_necesidad: date = Field(description="Fecha requerida")
+    fecha_necesidad: Optional[date] = Field(
+        default=None,
+        description="Fecha requerida"
+    )
     comentario: Optional[str] = Field(
         default=None,
         max_length=1000,
@@ -94,7 +97,8 @@ class PoSolicitud(Base, table=True):
         foreign_key="users.id",
         description="Identificador del usuario solicitante",
     )
-    centro_costo_id: int = Field(
+    centro_costo_id: Optional[int] = Field(
+        default=None,
         foreign_key="centros_costo.id",
         description="Centro de costo imputado",
     )
@@ -112,7 +116,7 @@ class PoSolicitud(Base, table=True):
     )
 
     solicitante: "User" = Relationship()
-    centro_costo: "CentroCosto" = Relationship()
+    centro_costo: Optional["CentroCosto"] = Relationship()
     detalles: List["PoSolicitudDetalle"] = Relationship(
         back_populates="solicitud",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},

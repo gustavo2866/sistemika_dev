@@ -1,38 +1,66 @@
+/**
+ * Edicion de PoSolicitudes.
+ *
+ * Estructura:
+ * 1. TITLE - Titulo dinamico
+ * 2. EDIT - Componente principal
+ */
+
 "use client";
 
-import { Edit } from "@/components/edit";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEditContext } from "ra-core";
-import type { PoSolicitud } from "./model";
+import { Edit } from "@/components/edit";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
+import { buildPoSolicitudPayload } from "./model";
+import type { PoSolicitud, PoSolicitudPayload } from "./model";
 import { PoSolicitudForm } from "./form";
 
-const PoSolicitudEditTitle = () => "Editar Solicitud";
+//******************************* */
+// region 1. TITLE
 
-const PoSolicitudEditActions = () => {
+// Construye el titulo de edicion con el id.
+const PoSolicitudEditTitle = () => {
   const { record } = useEditContext<PoSolicitud & { id: number }>();
   const idLabel =
     record?.id != null ? `#${String(record.id).padStart(5, "0")}` : "";
 
   return (
     <div className="flex items-center gap-2">
-      {idLabel ? (
-        <span className="text-sm font-medium leading-none text-foreground">
-          {idLabel}
-        </span>
-      ) : null}
+      <span>Editar Solicitud</span>
+      {idLabel ? <span className="text-inherit font-inherit">{idLabel}</span> : null}
     </div>
   );
 };
+// endregion
+
+//******************************* */
+// region 2. EDIT
 
 export const PoSolicitudEdit = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const returnTo = getReturnToFromLocation(location);
   return (
     <Edit
       title={<PoSolicitudEditTitle />}
-      actions={<PoSolicitudEditActions />}
+      actions={false}
       className="w-full max-w-lg"
       redirect={false}
+      transform={(data) => buildPoSolicitudPayload(data as PoSolicitudPayload)}
+      mutationOptions={{
+        onSuccess: () => {
+          if (returnTo) {
+            navigate(returnTo, { state: { refresh: true } });
+            return;
+          }
+          navigate("/po-solicitudes", { state: { refresh: true } });
+        },
+      }}
     >
       <PoSolicitudForm />
     </Edit>
   );
 };
+// endregion
 

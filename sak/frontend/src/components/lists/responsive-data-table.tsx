@@ -512,7 +512,16 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                 rowClick !== false && "cursor-pointer hover:shadow-md",
                 rowClassName?.(record)
               )}
-              onClick={handleClick}
+              onClick={(event) => {
+                if (event.defaultPrevented) {
+                  return;
+                }
+                const target = event.target as Element | null;
+                if (target?.closest?.('[data-row-click="ignore"]')) {
+                  return;
+                }
+                handleClick();
+              }}
             >
               <div className="flex items-start gap-3 px-3 py-1">
                 {hasBulkActions && (

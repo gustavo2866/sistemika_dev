@@ -3,20 +3,23 @@
  *
  * Estructura:
  * 1. TIPOS - Tipos y contratos del formulario
- * 2. ESQUEMAS - Schema de cabecera del formulario
- * 3. SECCIONES - Render de secciones (cabecera e imputacion)
- * 4. RESUMEN - Widgets de header y totales
+ * 2. SECCIONES - Render de secciones (cabecera e imputacion)
+ * 3. RESUMEN - Widgets de header y totales
+ * 4. FOOTER - Acciones y emision
  * 5. FORM - Orquestacion principal del formulario
  */
 
-
-
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
-import { useLocation } from "react-router-dom";
-import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
+import { RecordContextProvider, useRecordContext } from "ra-core";
+import { useLocation, useNavigate } from "react-router-dom";
+import { CheckCircle2, CircleX } from "lucide-react";
+import { getOportunidadIdFromLocation, getReturnToFromLocation } from "@/lib/oportunidad-context";
+import { SaveButton } from "@/components/form";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { CompactOportunidadSelector } from "../../crm-oportunidades";
 import { ReferenceInput } from "@/components/reference-input";
@@ -37,7 +40,14 @@ import {
   StandardFormGrid,
   createTwoColumnSection,
 } from "@/components/generic";
-import { createEntitySchema, referenceField, selectField, stringField } from "@/lib/form-detail-schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   type PoSolicitud,
   ESTADO_BADGES,
@@ -51,24 +61,29 @@ import {
   PROVEEDORES_REFERENCE,
   VALIDATION_RULES,
   buildPoSolicitudDefaultValues,
+  formatCurrency,
+  poSolicitudCabeceraSchema,
+  poSolicitudDetalleSchema,
+  resolveTipoCompra,
 } from "./model";
 import {
   useArticuloFilterByTipoSolicitud,
   useLockedOportunidadField,
   useMutuallyExclusiveFields,
 } from "../shared/po-hooks";
-import {
-  PoSolicitudDetalleContent,
-  poSolicitudDetalleSchema,
-} from "./form_detalle";
+import { PoSolicitudDetalleContent } from "./form_detalle";
+import { PoSolicitudActionsMenuForm } from "./list_actions";
 import {
   useDepartamentoDefaultByTipo,
   usePoSolicitudSectionSubtitles,
   PoSolicitudSectionSubtitle,
+  useImputacionVisibilityByDetalle,
   useProveedorDefaults,
+  usePoSolicitudEmit,
   useSyncTotalFromDetalles,
   useTipoSolicitudBloqueado,
 } from "./form_hooks";
+import { FormActionsMenuButton } from "@/components/forms";
 
 const OPORTUNIDAD_FILTER = { activo: true };
 
@@ -93,95 +108,9 @@ export type PoSolicitudCabeceraFormValues = {
 // endregion
 
 //*********************************
-// region 2. ESQUEMAS
-
-// Esquema de formulario para cabecera de PoSolicitud.
-export const poSolicitudCabeceraSchema = createEntitySchema<
-  PoSolicitudCabeceraFormValues,
-  Pick<
-    PoSolicitud,
-    | "titulo"
-    | "tipo_solicitud_id"
-    | "departamento_id"
-    | "centro_costo_id"
-    | "estado"
-    | "tipo_compra"
-    | "fecha_necesidad"
-    | "solicitante_id"
-    | "comentario"
-    | "oportunidad_id"
-    | "proveedor_id"
-  >
->({
-  fields: {
-    titulo: stringField({
-      required: true,
-      trim: true,
-      maxLength: 200,
-      defaultValue: "",
-    }),
-    tipo_solicitud_id: referenceField({
-      resource: TIPOS_SOLICITUD_REFERENCE.resource,
-      labelField: TIPOS_SOLICITUD_REFERENCE.labelField,
-      required: true,
-      defaultValue: "",
-    }),
-    departamento_id: referenceField({
-      resource: DEPARTAMENTOS_REFERENCE.resource,
-      labelField: DEPARTAMENTOS_REFERENCE.labelField,
-      required: true,
-      defaultValue: "",
-    }),
-    centro_costo_id: referenceField({
-      resource: CENTROS_COSTO_REFERENCE.resource,
-      labelField: CENTROS_COSTO_REFERENCE.labelField,
-      required: true,
-      defaultValue: "1",
-    }),
-    estado: selectField({
-      required: false,
-      options: ESTADO_CHOICES,
-      defaultValue: "borrador",
-    }),
-    tipo_compra: selectField({
-      required: true,
-      options: TIPO_COMPRA_CHOICES,
-      defaultValue: "normal",
-    }),
-    fecha_necesidad: stringField({
-      required: true,
-      defaultValue: "",
-    }),
-    solicitante_id: referenceField({
-      resource: USERS_REFERENCE.resource,
-      labelField: USERS_REFERENCE.labelField,
-      required: true,
-      defaultValue: "",
-    }),
-    comentario: stringField({
-      trim: true,
-      maxLength: VALIDATION_RULES.GENERAL.MAX_COMENTARIO_LENGTH,
-      defaultValue: "",
-    }),
-    oportunidad_id: referenceField({
-      resource: OPORTUNIDADES_REFERENCE.resource,
-      labelField: OPORTUNIDADES_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    proveedor_id: referenceField({
-      resource: PROVEEDORES_REFERENCE.resource,
-      labelField: PROVEEDORES_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-  },
-});
-
-// endregion
 
 //*********************************
-// region 3. SECCIONES
+// region 2. SECCIONES
 
 /**
  * Contenido de la sección Datos Generales (REFACTORIZADO)
@@ -278,7 +207,7 @@ const ImputacionContent = ({
           <CompactSelectInput
             optionText="nombre"
             triggerProps={{ className: "w-full truncate text-left" }}
-            required
+            disabled={shouldLockOportunidad}
           />
         </ReferenceInput>
       </div>,
@@ -307,7 +236,7 @@ const ImputacionContent = ({
 // endregion
 
 //*********************************
-// region 4. RESUMEN
+// region 3. RESUMEN
 
 /**
  * Muestra el total estimado usando HeaderSummaryDisplay
@@ -316,17 +245,45 @@ const PoSolicitudTotalInline = () => {
   const { control } = useFormContext<PoSolicitud>();
   const total = useWatch({ control, name: "total" });
 
+  const totalDisplay = formatCurrency(total ?? 0);
+
   return (
-    <HeaderSummaryDisplay
-      fields={[{ 
-        value: total ?? 0,
-        formatter: 'currency',
-        label: "TOTAL ESTIMADO",
-        className: "font-semibold text-primary"
-      }]}
-      layout="inline"
-      className="flex w-full items-center justify-end gap-2 text-[11px] leading-none text-muted-foreground"
-    />
+    <div className="text-[10px] leading-none text-muted-foreground sm:text-xs">
+      <span>Total estimado</span>{" "}
+      <span className="rounded-sm bg-muted/80 px-1.5 py-0.5 font-semibold text-foreground shadow-sm">
+        {totalDisplay}
+      </span>
+    </div>
+  );
+};
+
+const PoSolicitudDetalleHeaderRow = ({
+  onAdd,
+  menuContent,
+}: {
+  onAdd?: () => void;
+  menuContent?: ReactNode;
+}) => {
+  const handleAddClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onAdd?.();
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleAddClick}
+        disabled={!onAdd}
+        className="h-6 px-1.5 text-[10px] leading-none sm:h-6 sm:px-2 sm:text-[11px]"
+      >
+        + Agregar
+      </Button>
+      {menuContent}
+    </div>
   );
 };
 
@@ -339,15 +296,25 @@ const PoSolicitudHeaderInline = () => {
   
   if (!estadoValue) return null;
 
-  const estadoLabel = ESTADO_CHOICES.find((choice) => choice.id === String(estadoValue))?.name || estadoValue;
-  const badgeVariant = ESTADO_BADGES[String(estadoValue)] ? "default" : "secondary";
+  const estadoKey = String(estadoValue);
+  const estadoLabel =
+    ESTADO_CHOICES.find((choice) => choice.id === estadoKey)?.name || estadoValue;
+  const badgeClass = ESTADO_BADGES[estadoKey] ?? "bg-muted text-muted-foreground";
   
   return (
     <HeaderSummaryDisplay
       fields={[{ 
         value: estadoLabel,
-        formatter: 'badge',
-        badgeVariant,
+        formatter: (value) => (
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none sm:text-[11px]",
+              badgeClass
+            )}
+          >
+            {String(value)}
+          </span>
+        ),
       }]}
       layout="inline"
       className="flex w-full items-center justify-end"
@@ -355,15 +322,111 @@ const PoSolicitudHeaderInline = () => {
   );
 };
 
-/**
- * Resumen de título y proveedor (REFACTORIZADO)
- */
-/**
- * Toolbar del formulario
- */
-const FormFooter = () => (
-  <FormToolbar />
+const PoSolicitudHeaderActions = () => {
+  const record = useRecordContext<PoSolicitud>();
+
+  if (!record) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <PoSolicitudHeaderInline />
+      <RecordContextProvider value={record}>
+        <PoSolicitudActionsMenuForm />
+      </RecordContextProvider>
+    </div>
+  );
+};
+
+// endregion
+
+//*********************************
+// region 4. FOOTER
+
+// Dialogo de confirmacion para emitir.
+const EmitConfirmDialog = ({
+  open,
+  loading,
+  onClose,
+  onEmit,
+  onEmitAndShow,
+}: {
+  open: boolean;
+  loading: boolean;
+  onClose: () => void;
+  onEmit: () => void;
+  onEmitAndShow: () => void;
+}) => (
+  <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? null : onClose())}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Emitir solicitud</DialogTitle>
+      </DialogHeader>
+      <p className="text-sm text-muted-foreground">
+        ¿Querés emitir la solicitud? Se guardarán los cambios pendientes.
+      </p>
+      <DialogFooter className="gap-2 sm:gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onClose}
+          disabled={loading}
+        >
+          Cancelar
+        </Button>
+        <Button type="button" onClick={onEmit} disabled={loading}>
+          Emitir
+        </Button>
+        <Button type="button" onClick={onEmitAndShow} disabled={loading}>
+          Emitir y abrir
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 );
+
+// Toolbar del formulario con acciones principales.
+const FormFooter = ({ onCancel }: { onCancel: () => void }) => {
+  const record = useRecordContext<PoSolicitud>();
+  const [emitOpen, setEmitOpen] = useState(false);
+  const { canEmit, emit, loading: emitLoading } = usePoSolicitudEmit({
+    onClose: onCancel,
+  });
+
+  return (
+    <FormToolbar>
+      <div className="flex flex-row gap-2 justify-end">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onCancel}
+          className="h-7 px-2 text-[11px] sm:h-9 sm:px-4 sm:text-sm cursor-pointer"
+        >
+          <CircleX className="size-3 sm:size-4" />
+          Cancelar
+        </Button>
+        <SaveButton />
+        {record?.id && canEmit ? (
+          <Button
+            type="button"
+            variant="default"
+            onClick={() => setEmitOpen(true)}
+            className="h-7 px-2 text-[11px] sm:h-9 sm:px-4 sm:text-sm"
+          >
+            <CheckCircle2 className="mr-1 h-3 w-3 sm:h-4 sm:w-4" />
+            Emitir
+          </Button>
+        ) : null}
+      </div>
+      <EmitConfirmDialog
+        open={emitOpen}
+        loading={emitLoading}
+        onClose={() => setEmitOpen(false)}
+        onEmit={() => emit(false)}
+        onEmitAndShow={() => emit(true)}
+      />
+    </FormToolbar>
+  );
+};
 
 // endregion
 
@@ -383,18 +446,64 @@ const PoSolicitudFormFields = ({
   const idValue = useWatch({ control, name: "id" });
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
   const proveedorValue = useWatch({ control, name: "proveedor_id" });
+  const tipoCompraValue = useWatch({ control, name: "tipo_compra" });
   const detallesValue = useWatch({ control, name: "detalles" });
   const isCreate = !idValue;
 
   const { cabeceraSubtitle, imputacionSubtitle, tiposSolicitudCatalog } =
     usePoSolicitudSectionSubtitles();
+  const {
+    showImputacion,
+    handleDetalleOpen,
+    handleDetalleClose,
+  } = useImputacionVisibilityByDetalle();
+  const [detalleActions, setDetalleActions] = useState<{
+    handleStartCreate: () => void;
+    handleClearAll: () => void;
+  } | null>(null);
+  const handleRegisterDetalleActions = useCallback(
+    (actions: { handleStartCreate: () => void; handleClearAll: () => void }) => {
+      setDetalleActions((prev) => {
+        if (
+          prev?.handleStartCreate === actions.handleStartCreate &&
+          prev?.handleClearAll === actions.handleClearAll
+        ) {
+          return prev;
+        }
+        return actions;
+      });
+    },
+    []
+  );
   
   const proveedorId = useMemo(() => {
     const parsed = Number(proveedorValue);
     return Number.isFinite(parsed) ? parsed : undefined;
   }, [proveedorValue]);
+
+  useEffect(() => {
+    if (!proveedorId) return;
+    if (typeof tipoCompraValue === "string" && tipoCompraValue.trim().length > 0) {
+      return;
+    }
+    form.setValue("tipo_compra", resolveTipoCompra(proveedorId), {
+      shouldDirty: false,
+    });
+  }, [form, proveedorId, tipoCompraValue]);
   
   const oportunidadFilter = OPORTUNIDAD_FILTER;
+  const handleDetalleMenuClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const handleDetalleMenuAction = (
+    event: React.MouseEvent,
+    action?: () => void
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    action?.();
+  };
 
   const { articuloFilterId, dynamicReferenceFilters } =
     useArticuloFilterByTipoSolicitud({
@@ -425,7 +534,7 @@ const PoSolicitudFormFields = ({
             id: "datos-generales",
             title: "Cabecera",
             defaultOpen: isCreate ? false : !idValue,
-            headerContent: <PoSolicitudHeaderInline />,
+            headerContent: <PoSolicitudHeaderActions />,
             headerContentPosition: "inline",
             headerContentBelow: (
               <PoSolicitudSectionSubtitle text={cabeceraSubtitle} />
@@ -440,36 +549,78 @@ const PoSolicitudFormFields = ({
               </CompactFormSection>
             ),
           },
-          {
-            id: "imputacion",
-            title: "Imputación",
-            defaultOpen: false,
-            headerContentBelow: (
-              <PoSolicitudSectionSubtitle text={imputacionSubtitle} />
-            ),
-            children: (
-              <CompactFormSection>
-                <ImputacionContent
-                  oportunidadFilter={oportunidadFilter}
-                  lockedOportunidadId={lockedOportunidadId}
-                />
-              </CompactFormSection>
-            ),
-          },
+          ...(showImputacion
+            ? [
+                {
+                  id: "imputacion",
+                  title: "Imputación",
+                  defaultOpen: false,
+                  headerContentBelow: (
+                    <PoSolicitudSectionSubtitle text={imputacionSubtitle} />
+                  ),
+                  children: (
+                    <CompactFormSection>
+                      <ImputacionContent
+                        oportunidadFilter={oportunidadFilter}
+                        lockedOportunidadId={lockedOportunidadId}
+                      />
+                    </CompactFormSection>
+                  ),
+                },
+              ]
+            : []),
           {
             id: "articulos",
             title: "Detalle",
-            defaultOpen: isCreate ? false : true,
+            defaultOpen: false,
             contentPadding: "none",
             contentClassName: "space-y-2 px-1 sm:px-1",
-            headerContent: <PoSolicitudTotalInline />,
+            headerContent: (
+              <PoSolicitudDetalleHeaderRow
+                onAdd={detalleActions?.handleStartCreate}
+                menuContent={
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <FormActionsMenuButton onClick={handleDetalleMenuClick}>
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Opciones de detalle</span>
+                      </FormActionsMenuButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="text-[10px] sm:text-xs">
+                      <DropdownMenuItem
+                        onClick={(event) =>
+                          handleDetalleMenuAction(event, detalleActions?.handleStartCreate)
+                        }
+                        disabled={!detalleActions?.handleStartCreate}
+                      >
+                        <Plus className="mr-2 h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                        Agregar articulo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(event) =>
+                          handleDetalleMenuAction(event, detalleActions?.handleClearAll)
+                        }
+                        disabled={!detalleActions?.handleClearAll}
+                      >
+                        <Trash2 className="mr-2 h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                        Limpiar todo
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                }
+              />
+            ),
             headerContentPosition: "inline",
+            headerContentBelow: <PoSolicitudTotalInline />,
+            onOpen: handleDetalleOpen,
+            onClose: handleDetalleClose,
             children: (
               <FormDetailSection
                 name="detalles"
                 schema={poSolicitudDetalleSchema}
                 minItems={VALIDATION_RULES.DETALLE.MIN_ITEMS}
                 dynamicFilters={dynamicReferenceFilters}
+                onRegisterActions={handleRegisterDetalleActions}
               >
                 <PoSolicitudDetalleContent articuloFilterId={articuloFilterId} />
               </FormDetailSection>
@@ -493,7 +644,11 @@ export const PoSolicitudForm = ({
 }: {
   children?: ReactNode;
 }) => {
+  const record = useRecordContext<PoSolicitud>();
+  const isEditMode = Boolean(record?.id);
   const location = useLocation();
+  const navigate = useNavigate();
+  const returnTo = useMemo(() => getReturnToFromLocation(location), [location]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const cabeceraDefaults = useMemo(
     () => poSolicitudCabeceraSchema.defaults(),
@@ -516,8 +671,8 @@ export const PoSolicitudForm = ({
 
   return (
     <SimpleForm
-      defaultValues={defaultValues}
-      toolbar={<FormFooter />}
+      defaultValues={isEditMode ? undefined : defaultValues}
+      toolbar={<FormFooter onCancel={() => navigate(returnTo ?? "/po-solicitudes")} />}
     >
       {children}
       <PoSolicitudFormFields

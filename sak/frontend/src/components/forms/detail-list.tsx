@@ -11,6 +11,10 @@ interface DetailListProps<T> {
   onDelete?: (item: T, index: number) => void;
   emptyMessage?: string;
   EmptyIcon?: ComponentType<{ className?: string }>;
+  emptyStateClassName?: string;
+  emptyStateContentClassName?: string;
+  emptyStateIconClassName?: string;
+  emptyStateTextClassName?: string;
   keyExtractor?: (item: T, index: number) => string | number;
   showEditAction?: boolean;
   showDeleteAction?: boolean;
@@ -29,6 +33,10 @@ export function DetailList<T>({
   onDelete,
   emptyMessage = "No hay items para mostrar.",
   EmptyIcon,
+  emptyStateClassName,
+  emptyStateContentClassName,
+  emptyStateIconClassName,
+  emptyStateTextClassName,
   keyExtractor = (_item, index) => index,
   showEditAction = true,
   showDeleteAction = true,
@@ -40,7 +48,16 @@ export function DetailList<T>({
   actionsWrapperClassName,
 }: DetailListProps<T>) {
   if (items.length === 0) {
-    return <EmptyState message={emptyMessage} Icon={EmptyIcon} />;
+    return (
+      <EmptyState
+        message={emptyMessage}
+        Icon={EmptyIcon}
+        className={emptyStateClassName}
+        contentClassName={emptyStateContentClassName}
+        iconClassName={emptyStateIconClassName}
+        textClassName={emptyStateTextClassName}
+      />
+    );
   }
 
   const ItemComponent = variant === "row" ? DetailItemRow : DetailItemCard;
