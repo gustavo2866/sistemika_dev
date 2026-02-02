@@ -7,6 +7,7 @@ export interface FormSection {
   subtitle?: string | (() => string);
   collapsible?: boolean;
   defaultOpen?: boolean;
+  open?: boolean;
   children: ReactNode;
   headerContent?: ReactNode;
   headerContentBelow?: ReactNode;

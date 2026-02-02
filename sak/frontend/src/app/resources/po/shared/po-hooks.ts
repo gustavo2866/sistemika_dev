@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useDataProvider, useGetOne } from "ra-core";
 import type { FieldValues, UseFormGetValues, UseFormReset, UseFormReturn } from "react-hook-form";
 import { useFormContext, useWatch } from "react-hook-form";
 import { getArticuloFilterByTipo } from "./po-utils";
+import type { TipoSolicitud } from "../../tipos-solicitud/model";
+import { TIPOS_SOLICITUD_REFERENCE } from "../po-solicitudes/model";
 import { useReferenceFieldWatcher } from "@/components/generic";
 
 
@@ -176,3 +180,86 @@ export const useWizardCancel = <T extends FieldValues>({
 
   return { handleCancel, handleConfirmCancel };
 };
+
+export type TipoSolicitudCatalog = Pick<
+  TipoSolicitud,
+  "id" | "tipo_articulo_filter_id" | "departamento_default_id"
+>;
+
+export const useTipoSolicitudCatalog = () => {
+  const dataProvider = useDataProvider();
+  const { data: tiposSolicitudData } = useQuery<TipoSolicitudCatalog[]>({
+    queryKey: ["tipos-solicitud", "defaults"],
+    queryFn: async () => {
+      const { data } = await dataProvider.getList(
+        TIPOS_SOLICITUD_REFERENCE.resource,
+        {
+          pagination: { page: 1, perPage: TIPOS_SOLICITUD_REFERENCE.limit },
+          sort: { field: "nombre", order: "ASC" },
+          filter: {},
+          meta: {
+            __expanded_list_relations__: ["tipo_articulo_filter_rel"],
+          },
+        }
+      );
+      return data as TipoSolicitudCatalog[];
+    },
+    staleTime: TIPOS_SOLICITUD_REFERENCE.staleTime,
+  });
+
+  return {
+    tiposSolicitudData: tiposSolicitudData ?? [],
+    tiposSolicitudCatalog: tiposSolicitudData ?? [],
+  };
+};
+
+export const useSyncTotalFromDetalles = <T extends Record<string, unknown>>({
+  form,
+  detallesValue,
+  totalField = "total",
+  calculateTotal,
+}: {
+  form: UseFormReturn<T>;
+  detallesValue: unknown;
+  totalField?: keyof T & string;
+  calculateTotal: (detalles: unknown[]) => number;
+}) => {
+  useEffect(() => {
+    const detalles = Array.isArray(detallesValue) ? detallesValue : [];
+    const calculated = calculateTotal(detalles);
+    const currentTotal = Number(form.getValues(totalField) ?? 0);
+
+    if (
+      !Number.isNaN(calculated) &&
+      Number(currentTotal.toFixed(2)) !== calculated
+    ) {
+      form.setValue(totalField, calculated as T[typeof totalField], {
+        shouldDirty: true,
+      });
+    }
+  }, [calculateTotal, detallesValue, form, totalField]);
+};
+
+export const useProveedorById = (proveedorId: number | null) =>
+  useGetOne(
+    "proveedores",
+    { id: proveedorId ?? 0 },
+    { enabled: proveedorId != null }
+  );
+
+export const useUserById = (userId: number | null) =>
+  useGetOne("users", { id: userId ?? 0 }, { enabled: userId != null });
+
+export const useDepartamentoById = (departamentoId: number | null) =>
+  useGetOne(
+    "departamentos",
+    { id: departamentoId ?? 0 },
+    { enabled: departamentoId != null }
+  );
+
+export const useArticuloById = (articuloId: number | null) =>
+  useGetOne(
+    "articulos",
+    { id: articuloId ?? 0 },
+    { enabled: articuloId != null }
+  );

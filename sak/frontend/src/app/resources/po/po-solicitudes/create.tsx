@@ -10,18 +10,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import {
-  useDataProvider,
-  useNotify,
-  useRedirect,
-  useResourceContext,
-} from "ra-core";
+import { useFormContext } from "react-hook-form";
 import { Create } from "@/components/create";
 import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { PoSolicitudForm } from "./form";
 import { wizard_create as WizardCreate } from "./wizard_create";
-import { buildPoSolicitudPayload } from "./model";
-import type { PoSolicitudPayload, WizardCreatePayload } from "./model";
+import { buildPoSolicitudPayload } from "./transformers";
+import type { PoSolicitudPayload, WizardPayload } from "./model";
+import { applyWizardPayload } from "./form_hooks";
+import type { PoSolicitud } from "./model";
 
 //******************************* */
 // region 1. WIZARD
@@ -36,29 +33,20 @@ const PoSolicitudWizard = ({
   onOpenChange: (open: boolean) => void;
   variant?: string | null;
 }) => {
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const redirect = useRedirect();
-  const resource = useResourceContext();
+  const form = useFormContext<PoSolicitud>();
 
   if (variant !== "asistida") {
     return null;
   }
 
-  const handleApplyWizard = async (payload: WizardCreatePayload) => {
-    if (!resource) {
-      notify("No se pudo crear la solicitud", { type: "warning" });
-      return;
-    }
-    const normalizedPayload = buildPoSolicitudPayload(payload as PoSolicitudPayload);
-    const response = await dataProvider.create(resource, { data: normalizedPayload });
-    const recordId = response?.data?.id;
-    if (recordId == null) {
-      notify("No se pudo crear la solicitud", { type: "warning" });
-      return;
-    }
+  const handleApplyWizard = async (payload: WizardPayload) => {
+    applyWizardPayload({
+      isCreate: true,
+      setValue: form.setValue,
+      identityId: null,
+      payload,
+    });
     onOpenChange(false);
-    redirect("edit", resource, recordId);
   };
 
   return (

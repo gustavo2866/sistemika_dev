@@ -14,6 +14,8 @@ interface CollapsibleSectionProps {
   collapsible?: boolean;
   /** Estado inicial (solo aplica si collapsible=true) */
   defaultOpen?: boolean;
+  /** Estado controlado (si se provee, anula el estado interno) */
+  open?: boolean;
   /** Contenido de la sección */
   children: ReactNode;
   /** Contenido adicional en el header */
@@ -43,6 +45,7 @@ export const CollapsibleSection = ({
   subtitle,
   collapsible = true,
   defaultOpen = true,
+  open: openProp,
   children,
   headerContent,
   headerContentBelow,
@@ -55,15 +58,19 @@ export const CollapsibleSection = ({
   onOpen,
   onClose,
 }: CollapsibleSectionProps) => {
-  const [open, setOpen] = useState(defaultOpen);
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const headerDensity = useFormHeaderDensity();
   const isCompactHeader = headerDensity === "compact";
+  const isControlled = typeof openProp === "boolean";
+  const open = isControlled ? openProp : internalOpen;
 
   const handleToggle = () => {
     if (!collapsible) return;
     
     const newState = !open;
-    setOpen(newState);
+    if (!isControlled) {
+      setInternalOpen(newState);
+    }
     onToggle?.(newState);
     
     if (newState) {

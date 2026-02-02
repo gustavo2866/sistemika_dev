@@ -44,23 +44,22 @@ import {
   PROVEEDORES_REFERENCE,
   TIPOS_SOLICITUD_REFERENCE,
   WIZARD_DEFAULTS,
-  buildWizardCreatePayload,
   normalizeId,
   normalizeNumber,
   roundCurrency,
 } from "./model";
-import type { WizardCreatePayload } from "./model";
+import type { WizardPayload } from "./model";
+import {
+  buildWizardPayload,
+  useDefaultOportunidadFromLocation,
+  useWizardDefaults,
+} from "./form_hooks";
 import {
   useArticuloById,
-  useDefaultArticuloFromProveedor,
-  useDefaultDepartamentoFromSolicitante,
-  useDefaultOportunidadFromLocation,
-  useDefaultPrecioFromArticulo,
-  useDefaultSolicitanteFromIdentity,
   useDepartamentoById,
   useProveedorById,
   useUserById,
-} from "./form_hooks";
+} from "../shared/po-hooks";
 import { useWizardCancel } from "../shared/po-hooks";
 
 //******************************* */
@@ -322,7 +321,7 @@ const WizardCreateComponent = ({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApply: (payload: WizardCreatePayload) => Promise<void> | void;
+  onApply: (payload: WizardPayload) => Promise<void> | void;
 }) => {
   const [step, setStep] = useState<1 | 2>(1);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
@@ -377,25 +376,13 @@ const WizardCreateComponent = ({
   const identityId =
     identity && typeof identity.id !== "undefined" ? Number(identity.id) : null;
 
-  useDefaultSolicitanteFromIdentity({
+  useWizardDefaults({
     identityId,
     solicitanteIdValue: String(solicitanteIdValue ?? ""),
-    setValue,
-  });
-
-  useDefaultDepartamentoFromSolicitante({
     departamentoIdValue: String(departamentoIdValue ?? ""),
     solicitanteDepartamentoIdValue,
-    setValue,
-  });
-
-  useDefaultArticuloFromProveedor({
     proveedorData,
     articuloIdValue: String(articuloIdValue ?? ""),
-    setValue,
-  });
-
-  useDefaultPrecioFromArticulo({
     articuloData,
     precioValue,
     setValue,
@@ -413,7 +400,7 @@ const WizardCreateComponent = ({
     const values = getValues();
     try {
       await onApply(
-        buildWizardCreatePayload({
+        buildWizardPayload({
           values,
           proveedorId,
           solicitanteDepartamentoIdValue,

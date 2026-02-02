@@ -12,7 +12,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useEditContext } from "ra-core";
 import { Edit } from "@/components/edit";
 import { getReturnToFromLocation } from "@/lib/oportunidad-context";
-import { buildPoSolicitudPayload } from "./model";
+import { buildPoSolicitudPayload } from "./transformers";
 import type { PoSolicitud, PoSolicitudPayload } from "./model";
 import { PoSolicitudForm } from "./form";
 

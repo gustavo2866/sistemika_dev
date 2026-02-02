@@ -43,13 +43,12 @@ import {
 } from "@/components/generic";
 import {
   type PoSolicitudDetalle,
-  TEXT_LIMITS,
-  truncateText,
   calculateImporte,
   formatImporteDisplay,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
 } from "./model";
+import { TEXT_LIMITS, truncateText } from "./transformers";
 
 //*********************************
 // region 1. TIPOS
