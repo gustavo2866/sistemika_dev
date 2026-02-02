@@ -6,6 +6,7 @@
  * 2. HELPERS - Utilidades de presentacion locales
  * 3. COMPONENTE - Lista principal
  * 4. SINCRONIZACION - Sync de filtros y defaults
+ * 5. ACCIONES - Menu estandar por fila
  */
 
 "use client";
@@ -31,10 +32,28 @@ import {
 } from "@/components/lists/actions";
 import { BadgeField } from "@/components/badge-field";
 import { KanbanAvatar } from "@/components/kanban/card";
-import { useGetIdentity, useListContext, useRefresh } from "ra-core";
+import { Confirm } from "@/components/confirm";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  useDataProvider,
+  useGetIdentity,
+  useListContext,
+  useNotify,
+  useRecordContext,
+  useRedirect,
+  useRefresh,
+  useResourceContext,
+} from "ra-core";
+import { CheckCircle2, Eye, MoreHorizontal, Pencil, Trash2, XCircle } from "lucide-react";
 import type { PoSolicitud } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
-import { PoSolicitudActionsMenuList } from "./list_actions";
 import { CrmContextHeader } from "./list_header_crm";
 
 //********************************* */
@@ -119,7 +138,7 @@ const filters = buildListFilters(
 // Renderiza acciones superiores de la lista.
 const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center justify-start gap-2">
-    <CompactFilterButton filters={filters} />
+    <CompactFilterButton filters={filters as any} />
     {createTo ? <CompactCreateButton to={createTo} /> : null}
     <CompactExportButton />
   </div>
@@ -179,7 +198,7 @@ export const PoSolicitudList = () => {
   }, [location.pathname, location.search, oportunidadIdFilter]);
   return (
     <List
-      filters={filters}
+      filters={filters as any}
       actions={<ListActions createTo={createTo} />}
       perPage={10}
       sort={{ field: "id", order: "DESC" }}
@@ -203,14 +222,16 @@ export const PoSolicitudList = () => {
         <ResponsiveDataTable.Col
           source="id"
           label="Id"
-          className="w-[60px] text-center"
+          className="w-[60px]"
+          cellClassName="text-center"
+          headerClassName="text-center"
         >
           <NumberField source="id" className="inline-block w-full text-center" />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col
           source="titulo"
           label="Titulo"
-          className="w-[160px] whitespace-normal break-words"
+          className="w-[120px] whitespace-normal break-words"
         >
           <TextField source="titulo" className="whitespace-normal break-words" />
         </ResponsiveDataTable.Col>
@@ -261,7 +282,7 @@ export const PoSolicitudList = () => {
           <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
-          <PoSolicitudActionsMenuList />
+          <PoSolicitudActionsMenu />
         </ResponsiveDataTable.Col>
       </ResponsiveDataTable>
     </List>
@@ -323,6 +344,17 @@ const PoSolicitudesFilterSync = ({
       return;
     }
 
+    const hasOportunidadFilter =
+      filterValues?.oportunidad_id != null &&
+      String(filterValues.oportunidad_id).trim().length > 0;
+    if (hasOportunidadFilter) {
+      const nextFilters = { ...filterValues } as Record<string, unknown>;
+      delete nextFilters.oportunidad_id;
+      setFilters(nextFilters, { oportunidad_id: true });
+      setInitialized(true);
+      return;
+    }
+
     const desiredSolicitanteId = defaultFilters.solicitante_id;
     const needsSolicitante =
       desiredSolicitanteId != null &&
@@ -349,5 +381,207 @@ const PoSolicitudesFilterSync = ({
   }, [defaultFilters, filterValues, initialized, oportunidadIdFilter, setFilters]);
 
   return null;
+};
+// endregion
+
+//********************************* */
+// region 5. ACCIONES
+
+// Menu estandar de acciones por fila.
+const PoSolicitudActionsMenu = () => {
+  const record = useRecordContext<PoSolicitud>();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const redirect = useRedirect();
+  const resource = useResourceContext();
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | "delete" | null>(null);
+
+  if (!record || !resource) {
+    return null;
+  }
+
+  const canApprove = record.estado === "emitida";
+  const canReject = record.estado === "emitida";
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+  const handleStatusChange = async (estado: "aprobada" | "rechazada") => {
+    if (!record?.id) {
+      return;
+    }
+    setBusyAction(estado);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("auth_token");
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+      const response = await fetch(
+        `${apiBaseUrl}/po-solicitudes/${record.id}`,
+        {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ estado }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      notify(
+        `Solicitud PO ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
+        { type: "info" }
+      );
+      refresh();
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo actualizar la solicitud PO", { type: "warning" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!record?.id) return;
+    setBusyAction("delete");
+    try {
+      await dataProvider.delete(resource, { id: record.id, previousData: record });
+      notify("Solicitud PO eliminada", { type: "info" });
+      refresh();
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo eliminar la solicitud PO", { type: "warning" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const stopRowClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleMenuAction = (event: React.MouseEvent, callback: () => void) => {
+    stopRowClick(event);
+    if (busyAction !== null) {
+      return;
+    }
+    callback();
+  };
+
+  const openConfirm = (action: "approve" | "reject" | "delete") => {
+    if (busyAction !== null) return;
+    setConfirmAction(action);
+  };
+
+  const closeConfirm = () => setConfirmAction(null);
+
+  const confirmTitle = {
+    approve: "Aprobar solicitud",
+    reject: "Rechazar solicitud",
+    delete: "Eliminar solicitud",
+  }[confirmAction ?? "approve"];
+
+  const confirmContent = {
+    approve: "Seguro que deseas aprobar la solicitud?",
+    reject: "Seguro que deseas rechazar la solicitud?",
+    delete: "Seguro que deseas eliminar la solicitud?",
+  }[confirmAction ?? "approve"];
+
+  const handleConfirm = () => {
+    const action = confirmAction;
+    closeConfirm();
+    if (!action) return;
+    if (action === "delete") {
+      handleDelete();
+      return;
+    }
+    handleStatusChange(action === "approve" ? "aprobada" : "rechazada");
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            disabled={busyAction !== null}
+            onClick={stopRowClick}
+            data-row-click="ignore"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span className="sr-only">Acciones</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40 sm:w-44 text-[10px] sm:text-xs">
+          <DropdownMenuItem
+            onClick={(event) =>
+              handleMenuAction(event, () => redirect("edit", resource, record.id))
+            }
+            disabled={busyAction !== null}
+          >
+            <Pencil className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={(event) =>
+              handleMenuAction(event, () => redirect("show", resource, record.id))
+            }
+            disabled={busyAction !== null}
+          >
+            <Eye className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            Visualizar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={(event) => handleMenuAction(event, () => openConfirm("delete"))}
+            disabled={busyAction !== null}
+            variant="destructive"
+          >
+            <Trash2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            Eliminar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {canApprove && (
+            <DropdownMenuItem
+              onClick={(event) =>
+                handleMenuAction(event, () => openConfirm("approve"))
+              }
+              disabled={!canApprove || busyAction !== null}
+            >
+              <CheckCircle2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              Aprobar
+            </DropdownMenuItem>
+          )}
+          {canReject && (
+            <DropdownMenuItem
+              onClick={(event) =>
+                handleMenuAction(event, () => openConfirm("reject"))
+              }
+              disabled={!canReject || busyAction !== null}
+            >
+              <XCircle className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              Rechazar
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Confirm
+        isOpen={confirmAction !== null}
+        onClose={closeConfirm}
+        onConfirm={handleConfirm}
+        title={confirmTitle}
+        content={confirmContent}
+        confirmColor={confirmAction === "delete" ? "warning" : "primary"}
+        loading={busyAction !== null}
+      />
+    </>
+  );
 };
 // endregion

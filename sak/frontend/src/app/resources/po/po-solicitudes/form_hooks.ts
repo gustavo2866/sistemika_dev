@@ -4,7 +4,7 @@
  * Estructura:
  * 1. TIPOS - Tipos auxiliares y contratos internos
  * 2. CATALOGOS - Carga de catalogos y referencias
- * 3. DEFAULTS Y SINCRONIZACION - Defaults y sync de estado del formulario
+ * 3. DEFAULTS Y SINCRONIZACION - Defaults, visibilidad y contexto de oportunidad
  * 4. LOOKUPS - Consultas por id para referencias
  * 5. WIZARD - Helpers para aplicar payloads y defaults del wizard
  * 6. EMISION - Emision y cambio de estado de la solicitud
@@ -30,6 +30,7 @@ import {
   type UseFormSetValue,
 } from "react-hook-form";
 import type { TipoSolicitud } from "../../tipos-solicitud/model";
+import { formatOportunidadLabel } from "../../crm-oportunidades/OportunidadSelector";
 import {
   TIPOS_SOLICITUD_REFERENCE,
   calculateImporte,
@@ -122,6 +123,7 @@ export const usePoSolicitudSectionSubtitles = () => {
   const { control } = useFormContext<PoSolicitud>();
   const tituloValue = useWatch({ control, name: "titulo" });
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
+  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
 
   const tipoSolicitudNombre = useMemo(() => {
     if (!tipoSolicitudValue || !tiposSolicitudCatalog) return undefined;
@@ -140,15 +142,24 @@ export const usePoSolicitudSectionSubtitles = () => {
     [tipoSolicitudNombre, tituloValue]
   );
 
+  const oportunidadLabel = useMemo(() => {
+    if (oportunidadData && typeof oportunidadData === "object") {
+      return formatOportunidadLabel(oportunidadData);
+    }
+    if (typeof oportunidadValue === "object" && oportunidadValue) {
+      return formatOportunidadLabel(oportunidadValue);
+    }
+    return undefined;
+  }, [oportunidadData, oportunidadValue]);
+
   const imputacionSubtitle = useMemo(
     () =>
       buildPoSolicitudImputacionSubtitle({
-        oportunidadTitulo: (oportunidadData as { titulo?: string } | undefined)
-          ?.titulo,
+        oportunidadTitulo: oportunidadLabel,
         centroCostoNombre: (centroCostoData as { nombre?: string } | undefined)
           ?.nombre,
       }),
-    [centroCostoData, oportunidadData]
+    [centroCostoData, oportunidadLabel]
   );
 
  return {
@@ -408,6 +419,9 @@ const buildDetalleFromWizard = (
   const importe = calculateImporte(cantidad, precio);
 
   return {
+    id: 0,  // Para nuevos detalles, será asignado por el backend
+    tempId: Date.now(),  // ID temporal único para el frontend
+    solicitud_id: 0,  // Será asignado cuando se guarde la solicitud
     articulo_id: payload.articuloId,
     descripcion: payload.descripcion ?? "",
     unidad_medida: payload.unidadMedida ?? "UN",
@@ -553,6 +567,7 @@ export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
       await dataProvider.update(resource, {
         id: record.id,
         data: { estado: "emitida" },
+        previousData: record,
       });
       if (openShow) {
         redirect("show", resource, record.id);

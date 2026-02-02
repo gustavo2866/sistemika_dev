@@ -19,6 +19,8 @@ export const WizardNavigation = ({
   disableNext,
   backLabel = "Anterior",
   nextLabel = "Siguiente",
+  backTabIndex,
+  nextTabIndex,
 }: {
   step: number;
   totalSteps: number;
@@ -28,6 +30,8 @@ export const WizardNavigation = ({
   disableNext?: boolean;
   backLabel?: string;
   nextLabel?: string;
+  backTabIndex?: number;
+  nextTabIndex?: number;
 }) => (
   <div className="flex items-center justify-between border-t bg-muted/30 -mx-6 px-6 py-0 min-h-8">
     <Button
@@ -35,6 +39,7 @@ export const WizardNavigation = ({
       variant="outline"
       onClick={onBack}
       disabled={disableBack}
+      tabIndex={backTabIndex}
       className="flex items-center gap-1 h-6 px-2 text-xs leading-none"
     >
       {"<-"} {backLabel}
@@ -49,6 +54,7 @@ export const WizardNavigation = ({
       variant="outline"
       onClick={onNext}
       disabled={disableNext}
+      tabIndex={nextTabIndex}
       className="flex items-center gap-1 h-6 px-2 text-xs leading-none"
     >
       {nextLabel} {"->"}

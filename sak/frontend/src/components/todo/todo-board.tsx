@@ -39,7 +39,7 @@ const buildInitialCollapsed = <TBucket extends string>(
       typeof defaultCollapsed?.[bucket.id] === "boolean"
         ? defaultCollapsed[bucket.id]
         : Boolean(collapseAllByDefault);
-    initial[bucket.id] = value;
+    initial[bucket.id] = Boolean(value);
   });
   return initial;
 };

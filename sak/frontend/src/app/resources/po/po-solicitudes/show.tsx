@@ -1,3 +1,12 @@
+/**
+ * Vista de solo lectura para PoSolicitudes.
+ *
+ * Estructura:
+ * 1. CONFIGURACION - Constantes y formatos
+ * 2. HELPERS - Render helpers locales
+ * 3. SHOW - Componente principal
+ */
+
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";

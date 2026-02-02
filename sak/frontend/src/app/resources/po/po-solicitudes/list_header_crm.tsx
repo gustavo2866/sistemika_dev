@@ -1,3 +1,12 @@
+/**
+ * Header contextual de CRM para la lista de PoSolicitudes.
+ *
+ * Estructura:
+ * 1. TIPOS - Props y contratos
+ * 2. HELPERS - Derivaciones de ruta y filtros
+ * 3. HEADER - Render del header contextual
+ */
+
 "use client";
 
 import { useMemo } from "react";

@@ -13,9 +13,24 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
-import { RecordContextProvider, useRecordContext } from "ra-core";
+import {
+  useDataProvider,
+  useNotify,
+  useRecordContext,
+  useRedirect,
+  useRefresh,
+  useResourceContext,
+} from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CheckCircle2, CircleX } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleX,
+  Eye,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import { getOportunidadIdFromLocation, getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { SaveButton } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -44,9 +59,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type PoSolicitud,
@@ -72,7 +87,6 @@ import {
   useMutuallyExclusiveFields,
 } from "../shared/po-hooks";
 import { PoSolicitudDetalleContent } from "./form_detalle";
-import { PoSolicitudActionsMenuForm } from "./list_actions";
 import {
   useDepartamentoDefaultByTipo,
   usePoSolicitudSectionSubtitles,
@@ -84,6 +98,7 @@ import {
   useTipoSolicitudBloqueado,
 } from "./form_hooks";
 import { FormActionsMenuButton } from "@/components/forms";
+import { Confirm } from "@/components/confirm";
 
 const OPORTUNIDAD_FILTER = { activo: true };
 
@@ -324,16 +339,171 @@ const PoSolicitudHeaderInline = () => {
 
 const PoSolicitudHeaderActions = () => {
   const record = useRecordContext<PoSolicitud>();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const redirect = useRedirect();
+  const resourceContext = useResourceContext();
+  const resource = resourceContext ?? "po-solicitudes";
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | "delete" | null>(null);
 
   if (!record) return null;
 
+  const canApprove = record.estado === "emitida";
+  const canReject = record.estado === "emitida";
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+  const handleStatusChange = async (estado: "aprobada" | "rechazada") => {
+    if (!record?.id) {
+      return;
+    }
+    setBusyAction(estado);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("auth_token");
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+      const response = await fetch(`${apiBaseUrl}/po-solicitudes/${record.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ estado }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      notify(
+        `Solicitud PO ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
+        { type: "info" }
+      );
+      refresh();
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo actualizar la solicitud PO", { type: "warning" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!record?.id) return;
+    setBusyAction("delete");
+    try {
+      await dataProvider.delete(resource, { id: record.id, previousData: record });
+      notify("Solicitud PO eliminada", { type: "info" });
+      redirect("list", resource);
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo eliminar la solicitud PO", { type: "warning" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const openConfirm = (action: "approve" | "reject" | "delete") => {
+    if (busyAction !== null) return;
+    setConfirmAction(action);
+  };
+
+  const closeConfirm = () => setConfirmAction(null);
+
+  const confirmTitle = {
+    approve: "Aprobar solicitud",
+    reject: "Rechazar solicitud",
+    delete: "Eliminar solicitud",
+  }[confirmAction ?? "approve"];
+
+  const confirmContent = {
+    approve: "Seguro que deseas aprobar la solicitud?",
+    reject: "Seguro que deseas rechazar la solicitud?",
+    delete: "Seguro que deseas eliminar la solicitud?",
+  }[confirmAction ?? "approve"];
+
+  const handleConfirm = () => {
+    const action = confirmAction;
+    closeConfirm();
+    if (!action) return;
+    if (action === "delete") {
+      handleDelete();
+      return;
+    }
+    handleStatusChange(action === "approve" ? "aprobada" : "rechazada");
+  };
+
   return (
-    <div className="flex items-center gap-2">
-      <PoSolicitudHeaderInline />
-      <RecordContextProvider value={record}>
-        <PoSolicitudActionsMenuForm />
-      </RecordContextProvider>
-    </div>
+    <>
+      <div className="flex items-center gap-2">
+        <PoSolicitudHeaderInline />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              disabled={busyAction !== null}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">Acciones</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40 sm:w-44 text-[10px] sm:text-xs">
+            <DropdownMenuItem
+              onClick={() => redirect("show", resource, record.id)}
+              disabled={busyAction !== null}
+            >
+              <Eye className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              Visualizar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => openConfirm("delete")}
+              disabled={busyAction !== null}
+              variant="destructive"
+            >
+              <Trash2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              Eliminar
+            </DropdownMenuItem>
+            {(canApprove || canReject) ? (
+              <>
+                <DropdownMenuSeparator />
+                {canApprove && (
+                  <DropdownMenuItem
+                    onClick={() => openConfirm("approve")}
+                    disabled={busyAction !== null}
+                  >
+                    <CheckCircle2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                    Aprobar
+                  </DropdownMenuItem>
+                )}
+                {canReject && (
+                  <DropdownMenuItem
+                    onClick={() => openConfirm("reject")}
+                    disabled={busyAction !== null}
+                  >
+                    <XCircle className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                    Rechazar
+                  </DropdownMenuItem>
+                )}
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <Confirm
+        isOpen={confirmAction !== null}
+        onClose={closeConfirm}
+        onConfirm={handleConfirm}
+        title={confirmTitle}
+        content={confirmContent}
+        confirmColor={confirmAction === "delete" ? "warning" : "primary"}
+        loading={busyAction !== null}
+      />
+    </>
   );
 };
 
@@ -404,7 +574,7 @@ const FormFooter = ({ onCancel }: { onCancel: () => void }) => {
           <CircleX className="size-3 sm:size-4" />
           Cancelar
         </Button>
-        <SaveButton />
+        <SaveButton variant="secondary" />
         {record?.id && canEmit ? (
           <Button
             type="button"

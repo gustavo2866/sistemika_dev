@@ -50,7 +50,7 @@ export const buildListFilters = (
 
     if (item.type === "text") {
       const key =
-        item.key ?? item.props.source ?? item.props.label ?? `text-${index}`;
+        item.key ?? String(item.props.source) ?? String(item.props.label) ?? `text-${index}`;
       return (
         <CompactTextInput
           key={buildKey(key, keyPrefix)}
@@ -61,7 +61,7 @@ export const buildListFilters = (
 
     if (item.type === "select") {
       const key =
-        item.key ?? item.props.source ?? item.props.label ?? `select-${index}`;
+        item.key ?? String(item.props.source) ?? String(item.props.label) ?? `select-${index}`;
       return (
         <CompactSelectInput
           key={buildKey(key, keyPrefix)}
@@ -72,8 +72,8 @@ export const buildListFilters = (
 
     const referenceKey =
       item.key ??
-      item.referenceProps.source ??
-      item.referenceProps.label ??
+      String(item.referenceProps.source) ??
+      String(item.referenceProps.label) ??
       `reference-${index}`;
     const children =
       item.children ?? (item.selectProps ? <CompactSelectInput {...item.selectProps} /> : null);

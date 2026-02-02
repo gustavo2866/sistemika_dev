@@ -304,7 +304,7 @@ const WizardDetailStep = ({
 
     <CompactFormGrid columns="one">
       <CompactFormField label="Fecha necesidad">
-        <CompactDateInput source="fechaNecesidad" label={false} />
+        <CompactDateInput source="fechaNecesidad" label={false} tabIndex={-1} />
       </CompactFormField>
     </CompactFormGrid>
   </>
@@ -357,10 +357,10 @@ const WizardCreateComponent = ({
     ],
   });
 
-  const proveedorId = normalizeId(proveedorIdValue ?? "");
+  const proveedorId = normalizeId(String(proveedorIdValue ?? ""));
   const { data: proveedorData } = useProveedorById(proveedorId);
 
-  const solicitanteId = normalizeId(solicitanteIdValue ?? "");
+  const solicitanteId = normalizeId(String(solicitanteIdValue ?? ""));
   const { data: solicitanteData } = useUserById(solicitanteId);
   const solicitanteDepartamentoIdValue =
     (solicitanteData as SolicitanteData | undefined)?.departamento_id ?? null;
@@ -368,7 +368,7 @@ const WizardCreateComponent = ({
     solicitanteDepartamentoIdValue
   );
 
-  const articuloId = normalizeId(articuloIdValue ?? "");
+  const articuloId = normalizeId(String(articuloIdValue ?? ""));
   const { data: articuloData } = useArticuloById(articuloId);
 
   const unidadMedida =
@@ -379,19 +379,19 @@ const WizardCreateComponent = ({
 
   useDefaultSolicitanteFromIdentity({
     identityId,
-    solicitanteIdValue,
+    solicitanteIdValue: String(solicitanteIdValue ?? ""),
     setValue,
   });
 
   useDefaultDepartamentoFromSolicitante({
-    departamentoIdValue,
+    departamentoIdValue: String(departamentoIdValue ?? ""),
     solicitanteDepartamentoIdValue,
     setValue,
   });
 
   useDefaultArticuloFromProveedor({
     proveedorData,
-    articuloIdValue,
+    articuloIdValue: String(articuloIdValue ?? ""),
     setValue,
   });
 
@@ -403,7 +403,7 @@ const WizardCreateComponent = ({
 
   const { oportunidadIdFromLocation } = useDefaultOportunidadFromLocation({
     setValue,
-    oportunidadIdValue,
+    oportunidadIdValue: String(oportunidadIdValue ?? ""),
   });
   const oportunidadLocked = Boolean(oportunidadIdFromLocation);
 
@@ -480,10 +480,10 @@ const WizardCreateComponent = ({
           <div className="space-y-2">
             {step === 1 && (
       <WizardHeaderStep
-        solicitanteIdValue={solicitanteIdValue}
-        proveedorIdValue={proveedorIdValue}
-        tipoSolicitudIdValue={tipoSolicitudIdValue}
-        oportunidadIdValue={oportunidadIdValue}
+        solicitanteIdValue={String(solicitanteIdValue ?? "")}
+        proveedorIdValue={String(proveedorIdValue ?? "")}
+        tipoSolicitudIdValue={String(tipoSolicitudIdValue ?? "")}
+        oportunidadIdValue={String(oportunidadIdValue ?? "")}
         oportunidadLocked={oportunidadLocked}
         register={register}
         setValue={setValue}
@@ -493,9 +493,9 @@ const WizardCreateComponent = ({
 
             {step === 2 && (
       <WizardDetailStep
-        articuloIdValue={articuloIdValue}
-        cantidadValue={cantidadValue}
-        precioValue={precioValue}
+        articuloIdValue={String(articuloIdValue ?? "")}
+        cantidadValue={typeof cantidadValue === 'number' ? cantidadValue : (typeof cantidadValue === 'string' ? Number(cantidadValue) || undefined : undefined)}
+        precioValue={typeof precioValue === 'number' ? precioValue : (typeof precioValue === 'string' ? Number(precioValue) || undefined : undefined)}
         register={register}
         setValue={setValue}
               />
@@ -508,10 +508,11 @@ const WizardCreateComponent = ({
               onNext={handleNext}
               disableBack={step === 1}
               disableNext={step === 2}
+              backTabIndex={-1}
             />
 
             <div className="flex justify-end gap-2 pt-0.5 border-t">
-              <Button type="button" variant="outline" onClick={handleCancel}>
+              <Button type="button" variant="outline" onClick={handleCancel} tabIndex={-1}>
                 Cancelar
               </Button>
               <Button type="button" onClick={handleApply} disabled={step !== 2}>

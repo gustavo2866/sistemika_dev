@@ -8,8 +8,8 @@ El formulario esta dividido en dos niveles:
 - `form.tsx`: cabecera + orquestacion principal del formulario.
 - `form_detalle.tsx`: detalle (lineas/items) + UI del detalle.
 
-`form.tsx` arma el layout, aplica defaults, integra subtitulos y define como se renderizan las secciones.
-`form_detalle.tsx` define la UI y el schema del detalle, y se integra a traves de `FormDetailSection`.
+`form.tsx` arma el layout, aplica defaults, integra subtitulos, define como se renderizan las secciones y expone el menu de acciones de cabecera (visualizar/aprobar/rechazar/eliminar).
+`form_detalle.tsx` define la UI del detalle y se integra a traves de `FormDetailSection`.
 
 ## 2. Rol del schema
 
@@ -42,8 +42,8 @@ Como se actualiza el detalle desde `form_detalle`:
 - Al confirmar, `FormDetailSection` valida y transforma con el schema y actualiza el array `detalles` del formulario principal.
 
 En resumen:
-- `form.tsx` orquesta la lista de detalles.
-- `form_detalle.tsx` define la UI y reglas del detalle y llama a los handlers del contexto.
+- `form.tsx` orquesta la lista de detalles y el schema del detalle.
+- `form_detalle.tsx` define la UI del detalle y llama a los handlers del contexto.
 
 ## 4.1 Doble detalle (form principal vs FormDetailSection)
 
@@ -107,7 +107,7 @@ Para evitar inconsistencias:
 ## 10. Archivos clave
 
 - `form.tsx`: cabecera y orquestacion.
-- `form_detalle.tsx`: detalle, schema y validacion de items.
+- `form_detalle.tsx`: detalle (UI de items).
 - `form_hooks.ts`: hooks reutilizables y subtitulos.
 - `model.ts`: reglas de dominio y constantes.
 - `wizard_create.tsx`: wizard asistido.

@@ -1113,33 +1113,20 @@ const PoOrdenCompraHeaderSummary = () => {
 const PoOrdenCompraImputacionSummary = () => {
   const { control } = useFormContext<PoOrdenCompra>();
   const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
-  // const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
   const centroCostoId = Number(centroCostoValue);
-  // const oportunidadId = Number(oportunidadValue);
   const centroCostoIdValid = Number.isFinite(centroCostoId) && centroCostoId > 0;
-  // const oportunidadIdValid = Number.isFinite(oportunidadId) && oportunidadId > 0;
 
   const { data: centroCosto } = useGetOne(
     CENTROS_COSTO_REFERENCE.resource,
     { id: centroCostoIdValid ? centroCostoId : 0 },
     { enabled: centroCostoIdValid }
   );
-  const { data: oportunidad } = useGetOne(
-    "crm/oportunidades",
-    { id: oportunidadIdValid ? oportunidadId : 0 },
-    { enabled: oportunidadIdValid }
-  );
 
   const centroCostoNombre = (centroCosto as { nombre?: string } | undefined)?.nombre;
-  const oportunidadTitulo =
-    (oportunidad as { titulo?: string; descripcion_estado?: string } | undefined)?.titulo ||
-    (oportunidad as { descripcion_estado?: string } | undefined)?.descripcion_estado;
 
   const label = centroCostoNombre && centroCostoNombre.trim().length > 0
     ? centroCostoNombre
-    : oportunidadTitulo && oportunidadTitulo.trim().length > 0
-      ? oportunidadTitulo
-      : "Sin imputacion";
+    : "Sin imputacion";
 
   return (
     <div className="flex w-full items-center gap-2 text-[10px] text-muted-foreground sm:text-xs">

@@ -844,23 +844,23 @@ export function getArticuloLabel(
 // Obtiene el departamento default segun el tipo de PoSolicitud.
 export const getDepartamentoDefaultByTipo = (
   tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; departamento_default_id: number }> | undefined
+  tiposSolicitud: Array<{ id: number; departamento_default_id?: number }> | undefined
 ): string | undefined => {
   if (!tipoSolicitudId || !tiposSolicitud) return undefined;
   
   const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
-  return tipo.departamento_default_id.toString();
+  return tipo?.departamento_default_id?.toString();
 };
 
 // Obtiene el articulo default segun el tipo de PoSolicitud.
 export const getArticuloDefaultByTipo = (
   tipoSolicitudId: string | undefined,
-  tiposSolicitud: Array<{ id: number; articulo_default_id: number }> | undefined
+  tiposSolicitud: Array<{ id: number; articulo_default_id?: number }> | undefined
 ): string | undefined => {
   if (!tipoSolicitudId || !tiposSolicitud) return undefined;
   
   const tipo = tiposSolicitud.find(t => t.id === parseInt(tipoSolicitudId));
-  return tipo.articulo_default_id.toString();
+  return tipo?.articulo_default_id?.toString();
 };
 
 //#endregion
