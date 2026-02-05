@@ -9,7 +9,7 @@ import { useLocation, useNavigate } from "react-router";
 import { useMemo } from "react";
 import { normalizeOportunidadId } from "./model";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
-import { Calendar, FileText } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { useRecordContext } from "ra-core";
 import { appendFilterParam, buildOportunidadFilter } from "@/lib/oportunidad-context";
 import { ShowButton } from "@/components/show-button";
@@ -46,17 +46,6 @@ const OportunidadHeaderActions = ({
         }}
       >
         <Calendar className="h-4 w-4" />
-      </IconButtonWithTooltip>
-      <IconButtonWithTooltip
-        label="Solicitudes"
-        onClick={() => {
-          const params = new URLSearchParams();
-          appendFilterParam(params, buildOportunidadFilter(record.id));
-          params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
-          navigate(`/solicitudes?${params.toString()}`);
-        }}
-      >
-        <FileText className="h-4 w-4" />
       </IconButtonWithTooltip>
       <ShowButton />
       <DeleteButton />

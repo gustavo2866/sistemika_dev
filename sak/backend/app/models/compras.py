@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 class EstadoPoSolicitud(str, Enum):
     BORRADOR = "borrador"
+    PENDIENTE = "pendiente"
     EMITIDA = "emitida"
     APROBADA = "aprobada"
     RECHAZADA = "rechazada"
@@ -255,18 +256,6 @@ class PoOrdenCompraDetalle(Base, table=True):
     unidad_medida: Optional[str] = Field(default=None, max_length=10, description="Unidad de medida")
     precio_unitario: Decimal = Field(sa_column=Column(DECIMAL(15, 4)), description="Precio unitario")
     subtotal: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Subtotal (cantidad * precio_unitario)")
-    porcentaje_descuento: Optional[Decimal] = Field(
-        default=None,
-        sa_column=Column(DECIMAL(5, 2)),
-        description="Porcentaje de descuento",
-    )
-    importe_descuento: Optional[Decimal] = Field(
-        default=None,
-        sa_column=Column(DECIMAL(15, 2)),
-        description="Importe de descuento",
-    )
-    porcentaje_iva: Decimal = Field(sa_column=Column(DECIMAL(5, 2)), description="Porcentaje de IVA aplicado")
-    importe_iva: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Importe de IVA")
     total_linea: Decimal = Field(sa_column=Column(DECIMAL(15, 2)), description="Total de la linea")
     cantidad_recibida: Decimal = Field(
         default=Decimal("0"),

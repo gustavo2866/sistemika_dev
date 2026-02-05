@@ -48,6 +48,7 @@ import {
 // Estados posibles de una PoSolicitud
 export const ESTADO_CHOICES = [
   { id: "borrador", name: "Borrador" },
+  { id: "pendiente", name: "Pendiente" },
   { id: "emitida", name: "Emitida" },
   { id: "aprobada", name: "Aprobada" },
   { id: "rechazada", name: "Rechazada" },
@@ -64,6 +65,7 @@ export const TIPO_COMPRA_CHOICES = [
 // Clases de badge asociadas a cada estado
 export const ESTADO_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",
+  pendiente: "bg-amber-100 text-amber-800",
   emitida: "bg-sky-100 text-sky-800",
   aprobada: "bg-emerald-100 text-emerald-800",
   rechazada: "bg-rose-100 text-rose-800",
@@ -186,6 +188,7 @@ export type WizardCreatePayload = {
   departamento_id: number | null;
   centro_costo_id: number | null;
   tipo_compra: string | null;
+  estado?: string | null;
   proveedor_id: number | null;
   solicitante_id: number | null;
   oportunidad_id: number | null;
@@ -208,6 +211,7 @@ export type PoSolicitudPayload = {
   departamento_id: number | string | null;
   centro_costo_id: number | string | null;
   tipo_compra: string | null;
+  estado?: string | null;
   proveedor_id: number | string | null;
   solicitante_id: number | string | null;
   oportunidad_id: number | string | null;
@@ -526,6 +530,7 @@ export const poSolicitudDetalleSchema = createDetailSchema<
       perPage: ARTICULOS_REFERENCE.limit,
       sortField: ARTICULOS_REFERENCE.labelField,
       sortOrder: "ASC",
+      required: true,
       defaultValue: "",
     }),
     descripcion: stringField({

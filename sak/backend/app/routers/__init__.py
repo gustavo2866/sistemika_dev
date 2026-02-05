@@ -8,8 +8,6 @@ from .tipo_operacion_router import tipo_operacion_router
 from .factura_router import factura_router
 from .factura_detalle_router import factura_detalle_router
 from .factura_impuesto_router import factura_impuesto_router
-from .solicitud_router import solicitud_router
-from .solicitud_detalle_router import solicitud_detalle_router
 from .proyecto_router import proyecto_router
 from .nomina_router import nomina_router
 from .partediario_router import parte_diario_router
@@ -38,8 +36,6 @@ __all__ = [
     "factura_router",
     "factura_detalle_router",
     "factura_impuesto_router",
-    "solicitud_router",
-    "solicitud_detalle_router",
     "proyecto_router",
     "nomina_router",
     "parte_diario_router",

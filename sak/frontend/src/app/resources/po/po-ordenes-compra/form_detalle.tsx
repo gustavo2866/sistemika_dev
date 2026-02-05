@@ -1,14 +1,6 @@
 /**
- * Componentes de DETALLE para PoSolicitudes.
- *
- * Estructura:
- * 1. TIPOS - Tipos del detalle y contratos internos
- * 2. HELPERS - Helpers de vista y normalizacion
- * 3. CARDS - Tarjetas y vistas de items
- * 4. DIALOG - Dialogo de edicion/alta
- * 5. CONTENEDOR - Seccion principal de detalle
+ * Componentes de DETALLE para Ordenes de Compra.
  */
-
 
 "use client";
 
@@ -35,57 +27,60 @@ import {
   StandardFormGrid,
   createTwoColumnSection,
 } from "@/components/generic";
+import { ImputacionDetailSection } from "../shared/imputacion-detail";
 import {
-  type PoSolicitudDetalle,
-  calculateImporte,
+  type PoOrdenCompraDetalle,
+  calculateLineaTotal,
   formatImporteDisplay,
   UNIDAD_MEDIDA_CHOICES,
   ARTICULOS_REFERENCE,
+  CENTROS_COSTO_REFERENCE,
+  OPORTUNIDADES_REFERENCE,
 } from "./model";
 import { TEXT_LIMITS, truncateText } from "./transformers";
 
-//*********************************
-// region 1. TIPOS
-
-// Tipos de detalle para formulario.
 export type DetalleFormValues = {
   articulo_id: string;
+  po_solicitud_id: string;
+  oportunidad_id: string;
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
-  precio: number;
-  importe: number;
+  precio_unitario: number;
+  subtotal: number;
+  total_linea: number;
+  centro_costo_id: string;
 };
-// endregion
 
-
-//*********************************
-// region 2. HELPERS
-
-// Po SolicitudDetalleForm Props
-interface PoSolicitudDetalleFormProps {
+interface PoOrdenCompraDetalleFormProps {
   articuloFilterId?: number;
+  imputacionDefaults?: {
+    centro_costo_id?: number | null;
+    oportunidad_id?: number | null;
+  };
 }
 
-// Props del dialog de detalle
-type PoSolicitudDetalleDialogContentProps = {
+type PoOrdenCompraDetalleDialogContentProps = {
   detalleForm: UseFormReturn<DetalleFormValues>;
   articuloFilterQuery?: Record<string, unknown>;
   articuloFilterId?: number;
+  imputacionDefaults?: {
+    centro_costo_id?: number | null;
+    oportunidad_id?: number | null;
+  };
 };
-// endregion
 
- 
-//*********************************
-// region 3. CARDS
-
-// Tarjeta individual para un detalle de PO
-export const PoSolicitudDetalleCard = ({
+export const PoOrdenCompraDetalleCard = ({
   item,
   onDelete,
+  imputacionDefaults,
 }: {
-  item: PoSolicitudDetalle;
+  item: PoOrdenCompraDetalle;
   onDelete: () => void;
+  imputacionDefaults?: {
+    centro_costo_id?: number | null;
+    oportunidad_id?: number | null;
+  };
 }) => {
   const { getReferenceLabel } = useFormDetalle();
   const {
@@ -95,6 +90,21 @@ export const PoSolicitudDetalleCard = ({
     showVerMas,
     summaryFields,
   } = buildDetalleCardView(item, getReferenceLabel);
+  const itemCentro = item.centro_costo_id ?? null;
+  const itemOportunidad = item.oportunidad_id ?? null;
+  const headerCentro = imputacionDefaults?.centro_costo_id ?? null;
+  const headerOportunidad = imputacionDefaults?.oportunidad_id ?? null;
+
+  const itemImputacionLabel = itemOportunidad
+    ? `Oportunidad: ${getReferenceLabel("oportunidad_id", itemOportunidad) ?? `#${itemOportunidad}`}`
+    : itemCentro
+      ? `Centro costo: ${getReferenceLabel("centro_costo_id", itemCentro) ?? `#${itemCentro}`}`
+      : "";
+
+  const isSameAsHeader =
+    (itemOportunidad && headerOportunidad && String(itemOportunidad) === String(headerOportunidad)) ||
+    (itemCentro && headerCentro && String(itemCentro) === String(headerCentro));
+  const shouldShowImputacion = Boolean(itemImputacionLabel) && !isSameAsHeader;
 
   return (
     <div>
@@ -139,14 +149,18 @@ export const PoSolicitudDetalleCard = ({
             onClick={() => onDelete()}
           />
         </div>
+        {shouldShowImputacion ? (
+          <div className="mt-1 text-[8px] text-muted-foreground">
+            <span className="font-medium">Imputacion:</span> {itemImputacionLabel}
+          </div>
+        ) : null}
       </FormDetailCardCompact>
     </div>
   );
 };
 
-// Helper para construir la vista de tarjeta
 const buildDetalleCardView = (
-  item: PoSolicitudDetalle,
+  item: PoOrdenCompraDetalle,
   getReferenceLabel: (
     fieldName: string,
     value: number | string | null | undefined
@@ -159,13 +173,16 @@ const buildDetalleCardView = (
   const descripcion = (item.descripcion || "").trim();
   const descripcionTruncada = truncateText(descripcion, TEXT_LIMITS.DESCRIPTION);
   const showVerMas = descripcion.length > descripcionTruncada.length;
-  const importeValue =
-    typeof item.importe === "number"
-      ? item.importe
-      : calculateImporte(Number(item.cantidad ?? 0), Number(item.precio ?? 0));
+  const totalValue =
+    typeof item.total_linea === "number"
+      ? item.total_linea
+      : calculateLineaTotal(
+          Number(item.cantidad ?? 0),
+          Number(item.precio_unitario ?? 0)
+        );
 
-  const precioDisplay = formatImporteDisplay(Number(item.precio ?? 0));
-  const importeDisplay = formatImporteDisplay(Number(importeValue ?? 0));
+  const precioDisplay = formatImporteDisplay(Number(item.precio_unitario ?? 0));
+  const totalDisplay = formatImporteDisplay(Number(totalValue ?? 0));
 
   const summaryFields = [
     {
@@ -178,7 +195,7 @@ const buildDetalleCardView = (
       formatter: "text" as const,
     },
     {
-      value: `= ${importeDisplay}`,
+      value: `= ${totalDisplay}`,
       formatter: "text" as const,
     },
   ];
@@ -190,50 +207,64 @@ const buildDetalleCardView = (
     showVerMas,
     summaryFields,
   };
-// endregion
 };
 
- 
-//*********************************
-// region 4. DIALOG
-
-// Contenido del dialogo para crear/editar detalles
-export const PoSolicitudDetalleDialogContent = ({
+export const PoOrdenCompraDetalleDialogContent = ({
   detalleForm,
   articuloFilterQuery,
-}: PoSolicitudDetalleDialogContentProps) => {
-  // Usar el hook genérico para artículos
+  imputacionDefaults,
+}: PoOrdenCompraDetalleDialogContentProps) => {
+  const { resolveAction, dialogOpen } = useFormDetailSectionContext<
+    DetalleFormValues,
+    PoOrdenCompraDetalle
+  >();
+  const { getReferenceLabel } = useFormDetailSectionContext();
   const { data: articulo } = useArticuloWatcher("articulo_id");
-  const isGenerico = Boolean((articulo as { generico?: boolean } | undefined)?.generico);
-  
+  const isGenerico = Boolean(
+    (articulo as { generico?: boolean } | undefined)?.generico
+  );
+
   const cantidadValue = detalleForm.watch("cantidad");
-  const precioValue = detalleForm.watch("precio");
-  const importeValue = detalleForm.watch("importe");
+  const precioValue = detalleForm.watch("precio_unitario");
+  const subtotalValue = detalleForm.watch("subtotal");
+  const totalValue = detalleForm.watch("total_linea");
 
-  const importeDisplay = useMemo(() => {
-    return formatImporteDisplay(Number(importeValue ?? 0));
-  }, [importeValue]);
+  const totalDisplay = useMemo(() => {
+    return formatImporteDisplay(Number(totalValue ?? 0));
+  }, [totalValue]);
 
-  // Efecto para calcular importe automáticamente
+  const canApplyDefaults = useMemo(
+    () => resolveAction() === "create",
+    [resolveAction]
+  );
+  const imputacionResetKey = useMemo(
+    () => `${resolveAction()}-${dialogOpen ? "open" : "closed"}`,
+    [resolveAction, dialogOpen]
+  );
+
   useEffect(() => {
     const cantidad = Number(cantidadValue ?? 0) || 0;
     const precio = Number(precioValue ?? 0) || 0;
-    const calculated = calculateImporte(cantidad, precio);
-    const currentImporte = Number(importeValue ?? Number.NaN);
+    const calculated = calculateLineaTotal(cantidad, precio);
+    const currentSubtotal = Number(subtotalValue ?? Number.NaN);
+    const currentTotal = Number(totalValue ?? Number.NaN);
 
-    if (
-      !Number.isNaN(calculated) &&
-      Number.isFinite(calculated) &&
-      calculated !== currentImporte
-    ) {
-      detalleForm.setValue("importe", calculated, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
+    if (!Number.isNaN(calculated) && Number.isFinite(calculated)) {
+      if (calculated !== currentSubtotal) {
+        detalleForm.setValue("subtotal", calculated, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+      if (calculated !== currentTotal) {
+        detalleForm.setValue("total_linea", calculated, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
     }
-  }, [cantidadValue, precioValue, importeValue, detalleForm]);
+  }, [cantidadValue, precioValue, subtotalValue, totalValue, detalleForm]);
 
-  // Efecto para limpiar errores de descripción cuando no es genérico
   useEffect(() => {
     if (!isGenerico) {
       detalleForm.clearErrors("descripcion");
@@ -247,16 +278,19 @@ export const PoSolicitudDetalleDialogContent = ({
     },
   });
 
-  // Configurar las secciones del formulario de manera más compacta
   const articuloField = (
-    <CompactFormField label="Artículo" error={detalleForm.formState.errors.articulo_id} required>
+    <CompactFormField
+      label="Articulo"
+      error={detalleForm.formState.errors.articulo_id}
+      required
+    >
       <CompactComboboxQuery
         {...ARTICULOS_REFERENCE}
         value={detalleForm.watch("articulo_id")}
         onChange={(value: string) =>
           detalleForm.setValue("articulo_id", value, { shouldValidate: true })
         }
-        placeholder="Selecciona un artículo"
+        placeholder="Selecciona un articulo"
         filter={articuloFilterQuery}
         dependsOn="all"
       />
@@ -264,7 +298,11 @@ export const PoSolicitudDetalleDialogContent = ({
   );
 
   const descripcionField = (
-    <CompactFormField label="Descripción" error={detalleForm.formState.errors.descripcion} required={isGenerico}>
+    <CompactFormField
+      label="Descripcion"
+      error={detalleForm.formState.errors.descripcion}
+      required={isGenerico}
+    >
       <>
         <Textarea
           rows={3}
@@ -273,7 +311,7 @@ export const PoSolicitudDetalleDialogContent = ({
         />
         {isGenerico ? (
           <p className="text-[9px] text-muted-foreground sm:text-[10px]">
-            Requerido para artículos genéricos
+            Requerido para articulos genericos
           </p>
         ) : null}
       </>
@@ -281,7 +319,10 @@ export const PoSolicitudDetalleDialogContent = ({
   );
 
   const formSections = [
-    { columns: 1 as const, fields: [{ component: articuloField }, { component: descripcionField }] },
+    {
+      columns: 1 as const,
+      fields: [{ component: articuloField }, { component: descripcionField }],
+    },
     {
       columns: 1 as const,
       fields: [
@@ -318,11 +359,11 @@ export const PoSolicitudDetalleDialogContent = ({
               <CompactFormField
                 key="precio"
                 label="Precio"
-                error={detalleForm.formState.errors.precio}
+                error={detalleForm.formState.errors.precio_unitario}
                 required
               >
                 <CompactNumberInput
-                  source="precio"
+                  source="precio_unitario"
                   label={false}
                   step={0.01}
                   min={0}
@@ -334,29 +375,61 @@ export const PoSolicitudDetalleDialogContent = ({
         },
       ],
     },
-    createTwoColumnSection("", [
-      <div key="importe" className="max-w-[150px]">
-        <CompactFormField label="Importe" error={detalleForm.formState.errors.importe}>
-          <>
-            <Input
-              type="text"
-              value={importeDisplay}
-              readOnly
-              tabIndex={-1}
-              className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            />
-            <input type="hidden" {...detalleForm.register("importe", { valueAsNumber: true })} />
-          </>
-        </CompactFormField>
-      </div>,
-    ]),
+    {
+      columns: 2 as const,
+      fields: [
+        {
+          span: 2,
+          component: (
+            <div className="w-full">
+              <CompactFormField
+                label="Total"
+                error={detalleForm.formState.errors.total_linea}
+              >
+                <>
+                  <Input
+                    type="text"
+                    value={totalDisplay}
+                    readOnly
+                    className="h-7 w-full bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+                  />
+                  <input
+                    type="hidden"
+                    {...detalleForm.register("total_linea", {
+                      valueAsNumber: true,
+                    })}
+                  />
+                  <input
+                    type="hidden"
+                    {...detalleForm.register("subtotal", { valueAsNumber: true })}
+                  />
+                  <ImputacionDetailSection
+                    form={detalleForm}
+                    centroCostoReference={CENTROS_COSTO_REFERENCE}
+                    oportunidadReference={OPORTUNIDADES_REFERENCE}
+                    imputacionDefaults={imputacionDefaults}
+                    getReferenceLabel={getReferenceLabel}
+                    applyDefaults={canApplyDefaults}
+                    resetKey={imputacionResetKey}
+                  />
+                </>
+              </CompactFormField>
+            </div>
+          ),
+        },
+      ],
+    },
   ];
 
-  return <StandardFormGrid sections={formSections} responsive={true} className="space-y-4" />;
+  return (
+    <StandardFormGrid sections={formSections} responsive className="space-y-4" />
+  );
 };
 
-// Formulario dialog para crear/editar detalles
-export const PoSolicitudDetalleForm = ({ articuloFilterId }: PoSolicitudDetalleFormProps) => {
+export const PoOrdenCompraDetalleForm = ({
+  articuloFilterId,
+  imputacionDefaults,
+}: PoOrdenCompraDetalleFormProps) => {
   const articuloFilterQuery = useMemo(
     () => (articuloFilterId ? { tipo_articulo_id: articuloFilterId } : undefined),
     [articuloFilterId]
@@ -365,34 +438,38 @@ export const PoSolicitudDetalleForm = ({ articuloFilterId }: PoSolicitudDetalleF
   return (
     <FormDetailFormDialog
       title={({ action }) =>
-        action === "create" ? "Agregar artículo" : "Editar artículo"
+        action === "create" ? "Agregar articulo" : "Editar articulo"
       }
-      description="Completa los datos del artículo para la solicitud."
+      description="Completa los datos del articulo para la orden."
     >
       {(detalleForm) => (
-        <PoSolicitudDetalleDialogContent
+        <PoOrdenCompraDetalleDialogContent
           detalleForm={detalleForm as unknown as UseFormReturn<DetalleFormValues>}
           articuloFilterQuery={articuloFilterQuery}
+          imputacionDefaults={imputacionDefaults}
         />
       )}
     </FormDetailFormDialog>
   );
 };
-// endregion
 
- 
-//*********************************
-// region 5. CONTENEDOR
-
-//  Contenido principal de la seccion de detalle
-export const PoSolicitudDetalleContent = ({ articuloFilterId }: { articuloFilterId?: number }) => {
+export const PoOrdenCompraDetalleContent = ({
+  articuloFilterId,
+  imputacionDefaults,
+}: {
+  articuloFilterId?: number;
+  imputacionDefaults?: {
+    centro_costo_id?: number | null;
+    oportunidad_id?: number | null;
+  };
+}) => {
   const { handleDeleteBySortedIndex } = useFormDetalle();
 
   return (
     <>
       <div className="border-b border-border/60 -mt-4 pb-0 pt-0" />
 
-      <FormDetailCardList<PoSolicitudDetalle>
+      <FormDetailCardList<PoOrdenCompraDetalle>
         emptyMessage="Todavia no agregaste articulos."
         emptyStateClassName="border-dashed"
         emptyStateContentClassName="flex flex-col items-center justify-center py-4 text-center"
@@ -406,20 +483,21 @@ export const PoSolicitudDetalleContent = ({ articuloFilterId }: { articuloFilter
         variant="row"
       >
         {(item, index) => (
-          <PoSolicitudDetalleCard
+          <PoOrdenCompraDetalleCard
             item={item}
+            imputacionDefaults={imputacionDefaults}
             onDelete={() => handleDeleteBySortedIndex(index)}
           />
         )}
       </FormDetailCardList>
-      
+
       <FormDetailSectionMinItems itemName="articulo" />
-      <PoSolicitudDetalleForm articuloFilterId={articuloFilterId} />
+      <PoOrdenCompraDetalleForm
+        articuloFilterId={articuloFilterId}
+        imputacionDefaults={imputacionDefaults}
+      />
     </>
   );
 };
 
-// Helper hook para usar el contexto de detalle
 const useFormDetalle = () => useFormDetailSectionContext();
-
-// endregion

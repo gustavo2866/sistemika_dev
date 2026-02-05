@@ -41,20 +41,20 @@ export const PoSolicitudEdit = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const returnTo = getReturnToFromLocation(location);
+  
   return (
     <Edit
       title={<PoSolicitudEditTitle />}
       actions={false}
       className="w-full max-w-lg"
-      redirect={false}
+      mutationMode="pessimistic"
       transform={(data) => buildPoSolicitudPayload(data as PoSolicitudPayload)}
       mutationOptions={{
         onSuccess: () => {
           if (returnTo) {
             navigate(returnTo, { state: { refresh: true } });
-            return;
           }
-          navigate("/po-solicitudes", { state: { refresh: true } });
+          // Si no hay returnTo, dejamos que React Admin haga el redirect por defecto
         },
       }}
     >

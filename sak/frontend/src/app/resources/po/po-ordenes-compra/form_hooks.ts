@@ -1,13 +1,13 @@
 /**
- * Hooks y utilidades del formulario de PoSolicitudes.
+ * Hooks y utilidades del formulario de Ordenes de Compra.
  *
  * Estructura:
  * 1. TIPOS - Tipos auxiliares y contratos internos
- * 2. CATALOGOS - Carga de catalogos y referencias
- * 3. DEFAULTS Y SINCRONIZACION - Defaults, visibilidad y contexto de oportunidad
- * 4. LOOKUPS - Consultas por id para referencias
- * 5. WIZARD - Helpers para aplicar payloads y defaults del wizard
- * 6. EMISION - Emision y cambio de estado de la solicitud
+ * 2. SUBTITULOS - Subtitulos de secciones
+ * 3. VISIBILIDAD - Control de secciones
+ * 4. DEFAULTS - Defaults por tipo/proveedor
+ * 5. WIZARD - Helpers para wizard
+ * 6. EMISION - Emision y cambio de estado
  */
 
 "use client";
@@ -30,40 +30,33 @@ import {
 } from "react-hook-form";
 import { formatOportunidadLabel } from "../../crm-oportunidades/OportunidadSelector";
 import {
-  calculateImporte,
-  getDepartamentoDefaultByTipo,
   normalizeId,
   normalizeNumber,
   normalizeOptionalNumber,
-  type PoSolicitud,
-  type PoSolicitudDetalle,
+  type PoOrdenCompra,
+  type PoOrdenCompraDetalle,
   type WizardPayload,
   OPORTUNIDADES_REFERENCE,
 } from "./model";
+import { calculateImporte, getDepartamentoDefaultByTipo } from "../shared/po-utils";
 import {
-  buildPoSolicitudCabeceraSubtitle,
-  buildPoSolicitudImputacionSubtitle,
-  resolveCentroCostoId,
+  buildPoOrdenCompraCabeceraSubtitle,
+  buildPoOrdenCompraImputacionSubtitle,
   resolveTipoCompra,
 } from "./transformers";
 import {
   useReferenceFieldWatcher,
   useCentroCostoWatcher,
 } from "@/components/generic";
-import { getOportunidadIdFromLocation } from "@/lib/oportunidad-context";
-import { useLocation } from "react-router-dom";
 import {
   useArticuloPrecioDefault,
   useTipoSolicitudCatalog,
   type TipoSolicitudCatalog,
 } from "../shared/po-hooks";
 
-
 //******************************* */
-// region 1. TIPOS                */
-//#region 
+// region 1. TIPOS
 
-// 1.1. SetValueFn - Tipo para setValue del formulario de PoSolicitud
 type SetValueFn = (
   name:
     | "titulo"
@@ -71,25 +64,22 @@ type SetValueFn = (
     | "cantidad"
     | "precio"
     | "proveedorId"
-    | "fechaNecesidad"
-    | "solicitanteId"
+    | "fecha"
+    | "usuarioResponsableId"
     | "oportunidadId"
     | "tipoSolicitudId"
-    | "departamentoId"
     | "tipoCompra"
-    | "articuloId",
+    | "articuloId"
+    | "centroCostoId"
+    | "metodoPagoId",
   value: string | number,
   options?: { shouldDirty?: boolean }
 ) => void;
 
-//#endregion
-
 //******************************* */
-// region 2. CATALOGOS
-//#region 
+// region 2. SUBTITULOS
 
-// Construye subtitulos para secciones del formulario (cabecera e imputacion).
-export const usePoSolicitudSectionSubtitles = () => {
+export const usePoOrdenCompraSectionSubtitles = () => {
   const { data: centroCostoData } = useCentroCostoWatcher("centro_costo_id");
   const { data: oportunidadData } = useReferenceFieldWatcher(
     "oportunidad_id",
@@ -97,7 +87,7 @@ export const usePoSolicitudSectionSubtitles = () => {
     { validation: (value) => !!value && typeof value === "object" }
   );
   const { tiposSolicitudCatalog } = useTipoSolicitudCatalog();
-  const { control } = useFormContext<PoSolicitud>();
+  const { control } = useFormContext<PoOrdenCompra & { oportunidad_id?: number }>();
   const tituloValue = useWatch({ control, name: "titulo" });
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
   const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
@@ -112,7 +102,7 @@ export const usePoSolicitudSectionSubtitles = () => {
 
   const cabeceraSubtitle = useMemo(
     () =>
-      buildPoSolicitudCabeceraSubtitle({
+      buildPoOrdenCompraCabeceraSubtitle({
         titulo: tituloValue ? String(tituloValue) : undefined,
         tipoSolicitudNombre,
       }),
@@ -131,7 +121,7 @@ export const usePoSolicitudSectionSubtitles = () => {
 
   const imputacionSubtitle = useMemo(
     () =>
-      buildPoSolicitudImputacionSubtitle({
+      buildPoOrdenCompraImputacionSubtitle({
         oportunidadTitulo: oportunidadLabel,
         centroCostoNombre: (centroCostoData as { nombre?: string } | undefined)
           ?.nombre,
@@ -139,26 +129,23 @@ export const usePoSolicitudSectionSubtitles = () => {
     [centroCostoData, oportunidadLabel]
   );
 
- return {
+  return {
     cabeceraSubtitle,
     imputacionSubtitle,
     tiposSolicitudCatalog,
   };
 };
 
-export const PoSolicitudSectionSubtitle = ({ text }: { text: string }) =>
+export const PoOrdenCompraSectionSubtitle = ({ text }: { text: string }) =>
   createElement(
     "div",
     { className: "text-[10px] leading-none text-muted-foreground sm:text-xs" },
     text
   );
-//#endregion
 
 //******************************* */
 // region 3. VISIBILIDAD SECCIONES
-//#region 
 
-// Controla la visibilidad de Imputacion en base al estado de Detalle.
 export const useImputacionVisibilityByDetalle = () => {
   const [showImputacion, setShowImputacion] = useState(true);
   const [imputacionOpen, setImputacionOpen] = useState(false);
@@ -185,58 +172,23 @@ export const useImputacionVisibilityByDetalle = () => {
     handleImputacionToggle,
   };
 };
-//#endregion
 
 //******************************* */
-// region 4. CONTEXTO OPORTUNIDAD
-//#region 
+// region 4. DEFAULTS
 
-// Define oportunidad default usando el contexto de la URL.
-export const useDefaultOportunidadFromLocation = ({
-  setValue,
-  oportunidadIdValue,
-}: {
-  setValue: SetValueFn;
-  oportunidadIdValue?: string | null;
-}) => {
-  const location = useLocation();
-  const oportunidadIdFromLocation = useMemo(
-    () => getOportunidadIdFromLocation(location),
-    [location]
-  );
-
-  useEffect(() => {
-    if (!oportunidadIdFromLocation) return;
-    if (oportunidadIdValue) return;
-    setValue("oportunidadId", String(oportunidadIdFromLocation), {
-      shouldDirty: false,
-    });
-  }, [oportunidadIdFromLocation, oportunidadIdValue, setValue]);
-
-  return { oportunidadIdFromLocation };
-};
-//#endregion
-
-//******************************* */
-// region 5. DEFAULTS Y SINCRONIZACION
-//#region
-
-// Indica si el tipo de solicitud debe bloquearse segun detalles.
-export const useTipoSolicitudBloqueado = (detallesValue: unknown) => {
-  return useMemo(() => {
+export const useTipoSolicitudBloqueado = (detallesValue: unknown) =>
+  useMemo(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
     return detalles.length > 0;
   }, [detallesValue]);
-};
 
-// Aplica el departamento default cuando cambia el tipo de solicitud.
 export const useDepartamentoDefaultByTipo = ({
   form,
   idValue,
   tipoSolicitudValue,
   tiposSolicitudCatalog,
 }: {
-  form: UseFormReturn<PoSolicitud>;
+  form: UseFormReturn<PoOrdenCompra>;
   idValue: unknown;
   tipoSolicitudValue: unknown;
   tiposSolicitudCatalog: TipoSolicitudCatalog[];
@@ -281,12 +233,11 @@ export const useDepartamentoDefaultByTipo = ({
   }, [form, idValue, tipoSolicitudValue, tiposSolicitudCatalog]);
 };
 
-// Aplica defaults del proveedor al formulario si no hay valores editados.
 export const useProveedorDefaults = ({
   form,
   proveedorId,
 }: {
-  form: UseFormReturn<PoSolicitud>;
+  form: UseFormReturn<PoOrdenCompra>;
   proveedorId?: number;
 }) => {
   const { data: proveedorDefaults } = useGetOne(
@@ -337,29 +288,24 @@ export const useProveedorDefaults = ({
   return proveedorDefaults;
 };
 
-//#endregion
-
 //******************************* */
-// region 6. WIZARD
-//#region 
+// region 5. WIZARD
 
-// Construye el payload del wizard desde los valores del formulario del wizard.
 type ApplyWizardPayloadArgs = {
   isCreate: boolean;
-  setValue: UseFormSetValue<PoSolicitud>;
-  identityId?: number | null;
+  setValue: UseFormSetValue<PoOrdenCompra & { oportunidad_id?: number }>;
   payload: WizardPayload;
 };
 
-// Valores necesarios para construir el payload del wizard.
 type WizardPayloadBuildValues = {
   titulo: string;
-  fechaNecesidad: string;
+  fecha: string;
   proveedorId: string;
-  solicitanteId: string;
+  usuarioResponsableId: string;
   oportunidadId: string;
   tipoSolicitudId: string;
-  departamentoId: string;
+  centroCostoId: string;
+  solicitudes: Array<{ id: string }>;
   tipoCompra: string;
   articuloId: string;
   cantidad: number;
@@ -367,66 +313,72 @@ type WizardPayloadBuildValues = {
   descripcion: string;
 };
 
-// Construye un detalle desde el payload del wizard.
 const buildDetalleFromWizard = (
   payload: WizardPayload
-): PoSolicitudDetalle | null => {
+): PoOrdenCompraDetalle | null => {
   if (payload.articuloId == null) return null;
   const cantidad = payload.cantidad ?? 0;
   const precio = payload.precio ?? 0;
-  const importe = calculateImporte(cantidad, precio);
+  const subtotal = calculateImporte(cantidad, precio);
 
   return {
-    id: 0,  // Para nuevos detalles, será asignado por el backend
-    tempId: Date.now(),  // ID temporal único para el frontend
-    solicitud_id: 0,  // Será asignado cuando se guarde la solicitud
+    tempId: Date.now(),
+    orden_compra_id: 0,
     articulo_id: payload.articuloId,
     descripcion: payload.descripcion ?? "",
     unidad_medida: payload.unidadMedida ?? "UN",
     cantidad,
-    precio,
-    importe,
+    precio_unitario: precio,
+    subtotal,
+    total_linea: subtotal,
+    centro_costo_id: payload.centroCostoId ?? null,
+    oportunidad_id: payload.oportunidadId ?? null,
+    po_solicitud_id: null,
   };
 };
 
-// Construye el payload completo del wizard desde los valores del formulario del wizard.
 export const buildWizardPayload = ({
   values,
   proveedorId,
-  solicitanteDepartamentoIdValue,
-  departamentoData,
-  solicitanteData,
+  responsableData,
+  proveedorData,
   unidadMedida,
+  departamentoData,
 }: {
   values: WizardPayloadBuildValues;
   proveedorId: number | null;
-  solicitanteDepartamentoIdValue: number | null;
-  departamentoData: { nombre?: string; centro_costo_id?: number | null } | null;
-  solicitanteData: { centro_costo_id?: number | null } | null;
+  responsableData: { departamento_id?: number | null } | null;
+  proveedorData?: unknown;
   unidadMedida: string;
+  departamentoData?: { centro_costo_id?: number | null } | null;
 }): WizardPayload => {
   const normalizedProveedorId = proveedorId ?? normalizeId(values.proveedorId);
   const normalizedTipoSolicitudId = normalizeId(values.tipoSolicitudId);
-  const normalizedDepartamentoId = normalizeId(values.departamentoId);
+  const normalizedCentroCostoId = normalizeId(values.centroCostoId);
   const normalizedArticuloId = normalizeId(values.articuloId);
   const normalizedOportunidadId = normalizeId(values.oportunidadId);
+  const normalizedResponsableId = normalizeId(values.usuarioResponsableId);
+  const normalizedSolicitudIds = (values.solicitudes ?? [])
+    .map((item) => normalizeId(item?.id))
+    .filter((value): value is number => value != null);
   const resolvedDepartamentoId =
-    normalizedDepartamentoId ??
-    (solicitanteDepartamentoIdValue != null
-      ? Number(solicitanteDepartamentoIdValue)
-      : null);
+    responsableData?.departamento_id != null
+      ? Number(responsableData.departamento_id)
+      : null;
+  const departamentoCentroCostoId = departamentoData?.centro_costo_id ?? null;
   const resolvedCentroCostoId =
-    normalizedOportunidadId != null
-      ? null
-      : resolveCentroCostoId({
-          oportunidadId: values.oportunidadId ?? null,
-          departamentoNombre: departamentoData?.nombre ?? null,
-          departamentoCentroCostoId: departamentoData?.centro_costo_id ?? null,
-          solicitanteCentroCostoId: solicitanteData?.centro_costo_id ?? null,
-        });
+    normalizedCentroCostoId ??
+    (departamentoCentroCostoId != null
+      ? Number(departamentoCentroCostoId)
+      : null);
+  const defaultMetodoPagoId =
+    (proveedorData as { default_metodo_pago_id?: number | null } | undefined)
+      ?.default_metodo_pago_id ?? 1;
+  const normalizedMetodoPagoId =
+    defaultMetodoPagoId != null ? Number(defaultMetodoPagoId) : 1;
   const resolvedFecha =
-    values.fechaNecesidad && String(values.fechaNecesidad).trim().length > 0
-      ? values.fechaNecesidad
+    values.fecha && String(values.fecha).trim().length > 0
+      ? values.fecha
       : null;
   const resolvedCantidad = normalizedArticuloId
     ? normalizeOptionalNumber(normalizeNumber(values.cantidad))
@@ -440,23 +392,24 @@ export const buildWizardPayload = ({
     tipoSolicitudId: normalizedTipoSolicitudId,
     departamentoId: resolvedDepartamentoId,
     centroCostoId: resolvedCentroCostoId,
+    solicitudIds: normalizedSolicitudIds,
     tipoCompra: resolveTipoCompra(normalizedProveedorId),
     articuloId: normalizedArticuloId,
     titulo: values.titulo,
     descripcion: values.descripcion ?? "",
-    fechaNecesidad: resolvedFecha,
+    fecha: resolvedFecha,
     oportunidadId: normalizedOportunidadId,
     cantidad: resolvedCantidad,
     precio: resolvedPrecio,
     unidadMedida,
+    usuarioResponsableId: normalizedResponsableId,
+    metodoPagoId: normalizedMetodoPagoId,
   };
 };
 
-// Aplica el payload del wizard al formulario principal.
 export const applyWizardPayload = ({
   isCreate,
   setValue,
-  identityId,
   payload,
 }: ApplyWizardPayloadArgs) => {
   if (!isCreate) return;
@@ -473,20 +426,30 @@ export const applyWizardPayload = ({
   if (payload.centroCostoId != null) {
     setValue("centro_costo_id", payload.centroCostoId, { shouldDirty: true });
   }
+  if (payload.oportunidadId != null) {
+    setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+  }
   if (payload.tipoCompra != null) {
     setValue("tipo_compra", payload.tipoCompra, { shouldDirty: true });
   }
   if (payload.titulo !== undefined) {
     setValue("titulo", payload.titulo, { shouldDirty: true });
   }
-  if (payload.fechaNecesidad) {
-    setValue("fecha_necesidad", payload.fechaNecesidad, { shouldDirty: true });
+  if (payload.fecha) {
+    setValue("fecha", payload.fecha, { shouldDirty: true });
   }
-  if (payload.oportunidadId != null) {
-    setValue("oportunidad_id", payload.oportunidadId, { shouldDirty: true });
+  if (payload.usuarioResponsableId != null) {
+    setValue("usuario_responsable_id", payload.usuarioResponsableId, {
+      shouldDirty: true,
+    });
   }
-  if (identityId != null) {
-    setValue("solicitante_id", Number(identityId), { shouldDirty: true });
+  if (payload.metodoPagoId != null) {
+    setValue("metodo_pago_id", payload.metodoPagoId, { shouldDirty: true });
+  }
+
+  if (payload.detalles && payload.detalles.length > 0) {
+    setValue("detalles", payload.detalles as any, { shouldDirty: true });
+    return;
   }
 
   const detalle = buildDetalleFromWizard(payload);
@@ -495,22 +458,15 @@ export const applyWizardPayload = ({
   }
 };
 
-// Aplica defaults del wizard al formulario principal.
 export const useWizardDefaults = ({
-  identityId,
-  solicitanteIdValue,
-  departamentoIdValue,
-  solicitanteDepartamentoIdValue,
+  responsableIdValue,
   proveedorData,
   articuloIdValue,
   articuloData,
   precioValue,
   setValue,
 }: {
-  identityId: number | null;
-  solicitanteIdValue?: string | null;
-  departamentoIdValue?: string | null;
-  solicitanteDepartamentoIdValue?: number | null;
+  responsableIdValue?: string | null;
   proveedorData?: unknown;
   articuloIdValue?: string | null;
   articuloData?: unknown;
@@ -518,32 +474,34 @@ export const useWizardDefaults = ({
   setValue: SetValueFn;
 }) => {
   useEffect(() => {
-    if (!identityId) return;
-    if (solicitanteIdValue) return;
-    setValue("solicitanteId", String(identityId), { shouldDirty: false });
-  }, [identityId, solicitanteIdValue, setValue]);
+    if (!responsableIdValue) return;
+    setValue("usuarioResponsableId", String(responsableIdValue), {
+      shouldDirty: false,
+    });
+  }, [responsableIdValue, setValue]);
 
   useEffect(() => {
-    if (departamentoIdValue) return;
-    if (solicitanteDepartamentoIdValue == null) return;
-    setValue("departamentoId", String(solicitanteDepartamentoIdValue), {
+    const defaultTipoSolicitudId = (proveedorData as any)
+      ?.default_tipo_solicitud_id;
+    if (defaultTipoSolicitudId) {
+      setValue("tipoSolicitudId", String(defaultTipoSolicitudId), {
+        shouldDirty: true,
+      });
+    }
+    const defaultArticuloId = (proveedorData as any)?.default_articulos_id;
+    if (defaultArticuloId) {
+      setValue("articuloId", String(defaultArticuloId), {
+        shouldDirty: true,
+      });
+    }
+  }, [proveedorData, setValue]);
+
+  useEffect(() => {
+    if (!articuloIdValue || !articuloData) return;
+    setValue("descripcion", (articuloData as any)?.descripcion ?? "", {
       shouldDirty: true,
     });
-  }, [departamentoIdValue, setValue, solicitanteDepartamentoIdValue]);
-
-  useEffect(() => {
-    const defaultArticuloId = Number(
-      (proveedorData as { default_articulos_id?: number | null } | undefined)
-        ?.default_articulos_id ?? 0
-    );
-    if (!Number.isFinite(defaultArticuloId) || defaultArticuloId <= 0) {
-      return;
-    }
-    if (articuloIdValue) {
-      return;
-    }
-    setValue("articuloId", String(defaultArticuloId), { shouldDirty: true });
-  }, [articuloIdValue, proveedorData, setValue]);
+  }, [articuloData, articuloIdValue, setValue]);
 
   useArticuloPrecioDefault({
     articuloData,
@@ -552,28 +510,25 @@ export const useWizardDefaults = ({
   });
 };
 
-//#endregion
-
 //******************************* */
-// region 7. EMISION
-//#region 
+// region 6. EMISION
 
-// Orquesta la emision de la solicitud con guardado previo si hace falta.
-export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
-  const record = useRecordContext<PoSolicitud>();
-  const resource = useResourceContext();
+export const usePoOrdenCompraEmit = ({ onClose }: { onClose: () => void }) => {
+  const record = useRecordContext<PoOrdenCompra>();
+  const saveContext = useSaveContext();
   const dataProvider = useDataProvider();
   const redirect = useRedirect();
-  const saveContext = useSaveContext();
-  const form = useFormContext<PoSolicitud>();
+  const resourceContext = useResourceContext();
+  const form = useFormContext<PoOrdenCompra>();
   const { dirtyFields } = useFormState();
   const [loading, setLoading] = useState(false);
+  const resource = resourceContext ?? "po-ordenes-compra";
 
+  const canEmit = record?.estado === "borrador" || record?.estado === "emitida";
   const isDirty = Object.keys(dirtyFields).length > 0;
-  const canEmit = record?.estado === "pendiente";
 
   const emit = async (openShow: boolean) => {
-    if (!record?.id || !resource) return;
+    if (!record?.id) return;
     setLoading(true);
     try {
       if (isDirty && saveContext?.save) {
@@ -603,57 +558,3 @@ export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
     loading,
   };
 };
-
-//#endregion
-
-//******************************* */
-// region 8. CONFIRMACION
-//#region
-
-export const usePoSolicitudConfirm = () => {
-  const record = useRecordContext<PoSolicitud>();
-  const resource = useResourceContext();
-  const saveContext = useSaveContext();
-  const form = useFormContext<PoSolicitud>();
-  const { dirtyFields } = useFormState();
-  const [loading, setLoading] = useState(false);
-
-  const isEditMode = Boolean(record?.id);
-  const canConfirm = !isEditMode || record?.estado === "borrador";
-  const isDirty = Object.keys(dirtyFields).length > 0;
-
-  const confirm = async (onDone?: () => void) => {
-    if (!saveContext?.save || !resource) return;
-    setLoading(true);
-    const previousEstado = form.getValues("estado");
-    form.setValue("estado", "pendiente", { shouldDirty: true });
-    try {
-      if (isDirty) {
-        const errors = await saveContext.save({
-          ...form.getValues(),
-          estado: "pendiente",
-        });
-        if (errors) {
-          form.setValue("estado", previousEstado, { shouldDirty: true });
-          return;
-        }
-      } else {
-        const errors = await saveContext.save({
-          ...form.getValues(),
-          estado: "pendiente",
-        });
-        if (errors) {
-          form.setValue("estado", previousEstado, { shouldDirty: true });
-          return;
-        }
-      }
-      onDone?.();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { canConfirm, confirm, loading };
-};
-
-//#endregion

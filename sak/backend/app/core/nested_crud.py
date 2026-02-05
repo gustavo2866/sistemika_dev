@@ -39,9 +39,7 @@ class NestedCRUD(GenericCRUD):
         for relation in self._nested_relations.keys():
             if relation in data:
                 nested_payloads[relation] = data.pop(relation)
-        # DEBUG: Log what's being extracted
-        if nested_payloads:
-            print(f"DEBUG NestedCRUD _extract_nested_payloads: {nested_payloads}")
+
         return nested_payloads
 
     def _filter_payload(self, model_cls: Type, payload: Dict[str, Any], exclude: Iterable[str] = ()) -> Dict[str, Any]:
@@ -163,11 +161,8 @@ class NestedCRUD(GenericCRUD):
                     for field, raw_value in list(filtered_payload.items()):
                         filtered_payload[field] = self._coerce_for_model(model_cls, field, raw_value)
                     
-                    # DEBUG: Log para verificar qué se está creando
-                    print(f"DEBUG NestedCRUD: Creando nuevo detalle con payload: {filtered_payload}")
                     new_detail = model_cls(**filtered_payload)
                     session.add(new_detail)
-                    print(f"DEBUG NestedCRUD: Detalle agregado a sesión: {new_detail}")
 
             if not is_create and allow_delete:
                 for existing_id, existing_obj in existing_by_id.items():
@@ -175,7 +170,6 @@ class NestedCRUD(GenericCRUD):
                         session.delete(existing_obj)
 
         session.commit()
-        print(f"DEBUG NestedCRUD: Transacción committeada. Refreshing obj {obj.id}")
         session.refresh(obj)
 
     # ------------------------------------------------------------------ overrides
@@ -183,13 +177,9 @@ class NestedCRUD(GenericCRUD):
         data_copy = dict(data)
         nested_payloads = self._extract_nested_payloads(data_copy)
         
-        print(f"DEBUG NestedCRUD create: nested_payloads = {nested_payloads}")
-
         obj = super().create(session, data_copy)
-        print(f"DEBUG NestedCRUD create: Objeto principal creado con ID = {obj.id}")
 
         if nested_payloads:
-            print(f"DEBUG NestedCRUD create: Sincronizando relaciones anidadas...")
             self._sync_nested_relations(session, obj, nested_payloads, is_create=True)
 
         return obj

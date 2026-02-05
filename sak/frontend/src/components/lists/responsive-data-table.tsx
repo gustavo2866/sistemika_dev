@@ -312,29 +312,34 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
 
             return (
               <div className="space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-x-2 overflow-hidden">
                   {isIdPrimary ? (
-                    <>
-                      {renderInlineColumnCell(
-                        firstColumn.key ?? firstColumn.props.source ?? 0,
-                        firstColumn.props,
-                        { className: "text-[12px] font-semibold" }
-                      )}
-                      <span className="text-[12px] font-semibold">-</span>
-                      {renderInlineColumnCell(
-                        secondColumn.key ?? secondColumn.props.source ?? 1,
-                        secondColumn.props,
-                        { className: "text-[12px] font-semibold" }
-                      )}
-                    </>
+                    <div className="min-w-0 text-[12px] font-semibold leading-[1.1] break-words hyphens-auto">
+                      <span className="inline">
+                        {renderInlineColumnCell(
+                          firstColumn.key ?? firstColumn.props.source ?? 0,
+                          firstColumn.props,
+                          { className: "inline" }
+                        )}
+                        <span className="mx-0.5">-</span>
+                        {renderInlineColumnCell(
+                          secondColumn.key ?? secondColumn.props.source ?? 1,
+                          secondColumn.props,
+                          { className: "inline" }
+                        )}
+                      </span>
+                    </div>
                   ) : (
                     <>
                       {firstColumn
                         ? renderColumnCell(
                             firstColumn.key ?? firstColumn.props.source ?? 0,
                             firstColumn.props,
-                            { hideLabel: true, className: "text-[12px] font-semibold" }
+                            {
+                              hideLabel: true,
+                              className: "text-[12px] font-semibold leading-[1.1] break-words hyphens-auto",
+                            }
                           )
                         : null}
                       {secondColumn
@@ -343,7 +348,8 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                             secondColumn.props,
                             {
                               hideLabel: true,
-                              className: "text-[11px] text-muted-foreground",
+                              className:
+                                "text-[11px] text-muted-foreground truncate",
                             }
                           )
                         : null}

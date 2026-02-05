@@ -206,8 +206,16 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
 
   const handleSubmit = useCallback(
     async (values: FieldValues) => {
+      if (typeof window !== "undefined") {
+        console.log("[SaveButton] handleSubmit called");
+        console.log("[SaveButton] recordFromLocation:", recordFromLocation);
+        console.log("[SaveButton] saveContext keys:", saveContext ? Object.keys(saveContext) : null);
+      }
       let errors: unknown;
       if (saveContext?.save) {
+        if (typeof window !== "undefined") {
+          console.log("[SaveButton] values:", values);
+        }
         const callbacks: SaveHandlerCallbacks | undefined = (() => {
           const config: SaveHandlerCallbacks = {};
           if (mutationOptions?.onSuccess) {
@@ -222,7 +230,20 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
           return Object.keys(config).length > 0 ? config : undefined;
         })();
 
+        if (typeof window !== "undefined") {
+          console.log("[SaveButton] calling saveContext.save");
+        }
         errors = await saveContext.save(values as Partial<RecordType>, callbacks);
+        if (typeof window !== "undefined") {
+          console.log("[SaveButton] saveContext.save resolved");
+        }
+      } else {
+        if (typeof window !== "undefined") {
+          console.log("[SaveButton] saveContext.save is undefined", saveContext);
+        }
+      }
+      if (typeof window !== "undefined") {
+        console.log("[SaveButton] save result errors:", errors);
       }
       if (errors != null) {
         setSubmissionErrors(errors, form.setError);
@@ -233,6 +254,9 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
 
   const handleClick: MouseEventHandler<HTMLButtonElement> = useCallback(
     async (event) => {
+      if (typeof window !== "undefined") {
+        console.log("[SaveButton] click", { type });
+      }
       if (onClick) {
         onClick(event);
       }

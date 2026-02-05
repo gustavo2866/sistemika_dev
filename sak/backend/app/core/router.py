@@ -90,11 +90,6 @@ def create_generic_router(
     ):
         """Listar recursos con paginación y filtros - Soporte ra-data-simple-rest y json-server"""
         try:
-            # Debug: log toda la request recibida
-            print(f"DEBUG Router: Request URL: {request.url}")
-            print(f"DEBUG Router: Query params: {dict(request.query_params)}")
-            print(f"DEBUG Router: Method: {request.method}")
-            
             # Detectar formato y procesar parámetros
             if sort is not None or range is not None:
                 # Usar parámetros ra-data-simple-rest
@@ -151,30 +146,22 @@ def create_generic_router(
             # Agregar cualquier parámetro como filtro (excepto los reservados)
             for param_name, param_value in query_params.items():
                 if param_name not in reserved_params and param_value:
-                    # Debug: log todos los parámetros que se procesan
-                    print(f"DEBUG Router: Processing param {param_name}={param_value}")
-                    
                     # Convertir tipos apropiados para foreign keys (incluyendo campos anidados)
                     if param_name.endswith('_id') and param_value.isdigit():
                         filters[param_name] = int(param_value)
-                        print(f"DEBUG Router: Converted {param_name} to int: {param_value}")
                     else:
                         filters[param_name] = param_value
-                        print(f"DEBUG Router: Added {param_name} as string: {param_value}")
             
             # Luego parsear filtros JSON si existen
             if filter:
                 try:
                     json_filters = json.loads(filter)
-                    print(f"DEBUG Router: JSON filters parsed: {json_filters}")
                     
                     # Convertir filtros anidados a formato plano
                     flat_filters = flatten_nested_filters(json_filters)
-                    print(f"DEBUG Router: Flattened filters: {flat_filters}")
                     
                     filters.update(flat_filters)
                 except json.JSONDecodeError:
-                    print(f"DEBUG Router: Invalid JSON filter: {filter}")
                     raise HTTPException(
                         status_code=400,
                         detail={
@@ -185,8 +172,6 @@ def create_generic_router(
                             }
                         }
                     )
-            
-            print(f"DEBUG Router: Final filters dict: {filters}")
             
             items, total = crud.list(
                 session,
@@ -264,14 +249,6 @@ def create_generic_router(
     ):
         """Actualizar recurso completo con lock optimista"""
         try:
-            # Debug: imprimir payload entrante y tipos
-            try:
-                print(f"DEBUG Router.update_full: model={model.__name__} id={obj_id}")
-                preview = {k: (type(v).__name__, v) for k, v in list(payload.items())[:30]}
-                print(f"DEBUG Router.update_full: payload keys={list(payload.keys())}")
-                print(f"DEBUG Router.update_full: payload preview types/values={preview}")
-            except Exception as _log_e:
-                print(f"DEBUG Router.update_full: log error: {_log_e}")
             obj = crud.update(session, obj_id, payload, check_version=True)
             if not obj:
                 raise HTTPException(
@@ -290,10 +267,6 @@ def create_generic_router(
         except HTTPException:
             raise  # Re-lanzar HTTPExceptions (como CONFLICT)
         except Exception as e:
-            # Debug: imprimir error
-            import traceback
-            print(f"ERROR Router.update_full: {e}")
-            traceback.print_exc()
             raise HTTPException(
                 status_code=400,
                 detail={

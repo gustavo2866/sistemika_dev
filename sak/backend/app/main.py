@@ -41,8 +41,6 @@ from app.routers.factura_impuesto_router import factura_impuesto_router
 from app.routers.comprobante_router import comprobante_router, file_router
 from app.routers.departamento_router import departamento_router
 from app.routers.tipo_solicitud_router import tipo_solicitud_router
-from app.routers.solicitud_router import solicitud_router
-from app.routers.solicitud_detalle_router import solicitud_detalle_router
 from app.routers.centro_costo_router import centro_costo_router
 from app.routers.proyecto_router import proyecto_router
 from app.routers.nomina_router import nomina_router
@@ -163,8 +161,6 @@ app.include_router(comprobante_router)
 app.include_router(file_router)
 app.include_router(departamento_router)
 app.include_router(tipo_solicitud_router)
-app.include_router(solicitud_router)
-app.include_router(solicitud_detalle_router)
 app.include_router(centro_costo_router)
 app.include_router(vacancia_router)
 app.include_router(adm_concepto_router)

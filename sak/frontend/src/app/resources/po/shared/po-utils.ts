@@ -62,3 +62,12 @@ export const getArticuloFilterByTipo = (
   const tipo = tiposSolicitud.find((item) => item.id === Number(tipoSolicitudId));
   return tipo?.tipo_articulo_filter_id ?? undefined;
 };
+
+export const getDepartamentoDefaultByTipo = (
+  tipoSolicitudId: string | undefined,
+  tiposSolicitud: Array<{ id: number; departamento_default_id?: number }> | undefined
+): string | undefined => {
+  if (!tipoSolicitudId || !tiposSolicitud) return undefined;
+  const tipo = tiposSolicitud.find((item) => item.id === Number(tipoSolicitudId));
+  return tipo?.departamento_default_id?.toString();
+};

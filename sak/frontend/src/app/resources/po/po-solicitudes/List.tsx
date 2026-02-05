@@ -33,9 +33,11 @@ import {
 import { BadgeField } from "@/components/badge-field";
 import { KanbanAvatar } from "@/components/kanban/card";
 import {
+  useCreatePath,
   useGetIdentity,
   useListContext,
   useRefresh,
+  useResourceContext,
 } from "ra-core";
 import type { PoSolicitud } from "./model";
 import { ESTADO_BADGES, ESTADO_CHOICES } from "./model";
@@ -163,8 +165,25 @@ export const PoSolicitudList = () => {
   const navigate = useNavigate();
   const refresh = useRefresh();
   const { data: identity } = useGetIdentity();
+  const resource = useResourceContext();
+  const createPath = useCreatePath();
   const oportunidadIdFilter = getOportunidadIdFromLocation(location);
   const returnTo = getReturnToFromLocation(location);
+  const listReturnTo = useMemo(
+    () => `${location.pathname}${location.search}`,
+    [location.pathname, location.search]
+  );
+  const contextSearch = useMemo(() => {
+    const params = new URLSearchParams();
+    if (listReturnTo) {
+      params.set("returnTo", listReturnTo);
+    }
+    if (oportunidadIdFilter) {
+      appendFilterParam(params, buildOportunidadFilter(oportunidadIdFilter));
+    }
+    const search = params.toString();
+    return search ? `?${search}` : "";
+  }, [listReturnTo, oportunidadIdFilter]);
   const defaultFilters = useMemo(
     () => ({
       estado: "borrador",
@@ -182,6 +201,12 @@ export const PoSolicitudList = () => {
     }
     return `${createPath}?${params.toString()}`;
   }, [location.pathname, location.search, oportunidadIdFilter]);
+  const rowClick = useMemo(() => {
+    if (!contextSearch) return "edit";
+    return (id: number | string) =>
+      `${createPath({ resource, type: "edit", id })}${contextSearch}`;
+  }, [contextSearch, createPath, resource]);
+
   return (
     <List
       filters={filters as any}
@@ -202,7 +227,7 @@ export const PoSolicitudList = () => {
         oportunidadId={oportunidadIdFilter}
       />
       <ResponsiveDataTable
-        rowClick="edit"
+        rowClick={rowClick}
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
         <ResponsiveDataTable.Col
@@ -268,7 +293,7 @@ export const PoSolicitudList = () => {
           <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
-          <ListRowActions />
+          <ListRowActions contextSearch={contextSearch} />
         </ResponsiveDataTable.Col>
       </ResponsiveDataTable>
     </List>

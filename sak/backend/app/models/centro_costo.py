@@ -5,7 +5,6 @@ from sqlmodel import Field, Relationship
 from .base import Base
 
 if TYPE_CHECKING:
-    from .solicitud import Solicitud
     from .departamento import Departamento
     from .user import User
 
@@ -44,7 +43,6 @@ class CentroCosto(Base, table=True):
     )
 
     # Relationships
-    solicitudes: List["Solicitud"] = Relationship(back_populates="centro_costo")
     departamentos: List["Departamento"] = Relationship(back_populates="centro_costo")
     usuarios: List["User"] = Relationship(back_populates="centro_costo")
 

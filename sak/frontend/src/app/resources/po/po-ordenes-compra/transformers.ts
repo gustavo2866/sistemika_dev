@@ -3,11 +3,10 @@
 import { roundCurrency } from "@/lib/formatters";
 import {
   calculateImporte,
-  calculateTotal,
   normalizeId,
   normalizeOptionalNumber,
 } from "../shared/po-utils";
-import type { PoSolicitudPayload, WizardCreatePayload } from "./model";
+import type { PoOrdenCompraPayload, WizardCreatePayload } from "./model";
 
 // Limites para truncar texto en la UI
 export const TEXT_LIMITS = {
@@ -26,36 +25,8 @@ export function truncateText(value: string, limit: number): string {
 export const resolveTipoCompra = (proveedorId: number | null) =>
   proveedorId ? "directa" : "normal";
 
-// Resuelve el centro de costo segun reglas de negocio.
-export const resolveCentroCostoId = ({
-  oportunidadId,
-  departamentoNombre,
-  departamentoCentroCostoId,
-  solicitanteCentroCostoId,
-}: {
-  oportunidadId: string | null;
-  departamentoNombre: string | null;
-  departamentoCentroCostoId: number | null;
-  solicitanteCentroCostoId: number | null;
-}): number | null => {
-  if (oportunidadId) return null;
-  const isDirector =
-    typeof departamentoNombre === "string" &&
-    departamentoNombre.toLowerCase().includes("director");
-  const defaultCentroCostoId = Number(departamentoCentroCostoId ?? 0);
-  const solicitanteCentroCosto = Number(solicitanteCentroCostoId ?? 0);
-  if (isDirector) {
-    return Number.isFinite(solicitanteCentroCosto) && solicitanteCentroCosto > 0
-      ? solicitanteCentroCosto
-      : null;
-  }
-  return Number.isFinite(defaultCentroCostoId) && defaultCentroCostoId > 0
-    ? defaultCentroCostoId
-    : null;
-};
-
 // Arma subtitulo de cabecera combinando titulo y proveedor.
-export const buildPoSolicitudCabeceraSubtitle = ({
+export const buildPoOrdenCompraCabeceraSubtitle = ({
   titulo,
   tipoSolicitudNombre,
 }: {
@@ -69,7 +40,7 @@ export const buildPoSolicitudCabeceraSubtitle = ({
   return `Titulo: ${safeTitulo} (${safeTipo})`;
 };
 
-export const buildPoSolicitudImputacionSubtitle = ({
+export const buildPoOrdenCompraImputacionSubtitle = ({
   oportunidadTitulo,
   centroCostoNombre,
 }: {
@@ -89,40 +60,50 @@ type NormalizedDetallePayload = {
   descripcion: string;
   unidad_medida: string;
   cantidad: number;
-  precio: number;
-  importe: number;
+  precio_unitario: number;
+  subtotal: number;
+  total_linea: number;
+  centro_costo_id: number | null;
+  oportunidad_id: number | null;
+  po_solicitud_id: number | null;
 };
 
-export const buildPoSolicitudPayload = (payload: PoSolicitudPayload): WizardCreatePayload => {
+export const buildPoOrdenCompraPayload = (
+  payload?: PoOrdenCompraPayload
+): WizardCreatePayload => {
+  const safePayload = payload ?? ({} as PoOrdenCompraPayload);
   const normalizeIdValue = (value: number | string | null | undefined) => {
     if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
+      if (!Number.isFinite(value) || value === 0) return null;
+      return value;
     }
-    return normalizeId(value ?? null);
+    const normalized = normalizeId(value ?? null);
+    return normalized && normalized !== 0 ? normalized : null;
   };
 
-  const normalizedProveedorId = normalizeIdValue(payload.proveedor_id);
-  const normalizedSolicitanteId = normalizeIdValue(payload.solicitante_id);
-  const normalizedTipoSolicitudId = normalizeIdValue(payload.tipo_solicitud_id);
-  const normalizedDepartamentoId = normalizeIdValue(payload.departamento_id);
-  const normalizedCentroCostoId = normalizeIdValue(payload.centro_costo_id);
-  const normalizedOportunidadId = normalizeIdValue(payload.oportunidad_id);
+  const normalizedProveedorId = normalizeIdValue(safePayload.proveedor_id);
+  const normalizedResponsableId = normalizeIdValue(safePayload.usuario_responsable_id);
+  const normalizedMetodoPagoId = normalizeIdValue(safePayload.metodo_pago_id);
+  const normalizedTipoSolicitudId = normalizeIdValue(safePayload.tipo_solicitud_id);
+  const normalizedDepartamentoId = normalizeIdValue(safePayload.departamento_id);
+  const normalizedCentroCostoId = normalizeIdValue(safePayload.centro_costo_id);
+  const normalizedOportunidadId = normalizeIdValue(safePayload.oportunidad_id);
 
   const hasTipoCompra =
-    payload.tipo_compra && String(payload.tipo_compra).trim().length > 0;
+    safePayload.tipo_compra && String(safePayload.tipo_compra).trim().length > 0;
   const resolvedTipoCompra =
     normalizedProveedorId != null
       ? resolveTipoCompra(normalizedProveedorId)
       : hasTipoCompra
-        ? payload.tipo_compra
+        ? safePayload.tipo_compra
         : resolveTipoCompra(normalizedProveedorId);
 
   const resolvedFecha =
-    payload.fecha_necesidad && String(payload.fecha_necesidad).trim().length > 0
-      ? payload.fecha_necesidad
+    safePayload.fecha && String(safePayload.fecha).trim().length > 0
+      ? safePayload.fecha
       : null;
 
-  const detalles = (payload.detalles ?? [])
+  const detalles = (safePayload.detalles ?? [])
     .map((detalle) => {
       const normalizedDetalleId = normalizeIdValue((detalle as { id?: number | string | null }).id);
       const normalizedArticuloId = normalizeIdValue(detalle.articulo_id);
@@ -130,11 +111,12 @@ export const buildPoSolicitudPayload = (payload: PoSolicitudPayload): WizardCrea
         return null;
       }
       const cantidad = normalizeOptionalNumber(detalle.cantidad ?? null);
-      const precio = normalizeOptionalNumber(detalle.precio ?? null);
-      const importe =
-        cantidad != null && precio != null
-          ? calculateImporte(cantidad, precio)
-          : normalizeOptionalNumber(detalle.importe ?? null) ?? 0;
+      const precioUnitario = normalizeOptionalNumber(detalle.precio_unitario ?? null);
+      const subtotal =
+        cantidad != null && precioUnitario != null
+          ? calculateImporte(cantidad, precioUnitario)
+          : normalizeOptionalNumber(detalle.subtotal ?? null) ?? 0;
+      const totalLinea = normalizeOptionalNumber(detalle.total_linea ?? null) ?? subtotal;
 
       return {
         ...(normalizedDetalleId != null ? { id: normalizedDetalleId } : {}),
@@ -142,33 +124,44 @@ export const buildPoSolicitudPayload = (payload: PoSolicitudPayload): WizardCrea
         descripcion: detalle.descripcion ?? "",
         unidad_medida: detalle.unidad_medida ?? "UN",
         cantidad: cantidad ?? 0,
-        precio: precio ?? 0,
-        importe,
+        precio_unitario: precioUnitario ?? 0,
+        subtotal,
+        total_linea: totalLinea,
+        centro_costo_id: normalizeIdValue(detalle.centro_costo_id) ?? null,
+        oportunidad_id: normalizeIdValue(detalle.oportunidad_id) ?? null,
+        po_solicitud_id: normalizeIdValue(detalle.po_solicitud_id) ?? null,
       };
     })
     .filter((detalle): detalle is NormalizedDetallePayload => Boolean(detalle));
 
-  const total = roundCurrency(calculateTotal(detalles));
+  const subtotal = roundCurrency(
+    detalles.reduce((acc, item) => acc + Number(item.subtotal ?? 0), 0)
+  );
+  const total = roundCurrency(
+    detalles.reduce((acc, item) => acc + Number(item.total_linea ?? 0), 0)
+  );
 
   const normalizedEstado =
-    typeof payload.estado === "string" && payload.estado.trim().length > 0
-      ? payload.estado
+    typeof safePayload.estado === "string" && safePayload.estado.trim().length > 0
+      ? safePayload.estado
       : undefined;
 
-  const result = {
-    titulo: payload.titulo ?? "",
+  return {
+    titulo: safePayload.titulo ?? "",
     tipo_solicitud_id: normalizedTipoSolicitudId,
     departamento_id: normalizedDepartamentoId,
     centro_costo_id: normalizedCentroCostoId,
     tipo_compra: resolvedTipoCompra,
     ...(normalizedEstado ? { estado: normalizedEstado } : {}),
     proveedor_id: normalizedProveedorId,
-    solicitante_id: normalizedSolicitanteId,
+    usuario_responsable_id: normalizedResponsableId,
+    metodo_pago_id: normalizedMetodoPagoId,
     oportunidad_id: normalizedOportunidadId,
-    fecha_necesidad: resolvedFecha,
-    comentario: payload.comentario ?? "",
+    fecha: resolvedFecha,
+    observaciones: safePayload.observaciones ?? "",
+    subtotal,
+    total_impuestos: 0,
     total,
     detalles,
   };
-  return result;
 };

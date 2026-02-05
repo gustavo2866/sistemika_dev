@@ -6,7 +6,8 @@ from sqlmodel import Session, select
 from fastapi import HTTPException
 
 from app.core.generic_crud import GenericCRUD
-from app.models import TipoSolicitud, Solicitud
+from app.models import TipoSolicitud
+from app.models.compras import PoSolicitud
 
 
 class TipoSolicitudCRUD(GenericCRUD[TipoSolicitud]):
@@ -26,17 +27,17 @@ class TipoSolicitudCRUD(GenericCRUD[TipoSolicitud]):
         Raises:
             HTTPException 400: Si el tipo tiene solicitudes asociadas
         """
-        # Verificar si hay solicitudes con este tipo
-        statement = select(Solicitud).where(
-            Solicitud.tipo_solicitud_id == id,
-            Solicitud.deleted_at.is_(None)  # Solo solicitudes no eliminadas
+        # Verificar si hay solicitudes PO con este tipo
+        statement = select(PoSolicitud).where(
+            PoSolicitud.tipo_solicitud_id == id,
+            PoSolicitud.deleted_at.is_(None)  # Solo solicitudes no eliminadas
         )
-        solicitudes = db.exec(statement).first()
+        po_solicitudes = db.exec(statement).first()
         
-        if solicitudes:
+        if po_solicitudes:
             raise HTTPException(
                 status_code=400,
-                detail="No se puede eliminar el tipo de solicitud porque tiene solicitudes asociadas"
+                detail="No se puede eliminar el tipo de solicitud porque tiene solicitudes de compra asociadas"
             )
         
         # Si no hay solicitudes, proceder con eliminación normal

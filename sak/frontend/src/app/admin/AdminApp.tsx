@@ -13,7 +13,6 @@ import {
   Receipt,
   Home,
   Package,
-  ClipboardList,
   Kanban,
   Truck,
   BarChart3,
@@ -89,11 +88,6 @@ import {
   ProyectoShow,
 } from "@/app/resources/proyectos";
 import {
-  SolicitudList,
-  SolicitudCreate,
-  SolicitudEdit,
-} from "@/app/resources/solicitudes";
-import {
   PoSolicitudList,
   PoSolicitudCreate,
   PoSolicitudEdit,
@@ -103,6 +97,7 @@ import {
   PoOrdenCompraList,
   PoOrdenCompraCreate,
   PoOrdenCompraEdit,
+  PoOrdenCompraShow,
 } from "@/app/resources/po/po-ordenes-compra";
 import {
   PoFacturaList,
@@ -129,7 +124,6 @@ import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
 import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
 import DashboardCrmList from "@/app/resources/dashboard-crm/list";
-import OrdenCompraList from "@/app/resources/orden-compra/list";
 import TarjasList from "@/app/resources/tarjas/list";
 import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
 import {
@@ -399,15 +393,6 @@ const AdminApp = () => {
         options={{ label: "Tipos de Solicitud" }}
       />
       <Resource
-        name="solicitudes"
-        list={SolicitudList}
-        create={SolicitudCreate}
-        edit={SolicitudEdit}
-        recordRepresentation="id"
-        icon={ClipboardList}
-        options={{ label: "Solicitudes" }}
-      />
-      <Resource
         name="po-solicitudes"
         list={PoSolicitudList}
         create={PoSolicitudCreate}
@@ -422,6 +407,7 @@ const AdminApp = () => {
         list={PoOrdenCompraList}
         create={PoOrdenCompraCreate}
         edit={PoOrdenCompraEdit}
+        show={PoOrdenCompraShow}
         recordRepresentation="id"
         icon={ShoppingCart}
         options={{ label: "Ordenes de Compra" }}
@@ -469,13 +455,6 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={LineChart}
         options={{ label: "CRM Dashboard" }}
-      />
-      <Resource
-        name="orden-compra"
-        list={OrdenCompraList}
-        recordRepresentation="id"
-        icon={ShoppingCart}
-        options={{ label: "Orden de Compra" }}
       />
       <Resource
         name="tarjas"
@@ -643,8 +622,6 @@ const AdminApp = () => {
         options={{ label: "Emprendimientos" }}
       />
       <CustomRoutes>
-        <Route path="/solicitudes/create-mb" element={<SolicitudCreate />} />
-        <Route path="/solicitudes/:id/edit-mb" element={<SolicitudEdit />} />
         <Route path="/po-solicitudes/create-mb" element={<PoSolicitudCreate />} />
         <Route path="/po-solicitudes/:id/edit-mb" element={<PoSolicitudEdit />} />
         <Route path="/po-ordenes-compra/create-mb" element={<PoOrdenCompraCreate />} />

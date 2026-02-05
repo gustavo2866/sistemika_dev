@@ -90,8 +90,22 @@ export const dataProvider: DataProvider = {
   getManyReference: withErrorHandling((resource, params) =>
     baseProvider.getManyReference(resource, params)
   ),
-  create: withErrorHandling((resource, params) => baseProvider.create(resource, params)),
-  update: withErrorHandling((resource, params) => baseProvider.update(resource, params)),
+  create: withErrorHandling(async (resource, params) => {
+    if (typeof window !== "undefined") {
+      console.log("[dataProvider] create", resource, params);
+    }
+    return baseProvider.create(resource, params);
+  }),
+  update: withErrorHandling(async (resource, params) => {
+    if (typeof window !== "undefined") {
+      console.log("[dataProvider] update", resource, params);
+    }
+    const response = await baseProvider.update(resource, params);
+    if (typeof window !== "undefined") {
+      console.log("[dataProvider] update response", resource, response);
+    }
+    return response;
+  }),
   updateMany: withErrorHandling((resource, params) =>
     baseProvider.updateMany(resource, params)
   ),

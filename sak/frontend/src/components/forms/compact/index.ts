@@ -1,6 +1,8 @@
 export { CompactFormCard } from "./compact-form-card";
 export { CompactFormField } from "./compact-form-field";
 export { CompactComboboxQuery } from "./compact-combobox-query";
+export { CompactMultiSelectField } from "./compact-multi-select-field";
+export { CompactRadixSelect } from "./compact-radix-select";
 export { CompactSelectInput } from "./compact-select-input";
 export { CompactFormSection } from "./compact-form-section";
 export { CompactFormGrid } from "./compact-form-grid";

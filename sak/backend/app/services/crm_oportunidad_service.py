@@ -19,8 +19,6 @@ from app.models import (
     CRMEvento,
     PoSolicitud,
     PoSolicitudDetalle,
-    Solicitud,
-    SolicitudDetalle,
 )
 from app.models.enums import (
     EstadoOportunidad,
@@ -173,15 +171,6 @@ class CRMOportunidadService:
                 delete(PoSolicitudDetalle).where(PoSolicitudDetalle.solicitud_id.in_(po_ids))
             )
             session.exec(delete(PoSolicitud).where(PoSolicitud.id.in_(po_ids)))
-
-        solicitud_ids = session.exec(
-            select(Solicitud.id).where(Solicitud.oportunidad_id == oportunidad_id)
-        ).all()
-        if solicitud_ids:
-            session.exec(
-                delete(SolicitudDetalle).where(SolicitudDetalle.solicitud_id.in_(solicitud_ids))
-            )
-            session.exec(delete(Solicitud).where(Solicitud.id.in_(solicitud_ids)))
 
         session.exec(delete(CRMEvento).where(CRMEvento.oportunidad_id == oportunidad_id))
         session.exec(delete(CRMMensaje).where(CRMMensaje.oportunidad_id == oportunidad_id))

@@ -51,8 +51,6 @@ from .compras import (
 )
 from .departamento import Departamento
 from .tipo_solicitud import TipoSolicitud
-from .solicitud import Solicitud, EstadoSolicitud
-from .solicitud_detalle import SolicitudDetalle
 from .centro_costo import CentroCosto
 from .proyecto import Proyecto
 from .nomina import Nomina, CategoriaNomina
@@ -123,9 +121,6 @@ __all__ = [
     "PoFacturaTotal",
     "Departamento",
     "TipoSolicitud",
-    "Solicitud",
-    "EstadoSolicitud",
-    "SolicitudDetalle",
     "CentroCosto",
     "Proyecto",
     "Nomina",

@@ -67,10 +67,10 @@ export const useMutuallyExclusiveFields = ({
     const aChanged = prevA !== valueA;
     const bChanged = prevB !== valueB;
 
-    if (aChanged && !bChanged && clearBWhenA && hasValue(valueA) && hasValue(valueB)) {
+    if (aChanged && clearBWhenA && hasValue(valueA) && hasValue(valueB)) {
       setValue(fieldB, clearValue, { shouldDirty: true, shouldValidate: true });
     }
-    if (bChanged && !aChanged && clearAWhenB && hasValue(valueB) && hasValue(valueA)) {
+    if (bChanged && clearAWhenB && hasValue(valueB) && hasValue(valueA)) {
       setValue(fieldA, clearValue, { shouldDirty: true, shouldValidate: true });
     }
 
@@ -86,6 +86,97 @@ export const useMutuallyExclusiveFields = ({
     fieldB,
     setValue,
   ]);
+};
+
+export const useMutuallyExclusiveFieldsWithControl = ({
+  control,
+  setValue,
+  fieldA,
+  fieldB,
+  clearAWhenB = true,
+  clearBWhenA = true,
+  enabled = true,
+  clearValue = null,
+}: {
+  control: UseFormReturn["control"];
+  setValue: UseFormReturn["setValue"];
+  fieldA: string;
+  fieldB: string;
+  clearAWhenB?: boolean;
+  clearBWhenA?: boolean;
+  enabled?: boolean;
+  clearValue?: unknown;
+}) => {
+  const valueA = useWatch({ control, name: fieldA });
+  const valueB = useWatch({ control, name: fieldB });
+  const prevRef = useRef({ valueA, valueB });
+
+  useEffect(() => {
+    if (!enabled) {
+      prevRef.current = { valueA, valueB };
+      return;
+    }
+
+    const prevA = prevRef.current.valueA;
+    const prevB = prevRef.current.valueB;
+    const aChanged = prevA !== valueA;
+    const bChanged = prevB !== valueB;
+
+    if (aChanged && clearBWhenA && hasValue(valueA) && hasValue(valueB)) {
+      setValue(fieldB, clearValue, { shouldDirty: true, shouldValidate: true });
+    }
+    if (bChanged && clearAWhenB && hasValue(valueB) && hasValue(valueA)) {
+      setValue(fieldA, clearValue, { shouldDirty: true, shouldValidate: true });
+    }
+
+    prevRef.current = { valueA, valueB };
+  }, [
+    valueA,
+    valueB,
+    enabled,
+    clearAWhenB,
+    clearBWhenA,
+    clearValue,
+    fieldA,
+    fieldB,
+    setValue,
+  ]);
+};
+
+export const useMutuallyExclusiveHandlers = ({
+  setValue,
+  fieldA,
+  fieldB,
+  clearAWhenB = true,
+  clearBWhenA = true,
+  enabled = true,
+  clearValue = null,
+}: {
+  setValue: UseFormReturn["setValue"];
+  fieldA: string;
+  fieldB: string;
+  clearAWhenB?: boolean;
+  clearBWhenA?: boolean;
+  enabled?: boolean;
+  clearValue?: unknown;
+}) => {
+  const handleChangeA = (value: unknown) => {
+    setValue(fieldA, value, { shouldDirty: true, shouldValidate: true });
+    if (!enabled || !clearBWhenA) return;
+    if (hasValue(value)) {
+      setValue(fieldB, clearValue, { shouldDirty: true, shouldValidate: true });
+    }
+  };
+
+  const handleChangeB = (value: unknown) => {
+    setValue(fieldB, value, { shouldDirty: true, shouldValidate: true });
+    if (!enabled || !clearAWhenB) return;
+    if (hasValue(value)) {
+      setValue(fieldA, clearValue, { shouldDirty: true, shouldValidate: true });
+    }
+  };
+
+  return { handleChangeA, handleChangeB };
 };
 
 export const useLockedOportunidadField = ({
@@ -263,3 +354,29 @@ export const useArticuloById = (articuloId: number | null) =>
     { id: articuloId ?? 0 },
     { enabled: articuloId != null }
   );
+
+export const useArticuloPrecioDefault = ({
+  articuloData,
+  precioValue,
+  setValue,
+  fieldName = "precio",
+}: {
+  articuloData?: unknown;
+  precioValue?: unknown;
+  setValue: (name: string, value: unknown, options?: { shouldDirty?: boolean }) => void;
+  fieldName?: string;
+}) => {
+  useEffect(() => {
+    const precioActual = Number(precioValue ?? 0);
+    if (Number.isFinite(precioActual) && precioActual > 0) {
+      return;
+    }
+    const precioArticulo = Number(
+      (articuloData as { precio?: number | string | null } | undefined)?.precio
+    );
+    if (!Number.isFinite(precioArticulo) || precioArticulo <= 0) {
+      return;
+    }
+    setValue(fieldName, precioArticulo, { shouldDirty: true });
+  }, [articuloData, fieldName, precioValue, setValue]);
+};

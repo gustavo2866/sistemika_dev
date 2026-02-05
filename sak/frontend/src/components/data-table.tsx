@@ -238,13 +238,13 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                   return renderColumnCell(
                     `${mobileConfig.primaryField}-primary`,
                     column,
-                    { hideLabel: true, className: "text-base font-semibold" }
+                    { hideLabel: true, className: "text-base font-semibold leading-tight break-words" }
                   );
                 }
                 const raw = getRecordValue(mobileConfig.primaryField);
                 if (raw == null || raw === "") return null;
                 return (
-                  <div className="text-base font-semibold">
+                  <div className="text-base font-semibold leading-tight break-words">
                     {String(raw)}
                   </div>
                 );

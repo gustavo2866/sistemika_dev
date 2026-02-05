@@ -1,51 +1,161 @@
+/**
+ * Lista de Ordenes de Compra.
+ *
+ * Estructura:
+ * 1. CONFIGURACION - Filtros y acciones de lista
+ * 2. HELPERS - Utilidades de presentacion locales
+ * 3. COMPONENTE - Lista principal
+ * 4. ACCIONES - Menu estandar por fila
+ */
+
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
 import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import { TextField } from "@/components/text-field";
 import { NumberField } from "@/components/number-field";
 import { DateField } from "@/components/date-field";
 import { ReferenceField } from "@/components/reference-field";
-import { TextInput } from "@/components/text-input";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
-import { Badge } from "@/components/ui/badge";
-import { Confirm } from "@/components/confirm";
-import { FilterButton } from "@/components/filter-form";
-import { ExportButton } from "@/components/export-button";
-import { Button } from "@/components/ui/button";
+import { buildListFilters } from "@/components/lists/filters";
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
-  useDataProvider,
-  useNotify,
-  useRecordContext,
-  useRefresh,
-  useRedirect,
-  useResourceContext,
-} from "ra-core";
-import { MoreHorizontal, Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+  CompactFilterButton,
+  CompactExportButton,
+  CompactCreateButton,
+} from "@/components/lists/actions";
+import { BadgeField } from "@/components/badge-field";
 import { KanbanAvatar } from "@/components/kanban/card";
+import { useGetIdentity, useRefresh } from "ra-core";
 import type { PoOrdenCompra } from "./model";
-import { ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
+import { ESTADO_BADGES, ESTADO_CHOICES, TIPO_COMPRA_CHOICES } from "./model";
+import { ListRowActions } from "./list_actions";
 
-const ESTADO_BADGES: Record<string, string> = {
-  borrador: "bg-slate-100 text-slate-800",
-  emitida: "bg-sky-100 text-sky-800",
-  aprobada: "bg-emerald-100 text-emerald-800",
-  rechazada: "bg-rose-100 text-rose-800",
-  recibida: "bg-amber-100 text-amber-800",
-  cerrada: "bg-indigo-100 text-indigo-800",
-  anulada: "bg-slate-200 text-slate-600",
-};
+//********************************* */
+// region 1. CONFIGURACION
 
+// Define los filtros declarativos de la lista.
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        alwaysOn: true,
+        placeholder: "Buscar ordenes de compra",
+        className: "w-28 sm:w-32",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "proveedor_id",
+        reference: "proveedores",
+        label: "Proveedor",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "tipo_solicitud_id",
+        reference: "tipos-solicitud",
+        label: "Tipo",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "departamento_id",
+        reference: "departamentos",
+        label: "Departamento",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "centro_costo_id",
+        reference: "centros-costo",
+        label: "Centro de costo",
+        filter: { activo: true },
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "tipo_compra",
+        label: "Tipo compra",
+        choices: TIPO_COMPRA_CHOICES,
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "estado",
+        label: "Estado",
+        choices: ESTADO_CHOICES,
+        alwaysOn: true,
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "usuario_responsable_id",
+        reference: "users",
+        label: "Responsable",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "metodo_pago_id",
+        reference: "metodos-pago",
+        label: "Metodo pago",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "po-ordenes-compra" }
+);
+
+// Renderiza acciones superiores de la lista.
+const ListActions = ({ createTo }: { createTo?: string }) => (
+  <div className="flex items-center justify-start gap-2">
+    <CompactFilterButton filters={filters as any} />
+    {createTo ? <CompactCreateButton to={createTo} /> : null}
+    <CompactExportButton />
+  </div>
+);
+// endregion
+
+//********************************* */
+// region 2. HELPERS
+
+// Arma datos de avatar del responsable para la grilla.
 const getResponsableAvatarInfo = (record?: PoOrdenCompra) => {
   const responsable = (record as { usuario_responsable?: { nombre?: string; nombre_completo?: string; email?: string; avatar?: string; url_foto?: string } })
     ?.usuario_responsable;
@@ -53,7 +163,9 @@ const getResponsableAvatarInfo = (record?: PoOrdenCompra) => {
     responsable?.nombre_completo ||
     responsable?.nombre ||
     responsable?.email ||
-    (record?.usuario_responsable_id ? `Usuario #${record.usuario_responsable_id}` : "Usuario");
+    (record?.usuario_responsable_id
+      ? `Usuario #${record.usuario_responsable_id}`
+      : "Usuario");
   const avatarUrl = responsable?.avatar || responsable?.url_foto || null;
   const initials = name
     .split(" ")
@@ -63,385 +175,151 @@ const getResponsableAvatarInfo = (record?: PoOrdenCompra) => {
 
   return { name, avatarUrl, initials };
 };
+// endregion
 
-const filters = [
-  <TextInput
-    key="q"
-    source="q"
-    label="Buscar"
-    alwaysOn
-    placeholder="Buscar ordenes de compra"
-  />,
-  <SelectInput
-    key="estado"
-    source="estado"
-    label="Estado"
-    choices={ESTADO_CHOICES}
-    alwaysOn
-  />,
-  <SelectInput
-    key="tipo_compra"
-    source="tipo_compra"
-    label="Tipo compra"
-    choices={TIPO_COMPRA_CHOICES}
-    alwaysOn
-  />,
-  <ReferenceInput
-    key="proveedor_id"
-    source="proveedor_id"
-    reference="proveedores"
-    label="Proveedor"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="departamento_id"
-    source="departamento_id"
-    reference="departamentos"
-    label="Departamento"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="usuario_responsable_id"
-    source="usuario_responsable_id"
-    reference="users"
-    label="Responsable"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="centro_costo_id"
-    source="centro_costo_id"
-    reference="centros-costo"
-    label="Centro de costo"
-    filter={{ activo: true }}
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="metodo_pago_id"
-    source="metodo_pago_id"
-    reference="metodos-pago"
-    label="Metodo de pago"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-];
+//********************************* */
+// region 3. COMPONENTE
 
-const CreateMenuButton = () => {
+// Renderiza la lista principal de ordenes de compra.
+export const PoOrdenCompraList = () => {
+  const location = useLocation();
   const navigate = useNavigate();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button className="h-8 gap-1 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm">
-          <Plus className="h-4 w-4" />
-          Crear
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onClick={() => navigate("/po-ordenes-compra/create")}>
-          Normal
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => navigate("/po-ordenes-compra/create?wizard=asistida")}
-        >
-          Asistida
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => navigate("/po-ordenes-compra/create?wizard=solicitud")}
-        >
-          Desde Solicitud
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
-
-const ListActions = () => (
-  <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateMenuButton />
-    <ExportButton />
-  </div>
-);
-
-export const PoOrdenCompraList = () => (
-  <List
-    filters={filters}
-    actions={<ListActions />}
-    perPage={10}
-    sort={{ field: "id", order: "DESC" }}
-    filterDefaultValues={{ estado: "borrador", tipo_compra: "normal" }}
-  >
-    <ResponsiveDataTable
-      rowClick="edit"
-      className="text-[10px] [&_th]:text-[10px] [&_th]:font-semibold [&_td]:text-[10px]"
-    >
-      <ResponsiveDataTable.Col source="id" label="ID" className="w-[50px]">
-        <NumberField source="id" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="fecha" label="Fecha" className="w-[70px]">
-        <DateField source="fecha" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="titulo"
-        label="Titulo"
-        className="w-[140px] whitespace-normal break-words"
-      >
-        <TextField source="titulo" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="proveedor_id"
-        label="Proveedor"
-        className="w-[90px] whitespace-normal break-words"
-      >
-        <ReferenceField source="proveedor_id" reference="proveedores">
-          <TextField source="nombre" />
-        </ReferenceField>
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="usuario_responsable_id"
-        label="Resp"
-        className="w-[80px]"
-        render={(record) => {
-          const { name, avatarUrl, initials } = getResponsableAvatarInfo(record as PoOrdenCompra);
-          const shortName = name ? String(name).slice(0, 10) : "";
-          return (
-            <div className="flex w-full items-center gap-1">
-              <KanbanAvatar
-                src={avatarUrl}
-                alt={name}
-                fallback={initials}
-                className="h-5 w-5 border-white/70 shadow-sm"
-              />
-              {shortName ? (
-                <span className="text-[9px] leading-tight text-muted-foreground">
-                  {shortName}
-                </span>
-              ) : null}
-            </div>
-          );
-        }}
-      />
-      <ResponsiveDataTable.Col source="estado" label="Estado" className="w-[70px]">
-        <EstadoBadge />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="departamento_id"
-        label="Dept"
-        className="w-[60px]"
-        render={(record) => {
-          const nombre =
-            (record as { departamento?: { nombre?: string } })?.departamento?.nombre;
-          if (!nombre) return null;
-          return <span>{String(nombre).slice(0, 4)}</span>;
-        }}
-      />
-      <ResponsiveDataTable.Col source="total" label="Total" className="w-[120px]">
-        <NumberField
-          source="total"
-          options={{ style: "currency", currency: "ARS" }}
-        />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
-        <PoOrdenCompraActionsMenu />
-      </ResponsiveDataTable.Col>
-    </ResponsiveDataTable>
-  </List>
-);
-
-const PoOrdenCompraActionsMenu = () => {
-  const record = useRecordContext<PoOrdenCompra>();
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
   const refresh = useRefresh();
-  const redirect = useRedirect();
-  const resource = useResourceContext();
-  const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | "delete" | null>(null);
-
-  if (!record || !resource) {
-    return null;
-  }
-
-  const canApprove = record.estado === "emitida";
-  const canReject = record.estado === "emitida" || record.estado === "aprobada";
-
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-  const handleStatusChange = async (estado: "aprobada" | "rechazada") => {
-    if (!record?.id) {
-      return;
-    }
-    setBusyAction(estado);
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (typeof window !== "undefined") {
-        const token = localStorage.getItem("auth_token");
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-      }
-      const response = await fetch(
-        `${apiBaseUrl}/po-ordenes-compra/${record.id}`,
-        {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({ estado }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      notify(
-        `Orden ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
-        { type: "info" }
-      );
-      refresh();
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo actualizar la orden", { type: "warning" });
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!record?.id) return;
-    setBusyAction("delete");
-    try {
-      await dataProvider.delete(resource, { id: record.id });
-      notify("Orden eliminada", { type: "info" });
-      refresh();
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo eliminar la orden", { type: "warning" });
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const stopRowClick = (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const handleMenuAction = (event: React.MouseEvent, callback: () => void) => {
-    stopRowClick(event);
-    if (busyAction !== null) {
-      return;
-    }
-    callback();
-  };
-
-  const openConfirm = (action: "approve" | "reject" | "delete") => {
-    if (busyAction !== null) return;
-    setConfirmAction(action);
-  };
-
-  const closeConfirm = () => setConfirmAction(null);
-
-  const confirmTitle = {
-    approve: "Aprobar orden",
-    reject: "Rechazar orden",
-    delete: "Eliminar orden",
-  }[confirmAction ?? "approve"];
-
-  const confirmContent = {
-    approve: "Seguro que deseas aprobar la orden?",
-    reject: "Seguro que deseas rechazar la orden?",
-    delete: "Seguro que deseas eliminar la orden?",
-  }[confirmAction ?? "approve"];
-
-  const handleConfirm = () => {
-    const action = confirmAction;
-    closeConfirm();
-    if (!action) return;
-    if (action === "delete") {
-      handleDelete();
-      return;
-    }
-    handleStatusChange(action === "approve" ? "aprobada" : "rechazada");
-  };
-
+  const { data: identity } = useGetIdentity();
+  const defaultFilters = useMemo(
+    () => ({
+      estado: "borrador",
+      tipo_compra: "normal",
+      ...(identity?.id ? { usuario_responsable_id: identity.id } : {}),
+    }),
+    [identity?.id]
+  );
+  const createTo = useMemo(() => {
+    const createPath = "/po-ordenes-compra/create";
+    const params = new URLSearchParams();
+    params.set("wizard", "asistida");
+    return `${createPath}?${params.toString()}`;
+  }, []);
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            disabled={busyAction !== null}
-            onClick={stopRowClick}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-            <span className="sr-only">Acciones</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
-          <DropdownMenuItem
-            onClick={(event) =>
-              handleMenuAction(event, () => redirect("edit", resource, record.id))
-            }
-            disabled={busyAction !== null}
-          >
-            Editar
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(event) => handleMenuAction(event, () => openConfirm("delete"))}
-            disabled={busyAction !== null}
-            variant="destructive"
-          >
-            Eliminar
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={(event) =>
-              handleMenuAction(event, () => canApprove && openConfirm("approve"))
-            }
-            disabled={!canApprove || busyAction !== null}
-          >
-            Aprobar
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(event) =>
-              handleMenuAction(event, () => canReject && openConfirm("reject"))
-            }
-            disabled={!canReject || busyAction !== null}
-          >
-            Rechazar
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <Confirm
-        isOpen={confirmAction !== null}
-        onClose={closeConfirm}
-        onConfirm={handleConfirm}
-        title={confirmTitle}
-        content={confirmContent}
-        confirmColor={confirmAction === "delete" ? "warning" : "primary"}
-        loading={busyAction !== null}
+    <List
+      filters={filters as any}
+      actions={<ListActions createTo={createTo} />}
+      perPage={10}
+      sort={{ field: "id", order: "DESC" }}
+      filterDefaultValues={defaultFilters}
+    >
+      <PoOrdenCompraRefreshOnReturn
+        location={location}
+        navigate={navigate}
+        refresh={refresh}
       />
-    </>
+      <ResponsiveDataTable
+        rowClick="edit"
+        className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+      >
+        <ResponsiveDataTable.Col
+          source="id"
+          label="Id"
+          className="w-[60px]"
+          cellClassName="text-center"
+          headerClassName="text-center"
+        >
+          <NumberField source="id" className="inline-block w-full text-center" />
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
+          source="titulo"
+          label="Titulo"
+          className="w-[140px] whitespace-normal break-words"
+        >
+          <TextField source="titulo" className="whitespace-normal break-words" />
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
+          source="proveedor_id"
+          label="Proveedor"
+          className="w-[120px] whitespace-normal break-words"
+        >
+          <ReferenceField source="proveedor_id" reference="proveedores">
+            <TextField source="nombre" />
+          </ReferenceField>
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
+          source="usuario_responsable_id"
+          label="Responsable"
+          className="w-[120px] whitespace-normal break-words"
+          render={(record) => {
+            const { name, avatarUrl, initials } = getResponsableAvatarInfo(record as PoOrdenCompra);
+            return (
+              <div className="flex w-full items-center gap-2">
+                <KanbanAvatar
+                  src={avatarUrl}
+                  alt={name}
+                  fallback={initials}
+                  className="border-white/70 shadow-sm"
+                />
+                <span className="text-[9px] leading-tight text-muted-foreground sm:text-[10px] break-words">
+                  {name}
+                </span>
+              </div>
+            );
+          }}
+        />
+        <ResponsiveDataTable.Col
+          source="fecha"
+          label="Fecha"
+          className="w-[110px] text-center"
+        >
+          <DateField source="fecha" className="inline-block text-center w-full" />
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
+          source="estado"
+          label="Estado"
+          className="w-[120px]"
+          render={(record) => {
+            const estadoKey = String(record?.estado ?? "");
+            return (
+              <BadgeField
+                source="estado"
+                record={record}
+                className={ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800"}
+              />
+            );
+          }}
+        />
+        <ResponsiveDataTable.Col source="total" label="Importe" className="w-[140px]">
+          <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
+        </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
+          <ListRowActions />
+        </ResponsiveDataTable.Col>
+      </ResponsiveDataTable>
+    </List>
   );
 };
 
-const EstadoBadge = () => {
-  const record = useRecordContext<PoOrdenCompra>();
-  const estadoKey = record?.estado;
-  if (!estadoKey) return null;
-  const estadoLabel =
-    ESTADO_CHOICES.find((choice) => choice.id === estadoKey)?.name ||
-    estadoKey;
-  const badgeClass = ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800";
+// Fuerza refresh al volver desde create/edit cuando se pide.
+const PoOrdenCompraRefreshOnReturn = ({
+  location,
+  navigate,
+  refresh,
+}: {
+  location: ReturnType<typeof useLocation>;
+  navigate: ReturnType<typeof useNavigate>;
+  refresh: () => void;
+}) => {
+  useEffect(() => {
+    const state = location.state as { refresh?: boolean } | null;
+    if (!state?.refresh) {
+      return;
+    }
+    refresh();
+    navigate(`${location.pathname}${location.search}`, { replace: true });
+  }, [location, navigate, refresh]);
 
-  return (
-    <Badge className={`${badgeClass} px-1.5 py-0 text-[9px] sm:text-[10px]`}>
-      {estadoLabel}
-    </Badge>
-  );
+  return null;
 };
+// endregion
+
+//********************************* */
+// region 4. ACCIONES
+
+// endregion

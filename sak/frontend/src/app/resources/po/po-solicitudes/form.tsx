@@ -70,6 +70,7 @@ import {
 import { FormActionsMenuButton } from "@/components/forms";
 import { FormActions } from "./form_actions";
 import { FormEmitir } from "./form_emitir";
+import { FormConfirmar } from "./form_confirmar";
 
 const OPORTUNIDAD_FILTER = { activo: true };
 
@@ -246,6 +247,7 @@ const FormFooter = ({ onCancel }: { onCancel: () => void }) => {
           Cancelar
         </Button>
         <SaveButton variant="secondary" />
+        <FormConfirmar />
         <FormEmitir onClose={onCancel} />
       </div>
     </FormToolbar>
@@ -265,7 +267,8 @@ const PoSolicitudFormFields = ({
   lockedOportunidadId?: number;
 }) => {
   const form = useFormContext<PoSolicitud>();
-  const { control } = form;
+  const { control, register } = form;
+  const record = useRecordContext<PoSolicitud>();
   const idValue = useWatch({ control, name: "id" });
   const tipoSolicitudValue = useWatch({ control, name: "tipo_solicitud_id" });
   const proveedorValue = useWatch({ control, name: "proveedor_id" });
@@ -356,8 +359,18 @@ const PoSolicitudFormFields = ({
 
   useAutoInitializeField("solicitante_id", "id", !idValue);
 
+  useEffect(() => {
+    if (!record?.estado) return;
+    const currentEstado = form.getValues("estado");
+    if (typeof currentEstado === "string" && currentEstado.trim().length > 0) {
+      return;
+    }
+    form.setValue("estado", record.estado, { shouldDirty: false });
+  }, [form, record?.estado]);
+
   return (
     <>
+      <input type="hidden" {...register("estado")} />
       <FormLayout
         sections={[
           {

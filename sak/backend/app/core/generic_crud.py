@@ -647,8 +647,7 @@ class GenericCRUD(Generic[M]):
         Update completo con lock optimista
         """
         try:
-            print(f"DEBUG CRUD.update<{self.model.__name__}> id={obj_id} incoming keys={list(data.keys())}")
-            print(f"DEBUG CRUD.update incoming sample={(list(data.items())[:10])}")
+            pass
         except Exception:
             pass
         obj = self.get(session, obj_id)
@@ -673,10 +672,6 @@ class GenericCRUD(Generic[M]):
 
         # Aplicar cambios
         cambios = self._extract_update(data)
-        try:
-            print(f"DEBUG CRUD.update extracted changes={cambios}")
-        except Exception:
-            pass
         for k, v in cambios.items():
             coerced = self._coerce_field_value(k, v)
             setattr(obj, k, coerced)
@@ -686,14 +681,6 @@ class GenericCRUD(Generic[M]):
             setattr(obj, "updated_at", datetime.now(UTC))
         if hasattr(obj, "version"):
             setattr(obj, "version", obj.version + 1)
-
-        try:
-            # Mostrar un preview de valores finales para campos comunes
-            preview_fields = list(cambios.keys())[:10]
-            final_preview = {f: getattr(obj, f, None) for f in preview_fields}
-            print(f"DEBUG CRUD.update final values preview={final_preview}")
-        except Exception:
-            pass
 
         session.add(obj)
         session.commit()

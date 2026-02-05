@@ -2,15 +2,14 @@
 
 import { useState } from "react";
 import {
-  useCreatePath,
   useDataProvider,
   useNotify,
   useRecordContext,
+  useRedirect,
   useRefresh,
   useResourceContext,
 } from "ra-core";
 import { CheckCircle2, Eye, MoreHorizontal, Pencil, Trash2, XCircle } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Confirm } from "@/components/confirm";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,16 +19,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { PoSolicitud } from "./model";
+import type { PoOrdenCompra } from "./model";
 
-export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) => {
-  const record = useRecordContext<PoSolicitud>();
+export const ListRowActions = () => {
+  const record = useRecordContext<PoOrdenCompra>();
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
+  const redirect = useRedirect();
   const resource = useResourceContext();
-  const createPath = useCreatePath();
-  const navigate = useNavigate();
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<
     "approve" | "reject" | "delete" | null
@@ -39,8 +37,8 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
     return null;
   }
 
-  const canApprove = record.estado === "pendiente";
-  const canReject = record.estado === "pendiente";
+  const canApprove = record.estado === "emitida";
+  const canReject = record.estado === "emitida";
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -60,7 +58,7 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
         }
       }
       const response = await fetch(
-        `${apiBaseUrl}/po-solicitudes/${record.id}`,
+        `${apiBaseUrl}/po-ordenes-compra/${record.id}`,
         {
           method: "PATCH",
           headers,
@@ -71,13 +69,13 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
         throw new Error(`HTTP ${response.status}`);
       }
       notify(
-        `Solicitud PO ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
+        `Orden de compra ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
         { type: "info" }
       );
       refresh();
     } catch (error) {
       console.error(error);
-      notify("No se pudo actualizar la solicitud PO", { type: "warning" });
+      notify("No se pudo actualizar la orden de compra", { type: "warning" });
     } finally {
       setBusyAction(null);
     }
@@ -88,11 +86,11 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
     setBusyAction("delete");
     try {
       await dataProvider.delete(resource, { id: record.id, previousData: record });
-      notify("Solicitud PO eliminada", { type: "info" });
+      notify("Orden de compra eliminada", { type: "info" });
       refresh();
     } catch (error) {
       console.error(error);
-      notify("No se pudo eliminar la solicitud PO", { type: "warning" });
+      notify("No se pudo eliminar la orden de compra", { type: "warning" });
     } finally {
       setBusyAction(null);
     }
@@ -119,21 +117,16 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
   const closeConfirm = () => setConfirmAction(null);
 
   const confirmTitle = {
-    approve: "Aprobar solicitud",
-    reject: "Rechazar solicitud",
-    delete: "Eliminar solicitud",
+    approve: "Aprobar orden",
+    reject: "Rechazar orden",
+    delete: "Eliminar orden",
   }[confirmAction ?? "approve"];
 
   const confirmContent = {
-    approve: "Seguro que deseas aprobar la solicitud?",
-    reject: "Seguro que deseas rechazar la solicitud?",
-    delete: "Seguro que deseas eliminar la solicitud?",
+    approve: "Seguro que deseas aprobar la orden?",
+    reject: "Seguro que deseas rechazar la orden?",
+    delete: "Seguro que deseas eliminar la orden?",
   }[confirmAction ?? "approve"];
-
-  const buildPath = (type: "edit" | "show") => {
-    const base = createPath({ resource, type, id: record.id });
-    return contextSearch ? `${base}${contextSearch}` : base;
-  };
 
   const handleConfirm = () => {
     const action = confirmAction;
@@ -165,7 +158,7 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
         <DropdownMenuContent align="end" className="w-40 sm:w-44 text-[10px] sm:text-xs">
           <DropdownMenuItem
             onClick={(event) =>
-              handleMenuAction(event, () => navigate(buildPath("edit")))
+              handleMenuAction(event, () => redirect("edit", resource, record.id))
             }
             disabled={busyAction !== null}
           >
@@ -174,7 +167,7 @@ export const ListRowActions = ({ contextSearch }: { contextSearch?: string }) =>
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={(event) =>
-              handleMenuAction(event, () => navigate(buildPath("show")))
+              handleMenuAction(event, () => redirect("show", resource, record.id))
             }
             disabled={busyAction !== null}
           >

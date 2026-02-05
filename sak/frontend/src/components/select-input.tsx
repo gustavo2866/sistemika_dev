@@ -69,6 +69,7 @@ export const SelectInput = (props: SelectInputProps) => {
     className,
     emptyText = "",
     emptyValue = "",
+    disableClear = false,
     filter: _filter,
     create,
     createLabel,
@@ -262,7 +263,7 @@ export const SelectInput = (props: SelectInputProps) => {
             >
               <SelectValue placeholder={renderEmptyItemOption()} />
 
-              {field.value && field.value !== emptyValue ? (
+              {!disableClear && field.value && field.value !== emptyValue ? (
                 <div
                   role="button"
                   className="p-0 ml-auto pointer-events-auto hover:bg-transparent text-muted-foreground opacity-50 hover:opacity-100"
@@ -308,6 +309,7 @@ export type SelectInputProps = ChoicesProps &
   Omit<SupportCreateSuggestionOptions<string>, "handleChange"> & {
     emptyText?: string | ReactElement;
     emptyValue?: string | number;
+    disableClear?: boolean;
     onChange?: (value: string) => void;
     triggerProps?: SelectTriggerProps;
   } & Omit<ComponentProps<typeof FormField>, "id" | "name" | "children">;
