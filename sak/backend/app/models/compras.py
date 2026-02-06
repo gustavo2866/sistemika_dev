@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class EstadoPoSolicitud(str, Enum):
     BORRADOR = "borrador"
     PENDIENTE = "pendiente"
-    EMITIDA = "emitida"
+    COTIZADA = "cotizada"
     APROBADA = "aprobada"
     RECHAZADA = "rechazada"
     EN_PROCESO = "en_proceso"
@@ -61,6 +61,7 @@ class PoSolicitud(Base, table=True):
 
     __searchable_fields__: ClassVar[List[str]] = ["titulo", "comentario"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "detalles"]
 
     titulo: str = Field(
         max_length=200,
@@ -118,6 +119,7 @@ class PoSolicitud(Base, table=True):
 
     solicitante: "User" = Relationship()
     centro_costo: Optional["CentroCosto"] = Relationship()
+    proveedor: Optional["Proveedor"] = Relationship()
     detalles: List["PoSolicitudDetalle"] = Relationship(
         back_populates="solicitud",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -130,6 +132,7 @@ class PoSolicitudDetalle(Base, table=True):
     __tablename__ = "po_solicitud_detalles"
 
     __searchable_fields__ = ["descripcion"]
+    __auto_include_relations__: ClassVar[List[str]] = ["articulo"]
 
     solicitud_id: int = Field(
         foreign_key="po_solicitudes.id",
@@ -175,6 +178,7 @@ class PoOrdenCompra(Base, table=True):
 
     __searchable_fields__ = ["titulo"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "usuario_responsable", "detalles"]
 
     titulo: str = Field(max_length=50, description="Titulo de orden de compra")
 
@@ -250,6 +254,7 @@ class PoOrdenCompraDetalle(Base, table=True):
     __tablename__ = "po_orden_compra_detalles"
 
     __searchable_fields__ = ["descripcion"]
+    __auto_include_relations__: ClassVar[List[str]] = ["articulo"]
 
     descripcion: str = Field(max_length=500, description="Descripcion del producto/servicio")
     cantidad: Decimal = Field(sa_column=Column(DECIMAL(10, 3)), description="Cantidad")

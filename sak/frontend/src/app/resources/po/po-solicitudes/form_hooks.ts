@@ -559,7 +559,7 @@ export const useWizardDefaults = ({
 //#region 
 
 // Orquesta la emision de la solicitud con guardado previo si hace falta.
-export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
+export const usePoSolicitudCotizar = ({ onClose }: { onClose: () => void }) => {
   const record = useRecordContext<PoSolicitud>();
   const resource = useResourceContext();
   const dataProvider = useDataProvider();
@@ -570,9 +570,9 @@ export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
   const [loading, setLoading] = useState(false);
 
   const isDirty = Object.keys(dirtyFields).length > 0;
-  const canEmit = record?.estado === "pendiente";
+  const canCotizar = record?.estado === "pendiente";
 
-  const emit = async (openShow: boolean) => {
+  const cotizar = async (openShow: boolean) => {
     if (!record?.id || !resource) return;
     setLoading(true);
     try {
@@ -584,7 +584,7 @@ export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
       }
       await dataProvider.update(resource, {
         id: record.id,
-        data: { estado: "emitida" },
+        data: { estado: "cotizada" },
         previousData: record,
       });
       if (openShow) {
@@ -598,8 +598,8 @@ export const usePoSolicitudEmit = ({ onClose }: { onClose: () => void }) => {
   };
 
   return {
-    canEmit,
-    emit,
+    canCotizar,
+    cotizar,
     loading,
   };
 };

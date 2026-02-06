@@ -334,22 +334,30 @@ export const PoSolicitudDetalleDialogContent = ({
         },
       ],
     },
-    createTwoColumnSection("", [
-      <div key="importe" className="max-w-[150px]">
-        <CompactFormField label="Importe" error={detalleForm.formState.errors.importe}>
-          <>
-            <Input
-              type="text"
-              value={importeDisplay}
-              readOnly
-              tabIndex={-1}
-              className="h-7 bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
-            />
-            <input type="hidden" {...detalleForm.register("importe", { valueAsNumber: true })} />
-          </>
-        </CompactFormField>
-      </div>,
-    ]),
+    {
+      columns: 2 as const,
+      fields: [
+        {
+          span: 2,
+          component: (
+            <div className="w-full">
+              <CompactFormField label="Importe" error={detalleForm.formState.errors.importe}>
+                <>
+                  <Input
+                    type="text"
+                    value={importeDisplay}
+                    readOnly
+                    tabIndex={-1}
+                    className="h-7 w-full bg-muted/50 px-2 text-[11px] sm:h-8 sm:px-3 sm:text-sm"
+                  />
+                  <input type="hidden" {...detalleForm.register("importe", { valueAsNumber: true })} />
+                </>
+              </CompactFormField>
+            </div>
+          ),
+        },
+      ],
+    },
   ];
 
   return <StandardFormGrid sections={formSections} responsive={true} className="space-y-4" />;

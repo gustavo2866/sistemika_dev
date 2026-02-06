@@ -15,12 +15,14 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useFormContext, useWatch } from "react-hook-form";
 import { useRecordContext } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CircleX, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { CircleX, MoreHorizontal, PencilLine, Plus, Trash2 } from "lucide-react";
 import { getOportunidadIdFromLocation, getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { SaveButton } from "@/components/form";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SimpleForm, FormToolbar } from "@/components/simple-form";
 import { CompactOportunidadSelector } from "../../crm-oportunidades";
+import { formatOportunidadLabel } from "../../crm-oportunidades/OportunidadSelector";
 import { ReferenceInput } from "@/components/reference-input";
 import {
   CompactComboboxQuery,
@@ -37,12 +39,15 @@ import {
   ConditionalFieldLock,
   StandardFormGrid,
   createTwoColumnSection,
+  useCentroCostoWatcher,
+  useReferenceFieldWatcher,
 } from "@/components/generic";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   type PoSolicitud,
   TIPO_COMPRA_CHOICES,
   CENTROS_COSTO_REFERENCE,
+  OPORTUNIDADES_REFERENCE,
   PROVEEDORES_REFERENCE,
   VALIDATION_RULES,
   buildPoSolicitudDefaultValues,
@@ -53,9 +58,7 @@ import {
 import { resolveTipoCompra } from "./transformers";
 import {
   useArticuloFilterByTipoSolicitud,
-  useLockedOportunidadField,
   useSyncTotalFromDetalles,
-  useMutuallyExclusiveFields,
 } from "../shared/po-hooks";
 import { PODetalleHeaderRow, POTotalInline } from "../shared/po-components";
 import { PoSolicitudDetalleContent } from "./form_detalle";
@@ -63,13 +66,12 @@ import {
   useDepartamentoDefaultByTipo,
   usePoSolicitudSectionSubtitles,
   PoSolicitudSectionSubtitle,
-  useImputacionVisibilityByDetalle,
   useProveedorDefaults,
   useTipoSolicitudBloqueado,
 } from "./form_hooks";
 import { FormActionsMenuButton } from "@/components/forms";
 import { FormActions } from "./form_actions";
-import { FormEmitir } from "./form_emitir";
+import { FormCotizar } from "./form_cotizar";
 import { FormConfirmar } from "./form_confirmar";
 
 const OPORTUNIDAD_FILTER = { activo: true };
@@ -102,9 +104,10 @@ export type PoSolicitudCabeceraFormValues = {
 
 // Contenido de la sección Datos Generales (REFACTORIZADO)
 const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloqueado?: boolean }) => {
+  const [showExtraFields, setShowExtraFields] = useState(false);
   const formSections = [
     createTwoColumnSection("", [
-      <div key="titulo" className="min-w-0 md:col-span-2">
+      <div key="titulo" className="min-w-0">
         <CompactTextInput
           source="titulo"
           label="Titulo"
@@ -112,6 +115,14 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
           maxLength={50}
         />
       </div>,
+      <ReferenceInput
+        key="solicitante"
+        source="solicitante_id"
+        reference="users"
+        label="Solicitante"
+      >
+        <CompactSelectInput optionText="nombre" required />
+      </ReferenceInput>,
     ]),
     createTwoColumnSection("", [
       <CompactFormField key="proveedor" label="Proveedor">
@@ -127,32 +138,59 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
           <CompactSelectInput optionText="nombre" required />
         </ReferenceInput>
       </ConditionalFieldLock>,
-      <CompactFormField key="tipo-compra" label="Tipo de compra">
-        <CompactSelectInput
-          source="tipo_compra"
-          choices={TIPO_COMPRA_CHOICES}
-          label={false}
+      <div key="imputacion" className="md:col-span-2">
+        <ImputacionContent oportunidadFilter={OPORTUNIDAD_FILTER} />
+      </div>,
+      <div key="fecha" className="max-w-[160px]">
+        <CompactDateInput
+          source="fecha_necesidad"
+          label="Fecha Nec"
           required
         />
-      </CompactFormField>,
-      <CompactDateInput
-        key="fecha"
-        source="fecha_necesidad"
-        label="Fecha de necesidad"
-        required
-      />,
-      <ReferenceInput key="solicitante" source="solicitante_id" reference="users" label="Solicitante">
-        <CompactSelectInput optionText="nombre" required />
-      </ReferenceInput>,
-      <CompactTextInput
-        key="comentario"
-        source="comentario"
-        label="Comentarios"
-        multiline
-        rows={3}
-        className="md:col-span-2"
-      />,
+      </div>,
+      <div key="extra-toggle" className="flex items-center">
+        <Button
+          type="button"
+          variant="link"
+          className="h-auto p-0 text-[10px] text-muted-foreground"
+          onClick={() => setShowExtraFields((prev) => !prev)}
+        >
+          {showExtraFields ? "menos..." : "mas..."}
+        </Button>
+      </div>,
+      showExtraFields ? (
+        <CompactFormField key="tipo-compra" label="Tipo de compra">
+          <CompactSelectInput
+            source="tipo_compra"
+            choices={TIPO_COMPRA_CHOICES}
+            label={false}
+            required
+          />
+        </CompactFormField>
+      ) : (
+        <div key="tipo-compra-placeholder" />
+      ),
     ]),
+    {
+      columns: 2 as const,
+      fields: [
+        {
+          span: 2,
+          component: (
+            showExtraFields ? (
+              <CompactTextInput
+                key="comentario"
+                source="comentario"
+                label="Comentarios"
+                multiline
+                rows={3}
+                className="md:col-span-2"
+              />
+            ) : null
+          ),
+        },
+      ],
+    },
   ];
 
   return <StandardFormGrid sections={formSections} />;
@@ -161,60 +199,103 @@ const DatosGeneralesContent = ({ tipoSolicitudBloqueado }: { tipoSolicitudBloque
 //  Contenido de la sección Imputación (REFACTORIZADO)
 const ImputacionContent = ({
   oportunidadFilter,
-  lockedOportunidadId,
 }: {
   oportunidadFilter?: Record<string, unknown>;
-  lockedOportunidadId?: number;
 }) => {
-  const { shouldLockOportunidad, lockedOportunidadData, registerOportunidad } =
-    useLockedOportunidadField({ lockedOportunidadId });
+  const { control } = useFormContext<PoSolicitud>();
+  const [showImputacionFields, setShowImputacionFields] = useState(false);
+  const centroCostoValue = useWatch({ control, name: "centro_costo_id" });
+  const oportunidadValue = useWatch({ control, name: "oportunidad_id" });
+  const { data: centroCostoData } = useCentroCostoWatcher("centro_costo_id");
+  const { data: oportunidadData } = useReferenceFieldWatcher(
+    "oportunidad_id",
+    OPORTUNIDADES_REFERENCE.resource,
+    { validation: (value) => !!value && typeof value === "object" }
+  );
 
-  useMutuallyExclusiveFields({
-    fieldA: "centro_costo_id",
-    fieldB: "oportunidad_id",
-    clearAWhenB: true,
-    clearBWhenA: !shouldLockOportunidad,
-  });
+  const oportunidadLabel = useMemo(() => {
+    if (oportunidadData && typeof oportunidadData === "object") {
+      return formatOportunidadLabel(oportunidadData);
+    }
+    if (typeof oportunidadValue === "object" && oportunidadValue) {
+      return formatOportunidadLabel(oportunidadValue);
+    }
+    if (oportunidadValue) return `#${oportunidadValue}`;
+    return "";
+  }, [oportunidadData, oportunidadValue]);
 
-  const formSections = [
-    createTwoColumnSection("", [
-      <ReferenceInput key="depto" source="departamento_id" reference="departamentos" label="Departamento">
-        <CompactSelectInput optionText="nombre" required />
-      </ReferenceInput>,
-      <div key="centro" className="min-w-0 overflow-hidden">
-        <ReferenceInput
-          source="centro_costo_id"
-          reference={CENTROS_COSTO_REFERENCE.resource}
-          label="Centro de costo"
-          filter={CENTROS_COSTO_REFERENCE.filter}
+  const centroCostoLabel = useMemo(() => {
+    if (centroCostoData && typeof centroCostoData === "object") {
+      return String((centroCostoData as { nombre?: string }).nombre ?? "");
+    }
+    if (centroCostoValue) return `#${centroCostoValue}`;
+    return "";
+  }, [centroCostoData, centroCostoValue]);
+
+  const imputacionLabel = oportunidadLabel
+    ? `Oportunidad: ${oportunidadLabel}`
+    : centroCostoLabel
+      ? `Centro costo: ${centroCostoLabel}`
+      : "";
+
+  return (
+    <div className="w-full">
+      <CompactFormField label="Imputacion" className="w-full">
+        <div className="relative w-full">
+          <Input
+            type="text"
+            value={imputacionLabel || "-"}
+            readOnly
+            tabIndex={-1}
+            className="h-7 w-full bg-muted/50 pr-9 text-[11px] sm:h-8 sm:text-sm"
+          />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          tabIndex={-1}
+          onClick={() => setShowImputacionFields((prev) => !prev)}
+          className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-md border-border bg-background p-0 text-muted-foreground shadow-none transition hover:text-foreground"
+          aria-label={
+            showImputacionFields
+              ? "Ocultar imputacion"
+              : "Editar imputacion"
+          }
         >
-          <CompactSelectInput
-            optionText="nombre"
-            triggerProps={{ className: "w-full truncate text-left" }}
-            disabled={shouldLockOportunidad}
-          />
-        </ReferenceInput>
-      </div>,
-      <div key="oportunidad" className="md:col-span-2">
-        <CompactFormField label="Oportunidad">
-          <CompactOportunidadSelector
-            source="oportunidad_id"
-            placeholder="Selecciona una oportunidad"
-            filter={shouldLockOportunidad ? undefined : oportunidadFilter}
-            choices={shouldLockOportunidad && lockedOportunidadData ? [lockedOportunidadData] : undefined}
-            dependsOn={shouldLockOportunidad ? `locked-${lockedOportunidadId ?? "none"}` : "activo-true"}
-            disabled={shouldLockOportunidad}
-            clearable={!shouldLockOportunidad}
-          />
-          {shouldLockOportunidad ? (
-            <input type="hidden" {...registerOportunidad()} />
-          ) : null}
-        </CompactFormField>
-      </div>,
-    ]),
-  ];
-
-  return <StandardFormGrid sections={formSections} />;
+          <PencilLine className="h-3 w-3" />
+        </Button>
+      </div>
+        {showImputacionFields ? (
+          <div className="mt-2 rounded-md border border-border/70 bg-muted/10 p-2 sm:p-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <CompactFormField label="Centro de costo">
+                <ReferenceInput
+                  source="centro_costo_id"
+                  reference={CENTROS_COSTO_REFERENCE.resource}
+                  label={false}
+                  filter={CENTROS_COSTO_REFERENCE.filter}
+                >
+                  <CompactSelectInput
+                    optionText="nombre"
+                    label={false}
+                    triggerProps={{ className: "w-full truncate text-left" }}
+                  />
+                </ReferenceInput>
+              </CompactFormField>
+              <CompactFormField label="Oportunidad">
+                <CompactOportunidadSelector
+                  source="oportunidad_id"
+                  placeholder="Selecciona una oportunidad"
+                  filter={oportunidadFilter}
+                  clearable
+                />
+              </CompactFormField>
+            </div>
+          </div>
+        ) : null}
+      </CompactFormField>
+    </div>
+  );
 };
 
 //#endregion
@@ -248,7 +329,7 @@ const FormFooter = ({ onCancel }: { onCancel: () => void }) => {
         </Button>
         <SaveButton variant="secondary" />
         <FormConfirmar />
-        <FormEmitir onClose={onCancel} />
+        <FormCotizar onClose={onCancel} />
       </div>
     </FormToolbar>
   );
@@ -261,11 +342,7 @@ const FormFooter = ({ onCancel }: { onCancel: () => void }) => {
 //#region 
 
 // Componente principal que contiene toda la lógica de campos y efectos
-const PoSolicitudFormFields = ({
-  lockedOportunidadId,
-}: {
-  lockedOportunidadId?: number;
-}) => {
+const PoSolicitudFormFields = () => {
   const form = useFormContext<PoSolicitud>();
   const { control, register } = form;
   const record = useRecordContext<PoSolicitud>();
@@ -276,15 +353,8 @@ const PoSolicitudFormFields = ({
   const detallesValue = useWatch({ control, name: "detalles" });
   const isCreate = !idValue;
 
-  const { cabeceraSubtitle, imputacionSubtitle, tiposSolicitudCatalog } =
+  const { cabeceraSubtitle, tiposSolicitudCatalog } =
     usePoSolicitudSectionSubtitles();
-  const {
-    showImputacion,
-    imputacionOpen,
-    handleDetalleOpen,
-    handleDetalleClose,
-    handleImputacionToggle,
-  } = useImputacionVisibilityByDetalle();
   const [detalleActions, setDetalleActions] = useState<{
     handleStartCreate: () => void;
     handleClearAll: () => void;
@@ -319,7 +389,6 @@ const PoSolicitudFormFields = ({
     });
   }, [form, proveedorId, tipoCompraValue]);
   
-  const oportunidadFilter = OPORTUNIDAD_FILTER;
   const handleDetalleMenuClick = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -392,28 +461,6 @@ const PoSolicitudFormFields = ({
               </CompactFormSection>
             ),
           },
-          ...(showImputacion
-            ? [
-                {
-                  id: "imputacion",
-                  title: "Imputación",
-                  defaultOpen: false,
-                  open: imputacionOpen,
-                  onToggle: handleImputacionToggle,
-                  headerContentBelow: (
-                    <PoSolicitudSectionSubtitle text={imputacionSubtitle} />
-                  ),
-                  children: (
-                    <CompactFormSection>
-                      <ImputacionContent
-                        oportunidadFilter={oportunidadFilter}
-                        lockedOportunidadId={lockedOportunidadId}
-                      />
-                    </CompactFormSection>
-                  ),
-                },
-              ]
-            : []),
           {
             id: "articulos",
             title: "Detalle",
@@ -457,8 +504,6 @@ const PoSolicitudFormFields = ({
             ),
             headerContentPosition: "inline",
             headerContentBelow: <POTotalInline />,
-            onOpen: handleDetalleOpen,
-            onClose: handleDetalleClose,
             children: (
               <FormDetailSection
                 name="detalles"
@@ -514,9 +559,7 @@ export const PoSolicitudForm = ({
       toolbar={<FormFooter onCancel={() => navigate(returnTo ?? "/po-solicitudes")} />}
     >
       {children}
-      <PoSolicitudFormFields
-        lockedOportunidadId={oportunidadIdFromLocation}
-      />
+      <PoSolicitudFormFields />
     </SimpleForm>
   );
 };

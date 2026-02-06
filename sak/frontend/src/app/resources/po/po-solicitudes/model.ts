@@ -49,7 +49,7 @@ import {
 export const ESTADO_CHOICES = [
   { id: "borrador", name: "Borrador" },
   { id: "pendiente", name: "Pendiente" },
-  { id: "emitida", name: "Emitida" },
+  { id: "cotizada", name: "Cotizada" },
   { id: "aprobada", name: "Aprobada" },
   { id: "rechazada", name: "Rechazada" },
   { id: "en_proceso", name: "En Proceso" },
@@ -66,7 +66,7 @@ export const TIPO_COMPRA_CHOICES = [
 export const ESTADO_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",
   pendiente: "bg-amber-100 text-amber-800",
-  emitida: "bg-sky-100 text-sky-800",
+  cotizada: "bg-sky-100 text-sky-800",
   aprobada: "bg-emerald-100 text-emerald-800",
   rechazada: "bg-rose-100 text-rose-800",
   en_proceso: "bg-sky-100 text-sky-800",

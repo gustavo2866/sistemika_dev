@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import {
   useDataProvider,
+  useGetOne,
   useNotify,
   useRecordContext,
   useRedirect,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { HeaderSummaryDisplay } from "@/components/generic";
 import { Confirm } from "@/components/confirm";
+import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { type PoSolicitud, ESTADO_BADGES, ESTADO_CHOICES } from "./model";
 
@@ -70,19 +72,60 @@ export const FormActions = () => {
   const [confirmAction, setConfirmAction] = useState<
     "approve" | "reject" | "delete" | null
   >(null);
+  const { data: proveedorData } = useGetOne(
+    "proveedores",
+    { id: record?.proveedor_id ?? 0 },
+    { enabled: Boolean(record?.proveedor_id) }
+  );
 
   if (!record) return null;
 
-  const canApprove = record.estado === "emitida";
-  const canReject = record.estado === "emitida";
+  const canApprove = record.estado === "pendiente";
+  const canReject = record.estado === "pendiente";
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-  const handleStatusChange = async (estado: "aprobada" | "rechazada") => {
+  const handleApprove = async () => {
     if (!record?.id) {
       return;
     }
-    setBusyAction(estado);
+    setBusyAction("aprobada");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("auth_token");
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+      const response = await fetch(
+        `${apiBaseUrl}/po-solicitudes/${record.id}/aprobar`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ tipo_compra: record.tipo_compra }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      notify("Solicitud PO aprobada correctamente", { type: "info" });
+      refresh();
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo aprobar la solicitud PO", { type: "warning" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!record?.id) {
+      return;
+    }
+    setBusyAction("rechazada");
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -96,19 +139,19 @@ export const FormActions = () => {
       const response = await fetch(`${apiBaseUrl}/po-solicitudes/${record.id}`, {
         method: "PATCH",
         headers,
-        body: JSON.stringify({ estado }),
+        body: JSON.stringify({ estado: "rechazada" }),
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       notify(
-        `Solicitud PO ${estado === "aprobada" ? "aprobada" : "rechazada"} correctamente`,
+        "Solicitud PO rechazada correctamente",
         { type: "info" }
       );
       refresh();
     } catch (error) {
       console.error(error);
-      notify("No se pudo actualizar la solicitud PO", { type: "warning" });
+      notify("No se pudo rechazar la solicitud PO", { type: "warning" });
     } finally {
       setBusyAction(null);
     }
@@ -142,11 +185,32 @@ export const FormActions = () => {
     delete: "Eliminar solicitud",
   }[confirmAction ?? "approve"];
 
-  const confirmContent = {
-    approve: "Seguro que deseas aprobar la solicitud?",
-    reject: "Seguro que deseas rechazar la solicitud?",
-    delete: "Seguro que deseas eliminar la solicitud?",
-  }[confirmAction ?? "approve"];
+  const proveedorLabel =
+    (proveedorData as { nombre?: string } | undefined)?.nombre ||
+    (record as { proveedor?: { nombre?: string } })?.proveedor?.nombre ||
+    "Sin proveedor";
+  const totalLabel = formatCurrency(Number(record.total ?? 0));
+  const isDirecta = record.tipo_compra === "directa";
+  const tipoCompraLabel = isDirecta ? "Directa" : "Normal";
+
+  const confirmContent =
+    confirmAction === "approve" ? (
+      <div className="space-y-2 text-sm text-muted-foreground">
+        <p>Seguro que deseas aprobar la solicitud?</p>
+        <div className="rounded-md border border-border/70 bg-muted/10 p-2 text-[11px] sm:text-xs">
+          <div><span className="font-semibold text-foreground">Titulo:</span> {record.titulo}</div>
+          <div><span className="font-semibold text-foreground">Proveedor:</span> {proveedorLabel}</div>
+          <div><span className="font-semibold text-foreground">Tipo de compra:</span> {tipoCompraLabel}</div>
+          <div><span className="font-semibold text-foreground">Monto:</span> {totalLabel}</div>
+        </div>
+        {isDirecta ? (
+          <p>Al aprobar, se emitirÃ¡ la OC automÃ¡ticamente.</p>
+        ) : null}
+      </div>
+    ) : {
+        reject: "Seguro que deseas rechazar la solicitud?",
+        delete: "Seguro que deseas eliminar la solicitud?",
+      }[confirmAction ?? "reject"];
 
   const handleConfirm = () => {
     const action = confirmAction;
@@ -156,7 +220,11 @@ export const FormActions = () => {
       handleDelete();
       return;
     }
-    handleStatusChange(action === "approve" ? "aprobada" : "rechazada");
+    if (action === "approve") {
+      handleApprove();
+      return;
+    }
+    handleReject();
   };
 
   return (

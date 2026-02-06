@@ -157,6 +157,8 @@ class NestedCRUD(GenericCRUD):
                         setattr(detail_obj, "updated_at", datetime.now(UTC))
                     seen_ids.add(item_id)
                 else:
+                    # Crear nuevo registro - excluir id para que se auto-genere
+                    filtered_payload = self._filter_payload(model_cls, payload, exclude=(fk_field, "id"))
                     filtered_payload[fk_field] = obj.id
                     for field, raw_value in list(filtered_payload.items()):
                         filtered_payload[field] = self._coerce_for_model(model_cls, field, raw_value)

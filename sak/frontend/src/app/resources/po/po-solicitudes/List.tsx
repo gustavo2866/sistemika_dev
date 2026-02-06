@@ -154,6 +154,12 @@ const getSolicitanteAvatarInfo = (record?: PoSolicitud) => {
 
   return { name, avatarUrl, initials };
 };
+
+const truncateProveedor = (value?: string | null, limit: number = 15) => {
+  if (!value) return "-";
+  if (value.length <= limit) return value;
+  return `${value.slice(0, Math.max(0, limit - 3))}...`;
+};
 // endregion
 
 //********************************* */
@@ -186,7 +192,7 @@ export const PoSolicitudList = () => {
   }, [listReturnTo, oportunidadIdFilter]);
   const defaultFilters = useMemo(
     () => ({
-      estado: "borrador",
+      estado: "pendiente",
       ...(identity?.id ? { solicitante_id: identity.id } : {}),
     }),
     [identity?.id]
@@ -233,11 +239,11 @@ export const PoSolicitudList = () => {
         <ResponsiveDataTable.Col
           source="id"
           label="Id"
-          className="w-[60px]"
+          className="w-[44px]"
           cellClassName="text-center"
           headerClassName="text-center"
         >
-          <NumberField source="id" className="inline-block w-full text-center" />
+          <NumberField source="id" className="inline-block w-full text-center text-[9px] sm:text-[10px]" />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col
           source="titulo"
@@ -249,7 +255,7 @@ export const PoSolicitudList = () => {
         <ResponsiveDataTable.Col
           source="solicitante_id"
           label="Solicitante"
-          className="w-[110px] whitespace-normal break-words"
+          className="w-[90px] whitespace-nowrap"
           render={(record) => {
             const { name, avatarUrl, initials } = getSolicitanteAvatarInfo(record as PoSolicitud);
             return (
@@ -260,7 +266,7 @@ export const PoSolicitudList = () => {
                   fallback={initials}
                   className="border-white/70 shadow-sm"
                 />
-                <span className="text-[9px] leading-tight text-muted-foreground sm:text-[10px] break-words">
+                <span className="text-[9px] leading-tight text-muted-foreground sm:text-[10px] truncate">
                   {name}
                 </span>
               </div>
@@ -270,28 +276,41 @@ export const PoSolicitudList = () => {
         <ResponsiveDataTable.Col
           source="fecha_necesidad"
           label="Fecha Nec"
-          className="w-[110px] text-center"
+          className="w-[90px] text-center"
         >
-          <DateField source="fecha_necesidad" className="inline-block text-center w-full" />
+          <DateField source="fecha_necesidad" className="inline-block text-center w-full text-[9px] sm:text-[10px]" />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col
           source="estado"
           label="Estado"
-          className="w-[120px]"
+          className="w-[90px]"
           render={(record) => {
             const estadoKey = String(record?.estado ?? "");
             return (
               <BadgeField
                 source="estado"
                 record={record}
-                className={ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800"}
+                className={`${ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800"} text-[9px] sm:text-[10px]`}
               />
             );
           }}
         />
-        <ResponsiveDataTable.Col source="total" label="Importe" className="w-[140px]">
-          <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
+        <ResponsiveDataTable.Col source="total" label="Importe" className="w-[110px]">
+          <NumberField source="total" options={{ style: "currency", currency: "ARS" }} className="text-[9px] sm:text-[10px]" />
         </ResponsiveDataTable.Col>
+        <ResponsiveDataTable.Col
+          source="proveedor_id"
+          label="Proveedor"
+          className="w-[110px] whitespace-nowrap"
+          render={(record) => {
+            const proveedorNombre = (record as { proveedor?: { nombre?: string } })?.proveedor?.nombre;
+            return (
+              <span className="truncate">
+                {truncateProveedor(proveedorNombre, 15)}
+              </span>
+            );
+          }}
+        />
         <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
           <ListRowActions contextSearch={contextSearch} />
         </ResponsiveDataTable.Col>
@@ -330,17 +349,17 @@ const PoSolicitudesRefreshOnReturn = ({
 const PoSolicitudesFilterSync = ({
   oportunidadIdFilter,
   defaultFilters,
-}: {
-  oportunidadIdFilter?: number | string;
-  defaultFilters: Record<string, unknown>;
-}) => {
-  const { filterValues, setFilters } = useListContext<PoSolicitud>();
-  const [initialized, setInitialized] = useState(false);
+  }: {
+    oportunidadIdFilter?: number | string;
+    defaultFilters: Record<string, unknown>;
+  }) => {
+    const { filterValues, setFilters } = useListContext<PoSolicitud>();
+    const [defaultsApplied, setDefaultsApplied] = useState(false);
 
-  useEffect(() => {
-    if (oportunidadIdFilter) {
-      const needsOportunidad =
-        filterValues?.oportunidad_id == null ||
+    useEffect(() => {
+      if (oportunidadIdFilter) {
+        const needsOportunidad =
+          filterValues?.oportunidad_id == null ||
         String(filterValues.oportunidad_id) !== String(oportunidadIdFilter);
       if (needsOportunidad) {
         setFilters(
@@ -350,49 +369,53 @@ const PoSolicitudesFilterSync = ({
           },
           {}
         );
+        }
+        return;
       }
-      setInitialized(true);
-      return;
-    }
 
-    const hasOportunidadFilter =
-      filterValues?.oportunidad_id != null &&
-      String(filterValues.oportunidad_id).trim().length > 0;
-    if (hasOportunidadFilter) {
-      const nextFilters = { ...filterValues } as Record<string, unknown>;
-      delete nextFilters.oportunidad_id;
-      setFilters(nextFilters, { oportunidad_id: true });
-      setInitialized(true);
-      return;
-    }
-
-    const desiredSolicitanteId = defaultFilters.solicitante_id;
-    const needsSolicitante =
-      desiredSolicitanteId != null &&
-      (filterValues?.solicitante_id == null ||
-        String(filterValues.solicitante_id) !==
-          String(desiredSolicitanteId));
-    const needsEstado =
-      defaultFilters.estado != null && filterValues?.estado == null;
-
-    if (!initialized || needsSolicitante || needsEstado) {
-      const nextFilters = { ...filterValues };
-      if (needsEstado) {
-        nextFilters.estado = defaultFilters.estado;
+      const hasOportunidadFilter =
+        filterValues?.oportunidad_id != null &&
+        String(filterValues.oportunidad_id).trim().length > 0;
+      if (hasOportunidadFilter) {
+        const nextFilters = { ...filterValues } as Record<string, unknown>;
+        delete nextFilters.oportunidad_id;
+        setFilters(nextFilters, { oportunidad_id: true });
+        return;
       }
-      if (needsSolicitante) {
-        nextFilters.solicitante_id = desiredSolicitanteId;
-      }
-      setFilters(nextFilters, {
-        estado: true,
-        solicitante_id: true,
-      });
-      setInitialized(true);
-    }
-  }, [defaultFilters, filterValues, initialized, oportunidadIdFilter, setFilters]);
 
-  return null;
-};
+      if (defaultsApplied) {
+        return;
+      }
+
+      const desiredSolicitanteId = defaultFilters.solicitante_id;
+      const hasSolicitanteFilter =
+        filterValues?.solicitante_id != null &&
+        String(filterValues.solicitante_id).trim().length > 0;
+      const needsSolicitante =
+        desiredSolicitanteId != null && !hasSolicitanteFilter;
+      const needsEstado =
+        defaultFilters.estado != null && filterValues?.estado == null;
+
+      if (needsSolicitante || needsEstado) {
+        const nextFilters = { ...filterValues };
+        if (needsEstado) {
+          nextFilters.estado = defaultFilters.estado;
+        }
+        if (needsSolicitante) {
+          nextFilters.solicitante_id = desiredSolicitanteId;
+        }
+        setFilters(nextFilters, {
+          estado: true,
+          solicitante_id: true,
+        });
+        setDefaultsApplied(true);
+        return;
+      }
+      setDefaultsApplied(true);
+    }, [defaultFilters, defaultsApplied, filterValues, oportunidadIdFilter, setFilters]);
+
+    return null;
+  };
 // endregion
 
 //********************************* */
