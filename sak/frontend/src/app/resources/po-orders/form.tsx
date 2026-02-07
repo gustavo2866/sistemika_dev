@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { required, useInput, useSimpleFormIterator, useWrappedSource } from "ra-core";
+import {
+  required,
+  useInput,
+  useSimpleFormIterator,
+  useSimpleFormIteratorItem,
+  useWrappedSource,
+} from "ra-core";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFormContext, useWatch } from "react-hook-form";
 
@@ -16,7 +22,7 @@ import { SimpleFormIterator } from "@/components/simple-form-iterator";
 import { NumberField } from "@/components/number-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronDown, ChevronUp, PlusCircle, Trash } from "lucide-react";
+import { ChevronDown, ChevronUp, PlusCircle, Trash, XCircle } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 
 import {
@@ -53,14 +59,31 @@ const PoOrderFormFields = () => {
   const { articuloFilter, confirmOpen, confirmChange, cancelChange } =
     useTipoSolicitudChangeGuard();
   const [showOptional, setShowOptional] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
+  const [showDetalle, setShowDetalle] = useState(true);
 
   return (
     <>
 
-      <Card className="border border-border w-full">
+      <Card className="border border-border w-full pt-2 pb-2">
         <CardContent className="px-3 pt-0 pb-0">
-          <div className="text-sm font-bold text-foreground">Cabecera</div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-end text-[11px] [&_label]:text-[11px] [&_label]:mb-0 [&_label]:leading-none [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-bold text-foreground mb-2">Cabecera</div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground"
+              onClick={() => setShowHeader((v) => !v)}
+              aria-label={showHeader ? "Ocultar cabecera" : "Mostrar cabecera"}
+              title={showHeader ? "Ocultar cabecera" : "Mostrar cabecera"}
+            >
+              {showHeader ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </div>
+          {showHeader ? (
+            <>
+              <div className="flex flex-col gap-1 md:flex-row md:items-end text-[11px] [&_[data-slot=form-item]]:gap-0 [&_[data-slot=form-item]]:sm:gap-0 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:mb-0 [&_label]:leading-none [&_label+*]:mt-0 [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6">
             <div className="w-full md:w-[220px]">
               <TextInput source="titulo" label="Titulo" validate={required()} />
             </div>
@@ -84,7 +107,7 @@ const PoOrderFormFields = () => {
                 />
               </ReferenceInput>
             </div>
-            <div className="w-full md:w-[200px]">
+            <div className="relative w-full md:w-[200px]">
               <ReferenceInput source="proveedor_id" reference="proveedores">
                 <AutocompleteInput
                   optionText="nombre"
@@ -92,35 +115,42 @@ const PoOrderFormFields = () => {
                   className="text-[11px] [&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[11px]"
                 />
               </ReferenceInput>
-            </div>
-            <div className="md:pb-1">
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className="h-7 w-7"
+                size="sm"
+                className="mt-1 h-auto p-0 text-[10px] text-muted-foreground md:absolute md:right-0 md:top-full md:mt-1"
                 onClick={() => setShowOptional((v) => !v)}
                 aria-label={showOptional ? "Ocultar campos" : "Mostrar campos"}
                 title={showOptional ? "Ocultar campos" : "Mostrar campos"}
               >
-                {showOptional ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {showOptional ? "menos datos" : "mas datos..."}
               </Button>
             </div>
+            <div className="md:pb-1" />
             <div className="flex flex-col gap-1 md:pb-1" />
           </div>
 
-          {/* Always compute total for validation/payload, but only display it inside the toggle */}
-          <TotalCompute />
-          <HiddenInput source="total" />
+              {/* Always compute total for validation/payload, but only display it inside the toggle */}
+              <TotalCompute />
+              <HiddenInput source="total" />
 
-          <OptionalHeaderFields showOptional={showOptional} />
+              <OptionalHeaderFields showOptional={showOptional} />
+            </>
+          ) : null}
         </CardContent>
       </Card>
 
-      <Card className="border border-border w-full">
+      <Card className="border border-border w-full pt-2">
         <CardContent className="px-3 pt-0 pb-2">
-          <div className="text-sm font-bold text-foreground">Detalle</div>
-          <DetalleScrollable articuloFilter={articuloFilter} />
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-bold text-foreground mb-0">Detalle</div>
+            <DetalleHeaderActions
+              showDetalle={showDetalle}
+              setShowDetalle={setShowDetalle}
+            />
+          </div>
+          {showDetalle ? <DetalleScrollable articuloFilter={articuloFilter} /> : null}
         </CardContent>
       </Card>
 
@@ -137,10 +167,13 @@ const PoOrderFormFields = () => {
 
 const OptionalHeaderFields = ({ showOptional }: { showOptional: boolean }) => {
   return (
-    <div className="mt-2 space-y-1 text-[11px] [&_label]:text-[11px] [&_label]:mb-0 [&_label]:leading-none [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6">
+    <div className="mt-6 space-y-1 text-[11px] [&_[data-slot=form-item]]:gap-0 [&_[data-slot=form-item]]:sm:gap-0 [&_label]:text-[11px] [&_label]:mb-0 [&_label]:leading-none [&_label+*]:mt-0 [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6">
       {showOptional ? (
-        <div className="grid gap-2 grid-cols-3">
-          <ReferenceInput source="departamento_id" reference="departamentos">
+        <div className="grid gap-2 grid-cols-2">
+          <ReferenceInput
+            source="departamento_id"
+            reference="departamentos"
+          >
             <AutocompleteInput
               optionText="nombre"
               label="Departamento"
@@ -153,21 +186,32 @@ const OptionalHeaderFields = ({ showOptional }: { showOptional: boolean }) => {
             label="Fecha necesidad"
             type="date"
           />
-          <ReferenceInput source="centro_costo_id" reference="centros-costo">
+          <ReferenceInput
+            source="centro_costo_id"
+            reference="centros-costo"
+          >
             <AutocompleteInput
               optionText="nombre"
               label="Centro de costo"
               className="text-[11px] [&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[11px]"
             />
           </ReferenceInput>
-          <ReferenceInput source="oportunidad_id" reference="crm/oportunidades">
+          <ReferenceInput
+            source="oportunidad_id"
+            reference="crm/oportunidades"
+          >
             <AutocompleteInput
               optionText="titulo"
               label="Oportunidad"
               className="text-[11px] [&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[11px]"
             />
           </ReferenceInput>
-          <TextInput source="comentario" label="Comentario" multiline />
+          <TextInput
+            source="comentario"
+            label="Comentario"
+            multiline
+            className="col-span-2 [&_textarea]:min-h-[64px]"
+          />
         </div>
       ) : null}
     </div>
@@ -187,13 +231,23 @@ const DetalleScrollable = ({
     const length = detalles?.length ?? 0;
     if (length > prevLengthRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      const container = containerRef.current;
+      window.setTimeout(() => {
+        const fields = container.querySelectorAll('[data-articulo-field="true"]');
+        const last = fields[fields.length - 1];
+        const focusTarget =
+          (last?.querySelector('[role="combobox"]') as HTMLElement | null) ??
+          (last?.querySelector("input") as HTMLElement | null) ??
+          (last as HTMLElement | null);
+        focusTarget?.focus();
+      }, 0);
     }
     prevLengthRef.current = length;
   }, [detalles?.length]);
 
   return (
-    <div className="mt-4 space-y-0 w-full">
-      <div className="hidden sm:grid grid-cols-[240px_180px_64px_80px_90px_28px] gap-2 text-[11px] font-semibold text-foreground [&>div]:pl-3 [&>div:nth-child(3)]:pl-0 [&>div:nth-child(3)]:-ml-3 [&>div:nth-child(4)]:pl-0 [&>div:nth-child(4)]:-ml-3 [&>div:nth-child(5)]:pl-0 [&>div:nth-child(5)]:-ml-3 pb-0">
+      <div className="mt-1 space-y-0 w-full">
+      <div className="hidden sm:grid grid-cols-[220px_150px_64px_84px_84px_28px] gap-2 text-[10px] font-semibold text-foreground [&>div]:pl-3 pb-0">
         <div>Artículo</div>
         <div>Descripción</div>
         <div>Cantidad</div>
@@ -203,7 +257,7 @@ const DetalleScrollable = ({
       </div>
       <div
         ref={containerRef}
-        className="w-full rounded-md border border-border p-2 md:max-h-80 md:overflow-y-auto text-[11px] [&_label]:text-[11px] [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6 [&_textarea]:text-[11px] [&_textarea]:min-h-[24px]"
+        className="w-full rounded-md border border-border p-2 md:max-h-80 md:overflow-y-auto text-[9px] sm:text-[10px] [&_label]:text-[9px] sm:[&_label]:text-[10px] [&_input]:text-[9px] sm:[&_input]:text-[10px] [&_input]:h-5 sm:[&_input]:h-5 [&_[role=combobox]]:h-5 sm:[&_[role=combobox]]:h-5 [&_textarea]:text-[9px] sm:[&_textarea]:text-[10px] [&_textarea]:min-h-[20px] sm:[&_textarea]:min-h-[22px]"
       >
         <ArrayInput source="detalles" label={false}>
           <SimpleFormIterator
@@ -211,7 +265,8 @@ const DetalleScrollable = ({
             addButton={<DetalleFooterButtons />}
             disableClear
             disableReordering
-            className="gap-0 [&_ul]:gap-0 [&_li]:pb-0 [&_li]:items-center [&_li]:gap-1 [&_.simple-form-iterator-item-actions]:!pt-0 [&_.simple-form-iterator-item-actions]:items-center [&_.simple-form-iterator-item-actions]:self-center [&_.simple-form-iterator-item-actions]:gap-0 [&_.simple-form-iterator-item-actions]:mt-0 [&_.simple-form-iterator-item-actions]:h-6 [&_.simple-form-iterator-item-actions]:-translate-y-[1px] [&_.simple-form-iterator-item-actions]:-ml-1 [&_.simple-form-iterator-item-actions>*]:-ml-2"
+            disableRemove
+            className="gap-0 [&_ul]:gap-2 sm:[&_ul]:gap-0 [&_li]:pb-0 [&_li]:gap-0 [&_li]:relative [&_li]:flex-col sm:[&_li]:flex-row [&_li]:items-stretch sm:[&_li]:items-center [&_.simple-form-iterator-item-actions]:!pt-0 [&_.simple-form-iterator-item-actions]:items-center [&_.simple-form-iterator-item-actions]:self-center [&_.simple-form-iterator-item-actions]:gap-0 [&_.simple-form-iterator-item-actions]:mt-0 [&_.simple-form-iterator-item-actions]:h-6 [&_.simple-form-iterator-item-actions]:-translate-y-[1px] [&_.simple-form-iterator-item-actions]:-ml-1 [&_.simple-form-iterator-item-actions>*]:-ml-3 [&_.simple-form-iterator-item-actions]:absolute [&_.simple-form-iterator-item-actions]:top-2 [&_.simple-form-iterator-item-actions]:right-2 sm:[&_.simple-form-iterator-item-actions]:static"
           >
             <DetalleRow articuloFilter={articuloFilter} />
           </SimpleFormIterator>
@@ -223,7 +278,48 @@ const DetalleScrollable = ({
 
 const DetalleFooterButtons = () => {
   const { add } = useSimpleFormIterator();
-  const { setValue } = useFormContext();
+
+  return (
+    <>
+      <div className="mt-1 hidden sm:flex w-full items-center gap-2">
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          className="gap-1 text-[10px] w-full sm:w-[220px] h-6"
+          onClick={() => add()}
+        >
+          <PlusCircle className="h-4 w-4" />
+          Agregar
+        </Button>
+        <div className="hidden sm:block ml-auto w-[28px]" />
+        <div className="hidden sm:block w-[28px]" />
+      </div>
+      <div className="sm:hidden fixed bottom-2 left-[42%] -translate-x-1/2 z-30">
+        <Button
+          type="button"
+          variant="default"
+          size="icon"
+          className="h-8 w-8 rounded-full shadow-lg"
+          onClick={() => add()}
+          aria-label="Agregar linea"
+          title="Agregar linea"
+        >
+          <PlusCircle className="h-3 w-3" />
+        </Button>
+      </div>
+    </>
+  );
+};
+
+const DetalleHeaderActions = ({
+  showDetalle,
+  setShowDetalle,
+}: {
+  showDetalle: boolean;
+  setShowDetalle: React.Dispatch<React.SetStateAction<boolean>>;
+}) => {
+  const { getValues, setValue } = useFormContext();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const detalles = useWatch({ name: "detalles" }) as unknown[] | undefined;
   const hasDetalles = (detalles ?? []).length > 0;
@@ -233,97 +329,190 @@ const DetalleFooterButtons = () => {
     setConfirmOpen(false);
   };
 
+  const handleAdd = () => {
+    const current = (getValues("detalles") as unknown[]) ?? [];
+    setValue("detalles", [...current, {}], { shouldDirty: true, shouldValidate: true });
+  };
+
   return (
-    <>
-      <div className="mt-1 flex w-full items-center gap-2">
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="gap-1 text-[9px] text-primary h-6 px-2"
+        onClick={handleAdd}
+        tabIndex={-1}
+      >
+        <PlusCircle className="h-3 w-3" />
+        Agregar
+      </Button>
+      {hasDetalles ? (
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="gap-1 text-[11px]"
-          onClick={() => add()}
+          className="gap-1 text-[9px] text-destructive h-6 px-2"
+          onClick={() => setConfirmOpen(true)}
+          tabIndex={-1}
         >
-          <PlusCircle className="h-4 w-4" />
-          Agregar
+          <Trash className="h-3 w-3" />
+          Limpiar
         </Button>
-        {hasDetalles ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-1 text-[11px] text-destructive"
-            onClick={() => setConfirmOpen(true)}
-          >
-            <Trash className="h-4 w-4" />
-            Limpiar
-          </Button>
-        ) : null}
-        <div className="hidden sm:block ml-auto w-[28px]" />
-        <div className="hidden sm:block w-[28px]" />
-      </div>
+      ) : null}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 text-muted-foreground"
+        onClick={() => setShowDetalle((v) => !v)}
+        aria-label={showDetalle ? "Ocultar detalle" : "Mostrar detalle"}
+        title={showDetalle ? "Ocultar detalle" : "Mostrar detalle"}
+        tabIndex={-1}
+      >
+        {showDetalle ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </Button>
       <Confirm
         isOpen={confirmOpen}
         title="Limpiar detalle"
-        content="Se eliminarán todos los ítems. ¿Deseas continuar?"
+        content="Se eliminaran todos los items. Deseas continuar?"
         onConfirm={handleClear}
         onClose={() => setConfirmOpen(false)}
       />
-    </>
+    </div>
   );
 };
 
 const DetalleRow = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
   const [showOptional, setShowOptional] = useState(false);
+  const { remove } = useSimpleFormIteratorItem();
 
   return (
-    <div className="flex w-full flex-col gap-2">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+    <div className="flex w-full flex-col gap-1 rounded-md border border-border p-1 pb-0.5 pr-1 sm:pr-0 sm:gap-2 sm:border-0 sm:p-0">
+      <div className="grid grid-cols-1 gap-1 sm:flex sm:flex-row sm:items-center sm:gap-2">
         <HiddenInput source="id" />
-        <ReferenceInput
-          source="articulo_id"
-          reference="articulos"
-          filter={articuloFilter}
+        <div
+          className="col-span-1 w-full sm:col-auto sm:w-[220px] shrink-0"
+          data-articulo-field="true"
         >
-          <AutocompleteInput
-            optionText="nombre"
-            label={false}
-            className="w-[240px] shrink-0 text-[11px] [&_[role=combobox]]:h-6 [&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[11px]"
-          />
-        </ReferenceInput>
+          <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+            Articulo
+          </div>
+          <div className="grid grid-cols-[1fr_20px] items-center gap-1 sm:block">
+            <div className="flex-1">
+              <ReferenceInput
+                source="articulo_id"
+                reference="articulos"
+                filter={articuloFilter}
+              >
+                <AutocompleteInput
+                  optionText="nombre"
+                  label={false}
+                  className="w-full text-[9px] sm:text-[11px] [&_[role=combobox]]:h-5 sm:[&_[role=combobox]]:h-6 [&_[role=combobox]]:text-[9px] sm:[&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[9px] sm:[&_[role=combobox]_span]:text-[11px]"
+                />
+              </ReferenceInput>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="sm:hidden h-6 w-6 -mr-1"
+              onClick={() => remove()}
+              aria-label="Eliminar linea"
+              title="Eliminar linea"
+              tabIndex={-1}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
         <TextInput
           source="descripcion"
           label={false}
-          className="w-[150px] shrink-0"
+          className="w-full sm:w-[150px] shrink-0 [&_input]:text-[9px] sm:[&_input]:text-[10px] hidden sm:block"
         />
-      <NumberInput
-        source="cantidad"
-        label={false}
-        inputMode="decimal"
-        step="0.001"
-        className="w-[56px] shrink-0 [&_input]:text-[9px]"
-      />
-      <NumberInput
-        source="precio"
-        label={false}
-        inputMode="decimal"
-        step="0.01"
-        className="w-[72px] shrink-0 [&_input]:text-[9px]"
-      />
-        <CalculatedImporte />
-        <HiddenInput source="importe" />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 self-center"
-          onClick={() => setShowOptional((v) => !v)}
-          aria-label={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
-          title={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
-        >
-          {showOptional ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
+        <div className="col-span-1 grid grid-cols-[1fr_20px] gap-1 sm:contents">
+          <div className="grid grid-cols-[44px_70px_80px] gap-1 sm:flex sm:items-center sm:gap-2">
+            <div className="flex flex-col gap-0.5">
+              <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+                Cant.
+              </div>
+              <NumberInput
+                source="cantidad"
+                label={false}
+                inputMode="decimal"
+                step="0.001"
+                className="w-[44px] sm:w-[64px] shrink-0 [&_input]:text-[8px] sm:[&_input]:text-[10px]"
+              />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+                Precio
+              </div>
+              <NumberInput
+                source="precio"
+                label={false}
+                inputMode="decimal"
+                step="0.01"
+              className="w-[70px] sm:w-[84px] shrink-0 [&_input]:text-[8px] sm:[&_input]:text-[10px]"
+              />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+                Importe
+              </div>
+              <CalculatedImporte />
+              <HiddenInput source="importe" />
+            </div>
+          </div>
+          <div className="flex items-end justify-end sm:hidden -mr-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setShowOptional((v) => !v)}
+              aria-label={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
+              title={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
+              tabIndex={-1}
+            >
+              {showOptional ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => setShowOptional((v) => !v)}
+            aria-label={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
+            title={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
+            tabIndex={-1}
+          >
+            {showOptional ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => remove()}
+            aria-label="Eliminar linea"
+            title="Eliminar linea"
+            tabIndex={-1}
+          >
+            <XCircle className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       <DetalleOptionalFields showOptional={showOptional} />
+      <div className="mt-0 pt-0 flex justify-end gap-1 sm:hidden" />
     </div>
   );
 };
@@ -333,6 +522,11 @@ const DetalleOptionalFields = ({ showOptional }: { showOptional: boolean }) => {
     <div className="w-full">
       {showOptional ? (
         <div className="mt-2 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <TextInput
+            source="descripcion"
+            label="Descripcion"
+            className="sm:hidden"
+          />
           <SelectInput
             source="unidad_medida"
             label="Unidad"
@@ -363,8 +557,8 @@ const CalculatedImporte = () => {
   }, [importeSource, importe, setValue]);
 
   return (
-    <div className="flex flex-col w-[90px] shrink-0">
-      <div className="flex h-6 items-center rounded-md border border-border bg-muted/30 px-2 text-[11px] font-medium">
+    <div className="flex flex-col w-[80px] sm:w-[84px] shrink-0">
+      <div className="flex h-5 sm:h-6 items-center rounded-md border border-border bg-muted/30 px-2 text-[9px] sm:text-[11px] font-medium">
         <NumberField
           source="importe"
           record={{ importe }}

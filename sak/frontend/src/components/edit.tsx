@@ -84,7 +84,7 @@ export const EditView = ({
       />
       <div
         className={cn(
-          "flex justify-between items-start flex-wrap gap-2 my-2",
+          "flex justify-between items-start flex-wrap gap-2 my-2 w-full max-w-3xl",
           className,
         )}
       >
@@ -98,7 +98,7 @@ export const EditView = ({
           </div>
         )}
       </div>
-      <div className="my-2">{children}</div>
+      <div className="my-2 w-full max-w-3xl">{children}</div>
     </>
   );
 };

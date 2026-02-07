@@ -417,7 +417,7 @@ const AdminApp = () => {
         show={PoOrderShow}
         recordRepresentation="titulo"
         icon={ClipboardList}
-        options={{ label: "Órdenes" }}
+        options={{ label: "Ordenes" }}
       />
       <Resource
         name="po-ordenes-compra"
