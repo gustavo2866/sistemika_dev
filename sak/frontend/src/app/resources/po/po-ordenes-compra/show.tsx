@@ -69,6 +69,12 @@ const PoOrdenCompraDetalleTable = ({
   const [articulosMap, setArticulosMap] = useState<Map<number, string>>(
     () => new Map()
   );
+  const [solicitudesMap, setSolicitudesMap] = useState<Map<number, string>>(
+    () => new Map()
+  );
+  const [solicitudDetalleToSolicitud, setSolicitudDetalleToSolicitud] = useState<
+    Map<number, number>
+  >(() => new Map());
 
   const articuloIds = useMemo(
     () =>
@@ -76,6 +82,18 @@ const PoOrdenCompraDetalleTable = ({
         new Set(
           detalles
             .map((item) => Number(item.articulo_id))
+            .filter((id) => Number.isFinite(id) && id > 0)
+        )
+      ),
+    [detalles]
+  );
+
+  const solicitudIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          detalles
+            .map((item) => Number(item.solicitud_detalle_id))
             .filter((id) => Number.isFinite(id) && id > 0)
         )
       ),
@@ -113,6 +131,69 @@ const PoOrdenCompraDetalleTable = ({
     };
   }, [articuloIds, dataProvider]);
 
+  useEffect(() => {
+    let mounted = true;
+    if (!solicitudIds.length) {
+      setSolicitudDetalleToSolicitud(new Map());
+      setSolicitudesMap(new Map());
+      return () => {
+        mounted = false;
+      };
+    }
+
+    dataProvider
+      .getMany("po-solicitud-detalles", { ids: solicitudIds })
+      .then(({ data }) => {
+        if (!mounted) return;
+        const nextDetalleToSolicitud = new Map<number, number>();
+        const solicitudIdsFromDetalle: number[] = [];
+        data.forEach((item: any) => {
+          const detalleId = Number(item?.id);
+          const solicitudId = Number(item?.solicitud_id);
+          if (Number.isFinite(detalleId) && detalleId > 0) {
+            if (Number.isFinite(solicitudId) && solicitudId > 0) {
+              nextDetalleToSolicitud.set(detalleId, solicitudId);
+              solicitudIdsFromDetalle.push(solicitudId);
+            }
+          }
+        });
+        setSolicitudDetalleToSolicitud(nextDetalleToSolicitud);
+
+        if (!solicitudIdsFromDetalle.length) {
+          setSolicitudesMap(new Map());
+          return;
+        }
+
+        dataProvider
+          .getMany("po-solicitudes", {
+            ids: Array.from(new Set(solicitudIdsFromDetalle)),
+          })
+          .then(({ data: solicitudesData }) => {
+            if (!mounted) return;
+            const nextMap = new Map<number, string>();
+            solicitudesData.forEach((item: any) => {
+              if (item?.id != null) {
+                nextMap.set(Number(item.id), item.titulo ?? `ID ${item.id}`);
+              }
+            });
+            setSolicitudesMap(nextMap);
+          })
+          .catch(() => {
+            if (!mounted) return;
+            setSolicitudesMap(new Map());
+          });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSolicitudDetalleToSolicitud(new Map());
+        setSolicitudesMap(new Map());
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [dataProvider, solicitudIds]);
+
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-xl border border-border/60 hidden sm:block">
@@ -125,10 +206,13 @@ const PoOrdenCompraDetalleTable = ({
               <th className="w-[180px] px-2 py-1 sm:w-[200px] sm:px-3 sm:py-2">
                 Descripcion
               </th>
-              <th className="w-[50px] px-1.5 py-1 text-center text-[8px] sm:w-[60px] sm:px-2.5 sm:py-2 sm:text-[9px]">
-                Unidad
+              <th className="w-[44px] px-1 py-1 text-center text-[8px] sm:w-[52px] sm:px-1.5 sm:py-2 sm:text-[9px]">
+                Solicitud
               </th>
-              <th className="w-[50px] px-1.5 py-1 text-center text-[8px] sm:w-[60px] sm:px-2.5 sm:py-2 sm:text-[9px]">
+              <th className="w-[34px] px-1 py-1 text-center text-[7px] sm:w-[40px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
+                Un
+              </th>
+              <th className="w-[44px] px-1 py-1 text-center text-[7px] sm:w-[52px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
                 Cantidad
               </th>
               <th className="w-[70px] px-1.5 py-1 text-right text-[8px] sm:w-[80px] sm:px-2.5 sm:py-2 sm:text-[9px]">
@@ -151,7 +235,7 @@ const PoOrdenCompraDetalleTable = ({
                   className="border-t border-border/60"
                 >
                   <td className="w-[150px] px-2 py-1 align-top sm:w-[170px] sm:px-3 sm:py-2">
-                    <div className="text-[11px] font-medium text-foreground break-words sm:text-xs">
+                    <div className="text-[10px] leading-relaxed text-muted-foreground break-words">
                       {articuloLabel}
                     </div>
                   </td>
@@ -160,10 +244,14 @@ const PoOrdenCompraDetalleTable = ({
                       {detalle.descripcion || "-"}
                     </div>
                   </td>
-                  <td className="w-[50px] px-1.5 py-1 text-center text-[8px] text-muted-foreground sm:w-[60px] sm:px-2.5 sm:py-2 sm:text-[9px]">
+                  <td className="w-[44px] px-1 py-1 text-center text-[8px] text-muted-foreground sm:w-[52px] sm:px-1.5 sm:py-2 sm:text-[9px]">
+                    {solicitudDetalleToSolicitud.get(Number(detalle.solicitud_detalle_id)) ??
+                      "-"}
+                  </td>
+                  <td className="w-[34px] px-1 py-1 text-center text-[7px] text-muted-foreground sm:w-[40px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
                     {detalle.unidad_medida || "-"}
                   </td>
-                  <td className="w-[50px] px-1.5 py-1 text-center text-[8px] sm:w-[60px] sm:px-2.5 sm:py-2 sm:text-[9px]">
+                  <td className="w-[44px] px-1 py-1 text-center text-[7px] sm:w-[52px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
                     {detalle.cantidad ?? "-"}
                   </td>
                   <td className="w-[70px] px-1.5 py-1 text-right text-[8px] sm:w-[80px] sm:px-2.5 sm:py-2 sm:text-[9px]">
@@ -185,6 +273,13 @@ const PoOrdenCompraDetalleTable = ({
           const articuloLabel =
             (!Number.isNaN(articuloId) && articulosMap.get(articuloId)) ||
             (Number.isFinite(articuloId) ? `ID ${articuloId}` : "-");
+          const solicitudId =
+            solicitudDetalleToSolicitud.get(
+              Number(detalle.solicitud_detalle_id)
+            ) ?? Number.NaN;
+          const solicitudTitulo =
+            (!Number.isNaN(solicitudId) && solicitudesMap.get(solicitudId)) ||
+            (Number.isFinite(solicitudId) ? `ID ${solicitudId}` : "-");
           return (
             <div
               key={detalle.id ?? `${detalle.articulo_id}-${detalle.descripcion}`}
@@ -196,11 +291,22 @@ const PoOrdenCompraDetalleTable = ({
               <div className="mt-0.5 text-[10px] text-muted-foreground break-words">
                 {detalle.descripcion || "-"}
               </div>
+              <div className="mt-0.5 text-[7px] text-muted-foreground sm:text-[8px]">
+                Solicitud: {Number.isFinite(solicitudId) && solicitudId > 0 ? `#${solicitudId}` : "-"}{" "}
+                {solicitudTitulo && solicitudTitulo !== "-" ? `- ${solicitudTitulo}` : ""}
+              </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] text-muted-foreground">
                 <div>
                   <div className="uppercase">Unidad</div>
                   <div className="text-[10px] text-foreground">
                     {detalle.unidad_medida || "-"}
+                  </div>
+                </div>
+                <div>
+                  <div className="uppercase">Solicitud</div>
+                  <div className="text-[10px] text-foreground">
+                    {solicitudDetalleToSolicitud.get(Number(detalle.solicitud_detalle_id)) ??
+                      "-"}
                   </div>
                 </div>
                 <div>
@@ -393,4 +499,3 @@ export const PoOrdenCompraShow = () => (
     </div>
   </Show>
 );
-

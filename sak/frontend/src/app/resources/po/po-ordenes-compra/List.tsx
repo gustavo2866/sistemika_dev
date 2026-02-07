@@ -220,11 +220,11 @@ export const PoOrdenCompraList = () => {
         <ResponsiveDataTable.Col
           source="id"
           label="Id"
-          className="w-[60px]"
+          className="w-[44px]"
           cellClassName="text-center"
           headerClassName="text-center"
         >
-          <NumberField source="id" className="inline-block w-full text-center" />
+          <NumberField source="id" className="inline-block w-full text-center text-[9px] sm:text-[10px]" />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col
           source="titulo"
@@ -236,16 +236,16 @@ export const PoOrdenCompraList = () => {
         <ResponsiveDataTable.Col
           source="proveedor_id"
           label="Proveedor"
-          className="w-[120px] whitespace-normal break-words"
+          className="w-[110px] whitespace-nowrap"
         >
           <ReferenceField source="proveedor_id" reference="proveedores">
-            <TextField source="nombre" />
+            <TextField source="nombre" className="truncate" />
           </ReferenceField>
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col
           source="usuario_responsable_id"
           label="Responsable"
-          className="w-[120px] whitespace-normal break-words"
+          className="w-[90px] whitespace-nowrap"
           render={(record) => {
             const { name, avatarUrl, initials } = getResponsableAvatarInfo(record as PoOrdenCompra);
             return (
@@ -256,7 +256,7 @@ export const PoOrdenCompraList = () => {
                   fallback={initials}
                   className="border-white/70 shadow-sm"
                 />
-                <span className="text-[9px] leading-tight text-muted-foreground sm:text-[10px] break-words">
+                <span className="text-[9px] leading-tight text-muted-foreground sm:text-[10px] truncate">
                   {name}
                 </span>
               </div>
@@ -268,25 +268,25 @@ export const PoOrdenCompraList = () => {
           label="Fecha"
           className="w-[110px] text-center"
         >
-          <DateField source="fecha" className="inline-block text-center w-full" />
+          <DateField source="fecha" className="inline-block text-center w-full text-[9px] sm:text-[10px]" />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col
           source="estado"
           label="Estado"
-          className="w-[120px]"
+          className="w-[90px]"
           render={(record) => {
             const estadoKey = String(record?.estado ?? "");
             return (
               <BadgeField
                 source="estado"
                 record={record}
-                className={ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800"}
+                className={`${ESTADO_BADGES[estadoKey] || "bg-slate-100 text-slate-800"} text-[9px] sm:text-[10px]`}
               />
             );
           }}
         />
-        <ResponsiveDataTable.Col source="total" label="Importe" className="w-[140px]">
-          <NumberField source="total" options={{ style: "currency", currency: "ARS" }} />
+        <ResponsiveDataTable.Col source="total" label="Importe" className="w-[110px]">
+          <NumberField source="total" options={{ style: "currency", currency: "ARS" }} className="text-[8px] sm:text-[9px]" />
         </ResponsiveDataTable.Col>
         <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
           <ListRowActions />

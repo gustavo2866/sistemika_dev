@@ -304,9 +304,17 @@ export const PoSolicitudList = () => {
           className="w-[110px] whitespace-nowrap"
           render={(record) => {
             const proveedorNombre = (record as { proveedor?: { nombre?: string } })?.proveedor?.nombre;
+            if (proveedorNombre) {
+              return (
+                <span className="truncate">
+                  {truncateProveedor(proveedorNombre, 15)}
+                </span>
+              );
+            }
+            const tipoSolicitudNombre = (record as { tipo_solicitud?: { nombre?: string } })?.tipo_solicitud?.nombre;
             return (
-              <span className="truncate">
-                {truncateProveedor(proveedorNombre, 15)}
+              <span className="truncate text-muted-foreground">
+                {truncateProveedor(tipoSolicitudNombre ?? "Sin tipo", 15)}
               </span>
             );
           }}

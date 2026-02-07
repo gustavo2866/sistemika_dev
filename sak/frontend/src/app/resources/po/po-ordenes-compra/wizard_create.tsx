@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FormProvider,
   useForm,
@@ -64,8 +64,9 @@ import {
   useDepartamentoById,
   useProveedorById,
   useUserById,
+  useTipoSolicitudCatalog,
 } from "../shared/po-hooks";
-import { useWizardCancel } from "../shared/po-hooks";
+import { useArticuloFilterByTipoSolicitud, useWizardCancel } from "../shared/po-hooks";
 import { useCentroCostoWatcher, useReferenceFieldWatcher } from "@/components/generic";
 
 //******************************* */
@@ -154,7 +155,11 @@ const WizardHeaderStep = ({
     </CompactFormGrid>
 
     <CompactFormGrid columns="one">
-      <CompactFormField label="Proveedor" required>
+      <CompactFormField
+        label="Proveedor"
+        required
+        error={formState.errors.proveedorId}
+      >
         <CompactComboboxQuery
           {...PROVEEDORES_REFERENCE}
           value={proveedorIdValue ?? ""}
@@ -201,7 +206,7 @@ const WizardHeaderStep = ({
           placeholder="Selecciona solicitud"
           comboboxProps={PO_SOLICITUDES_REFERENCE}
           filter={{
-            estado: ["pendiente", "emitida"],
+            estado: ["emitida", "aprobada"],
             ...(tipoSolicitudIdValue
               ? { tipo_solicitud_id: normalizeId(tipoSolicitudIdValue) }
               : {}),
@@ -222,6 +227,8 @@ const WizardDetailStep = ({
   precioValue,
   centroCostoIdValue,
   oportunidadIdValue,
+  tipoSolicitudIdValue,
+  articuloFilterId,
   register,
   setValue,
 }: {
@@ -230,6 +237,8 @@ const WizardDetailStep = ({
   precioValue: number | undefined;
   centroCostoIdValue: string | undefined;
   oportunidadIdValue: string | undefined;
+  tipoSolicitudIdValue: string | undefined;
+  articuloFilterId?: number;
   register: UseFormRegister<WizardValues>;
   setValue: ReturnType<typeof useForm<WizardValues>>["setValue"];
 }) => {
@@ -278,6 +287,8 @@ const WizardDetailStep = ({
               setValue("articuloId", value, { shouldDirty: true })
             }
             placeholder="Selecciona articulo"
+            filter={articuloFilterId ? { tipo_articulo_id: articuloFilterId } : {}}
+            dependsOn={tipoSolicitudIdValue ?? "tipo-solicitud"}
             clearable
           />
           <HiddenField
@@ -465,6 +476,25 @@ const WizardCreateComponent = ({
     responsableDepartamentoId
   );
 
+  const { tiposSolicitudCatalog } = useTipoSolicitudCatalog();
+  const { articuloFilterId } = useArticuloFilterByTipoSolicitud({
+    tipoSolicitudId: tipoSolicitudIdValue ? String(tipoSolicitudIdValue) : undefined,
+    tiposSolicitudCatalog,
+  });
+
+  const prevTipoSolicitudRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const currentTipo = tipoSolicitudIdValue ? String(tipoSolicitudIdValue) : undefined;
+    if (prevTipoSolicitudRef.current && prevTipoSolicitudRef.current !== currentTipo) {
+      setValue("articuloId", "", { shouldDirty: true, shouldValidate: true });
+      setValue("solicitudes", [], { shouldDirty: true, shouldValidate: true });
+      setValue("cantidad", 0, { shouldDirty: true, shouldValidate: true });
+      setValue("precio", 0, { shouldDirty: true, shouldValidate: true });
+      setValue("importe", 0, { shouldDirty: true, shouldValidate: true });
+    }
+    prevTipoSolicitudRef.current = currentTipo;
+  }, [setValue, tipoSolicitudIdValue]);
+
   const articuloId = normalizeId(String(articuloIdValue ?? ""));
   const { data: articuloData } = useArticuloById(articuloId);
 
@@ -550,6 +580,7 @@ const WizardCreateComponent = ({
             const precio = Number(detalle.precio ?? 0) || 0;
             const subtotal = cantidad * precio;
             return {
+              solicitud_detalle_id: Number(detalle.id) || null,
               articulo_id: Number(detalle.articulo_id),
               descripcion: detalle.descripcion ?? "",
               unidad_medida: detalle.unidad_medida ?? "UN",
@@ -559,7 +590,6 @@ const WizardCreateComponent = ({
               total_linea: subtotal,
               centro_costo_id: solicitud?.centro_costo_id ?? null,
               oportunidad_id: solicitud?.oportunidad_id ?? null,
-              po_solicitud_id: solicitud?.id ?? null,
             };
           });
         });
@@ -646,18 +676,20 @@ const WizardCreateComponent = ({
                       ? Number(cantidadValue) || undefined
                       : undefined
                 }
-                precioValue={
-                  typeof precioValue === "number"
-                    ? precioValue
-                    : typeof precioValue === "string"
-                      ? Number(precioValue) || undefined
-                      : undefined
-                }
-                centroCostoIdValue={String(centroCostoIdValue ?? "")}
-                oportunidadIdValue={String(oportunidadIdValue ?? "")}
-                register={register}
-                setValue={setValue}
-              />
+                  precioValue={
+                    typeof precioValue === "number"
+                      ? precioValue
+                      : typeof precioValue === "string"
+                        ? Number(precioValue) || undefined
+                        : undefined
+                  }
+                  centroCostoIdValue={String(centroCostoIdValue ?? "")}
+                  oportunidadIdValue={String(oportunidadIdValue ?? "")}
+                  tipoSolicitudIdValue={String(tipoSolicitudIdValue ?? "")}
+                  articuloFilterId={articuloFilterId}
+                  register={register}
+                  setValue={setValue}
+                />
             )}
 
             <WizardNavigation

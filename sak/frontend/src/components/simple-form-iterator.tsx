@@ -51,6 +51,7 @@ type GetItemLabelFunc = (index: number) => string | ReactElement;
 export const SimpleFormIterator = (props: SimpleFormIteratorProps) => {
   const {
     addButton = defaultAddItemButton,
+    clearButton,
     removeButton,
     reOrderButtons,
     children,
@@ -102,6 +103,10 @@ export const SimpleFormIterator = (props: SimpleFormIteratorProps) => {
       initialDefaultValue.current[k] = null;
     }
   }
+
+  const handleClearClick = useCallback(() => {
+    setConfirmIsOpen(true);
+  }, []);
 
   const addField = useCallback(
     (item: any = undefined) => {
@@ -205,7 +210,14 @@ export const SimpleFormIterator = (props: SimpleFormIteratorProps) => {
                   onConfirm={handleArrayClear}
                   onClose={() => setConfirmIsOpen(false)}
                 />
-                <ClearArrayButton onClick={() => setConfirmIsOpen(true)} />
+                {clearButton
+                  ? React.cloneElement(clearButton, {
+                      onClick: (event: any) => {
+                        clearButton.props.onClick?.(event);
+                        handleClearClick();
+                      },
+                    })
+                  : <ClearArrayButton onClick={handleClearClick} />}
               </>
             )}
           </div>
@@ -217,6 +229,7 @@ export const SimpleFormIterator = (props: SimpleFormIteratorProps) => {
 
 export interface SimpleFormIteratorProps extends Partial<UseFieldArrayReturn> {
   addButton?: ReactElement;
+  clearButton?: ReactElement;
   children?: ReactElement | ReactElement[];
   className?: string;
   readOnly?: boolean;

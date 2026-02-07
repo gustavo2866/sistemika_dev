@@ -4,7 +4,8 @@
 
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useDataProvider } from "ra-core";
 import { type UseFormReturn } from "react-hook-form";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -41,7 +42,7 @@ import { TEXT_LIMITS, truncateText } from "./transformers";
 
 export type DetalleFormValues = {
   articulo_id: string;
-  po_solicitud_id: string;
+  solicitud_detalle_id: string;
   oportunidad_id: string;
   descripcion: string;
   unidad_medida: string;
@@ -82,6 +83,7 @@ export const PoOrdenCompraDetalleCard = ({
     oportunidad_id?: number | null;
   };
 }) => {
+  const dataProvider = useDataProvider();
   const { getReferenceLabel } = useFormDetalle();
   const {
     articuloTitle,
@@ -90,6 +92,50 @@ export const PoOrdenCompraDetalleCard = ({
     showVerMas,
     summaryFields,
   } = buildDetalleCardView(item, getReferenceLabel);
+  const solicitudDetalleId = item.solicitud_detalle_id ?? null;
+  const [solicitudLabel, setSolicitudLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!solicitudDetalleId) {
+      setSolicitudLabel(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    dataProvider
+      .getOne("po-solicitud-detalles", { id: solicitudDetalleId })
+      .then(({ data }) => {
+        if (!mounted) return;
+        const solicitudId = Number((data as any)?.solicitud_id);
+        if (!Number.isFinite(solicitudId) || solicitudId <= 0) {
+          setSolicitudLabel(null);
+          return;
+        }
+        dataProvider
+          .getOne("po-solicitudes", { id: solicitudId })
+          .then(({ data: solicitud }) => {
+            if (!mounted) return;
+            const titulo = (solicitud as any)?.titulo;
+            setSolicitudLabel(
+              titulo ? `#${solicitudId} - ${titulo}` : `#${solicitudId}`
+            );
+          })
+          .catch(() => {
+            if (!mounted) return;
+            setSolicitudLabel(`#${solicitudId}`);
+          });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSolicitudLabel(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [dataProvider, solicitudDetalleId]);
   const itemCentro = item.centro_costo_id ?? null;
   const itemOportunidad = item.oportunidad_id ?? null;
   const headerCentro = imputacionDefaults?.centro_costo_id ?? null;
@@ -143,6 +189,11 @@ export const PoOrdenCompraDetalleCard = ({
                 Articulo sin descripcion
               </span>
             )}
+            {solicitudLabel ? (
+              <div className="mt-0.5 text-[7px] text-muted-foreground sm:text-[8px]">
+                Solicitud: {solicitudLabel}
+              </div>
+            ) : null}
           </div>
           <LineDeleteButton
             className="ml-auto"
@@ -214,6 +265,7 @@ export const PoOrdenCompraDetalleDialogContent = ({
   articuloFilterQuery,
   imputacionDefaults,
 }: PoOrdenCompraDetalleDialogContentProps) => {
+  const dataProvider = useDataProvider();
   const { resolveAction, dialogOpen } = useFormDetailSectionContext<
     DetalleFormValues,
     PoOrdenCompraDetalle
@@ -318,10 +370,64 @@ export const PoOrdenCompraDetalleDialogContent = ({
     </CompactFormField>
   );
 
+  const solicitudIdValue = detalleForm.watch("solicitud_detalle_id");
+  const [solicitudLabel, setSolicitudLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!solicitudIdValue) {
+      setSolicitudLabel(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    dataProvider
+      .getOne("po-solicitud-detalles", { id: solicitudIdValue })
+      .then(({ data }) => {
+        if (!mounted) return;
+        const solicitudId = Number((data as any)?.solicitud_id);
+        if (!Number.isFinite(solicitudId) || solicitudId <= 0) {
+          setSolicitudLabel(null);
+          return;
+        }
+        dataProvider
+          .getOne("po-solicitudes", { id: solicitudId })
+          .then(({ data: solicitud }) => {
+            if (!mounted) return;
+            const titulo = (solicitud as any)?.titulo;
+            setSolicitudLabel(
+              titulo ? `#${solicitudId} - ${titulo}` : `#${solicitudId}`
+            );
+          })
+          .catch(() => {
+            if (!mounted) return;
+            setSolicitudLabel(`#${solicitudId}`);
+          });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSolicitudLabel(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [dataProvider, solicitudIdValue]);
+  const solicitudInfo = (
+    <div className="text-[9px] text-muted-foreground sm:text-[10px]">
+      Solicitud: {solicitudLabel ?? "-"}
+    </div>
+  );
+
   const formSections = [
     {
       columns: 1 as const,
-      fields: [{ component: articuloField }, { component: descripcionField }],
+      fields: [
+        { component: articuloField },
+        { component: descripcionField },
+        { component: solicitudInfo },
+      ],
     },
     {
       columns: 1 as const,

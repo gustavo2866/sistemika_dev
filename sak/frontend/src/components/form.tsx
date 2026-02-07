@@ -149,16 +149,8 @@ export const FormError = ({ className, ...props }: React.ComponentProps<"p">) =>
     return null;
   }
 
-  return (
-    <p
-      data-slot="form-message"
-      id={formMessageId}
-      className={cn("text-destructive text-sm", className)}
-      {...props}
-    >
-      <ValidationError error={err} />
-    </p>
-  );
+  // Hide error text; rely on red styling of the field only
+  return null;
 };
 
 export const SaveButton = <RecordType extends RaRecord = RaRecord>(

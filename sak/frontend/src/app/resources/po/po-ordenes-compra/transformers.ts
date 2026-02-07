@@ -65,7 +65,7 @@ type NormalizedDetallePayload = {
   total_linea: number;
   centro_costo_id: number | null;
   oportunidad_id: number | null;
-  po_solicitud_id: number | null;
+  solicitud_detalle_id: number | null;
 };
 
 export const buildPoOrdenCompraPayload = (
@@ -129,7 +129,7 @@ export const buildPoOrdenCompraPayload = (
         total_linea: totalLinea,
         centro_costo_id: normalizeIdValue(detalle.centro_costo_id) ?? null,
         oportunidad_id: normalizeIdValue(detalle.oportunidad_id) ?? null,
-        po_solicitud_id: normalizeIdValue(detalle.po_solicitud_id) ?? null,
+        solicitud_detalle_id: normalizeIdValue(detalle.solicitud_detalle_id) ?? null,
       };
     })
     .filter((detalle): detalle is NormalizedDetallePayload => Boolean(detalle));

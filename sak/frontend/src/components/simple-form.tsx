@@ -5,8 +5,9 @@ import { cn } from "@/lib/utils";
 import { CancelButton } from "@/components/cancel-button";
 import { SaveButton } from "@/components/form";
 import { FormHeaderDensityProvider, type FormHeaderDensity } from "@/components/forms/form-header-density-context";
+import type { FieldValues } from "react-hook-form";
 
-export const SimpleForm = ({
+export const SimpleForm = <TFieldValues extends FieldValues = FieldValues>({
   children,
   className,
   toolbar = defaultFormToolbar,
@@ -17,7 +18,7 @@ export const SimpleForm = ({
   className?: string;
   toolbar?: ReactNode;
   sectionHeaderDensity?: FormHeaderDensity;
-} & FormProps) => (
+} & FormProps<TFieldValues>) => (
   <Form
     className={cn("flex w-full max-w-lg flex-col gap-3 sm:gap-4", className)}
     {...rest}

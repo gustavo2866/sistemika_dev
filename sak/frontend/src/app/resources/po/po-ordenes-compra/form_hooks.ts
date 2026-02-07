@@ -333,7 +333,7 @@ const buildDetalleFromWizard = (
     total_linea: subtotal,
     centro_costo_id: payload.centroCostoId ?? null,
     oportunidad_id: payload.oportunidadId ?? null,
-    po_solicitud_id: null,
+    solicitud_detalle_id: null,
   };
 };
 

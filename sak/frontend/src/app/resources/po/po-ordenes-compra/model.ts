@@ -167,7 +167,7 @@ export type WizardPayload = {
     total_linea?: number | null;
     centro_costo_id?: number | null;
     oportunidad_id?: number | null;
-    po_solicitud_id?: number | null;
+    solicitud_detalle_id?: number | null;
   }>;
   tipoCompra: string | null;
   articuloId: number | null;
@@ -187,7 +187,7 @@ export type WizardCreatePayload = {
   tipo_solicitud_id: number | null;
   departamento_id: number | null;
   centro_costo_id: number | null;
-  po_solicitud_id?: number | null;
+  solicitud_detalle_id?: number | null;
   tipo_compra: string | null;
   estado?: string | null;
   proveedor_id: number | null;
@@ -209,7 +209,7 @@ export type WizardCreatePayload = {
     total_linea: number;
     centro_costo_id: number | null;
     oportunidad_id: number | null;
-    po_solicitud_id: number | null;
+    solicitud_detalle_id: number | null;
   }>;
 };
 
@@ -239,7 +239,7 @@ export type PoOrdenCompraPayload = {
     total_linea?: number | string | null;
     centro_costo_id?: number | string | null;
     oportunidad_id?: number | string | null;
-    po_solicitud_id?: number | string | null;
+    solicitud_detalle_id?: number | string | null;
   }>;
 };
 
@@ -248,7 +248,7 @@ export type PoOrdenCompraDetalle = {
   tempId?: number;
   orden_compra_id?: number;
   articulo_id?: number | null;
-  po_solicitud_id?: number | null;
+  solicitud_detalle_id?: number | null;
   oportunidad_id?: number | null;
   descripcion: string;
   unidad_medida?: string | null;
@@ -523,7 +523,7 @@ export const poOrdenCompraCabeceraSchema = createEntitySchema<
 export const poOrdenCompraDetalleSchema = createDetailSchema<
   {
     articulo_id: string;
-    po_solicitud_id: string;
+    solicitud_detalle_id: string;
     oportunidad_id: string;
     descripcion: string;
     unidad_medida: string;
@@ -545,9 +545,9 @@ export const poOrdenCompraDetalleSchema = createDetailSchema<
       required: true,
       defaultValue: "",
     }),
-    po_solicitud_id: referenceField({
-      resource: PO_SOLICITUDES_REFERENCE.resource,
-      labelField: PO_SOLICITUDES_REFERENCE.labelField,
+    solicitud_detalle_id: referenceField({
+      resource: "po-solicitud-detalles",
+      labelField: "descripcion",
       required: false,
       defaultValue: "",
     }),

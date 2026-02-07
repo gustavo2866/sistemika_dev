@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FormProvider,
   useForm,
@@ -58,9 +58,10 @@ import {
   useArticuloById,
   useDepartamentoById,
   useProveedorById,
+  useTipoSolicitudCatalog,
   useUserById,
 } from "../shared/po-hooks";
-import { useWizardCancel } from "../shared/po-hooks";
+import { useArticuloFilterByTipoSolicitud, useWizardCancel } from "../shared/po-hooks";
 
 //******************************* */
 // region 1. TIPOS
@@ -219,12 +220,16 @@ const WizardDetailStep = ({
   articuloIdValue,
   cantidadValue,
   precioValue,
+  tipoSolicitudIdValue,
+  articuloFilterId,
   register,
   setValue,
 }: {
   articuloIdValue: string | undefined;
   cantidadValue: number | undefined;
   precioValue: number | undefined;
+  tipoSolicitudIdValue: string | undefined;
+  articuloFilterId?: number;
   register: UseFormRegister<WizardValues>;
   setValue: ReturnType<typeof useForm<WizardValues>>["setValue"];
 }) => (
@@ -240,6 +245,8 @@ const WizardDetailStep = ({
               setValue("articuloId", value, { shouldDirty: true })
             }
             placeholder="Selecciona articulo"
+            filter={articuloFilterId ? { tipo_articulo_id: articuloFilterId } : {}}
+            dependsOn={tipoSolicitudIdValue ?? "tipo-solicitud"}
             clearable
           />
           <HiddenField
@@ -367,6 +374,24 @@ const WizardCreateComponent = ({
     solicitanteDepartamentoIdValue
   );
 
+  const { tiposSolicitudCatalog } = useTipoSolicitudCatalog();
+  const { articuloFilterId } = useArticuloFilterByTipoSolicitud({
+    tipoSolicitudId: tipoSolicitudIdValue ? String(tipoSolicitudIdValue) : undefined,
+    tiposSolicitudCatalog,
+  });
+
+  const prevTipoSolicitudRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const currentTipo = tipoSolicitudIdValue ? String(tipoSolicitudIdValue) : undefined;
+    if (prevTipoSolicitudRef.current && prevTipoSolicitudRef.current !== currentTipo) {
+      setValue("articuloId", "", { shouldDirty: true, shouldValidate: true });
+      setValue("cantidad", 1, { shouldDirty: true, shouldValidate: true });
+      setValue("precio", 0, { shouldDirty: true, shouldValidate: true });
+      setValue("descripcion", "", { shouldDirty: true, shouldValidate: true });
+    }
+    prevTipoSolicitudRef.current = currentTipo;
+  }, [setValue, tipoSolicitudIdValue]);
+
   const articuloId = normalizeId(String(articuloIdValue ?? ""));
   const { data: articuloData } = useArticuloById(articuloId);
 
@@ -483,6 +508,8 @@ const WizardCreateComponent = ({
         articuloIdValue={String(articuloIdValue ?? "")}
         cantidadValue={typeof cantidadValue === 'number' ? cantidadValue : (typeof cantidadValue === 'string' ? Number(cantidadValue) || undefined : undefined)}
         precioValue={typeof precioValue === 'number' ? precioValue : (typeof precioValue === 'string' ? Number(precioValue) || undefined : undefined)}
+        tipoSolicitudIdValue={String(tipoSolicitudIdValue ?? "")}
+        articuloFilterId={articuloFilterId}
         register={register}
         setValue={setValue}
               />

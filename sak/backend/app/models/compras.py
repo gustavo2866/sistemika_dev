@@ -61,7 +61,7 @@ class PoSolicitud(Base, table=True):
 
     __searchable_fields__: ClassVar[List[str]] = ["titulo", "comentario"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
-    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "detalles"]
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "tipo_solicitud", "detalles"]
 
     titulo: str = Field(
         max_length=200,
@@ -120,6 +120,7 @@ class PoSolicitud(Base, table=True):
     solicitante: "User" = Relationship()
     centro_costo: Optional["CentroCosto"] = Relationship()
     proveedor: Optional["Proveedor"] = Relationship()
+    tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
     detalles: List["PoSolicitudDetalle"] = Relationship(
         back_populates="solicitud",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
@@ -169,6 +170,45 @@ class PoSolicitudDetalle(Base, table=True):
 
     solicitud: "PoSolicitud" = Relationship(back_populates="detalles")
     articulo: Optional["Articulo"] = Relationship()
+    ordenes_compra_detalles: List["PoOrdenCompraDetalle"] = Relationship(back_populates="solicitud_detalle")
+
+
+class PoOrderStatus(Base, table=True):
+    """Estados de órdenes (modulo PO)."""
+
+    __tablename__ = "po_order_status"
+
+    __searchable_fields__ = ["nombre", "descripcion"]
+
+    nombre: str = Field(
+        max_length=50,
+        description="Nombre del estado",
+        nullable=False,
+        unique=True,
+    )
+    descripcion: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Descripción del estado",
+    )
+    orden: int = Field(
+        description="Orden de visualización",
+        nullable=False,
+    )
+    activo: bool = Field(
+        default=True,
+        description="Si el estado está activo",
+    )
+    es_inicial: bool = Field(
+        default=False,
+        description="Si es el estado inicial por defecto",
+    )
+    es_final: bool = Field(
+        default=False,
+        description="Si es un estado final",
+    )
+
+    orders: List["PoOrder"] = Relationship(back_populates="order_status")
 
 
 class PoOrdenCompra(Base, table=True):
@@ -178,7 +218,7 @@ class PoOrdenCompra(Base, table=True):
 
     __searchable_fields__ = ["titulo"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
-    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "usuario_responsable", "detalles"]
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "usuario_responsable", "tipo_solicitud", "detalles"]
 
     titulo: str = Field(max_length=50, description="Titulo de orden de compra")
 
@@ -254,7 +294,7 @@ class PoOrdenCompraDetalle(Base, table=True):
     __tablename__ = "po_orden_compra_detalles"
 
     __searchable_fields__ = ["descripcion"]
-    __auto_include_relations__: ClassVar[List[str]] = ["articulo"]
+    __auto_include_relations__: ClassVar[List[str]] = ["articulo", "solicitud_detalle"]
 
     descripcion: str = Field(max_length=500, description="Descripcion del producto/servicio")
     cantidad: Decimal = Field(sa_column=Column(DECIMAL(10, 3)), description="Cantidad")
@@ -289,10 +329,16 @@ class PoOrdenCompraDetalle(Base, table=True):
         foreign_key="crm_oportunidades.id",
         description="ID de la oportunidad CRM asociada"
     )
+    solicitud_detalle_id: Optional[int] = Field(
+        default=None,
+        foreign_key="po_solicitud_detalles.id",
+        description="ID del detalle de solicitud origen (opcional)"
+    )
 
     orden_compra: "PoOrdenCompra" = Relationship(back_populates="detalles")
     articulo: Optional["Articulo"] = Relationship()
     centro_costo: Optional["CentroCosto"] = Relationship()
+    solicitud_detalle: Optional["PoSolicitudDetalle"] = Relationship()
 
 
 class PoFactura(Base, table=True):
@@ -456,3 +502,121 @@ class PoFacturaTotal(Base, table=True):
     factura: "PoFactura" = Relationship(back_populates="totales")
     concepto: "AdmConcepto" = Relationship()
     centro_costo: Optional["CentroCosto"] = Relationship()
+
+
+class PoOrder(Base, table=True):
+    """Orden (modulo PO) - Similar a PoSolicitud."""
+
+    __tablename__ = "po_orders"
+
+    __searchable_fields__: ClassVar[List[str]] = ["titulo", "comentario"]
+    __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "tipo_solicitud", "detalles"]
+
+    titulo: str = Field(
+        max_length=200,
+        description="Título de la orden",
+        nullable=False,
+    )
+    tipo_solicitud_id: int = Field(
+        foreign_key="tipos_solicitud.id",
+        description="Identificador del tipo de solicitud",
+    )
+    departamento_id: int = Field(
+        foreign_key="departamentos.id",
+        description="Identificador del departamento",
+    )
+    order_status_id: int = Field(
+        foreign_key="po_order_status.id",
+        description="Identificador del estado de la orden",
+    )
+    total: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
+        description="Total estimado de la orden",
+    )
+    fecha_necesidad: Optional[date] = Field(
+        default=None,
+        description="Fecha requerida"
+    )
+    comentario: Optional[str] = Field(
+        default=None,
+        max_length=1000,
+        description="Comentario adicional",
+    )
+    solicitante_id: int = Field(
+        foreign_key="users.id",
+        description="Identificador del usuario solicitante",
+    )
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo imputado",
+    )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        index=True,
+        description="Oportunidad CRM asociada",
+    )
+    proveedor_id: Optional[int] = Field(
+        default=None,
+        foreign_key="proveedores.id",
+        index=True,
+        description="Proveedor sugerido",
+    )
+
+    solicitante: "User" = Relationship()
+    centro_costo: Optional["CentroCosto"] = Relationship()
+    proveedor: Optional["Proveedor"] = Relationship()
+    tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
+    order_status: "PoOrderStatus" = Relationship(back_populates="orders")
+    detalles: List["PoOrderDetail"] = Relationship(
+        back_populates="order",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class PoOrderDetail(Base, table=True):
+    """Items asociados a una orden (modulo PO) - Similar a PoSolicitudDetalle."""
+
+    __tablename__ = "po_order_details"
+
+    __searchable_fields__ = ["descripcion"]
+    __auto_include_relations__: ClassVar[List[str]] = ["articulo"]
+
+    order_id: int = Field(
+        foreign_key="po_orders.id",
+        description="Orden a la que pertenece el detalle",
+    )
+    articulo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="articulos.id",
+        description="Articulo sugerido",
+    )
+    descripcion: str = Field(
+        max_length=500,
+        description="Descripcion de la necesidad",
+    )
+    unidad_medida: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="Unidad de medida solicitada",
+    )
+    cantidad: Decimal = Field(
+        sa_column=Column(DECIMAL(12, 3), nullable=False),
+        description="Cantidad solicitada",
+    )
+    precio: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
+        description="Precio unitario",
+    )
+    importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
+        description="Importe total (cantidad x precio)",
+    )
+
+    order: "PoOrder" = Relationship(back_populates="detalles")
+    articulo: Optional["Articulo"] = Relationship()

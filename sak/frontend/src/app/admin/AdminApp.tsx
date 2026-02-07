@@ -37,6 +37,7 @@ import {
   HandCoins,
   MessageCircle,
   Settings,
+  ClipboardList,
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -93,6 +94,12 @@ import {
   PoSolicitudEdit,
   PoSolicitudShow,
 } from "@/app/resources/po/po-solicitudes";
+import {
+  PoOrderList,
+  PoOrderCreate,
+  PoOrderEdit,
+  PoOrderShow,
+} from "@/app/resources/po-orders";
 import {
   PoOrdenCompraList,
   PoOrdenCompraCreate,
@@ -401,6 +408,16 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={ListChecks}
         options={{ label: "Solicitudes" }}
+      />
+      <Resource
+        name="po-orders"
+        list={PoOrderList}
+        create={PoOrderCreate}
+        edit={PoOrderEdit}
+        show={PoOrderShow}
+        recordRepresentation="titulo"
+        icon={ClipboardList}
+        options={{ label: "Órdenes" }}
       />
       <Resource
         name="po-ordenes-compra"
