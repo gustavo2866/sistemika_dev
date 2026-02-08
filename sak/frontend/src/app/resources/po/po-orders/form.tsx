@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   required,
-  useInput,
-  useSimpleFormIterator,
   useSimpleFormIteratorItem,
-  useWrappedSource,
 } from "ra-core";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFormContext, useWatch } from "react-hook-form";
+import { useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
+import { CalculatedImporte, DetalleDeleteButton, DetalleFooterButtons, DetalleHeaderActions, DetalleToggleButton, HiddenInput, SectionCard, TotalCompute } from "@/components/forms/form_order";
 import { FormOrderToolbar } from "@/components/forms";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
@@ -20,30 +18,17 @@ import { AutocompleteInput } from "@/components/autocomplete-input";
 import { SelectInput } from "@/components/select-input";
 import { ArrayInput } from "@/components/array-input";
 import { SimpleFormIterator } from "@/components/simple-form-iterator";
-import { NumberField } from "@/components/number-field";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { ChevronDown, ChevronUp, PlusCircle, Trash, XCircle } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 
 import {
   computeDetalleImporte,
   computePoOrderTotal,
   poOrderSchema,
+  unidadMedidaChoices,
 } from "./model";
 import type { PoOrderFormValues } from "./model";
 import { usePoOrderDefaults, useTipoSolicitudChangeGuard } from "./form_hooks";
-
-const unidadMedidaChoices = [
-  { id: "UN", name: "Unidad" },
-  { id: "KG", name: "Kilogramo" },
-  { id: "LT", name: "Litro" },
-] as const;
-
-const HiddenInput = ({ source }: { source: string }) => {
-  const { field } = useInput({ source });
-  return <input type="hidden" {...field} />;
-};
 
 export const PoOrderForm = () => (
   <SimpleForm<PoOrderFormValues>
@@ -67,41 +52,15 @@ const PoOrderFormFields = () => {
   return (
     <>
 
-      <Card className="border border-border w-full pt-2 pb-2">
-        <CardContent className="px-3 pt-0 pb-0">
-          <div
-            className="flex items-center justify-between cursor-pointer group hover:text-primary"
-            onClick={() => setShowHeader((v) => !v)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setShowHeader((v) => !v);
-              }
-            }}
-          >
-            <div className="text-sm font-bold text-foreground group-hover:text-primary mb-2">
-              Cabecera
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowHeader((v) => !v);
-              }}
-              aria-label={showHeader ? "Ocultar cabecera" : "Mostrar cabecera"}
-              title={showHeader ? "Ocultar cabecera" : "Mostrar cabecera"}
-            >
-              {showHeader ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-          </div>
-          {showHeader ? (
-            <>
-              <div className="flex flex-col gap-1 md:flex-row md:items-end text-[11px] [&_[data-slot=form-item]]:gap-0 [&_[data-slot=form-item]]:sm:gap-0 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:mb-0 [&_label]:leading-none [&_label+*]:mt-0 [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6">
+      <SectionCard
+        title="Cabecera"
+        isOpen={showHeader}
+        onToggle={() => setShowHeader((v) => !v)}
+        cardClassName="pt-2 pb-2"
+        contentClassName="px-3 pt-0 pb-0"
+        titleClassName="mb-2"
+      >
+        <div className="flex flex-col gap-1 md:flex-row md:items-end text-[11px] [&_[data-slot=form-item]]:gap-0 [&_[data-slot=form-item]]:sm:gap-0 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:mb-0 [&_label]:leading-none [&_label+*]:mt-0 [&_input]:text-[11px] [&_input]:h-6 [&_[role=combobox]]:h-6">
             <div className="w-full md:w-[220px]">
               <TextInput source="titulo" label="Titulo" validate={required()} />
             </div>
@@ -149,41 +108,29 @@ const PoOrderFormFields = () => {
             <div className="flex flex-col gap-1 md:pb-1" />
           </div>
 
-              {/* Always compute total for validation/payload, but only display it inside the toggle */}
-              <TotalCompute />
-              <HiddenInput source="total" />
+          {/* Always compute total for validation/payload, but only display it inside the toggle */}
+          <TotalCompute computeTotal={computePoOrderTotal} />
+          <HiddenInput source="total" />
 
-              <OptionalHeaderFields showOptional={showOptional} />
-            </>
-          ) : null}
-        </CardContent>
-      </Card>
+          <OptionalHeaderFields showOptional={showOptional} />
+      </SectionCard>
 
-      <Card className="border border-border w-full pt-2">
-        <CardContent className="px-3 pt-0 pb-2">
-          <div
-            className="flex items-center justify-between cursor-pointer group hover:text-primary"
-            onClick={() => setShowDetalle((v) => !v)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setShowDetalle((v) => !v);
-              }
-            }}
-          >
-            <div className="text-sm font-bold text-foreground group-hover:text-primary mb-0">
-              Detalle
-            </div>
-            <DetalleHeaderActions
-              showDetalle={showDetalle}
-              setShowDetalle={setShowDetalle}
-            />
-          </div>
-          {showDetalle ? <DetalleScrollable articuloFilter={articuloFilter} /> : null}
-        </CardContent>
-      </Card>
+      <SectionCard
+        title="Detalle"
+        isOpen={showDetalle}
+        onToggle={() => setShowDetalle((v) => !v)}
+        cardClassName="pt-2"
+        contentClassName="px-3 pt-0 pb-2"
+        titleClassName="mb-0"
+        headerActions={
+          <DetalleHeaderActions
+            showDetalle={showDetalle}
+            setShowDetalle={setShowDetalle}
+          />
+        }
+      >
+        <DetalleScrollable articuloFilter={articuloFilter} />
+      </SectionCard>
 
       <Confirm
         isOpen={confirmOpen}
@@ -293,7 +240,7 @@ const DetalleScrollable = ({
         <ArrayInput source="detalles" label={false}>
           <SimpleFormIterator
             inline
-            addButton={<DetalleFooterButtons />}
+            addButton={<DetalleFooterButtonsWrapper />}
             disableClear
             disableReordering
             disableRemove
@@ -303,116 +250,6 @@ const DetalleScrollable = ({
           </SimpleFormIterator>
         </ArrayInput>
       </div>
-    </div>
-  );
-};
-
-const DetalleFooterButtons = () => {
-  const { add } = useSimpleFormIterator();
-
-  return (
-    <>
-      <div className="mt-1 hidden sm:flex w-full items-center gap-2">
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          className="gap-1 text-[10px] w-full sm:w-[220px] h-6"
-          onClick={() => add({ unidad_medida: "UN" })}
-        >
-          <PlusCircle className="h-4 w-4" />
-          Agregar
-        </Button>
-        <div className="hidden sm:block ml-auto w-[28px]" />
-        <div className="hidden sm:block w-[28px]" />
-      </div>
-      <div className="sm:hidden fixed bottom-2 left-[42%] -translate-x-1/2 z-30">
-        <Button
-          type="button"
-          variant="default"
-          size="icon"
-          className="h-8 w-8 rounded-full shadow-lg"
-          onClick={() => add({ unidad_medida: "UN" })}
-          aria-label="Agregar linea"
-          title="Agregar linea"
-        >
-          <PlusCircle className="h-3 w-3" />
-        </Button>
-      </div>
-    </>
-  );
-};
-
-const DetalleHeaderActions = ({
-  showDetalle,
-  setShowDetalle,
-}: {
-  showDetalle: boolean;
-  setShowDetalle: React.Dispatch<React.SetStateAction<boolean>>;
-}) => {
-  const { getValues, setValue } = useFormContext();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const detalles = useWatch({ name: "detalles" }) as unknown[] | undefined;
-  const hasDetalles = (detalles ?? []).length > 0;
-
-  const handleClear = () => {
-    setValue("detalles", [], { shouldDirty: true, shouldValidate: true });
-    setConfirmOpen(false);
-  };
-
-  const handleAdd = () => {
-    const current = (getValues("detalles") as unknown[]) ?? [];
-    setValue("detalles", [...current, {}], { shouldDirty: true, shouldValidate: true });
-  };
-
-  return (
-    <div
-      className="flex items-center gap-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="gap-1 text-[9px] text-primary h-6 px-2"
-        onClick={handleAdd}
-        tabIndex={-1}
-      >
-        <PlusCircle className="h-3 w-3" />
-        Agregar
-      </Button>
-      {hasDetalles ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="gap-1 text-[9px] text-destructive h-6 px-2"
-          onClick={() => setConfirmOpen(true)}
-          tabIndex={-1}
-        >
-          <Trash className="h-3 w-3" />
-          Limpiar
-        </Button>
-      ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 text-muted-foreground"
-        onClick={() => setShowDetalle((v) => !v)}
-        aria-label={showDetalle ? "Ocultar detalle" : "Mostrar detalle"}
-        title={showDetalle ? "Ocultar detalle" : "Mostrar detalle"}
-        tabIndex={-1}
-      >
-        {showDetalle ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-      </Button>
-      <Confirm
-        isOpen={confirmOpen}
-        title="Limpiar detalle"
-        content="Se eliminaran todos los items. Deseas continuar?"
-        onConfirm={handleClear}
-        onClose={() => setConfirmOpen(false)}
-      />
     </div>
   );
 };
@@ -446,18 +283,10 @@ const DetalleRow = ({ articuloFilter }: { articuloFilter?: Record<string, unknow
                 />
               </ReferenceInput>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
+            <DetalleDeleteButton
               className="sm:hidden h-6 w-6 -mr-1"
               onClick={() => remove()}
-              aria-label="Eliminar linea"
-              title="Eliminar linea"
-              tabIndex={-1}
-            >
-              <XCircle className="h-4 w-4" />
-            </Button>
+            />
           </div>
         </div>
         <TextInput
@@ -495,54 +324,27 @@ const DetalleRow = ({ articuloFilter }: { articuloFilter?: Record<string, unknow
               <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
                 Importe
               </div>
-              <CalculatedImporte />
+              <CalculatedImporte computeImporte={computeDetalleImporte} />
               <HiddenInput source="importe" />
             </div>
           </div>
           <div className="flex items-end justify-end sm:hidden -mr-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => setShowOptional((v) => !v)}
-              aria-label={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
-              title={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
-              tabIndex={-1}
-            >
-              {showOptional ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
+          <DetalleToggleButton
+            show={showOptional}
+            onToggle={() => setShowOptional((v) => !v)}
+            tabIndex={-1}
+          />
           </div>
         </div>
         <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => setShowOptional((v) => !v)}
-            aria-label={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
-            title={showOptional ? "Ocultar detalle" : "Mostrar detalle"}
+          <DetalleToggleButton
+            show={showOptional}
+            onToggle={() => setShowOptional((v) => !v)}
             tabIndex={-1}
-          >
-            {showOptional ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
+          />
+          <DetalleDeleteButton
             onClick={() => remove()}
-            aria-label="Eliminar linea"
-            title="Eliminar linea"
-            tabIndex={-1}
-          >
-            <XCircle className="h-4 w-4" />
-          </Button>
+          />
         </div>
       </div>
       <DetalleOptionalFields showOptional={showOptional} />
@@ -572,48 +374,7 @@ const DetalleOptionalFields = ({ showOptional }: { showOptional: boolean }) => {
   );
 };
 
-const CalculatedImporte = () => {
-  const { setValue } = useFormContext();
-  const cantidadSource = useWrappedSource("cantidad");
-  const precioSource = useWrappedSource("precio");
-  const importeSource = useWrappedSource("importe");
-
-  const cantidad = useWatch({ name: cantidadSource }) as number | undefined;
-  const precio = useWatch({ name: precioSource }) as number | undefined;
-
-  const importe = useMemo(
-    () => computeDetalleImporte({ cantidad, precio }),
-    [cantidad, precio],
-  );
-
-  useEffect(() => {
-    setValue(importeSource, importe, { shouldDirty: true, shouldValidate: true });
-  }, [importeSource, importe, setValue]);
-
-  return (
-    <div className="flex flex-col w-[80px] sm:w-[84px] shrink-0">
-      <div className="flex h-5 sm:h-5 items-center justify-end rounded-md border border-border bg-muted/30 px-2 text-[9px] sm:text-[9px] font-medium text-right">
-        <NumberField
-          source="importe"
-          record={{ importe }}
-          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
-        />
-      </div>
-    </div>
-  );
-};
-
-const TotalCompute = () => {
-  const { setValue } = useFormContext();
-  const detalles = useWatch({ name: "detalles" }) as
-    | Array<{ importe?: unknown }>
-    | undefined;
-  const total = useMemo(() => computePoOrderTotal(detalles ?? []), [detalles]);
-
-  useEffect(() => {
-    setValue("total", total, { shouldDirty: true, shouldValidate: true });
-  }, [total, setValue]);
-
-  return null;
-};
+const DetalleFooterButtonsWrapper = () => (
+  <DetalleFooterButtons defaultValues={{ unidad_medida: "UN" }} />
+);
 

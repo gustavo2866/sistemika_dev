@@ -25,6 +25,14 @@ export { FormOrderBulkDeleteButton } from "./list/bulk/bulk_delete_button";
 export { FormOrderBulkExportButton } from "./list/bulk/bulk_export_button";
 export { FormOrderListRowActions } from "./list/actions/list_row_actions";
 export { ResponsiveDataTable } from "./list/responsive-data-table";
+export { HiddenInput } from "./form/hidden_input";
+export { SectionCard } from "./form/section_card";
+export { DetalleFooterButtons } from "./form/detalle_footer_buttons";
+export { CalculatedImporte } from "./form/calculated_importe";
+export { TotalCompute } from "./form/total_compute";
+export { DetalleHeaderActions } from "./form/detalle_header_actions";
+export { DetalleDeleteButton } from "./form/detalle_delete_button";
+export { DetalleToggleButton } from "./form/detalle_toggle_button";
 
 const baseButtonClasses =
   "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs gap-1";

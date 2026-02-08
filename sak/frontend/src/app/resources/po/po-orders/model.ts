@@ -97,3 +97,9 @@ export const computePoOrderTotal = (detalles: Array<{ importe?: unknown }>) => {
   }, 0);
   return Number(total.toFixed(2));
 };
+
+export const unidadMedidaChoices = [
+  { id: "UN", name: "Unidad" },
+  { id: "KG", name: "Kilogramo" },
+  { id: "LT", name: "Litro" },
+] as const;
