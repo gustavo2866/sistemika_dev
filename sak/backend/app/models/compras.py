@@ -511,7 +511,7 @@ class PoOrder(Base, table=True):
 
     __searchable_fields__: ClassVar[List[str]] = ["titulo", "comentario"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
-    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "tipo_solicitud", "detalles"]
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "tipo_solicitud", "order_status", "detalles"]
 
     titulo: str = Field(
         max_length=200,
@@ -594,7 +594,8 @@ class PoOrderDetail(Base, table=True):
         foreign_key="articulos.id",
         description="Articulo sugerido",
     )
-    descripcion: str = Field(
+    descripcion: Optional[str] = Field(
+        default=None,
         max_length=500,
         description="Descripcion de la necesidad",
     )

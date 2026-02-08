@@ -393,6 +393,27 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
             return mobileConfig.customCard(record);
           }
 
+          const visibleColumns = columns.filter(
+            ({ props }) => !isColumnHidden(props.source)
+          );
+          const actionColumnIndex = [...visibleColumns]
+            .reverse()
+            .findIndex(({ props }) => isActionColumn(props));
+          const actionColumn =
+            actionColumnIndex >= 0
+              ? visibleColumns[visibleColumns.length - 1 - actionColumnIndex]
+              : null;
+          const actionNode = actionColumn
+            ? renderColumnCell(
+                actionColumn.key ?? actionColumn.props.source ?? "actions",
+                actionColumn.props,
+                {
+                  hideLabel: true,
+                  className: "flex items-center justify-end",
+                }
+              )
+            : null;
+
           const primaryNode = mobileConfig.primaryField
             ? (() => {
                 const column = columnMap.get(mobileConfig.primaryField!);
@@ -427,19 +448,31 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
               ?.map((field) => {
                 const column = columnMap.get(field);
                 if (column) {
-                  return renderColumnCell(
+                  const content = renderInlineColumnCell(
                     `${field}-secondary`,
                     column,
-                    { hideLabel: true, className: "text-sm text-muted-foreground" }
+                    { className: "inline-flex items-center text-[8px]" }
+                  );
+                  if (!content) return null;
+                  return (
+                    <div
+                      key={`${field}-secondary`}
+                      className="flex items-center gap-1 text-[8px] text-muted-foreground leading-tight [&_*]:text-[8px]"
+                    >
+                      <span className="font-medium">{column.label ?? humanize(field)}:</span>
+                      {content}
+                    </div>
                   );
                 }
                 const raw = getRecordValue(field);
                 if (raw == null || raw === "") return null;
+                const label = humanize(field);
                 return (
                   <div
                     key={`${field}-secondary`}
-                    className="text-sm text-muted-foreground"
+                    className="flex items-center gap-1 text-[8px] text-muted-foreground leading-tight [&_*]:text-[8px]"
                   >
+                    <span className="font-medium">{label}:</span>
                     {String(raw)}
                   </div>
                 );
@@ -495,8 +528,11 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
               .filter(Boolean) ?? [];
 
           return (
-            <div className="space-y-2">
-              {primaryNode}
+            <div className="space-y-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">{primaryNode}</div>
+                {actionNode}
+              </div>
               {badgeNode ? <div>{badgeNode}</div> : null}
               {secondaryNodes.length > 0 && (
                 <div className="space-y-0.5">{secondaryNodes}</div>
@@ -532,13 +568,13 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                 handleClick();
               }}
             >
-              <div className="flex items-start gap-3 px-3 py-1">
+              <div className="flex items-center gap-3 px-3 py-1">
                 {hasBulkActions && (
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={handleToggle}
                     onClick={(e) => e.stopPropagation()}
-                    className="mt-1"
+                    className="mt-0 h-3.5 w-3.5"
                     aria-label="Seleccionar registro"
                   />
                 )}

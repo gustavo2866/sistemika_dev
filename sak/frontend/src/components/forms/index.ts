@@ -37,6 +37,14 @@ export { CompactFormGrid } from "./compact/compact-form-grid";
 export { CompactTextInput } from "./compact/compact-text-input";
 export { CompactDateInput } from "./compact/compact-date-input";
 export { CompactNumberInput } from "./compact/compact-number-input";
+export {
+  FormOrderToolbar,
+  FormOrderCancelButton,
+  FormOrderSaveButton,
+  FormOrderDeleteButton,
+  FormOrderShowButton,
+  FormOrderEditActions,
+} from "./form_order";
 
 // Types
 export type { FormSection, FormLayoutProps } from "./form-layout";

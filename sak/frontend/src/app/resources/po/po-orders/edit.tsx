@@ -3,8 +3,10 @@
 import { Edit } from "@/components/edit";
 import { useEditContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { PoOrderForm } from "./form";
-import { computeDetalleImporte, computePoOrderTotal } from "./model";
+import { FormOrderEditActions } from "@/components/forms";
+import { computeDetalleImporte, computePoOrderTotal, getOrderStatusBadgeClass } from "./model";
 
 const PoOrderEditTitle = () => {
   const { record } = useEditContext();
@@ -18,7 +20,7 @@ const PoOrderEditTitle = () => {
       <Badge variant="outline" className="text-[11px]">
         #{formattedId}
       </Badge>
-      <Badge variant="secondary" className="text-[11px]">
+      <Badge variant="secondary" className={cn("text-[11px]", getOrderStatusBadgeClass(status))}>
         {status}
       </Badge>
       <Badge variant="outline" className="text-[11px]">
@@ -32,6 +34,7 @@ export const PoOrderEdit = () => (
   <Edit
     redirect="list"
     title={<PoOrderEditTitle />}
+    actions={<FormOrderEditActions />}
     transform={(data: any) => {
       const detalles = (data.detalles ?? []).map((d: any) => ({
         ...d,

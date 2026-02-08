@@ -32,7 +32,7 @@ import {
   useTranslateLabel,
 } from "ra-core";
 import { useNavigate } from "react-router";
-import { ArrowDownAZ, ArrowUpZA } from "lucide-react";
+import { ArrowDownAZ, ArrowUpZA, ChevronDown, ChevronUp } from "lucide-react";
 import get from "lodash/get";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -424,8 +424,8 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
           {columns}
         </DataTableMobileView>
       ) : (
-        <div className={cn("rounded-md border", className)}>
-          <Table className="table-fixed">
+        <div className={cn("w-full rounded-md border", className)}>
+          <Table className="table-fixed w-full">
             <DataTableRenderContext.Provider value="header">
               <DataTableHead>{columns}</DataTableHead>
             </DataTableRenderContext.Provider>
@@ -690,6 +690,15 @@ function DataTableHeadCell<
     _: translate("ra.action.sort"),
   });
 
+  const isCompactSort =
+    (headerClassName && headerClassName.includes("compact-sort")) ||
+    (className && className.includes("compact-sort"));
+  const sortIconClass = isCompactSort ? "ml-0.5 h-3 w-3" : "ml-2 h-6 w-6";
+  const sortButtonClass = cn(
+    "-ml-3 -mr-3 h-8 data-[state=open]:bg-accent cursor-pointer",
+    isCompactSort && "-ml-1 -mr-1 h-5 px-0.5 gap-0.5"
+  );
+
   return (
     <TableHead className={cn(className, headerClassName)}>
       {handleSort && sort && !disableSort && source ? (
@@ -699,7 +708,7 @@ function DataTableHeadCell<
               <Button
                 variant="ghost"
                 size="sm"
-                className="-ml-3 -mr-3 h-8 data-[state=open]:bg-accent cursor-pointer"
+                className={sortButtonClass}
                 data-field={source}
                 onClick={handleSort}
               >
@@ -711,10 +720,16 @@ function DataTableHeadCell<
                   />
                 )}
                 {sort.field === source ? (
-                  sort.order === "ASC" ? (
-                    <ArrowDownAZ className="ml-2 h-6 w-6" />
+                  isCompactSort ? (
+                    sort.order === "ASC" ? (
+                      <ChevronDown className={sortIconClass} />
+                    ) : (
+                      <ChevronUp className={sortIconClass} />
+                    )
+                  ) : sort.order === "ASC" ? (
+                    <ArrowDownAZ className={sortIconClass} />
                   ) : (
-                    <ArrowUpZA className="ml-2 h-6 w-6" />
+                    <ArrowUpZA className={sortIconClass} />
                   )
                 ) : null}
                 {headerClassName?.includes("text-right") ? (

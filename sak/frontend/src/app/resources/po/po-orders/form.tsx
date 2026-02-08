@@ -12,6 +12,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
+import { FormOrderToolbar } from "@/components/forms";
 import { TextInput } from "@/components/text-input";
 import { NumberInput } from "@/components/number-input";
 import { ReferenceInput } from "@/components/reference-input";
@@ -49,6 +50,7 @@ export const PoOrderForm = () => (
     className="w-full max-w-3xl"
     // ra-core FormProps types resolver as Resolver<FieldValues>
     resolver={zodResolver(poOrderSchema) as any}
+    toolbar={<FormOrderToolbar />}
   >
     <PoOrderFormFields />
   </SimpleForm>
@@ -67,14 +69,30 @@ const PoOrderFormFields = () => {
 
       <Card className="border border-border w-full pt-2 pb-2">
         <CardContent className="px-3 pt-0 pb-0">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-bold text-foreground mb-2">Cabecera</div>
+          <div
+            className="flex items-center justify-between cursor-pointer group hover:text-primary"
+            onClick={() => setShowHeader((v) => !v)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowHeader((v) => !v);
+              }
+            }}
+          >
+            <div className="text-sm font-bold text-foreground group-hover:text-primary mb-2">
+              Cabecera
+            </div>
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-6 w-6 text-muted-foreground"
-              onClick={() => setShowHeader((v) => !v)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowHeader((v) => !v);
+              }}
               aria-label={showHeader ? "Ocultar cabecera" : "Mostrar cabecera"}
               title={showHeader ? "Ocultar cabecera" : "Mostrar cabecera"}
             >
@@ -143,8 +161,21 @@ const PoOrderFormFields = () => {
 
       <Card className="border border-border w-full pt-2">
         <CardContent className="px-3 pt-0 pb-2">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-bold text-foreground mb-0">Detalle</div>
+          <div
+            className="flex items-center justify-between cursor-pointer group hover:text-primary"
+            onClick={() => setShowDetalle((v) => !v)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowDetalle((v) => !v);
+              }
+            }}
+          >
+            <div className="text-sm font-bold text-foreground group-hover:text-primary mb-0">
+              Detalle
+            </div>
             <DetalleHeaderActions
               showDetalle={showDetalle}
               setShowDetalle={setShowDetalle}
@@ -266,7 +297,7 @@ const DetalleScrollable = ({
             disableClear
             disableReordering
             disableRemove
-            className="gap-0 [&_ul]:gap-2 sm:[&_ul]:gap-0 [&_li]:pb-0 [&_li]:gap-0 [&_li]:relative [&_li]:flex-col sm:[&_li]:flex-row [&_li]:items-stretch sm:[&_li]:items-center [&_.simple-form-iterator-item-actions]:!pt-0 [&_.simple-form-iterator-item-actions]:items-center [&_.simple-form-iterator-item-actions]:self-center [&_.simple-form-iterator-item-actions]:gap-0 [&_.simple-form-iterator-item-actions]:mt-0 [&_.simple-form-iterator-item-actions]:h-6 [&_.simple-form-iterator-item-actions]:-translate-y-[1px] [&_.simple-form-iterator-item-actions]:-ml-1 [&_.simple-form-iterator-item-actions>*]:-ml-3 [&_.simple-form-iterator-item-actions]:absolute [&_.simple-form-iterator-item-actions]:top-2 [&_.simple-form-iterator-item-actions]:right-2 sm:[&_.simple-form-iterator-item-actions]:static"
+            className="gap-0 [&_ul]:gap-2 sm:[&_ul]:gap-0 [&_li]:pb-0 [&_li]:gap-0 [&_li]:border-b-0 [&_li]:border-transparent [&_li]:relative [&_li]:flex-col sm:[&_li]:flex-row [&_li]:items-stretch sm:[&_li]:items-center [&_.simple-form-iterator-item-actions]:!pt-0 [&_.simple-form-iterator-item-actions]:items-center [&_.simple-form-iterator-item-actions]:self-center [&_.simple-form-iterator-item-actions]:gap-0 [&_.simple-form-iterator-item-actions]:mt-0 [&_.simple-form-iterator-item-actions]:h-6 [&_.simple-form-iterator-item-actions]:-translate-y-[1px] [&_.simple-form-iterator-item-actions]:-ml-1 [&_.simple-form-iterator-item-actions>*]:-ml-3 [&_.simple-form-iterator-item-actions]:absolute [&_.simple-form-iterator-item-actions]:top-2 [&_.simple-form-iterator-item-actions]:right-2 sm:[&_.simple-form-iterator-item-actions]:static"
           >
             <DetalleRow articuloFilter={articuloFilter} />
           </SimpleFormIterator>
@@ -287,7 +318,7 @@ const DetalleFooterButtons = () => {
           variant="default"
           size="sm"
           className="gap-1 text-[10px] w-full sm:w-[220px] h-6"
-          onClick={() => add()}
+          onClick={() => add({ unidad_medida: "UN" })}
         >
           <PlusCircle className="h-4 w-4" />
           Agregar
@@ -301,7 +332,7 @@ const DetalleFooterButtons = () => {
           variant="default"
           size="icon"
           className="h-8 w-8 rounded-full shadow-lg"
-          onClick={() => add()}
+          onClick={() => add({ unidad_medida: "UN" })}
           aria-label="Agregar linea"
           title="Agregar linea"
         >
@@ -335,7 +366,10 @@ const DetalleHeaderActions = ({
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div
+      className="flex items-center gap-1"
+      onClick={(e) => e.stopPropagation()}
+    >
       <Button
         type="button"
         variant="ghost"
@@ -408,7 +442,7 @@ const DetalleRow = ({ articuloFilter }: { articuloFilter?: Record<string, unknow
                 <AutocompleteInput
                   optionText="nombre"
                   label={false}
-                  className="w-full text-[9px] sm:text-[11px] [&_[role=combobox]]:h-5 sm:[&_[role=combobox]]:h-6 [&_[role=combobox]]:text-[9px] sm:[&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[9px] sm:[&_[role=combobox]_span]:text-[11px]"
+                  className="w-full text-[9px] sm:text-[11px] [&_[role=combobox]]:h-5 sm:[&_[role=combobox]]:h-5 [&_[role=combobox]]:text-[9px] sm:[&_[role=combobox]]:text-[11px] [&_[role=combobox]_span]:text-[9px] sm:[&_[role=combobox]_span]:text-[11px]"
                 />
               </ReferenceInput>
             </div>
@@ -429,7 +463,7 @@ const DetalleRow = ({ articuloFilter }: { articuloFilter?: Record<string, unknow
         <TextInput
           source="descripcion"
           label={false}
-          className="w-full sm:w-[150px] shrink-0 [&_input]:text-[9px] sm:[&_input]:text-[10px] hidden sm:block"
+          className="w-full sm:w-[130px] shrink-0 [&_input]:text-[9px] sm:[&_input]:text-[10px] hidden sm:block"
         />
         <div className="col-span-1 grid grid-cols-[1fr_20px] gap-1 sm:contents">
           <div className="grid grid-cols-[44px_70px_80px] gap-1 sm:flex sm:items-center sm:gap-2">
@@ -442,20 +476,20 @@ const DetalleRow = ({ articuloFilter }: { articuloFilter?: Record<string, unknow
                 label={false}
                 inputMode="decimal"
                 step="0.001"
-                className="w-[44px] sm:w-[64px] shrink-0 [&_input]:text-[8px] sm:[&_input]:text-[10px]"
+                className="w-[44px] sm:w-[80px] shrink-0 [&_input]:text-[7px] sm:[&_input]:text-[7px]"
               />
             </div>
             <div className="flex flex-col gap-0.5">
               <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
                 Precio
               </div>
-              <NumberInput
-                source="precio"
-                label={false}
-                inputMode="decimal"
-                step="0.01"
-              className="w-[70px] sm:w-[84px] shrink-0 [&_input]:text-[8px] sm:[&_input]:text-[10px]"
-              />
+          <NumberInput
+            source="precio"
+            label={false}
+            inputMode="decimal"
+            step="0.01"
+              className="w-[70px] sm:w-[84px] shrink-0 [&_input]:text-[7px] sm:[&_input]:text-[7px]"
+          />
             </div>
             <div className="flex flex-col gap-0.5">
               <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
@@ -558,10 +592,11 @@ const CalculatedImporte = () => {
 
   return (
     <div className="flex flex-col w-[80px] sm:w-[84px] shrink-0">
-      <div className="flex h-5 sm:h-6 items-center rounded-md border border-border bg-muted/30 px-2 text-[9px] sm:text-[11px] font-medium">
+      <div className="flex h-5 sm:h-5 items-center justify-end rounded-md border border-border bg-muted/30 px-2 text-[9px] sm:text-[9px] font-medium text-right">
         <NumberField
           source="importe"
           record={{ importe }}
+          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
         />
       </div>
     </div>

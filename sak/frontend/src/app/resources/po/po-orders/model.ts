@@ -17,11 +17,16 @@ const optionalDate = z.preprocess((v) => {
   return v;
 }, z.string().optional());
 
+const optionalString = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.string().optional(),
+);
+
 export const poOrderDetalleSchema = z
   .object({
     id: optionalId,
     articulo_id: optionalId,
-    descripcion: z.string().min(1).max(500),
+    descripcion: optionalString.pipe(z.string().max(500).optional()),
     unidad_medida: z.string().max(50).optional(),
     cantidad: z.coerce.number().min(0),
     precio: z.coerce.number().min(0),
@@ -50,13 +55,31 @@ export const poOrderSchema = z.object({
   centro_costo_id: optionalId,
   oportunidad_id: optionalId,
   fecha_necesidad: optionalDate,
-  comentario: z.string().max(1000).optional(),
+  comentario: optionalString.pipe(z.string().max(1000).optional()),
   total: z.coerce.number().min(0),
   detalles: z.array(poOrderDetalleSchema).min(1),
 });
 
 export type PoOrderFormValues = z.infer<typeof poOrderSchema>;
 export type PoOrderDetalleFormValues = z.infer<typeof poOrderDetalleSchema>;
+
+export const ORDER_STATUS_BADGES: Record<string, string> = {
+  borrador: "bg-slate-100 text-slate-800",
+  pendiente: "bg-amber-100 text-amber-800",
+  aprobado: "bg-emerald-100 text-emerald-800",
+  aprobada: "bg-emerald-100 text-emerald-800",
+  rechazada: "bg-rose-100 text-rose-800",
+  rechazado: "bg-rose-100 text-rose-800",
+  en_proceso: "bg-sky-100 text-sky-800",
+  finalizada: "bg-indigo-100 text-indigo-800",
+  cancelada: "bg-zinc-100 text-zinc-800",
+  cancelado: "bg-zinc-100 text-zinc-800",
+};
+
+export const getOrderStatusBadgeClass = (status?: string | null) => {
+  const key = String(status ?? "").toLowerCase();
+  return ORDER_STATUS_BADGES[key] ?? "bg-slate-100 text-slate-800";
+};
 
 export const computeDetalleImporte = (d: {
   cantidad?: unknown;

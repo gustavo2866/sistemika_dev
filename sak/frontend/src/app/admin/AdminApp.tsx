@@ -99,7 +99,7 @@ import {
   PoOrderCreate,
   PoOrderEdit,
   PoOrderShow,
-} from "@/app/resources/po-orders";
+} from "@/app/resources/po/po-orders";
 import {
   PoOrdenCompraList,
   PoOrdenCompraCreate,

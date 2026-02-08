@@ -10,6 +10,7 @@ export * from "./tipos-solicitud";
 export * from "./po/po-solicitudes";
 export * from "./po/po-ordenes-compra";
 export * from "./po/po-facturas";
+export * from "./po/po-orders";
 export * from "./centros-costo";
 export * from "./tipos-articulo";
 export * from "./propiedades";

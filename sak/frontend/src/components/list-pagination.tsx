@@ -114,7 +114,7 @@ export const ListPagination = ({
           </SelectContent>
         </Select>
       </div>
-      <div className="text-[11px] text-muted-foreground sm:text-sm">
+      <div className="text-[11px] text-muted-foreground sm:text-sm" data-slot="page-range">
         <Translate
           i18nKey="ra.navigation.page_range_info"
           options={{

@@ -90,7 +90,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
   const { hasCreate } = useResourceDefinition({ resource });
 
   return (
-    <div className={cn("w-full lg:max-w-[1080px] lg:mr-auto", containerClassName)}>
+    <div className={cn("w-full max-w-3xl", containerClassName)}>
       {showBreadcrumb ? (
         <AppBreadcrumb
           items={[{ label: resourceLabel, current: true }]}
@@ -98,7 +98,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
       ) : null}
 
       <FilterContext.Provider value={filters}>
-        <div className="flex flex-wrap items-center justify-between gap-3 my-2 sm:my-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 my-2 sm:my-3 w-full max-w-3xl">
           <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
             {finalTitle}
           </h2>
@@ -119,11 +119,11 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             </div>
           )}
         </div>
-        <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2">
+        <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full max-w-3xl">
           <FilterForm className="list-filters pointer-events-auto flex w-full flex-wrap items-center gap-3" />
         </div>
-        <div className={cn(props.className)}>{children}</div>
-        {pagination}
+        <div className={cn(props.className, "w-full max-w-3xl")}>{children}</div>
+        <div className="w-full max-w-3xl">{pagination}</div>
       </FilterContext.Provider>
     </div>
   );
