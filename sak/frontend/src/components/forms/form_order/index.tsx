@@ -33,6 +33,21 @@ export { TotalCompute } from "./form/total_compute";
 export { DetalleHeaderActions } from "./form/detalle_header_actions";
 export { DetalleDeleteButton } from "./form/detalle_delete_button";
 export { DetalleToggleButton } from "./form/detalle_toggle_button";
+export {
+  FormAutocomplete,
+  FormDate,
+  FormNumber,
+  FormReferenceAutocomplete,
+  FormSelect,
+  FormText,
+  FormTextarea,
+  FormValue,
+} from "./form/field_wrappers";
+export type { FormReferenceAutocompleteProps } from "./form/field_wrappers";
+export {
+  FORM_FIELD_DEFAULT_WIDTH_CLASS,
+  FORM_FIELD_LABEL_CLASS,
+} from "./form/field_styles";
 
 const baseButtonClasses =
   "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs gap-1";

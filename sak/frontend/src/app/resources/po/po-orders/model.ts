@@ -22,12 +22,19 @@ const optionalString = z.preprocess(
   z.string().optional(),
 );
 
+const optionalTipoCompra = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.enum(["normal", "directa"]).optional(),
+);
+
 export const poOrderDetalleSchema = z
   .object({
     id: optionalId,
     articulo_id: optionalId,
     descripcion: optionalString.pipe(z.string().max(500).optional()),
     unidad_medida: z.string().max(50).optional(),
+    centro_costo_id: optionalId,
+    oportunidad_id: optionalId,
     cantidad: z.coerce.number().min(0),
     precio: z.coerce.number().min(0),
     importe: z.coerce.number().min(0),
@@ -48,8 +55,10 @@ export const poOrderDetalleSchema = z
 export const poOrderSchema = z.object({
   titulo: z.string().min(1).max(200),
   tipo_solicitud_id: requiredId,
-  departamento_id: requiredId,
+  departamento_id: optionalId,
   order_status_id: requiredId,
+  metodo_pago_id: optionalId,
+  tipo_compra: optionalTipoCompra,
   solicitante_id: requiredId,
   proveedor_id: optionalId,
   centro_costo_id: optionalId,
@@ -98,8 +107,7 @@ export const computePoOrderTotal = (detalles: Array<{ importe?: unknown }>) => {
   return Number(total.toFixed(2));
 };
 
-export const unidadMedidaChoices = [
-  { id: "UN", name: "Unidad" },
-  { id: "KG", name: "Kilogramo" },
-  { id: "LT", name: "Litro" },
+export const TIPO_COMPRA_CHOICES = [
+  { id: "normal", name: "Normal" },
+  { id: "directa", name: "Directa" },
 ] as const;

@@ -136,8 +136,8 @@ const ListWithDefaults = () => {
       }}
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
-      <ListColumn source="id" label="ID" className="w-[30px] text-center" headerClassName="compact-sort text-center">
-        <ListID source="id" className="whitespace-normal break-words" />
+      <ListColumn source="id" label="ID" className="w-[45px] text-center">
+        <ListID source="id" widthClass="w-[45px]" className="whitespace-normal break-words" />
       </ListColumn>
       <ListColumn source="titulo" label="Titulo" className="w-[120px]">
         <ListText source="titulo" className="whitespace-normal break-words" />

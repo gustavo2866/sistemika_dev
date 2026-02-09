@@ -218,10 +218,13 @@ export const AutocompleteInput = (
                       setFilters(filterToQuery(filter));
                     }
                   }}
+                  className="h-7 text-[9px] sm:text-[10px]"
                 />
-                <CommandList>
-                  <CommandEmpty>No matching item found.</CommandEmpty>
-                  <CommandGroup>
+                <CommandList className="text-[9px] sm:text-[10px]">
+                  <CommandEmpty className="text-[9px] sm:text-[10px]">
+                    No matching item found.
+                  </CommandEmpty>
+                  <CommandGroup className="text-[9px] sm:text-[10px]">
                     {finalChoices.map((choice) => {
                       const isCreateItem =
                         !!createItem && choice?.id === createItem.id;
@@ -240,10 +243,11 @@ export const AutocompleteInput = (
                           }
                           onSelect={() => handleChangeWithCreateSupport(choice)}
                           disabled={disabled}
+                          className="h-7 gap-1 text-[9px] sm:text-[10px]"
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-4 w-4",
+                              "mr-1 h-3 w-3",
                               field.value === getChoiceValue(choice)
                                 ? "opacity-100"
                                 : "opacity-0",

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useFormContext, useWatch } from "react-hook-form";
+import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { useDataProvider, useGetIdentity } from "ra-core";
 
 export const usePoOrderDefaults = () => {
   const { data: identity } = useGetIdentity();
   const dataProvider = useDataProvider();
-  const { setValue } = useFormContext();
+  const { setValue, getValues, control } = useFormContext();
+  const { dirtyFields } = useFormState({ control });
 
   const defaultsApplied = useRef(false);
 
@@ -15,6 +16,8 @@ export const usePoOrderDefaults = () => {
   const departamentoId = useWatch({ name: "departamento_id" }) as number | undefined;
   const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
   const orderStatusId = useWatch({ name: "order_status_id" }) as number | undefined;
+  const metodoPagoId = useWatch({ name: "metodo_pago_id" }) as number | undefined;
+  const tipoCompra = useWatch({ name: "tipo_compra" }) as string | undefined;
   const [orderStatusLabel, setOrderStatusLabel] = useState<string | undefined>();
 
   useEffect(() => {
@@ -40,24 +43,30 @@ export const usePoOrderDefaults = () => {
       });
       if (!active) return;
 
-      if (!departamentoId && usuario?.departamento_id) {
-        setValue("departamento_id", usuario.departamento_id, {
-          shouldDirty: false,
-        });
+      if (!departamentoId && usuario?.departamento_id && !dirtyFields?.departamento_id) {
+        const currentDepartamento = getValues("departamento_id");
+        if (!currentDepartamento) {
+          setValue("departamento_id", usuario.departamento_id, {
+            shouldDirty: false,
+          });
+        }
       }
 
       const deptoId = departamentoId ?? usuario?.departamento_id;
       if (!deptoId) return;
 
-      if (!centroCostoId) {
+      if (!centroCostoId && !dirtyFields?.centro_costo_id) {
         const { data: depto } = await dataProvider.getOne("departamentos", {
           id: deptoId,
         });
         if (!active) return;
         if (depto?.centro_costo_id) {
-          setValue("centro_costo_id", depto.centro_costo_id, {
-            shouldDirty: false,
-          });
+          const currentCentro = getValues("centro_costo_id");
+          if (!currentCentro) {
+            setValue("centro_costo_id", depto.centro_costo_id, {
+              shouldDirty: false,
+            });
+          }
         }
       }
     })();
@@ -87,6 +96,16 @@ export const usePoOrderDefaults = () => {
       active = false;
     };
   }, [orderStatusId, dataProvider, setValue]);
+
+  useEffect(() => {
+    if (metodoPagoId || dirtyFields?.metodo_pago_id) return;
+    setValue("metodo_pago_id", 1, { shouldDirty: false });
+  }, [metodoPagoId, dirtyFields?.metodo_pago_id, setValue]);
+
+  useEffect(() => {
+    if (tipoCompra || dirtyFields?.tipo_compra) return;
+    setValue("tipo_compra", "normal", { shouldDirty: false });
+  }, [tipoCompra, dirtyFields?.tipo_compra, setValue]);
 
   useEffect(() => {
     if (!orderStatusId || orderStatusLabel) return;

@@ -522,13 +522,24 @@ class PoOrder(Base, table=True):
         foreign_key="tipos_solicitud.id",
         description="Identificador del tipo de solicitud",
     )
-    departamento_id: int = Field(
+    departamento_id: Optional[int] = Field(
+        default=None,
         foreign_key="departamentos.id",
         description="Identificador del departamento",
     )
     order_status_id: int = Field(
         foreign_key="po_order_status.id",
         description="Identificador del estado de la orden",
+    )
+    metodo_pago_id: int = Field(
+        default=1,
+        foreign_key="metodos_pago.id",
+        description="Identificador del método de pago",
+    )
+    tipo_compra: TipoCompra = Field(
+        default=TipoCompra.NORMAL,
+        sa_column=Column(String(20), nullable=False, server_default="normal"),
+        description="Tipo de compra: directa o normal"
     )
     total: Decimal = Field(
         default=Decimal("0"),
@@ -570,6 +581,8 @@ class PoOrder(Base, table=True):
     centro_costo: Optional["CentroCosto"] = Relationship()
     proveedor: Optional["Proveedor"] = Relationship()
     tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
+    departamento: Optional["Departamento"] = Relationship()
+    metodo_pago: "MetodoPago" = Relationship()
     order_status: "PoOrderStatus" = Relationship(back_populates="orders")
     detalles: List["PoOrderDetail"] = Relationship(
         back_populates="order",
@@ -618,6 +631,23 @@ class PoOrderDetail(Base, table=True):
         sa_column=Column(DECIMAL(15, 2), nullable=False, server_default="0"),
         description="Importe total (cantidad x precio)",
     )
+    centro_costo_id: Optional[int] = Field(
+        default=None,
+        foreign_key="centros_costo.id",
+        description="Centro de costo asociado (opcional)"
+    )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        description="ID de la oportunidad CRM asociada (opcional)"
+    )
+    cantidad_facturada: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(10, 3), nullable=False, server_default="0"),
+        description="Cantidad facturada"
+    )
 
     order: "PoOrder" = Relationship(back_populates="detalles")
     articulo: Optional["Articulo"] = Relationship()
+    centro_costo: Optional["CentroCosto"] = Relationship()
+    oportunidad: Optional["CRMOportunidad"] = Relationship()

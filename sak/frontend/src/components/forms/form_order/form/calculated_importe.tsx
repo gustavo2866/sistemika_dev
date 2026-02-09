@@ -5,13 +5,16 @@ import { useFormContext, useWatch } from "react-hook-form";
 import { useWrappedSource } from "ra-core";
 
 import { NumberField } from "@/components/number-field";
+import { FormValue } from "./field_wrappers";
 
 export const CalculatedImporte = ({
   computeImporte,
   className,
+  widthClass,
 }: {
   computeImporte: (input: { cantidad?: unknown; precio?: unknown }) => number;
   className?: string;
+  widthClass?: string;
 }) => {
   const { setValue } = useFormContext();
   const cantidadSource = useWrappedSource("cantidad");
@@ -31,15 +34,16 @@ export const CalculatedImporte = ({
   }, [importeSource, importe, setValue]);
 
   return (
-    <div className={className ?? "flex flex-col w-[80px] sm:w-[84px] shrink-0"}>
-      <div className="flex h-5 sm:h-5 items-center justify-end rounded-md border border-border bg-muted/30 px-2 text-[9px] sm:text-[9px] font-medium text-right">
-        <NumberField
-          source="importe"
-          record={{ importe }}
-          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
-        />
-      </div>
-    </div>
+    <FormValue
+      label={false}
+      className={className}
+      widthClass={widthClass ?? "w-[80px] sm:w-[84px] shrink-0"}
+    >
+      <NumberField
+        source="importe"
+        record={{ importe }}
+        options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+      />
+    </FormValue>
   );
 };
-

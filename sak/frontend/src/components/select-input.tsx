@@ -269,11 +269,11 @@ export const SelectInput = (props: SelectInputProps) => {
                   className="p-0 ml-auto pointer-events-auto hover:bg-transparent text-muted-foreground opacity-50 hover:opacity-100"
                   onClick={handleReset}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3 w-3" />
                 </div>
               ) : null}
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="text-[9px] sm:text-[10px]">
               {finalChoices?.map((choice) => {
                 if (!choice) return null;
                 const value = getChoiceValue(choice);
@@ -284,6 +284,7 @@ export const SelectInput = (props: SelectInputProps) => {
                     key={value}
                     value={value?.toString() ?? ""}
                     disabled={isDisabled}
+                    className="h-7 text-[9px] sm:text-[10px]"
                   >
                     {renderMenuItemOption(
                       !!createItem && choice?.id === createItem.id

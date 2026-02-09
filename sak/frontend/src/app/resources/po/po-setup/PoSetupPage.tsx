@@ -20,6 +20,11 @@ const setupLinks = [
     resource: "tipos-solicitud",
   },
   {
+    label: "Estados de orden",
+    description: "Configurar estados de orden de compra.",
+    resource: "po-order-status",
+  },
+  {
     label: "Departamentos",
     description: "Administrar departamentos para imputacion.",
     resource: "departamentos",

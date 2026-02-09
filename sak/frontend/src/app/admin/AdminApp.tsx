@@ -101,6 +101,11 @@ import {
   PoOrderShow,
 } from "@/app/resources/po/po-orders";
 import {
+  PoOrderStatusList,
+  PoOrderStatusCreate,
+  PoOrderStatusEdit,
+} from "@/app/resources/po/po-order-status";
+import {
   PoOrdenCompraList,
   PoOrdenCompraCreate,
   PoOrdenCompraEdit,
@@ -398,6 +403,15 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={FileStack}
         options={{ label: "Tipos de Solicitud" }}
+      />
+      <Resource
+        name="po-order-status"
+        list={PoOrderStatusList}
+        create={PoOrderStatusCreate}
+        edit={PoOrderStatusEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Estados de Orden" }}
       />
       <Resource
         name="po-solicitudes"
