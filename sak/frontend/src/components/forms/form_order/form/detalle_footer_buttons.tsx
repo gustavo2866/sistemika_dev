@@ -29,7 +29,7 @@ export const DetalleFooterButtons = ({
       <div className="mt-1 hidden sm:flex w-full items-center gap-2">
         <Button
           type="button"
-          variant="default"
+          variant="secondary"
           size="sm"
           className={cn("gap-1 text-[10px] w-full sm:w-[220px] h-6", desktopClassName)}
           onClick={handleAdd}
@@ -43,7 +43,7 @@ export const DetalleFooterButtons = ({
       <div className={cn("sm:hidden fixed bottom-2 left-[42%] -translate-x-1/2 z-30", mobileClassName)}>
         <Button
           type="button"
-          variant="default"
+          variant="secondary"
           size="icon"
           className="h-8 w-8 rounded-full shadow-lg"
           onClick={handleAdd}
@@ -56,4 +56,3 @@ export const DetalleFooterButtons = ({
     </>
   );
 };
-

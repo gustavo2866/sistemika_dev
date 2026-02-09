@@ -97,6 +97,7 @@ export const AutocompleteInput = (
   const selectedChoice = allChoices.find(
     (choice) => getChoiceValue(choice) === fieldValue,
   );
+  const isDisabled = Boolean(props.disabled);
 
   const getInputText = useCallback(
     (selectedChoice: Choice | undefined) => {
@@ -112,6 +113,7 @@ export const AutocompleteInput = (
   );
 
   const handleOpenChange = useEvent((isOpen: boolean) => {
+    if (isDisabled) return;
     setOpen(isOpen);
     // Reset the filter when the popover is closed
     if (!isOpen) {
@@ -194,14 +196,17 @@ export const AutocompleteInput = (
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className="w-full justify-between h-9 px-3 py-2 font-normal"
+                className="w-full justify-between h-9 px-3 py-2 font-normal disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-70 disabled:border-0 disabled:shadow-none"
+                disabled={isDisabled}
               >
                 {selectedChoice ? (
                   <span className="text-sm font-normal">{getInputText(selectedChoice)}</span>
                 ) : (
                   <span className="text-sm font-normal text-muted-foreground">{placeholder}</span>
                 )}
-                <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                {isDisabled ? null : (
+                  <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-full p-0">

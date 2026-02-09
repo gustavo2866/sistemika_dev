@@ -11,10 +11,12 @@ export const CalculatedImporte = ({
   computeImporte,
   className,
   widthClass,
+  valueClassName,
 }: {
   computeImporte: (input: { cantidad?: unknown; precio?: unknown }) => number;
   className?: string;
   widthClass?: string;
+  valueClassName?: string;
 }) => {
   const { setValue } = useFormContext();
   const cantidadSource = useWrappedSource("cantidad");
@@ -38,6 +40,7 @@ export const CalculatedImporte = ({
       label={false}
       className={className}
       widthClass={widthClass ?? "w-[80px] sm:w-[84px] shrink-0"}
+      valueClassName={valueClassName}
     >
       <NumberField
         source="importe"
