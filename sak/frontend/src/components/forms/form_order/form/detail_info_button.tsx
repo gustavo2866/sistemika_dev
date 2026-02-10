@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import { Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -11,7 +12,7 @@ export const DetailInfoButton = ({
   label = "Mostrar datos",
   tabIndex = -1,
 }: {
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   iconClassName?: string;
   label?: string;

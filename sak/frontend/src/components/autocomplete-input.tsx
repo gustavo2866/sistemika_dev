@@ -202,7 +202,9 @@ export const AutocompleteInput = (
                 {selectedChoice ? (
                   <span className="text-sm font-normal">{getInputText(selectedChoice)}</span>
                 ) : (
-                  <span className="text-sm font-normal text-muted-foreground">{placeholder}</span>
+                  <span className="text-sm font-normal text-muted-foreground" data-placeholder>
+                    {placeholder}
+                  </span>
                 )}
                 {isDisabled ? null : (
                   <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />

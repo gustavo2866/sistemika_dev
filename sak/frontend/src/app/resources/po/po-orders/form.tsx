@@ -26,6 +26,7 @@ import {
   DetailFooterButtons,
   DetailIterator,
   DetailRowActions,
+  DetailRowProvider,
   FORM_VALUE_READONLY_CLASS,
   FORM_FIELD_READONLY_CLASS,
   ResponsiveDetailRow,
@@ -35,7 +36,6 @@ import {
   FormSelect,
   FormText,
   FormTextarea,
-  FormValue,
   HiddenInput,
   SectionBaseTemplate,
   SectionDetailTemplate,
@@ -196,8 +196,8 @@ const HeaderSection = () => {
         title="Cabecera"
         main={
           <>
-            <HeaderMainFields />
-            {/* Always compute total for validation/payload, but only display it inside the toggle */}
+          <HeaderMainFields />
+            {/* Always compute total for validation/payload */}
             <TotalCompute computeTotal={computePoOrderTotal} />
             <HiddenInput source="total" />
             <HiddenInput source="tipo_compra" />
@@ -269,8 +269,6 @@ const getFirstError = (
 
 // HeaderMainFields: required header inputs.
 const HeaderMainFields = () => {
-  const total = useWatch({ name: "total" }) as number | undefined;
-
   return (
     <div className="flex flex-col gap-0">
       <div className="flex flex-col gap-2 md:flex-row md:items-end">
@@ -315,17 +313,6 @@ const HeaderMainFields = () => {
             widthClass="w-full"
           />
         </div>
-        <FormValue
-          label="Total"
-          widthClass="w-full md:w-[120px]"
-          valueClassName="justify-end"
-        >
-          <NumberField
-            source="total"
-            record={{ total: Number(total ?? 0) }}
-            options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
-          />
-        </FormValue>
       </div>
     </div>
   );
@@ -336,10 +323,10 @@ const HeaderOptionalFields = () => {
   return (
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 md:grid-cols-4">
           <FormDate
-            source="fecha"
-            label="Fecha"
+            source="fecha_necesidad"
+            label="Fecha necesidad"
             widthClass="w-full"
           />
           <FormReferenceAutocomplete
@@ -378,7 +365,7 @@ const HeaderOptionalFields = () => {
             source="comentario"
             label="Comentario"
             widthClass="w-full"
-            className="sm:col-span-3 [&_textarea]:min-h-[64px]"
+            className="md:col-span-4 [&_textarea]:min-h-[64px]"
           />
         </div>
       </div>
@@ -389,6 +376,21 @@ const HeaderOptionalFields = () => {
 
 // DetailSection: wraps detail template and its list + header actions.
 const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
+  const total = useWatch({ name: "total" }) as number | undefined;
+  const totalValue = Number(total ?? 0);
+  const detailDefaults = useMemo(
+    () => ({
+      articulo_id: "",
+      descripcion: "",
+      unidad_medida: "",
+      centro_costo_id: "",
+      oportunidad_id: "",
+      cantidad: 1,
+      precio: 0,
+      importe: 0,
+    }),
+    [],
+  );
   const columns = [
     { label: "Articulo" },
     { label: "Descripcion" },
@@ -398,12 +400,34 @@ const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unk
     { label: "" },
   ];
 
+  const totalSummary = (
+    <div className="flex items-center gap-2">
+      <span className="text-[9px] uppercase text-muted-foreground">Total</span>
+      <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-semibold text-foreground">
+        <NumberField
+          source="total"
+          record={{ total: totalValue }}
+          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+          className="tabular-nums"
+        />
+      </span>
+    </div>
+  );
+
   return (
     <SectionDetailTemplate
       title="Detalle"
       columns={columns}
       columnsClassName="grid-cols-[220px_150px_64px_84px_84px_28px]"
-      list={<DetailList articuloFilter={articuloFilter} />}
+      headerSummary={totalSummary}
+      headerSummaryClassName="mr-10"
+      defaultDetailValues={detailDefaults}
+      list={
+        <DetailList
+          articuloFilter={articuloFilter}
+          defaultDetailValues={detailDefaults}
+        />
+      }
     />
   );
 };
@@ -411,8 +435,10 @@ const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unk
 // DetailList: detail list container with labels, scrolling and add behavior.
 const DetailList = ({
   articuloFilter,
+  defaultDetailValues,
 }: {
   articuloFilter?: Record<string, unknown>;
+  defaultDetailValues?: Record<string, unknown>;
 }) => {
   const detailContext = useDetailSectionContext();
   if (!detailContext) {
@@ -428,10 +454,14 @@ const DetailList = ({
     >
       <div
         ref={containerRef}
-        className="w-full rounded-md border border-border p-2 md:max-h-80 md:overflow-y-auto"
+        className="w-full rounded-md border border-border p-2 md:max-h-64 md:overflow-y-auto"
       >
         <ArrayInput source="detalles" label={false}>
-          <DetailIterator addButton={<DetailFooterButtons />}>
+          <DetailIterator
+            addButton={
+              <DetailFooterButtons defaultValues={defaultDetailValues} />
+            }
+          >
             <DetailItemRow
               articuloFilter={articuloFilter}
               activeIndex={activeIndex}
@@ -464,10 +494,7 @@ const DetailItemRow = ({
     setShowOptional(false);
     setActiveIndex(null);
   };
-  const handleToggleOptional = (event: MouseEvent) => {
-    event.stopPropagation();
-    setShowOptional((prev) => !prev);
-  };
+  const toggleOptional = () => setShowOptional((prev) => !prev);
   useEffect(() => {
     if (!isActive && showOptional) {
       setShowOptional(false);
@@ -481,99 +508,103 @@ const DetailItemRow = ({
   );
 
   return (
-    <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
-      <div className="grid grid-cols-1 gap-1 sm:flex sm:flex-row sm:items-center sm:gap-2">
-        <HiddenInput source="id" />
-        <div
-          className="col-span-1 w-full sm:col-auto sm:w-[220px] shrink-0"
-          data-articulo-field="true"
-        >
-          <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-            Articulo
-          </div>
-          <div className="grid grid-cols-[1fr_16px] items-center gap-0.5 sm:block">
-            <div className="flex-1">
-              <FormReferenceAutocomplete
-                referenceProps={{
-                  source: "articulo_id",
-                  reference: "articulos",
-                  filter: articuloFilter,
-                }}
-                inputProps={{
-                  optionText: "nombre",
-                  label: false,
-                }}
-                widthClass="w-full"
-                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-              />
+    <DetailRowProvider
+      value={{
+        isActive,
+        showOptional,
+        toggleOptional,
+        collapse: handleCollapse,
+        remove,
+      }}
+    >
+      <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
+        <div className="grid grid-cols-1 gap-1 sm:flex sm:flex-row sm:items-center sm:gap-2">
+          <HiddenInput source="id" />
+          <div
+            className="col-span-1 w-full sm:col-auto sm:w-[220px] shrink-0"
+            data-articulo-field="true"
+          >
+            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+              Articulo
             </div>
-          </div>
-        </div>
-        <FormText
-          source="descripcion"
-          label={false}
-          widthClass="w-full sm:w-[130px] shrink-0"
-          readOnly={!isActive}
-          className={cn("hidden sm:block", !isActive && FORM_FIELD_READONLY_CLASS)}
-        />
-        <div className="col-span-1 grid grid-cols-[1fr_auto] gap-1 sm:contents">
-          <div className="grid grid-cols-[36px_58px_64px] gap-1 sm:flex sm:items-center sm:gap-2">
-            <div className="flex flex-col gap-0.5">
-              <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-                Cant.
+            <div className="grid grid-cols-[1fr_16px] items-center gap-0.5 sm:block">
+              <div className="flex-1">
+                <FormReferenceAutocomplete
+                  referenceProps={{
+                    source: "articulo_id",
+                    reference: "articulos",
+                    filter: articuloFilter,
+                  }}
+                  inputProps={{
+                    optionText: "nombre",
+                    label: false,
+                  }}
+                  widthClass="w-full"
+                  className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+                />
               </div>
-              <FormNumber
-                source="cantidad"
-                label={false}
-                inputMode="decimal"
-                step="0.001"
-                widthClass="w-[36px] sm:w-[80px] shrink-0"
-                readOnly={!isActive}
-                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-              />
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-                Precio
-              </div>
-              <FormNumber
-                source="precio"
-                label={false}
-                inputMode="decimal"
-                step="0.01"
-                widthClass="w-[58px] sm:w-[84px] shrink-0"
-                readOnly={!isActive}
-                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-              />
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-                Importe
-              </div>
-              <CalculatedImporte
-                computeImporte={computeDetalleImporte}
-                widthClass="w-[64px] sm:w-[84px] shrink-0"
-                valueClassName={
-                  !isActive
-                    ? FORM_VALUE_READONLY_CLASS
-                    : undefined
-                }
-              />
-              <HiddenInput source="importe" />
             </div>
           </div>
-          <DetailRowActions
-            isActive={isActive}
-            showOptional={showOptional}
-            onToggleOptional={handleToggleOptional}
-            onCollapse={handleCollapse}
-            onDelete={() => remove()}
+          <FormText
+            source="descripcion"
+            label={false}
+            widthClass="w-full sm:w-[130px] shrink-0"
+            readOnly={!isActive}
+            className={cn("hidden sm:block", !isActive && FORM_FIELD_READONLY_CLASS)}
           />
+          <div className="col-span-1 grid grid-cols-[1fr_auto] gap-1 sm:contents">
+            <div className="grid grid-cols-[36px_58px_64px] gap-1 sm:flex sm:items-center sm:gap-2">
+              <div className="flex flex-col gap-0.5">
+                <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+                  Cant.
+                </div>
+                <FormNumber
+                  source="cantidad"
+                  label={false}
+                  inputMode="decimal"
+                  step="0.001"
+                  widthClass="w-[36px] sm:w-[80px] shrink-0"
+                  readOnly={!isActive}
+                  className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+                />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+                  Precio
+                </div>
+                <FormNumber
+                  source="precio"
+                  label={false}
+                  inputMode="decimal"
+                  step="0.01"
+                  widthClass="w-[58px] sm:w-[84px] shrink-0"
+                  readOnly={!isActive}
+                  className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+                />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+                  Importe
+                </div>
+                <CalculatedImporte
+                  computeImporte={computeDetalleImporte}
+                  widthClass="w-[64px] sm:w-[84px] shrink-0"
+                  valueClassName={
+                    !isActive
+                      ? FORM_VALUE_READONLY_CLASS
+                      : undefined
+                  }
+                />
+                <HiddenInput source="importe" />
+              </div>
+            </div>
+            <DetailRowActions />
+          </div>
         </div>
-      </div>
-      <DetailOptionalFields showOptional={showOptional} isActive={isActive} />
-      <div className="mt-0 pt-0 flex justify-end gap-1 sm:hidden" />
-    </ResponsiveDetailRow>
+        <DetailOptionalFields showOptional={showOptional} isActive={isActive} />
+        <div className="mt-0 pt-0 flex justify-end gap-1 sm:hidden" />
+      </ResponsiveDetailRow>
+    </DetailRowProvider>
   );
 };
 

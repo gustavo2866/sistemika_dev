@@ -47,6 +47,7 @@ export const FORM_FIELD_READONLY_CLASS =
   "[&_[role=combobox]]:bg-transparent [&_[role=combobox]]:text-muted-foreground " +
   "[&_[role=combobox]]:opacity-70 [&_[role=combobox]]:border-0 " +
   "[&_[role=combobox]]:shadow-none " +
+  "[&_[role=combobox]_[data-placeholder]]:hidden " +
   "[&_[role=combobox]_svg]:hidden";
 
 export const buildFieldClassName = (

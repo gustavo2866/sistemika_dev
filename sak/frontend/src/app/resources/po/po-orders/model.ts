@@ -63,7 +63,7 @@ export const poOrderSchema = z.object({
   proveedor_id: optionalId,
   centro_costo_id: optionalId,
   oportunidad_id: optionalId,
-  fecha: optionalDate,
+  fecha_necesidad: optionalDate,
   comentario: optionalString.pipe(z.string().max(1000).optional()),
   total: z.coerce.number().min(0),
   detalles: z.array(poOrderDetalleSchema).min(1),

@@ -93,12 +93,12 @@ export const SectionBaseTemplate = ({
           <div className="w-full md:w-[220px] mb-0 pb-0">
             <button
               type="button"
-              className="h-5 w-5 text-blue-600 hover:text-blue-700 -mb-1"
+              className="h-6 w-6 text-blue-600 hover:text-blue-700 -mb-1"
               onClick={() => setShowOptional((v) => !v)}
               aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
               title={showOptional ? "Ocultar datos" : "Mostrar datos"}
             >
-              <Info className="h-3 w-3" />
+              <Info className="h-4 w-4" />
             </button>
           </div>
         ) : null}

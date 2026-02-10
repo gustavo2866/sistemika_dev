@@ -1,9 +1,11 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { DetailDeleteButton } from "./detail_delete_button";
 import { DetailInfoButton } from "./detail_info_button";
 import { DetailToggleButton } from "./detail_toggle_button";
+import { useDetailRowContext } from "./detail_row_context";
 
 export const DetailRowMobileDelete = ({
   onDelete,
@@ -59,38 +61,33 @@ export const DetailRowDesktopActions = ({
 };
 
 export const DetailRowActions = ({
-  isActive,
-  showOptional,
-  onToggleOptional,
-  onCollapse,
-  onDelete,
-}: {
-  isActive: boolean;
-  showOptional: boolean;
-  onToggleOptional: () => void;
-  onCollapse: () => void;
-  onDelete: () => void;
-}) => {
+}: {} = {}) => {
+  const { isActive, showOptional, toggleOptional, collapse, remove } =
+    useDetailRowContext();
   if (!isActive) return null;
 
   const infoLabel = showOptional ? "Ocultar datos" : "Mostrar datos";
+  const handleToggleOptional = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    toggleOptional();
+  };
 
   return (
     <>
       <div className="flex items-end justify-end gap-0.5 -mr-0.5 sm:hidden">
         <DetailToggleButton
           show={showOptional}
-          onToggle={onCollapse}
+          onToggle={collapse}
           className="text-muted-foreground"
           label="Cerrar edicion"
         />
-        <DetailDeleteButton onClick={onDelete} />
-        <DetailInfoButton onClick={onToggleOptional} label={infoLabel} />
+        <DetailDeleteButton onClick={remove} />
+        <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
       </div>
       <div className="hidden sm:flex items-center gap-0 shrink-0">
-        <DetailToggleButton show={showOptional} onToggle={onCollapse} />
-        <DetailDeleteButton onClick={onDelete} />
-        <DetailInfoButton onClick={onToggleOptional} label={infoLabel} />
+        <DetailToggleButton show={showOptional} onToggle={collapse} />
+        <DetailDeleteButton onClick={remove} />
+        <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
       </div>
     </>
   );

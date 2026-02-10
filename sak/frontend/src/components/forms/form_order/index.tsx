@@ -41,6 +41,10 @@ export { DetailHeaderActions } from "./form/detail_header_actions";
 export { DetailDeleteButton } from "./form/detail_delete_button";
 export { DetailInfoButton } from "./form/detail_info_button";
 export { DetailToggleButton } from "./form/detail_toggle_button";
+export {
+  DetailRowProvider,
+  useDetailRowContext,
+} from "./form/detail_row_context";
 export { ResponsiveDetailRow } from "./form/responsive_detail_row";
 export { DetailIterator } from "./form/detail_iterator";
 export {

@@ -143,17 +143,17 @@ const ListWithDefaults = () => {
         <ListText source="titulo" className="whitespace-normal break-words" />
       </ListColumn>
       <ListColumn source="solicitante_id" label="Solicitante" className="w-[90px]">
-        <ReferenceField source="solicitante_id" reference="users">
+        <ReferenceField source="solicitante_id" reference="users" link={false}>
           <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
       <ListColumn source="tipo_solicitud_id" label="Tipo solicitud" className="w-[90px]">
-        <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud">
+        <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud" link={false}>
           <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
       <ListColumn source="proveedor_id" label="Proveedor" className="w-[90px]">
-        <ReferenceField source="proveedor_id" reference="proveedores">
+        <ReferenceField source="proveedor_id" reference="proveedores" link={false}>
           <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>

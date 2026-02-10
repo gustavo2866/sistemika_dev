@@ -43,7 +43,7 @@ type PoOrder = {
   oportunidad_id?: number | null;
   metodo_pago_id?: number | null;
   tipo_compra?: string | null;
-  fecha?: string | null;
+  fecha_necesidad?: string | null;
   comentario?: string | null;
   total?: number | null;
   order_status_id?: number | null;
@@ -95,6 +95,17 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
   const [articulosMap, setArticulosMap] = useState<Map<number, string>>(
     () => new Map()
   );
+
+  const resolveArticuloLabel = (
+    detalle: PoOrderDetalle,
+    map: Map<number, string>
+  ) => {
+    const rawId = detalle.articulo_id;
+    if (rawId == null || rawId === "") return "";
+    const articuloId = Number(rawId);
+    if (!Number.isFinite(articuloId) || articuloId <= 0) return "";
+    return map.get(articuloId) ?? `ID ${articuloId}`;
+  };
 
   const articuloIds = useMemo(
     () =>
@@ -164,10 +175,7 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
           </thead>
           <tbody>
             {detalles.map((detalle) => {
-              const articuloId = Number(detalle.articulo_id);
-              const articuloLabel =
-                (!Number.isNaN(articuloId) && articulosMap.get(articuloId)) ||
-                (Number.isFinite(articuloId) ? `ID ${articuloId}` : "-");
+              const articuloLabel = resolveArticuloLabel(detalle, articulosMap);
               return (
                 <tr
                   key={detalle.id ?? `${detalle.articulo_id}-${detalle.descripcion}`}
@@ -201,10 +209,7 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
 
       <div className="grid gap-2 sm:hidden">
         {detalles.map((detalle) => {
-          const articuloId = Number(detalle.articulo_id);
-          const articuloLabel =
-            (!Number.isNaN(articuloId) && articulosMap.get(articuloId)) ||
-            (Number.isFinite(articuloId) ? `ID ${articuloId}` : "-");
+          const articuloLabel = resolveArticuloLabel(detalle, articulosMap);
           return (
             <div
               key={detalle.id ?? `${detalle.articulo_id}-${detalle.descripcion}`}
@@ -294,7 +299,7 @@ const PoOrderShowContent = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-muted/70 px-2 py-1 text-[11px] font-semibold text-foreground sm:px-2.5 sm:text-sm">
-              Fecha: {record.fecha ?? "-"}
+              Fecha necesidad: {record.fecha_necesidad ?? "-"}
             </span>
           </div>
         </div>
