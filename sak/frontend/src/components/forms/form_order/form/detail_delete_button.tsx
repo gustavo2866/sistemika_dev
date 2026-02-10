@@ -1,11 +1,11 @@
 "use client";
 
-import { XCircle } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export const DetalleDeleteButton = ({
+export const DetailDeleteButton = ({
   onClick,
   className,
   iconClassName,
@@ -23,14 +23,13 @@ export const DetalleDeleteButton = ({
       type="button"
       variant="ghost"
       size="icon"
-      className={cn("h-6 w-6", className)}
+      className={cn("h-4 w-4 md:h-5 md:w-5", className)}
       onClick={onClick}
       aria-label={title}
       title={title}
       tabIndex={tabIndex}
     >
-      <XCircle className={cn("h-4 w-4", iconClassName)} />
+      <Trash2 className={cn("size-2.5 md:size-3 text-red-500/70", iconClassName)} />
     </Button>
   );
 };
-

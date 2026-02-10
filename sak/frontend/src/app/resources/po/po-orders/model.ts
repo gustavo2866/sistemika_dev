@@ -32,7 +32,7 @@ export const poOrderDetalleSchema = z
     id: optionalId,
     articulo_id: optionalId,
     descripcion: optionalString.pipe(z.string().max(500).optional()),
-    unidad_medida: z.string().max(50).optional(),
+    unidad_medida: optionalString.pipe(z.string().max(50).optional()),
     centro_costo_id: optionalId,
     oportunidad_id: optionalId,
     cantidad: z.coerce.number().min(0),
@@ -63,7 +63,7 @@ export const poOrderSchema = z.object({
   proveedor_id: optionalId,
   centro_costo_id: optionalId,
   oportunidad_id: optionalId,
-  fecha_necesidad: optionalDate,
+  fecha: optionalDate,
   comentario: optionalString.pipe(z.string().max(1000).optional()),
   total: z.coerce.number().min(0),
   detalles: z.array(poOrderDetalleSchema).min(1),
@@ -105,6 +105,23 @@ export const computePoOrderTotal = (detalles: Array<{ importe?: unknown }>) => {
     return acc + (Number.isFinite(val) ? val : 0);
   }, 0);
   return Number(total.toFixed(2));
+};
+
+export const normalizePoOrderPayload = (data: unknown) => {
+  if (!data || typeof data !== "object") return data;
+  const payload = data as { detalles?: Array<Record<string, unknown>> };
+  if (!Array.isArray(payload.detalles)) return data;
+
+  const detalles = payload.detalles.map((detalle) => ({
+    ...detalle,
+    importe: computeDetalleImporte(detalle),
+  }));
+
+  return {
+    ...payload,
+    detalles,
+    total: computePoOrderTotal(detalles),
+  };
 };
 
 export const TIPO_COMPRA_CHOICES = [

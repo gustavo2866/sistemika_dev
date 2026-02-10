@@ -6,7 +6,7 @@ import { PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export const DetalleFooterButtons = ({
+export const DetailFooterButtons = ({
   defaultValues = {},
   desktopClassName,
   mobileClassName,

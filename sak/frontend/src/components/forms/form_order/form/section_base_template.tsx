@@ -1,0 +1,109 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp, Info, MoreHorizontal } from "lucide-react";
+
+import { SectionCard } from "./section_card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+export type SectionBaseTemplateProps = {
+  /** Title shown in the section header. */
+  title: string;
+  /** Main (always visible) content for the section. */
+  main: ReactNode;
+  /** Optional content toggled by "more/less" action. */
+  optional?: ReactNode;
+  /** Whether the section is open on initial render. */
+  defaultOpen?: boolean;
+  /** Whether the optional content is visible on initial render. */
+  defaultOptionalOpen?: boolean;
+  /** Optional custom menu items shown in the header actions menu. */
+  actions?: ReactNode;
+};
+
+export const SectionBaseTemplate = ({
+  title,
+  main,
+  optional,
+  defaultOpen = true,
+  defaultOptionalOpen = false,
+  actions,
+}: SectionBaseTemplateProps) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [showOptional, setShowOptional] = useState(defaultOptionalOpen);
+
+  const toggleButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-6 w-6 text-muted-foreground"
+      onClick={() => setIsOpen((v) => !v)}
+      aria-label={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
+      title={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
+    >
+      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+    </Button>
+  );
+
+  const actionsMenu = actions ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground"
+          tabIndex={-1}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-32">
+        {actions}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
+  const headerActions = actionsMenu ? (
+    <div className="flex items-center gap-1">
+      {actionsMenu}
+      {toggleButton}
+    </div>
+  ) : undefined;
+
+  return (
+    <SectionCard
+      title={title}
+      isOpen={isOpen}
+      onToggle={() => setIsOpen((v) => !v)}
+      headerActions={headerActions}
+      cardClassName="pt-2 pb-0"
+      contentClassName="px-3 pt-0 pb-0"
+      titleClassName="mb-2"
+    >
+      <div className="flex flex-col gap-0">
+        {main}
+        {optional ? (
+          <div className="w-full md:w-[220px] mb-0 pb-0">
+            <button
+              type="button"
+              className="h-5 w-5 text-blue-600 hover:text-blue-700 -mb-1"
+              onClick={() => setShowOptional((v) => !v)}
+              aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
+              title={showOptional ? "Ocultar datos" : "Mostrar datos"}
+            >
+              <Info className="h-3 w-3" />
+            </button>
+          </div>
+        ) : null}
+      </div>
+      {optional && showOptional ? optional : null}
+    </SectionCard>
+  );
+};

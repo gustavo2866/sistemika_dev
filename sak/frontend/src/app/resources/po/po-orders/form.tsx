@@ -1,158 +1,122 @@
 "use client";
 
-import { useState, type MouseEvent } from "react";
-import {  required,   useSimpleFormIteratorItem,} from "ra-core";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  type Identifier,
+  required,
+  useCreatePath,
+  useDataProvider,
+  useGetIdentity,
+  useNotify,
+  useRecordContext,
+  useResourceContext,
+  useSimpleFormIteratorItem,
+} from "ra-core";
+import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Eye, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useFormState, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
+import { Loading } from "@/components/loading";
+import { NumberField } from "@/components/number-field";
 import {
   CalculatedImporte,
-  DetalleDeleteButton,
-  DetalleFooterButtons,
-  DetalleHeaderActions,
-  DetalleToggleButton,
+  DetailFooterButtons,
+  DetailIterator,
+  DetailRowActions,
   FORM_VALUE_READONLY_CLASS,
+  FORM_FIELD_READONLY_CLASS,
+  ResponsiveDetailRow,
   FormDate,
   FormNumber,
   FormReferenceAutocomplete,
   FormSelect,
   FormText,
   FormTextarea,
+  FormValue,
   HiddenInput,
-  SectionCard,
+  SectionBaseTemplate,
+  SectionDetailTemplate,
   TotalCompute,
-  useActiveRow,
+  useDetailSectionContext,
 } from "@/components/forms/form_order";
 import { FormOrderToolbar } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
 import { ArrayInput } from "@/components/array-input";
-import { SimpleFormIterator } from "@/components/simple-form-iterator";
-import { Button } from "@/components/ui/button";
 import { Confirm } from "@/components/confirm";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
 import {
   computeDetalleImporte,
   computePoOrderTotal,
   poOrderSchema,
-  TIPO_COMPRA_CHOICES,
 } from "./model";
 import type { PoOrderFormValues } from "./model";
-import { usePoOrderDefaults, useTipoSolicitudChangeGuard } from "./form_hooks";
+import {
+  useCentroCostoOportunidadExclusion,
+  useDetalleCentroCostoOportunidadExclusion,
+  usePoOrderDefaults,
+  useTipoSolicitudChangeGuard,
+} from "./form_hooks";
 
 // PoOrderForm: SimpleForm wrapper with validation resolver and custom toolbar.
-export const PoOrderForm = () => (
-  <SimpleForm<PoOrderFormValues>
-    className="w-full max-w-3xl"
-    // ra-core FormProps types resolver as Resolver<FieldValues>
-    resolver={zodResolver(poOrderSchema) as any}
-    toolbar={<FormOrderToolbar />}
-  >
-    <PoOrderFormFields />
-  </SimpleForm>
-);
+export const PoOrderForm = () => {
+  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const isCreate = !record?.id;
+  const identityResponse = useGetIdentity();
+  const identity =
+    (identityResponse as { data?: any; identity?: any }).data ??
+    (identityResponse as { identity?: any }).identity;
+  const identityId = useMemo(() => {
+    const raw = identity?.id;
+    if (raw == null || raw === "") return undefined;
+    const parsed = typeof raw === "string" ? Number(raw) : raw;
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }, [identity?.id]);
 
-// PoOrderFormFields: renders cabecera + detalle sections and the change guard.
+  const isIdentityLoading = Boolean(
+    (identityResponse as { isLoading?: boolean }).isLoading,
+  );
+
+  if (isCreate && isIdentityLoading && identityId == null) {
+    return <Loading delay={200} />;
+  }
+
+  const defaultValues = useMemo(
+    () => (isCreate && identityId != null ? { solicitante_id: identityId } : undefined),
+    [isCreate, identityId],
+  );
+
+  return (
+    <SimpleForm<PoOrderFormValues>
+      className="w-full max-w-3xl"
+      // ra-core FormProps types resolver as Resolver<FieldValues>
+      resolver={zodResolver(poOrderSchema) as any}
+      toolbar={<FormOrderToolbar />}
+      defaultValues={defaultValues}
+    >
+      <PoOrderFormFields />
+    </SimpleForm>
+  );
+};
+
+// PoOrderFormFields: renders header + detail sections and the change guard.
 const PoOrderFormFields = () => {
   usePoOrderDefaults();
+  useCentroCostoOportunidadExclusion();
+  useDetalleCentroCostoOportunidadExclusion();
   const { articuloFilter, confirmOpen, confirmChange, cancelChange } =
     useTipoSolicitudChangeGuard();
-  const [showOptional, setShowOptional] = useState(false);
-  const [showHeader, setShowHeader] = useState(true);
-  const [showDetalle, setShowDetalle] = useState(true);
 
   return (
     <>
+      <FormErrorSummary />
 
-      <SectionCard
-        title="Cabecera"
-        isOpen={showHeader}
-        onToggle={() => setShowHeader((v) => !v)}
-        cardClassName="pt-2 pb-0"
-        contentClassName="px-3 pt-0 pb-0"
-        titleClassName="mb-2"
-      >
-        <div className="flex flex-col gap-0">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end">
-            <FormText
-              source="titulo"
-              label="Titulo"
-              validate={required()}
-              widthClass="w-full md:w-[220px]"
-            />
-            <FormReferenceAutocomplete
-              referenceProps={{ source: "solicitante_id", reference: "users" }}
-              inputProps={{
-                optionText: "nombre",
-                label: "Solicitante",
-                validate: required(),
-              }}
-              widthClass="w-full md:w-[200px]"
-            />
-            <div className="w-full md:w-[200px]">
-              <ReferenceInput
-                source="tipo_solicitud_id"
-                reference="tipos-solicitud"
-              >
-                <FormSelect
-                  optionText="nombre"
-                  label="Tipo solicitud"
-                  validate={required()}
-                  widthClass="w-full"
-                />
-              </ReferenceInput>
-            </div>
-            <div className="relative w-full md:w-[200px]">
-              <FormReferenceAutocomplete
-                referenceProps={{
-                  source: "proveedor_id",
-                  reference: "proveedores",
-                }}
-                inputProps={{
-                  optionText: "nombre",
-                  label: "Proveedor",
-                }}
-                widthClass="w-full"
-              />
-            </div>
-          </div>
-          <div className="w-full md:w-[220px] mb-0 pb-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto px-1 py-1 text-[9px] leading-none text-blue-600 hover:text-blue-700 -mb-1"
-              onClick={() => setShowOptional((v) => !v)}
-              aria-label={showOptional ? "Ocultar campos" : "Mostrar campos"}
-              title={showOptional ? "Ocultar campos" : "Mostrar campos"}
-            >
-              {showOptional ? "menos datos" : "mas datos..."}
-            </Button>
-          </div>
-        </div>
+      <HeaderSection />
 
-          {/* Always compute total for validation/payload, but only display it inside the toggle */}
-          <TotalCompute computeTotal={computePoOrderTotal} />
-          <HiddenInput source="total" />
-
-          <OptionalHeaderFields showOptional={showOptional} />
-      </SectionCard>
-
-      <SectionCard
-        title="Detalle"
-        isOpen={showDetalle}
-        onToggle={() => setShowDetalle((v) => !v)}
-        cardClassName="pt-2"
-        contentClassName="px-3 pt-0 pb-2"
-        titleClassName="mb-0"
-        headerActions={
-          <DetalleHeaderActions
-            showDetalle={showDetalle}
-            setShowDetalle={setShowDetalle}
-          />
-        }
-      >
-        <DetalleScrollable articuloFilter={articuloFilter} />
-      </SectionCard>
+      <DetailSection articuloFilter={articuloFilter} />
 
       <Confirm
         isOpen={confirmOpen}
@@ -165,136 +129,359 @@ const PoOrderFormFields = () => {
   );
 };
 
-// OptionalHeaderFields: optional cabecera fields block with subtle panel styling.
-const OptionalHeaderFields = ({ showOptional }: { showOptional: boolean }) => {
+// HeaderSection: wraps header template and composes main + optional fields.
+const HeaderSection = () => {
+  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const resource = useResourceContext();
+  const createPath = useCreatePath();
+  const navigate = useNavigate();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const hasRecord = Boolean(record?.id && resource);
+
+  const handlePreview = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!record?.id || !resource) return;
+    navigate(createPath({ resource, type: "show", id: record.id }));
+  };
+
+  const handleDelete = async () => {
+    if (!record || !record.id || !resource || deleting) return;
+    setDeleting(true);
+    try {
+      const previousData = record as PoOrderFormValues & { id: Identifier };
+      await dataProvider.delete(resource, {
+        id: record.id,
+        previousData,
+      });
+      notify("Registro eliminado", { type: "info" });
+      navigate(createPath({ resource, type: "list" }));
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo eliminar", { type: "warning" });
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
+  const headerActions = hasRecord ? (
+    <>
+      <DropdownMenuItem
+        onClick={handlePreview}
+        className="gap-2 text-[9px] sm:text-[10px]"
+      >
+        <Eye className="h-3 w-3" />
+        Preview
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={() => setConfirmDelete(true)}
+        className="gap-2 text-[9px] sm:text-[10px]"
+        variant="destructive"
+      >
+        <Trash2 className="h-3 w-3" />
+        Eliminar
+      </DropdownMenuItem>
+    </>
+  ) : null;
+
   return (
-    <div className="mt-1 space-y-0">
-      {showOptional ? (
-        <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <FormDate
-              source="fecha_necesidad"
-              label="Fecha necesidad"
-              widthClass="w-full"
-            />
-            <FormReferenceAutocomplete
-              referenceProps={{
-                source: "centro_costo_id",
-                reference: "centros-costo",
-              }}
-              inputProps={{
-                optionText: "nombre",
-                label: "Centro de costo",
-              }}
-              widthClass="w-full"
-            />
-            <FormReferenceAutocomplete
-              referenceProps={{
-                source: "oportunidad_id",
-                reference: "crm/oportunidades",
-              }}
-              inputProps={{
-                optionText: "titulo",
-                label: "Oportunidad",
-              }}
-              widthClass="w-full"
-            />
-            <ReferenceInput
-              source="metodo_pago_id"
-              reference="metodos-pago"
-            >
-              <FormSelect
-                optionText="nombre"
-                label="Metodo de pago"
-                widthClass="w-full"
-              />
-            </ReferenceInput>
-            <FormSelect
-              source="tipo_compra"
-              label="Tipo de compra"
-              choices={TIPO_COMPRA_CHOICES as any}
-              optionText="name"
-              widthClass="w-full"
-            />
-            <FormTextarea
-              source="comentario"
-              label="Comentario"
-              widthClass="w-full"
-              className="sm:col-span-3 [&_textarea]:min-h-[64px]"
-            />
-          </div>
-        </div>
-      ) : null}
+    <>
+      <SectionBaseTemplate
+        title="Cabecera"
+        main={
+          <>
+            <HeaderMainFields />
+            {/* Always compute total for validation/payload, but only display it inside the toggle */}
+            <TotalCompute computeTotal={computePoOrderTotal} />
+            <HiddenInput source="total" />
+            <HiddenInput source="tipo_compra" />
+            <HiddenInput source="order_status_id" />
+            <HiddenInput source="departamento_id" />
+          </>
+        }
+        actions={headerActions}
+        optional={<HeaderOptionalFields />}
+      />
+      <Confirm
+        isOpen={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Eliminar registro"
+        content="Seguro que deseas eliminar este registro?"
+        confirmColor="warning"
+        loading={deleting}
+      />
+    </>
+  );
+};
+
+const FormErrorSummary = () => {
+  const { errors, submitCount } = useFormState();
+  const firstError = useMemo(
+    () => (submitCount > 0 ? getFirstError(errors) : undefined),
+    [errors, submitCount],
+  );
+
+  if (!firstError) return null;
+
+  const pathLabel = firstError.path.length
+    ? `${firstError.path.join(".")}: `
+    : "";
+
+  return (
+    <div className="text-[10px] text-destructive">
+      {pathLabel}
+      {firstError.message}
     </div>
   );
 };
 
-// DetalleScrollable: details list container with labels, scrolling and add behavior.
-const DetalleScrollable = ({
+const getFirstError = (
+  errors: unknown,
+  path: string[] = [],
+): { path: string[]; message: string } | undefined => {
+  if (!errors || typeof errors !== "object") return undefined;
+  const errorAny = errors as {
+    message?: unknown;
+    root?: { message?: unknown };
+    [key: string]: unknown;
+  };
+  if (typeof errorAny.message === "string" && errorAny.message.trim()) {
+    return { path, message: errorAny.message };
+  }
+  if (typeof errorAny.root?.message === "string" && errorAny.root.message.trim()) {
+    return { path, message: errorAny.root.message };
+  }
+  for (const key of Object.keys(errorAny)) {
+    if (key === "ref" || key === "type" || key === "types") continue;
+    const child = errorAny[key];
+    const nested = getFirstError(child, [...path, key]);
+    if (nested) return nested;
+  }
+  return undefined;
+};
+
+// HeaderMainFields: required header inputs.
+const HeaderMainFields = () => {
+  const total = useWatch({ name: "total" }) as number | undefined;
+
+  return (
+    <div className="flex flex-col gap-0">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end">
+        <FormText
+          source="titulo"
+          label="Titulo"
+          validate={required()}
+          widthClass="w-full md:w-[220px]"
+        />
+        <FormReferenceAutocomplete
+          referenceProps={{ source: "solicitante_id", reference: "users" }}
+          inputProps={{
+            optionText: "nombre",
+            label: "Solicitante",
+            validate: required(),
+          }}
+          widthClass="w-full md:w-[200px]"
+        />
+        <div className="w-full md:w-[200px]">
+          <ReferenceInput
+            source="tipo_solicitud_id"
+            reference="tipos-solicitud"
+          >
+            <FormSelect
+              optionText="nombre"
+              label="Tipo solicitud"
+              validate={required()}
+              widthClass="w-full"
+            />
+          </ReferenceInput>
+        </div>
+        <div className="relative w-full md:w-[200px]">
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "proveedor_id",
+              reference: "proveedores",
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: "Proveedor",
+            }}
+            widthClass="w-full"
+          />
+        </div>
+        <FormValue
+          label="Total"
+          widthClass="w-full md:w-[120px]"
+          valueClassName="justify-end"
+        >
+          <NumberField
+            source="total"
+            record={{ total: Number(total ?? 0) }}
+            options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+          />
+        </FormValue>
+      </div>
+    </div>
+  );
+};
+
+// HeaderOptionalFields: optional header fields block with subtle panel styling.
+const HeaderOptionalFields = () => {
+  return (
+    <div className="mt-1 space-y-0">
+      <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <FormDate
+            source="fecha"
+            label="Fecha"
+            widthClass="w-full"
+          />
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "centro_costo_id",
+              reference: "centros-costo",
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: "Centro de costo",
+            }}
+            widthClass="w-full"
+          />
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "oportunidad_id",
+              reference: "crm/oportunidades",
+            }}
+            inputProps={{
+              optionText: "titulo",
+              label: "Oportunidad",
+            }}
+            widthClass="w-full"
+          />
+          <ReferenceInput
+            source="metodo_pago_id"
+            reference="metodos-pago"
+          >
+            <FormSelect
+              optionText="nombre"
+              label="Metodo de pago"
+              widthClass="w-full"
+            />
+          </ReferenceInput>
+          <FormTextarea
+            source="comentario"
+            label="Comentario"
+            widthClass="w-full"
+            className="sm:col-span-3 [&_textarea]:min-h-[64px]"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// DetailSection: wraps detail template and its list + header actions.
+const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
+  const columns = [
+    { label: "Articulo" },
+    { label: "Descripcion" },
+    { label: "Cantidad", className: "-ml-[15px]" },
+    { label: "Precio", className: "ml-[0px]" },
+    { label: "Importe", className: "ml-[30px]" },
+    { label: "" },
+  ];
+
+  return (
+    <SectionDetailTemplate
+      title="Detalle"
+      columns={columns}
+      columnsClassName="grid-cols-[220px_150px_64px_84px_84px_28px]"
+      list={<DetailList articuloFilter={articuloFilter} />}
+    />
+  );
+};
+
+// DetailList: detail list container with labels, scrolling and add behavior.
+const DetailList = ({
   articuloFilter,
 }: {
   articuloFilter?: Record<string, unknown>;
 }) => {
-  const { containerRef, activeIndex, onContainerClick, onRowClick } =
-    useActiveRow({ name: "detalles" });
+  const detailContext = useDetailSectionContext();
+  if (!detailContext) {
+    throw new Error("DetailList must be used within SectionDetailTemplate");
+  }
+  const { containerRef, activeIndex, onContainerClick, onRowClick, setActiveIndex } =
+    detailContext;
 
   return (
-      <div
-        className="mt-1 space-y-0 w-full"
-        onClick={onContainerClick}
-      >
-      <div className="hidden sm:grid grid-cols-[220px_150px_64px_84px_84px_28px] gap-2 text-[10px] font-semibold text-foreground [&>div]:pl-3 pb-0">
-        <div>Artículo</div>
-        <div>Descripción</div>
-        <div>Cantidad</div>
-        <div>Precio</div>
-        <div>Importe</div>
-        <div />
-      </div>
+    <div
+      className="mt-1 space-y-0 w-full"
+      onClick={onContainerClick}
+    >
       <div
         ref={containerRef}
         className="w-full rounded-md border border-border p-2 md:max-h-80 md:overflow-y-auto"
       >
         <ArrayInput source="detalles" label={false}>
-          <SimpleFormIterator
-            inline
-            addButton={<DetalleFooterButtonsWrapper />}
-            disableClear
-            disableReordering
-            disableRemove
-            className="gap-0 [&_ul]:gap-2 sm:[&_ul]:gap-0 [&_li]:pb-0 [&_li]:gap-0 [&_li]:border-b-0 [&_li]:border-transparent [&_li]:relative [&_li]:flex-col sm:[&_li]:flex-row [&_li]:items-stretch sm:[&_li]:items-center [&_.simple-form-iterator-item-actions]:!pt-0 [&_.simple-form-iterator-item-actions]:items-center [&_.simple-form-iterator-item-actions]:self-center [&_.simple-form-iterator-item-actions]:gap-0 [&_.simple-form-iterator-item-actions]:mt-0 [&_.simple-form-iterator-item-actions]:h-6 [&_.simple-form-iterator-item-actions]:-translate-y-[1px] [&_.simple-form-iterator-item-actions]:-ml-1 [&_.simple-form-iterator-item-actions>*]:-ml-3 [&_.simple-form-iterator-item-actions]:absolute [&_.simple-form-iterator-item-actions]:top-2 [&_.simple-form-iterator-item-actions]:right-2 sm:[&_.simple-form-iterator-item-actions]:static"
-          >
-            <DetalleRow
+          <DetailIterator addButton={<DetailFooterButtons />}>
+            <DetailItemRow
               articuloFilter={articuloFilter}
               activeIndex={activeIndex}
               onRowClick={onRowClick}
+              setActiveIndex={setActiveIndex}
             />
-          </SimpleFormIterator>
+          </DetailIterator>
         </ArrayInput>
       </div>
     </div>
   );
 };
 
-// DetalleRow: single detalle row with click-to-edit and compact layout.
-const DetalleRow = ({
+// DetailItemRow: single detail row with click-to-edit and compact layout.
+const DetailItemRow = ({
   articuloFilter,
   activeIndex,
   onRowClick,
+  setActiveIndex,
 }: {
   articuloFilter?: Record<string, unknown>;
   activeIndex: number | null;
   onRowClick: (index: number) => (event: MouseEvent) => void;
+  setActiveIndex: (index: number | null) => void;
 }) => {
   const [showOptional, setShowOptional] = useState(false);
   const { remove, index } = useSimpleFormIteratorItem();
   const isActive = activeIndex === index;
+  const handleCollapse = () => {
+    setShowOptional(false);
+    setActiveIndex(null);
+  };
+  const handleToggleOptional = (event: MouseEvent) => {
+    event.stopPropagation();
+    setShowOptional((prev) => !prev);
+  };
+  useEffect(() => {
+    if (!isActive && showOptional) {
+      setShowOptional(false);
+    }
+  }, [isActive, showOptional]);
+
+  const rowClassName = cn(
+    isActive
+      ? "border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
+      : "sm:border-transparent",
+  );
 
   return (
-    <div
-      className="flex w-full flex-col gap-0 rounded-md border border-border p-1 pb-0.5 pr-1 sm:pr-0 sm:border-0 sm:p-0"
-      onClick={onRowClick(index)}
-    >
+    <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
       <div className="grid grid-cols-1 gap-1 sm:flex sm:flex-row sm:items-center sm:gap-2">
         <HiddenInput source="id" />
         <div
@@ -304,7 +491,7 @@ const DetalleRow = ({
           <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
             Articulo
           </div>
-          <div className="grid grid-cols-[1fr_20px] items-center gap-1 sm:block">
+          <div className="grid grid-cols-[1fr_16px] items-center gap-0.5 sm:block">
             <div className="flex-1">
               <FormReferenceAutocomplete
                 referenceProps={{
@@ -315,26 +502,22 @@ const DetalleRow = ({
                 inputProps={{
                   optionText: "nombre",
                   label: false,
-                  disabled: !isActive,
                 }}
                 widthClass="w-full"
+                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
               />
             </div>
-            <DetalleDeleteButton
-              className="sm:hidden h-6 w-6 -mr-1"
-              onClick={() => remove()}
-            />
           </div>
         </div>
         <FormText
           source="descripcion"
           label={false}
           widthClass="w-full sm:w-[130px] shrink-0"
-          className="hidden sm:block"
-          disabled={!isActive}
+          readOnly={!isActive}
+          className={cn("hidden sm:block", !isActive && FORM_FIELD_READONLY_CLASS)}
         />
-        <div className="col-span-1 grid grid-cols-[1fr_20px] gap-1 sm:contents">
-          <div className="grid grid-cols-[44px_70px_80px] gap-1 sm:flex sm:items-center sm:gap-2">
+        <div className="col-span-1 grid grid-cols-[1fr_auto] gap-1 sm:contents">
+          <div className="grid grid-cols-[36px_58px_64px] gap-1 sm:flex sm:items-center sm:gap-2">
             <div className="flex flex-col gap-0.5">
               <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
                 Cant.
@@ -344,8 +527,9 @@ const DetalleRow = ({
                 label={false}
                 inputMode="decimal"
                 step="0.001"
-                widthClass="w-[44px] sm:w-[80px] shrink-0"
-                disabled={!isActive}
+                widthClass="w-[36px] sm:w-[80px] shrink-0"
+                readOnly={!isActive}
+                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
               />
             </div>
             <div className="flex flex-col gap-0.5">
@@ -357,8 +541,9 @@ const DetalleRow = ({
                 label={false}
                 inputMode="decimal"
                 step="0.01"
-                widthClass="w-[70px] sm:w-[84px] shrink-0"
-                disabled={!isActive}
+                widthClass="w-[58px] sm:w-[84px] shrink-0"
+                readOnly={!isActive}
+                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
               />
             </div>
             <div className="flex flex-col gap-0.5">
@@ -367,7 +552,7 @@ const DetalleRow = ({
               </div>
               <CalculatedImporte
                 computeImporte={computeDetalleImporte}
-                widthClass="w-[80px] sm:w-[84px] shrink-0"
+                widthClass="w-[64px] sm:w-[84px] shrink-0"
                 valueClassName={
                   !isActive
                     ? FORM_VALUE_READONLY_CLASS
@@ -377,33 +562,23 @@ const DetalleRow = ({
               <HiddenInput source="importe" />
             </div>
           </div>
-          <div className="flex items-end justify-end sm:hidden -mr-1">
-          <DetalleToggleButton
-            show={showOptional}
-            onToggle={() => setShowOptional((v) => !v)}
-            tabIndex={-1}
-          />
-          </div>
-        </div>
-        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-          <DetalleToggleButton
-            show={showOptional}
-            onToggle={() => setShowOptional((v) => !v)}
-            tabIndex={-1}
-          />
-          <DetalleDeleteButton
-            onClick={() => remove()}
+          <DetailRowActions
+            isActive={isActive}
+            showOptional={showOptional}
+            onToggleOptional={handleToggleOptional}
+            onCollapse={handleCollapse}
+            onDelete={() => remove()}
           />
         </div>
       </div>
-      <DetalleOptionalFields showOptional={showOptional} isActive={isActive} />
+      <DetailOptionalFields showOptional={showOptional} isActive={isActive} />
       <div className="mt-0 pt-0 flex justify-end gap-1 sm:hidden" />
-    </div>
+    </ResponsiveDetailRow>
   );
 };
 
-// DetalleOptionalFields: extra detalle fields shown per-row when expanded.
-const DetalleOptionalFields = ({
+// DetailOptionalFields: extra detail fields shown per-row when expanded.
+const DetailOptionalFields = ({
   showOptional,
   isActive,
 }: {
@@ -414,13 +589,13 @@ const DetalleOptionalFields = ({
     <div className="w-full">
       {showOptional ? (
         <div className="mt-0 rounded-md border border-muted/60 bg-muted/30 p-2">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-2 md:grid-cols-[210px_210px] md:justify-start">
             <FormText
               source="descripcion"
               label="Descripcion"
-              className="sm:hidden"
               widthClass="w-full"
-              disabled={!isActive}
+              readOnly={!isActive}
+              className={cn("sm:hidden", !isActive && FORM_FIELD_READONLY_CLASS)}
             />
             <ReferenceInput
               source="centro_costo_id"
@@ -429,8 +604,8 @@ const DetalleOptionalFields = ({
               <FormSelect
                 optionText="nombre"
                 label="Centro de costo"
-                widthClass="w-full"
-                disabled={!isActive}
+                widthClass="w-full sm:w-[210px]"
+                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
               />
             </ReferenceInput>
             <ReferenceInput
@@ -440,8 +615,8 @@ const DetalleOptionalFields = ({
               <FormSelect
                 optionText="titulo"
                 label="Oportunidad"
-                widthClass="w-full"
-                disabled={!isActive}
+                widthClass="w-full sm:w-[210px]"
+                className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
               />
             </ReferenceInput>
           </div>
@@ -450,9 +625,3 @@ const DetalleOptionalFields = ({
     </div>
   );
 };
-
-// DetalleFooterButtonsWrapper: add-line buttons injected into the iterator.
-const DetalleFooterButtonsWrapper = () => (
-  <DetalleFooterButtons />
-);
-

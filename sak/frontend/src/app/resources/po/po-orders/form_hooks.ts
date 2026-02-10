@@ -2,15 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
-import { useDataProvider, useGetIdentity } from "ra-core";
+import { useDataProvider, useRecordContext } from "ra-core";
+import type { PoOrderFormValues } from "./model";
 
 export const usePoOrderDefaults = () => {
-  const { data: identity } = useGetIdentity();
   const dataProvider = useDataProvider();
+  const record = useRecordContext<
+    PoOrderFormValues & { order_status?: { id?: number; nombre?: string } }
+  >();
   const { setValue, getValues, control } = useFormContext();
   const { dirtyFields } = useFormState({ control });
-
-  const defaultsApplied = useRef(false);
 
   const solicitanteId = useWatch({ name: "solicitante_id" }) as number | undefined;
   const departamentoId = useWatch({ name: "departamento_id" }) as number | undefined;
@@ -19,18 +20,7 @@ export const usePoOrderDefaults = () => {
   const metodoPagoId = useWatch({ name: "metodo_pago_id" }) as number | undefined;
   const tipoCompra = useWatch({ name: "tipo_compra" }) as string | undefined;
   const [orderStatusLabel, setOrderStatusLabel] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (defaultsApplied.current) return;
-    // In edit forms, the value is already present: never override.
-    if (solicitanteId) {
-      defaultsApplied.current = true;
-      return;
-    }
-    if (!identity?.id) return;
-    setValue("solicitante_id", identity.id, { shouldDirty: false });
-    defaultsApplied.current = true;
-  }, [identity?.id, solicitanteId, setValue]);
+  const recordOrderStatusId = record?.order_status_id ?? record?.order_status?.id;
 
   useEffect(() => {
     if (!solicitanteId) return;
@@ -77,7 +67,14 @@ export const usePoOrderDefaults = () => {
   }, [solicitanteId, departamentoId, centroCostoId, dataProvider, setValue]);
 
   useEffect(() => {
-    if (orderStatusId) return;
+    if (orderStatusId || (dirtyFields as any)?.order_status_id) return;
+    if (recordOrderStatusId) {
+      setValue("order_status_id", recordOrderStatusId, { shouldDirty: false });
+      if (record?.order_status?.nombre) {
+        setOrderStatusLabel(record.order_status.nombre);
+      }
+      return;
+    }
     let active = true;
     (async () => {
       const { data } = await dataProvider.getList("po-order-status", {
@@ -95,7 +92,14 @@ export const usePoOrderDefaults = () => {
     return () => {
       active = false;
     };
-  }, [orderStatusId, dataProvider, setValue]);
+  }, [
+    orderStatusId,
+    recordOrderStatusId,
+    record?.order_status?.nombre,
+    dirtyFields,
+    dataProvider,
+    setValue,
+  ]);
 
   useEffect(() => {
     if (metodoPagoId || dirtyFields?.metodo_pago_id) return;
@@ -170,4 +174,77 @@ export const useTipoSolicitudChangeGuard = () => {
   };
 
   return { articuloFilter, confirmOpen, confirmChange, cancelChange };
+};
+
+export const useCentroCostoOportunidadExclusion = () => {
+  const { setValue, control } = useFormContext();
+  const { dirtyFields } = useFormState({ control });
+  const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
+  const oportunidadId = useWatch({ name: "oportunidad_id" }) as number | undefined;
+
+  const prevCentro = useRef(centroCostoId);
+  const prevOportunidad = useRef(oportunidadId);
+
+  useEffect(() => {
+    if (centroCostoId === prevCentro.current) return;
+    prevCentro.current = centroCostoId;
+
+    if (!dirtyFields?.centro_costo_id) return;
+    if (centroCostoId == null) return;
+    setValue("oportunidad_id", null, { shouldDirty: true });
+  }, [centroCostoId, dirtyFields?.centro_costo_id, setValue]);
+
+  useEffect(() => {
+    if (oportunidadId === prevOportunidad.current) return;
+    prevOportunidad.current = oportunidadId;
+
+    if (!dirtyFields?.oportunidad_id) return;
+    if (oportunidadId == null) return;
+    setValue("centro_costo_id", null, { shouldDirty: true });
+  }, [oportunidadId, dirtyFields?.oportunidad_id, setValue]);
+};
+
+export const useDetalleCentroCostoOportunidadExclusion = () => {
+  const { setValue, control } = useFormContext();
+  const { dirtyFields } = useFormState({ control });
+  const detalles = useWatch({ name: "detalles" }) as
+    | Array<Record<string, unknown>>
+    | undefined;
+
+  const prevDetalles = useRef<Array<Record<string, unknown>>>([]);
+
+  useEffect(() => {
+    const current = detalles ?? [];
+    const previous = prevDetalles.current ?? [];
+
+    current.forEach((row, index) => {
+      const prevRow = previous[index] ?? {};
+      const nextCentro = row?.centro_costo_id as number | undefined;
+      const nextOportunidad = row?.oportunidad_id as number | undefined;
+      const prevCentro = prevRow?.centro_costo_id as number | undefined;
+      const prevOportunidad = prevRow?.oportunidad_id as number | undefined;
+
+      if (nextCentro != null && nextCentro !== prevCentro) {
+        const centroDirty = (dirtyFields as any)?.detalles?.[index]
+          ?.centro_costo_id;
+        if (centroDirty) {
+          setValue(`detalles.${index}.oportunidad_id`, null, {
+            shouldDirty: true,
+          });
+        }
+      }
+
+      if (nextOportunidad != null && nextOportunidad !== prevOportunidad) {
+        const oportunidadDirty = (dirtyFields as any)?.detalles?.[index]
+          ?.oportunidad_id;
+        if (oportunidadDirty) {
+          setValue(`detalles.${index}.centro_costo_id`, null, {
+            shouldDirty: true,
+          });
+        }
+      }
+    });
+
+    prevDetalles.current = current;
+  }, [detalles, dirtyFields, setValue]);
 };

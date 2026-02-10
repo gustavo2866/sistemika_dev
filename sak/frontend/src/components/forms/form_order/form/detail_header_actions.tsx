@@ -6,30 +6,24 @@ import { PlusCircle, Trash } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Confirm } from "@/components/confirm";
-import { DetalleToggleButton } from "./detalle_toggle_button";
-
-export const DetalleHeaderActions = ({
-  showDetalle,
-  setShowDetalle,
-  detallesSource = "detalles",
+export const DetailHeaderActions = ({
+  detailsSource = "detalles",
 }: {
-  showDetalle: boolean;
-  setShowDetalle: React.Dispatch<React.SetStateAction<boolean>>;
-  detallesSource?: string;
+  detailsSource?: string;
 }) => {
   const { getValues, setValue } = useFormContext();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const detalles = useWatch({ name: detallesSource }) as unknown[] | undefined;
-  const hasDetalles = (detalles ?? []).length > 0;
+  const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
+  const hasDetails = (detalles ?? []).length > 0;
 
   const handleClear = () => {
-    setValue(detallesSource, [], { shouldDirty: true, shouldValidate: true });
+    setValue(detailsSource, [], { shouldDirty: true, shouldValidate: true });
     setConfirmOpen(false);
   };
 
   const handleAdd = () => {
-    const current = (getValues(detallesSource) as unknown[]) ?? [];
-    setValue(detallesSource, [...current, {}], { shouldDirty: true, shouldValidate: true });
+    const current = (getValues(detailsSource) as unknown[]) ?? [];
+    setValue(detailsSource, [...current, {}], { shouldDirty: true, shouldValidate: true });
   };
 
   return (
@@ -48,7 +42,7 @@ export const DetalleHeaderActions = ({
         <PlusCircle className="h-3 w-3" />
         Agregar
       </Button>
-      {hasDetalles ? (
+      {hasDetails ? (
         <Button
           type="button"
           variant="ghost"
@@ -61,11 +55,6 @@ export const DetalleHeaderActions = ({
           Limpiar
         </Button>
       ) : null}
-      <DetalleToggleButton
-        show={showDetalle}
-        onToggle={() => setShowDetalle((v) => !v)}
-        tabIndex={-1}
-      />
       <Confirm
         isOpen={confirmOpen}
         title="Limpiar detalle"
