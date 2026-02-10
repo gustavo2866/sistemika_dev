@@ -8,7 +8,8 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { useGetIdentity, useListContext } from "ra-core";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { FormConfirmar } from "./form_confirmar";
 
 const filters = buildListFilters(
   [
@@ -164,7 +165,14 @@ const ListWithDefaults = () => {
         <ListMoney source="total" showCurrency={false} className="whitespace-nowrap" />
       </ListColumn>
       <ListColumn label="Acciones" className="w-[60px]">
-        <FormOrderListRowActions />
+        <FormOrderListRowActions
+          extraMenuItems={
+            <>
+              <FormConfirmar action="approve" />
+              <FormConfirmar action="reject" />
+            </>
+          }
+        />
       </ListColumn>
       </ResponsiveDataTable>
     </List>
@@ -173,8 +181,10 @@ const ListWithDefaults = () => {
 
 const PoOrdersFilterSync = ({ identityId }: { identityId?: number | string }) => {
   const { filterValues, setFilters } = useListContext();
+  const didInitRef = useRef(false);
 
   useEffect(() => {
+    if (didInitRef.current) return;
     if (identityId == null) return;
     const hasSolicitante =
       filterValues?.solicitante_id != null &&
@@ -182,6 +192,7 @@ const PoOrdersFilterSync = ({ identityId }: { identityId?: number | string }) =>
     if (!hasSolicitante) {
       setFilters({ ...filterValues, solicitante_id: identityId }, {});
     }
+    didInitRef.current = true;
   }, [filterValues, identityId, setFilters]);
 
   return null;

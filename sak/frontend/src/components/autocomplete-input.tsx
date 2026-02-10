@@ -193,11 +193,13 @@ export const AutocompleteInput = (
           <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger asChild>
               <Button
+                type="button"
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
                 className="w-full justify-between h-9 px-3 py-2 font-normal disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-70 disabled:border-0 disabled:shadow-none"
                 disabled={isDisabled}
+                tabIndex={props.tabIndex ?? 0}
               >
                 {selectedChoice ? (
                   <span className="text-sm font-normal">{getInputText(selectedChoice)}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   useCreatePath,
   useDataProvider,
@@ -18,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -25,9 +26,11 @@ import { cn } from "@/lib/utils";
 export const FormOrderListRowActions = ({
   contextSearch,
   className,
+  extraMenuItems,
 }: {
   contextSearch?: string;
   className?: string;
+  extraMenuItems?: ReactNode;
 }) => {
   const record = useRecordContext();
   const dataProvider = useDataProvider();
@@ -42,6 +45,11 @@ export const FormOrderListRowActions = ({
   if (!record || !resource) {
     return null;
   }
+
+  const statusKey = String((record as any)?.order_status?.nombre ?? "")
+    .trim()
+    .toLowerCase();
+  const isLocked = statusKey === "aprobada" || statusKey === "rechazada";
 
   const stopRowClick = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -100,19 +108,23 @@ export const FormOrderListRowActions = ({
             <Eye className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
             Visualizar
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(event) => {
-              stopRowClick(event);
-              if (busy) return;
-              setConfirmDelete(true);
-            }}
-            disabled={busy}
-            variant="destructive"
-            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-          >
-            <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-            Eliminar
-          </DropdownMenuItem>
+          {!isLocked ? (
+            <DropdownMenuItem
+              onClick={(event) => {
+                stopRowClick(event);
+                if (busy) return;
+                setConfirmDelete(true);
+              }}
+              disabled={busy}
+              variant="destructive"
+              className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              Eliminar
+            </DropdownMenuItem>
+          ) : null}
+          {extraMenuItems ? <DropdownMenuSeparator /> : null}
+          {extraMenuItems}
         </DropdownMenuContent>
       </DropdownMenu>
       <Confirm

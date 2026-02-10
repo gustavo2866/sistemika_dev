@@ -94,6 +94,7 @@ export const SectionBaseTemplate = ({
             <button
               type="button"
               className="h-6 w-6 text-blue-600 hover:text-blue-700 -mb-1"
+              tabIndex={-1}
               onClick={() => setShowOptional((v) => !v)}
               aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
               title={showOptional ? "Ocultar datos" : "Mostrar datos"}

@@ -42,7 +42,7 @@ import {
   TotalCompute,
   useDetailSectionContext,
 } from "@/components/forms/form_order";
-import { FormOrderToolbar } from "@/components/forms";
+import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
 import { ArrayInput } from "@/components/array-input";
 import { Confirm } from "@/components/confirm";
@@ -60,11 +60,13 @@ import {
   usePoOrderDefaults,
   useTipoSolicitudChangeGuard,
 } from "./form_hooks";
+import { FormGenerar } from "./form_generar";
 
 // PoOrderForm: SimpleForm wrapper with validation resolver and custom toolbar.
 export const PoOrderForm = () => {
   const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
   const isCreate = !record?.id;
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const identityResponse = useGetIdentity();
   const identity =
     (identityResponse as { data?: any; identity?: any }).data ??
@@ -80,25 +82,44 @@ export const PoOrderForm = () => {
     (identityResponse as { isLoading?: boolean }).isLoading,
   );
 
+  const defaultValues = useMemo(() => {
+    if (!isCreate) return undefined;
+    return {
+      ...(identityId != null ? { solicitante_id: identityId } : {}),
+      fecha_necesidad: today,
+    };
+  }, [isCreate, identityId, today]);
+
   if (isCreate && isIdentityLoading && identityId == null) {
     return <Loading delay={200} />;
   }
-
-  const defaultValues = useMemo(
-    () => (isCreate && identityId != null ? { solicitante_id: identityId } : undefined),
-    [isCreate, identityId],
-  );
 
   return (
     <SimpleForm<PoOrderFormValues>
       className="w-full max-w-3xl"
       // ra-core FormProps types resolver as Resolver<FieldValues>
       resolver={zodResolver(poOrderSchema) as any}
-      toolbar={<FormOrderToolbar />}
+      toolbar={<PoOrderFormToolbar />}
       defaultValues={defaultValues}
     >
       <PoOrderFormFields />
     </SimpleForm>
+  );
+};
+
+const PoOrderFormToolbar = () => {
+  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const statusKey = String(record?.order_status?.nombre ?? "")
+    .trim()
+    .toLowerCase();
+  const isLocked = statusKey === "aprobada" || statusKey === "rechazada";
+
+  return (
+    <div className="flex w-full items-center justify-end gap-2">
+      <FormOrderCancelButton />
+      <FormOrderSaveButton variant="secondary" disabled={isLocked} />
+      {!isLocked ? <FormGenerar /> : null}
+    </div>
   );
 };
 
@@ -140,6 +161,10 @@ const HeaderSection = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const statusKey = String(record?.order_status?.nombre ?? "")
+    .trim()
+    .toLowerCase();
+  const isLocked = statusKey === "aprobada" || statusKey === "rechazada";
   const hasRecord = Boolean(record?.id && resource);
 
   const handlePreview = (event: MouseEvent) => {
@@ -178,15 +203,19 @@ const HeaderSection = () => {
         <Eye className="h-3 w-3" />
         Preview
       </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        onClick={() => setConfirmDelete(true)}
-        className="gap-2 text-[9px] sm:text-[10px]"
-        variant="destructive"
-      >
-        <Trash2 className="h-3 w-3" />
-        Eliminar
-      </DropdownMenuItem>
+      {!isLocked ? (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setConfirmDelete(true)}
+            className="gap-2 text-[9px] sm:text-[10px]"
+            variant="destructive"
+          >
+            <Trash2 className="h-3 w-3" />
+            Eliminar
+          </DropdownMenuItem>
+        </>
+      ) : null}
     </>
   ) : null;
 
@@ -208,15 +237,17 @@ const HeaderSection = () => {
         actions={headerActions}
         optional={<HeaderOptionalFields />}
       />
-      <Confirm
-        isOpen={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-        title="Eliminar registro"
-        content="Seguro que deseas eliminar este registro?"
-        confirmColor="warning"
-        loading={deleting}
-      />
+      {!isLocked ? (
+        <Confirm
+          isOpen={confirmDelete}
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+          title="Eliminar registro"
+          content="Seguro que deseas eliminar este registro?"
+          confirmColor="warning"
+          loading={deleting}
+        />
+      ) : null}
     </>
   );
 };
@@ -269,6 +300,8 @@ const getFirstError = (
 
 // HeaderMainFields: required header inputs.
 const HeaderMainFields = () => {
+  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const isCreate = !record?.id;
   return (
     <div className="flex flex-col gap-0">
       <div className="flex flex-col gap-2 md:flex-row md:items-end">
@@ -276,6 +309,7 @@ const HeaderMainFields = () => {
           source="titulo"
           label="Titulo"
           validate={required()}
+          autoFocus={isCreate}
           widthClass="w-full md:w-[220px]"
         />
         <FormReferenceAutocomplete
@@ -287,19 +321,6 @@ const HeaderMainFields = () => {
           }}
           widthClass="w-full md:w-[200px]"
         />
-        <div className="w-full md:w-[200px]">
-          <ReferenceInput
-            source="tipo_solicitud_id"
-            reference="tipos-solicitud"
-          >
-            <FormSelect
-              optionText="nombre"
-              label="Tipo solicitud"
-              validate={required()}
-              widthClass="w-full"
-            />
-          </ReferenceInput>
-        </div>
         <div className="relative w-full md:w-[200px]">
           <FormReferenceAutocomplete
             referenceProps={{
@@ -313,6 +334,19 @@ const HeaderMainFields = () => {
             widthClass="w-full"
           />
         </div>
+        <div className="w-full md:w-[200px]">
+          <ReferenceInput
+            source="tipo_solicitud_id"
+            reference="tipos-solicitud"
+          >
+            <FormSelect
+              optionText="nombre"
+              label="Tipo solicitud"
+              validate={required()}
+              widthClass="w-full"
+            />
+          </ReferenceInput>
+        </div>
       </div>
     </div>
   );
@@ -324,11 +358,6 @@ const HeaderOptionalFields = () => {
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
         <div className="grid gap-2 md:grid-cols-4">
-          <FormDate
-            source="fecha_necesidad"
-            label="Fecha necesidad"
-            widthClass="w-full"
-          />
           <FormReferenceAutocomplete
             referenceProps={{
               source: "centro_costo_id",
@@ -361,6 +390,11 @@ const HeaderOptionalFields = () => {
               widthClass="w-full"
             />
           </ReferenceInput>
+          <FormDate
+            source="fecha_necesidad"
+            label="Fecha necesidad"
+            widthClass="w-full"
+          />
           <FormTextarea
             source="comentario"
             label="Comentario"

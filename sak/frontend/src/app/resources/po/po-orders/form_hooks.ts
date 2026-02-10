@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
-import { useDataProvider, useRecordContext } from "ra-core";
+import {
+  useDataProvider,
+  useNotify,
+  useRecordContext,
+  useRefresh,
+  useResourceContext,
+  useSaveContext,
+} from "ra-core";
 import type { PoOrderFormValues } from "./model";
 
 export const usePoOrderDefaults = () => {
@@ -14,6 +21,7 @@ export const usePoOrderDefaults = () => {
   const { dirtyFields } = useFormState({ control });
 
   const solicitanteId = useWatch({ name: "solicitante_id" }) as number | undefined;
+  const proveedorId = useWatch({ name: "proveedor_id" }) as number | undefined;
   const departamentoId = useWatch({ name: "departamento_id" }) as number | undefined;
   const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
   const orderStatusId = useWatch({ name: "order_status_id" }) as number | undefined;
@@ -105,6 +113,51 @@ export const usePoOrderDefaults = () => {
     if (metodoPagoId || dirtyFields?.metodo_pago_id) return;
     setValue("metodo_pago_id", 1, { shouldDirty: false });
   }, [metodoPagoId, dirtyFields?.metodo_pago_id, setValue]);
+
+  useEffect(() => {
+    if (!proveedorId) return;
+    let active = true;
+    (async () => {
+      const { data: proveedor } = await dataProvider.getOne("proveedores", {
+        id: proveedorId,
+      });
+      if (!active) return;
+      const defaults = proveedor as
+        | {
+            default_metodo_pago_id?: number | null;
+            default_tipo_solicitud_id?: number | null;
+          }
+        | undefined;
+      const defaultMetodo = defaults?.default_metodo_pago_id;
+      const defaultTipoSolicitud = defaults?.default_tipo_solicitud_id;
+      if (!defaultMetodo) return;
+      const currentMetodo = getValues("metodo_pago_id");
+      const isEmpty =
+        currentMetodo == null ||
+        (typeof currentMetodo === "string" && currentMetodo.trim() === "") ||
+        (typeof currentMetodo === "number" && currentMetodo <= 0);
+      if (isEmpty || !dirtyFields?.metodo_pago_id) {
+        setValue("metodo_pago_id", Number(defaultMetodo), {
+          shouldDirty: true,
+        });
+      }
+      if (defaultTipoSolicitud) {
+        const currentTipo = getValues("tipo_solicitud_id");
+        const isTipoEmpty =
+          currentTipo == null ||
+          (typeof currentTipo === "string" && currentTipo.trim() === "") ||
+          (typeof currentTipo === "number" && currentTipo <= 0);
+        if (isTipoEmpty || !(dirtyFields as any)?.tipo_solicitud_id) {
+          setValue("tipo_solicitud_id", Number(defaultTipoSolicitud), {
+            shouldDirty: true,
+          });
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [proveedorId, dataProvider, getValues, setValue, dirtyFields?.metodo_pago_id]);
 
   useEffect(() => {
     if (tipoCompra || dirtyFields?.tipo_compra) return;
@@ -247,4 +300,151 @@ export const useDetalleCentroCostoOportunidadExclusion = () => {
 
     prevDetalles.current = current;
   }, [detalles, dirtyFields, setValue]);
+};
+
+const normalizeStatusName = (value?: string | null) =>
+  value ? String(value).trim().toLowerCase() : "";
+
+const capitalizeStatusName = (value: string) =>
+  value.length > 0 ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+
+export const usePoOrderStatusTransition = () => {
+  const record = useRecordContext<
+    PoOrderFormValues & { order_status?: { id?: number; nombre?: string } }
+  >();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const resourceContext = useResourceContext();
+  const resource = resourceContext ?? "po-orders";
+  const saveContext = useSaveContext();
+  const form = useFormContext<PoOrderFormValues>();
+  const { dirtyFields } = useFormState({ control: form.control });
+  const orderStatusId = useWatch({ name: "order_status_id" }) as number | undefined;
+  const [currentStatusName, setCurrentStatusName] = useState<string | undefined>(
+    record?.order_status?.nombre
+  );
+  const lastStatusIdRef = useRef<number | undefined>(
+    record?.order_status?.id ?? orderStatusId
+  );
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (record?.order_status?.nombre) {
+      setCurrentStatusName(record.order_status.nombre);
+    }
+    if (record?.order_status?.id) {
+      lastStatusIdRef.current = record.order_status.id;
+    }
+  }, [record?.order_status?.nombre, record?.order_status?.id]);
+
+  useEffect(() => {
+    if (!orderStatusId) return;
+    if (lastStatusIdRef.current === orderStatusId && currentStatusName) return;
+    let active = true;
+    (async () => {
+      const { data } = await dataProvider.getOne("po-order-status", {
+        id: orderStatusId,
+      });
+      if (!active) return;
+      if (data?.nombre) {
+        setCurrentStatusName(data.nombre);
+        lastStatusIdRef.current = orderStatusId;
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [orderStatusId, currentStatusName, dataProvider]);
+
+  const statusKey = useMemo(
+    () => normalizeStatusName(currentStatusName),
+    [currentStatusName]
+  );
+
+  const canSolicitar = statusKey === "borrador";
+  const canEmitir = statusKey === "solicitada";
+  const canGenerar = statusKey === "borrador" || statusKey === "solicitada";
+
+  const resolveStatusIdByName = async (statusName: string) => {
+    const candidates = [
+      statusName,
+      capitalizeStatusName(statusName),
+      statusName.toUpperCase(),
+    ];
+    for (const candidate of candidates) {
+      const { data } = await dataProvider.getList("po-order-status", {
+        pagination: { page: 1, perPage: 1 },
+        sort: { field: "id", order: "ASC" },
+        filter: { nombre: candidate },
+      });
+      const status = data?.[0];
+      if (status?.id) {
+        return { id: status.id as number, nombre: status.nombre as string };
+      }
+    }
+    return null;
+  };
+
+  const transition = async (nextStatus: "borrador" | "solicitada" | "emitida") => {
+    setLoading(true);
+    try {
+      const status = await resolveStatusIdByName(nextStatus);
+      if (!status?.id) {
+        notify(`No se encontró el estado "${nextStatus}"`, { type: "warning" });
+        return;
+      }
+
+      if (!record?.id) {
+        if (!saveContext?.save) return;
+        const previousStatus = form.getValues("order_status_id");
+        form.setValue("order_status_id", status.id, { shouldDirty: true });
+        const errors = await saveContext.save({
+          ...form.getValues(),
+          order_status_id: status.id,
+        });
+        if (errors) {
+          form.setValue("order_status_id", previousStatus, { shouldDirty: true });
+          return;
+        }
+        setCurrentStatusName(status.nombre);
+        lastStatusIdRef.current = status.id;
+        notify(`Estado actualizado a ${status.nombre}`, { type: "info" });
+        return;
+      }
+
+      if (Object.keys(dirtyFields).length > 0 && saveContext?.save) {
+        const errors = await saveContext.save(form.getValues());
+        if (errors) {
+          return;
+        }
+      }
+
+      await dataProvider.update(resource, {
+        id: record.id,
+        data: { order_status_id: status.id },
+        previousData: record,
+      });
+
+      form.setValue("order_status_id", status.id, { shouldDirty: false });
+      setCurrentStatusName(status.nombre);
+      lastStatusIdRef.current = status.id;
+      refresh();
+      notify(`Estado actualizado a ${status.nombre}`, { type: "info" });
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo actualizar el estado", { type: "warning" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    currentStatusName,
+    canSolicitar,
+    canEmitir,
+    canGenerar,
+    transition,
+    loading,
+  };
 };

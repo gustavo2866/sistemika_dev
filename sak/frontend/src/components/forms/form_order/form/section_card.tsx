@@ -17,6 +17,7 @@ export const SectionCard = ({
   cardClassName,
   contentClassName,
   titleClassName,
+  headerTabIndex,
 }: {
   title: string;
   isOpen: boolean;
@@ -27,6 +28,7 @@ export const SectionCard = ({
   cardClassName?: string;
   contentClassName?: string;
   titleClassName?: string;
+  headerTabIndex?: number;
 }) => {
   return (
     <Card className={cn("border border-border w-full", cardClassName)}>
@@ -35,7 +37,7 @@ export const SectionCard = ({
           className="flex items-center justify-between cursor-pointer group hover:text-primary"
           onClick={onToggle}
           role="button"
-          tabIndex={0}
+          tabIndex={headerTabIndex ?? 0}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -68,4 +70,3 @@ export const SectionCard = ({
     </Card>
   );
 };
-

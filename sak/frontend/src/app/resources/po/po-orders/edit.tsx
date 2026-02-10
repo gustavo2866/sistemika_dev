@@ -3,6 +3,7 @@
 import { Edit } from "@/components/edit";
 import { useEditContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
+import { DateField } from "@/components/date-field";
 import { cn } from "@/lib/utils";
 import { PoOrderForm } from "./form";
 import { getOrderStatusBadgeClass, normalizePoOrderPayload } from "./model";
@@ -20,6 +21,9 @@ const PoOrderEditTitle = () => {
       </Badge>
       <Badge variant="secondary" className={cn("text-[11px]", getOrderStatusBadgeClass(status))}>
         {status}
+      </Badge>
+      <Badge variant="outline" className="text-[11px]">
+        Fecha: <DateField source="created_at" record={record} />
       </Badge>
     </div>
   );

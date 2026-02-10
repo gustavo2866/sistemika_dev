@@ -74,7 +74,7 @@ export { useActiveRow } from "./form/use_active_row";
 export { FormOrderPrintButton } from "./show/print_button";
 
 const baseButtonClasses =
-  "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs gap-1";
+  "h-6 px-2 text-[9px] sm:h-7 sm:px-2.5 sm:text-[10px] gap-1";
 
 export const FormOrderCancelButton = (props: React.ComponentProps<"button">) => {
   const navigate = useNavigate();
@@ -103,6 +103,7 @@ export const FormOrderSaveButton = (props: FormOrderSaveButtonProps) => {
       label="Guardar"
       className={cn(baseButtonClasses, className)}
       icon={<Save className="size-3 sm:size-4" />}
+      tabIndex={-1}
       {...rest}
     />
   );

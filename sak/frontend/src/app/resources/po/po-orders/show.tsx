@@ -6,6 +6,7 @@ import { useDataProvider, useGetOne, useRecordContext } from "ra-core";
 import { Show } from "@/components/show";
 import { TextField } from "@/components/text-field";
 import { ReferenceField } from "@/components/reference-field";
+import { DateField } from "@/components/date-field";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -43,7 +44,7 @@ type PoOrder = {
   oportunidad_id?: number | null;
   metodo_pago_id?: number | null;
   tipo_compra?: string | null;
-  fecha_necesidad?: string | null;
+  created_at?: string | null;
   comentario?: string | null;
   total?: number | null;
   order_status_id?: number | null;
@@ -299,7 +300,12 @@ const PoOrderShowContent = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-muted/70 px-2 py-1 text-[11px] font-semibold text-foreground sm:px-2.5 sm:text-sm">
-              Fecha necesidad: {record.fecha_necesidad ?? "-"}
+              Fecha:{" "}
+              <DateField
+                source="created_at"
+                record={record}
+                className="tabular-nums"
+              />
             </span>
           </div>
         </div>
