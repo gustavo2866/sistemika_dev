@@ -5,7 +5,7 @@
  * el filtrado de artículos y departamentos sugeridos.
  */
 
-import { createEntitySchema, stringField, referenceField } from "@/lib/form-detail-schema";
+import { z } from "zod";
 import {
   TIPO_ARTICULO_CHOICES,
   type TipoArticuloValue,
@@ -75,54 +75,40 @@ export type TipoSolicitud = {
   };
 };
 
-export type TipoSolicitudFormValues = {
-  nombre: string;
-  descripcion?: string;
-  tipo_articulo_filter_id?: string; // string para ComboboxQuery
-  articulo_default_id?: string; // string para ComboboxQuery
-  departamento_default_id?: string; // string para ComboboxQuery
-  activo: boolean;
-};
-
 // ============================================
 // 3. VALIDACIONES (Zod Schema)
 // ============================================
 
-export const tipoSolicitudSchema = createEntitySchema<
-  TipoSolicitudFormValues,
-  Omit<TipoSolicitud, "id" | "created_at" | "updated_at" | "articulo_default" | "departamento_default">
->({
-  fields: {
-    nombre: stringField({
-      required: true,
-      maxLength: VALIDATION_RULES.NOMBRE.MAX_LENGTH,
-      defaultValue: "",
-    }),
-    descripcion: stringField({
-      required: false,
-      maxLength: VALIDATION_RULES.DESCRIPCION.MAX_LENGTH,
-      defaultValue: "",
-    }),
-    tipo_articulo_filter_id: referenceField({
-      resource: "tipos-articulo",
-      labelField: "nombre",
-      required: false,
-      defaultValue: "",
-    }),
-    articulo_default_id: referenceField({
-      resource: ARTICULOS_REFERENCE.resource,
-      labelField: ARTICULOS_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    departamento_default_id: referenceField({
-      resource: DEPARTAMENTOS_REFERENCE.resource,
-      labelField: DEPARTAMENTOS_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-  },
+const optionalId = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.coerce.number().int().positive().optional(),
+);
+
+const optionalString = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.string().optional(),
+);
+
+const booleanFromInput = z.preprocess((value) => {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1" || value === 1) return true;
+  if (value === "false" || value === "0" || value === 0) return false;
+  if (value == null || value === "") return false;
+  return Boolean(value);
+}, z.boolean());
+
+export const tipoSolicitudSchema = z.object({
+  nombre: z.string().min(1).max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),
+  descripcion: optionalString.pipe(
+    z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
+  ),
+  tipo_articulo_filter_id: optionalId,
+  articulo_default_id: optionalId,
+  departamento_default_id: optionalId,
+  activo: booleanFromInput,
 });
+
+export type TipoSolicitudFormValues = z.infer<typeof tipoSolicitudSchema>;
 
 // ============================================
 // 4. VALORES DEFAULT

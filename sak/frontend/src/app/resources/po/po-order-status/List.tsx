@@ -1,53 +1,90 @@
 "use client";
 
 import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { NumberField } from "@/components/number-field";
-import { TextInput } from "@/components/text-input";
-import { BadgeField } from "@/components/badge-field";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
+import { FormOrderListRowActions } from "@/components/forms/form_order";
+import {
+  buildListFilters,
+  BooleanListColumn,
+  NumberListColumn,
+  TextListColumn,
+  ListPaginator,
+  ListText,
+  ListTextarea,
+  ResponsiveDataTable,
+} from "@/components/forms/form_order";
 
-const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar estados" alwaysOn />,
-  <TextInput key="nombre" source="nombre" label="Nombre" />,
-];
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar estados",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "nombre",
+        label: "Nombre",
+      },
+    },
+  ],
+  { keyPrefix: "po-order-status" },
+);
+
+const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton
+      filters={filters}
+      size="sm"
+      buttonClassName={actionButtonClass}
+    />
+    <CreateButton className={actionButtonClass} label="Crear" />
+    <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 export const PoOrderStatusList = () => (
-  <List filters={filters} actions={<ListActions />} debounce={300} perPage={25}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="nombre" label="Nombre">
-        <TextField source="nombre" />
-      </DataTable.Col>
-      <DataTable.Col source="descripcion" label="Descripcion">
-        <TextField source="descripcion" className="block max-w-[260px] truncate" />
-      </DataTable.Col>
-      <DataTable.Col source="orden" label="Orden">
-        <NumberField source="orden" />
-      </DataTable.Col>
-      <DataTable.Col source="activo" label="Activo">
-        <BadgeField source="activo" />
-      </DataTable.Col>
-      <DataTable.Col source="es_inicial" label="Inicial">
-        <BadgeField source="es_inicial" />
-      </DataTable.Col>
-      <DataTable.Col source="es_final" label="Final">
-        <BadgeField source="es_final" />
-      </DataTable.Col>
-      <DataTable.Col>
-        <EditButton />
-      </DataTable.Col>
-    </DataTable>
+  <List
+    title="Estados de Orden"
+    filters={filters}
+    actions={<ListActions />}
+    debounce={300}
+    perPage={25}
+    pagination={<ListPaginator />}
+    sort={{ field: "orden", order: "ASC" }}
+    containerClassName="max-w-[720px] w-full mr-auto"
+  >
+    <ResponsiveDataTable
+      rowClick="edit"
+      mobileConfig={{
+        primaryField: "nombre",
+        secondaryFields: ["orden", "descripcion", "activo", "es_inicial", "es_final"],
+      }}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <TextListColumn source="nombre" label="Nombre">
+        <ListText source="nombre" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <TextListColumn source="descripcion" label="Descripcion">
+        <ListTextarea source="descripcion" maxLength={60} />
+      </TextListColumn>
+      <NumberListColumn source="orden" label="Orden" className="text-center" />
+      <BooleanListColumn source="activo" label="Activo" />
+      <BooleanListColumn source="es_inicial" label="Inicial" />
+      <BooleanListColumn source="es_final" label="Final" />
+      <TextListColumn label="Acciones">
+        <FormOrderListRowActions />
+      </TextListColumn>
+    </ResponsiveDataTable>
   </List>
 );

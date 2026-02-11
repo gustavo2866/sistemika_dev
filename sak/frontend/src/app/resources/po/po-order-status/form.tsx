@@ -1,55 +1,68 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
 import { SimpleForm } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
-import { NumberInput } from "@/components/number-input";
-import { BooleanInput } from "@/components/boolean-input";
-import { FormLayout, FormSimpleSection } from "@/components/forms";
-import type { PoOrderStatusFormValues } from "./model";
+import { FormOrderToolbar } from "@/components/forms";
+import {
+  FormNumber,
+  FormBoolean,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import {
+  poOrderStatusSchema,
+  PO_ORDER_STATUS_DEFAULT,
+  VALIDATION_RULES,
+  type PoOrderStatusFormValues,
+} from "./model";
 
-const PoOrderStatusDatosSection = () => (
-  <FormSimpleSection>
-    <div className="grid gap-4 md:grid-cols-2">
-      <TextInput
+const PoOrderStatusMainFields = () => (
+  <div className="flex flex-col gap-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      <FormText
         source="nombre"
         label="Nombre"
-        className="w-full"
         validate={required()}
+        widthClass="w-full"
+        maxLength={VALIDATION_RULES.NOMBRE.MAX_LENGTH}
       />
-      <NumberInput
+      <FormNumber
         source="orden"
         label="Orden"
-        className="w-full"
         validate={required()}
+        widthClass="w-full"
+        min={1}
       />
-      <TextInput
+      <FormTextarea
         source="descripcion"
         label="Descripcion"
-        multiline
         rows={3}
+        widthClass="w-full"
+        maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
         className="md:col-span-2"
       />
-      <div className="flex flex-wrap gap-4 md:col-span-2">
-        <BooleanInput source="activo" label="Activo" defaultValue />
-        <BooleanInput source="es_inicial" label="Es inicial" defaultValue={false} />
-        <BooleanInput source="es_final" label="Es final" defaultValue={false} />
-      </div>
     </div>
-  </FormSimpleSection>
+    <div className="flex flex-wrap gap-4 pt-1">
+      <FormBoolean source="activo" label="Activo" defaultValue />
+      <FormBoolean source="es_inicial" label="Es inicial" defaultValue={false} />
+      <FormBoolean source="es_final" label="Es final" defaultValue={false} />
+    </div>
+  </div>
 );
 
 export const PoOrderStatusForm = () => (
-  <SimpleForm<PoOrderStatusFormValues> className="w-full max-w-4xl">
-    <FormLayout
-      sections={[
-        {
-          id: "datos-po-order-status",
-          title: "Datos del estado",
-          defaultOpen: true,
-          children: <PoOrderStatusDatosSection />,
-        },
-      ]}
+  <SimpleForm<PoOrderStatusFormValues>
+    className="w-full max-w-2xl"
+    resolver={zodResolver(poOrderStatusSchema) as any}
+    toolbar={<FormOrderToolbar />}
+    defaultValues={PO_ORDER_STATUS_DEFAULT}
+  >
+    <SectionBaseTemplate
+      title="Datos del estado"
+      main={<PoOrderStatusMainFields />}
+      defaultOpen
     />
   </SimpleForm>
 );

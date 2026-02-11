@@ -4,6 +4,7 @@ import { RaRecord } from "ra-core";
 import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
 import type { DataTableColumnProps } from "@/components/data-table";
 import { ListLabel } from "./list_label";
+import { ListBoolean, ListDate, ListNumber, ListText } from "./list_fields";
 
 export type ListColumnProps<RecordType extends RaRecord = RaRecord> =
   DataTableColumnProps<RecordType> & {
@@ -54,3 +55,39 @@ export const ListColumn = <RecordType extends RaRecord = RaRecord>({
     />
   );
 };
+
+export const TextListColumn = <RecordType extends RaRecord = RaRecord>({
+  children,
+  ...props
+}: ListColumnProps<RecordType>) => (
+  <ListColumn {...props} defaultWidthClass="w-[120px]">
+    {children ?? <ListText source={props.source as string} />}
+  </ListColumn>
+);
+
+export const NumberListColumn = <RecordType extends RaRecord = RaRecord>({
+  children,
+  ...props
+}: ListColumnProps<RecordType>) => (
+  <ListColumn {...props} defaultWidthClass="w-[90px]">
+    {children ?? <ListNumber source={props.source as string} />}
+  </ListColumn>
+);
+
+export const DateListColumn = <RecordType extends RaRecord = RaRecord>({
+  children,
+  ...props
+}: ListColumnProps<RecordType>) => (
+  <ListColumn {...props} defaultWidthClass="w-[90px]">
+    {children ?? <ListDate source={props.source as string} />}
+  </ListColumn>
+);
+
+export const BooleanListColumn = <RecordType extends RaRecord = RaRecord>({
+  children,
+  ...props
+}: ListColumnProps<RecordType>) => (
+  <ListColumn {...props} defaultWidthClass="w-[90px]">
+    {children ?? <ListBoolean source={props.source as string} />}
+  </ListColumn>
+);

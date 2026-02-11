@@ -1,45 +1,62 @@
 "use client";
 
 import { useMemo } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 import { SimpleForm } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
-import { BooleanInput } from "@/components/boolean-input";
 import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
-import { FormLayout, FormSimpleSection, FormField, ComboboxQuery } from "@/components/forms";
-import { ARTICULOS_REFERENCE, type TipoSolicitudFormValues } from "./model";
+import { FormOrderToolbar } from "@/components/forms";
+import {
+  FormBoolean,
+  FormReferenceAutocomplete,
+  FormSelect,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import {
+  ARTICULOS_REFERENCE,
+  DEPARTAMENTOS_REFERENCE,
+  TIPO_SOLICITUD_DEFAULT,
+  VALIDATION_RULES,
+  tipoSolicitudSchema,
+  type TipoSolicitudFormValues,
+} from "./model";
 
 const TipoSolicitudDatosSection = () => (
-  <FormSimpleSection>
-    <div className="grid gap-4 md:grid-cols-2">
-      <TextInput
+  <div className="flex flex-col gap-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      <FormText
         source="nombre"
         label="Nombre del tipo"
-        className="w-full"
         validate={required()}
+        widthClass="w-full"
+        maxLength={VALIDATION_RULES.NOMBRE.MAX_LENGTH}
       />
-
       <ReferenceInput
         source="tipo_articulo_filter_id"
         reference="tipos-articulo"
-        label="Filtro de tipo articulo"
         filter={{ activo: true }}
         perPage={200}
       >
-        <SelectInput optionText="nombre" className="w-full" emptyText="Sin filtro" />
+        <FormSelect
+          optionText="nombre"
+          label="Filtro de tipo articulo"
+          widthClass="w-full"
+          emptyText="Sin filtro"
+        />
       </ReferenceInput>
-
-      <TextInput
+      <FormTextarea
         source="descripcion"
-        label="Descripción"
-        multiline
+        label="Descripcion"
         rows={3}
+        widthClass="w-full"
+        maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
         className="md:col-span-2"
       />
     </div>
-  </FormSimpleSection>
+  </div>
 );
 
 const TipoSolicitudConfiguracionSection = () => {
@@ -55,58 +72,58 @@ const TipoSolicitudConfiguracionSection = () => {
   );
 
   return (
-    <FormSimpleSection>
-      <div className="grid gap-4 md:grid-cols-2">
-        <FormField
-          label="Artículo sugerido por defecto"
-          error={formState.errors.articulo_default_id}
-        >
-          <ComboboxQuery
-            {...ARTICULOS_REFERENCE}
-            source="articulo_default_id"
-            placeholder="Selecciona un artículo (opcional)"
-            filter={articuloFilter}
-            dependsOn={tipoArticuloId}
-            className="w-full justify-between"
-          />
-        </FormField>
+    <div className="flex flex-col gap-2">
+      <div className="grid gap-2 md:grid-cols-2">
+        <FormReferenceAutocomplete
+          referenceProps={{
+            source: "articulo_default_id",
+            reference: ARTICULOS_REFERENCE.resource,
+            filter: articuloFilter,
+          }}
+          inputProps={{
+            optionText: ARTICULOS_REFERENCE.labelField,
+            label: "Articulo sugerido por defecto",
+            placeholder: "Selecciona un articulo (opcional)",
+          }}
+          widthClass="w-full"
+        />
 
         <ReferenceInput
           source="departamento_default_id"
-          reference="departamentos"
-          label="Departamento sugerido por defecto"
+          reference={DEPARTAMENTOS_REFERENCE.resource}
         >
-          <SelectInput optionText="nombre" className="w-full" emptyText="Ninguno (opcional)" />
+          <FormSelect
+            optionText={DEPARTAMENTOS_REFERENCE.labelField}
+            label="Departamento sugerido por defecto"
+            widthClass="w-full"
+            emptyText="Ninguno (opcional)"
+          />
         </ReferenceInput>
 
         <div className="md:col-span-2">
-          <BooleanInput source="activo" label="Tipo activo" defaultValue={true} />
+          <FormBoolean source="activo" label="Tipo activo" defaultValue />
         </div>
       </div>
-    </FormSimpleSection>
+    </div>
   );
 };
 
 export const TipoSolicitudForm = () => (
-  <SimpleForm className="w-full max-w-4xl">
-    <FormLayout
-      sections={[
-        {
-          id: "datos-tipo-solicitud",
-          title: "Datos del tipo de solicitud",
-          defaultOpen: true,
-          children: <TipoSolicitudDatosSection />,
-        },
-        {
-          id: "configuracion-sugerida",
-          title: "Sugerencias por defecto",
-          defaultOpen: true,
-          children: <TipoSolicitudConfiguracionSection />,
-        },
-      ]}
+  <SimpleForm<TipoSolicitudFormValues>
+    className="w-full max-w-2xl"
+    resolver={zodResolver(tipoSolicitudSchema) as any}
+    toolbar={<FormOrderToolbar />}
+    defaultValues={TIPO_SOLICITUD_DEFAULT}
+  >
+    <SectionBaseTemplate
+      title="Datos del tipo de solicitud"
+      main={<TipoSolicitudDatosSection />}
+      defaultOpen
+    />
+    <SectionBaseTemplate
+      title="Sugerencias por defecto"
+      main={<TipoSolicitudConfiguracionSection />}
+      defaultOpen
     />
   </SimpleForm>
 );
-
-
-

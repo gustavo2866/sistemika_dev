@@ -43,3 +43,38 @@ export const SoloActivasToggleFilter = ({
     </FormField>
   );
 };
+
+export const CompactSoloActivasToggleFilter = ({
+  className,
+  source = "activo",
+  label = "Activos",
+}: SoloActivasToggleProps) => {
+  const { filterValues, setFilters } = useListContext();
+  const soloActivas = Boolean((filterValues as Record<string, unknown>)[source]);
+
+  const handleSoloActivasChange = (next: boolean) => {
+    const nextFilters = { ...filterValues } as Record<string, unknown>;
+    if (next) {
+      nextFilters[source] = true;
+    } else {
+      delete nextFilters[source];
+    }
+    setFilters(nextFilters, {});
+  };
+
+  return (
+    <FormField
+      label={label}
+      className={cn("compact-filter space-y-0", className)}
+    >
+      <div className="flex h-6 items-center gap-2 rounded-md border px-2 sm:h-7 sm:px-2.5">
+        <Switch
+          id="solo-activas-toggle-compact"
+          checked={soloActivas}
+          onCheckedChange={handleSoloActivasChange}
+          className="!h-[0.95rem] !w-6 !px-0 !py-0 [&_[data-slot=switch-thumb]]:size-3 sm:!h-[1rem] sm:!w-7 sm:[&_[data-slot=switch-thumb]]:size-3"
+        />
+      </div>
+    </FormField>
+  );
+};

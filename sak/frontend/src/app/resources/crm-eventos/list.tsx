@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 import { TodoBoard } from "@/components/todo/todo-board";
-import { AlarmClock, Calendar, CalendarCheck, CalendarClock, CalendarDays, CalendarRange, FileText, House, MessageCircle, ArrowLeft } from "lucide-react";
+import { AlarmClock, Calendar, CalendarCheck, CalendarClock, CalendarDays, CalendarRange, House, MessageCircle, ArrowLeft } from "lucide-react";
 import { useGetIdentity, useGetOne, useListContext } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { CRMEvento, FechaBucket } from "./model";
@@ -128,7 +128,6 @@ export const CRMEventoList = () => {
   const context = getContextFromLocation(location);
   const fromChat = context === "chat";
   const fromOportunidad = context === "oportunidad";
-  const fromSolicitudes = context === "solicitudes";
   const { data: oportunidad } = useGetOne(
     "crm/oportunidades",
     { id: oportunidadIdFilter ?? 0 },
@@ -194,16 +193,6 @@ export const CRMEventoList = () => {
     );
     navigate(`/crm/oportunidades/${oportunidadIdFilter}?${params.toString()}`);
   };
-  const handleOpenSolicitudes = () => {
-    if (!oportunidadIdFilter) return;
-    const params = new URLSearchParams();
-    appendFilterParam(params, buildOportunidadFilter(oportunidadIdFilter));
-    params.set(
-      "returnTo",
-      returnTo ?? buildReturnToWithOportunidad("/crm/eventos", oportunidadIdFilter),
-    );
-    navigate(`/po-solicitudes?${params.toString()}`);
-  };
   const createTo = useMemo(() => {
     const createPath = "/crm/eventos/create";
     if (!oportunidadIdFilter) return createPath;
@@ -231,12 +220,11 @@ export const CRMEventoList = () => {
       sort={{ field: "fecha_evento", order: "DESC" }}
       className="space-y-5"
     >
-      <EventosFilterSync
-        fromChat={fromChat}
-        fromOportunidad={fromOportunidad}
-        fromSolicitudes={fromSolicitudes}
-        responsableId={responsableId}
-      />
+        <EventosFilterSync
+          fromChat={fromChat}
+          fromOportunidad={fromOportunidad}
+          responsableId={responsableId}
+        />
       <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3">
         {oportunidadIdFilter ? (
           <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-3">
@@ -292,15 +280,6 @@ export const CRMEventoList = () => {
               >
                 <House className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleOpenSolicitudes}
-                disabled={!oportunidadIdFilter}
-              >
-                <FileText className="h-4 w-4" />
-              </Button>
             </div>
           </div>
         ) : null}
@@ -330,17 +309,15 @@ export const CRMEventoList = () => {
 const EventosFilterSync = ({
   fromChat,
   fromOportunidad,
-  fromSolicitudes,
   responsableId,
 }: {
   fromChat: boolean;
   fromOportunidad: boolean;
-  fromSolicitudes: boolean;
   responsableId?: number;
 }) => {
   const { filterValues, setFilters } = useListContext<CRMEvento>();
   const [hasInitialized, setHasInitialized] = useState(false);
-  const shouldSkipSync = fromChat || fromOportunidad || fromSolicitudes;
+  const shouldSkipSync = fromChat || fromOportunidad;
 
   useEffect(() => {
     if (shouldSkipSync) {

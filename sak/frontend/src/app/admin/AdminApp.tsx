@@ -49,7 +49,6 @@ import {
   TipoArticuloList,
   TipoArticuloCreate,
   TipoArticuloEdit,
-  TipoArticuloShow,
 } from "@/app/resources/tipos-articulo";
 import {
   AdmConceptoList,
@@ -89,12 +88,6 @@ import {
   ProyectoShow,
 } from "@/app/resources/proyectos";
 import {
-  PoSolicitudList,
-  PoSolicitudCreate,
-  PoSolicitudEdit,
-  PoSolicitudShow,
-} from "@/app/resources/po/po-solicitudes";
-import {
   PoOrderList,
   PoOrderCreate,
   PoOrderEdit,
@@ -105,12 +98,6 @@ import {
   PoOrderStatusCreate,
   PoOrderStatusEdit,
 } from "@/app/resources/po/po-order-status";
-import {
-  PoOrdenCompraList,
-  PoOrdenCompraCreate,
-  PoOrdenCompraEdit,
-  PoOrdenCompraShow,
-} from "@/app/resources/po/po-ordenes-compra";
 import {
   PoFacturaList,
   PoFacturaCreate,
@@ -335,7 +322,6 @@ const AdminApp = () => {
         list={TipoArticuloList}
         create={TipoArticuloCreate}
         edit={TipoArticuloEdit}
-        show={TipoArticuloShow}
         recordRepresentation="nombre"
         icon={Package}
         options={{ label: "Tipos de Articulo" }}
@@ -414,16 +400,6 @@ const AdminApp = () => {
         options={{ label: "Estados de Orden" }}
       />
       <Resource
-        name="po-solicitudes"
-        list={PoSolicitudList}
-        create={PoSolicitudCreate}
-        edit={PoSolicitudEdit}
-        show={PoSolicitudShow}
-        recordRepresentation="id"
-        icon={ListChecks}
-        options={{ label: "Solicitudes" }}
-      />
-      <Resource
         name="po-orders"
         list={PoOrderList}
         create={PoOrderCreate}
@@ -432,16 +408,6 @@ const AdminApp = () => {
         recordRepresentation="titulo"
         icon={ClipboardList}
         options={{ label: "Ordenes" }}
-      />
-      <Resource
-        name="po-ordenes-compra"
-        list={PoOrdenCompraList}
-        create={PoOrdenCompraCreate}
-        edit={PoOrdenCompraEdit}
-        show={PoOrdenCompraShow}
-        recordRepresentation="id"
-        icon={ShoppingCart}
-        options={{ label: "Ordenes de Compra" }}
       />
       <Resource
         name="po-facturas"
@@ -653,10 +619,6 @@ const AdminApp = () => {
         options={{ label: "Emprendimientos" }}
       />
       <CustomRoutes>
-        <Route path="/po-solicitudes/create-mb" element={<PoSolicitudCreate />} />
-        <Route path="/po-solicitudes/:id/edit-mb" element={<PoSolicitudEdit />} />
-        <Route path="/po-ordenes-compra/create-mb" element={<PoOrdenCompraCreate />} />
-        <Route path="/po-ordenes-compra/:id/edit-mb" element={<PoOrdenCompraEdit />} />
         <Route path="/po-facturas/create-mb" element={<PoFacturaCreate />} />
         <Route path="/po-facturas/:id/edit-mb" element={<PoFacturaEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />

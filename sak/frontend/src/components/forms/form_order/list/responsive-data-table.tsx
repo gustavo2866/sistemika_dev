@@ -275,10 +275,17 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
           );
         };
 
-        const getRecordValue = (source?: string) => {
-          if (!source) return undefined;
-          return get(record, source);
-        };
+  const getRecordValue = (source?: string) => {
+    if (!source) return undefined;
+    return get(record, source);
+  };
+
+  const toBooleanValue = (value: unknown): boolean | undefined => {
+    if (typeof value === "boolean") return value;
+    if (value === 1 || value === "1" || value === "true") return true;
+    if (value === 0 || value === "0" || value === "false") return false;
+    return undefined;
+  };
 
         const isActionColumn = (columnProps: DataTableColumnProps<RecordType>) => {
           const label =
@@ -446,14 +453,33 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
           const secondaryNodes =
             mobileConfig.secondaryFields
               ?.map((field) => {
+                const raw = getRecordValue(field);
+                const booleanValue = toBooleanValue(raw);
                 const column = columnMap.get(field);
+                if (booleanValue !== undefined) {
+                  return (
+                    <div
+                      key={`${field}-secondary`}
+                      className="flex items-center gap-1 text-[8px] text-muted-foreground leading-tight [&_*]:text-[8px]"
+                    >
+                      <span className="font-medium">
+                        {column?.label ?? humanize(field)}:
+                      </span>
+                      <span className="inline-flex items-center text-[8px]">
+                        {booleanValue ? "Si" : "No"}
+                      </span>
+                    </div>
+                  );
+                }
                 if (column) {
                   const content = renderInlineColumnCell(
                     `${field}-secondary`,
                     column,
                     { className: "inline-flex items-center text-[8px]" }
                   );
-                  if (!content) return null;
+                  if (!content) {
+                    return null;
+                  }
                   return (
                     <div
                       key={`${field}-secondary`}
@@ -464,7 +490,6 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                     </div>
                   );
                 }
-                const raw = getRecordValue(field);
                 if (raw == null || raw === "") return null;
                 const label = humanize(field);
                 return (

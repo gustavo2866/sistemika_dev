@@ -1,70 +1,77 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
-import { SimpleForm } from "@/components/simple-form";
-import { BooleanInput } from "@/components/boolean-input";
 import { ReferenceInput } from "@/components/reference-input";
+import { SimpleForm } from "@/components/simple-form";
+import { FormOrderToolbar } from "@/components/forms";
 import {
-  CompactFormField,
-  CompactFormGrid,
-  CompactFormSection,
-  CompactSelectInput,
-  CompactTextInput,
-  FormLayout,
-} from "@/components/forms";
-import { CENTROS_COSTO_REFERENCE } from "./model";
+  FormBoolean,
+  FormSelect,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import {
+  CENTROS_COSTO_REFERENCE,
+  DEPARTAMENTO_DEFAULT,
+  VALIDATION_RULES,
+  departamentoSchema,
+  type DepartamentoFormValues,
+} from "./model";
+
+const DepartamentoMainFields = () => (
+  <div className="flex flex-col gap-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      <FormText
+        source="nombre"
+        label="Nombre del departamento"
+        validate={required()}
+        widthClass="w-full"
+        maxLength={VALIDATION_RULES.NOMBRE.MAX_LENGTH}
+      />
+      <ReferenceInput
+        source="centro_costo_id"
+        reference={CENTROS_COSTO_REFERENCE.resource}
+        filter={CENTROS_COSTO_REFERENCE.filter}
+      >
+        <FormSelect
+          optionText={CENTROS_COSTO_REFERENCE.labelField}
+          label="Centro de costo"
+          widthClass="w-full"
+          emptyText="Sin centro"
+        />
+      </ReferenceInput>
+      <FormTextarea
+        source="descripcion"
+        label="Descripcion"
+        rows={3}
+        widthClass="w-full"
+        maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
+        className="md:col-span-2"
+      />
+    </div>
+    <div className="flex flex-wrap gap-4 pt-1">
+      <FormBoolean
+        source="activo"
+        label="Departamento activo"
+        defaultValue
+      />
+    </div>
+  </div>
+);
 
 export const DepartamentoForm = () => (
-  <SimpleForm className="w-full max-w-4xl">
-    <FormLayout
-      sections={[
-        {
-          id: "datos-generales",
-          title: "Datos generales",
-          defaultOpen: true,
-          contentPadding: "none",
-          contentClassName: "space-y-3 px-4 py-3",
-          children: (
-            <CompactFormSection>
-              <CompactFormGrid columns="two">
-                <CompactTextInput
-                  source="nombre"
-                  label="Nombre del departamento"
-                  validate={required()}
-                  className="w-full"
-                />
-                <CompactFormField label="Centro de costo">
-                  <ReferenceInput
-                    source="centro_costo_id"
-                    reference={CENTROS_COSTO_REFERENCE.resource}
-                    label="Centro de costo"
-                    filter={CENTROS_COSTO_REFERENCE.filter}
-                  >
-                    <CompactSelectInput
-                      optionText={CENTROS_COSTO_REFERENCE.labelField}
-                      emptyText="Sin centro"
-                      className="w-full"
-                      label={false}
-                    />
-                  </ReferenceInput>
-                </CompactFormField>
-              </CompactFormGrid>
-              <CompactTextInput
-                source="descripcion"
-                label="Descripcion"
-                multiline
-                rows={3}
-                className="w-full"
-              />
-              <BooleanInput
-                source="activo"
-                label="Departamento activo"
-                defaultValue={true}
-              />
-            </CompactFormSection>
-          ),
-        },
-      ]}
+  <SimpleForm<DepartamentoFormValues>
+    className="w-full max-w-2xl"
+    resolver={zodResolver(departamentoSchema) as any}
+    toolbar={<FormOrderToolbar />}
+    defaultValues={DEPARTAMENTO_DEFAULT}
+  >
+    <SectionBaseTemplate
+      title="Datos generales"
+      main={<DepartamentoMainFields />}
+      defaultOpen
     />
   </SimpleForm>
 );

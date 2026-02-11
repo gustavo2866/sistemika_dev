@@ -5,8 +5,13 @@ import type { FieldValues, UseFormGetValues, UseFormReset, UseFormReturn } from 
 import { useFormContext, useWatch } from "react-hook-form";
 import { getArticuloFilterByTipo } from "./po-utils";
 import type { TipoSolicitud } from "../../tipos-solicitud/model";
-import { TIPOS_SOLICITUD_REFERENCE } from "../po-solicitudes/model";
 import { useReferenceFieldWatcher } from "@/components/generic";
+
+const TIPOS_SOLICITUD_REFERENCE = {
+  resource: "tipos-solicitud",
+  limit: 50,
+  staleTime: 10 * 60 * 1000,
+} as const;
 
 
 export const useArticuloFilterByTipoSolicitud = ({
@@ -235,7 +240,7 @@ export const useWizardCancel = <T extends FieldValues>({
   onOpenChange,
   navigate,
   setConfirmCancelOpen,
-  navigateTo = "/po-solicitudes",
+  navigateTo = "/po-orders",
 }: {
   defaultValues: T;
   formState: UseFormReturn<T>["formState"];

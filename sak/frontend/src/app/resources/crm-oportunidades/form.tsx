@@ -30,7 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { IconButtonWithTooltip } from "@/components/icon-button-with-tooltip";
-import { ArrowLeft, Calendar, FileText, MessageCircle } from "lucide-react";
+import { ArrowLeft, Calendar, MessageCircle } from "lucide-react";
 
 type CRMOportunidadFormProps = {
   toolbar?: ReactNode;
@@ -179,14 +179,6 @@ function DatosGeneralesSection() {
     navigate(`/crm/eventos?${params.toString()}`);
   };
 
-  const handleOpenSolicitudes = () => {
-    if (!record?.id) return;
-    const filter = { oportunidad_id: record.id };
-    const params = new URLSearchParams();
-    params.set("filter", JSON.stringify(filter));
-    params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
-    navigate(`/po-solicitudes?${params.toString()}`);
-  };
 
   const handleOpenChat = () => {
     if (!record?.id) return;
@@ -249,14 +241,6 @@ function DatosGeneralesSection() {
               className="h-7 w-7"
             >
               <MessageCircle className="h-4 w-4" />
-            </IconButtonWithTooltip>
-            <IconButtonWithTooltip
-              label="Solicitudes"
-              onClick={handleOpenSolicitudes}
-              disabled={!record?.id}
-              className="h-7 w-7"
-            >
-              <FileText className="h-4 w-4" />
             </IconButtonWithTooltip>
             <IconButtonWithTooltip
               label="Eventos"

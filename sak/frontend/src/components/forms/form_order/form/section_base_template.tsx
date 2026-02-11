@@ -83,8 +83,8 @@ export const SectionBaseTemplate = ({
       isOpen={isOpen}
       onToggle={() => setIsOpen((v) => !v)}
       headerActions={headerActions}
-      cardClassName="pt-2 pb-0"
-      contentClassName="px-3 pt-0 pb-0"
+      cardClassName="pt-3 pb-2"
+      contentClassName="px-3 pt-0 pb-2"
       titleClassName="mb-2"
     >
       <div className="flex flex-col gap-0">

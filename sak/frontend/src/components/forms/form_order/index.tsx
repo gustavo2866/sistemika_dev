@@ -17,9 +17,9 @@ export {
 export type { FilterBuilderItem } from "./filter";
 export { ListLabel } from "./list/list_label";
 export type { ListLabelProps } from "./list/list_label";
-export { ListDate, ListEstado, ListID, ListMoney, ListStatus, ListText, ListTextarea } from "./list/list_fields";
-export type { ListIDProps, ListMoneyProps, ListStatusProps, ListTextareaProps, ListTextProps } from "./list/list_fields";
-export { ListColumn } from "./list/list_column";
+export { ListBoolean, ListDate, ListEstado, ListID, ListMoney, ListNumber, ListStatus, ListText, ListTextarea } from "./list/list_fields";
+export type { ListBooleanProps, ListIDProps, ListMoneyProps, ListNumberProps, ListStatusProps, ListTextareaProps, ListTextProps } from "./list/list_fields";
+export { BooleanListColumn, DateListColumn, ListColumn, NumberListColumn, TextListColumn } from "./list/list_column";
 export type { ListColumnProps } from "./list/list_column";
 export { ListPaginator } from "./list/list_paginator";
 export { FormOrderBulkActionsToolbar } from "./list/bulk/bulk_actions_toolbar";
@@ -55,6 +55,7 @@ export {
 } from "./form/detail_row_actions";
 export {
   FormAutocomplete,
+  FormBoolean,
   FormDate,
   FormNumber,
   FormReferenceAutocomplete,

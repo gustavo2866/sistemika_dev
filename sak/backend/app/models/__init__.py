@@ -38,13 +38,7 @@ from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
 from .compras import (
-    EstadoPoSolicitud,
-    EstadoPoOrdenCompra,
     EstadoPoFactura,
-    PoSolicitud,
-    PoSolicitudDetalle,
-    PoOrdenCompra,
-    PoOrdenCompraDetalle,
     PoFactura,
     PoFacturaDetalle,
     PoFacturaTotal,
@@ -109,13 +103,7 @@ __all__ = [
     "Factura",
     "FacturaDetalle",
     "FacturaImpuesto",
-    "EstadoPoSolicitud",
-    "EstadoPoOrdenCompra",
     "EstadoPoFactura",
-    "PoSolicitud",
-    "PoSolicitudDetalle",
-    "PoOrdenCompra",
-    "PoOrdenCompraDetalle",
     "PoFactura",
     "PoFacturaDetalle",
     "PoFacturaTotal",

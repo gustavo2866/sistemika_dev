@@ -5,12 +5,10 @@ import { Link } from "react-router";
 import { useCreatePath, useDataProvider, useGetIdentity } from "ra-core";
 import { 
   CalendarCheck, 
-  ClipboardList, 
   Target, 
   AlertTriangle,
   Users,
   Building2,
-  FileText,
   Activity
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/spinner";
 import type { CRMEvento } from "@/app/resources/crm-eventos/model";
-import type { PoSolicitud } from "@/app/resources/po/po-solicitudes/model";
 import type { CRMOportunidad } from "@/app/resources/crm-oportunidades/model";
 
 type SectionState<T> = {
@@ -27,8 +24,6 @@ type SectionState<T> = {
   total: number;
   isLoading: boolean;
 };
-
-type PoSolicitudListItem = PoSolicitud & { id: number };
 
 const PAGE_SIZE = 5;
 
@@ -51,11 +46,6 @@ export default function HomeDashboard() {
     total: 0,
     isLoading: true,
   });
-  const [solicitudesState, setSolicitudesState] = useState<SectionState<PoSolicitudListItem>>({
-    data: [],
-    total: 0,
-    isLoading: true,
-  });
   const [oportunidadesState, setOportunidadesState] = useState<SectionState<CRMOportunidad>>({
     data: [],
     total: 0,
@@ -73,7 +63,6 @@ export default function HomeDashboard() {
   useEffect(() => {
     if (!userId) {
       setEventosState((prev) => ({ ...prev, isLoading: false }));
-      setSolicitudesState((prev) => ({ ...prev, isLoading: false }));
       setOportunidadesState((prev) => ({ ...prev, isLoading: false }));
       setPerformanceState((prev) => ({ ...prev, isLoading: false }));
       return;
@@ -81,14 +70,13 @@ export default function HomeDashboard() {
 
     let cancelled = false;
     setEventosState((prev) => ({ ...prev, isLoading: true }));
-    setSolicitudesState((prev) => ({ ...prev, isLoading: true }));
     setOportunidadesState((prev) => ({ ...prev, isLoading: true }));
     setPerformanceState((prev) => ({ ...prev, isLoading: true }));
 
     const load = async () => {
       try {
         // Consultas paralelas para datos principales y de performance
-        const [eventos, solicitudes, oportunidades, eventosVencidos, nuevasOportunidades, oportunidadesGanadas] = await Promise.all([
+        const [eventos, oportunidades, eventosVencidos, nuevasOportunidades, oportunidadesGanadas] = await Promise.all([
           dataProvider.getList<CRMEvento>("crm/eventos", {
             pagination: { page: 1, perPage: PAGE_SIZE },
             sort: { field: "fecha_evento", order: "ASC" },
@@ -96,14 +84,6 @@ export default function HomeDashboard() {
               default_scope: "pendientes_mes",
               solo_pendientes: true,
               asignado_a_id: userId,
-            },
-          }),
-          dataProvider.getList<PoSolicitudListItem>("po-solicitudes", {
-            pagination: { page: 1, perPage: PAGE_SIZE },
-            sort: { field: "fecha_necesidad", order: "ASC" },
-            filter: {
-              estado: "pendiente",
-              solicitante_id: userId,
             },
           }),
           dataProvider.getList<CRMOportunidad>("crm/oportunidades", {
@@ -154,11 +134,6 @@ export default function HomeDashboard() {
           total: eventos.total ?? 0,
           isLoading: false,
         });
-        setSolicitudesState({
-          data: solicitudes.data ?? [],
-          total: solicitudes.total ?? 0,
-          isLoading: false,
-        });
         setOportunidadesState({
           data: oportunidades.data ?? [],
           total: oportunidades.total ?? 0,
@@ -174,7 +149,6 @@ export default function HomeDashboard() {
         if (cancelled) return;
         console.error("No se pudo cargar el dashboard de inicio", error);
         setEventosState((prev) => ({ ...prev, isLoading: false }));
-        setSolicitudesState((prev) => ({ ...prev, isLoading: false }));
         setOportunidadesState((prev) => ({ ...prev, isLoading: false }));
         setPerformanceState((prev) => ({ ...prev, isLoading: false }));
       }
@@ -195,13 +169,6 @@ export default function HomeDashboard() {
     }),
     [userId]
   );
-  const solicitudesFilter = useMemo(
-    () => ({
-      estado: "pendiente",
-      solicitante_id: userId,
-    }),
-    [userId]
-  );
   const oportunidadesFilter = useMemo(
     () => ({
       estado: "0-prospect",
@@ -212,7 +179,6 @@ export default function HomeDashboard() {
   );
 
   const eventosListPath = createPath({ resource: "crm/eventos", type: "list" });
-  const solicitudesListPath = createPath({ resource: "po-solicitudes", type: "list" });
   const oportunidadesListPath = createPath({ resource: "crm/oportunidades", type: "list" });
 
   return (
@@ -251,7 +217,7 @@ export default function HomeDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {/* Eventos Hoy/Próximos */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -281,25 +247,6 @@ export default function HomeDashboard() {
                   </Link>
                 </Button>
               )}
-            </div>
-
-            {/* Solicitudes por Aprobar */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Esperan aprobación</span>
-                <Badge variant={solicitudesState.total > 0 ? "default" : "secondary"}>
-                  {solicitudesState.isLoading ? <Spinner size="small" /> : solicitudesState.total}
-                </Badge>
-              </div>
-              <Button asChild variant="outline" size="sm" className="w-full">
-                <Link to={{
-                  pathname: solicitudesListPath,
-                  search: buildFilterSearch(solicitudesFilter),
-                }}>
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  {solicitudesState.total > 0 ? `Revisar ${solicitudesState.total}` : 'Ver todas'}
-                </Link>
-              </Button>
             </div>
 
             {/* Pipeline Activo */}
@@ -368,13 +315,6 @@ export default function HomeDashboard() {
               <Link to="/crm/eventos/create">
                 <CalendarCheck className="h-6 w-6" />
                 <span className="text-sm">Evento</span>
-              </Link>
-            </Button>
-            
-            <Button asChild variant="outline" className="h-16 flex-col gap-1">
-              <Link to="/po-solicitudes/create">
-                <FileText className="h-6 w-6" />
-                <span className="text-sm">Solicitud</span>
               </Link>
             </Button>
             

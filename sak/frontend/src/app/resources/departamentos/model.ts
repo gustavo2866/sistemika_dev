@@ -5,7 +5,7 @@
  * y valores por defecto para la entidad Departamento.
  */
 
-import { createEntitySchema, referenceField, stringField } from "@/lib/form-detail-schema";
+import { z } from "zod";
 
 // ============================================
 // 1. CONFIGURACIÓN
@@ -43,40 +43,41 @@ export type Departamento = {
   updated_at: string;
 };
 
-export type DepartamentoFormValues = {
-  nombre: string;
-  descripcion?: string;
-  activo: boolean;
-  centro_costo_id?: string;
-};
-
 // ============================================
 // 3. VALIDACIONES (Zod Schema)
 // ============================================
 
-export const departamentoSchema = createEntitySchema<
-  DepartamentoFormValues,
-  Omit<Departamento, "id" | "created_at" | "updated_at">
->({
-  fields: {
-    nombre: stringField({
-      required: true,
-      maxLength: VALIDATION_RULES.NOMBRE.MAX_LENGTH,
-      defaultValue: "",
-    }),
-    descripcion: stringField({
-      required: false,
-      maxLength: VALIDATION_RULES.DESCRIPCION.MAX_LENGTH,
-      defaultValue: "",
-    }),
-    centro_costo_id: referenceField({
-      resource: CENTROS_COSTO_REFERENCE.resource,
-      labelField: CENTROS_COSTO_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-  },
+const optionalId = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.coerce.number().int().positive().optional(),
+);
+
+const optionalString = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.string().optional(),
+);
+
+const booleanFromInput = z.preprocess((value) => {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1" || value === 1) return true;
+  if (value === "false" || value === "0" || value === 0) return false;
+  if (value == null || value === "") return false;
+  return Boolean(value);
+}, z.boolean());
+
+export const departamentoSchema = z.object({
+  nombre: z
+    .string()
+    .min(VALIDATION_RULES.NOMBRE.MIN_LENGTH)
+    .max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),
+  descripcion: optionalString.pipe(
+    z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
+  ),
+  centro_costo_id: optionalId,
+  activo: booleanFromInput,
 });
+
+export type DepartamentoFormValues = z.infer<typeof departamentoSchema>;
 
 // ============================================
 // 4. VALORES DEFAULT

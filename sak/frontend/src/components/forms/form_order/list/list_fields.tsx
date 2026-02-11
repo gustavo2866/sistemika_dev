@@ -22,7 +22,11 @@ export const ListText = <RecordType extends RaRecord = RaRecord>({
   return (
     <TextField
       {...props}
-      className={cn("text-[10px] text-foreground", widthClass, className)}
+      className={cn(
+        "text-[10px] text-foreground whitespace-normal break-words",
+        widthClass,
+        className,
+      )}
       style={width != null ? { width } : undefined}
     />
   );
@@ -75,6 +79,26 @@ export const ListMoney = <RecordType extends RaRecord = RaRecord>({
   );
 };
 
+export type ListNumberProps<RecordType extends RaRecord = RaRecord> = NumberFieldProps<RecordType> & {
+  widthClass?: string;
+  width?: number | string;
+};
+
+export const ListNumber = <RecordType extends RaRecord = RaRecord>({
+  className,
+  widthClass,
+  width,
+  ...props
+}: ListNumberProps<RecordType>) => {
+  return (
+    <NumberField
+      {...props}
+      className={cn("text-[10px] tabular-nums", widthClass, className)}
+      style={width != null ? { width } : undefined}
+    />
+  );
+};
+
 export const ListDate = <RecordType extends RaRecord = RaRecord>({
   className,
   ...props
@@ -84,6 +108,31 @@ export const ListDate = <RecordType extends RaRecord = RaRecord>({
       {...props}
       className={cn("text-[10px] whitespace-nowrap", className)}
     />
+  );
+};
+
+export type ListBooleanProps<RecordType extends RaRecord = RaRecord> = FieldProps<RecordType> & {
+  className?: string;
+  trueLabel?: string;
+  falseLabel?: string;
+  emptyLabel?: string;
+};
+
+export const ListBoolean = <RecordType extends RaRecord = RaRecord>({
+  className,
+  trueLabel = "Si",
+  falseLabel = "No",
+  emptyLabel = "-",
+  ...props
+}: ListBooleanProps<RecordType>) => {
+  const value = useFieldValue(props);
+  if (value == null || value === "") {
+    return <span className={cn("text-[10px] text-muted-foreground", className)}>{emptyLabel}</span>;
+  }
+  return (
+    <span className={cn("text-[10px] font-medium", className)}>
+      {Boolean(value) ? trueLabel : falseLabel}
+    </span>
   );
 };
 
@@ -143,7 +192,12 @@ export const ListTextarea = <RecordType extends RaRecord = RaRecord>({
   }
 
   return (
-    <span className={cn("text-[10px] text-foreground", className)}>
+    <span
+      className={cn(
+        "text-[10px] text-foreground whitespace-normal break-words",
+        className,
+      )}
+    >
       {display}
       {isLong ? (
         <button

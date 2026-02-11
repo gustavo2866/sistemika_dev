@@ -8,7 +8,6 @@ import {
   CalendarPlus,
   Sparkles,
   House,
-  ClipboardList,
   MessageCircle,
   Image as ImageIcon,
   Mic,
@@ -393,17 +392,6 @@ export const CRMChatShow = () => {
 
   const chatReturnTo = id ? `/crm/chat/${id}/show` : "/crm/chat";
 
-  const handleOpenSolicitudes = () => {
-    if (!resolveOportunidadId) return;
-    const path = createPath({
-      resource: "po-solicitudes",
-      type: "list",
-    });
-    const params = new URLSearchParams();
-    appendFilterParam(params, buildOportunidadFilter(resolveOportunidadId));
-    params.set("returnTo", chatReturnTo);
-    navigate(`${path}?${params.toString()}`);
-  };
 
   const handleOpenAccion = (accion: "accion_descartar" | "accion_aceptar" | "accion_agendar" | "accion_cerrar") => {
     if (!resolveOportunidadId) return;
@@ -473,15 +461,6 @@ export const CRMChatShow = () => {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-slate-400">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
-            onClick={handleOpenSolicitudes}
-            disabled={!resolveOportunidadId}
-          >
-            <ClipboardList className="h-4 w-4" />
-          </Button>
           <Button
             variant="ghost"
             size="icon"

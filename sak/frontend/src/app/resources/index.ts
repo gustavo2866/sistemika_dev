@@ -7,8 +7,6 @@ export * from "./proyectos";
 export * from "./parte-diario";
 export * from "./departamentos";
 export * from "./tipos-solicitud";
-export * from "./po/po-solicitudes";
-export * from "./po/po-ordenes-compra";
 export * from "./po/po-facturas";
 export * from "./po/po-orders";
 export * from "./po/po-order-status";

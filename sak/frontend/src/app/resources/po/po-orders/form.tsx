@@ -198,7 +198,7 @@ const HeaderSection = () => {
     <>
       <DropdownMenuItem
         onClick={handlePreview}
-        className="gap-2 text-[9px] sm:text-[10px]"
+        className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
       >
         <Eye className="h-3 w-3" />
         Preview
@@ -208,7 +208,7 @@ const HeaderSection = () => {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => setConfirmDelete(true)}
-            className="gap-2 text-[9px] sm:text-[10px]"
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
             variant="destructive"
           >
             <Trash2 className="h-3 w-3" />

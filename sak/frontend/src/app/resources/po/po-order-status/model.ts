@@ -2,7 +2,7 @@
  * Modelo de dominio para Estados de Orden de Compra (PO)
  */
 
-import { createEntitySchema, numberField, stringField } from "@/lib/form-detail-schema";
+import { z } from "zod";
 
 export const VALIDATION_RULES = {
   NOMBRE: {
@@ -12,6 +12,19 @@ export const VALIDATION_RULES = {
     MAX_LENGTH: 200,
   },
 } as const;
+
+const optionalString = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.string().optional(),
+);
+
+const booleanFromInput = z.preprocess((value) => {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1" || value === 1) return true;
+  if (value === "false" || value === "0" || value === 0) return false;
+  if (value == null || value === "") return false;
+  return Boolean(value);
+}, z.boolean());
 
 export type PoOrderStatus = {
   id: number;
@@ -25,37 +38,18 @@ export type PoOrderStatus = {
   updated_at: string;
 };
 
-export type PoOrderStatusFormValues = {
-  nombre: string;
-  descripcion?: string;
-  orden: number;
-  activo: boolean;
-  es_inicial: boolean;
-  es_final: boolean;
-};
-
-export const poOrderStatusSchema = createEntitySchema<
-  PoOrderStatusFormValues,
-  Omit<PoOrderStatus, "id" | "created_at" | "updated_at">
->({
-  fields: {
-    nombre: stringField({
-      required: true,
-      maxLength: VALIDATION_RULES.NOMBRE.MAX_LENGTH,
-      defaultValue: "",
-    }),
-    descripcion: stringField({
-      required: false,
-      maxLength: VALIDATION_RULES.DESCRIPCION.MAX_LENGTH,
-      defaultValue: "",
-    }),
-    orden: numberField({
-      required: true,
-      min: 1,
-      defaultValue: 1,
-    }),
-  },
+export const poOrderStatusSchema = z.object({
+  nombre: z.string().min(1).max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),
+  descripcion: optionalString.pipe(
+    z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
+  ),
+  orden: z.coerce.number().int().min(1),
+  activo: booleanFromInput,
+  es_inicial: booleanFromInput,
+  es_final: booleanFromInput,
 });
+
+export type PoOrderStatusFormValues = z.infer<typeof poOrderStatusSchema>;
 
 export const PO_ORDER_STATUS_DEFAULT: PoOrderStatusFormValues = {
   nombre: "",

@@ -1,54 +1,99 @@
 "use client";
 
 import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { TextInput } from "@/components/text-input";
-import { BadgeField } from "@/components/badge-field";
 import { ReferenceField } from "@/components/reference-field";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
+import { FormOrderListRowActions } from "@/components/forms/form_order";
+import {
+  BooleanListColumn,
+  ListPaginator,
+  TextListColumn,
+  ListText,
+  ResponsiveDataTable,
+  buildListFilters,
+} from "@/components/forms/form_order";
 
-const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar tipos de solicitud" alwaysOn />,
-  <TextInput key="nombre" source="nombre" label="Nombre" />,
-];
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar tipos de solicitud",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "nombre",
+        label: "Nombre",
+      },
+    },
+  ],
+  { keyPrefix: "tipos-solicitud" },
+);
+
+const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton
+      filters={filters}
+      size="sm"
+      buttonClassName={actionButtonClass}
+    />
+    <CreateButton className={actionButtonClass} label="Crear" />
+    <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 export const TipoSolicitudList = () => (
-  <List filters={filters} actions={<ListActions />} debounce={300} perPage={25}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="nombre">
-        <TextField source="nombre" />
-      </DataTable.Col>
-      <DataTable.Col source="descripcion" label="Descripción">
-        <TextField source="descripcion" className="block max-w-[260px] truncate" />
-      </DataTable.Col>
-      <DataTable.Col source="tipo_articulo_filter" label="Filtro Artículo">
-        <TextField source="tipo_articulo_filter" />
-      </DataTable.Col>
-      <DataTable.Col source="departamento_default_id" label="Depto. Default">
+  <List
+    title="Tipos de solicitud"
+    filters={filters}
+    actions={<ListActions />}
+    debounce={300}
+    perPage={25}
+    pagination={<ListPaginator />}
+    sort={{ field: "id", order: "DESC" }}
+    containerClassName="max-w-[720px] w-full mr-auto"
+  >
+    <ResponsiveDataTable
+      rowClick="edit"
+      mobileConfig={{
+        primaryField: "nombre",
+        secondaryFields: [
+          "descripcion",
+          "tipo_articulo_filter",
+          "departamento_default_id",
+          "activo",
+        ],
+      }}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <TextListColumn source="nombre" label="Nombre">
+        <ListText source="nombre" />
+      </TextListColumn>
+      <TextListColumn source="descripcion" label="Descripcion">
+        <ListText source="descripcion" />
+      </TextListColumn>
+      <TextListColumn source="tipo_articulo_filter" label="Filtro Articulo">
+        <ListText source="tipo_articulo_filter" />
+      </TextListColumn>
+      <TextListColumn source="departamento_default_id" label="Depto. Default">
         <ReferenceField source="departamento_default_id" reference="departamentos">
-          <TextField source="nombre" />
+          <ListText source="nombre" />
         </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col source="activo" label="Estado">
-        <BadgeField source="activo" />
-      </DataTable.Col>
-      <DataTable.Col>
-        <EditButton />
-      </DataTable.Col>
-    </DataTable>
+      </TextListColumn>
+      <BooleanListColumn source="activo" label="Estado" />
+      <TextListColumn label="Acciones">
+        <FormOrderListRowActions />
+      </TextListColumn>
+    </ResponsiveDataTable>
   </List>
 );
-
-

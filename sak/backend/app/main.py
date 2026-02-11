@@ -50,11 +50,9 @@ from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.vacancia_dashboard_router import router as vacancia_dashboard_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
 # Routers módulo de compras (PO)
-from app.routers.po_solicitud_router import po_solicitud_router
-from app.routers.po_solicitud_detalle_router import po_solicitud_detalle_router
-from app.routers.po_orden_compra_router import po_orden_compra_router
 from app.routers.po_factura_router import po_factura_router
 from app.routers.po_factura_total_router import po_factura_total_router
+from app.routers.po_invoice_router import po_invoice_router
 from app.routers.po_order_router import po_order_router
 from app.routers.po_order_detail_router import po_order_detail_router
 from app.routers.po_order_status_router import po_order_status_router
@@ -189,11 +187,9 @@ app.include_router(meta_webhook_router, prefix="/api")
 app.include_router(calculadora_router)
 app.include_router(emprendimiento_router)
 # Routers módulo de compras (PO)
-app.include_router(po_solicitud_router)
-app.include_router(po_solicitud_detalle_router)
-app.include_router(po_orden_compra_router)
 app.include_router(po_factura_router)
 app.include_router(po_factura_total_router)
+app.include_router(po_invoice_router)
 app.include_router(po_order_router)
 app.include_router(po_order_detail_router)
 app.include_router(po_order_status_router)

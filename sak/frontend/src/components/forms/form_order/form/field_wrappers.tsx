@@ -13,6 +13,10 @@ import {
   type ReferenceInputProps,
 } from "@/components/reference-input";
 import {
+  BooleanInput,
+  type BooleanInputProps,
+} from "@/components/boolean-input";
+import {
   buildFieldClassName,
   FORM_FIELD_DEFAULT_WIDTH_CLASS,
   FORM_FIELD_LABEL_CLASS,
@@ -120,6 +124,23 @@ export const FormReferenceAutocomplete = ({
       )}
     />
   </ReferenceInput>
+);
+
+export type FormBooleanProps = BooleanInputProps & {
+  className?: string;
+};
+
+export const FormBoolean = ({ className, ...props }: FormBooleanProps) => (
+  <BooleanInput
+    {...props}
+    className={cn(
+      "gap-0.5 sm:gap-1 [&_[data-slot=form-label]]:text-[9px] sm:[&_[data-slot=form-label]]:text-[10px] " +
+        "[&_[data-slot=form-label]]:leading-none " +
+        "[&_[data-slot=switch]]:h-4 [&_[data-slot=switch]]:w-6 " +
+        "[&_[data-slot=switch-thumb]]:size-3",
+      className,
+    )}
+  />
 );
 
 export const FormValue = ({

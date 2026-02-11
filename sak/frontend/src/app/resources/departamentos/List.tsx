@@ -1,67 +1,93 @@
 "use client";
 
 import { List } from "@/components/list";
-import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
-import { TextField } from "@/components/text-field";
 import { ReferenceField } from "@/components/reference-field";
-import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
+import { FormOrderListRowActions } from "@/components/forms/form_order";
+import {
+  BooleanListColumn,
+  ListPaginator,
+  NumberListColumn,
+  TextListColumn,
+  ListText,
+  ResponsiveDataTable,
+  buildListFilters,
+} from "@/components/forms/form_order";
 
-const filters = [
-  <TextInput key="q" source="q" label="Buscar" placeholder="Buscar departamentos" alwaysOn />,
-  <TextInput key="nombre" source="nombre" label="Nombre" />,
-];
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar departamentos",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "nombre",
+        label: "Nombre",
+      },
+    },
+  ],
+  { keyPrefix: "departamentos" },
+);
+
+const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton
+      filters={filters}
+      size="sm"
+      buttonClassName={actionButtonClass}
+    />
+    <CreateButton className={actionButtonClass} label="Crear" />
+    <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 export const DepartamentoList = () => (
   <List
+    title="Departamentos"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
     perPage={25}
-    containerClassName="lg:max-w-[960px]"
+    pagination={<ListPaginator />}
+    sort={{ field: "id", order: "DESC" }}
+    containerClassName="max-w-[720px] w-full mr-auto"
   >
     <ResponsiveDataTable
       rowClick="edit"
+      mobileConfig={{
+        primaryField: "nombre",
+        secondaryFields: ["descripcion", "centro_costo_id", "activo"],
+      }}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
-      <ResponsiveDataTable.Col source="id" label="Id" className="w-[60px] text-center">
-        <TextField source="id" className="inline-block w-full text-center" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="nombre" className="w-[120px]">
-        <TextField source="nombre" className="whitespace-normal break-words" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="descripcion" label="Descripcion" className="w-[220px]">
-        <TextField source="descripcion" className="whitespace-normal break-words" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="centro_costo_id"
-        label="Centro de costo"
-        className="w-[160px] whitespace-normal break-words"
-      >
+      <NumberListColumn source="id" label="Id" className="text-center" />
+      <TextListColumn source="nombre" label="Nombre">
+        <ListText source="nombre" />
+      </TextListColumn>
+      <TextListColumn source="descripcion" label="Descripcion">
+        <ListText source="descripcion" />
+      </TextListColumn>
+      <TextListColumn source="centro_costo_id" label="Centro de costo">
         <ReferenceField source="centro_costo_id" reference="centros-costo">
-          <TextField source="nombre" className="whitespace-normal break-words" />
+          <ListText source="nombre" />
         </ReferenceField>
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="activo"
-        label="Activo"
-        className="w-[90px] text-center"
-        render={(record) => (
-          <span className="inline-flex w-full items-center justify-center">
-            {(record as { activo?: boolean })?.activo ? "SI" : "NO"}
-          </span>
-        )}
-      />
+      </TextListColumn>
+      <BooleanListColumn source="activo" label="Activo" />
+      <TextListColumn label="Acciones">
+        <FormOrderListRowActions />
+      </TextListColumn>
     </ResponsiveDataTable>
   </List>
 );
