@@ -56,6 +56,12 @@ import {
   AdmConceptoEdit,
   AdmConceptoShow,
 } from "@/app/resources/adm-conceptos";
+import {
+  TaxProfileList,
+  TaxProfileCreate,
+  TaxProfileEdit,
+  TaxProfileShow,
+} from "@/app/resources/tax-profiles";
 import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
   TipoPropiedadList,
@@ -94,15 +100,16 @@ import {
   PoOrderShow,
 } from "@/app/resources/po/po-orders";
 import {
+  PoInvoiceList,
+  PoInvoiceCreate,
+  PoInvoiceEdit,
+  PoInvoiceShow,
+} from "@/app/resources/po/po-invoices";
+import {
   PoOrderStatusList,
   PoOrderStatusCreate,
   PoOrderStatusEdit,
 } from "@/app/resources/po/po-order-status";
-import {
-  PoFacturaList,
-  PoFacturaCreate,
-  PoFacturaEdit,
-} from "@/app/resources/po/po-facturas";
 import {
   DepartamentoList,
   DepartamentoCreate,
@@ -299,6 +306,16 @@ const AdminApp = () => {
         options={{ label: "Conceptos" }}
       />
       <Resource
+        name="api/v1/tax-profiles"
+        list={TaxProfileList}
+        create={TaxProfileCreate}
+        edit={TaxProfileEdit}
+        show={TaxProfileShow}
+        recordRepresentation="nombre"
+        icon={Coins}
+        options={{ label: "Perfiles de Impuestos" }}
+      />
+      <Resource
         name="proyectos"
         list={ProyectoList}
         create={ProyectoCreate}
@@ -410,13 +427,14 @@ const AdminApp = () => {
         options={{ label: "Ordenes" }}
       />
       <Resource
-        name="po-facturas"
-        list={PoFacturaList}
-        create={PoFacturaCreate}
-        edit={PoFacturaEdit}
-        recordRepresentation="id"
+        name="po-invoices"
+        list={PoInvoiceList}
+        create={PoInvoiceCreate}
+        edit={PoInvoiceEdit}
+        show={PoInvoiceShow}
+        recordRepresentation="numero"
         icon={Receipt}
-        options={{ label: "Facturas" }}
+        options={{ label: "Facturas OC" }}
       />
       <Resource
         name="po-setup"
@@ -619,8 +637,6 @@ const AdminApp = () => {
         options={{ label: "Emprendimientos" }}
       />
       <CustomRoutes>
-        <Route path="/po-facturas/create-mb" element={<PoFacturaCreate />} />
-        <Route path="/po-facturas/:id/edit-mb" element={<PoFacturaEdit />} />
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />

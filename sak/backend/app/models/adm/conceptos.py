@@ -13,3 +13,4 @@ class AdmConcepto(Base, table=True):
     nombre: str = Field(max_length=200, description="Nombre del concepto", index=True)
     descripcion: Optional[str] = Field(default=None, max_length=500, description="Descripción del concepto")
     cuenta: str = Field(max_length=50, description="Código de cuenta contable", index=True)
+    es_impuesto: bool = Field(default=False, description="Indica si el concepto es del tipo impuestos")

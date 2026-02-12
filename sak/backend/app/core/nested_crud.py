@@ -171,20 +171,31 @@ class NestedCRUD(GenericCRUD):
                     if existing_id not in seen_ids:
                         session.delete(existing_obj)
 
-        session.commit()
-        session.refresh(obj)
+        # No hacer commit aquí - dejar que el método principal maneje la transacción
+        # session.commit()
+        # session.refresh(obj)
 
     # ------------------------------------------------------------------ overrides
     def create(self, session: Session, data: Dict[str, Any]):
         data_copy = dict(data)
         nested_payloads = self._extract_nested_payloads(data_copy)
         
-        obj = super().create(session, data_copy)
+        try:
+            # Crear el objeto principal sin commit automático
+            obj = super().create(session, data_copy, auto_commit=False)
 
-        if nested_payloads:
-            self._sync_nested_relations(session, obj, nested_payloads, is_create=True)
+            # Procesar relaciones anidadas
+            if nested_payloads:
+                self._sync_nested_relations(session, obj, nested_payloads, is_create=True)
 
-        return obj
+            # Hacer commit solo al final si todo fue exitoso
+            session.commit()
+            session.refresh(obj)
+            return obj
+        except Exception:
+            # En caso de error, hacer rollback de toda la transacción
+            session.rollback()
+            raise
 
     def update(
         self,
@@ -196,12 +207,20 @@ class NestedCRUD(GenericCRUD):
         data_copy = dict(data)
         nested_payloads = self._extract_nested_payloads(data_copy)
 
-        obj = super().update(session, obj_id, data_copy, check_version=check_version)
+        try:
+            obj = super().update(session, obj_id, data_copy, check_version=check_version, auto_commit=False)
 
-        if obj and nested_payloads:
-            self._sync_nested_relations(session, obj, nested_payloads, is_create=False)
+            if obj and nested_payloads:
+                self._sync_nested_relations(session, obj, nested_payloads, is_create=False)
 
-        return obj
+            # Commit final después de procesar todo
+            session.commit()
+            session.refresh(obj)
+            return obj
+        except Exception:
+            # En caso de error, hacer rollback de toda la transacción
+            session.rollback()
+            raise
 
     def update_partial(self, session: Session, obj_id: Any, data: Dict[str, Any]):
         return self.update(session, obj_id, data, check_version=False)

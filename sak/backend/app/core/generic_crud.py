@@ -376,13 +376,16 @@ class GenericCRUD(Generic[M]):
         return stmt
 
     # --- CRUD ---
-    def create(self, session: Session, data: Dict[str, Any]) -> M:
+    def create(self, session: Session, data: Dict[str, Any], auto_commit: bool = True) -> M:
         """Create: ignora id/stamps y campos no vÃ¡lidos"""
         cleaned = self._clean_create(data)
         obj = self.model(**cleaned)
         session.add(obj)
-        session.commit()
-        session.refresh(obj)
+        if auto_commit:
+            session.commit()
+            session.refresh(obj)
+        else:
+            session.flush()  # Genera el ID sin hacer commit
         return obj
 
     def get(self, session: Session, obj_id: Any, deleted: str = "exclude") -> Optional[M]:
@@ -641,7 +644,8 @@ class GenericCRUD(Generic[M]):
         session: Session, 
         obj_id: Any, 
         data: Dict[str, Any],
-        check_version: bool = True
+        check_version: bool = True,
+        auto_commit: bool = True
     ) -> Optional[M]:
         """
         Update completo con lock optimista
@@ -683,8 +687,11 @@ class GenericCRUD(Generic[M]):
             setattr(obj, "version", obj.version + 1)
 
         session.add(obj)
-        session.commit()
-        session.refresh(obj)
+        
+        if auto_commit:
+            session.commit()
+            session.refresh(obj)
+            
         return obj
 
     def update_partial(self, session: Session, obj_id: Any, data: Dict[str, Any]) -> Optional[M]:

@@ -1,151 +1,107 @@
 "use client";
 
-import type { MouseEvent } from "react";
 import { List } from "@/components/list";
-import { ResponsiveDataTable } from "@/components/lists/responsive-data-table";
-import { TextField } from "@/components/text-field";
-import { TextInput } from "@/components/text-input";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { Button } from "@/components/ui/button";
-import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
+import { CompactSoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
+import { FormOrderListRowActions } from "@/components/forms/form_order";
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { useDataProvider, useNotify, useRecordContext, useRedirect, useRefresh, useResourceContext } from "ra-core";
-import { MoreHorizontal } from "lucide-react";
+  BooleanListColumn,
+  ListPaginator,
+  NumberListColumn,
+  TextListColumn,
+  ListText,
+  ResponsiveDataTable,
+  buildListFilters,
+} from "@/components/forms/form_order";
 
-const filters = [
-  <TextInput key="q" source="q" label="Buscar" placeholder="Buscar proveedores" alwaysOn />,
-  <TextInput key="cuit" source="cuit" label="CUIT" />,
-  <SoloActivasToggleFilter
-    key="activo"
-    source="activo"
-    label="Activos"
-    alwaysOn
-    className="ml-auto"
-  />,
-];
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar proveedores",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "nombre",
+        label: "Nombre",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "cuit",
+        label: "CUIT",
+      },
+    },
+    {
+      type: "custom",
+      element: (
+        <CompactSoloActivasToggleFilter
+          key="activo"
+          source="activo"
+          label="Activos"
+          alwaysOn
+          className="ml-auto"
+        />
+      ),
+    },
+  ],
+  { keyPrefix: "proveedores" },
+);
+
+const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
+    <CreateButton className={actionButtonClass} label="Crear" />
+    <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 export const ProveedorList = () => (
   <List
+    title="Proveedores"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
     perPage={10}
     filterDefaultValues={{ activo: true }}
+    pagination={<ListPaginator />}
+    sort={{ field: "id", order: "DESC" }}
+    containerClassName="max-w-[900px] w-full mr-auto"
   >
-    <ResponsiveDataTable rowClick="edit">
-      <ResponsiveDataTable.Col source="id" label="ID" className="w-[80px]">
-        <TextField source="id" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="nombre" label="Nombre" className="w-[220px]">
-        <TextField source="nombre" className="block w-[220px] truncate" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col source="razon_social" label="Razon social" className="w-[260px]">
-        <TextField source="razon_social" className="block w-[260px] truncate" />
-      </ResponsiveDataTable.Col>
-      <ResponsiveDataTable.Col
-        source="activo"
-        label="Activo"
-        className="w-[120px] text-center"
-        render={(record) => (
-          <span className="inline-flex w-full items-center justify-center">
-            {(record as { activo?: boolean })?.activo ? "Si" : "No"}
-          </span>
-        )}
-      />
-      <ResponsiveDataTable.Col label="Acciones" className="w-[120px]">
-        <ProveedorActionsMenu />
-      </ResponsiveDataTable.Col>
+    <ResponsiveDataTable
+      rowClick="edit"
+      mobileConfig={{
+        primaryField: "nombre",
+        secondaryFields: ["razon_social", "cuit", "activo"],
+      }}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <NumberListColumn source="id" label="ID" className="text-center" />
+      <TextListColumn source="nombre" label="Nombre">
+        <ListText source="nombre" />
+      </TextListColumn>
+      <TextListColumn source="razon_social" label="Razon social">
+        <ListText source="razon_social" />
+      </TextListColumn>
+      <TextListColumn source="cuit" label="CUIT">
+        <ListText source="cuit" />
+      </TextListColumn>
+      <BooleanListColumn source="activo" label="Activo" />
+      <TextListColumn label="Acciones">
+        <FormOrderListRowActions />
+      </TextListColumn>
     </ResponsiveDataTable>
   </List>
 );
-
-const ProveedorActionsMenu = () => {
-  const record = useRecordContext();
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const refresh = useRefresh();
-  const redirect = useRedirect();
-  const resource = useResourceContext();
-
-  if (!record || !resource) return null;
-
-  const stopRowClick = (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const handleDelete = async () => {
-    if (!record?.id) return;
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm("Seguro que deseas eliminar el proveedor?");
-      if (!confirmed) return;
-    }
-    try {
-      await dataProvider.delete(resource, { id: record.id });
-      notify("Proveedor eliminado", { type: "info" });
-      refresh();
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo eliminar el proveedor", { type: "warning" });
-    }
-  };
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <MoreHorizontal className="h-4 w-4" />
-          <span className="sr-only">Acciones</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuItem
-          onClick={(event) => {
-            stopRowClick(event);
-            redirect("edit", resource, record.id);
-          }}
-        >
-          Editar
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(event) => {
-            stopRowClick(event);
-            redirect("show", resource, record.id);
-          }}
-        >
-          Mostrar
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          onClick={(event) => {
-            stopRowClick(event);
-            void handleDelete();
-          }}
-        >
-          Eliminar
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
-
-

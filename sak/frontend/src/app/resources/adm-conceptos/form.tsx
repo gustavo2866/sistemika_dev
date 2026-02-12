@@ -1,66 +1,61 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
-import { SimpleForm, FormToolbar } from "@/components/simple-form";
-import { Textarea } from "@/components/ui/textarea";
+import { SimpleForm } from "@/components/simple-form";
+import { FormOrderToolbar } from "@/components/forms";
 import {
-  CompactFormField,
-  CompactFormGrid,
-  CompactFormSection,
-  CompactTextInput,
-  FormLayout,
-} from "@/components/forms";
-import { useFormContext } from "react-hook-form";
+  FormBoolean,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import {
+  ADM_CONCEPTO_DEFAULT,
+  ADM_CONCEPTO_RULES,
+  admConceptoSchema,
+  type AdmConceptoFormValues,
+} from "./model";
 
-const CabeceraContent = () => (
-  <CompactFormGrid columns="two">
-    <CompactTextInput source="nombre" label="Nombre" className="w-full" validate={required()} />
-    <CompactTextInput source="cuenta" label="Cuenta" className="w-full" validate={required()} />
-  </CompactFormGrid>
+const AdmConceptoMainFields = () => (
+  <div className="flex flex-col gap-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      <FormText
+        source="nombre"
+        label="Nombre"
+        validate={required()}
+        widthClass="w-full"
+        maxLength={ADM_CONCEPTO_RULES.NOMBRE.MAX_LENGTH}
+      />
+      <FormText
+        source="cuenta"
+        label="Cuenta"
+        validate={required()}
+        widthClass="w-full"
+        maxLength={ADM_CONCEPTO_RULES.CUENTA.MAX_LENGTH}
+      />
+      <FormTextarea
+        source="descripcion"
+        label="Descripcion"
+        rows={3}
+        widthClass="w-full"
+        maxLength={ADM_CONCEPTO_RULES.DESCRIPCION.MAX_LENGTH}
+        className="md:col-span-2"
+      />
+    </div>
+    <div className="flex flex-wrap gap-4 pt-1">
+      <FormBoolean source="es_impuesto" label="Es impuesto" defaultValue={false} />
+    </div>
+  </div>
 );
 
-const DetalleContent = () => {
-  const form = useFormContext();
-  return (
-    <CompactFormField label="Descripcion">
-      <Textarea
-        rows={3}
-        className="min-h-10 px-2 py-1 text-[11px] sm:min-h-16 sm:px-3 sm:py-2 sm:text-sm"
-        {...form.register("descripcion")}
-      />
-    </CompactFormField>
-  );
-};
-
-const FormFooter = () => <FormToolbar />;
-
 export const AdmConceptoForm = () => (
-  <SimpleForm className="w-full max-w-md" toolbar={<FormFooter />}>
-    <FormLayout
-      sections={[
-        {
-          id: "cabecera",
-          title: "Cabecera",
-          defaultOpen: true,
-          contentPadding: "none",
-          contentClassName: "space-y-2 px-4 py-2",
-          children: (
-            <CompactFormSection>
-              <CabeceraContent />
-            </CompactFormSection>
-          ),
-        },
-        {
-          id: "detalle",
-          title: "Detalle",
-          defaultOpen: false,
-          children: (
-            <CompactFormSection>
-              <DetalleContent />
-            </CompactFormSection>
-          ),
-        },
-      ]}
-    />
+  <SimpleForm<AdmConceptoFormValues>
+    className="w-full max-w-2xl"
+    resolver={zodResolver(admConceptoSchema) as any}
+    toolbar={<FormOrderToolbar />}
+    defaultValues={ADM_CONCEPTO_DEFAULT}
+  >
+    <SectionBaseTemplate title="Datos del concepto" main={<AdmConceptoMainFields />} defaultOpen />
   </SimpleForm>
 );

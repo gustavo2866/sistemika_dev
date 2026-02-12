@@ -1,13 +1,14 @@
-﻿"use client";
+"use client";
 
 import { Show } from "@/components/show";
+import { SimpleShowLayout } from "@/components/simple-show-layout";
 import { TextField } from "@/components/text-field";
 import { BadgeField } from "@/components/badge-field";
 import { ReferenceField } from "@/components/reference-field";
 
 export const ProveedorShow = () => (
   <Show>
-    <div className="grid gap-4 md:grid-cols-2">
+    <SimpleShowLayout>
       <TextField source="nombre" label="Nombre" />
       <TextField source="razon_social" label="Razon social" />
       <TextField source="cuit" label="CUIT" />
@@ -19,7 +20,7 @@ export const ProveedorShow = () => (
       </ReferenceField>
       <TextField source="cbu" label="CBU" />
       <TextField source="alias_bancario" label="Alias bancario" />
-      <BadgeField source="activo" label="Estado" />
-    </div>
+      <BadgeField source="activo" label="Activo" />
+    </SimpleShowLayout>
   </Show>
 );

@@ -21,7 +21,7 @@ const filters = buildListFilters(
       props: {
         source: "q",
         label: "Buscar",
-        placeholder: "Buscar conceptos",
+        placeholder: "Buscar perfiles",
         alwaysOn: true,
         className: "w-[120px] sm:w-[160px]",
       },
@@ -34,17 +34,10 @@ const filters = buildListFilters(
       },
     },
     {
-      type: "text",
-      props: {
-        source: "cuenta",
-        label: "Cuenta",
-      },
-    },
-    {
       type: "select",
       props: {
-        source: "es_impuesto",
-        label: "Impuesto",
+        source: "activo",
+        label: "Activo",
         choices: [
           { id: "true", name: "Si" },
           { id: "false", name: "No" },
@@ -53,7 +46,7 @@ const filters = buildListFilters(
       },
     },
   ],
-  { keyPrefix: "adm-conceptos" },
+  { keyPrefix: "tax-profiles" },
 );
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
@@ -66,35 +59,32 @@ const ListActions = () => (
   </div>
 );
 
-export const AdmConceptoList = () => (
+export const TaxProfileList = () => (
   <List
-    title="Conceptos"
+    title="Perfiles de impuestos"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
     perPage={25}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[720px] w-full mr-auto"
+    containerClassName="max-w-[760px] w-full mr-auto"
   >
     <ResponsiveDataTable
       rowClick="edit"
       mobileConfig={{
         primaryField: "nombre",
-        secondaryFields: ["cuenta", "descripcion", "es_impuesto"],
+        secondaryFields: ["descripcion", "activo"],
       }}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <TextListColumn source="nombre" label="Nombre">
         <ListText source="nombre" />
       </TextListColumn>
-      <TextListColumn source="cuenta" label="Cuenta">
-        <ListText source="cuenta" />
-      </TextListColumn>
       <TextListColumn source="descripcion" label="Descripcion">
         <ListText source="descripcion" />
       </TextListColumn>
-      <BooleanListColumn source="es_impuesto" label="Impuesto" />
+      <BooleanListColumn source="activo" label="Activo" />
       <TextListColumn label="Acciones">
         <FormOrderListRowActions />
       </TextListColumn>

@@ -7,7 +7,6 @@ export * from "./proyectos";
 export * from "./parte-diario";
 export * from "./departamentos";
 export * from "./tipos-solicitud";
-export * from "./po/po-facturas";
 export * from "./po/po-orders";
 export * from "./po/po-order-status";
 export * from "./centros-costo";
@@ -30,6 +29,7 @@ export * from "./crm-mensajes";
 export * from "./emprendimientos";
 export * from "./calculadora-financiera";
 export * from "./adm-conceptos";
+export * from "./tax-profiles";
 // Los dashboards no necesitan ser exportados aquí
 // export * from "./dashboard-proyectos";
 // export * from "./dashboard-vacancias";

@@ -137,6 +137,8 @@ const PoOrderFormFields = () => {
 
       <HeaderSection />
 
+      <TotalsSummaryRow />
+
       <DetailSection articuloFilter={articuloFilter} />
 
       <Confirm
@@ -410,8 +412,6 @@ const HeaderOptionalFields = () => {
 
 // DetailSection: wraps detail template and its list + header actions.
 const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
-  const total = useWatch({ name: "total" }) as number | undefined;
-  const totalValue = Number(total ?? 0);
   const detailDefaults = useMemo(
     () => ({
       articulo_id: "",
@@ -434,27 +434,11 @@ const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unk
     { label: "" },
   ];
 
-  const totalSummary = (
-    <div className="flex items-center gap-2">
-      <span className="text-[9px] uppercase text-muted-foreground">Total</span>
-      <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-semibold text-foreground">
-        <NumberField
-          source="total"
-          record={{ total: totalValue }}
-          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
-          className="tabular-nums"
-        />
-      </span>
-    </div>
-  );
-
   return (
     <SectionDetailTemplate
       title="Detalle"
       columns={columns}
       columnsClassName="grid-cols-[220px_150px_64px_84px_84px_28px]"
-      headerSummary={totalSummary}
-      headerSummaryClassName="mr-10"
       defaultDetailValues={detailDefaults}
       list={
         <DetailList
@@ -463,6 +447,25 @@ const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unk
         />
       }
     />
+  );
+};
+
+const TotalsSummaryRow = () => {
+  const total = useWatch({ name: "total" }) as number | undefined;
+  const totalValue = Number(total ?? 0);
+
+  return (
+    <div className="flex flex-row flex-nowrap items-center justify-start gap-2 rounded-md border border-muted/60 bg-muted/30 px-2 py-1 text-[8px] text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3 sm:px-3 sm:py-2 sm:text-[10px]">
+      <span className="flex items-center gap-1.5 rounded-full bg-foreground/90 px-2 py-0.5 text-[8px] font-semibold text-background whitespace-nowrap sm:px-2.5 sm:py-1 sm:text-[10px]">
+        Total:
+        <NumberField
+          source="total"
+          record={{ total: totalValue }}
+          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+          className="tabular-nums"
+        />
+      </span>
+    </div>
   );
 };
 

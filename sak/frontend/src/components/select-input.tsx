@@ -13,6 +13,8 @@ import {
   ComponentProps,
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   type ChangeEvent,
   type MouseEvent,
   type ReactElement,
@@ -34,6 +36,7 @@ import {
   useSupportCreateSuggestion,
 } from "@/hooks/useSupportCreateSuggestion";
 import { cn } from "@/lib/utils";
+import { focusNextInScope } from "@/components/forms/form_order/form/focus_utils";
 
 type SelectTriggerProps = ComponentPropsWithoutRef<typeof SelectTrigger>;
 
@@ -75,6 +78,7 @@ export const SelectInput = (props: SelectInputProps) => {
     createLabel,
     onCreate,
     triggerProps,
+    autoFocusNext = false,
 
     ...rest
   } = props;
@@ -156,6 +160,21 @@ export const SelectInput = (props: SelectInputProps) => {
     [getChoiceText],
   );
 
+  const handleSelectionChange = props.onSelectionChange;
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const pendingFocusRef = useRef(false);
+  
+  // Asegurar que el tabIndex se mantenga correcto después de actualizaciones
+  useEffect(() => {
+    if (triggerRef.current) {
+      triggerRef.current.tabIndex = 0;
+    }
+  });
+  
+  const focusNext = useMemo(
+    () => (autoFocusNext ? () => focusNextInScope(triggerRef.current) : () => false),
+    [autoFocusNext],
+  );
   const handleChange = useCallback(
     async (value: string) => {
       if (value === emptyValue) {
@@ -167,8 +186,20 @@ export const SelectInput = (props: SelectInputProps) => {
         );
         field.onChange(choice ? getChoiceValue(choice) : value);
       }
+      handleSelectionChange?.(value);
+      // Temporalmente deshabilitado para diagnosticar problema de foco
+      // if (autoFocusNext) {
+      //   pendingFocusRef.current = true;
+      // }
     },
-    [field, getChoiceValue, emptyValue, allChoices],
+    [
+      field,
+      getChoiceValue,
+      emptyValue,
+      allChoices,
+      handleSelectionChange,
+      autoFocusNext,
+    ],
   );
 
   const {
@@ -251,10 +282,40 @@ export const SelectInput = (props: SelectInputProps) => {
             // See: https://github.com/radix-ui/primitives/issues/3135#issuecomment-2916908248
             key={`select:${field.value?.toString() ?? emptyValue}`}
             value={field.value?.toString() ?? emptyValue}
-            onValueChange={handleChangeWithCreateSupport}
+            onValueChange={(value: string) => {
+              handleChangeWithCreateSupport(value);
+              // Asegurar que el trigger mantenga el foco después de la selección
+              setTimeout(() => {
+                if (triggerRef.current) {
+                  triggerRef.current.focus();
+                  triggerRef.current.tabIndex = 0;
+                }
+              }, 0);
+            }}
+            onOpenChange={(open) => {
+              // Cuando el select se cierra después de una selección, 
+              // asegurar que el foco regrese al trigger para mantener tab order
+              if (!open) {
+                // Usar requestAnimationFrame para asegurar que el DOM se haya actualizado
+                requestAnimationFrame(() => {
+                  if (triggerRef.current) {
+                    triggerRef.current.focus();
+                  }
+                });
+              }
+              // Temporalmente deshabilitado para diagnosticar problema de foco
+              // if (!open && pendingFocusRef.current && autoFocusNext) {
+              //   pendingFocusRef.current = false;
+              //   window.setTimeout(() => {
+              //     focusNext();
+              //   }, 0);
+              // }
+            }}
           >
             <SelectTrigger
               {...triggerProps}
+              ref={triggerRef}
+              tabIndex={0}
               className={cn(
                 "w-full transition-all hover:bg-accent",
                 triggerProps?.className,
@@ -312,5 +373,7 @@ export type SelectInputProps = ChoicesProps &
     emptyValue?: string | number;
     disableClear?: boolean;
     onChange?: (value: string) => void;
+    onSelectionChange?: (value: string) => void;
+    autoFocusNext?: boolean;
     triggerProps?: SelectTriggerProps;
   } & Omit<ComponentProps<typeof FormField>, "id" | "name" | "children">;

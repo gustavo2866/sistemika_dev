@@ -38,10 +38,17 @@ from .factura import Factura
 from .factura_detalle import FacturaDetalle
 from .factura_impuesto import FacturaImpuesto
 from .compras import (
-    EstadoPoFactura,
-    PoFactura,
-    PoFacturaDetalle,
-    PoFacturaTotal,
+    PoOrder,
+    PoOrderDetail,
+    PoOrderStatus,
+    PoInvoice,
+    PoInvoiceDetail,
+    PoInvoiceTax,
+    PoInvoiceStatus,
+)
+from .taxes import (
+    TaxProfile,
+    TaxProfileDetail,
 )
 from .departamento import Departamento
 from .tipo_solicitud import TipoSolicitud
@@ -103,10 +110,13 @@ __all__ = [
     "Factura",
     "FacturaDetalle",
     "FacturaImpuesto",
-    "EstadoPoFactura",
-    "PoFactura",
-    "PoFacturaDetalle",
-    "PoFacturaTotal",
+    "PoOrder",
+    "PoOrderDetail",
+    "PoOrderStatus",
+    "PoInvoice",
+    "PoInvoiceDetail",
+    "PoInvoiceTax",
+    "PoInvoiceStatus",
     "Departamento",
     "TipoSolicitud",
     "CentroCosto",
@@ -128,6 +138,8 @@ __all__ = [
     "EstadoMensaje",
     "PrioridadMensaje",
     "EstadoEmprendimiento",
+    "TaxProfile",
+    "TaxProfileDetail",
 ]
 
 

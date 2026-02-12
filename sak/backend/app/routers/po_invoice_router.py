@@ -3,7 +3,7 @@ from typing import Dict
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlmodel import Session, select
 
-from app.models.compras import PoInvoice, PoInvoiceDetalle
+from app.models.compras import PoInvoice, PoInvoiceDetail, PoInvoiceTax
 from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
 from app.db import get_session
@@ -12,12 +12,17 @@ from app.models.base import current_utc_time, filtrar_respuesta
 
 logger = logging.getLogger(__name__)
 
-# CRUD con relación anidada para detalles de facturas
+# CRUD con relaciones anidadas para detalles y taxes de facturas
 po_invoice_crud = NestedCRUD(
     PoInvoice,
     nested_relations={
         "detalles": {
-            "model": PoInvoiceDetalle,
+            "model": PoInvoiceDetail,
+            "fk_field": "invoice_id",
+            "allow_delete": True,
+        },
+        "taxes": {
+            "model": PoInvoiceTax,
             "fk_field": "invoice_id",
             "allow_delete": True,
         }

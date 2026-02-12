@@ -90,6 +90,10 @@ export const SectionDetailTemplate = ({
     setConfirmOpen(false);
   };
 
+  const handleContainerClick = () => {
+    // Intentionally no-op: exiting edit mode is handled explicitly via row actions
+  };
+
   const toggleButton = (
     <Button
       type="button"
@@ -178,7 +182,12 @@ export const SectionDetailTemplate = ({
           ))}
         </div>
       ) : null}
-      <DetailSectionContext.Provider value={activeRow}>
+      <DetailSectionContext.Provider
+        value={{
+          ...activeRow,
+          onContainerClick: handleContainerClick,
+        }}
+      >
         {list}
       </DetailSectionContext.Provider>
       <Confirm

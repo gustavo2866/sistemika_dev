@@ -1,4 +1,4 @@
-import { createEntitySchema, referenceField, stringField } from "@/lib/form-detail-schema";
+import { z } from "zod";
 
 export const PROVEEDOR_VALIDATIONS = {
   NOMBRE_MAX: 255,
@@ -39,6 +39,13 @@ export const METODOS_PAGO_REFERENCE = {
   staleTime: 5 * 60 * 1000,
 } as const;
 
+export const TIPOS_COMPROBANTE_REFERENCE = {
+  resource: "tipos-comprobante",
+  labelField: "name",
+  limit: 100,
+  staleTime: 10 * 60 * 1000,
+} as const;
+
 export const ARTICULOS_REFERENCE = {
   resource: "articulos",
   labelField: "nombre",
@@ -62,6 +69,8 @@ export type Proveedor = {
   cbu?: string | null;
   alias_bancario?: string | null;
   concepto_id?: number | null;
+  tipo_comprobante_id?: number | null;
+  dias_vencimiento?: number | null;
   default_tipo_solicitud_id?: number | null;
   default_departamento_id?: number | null;
   default_metodo_pago_id?: number | null;
@@ -74,111 +83,68 @@ export type Proveedor = {
     id: number;
     nombre: string;
   };
+  tipo_comprobante?: {
+    id: number;
+    name: string;
+  };
 };
 
-export type ProveedorFormValues = {
-  nombre: string;
-  razon_social: string;
-  cuit: string;
-  telefono?: string;
-  email?: string;
-  direccion?: string;
-  cbu?: string;
-  alias_bancario?: string;
-  concepto_id?: string;
-  default_tipo_solicitud_id?: string;
-  default_departamento_id?: string;
-  default_metodo_pago_id?: string;
-  default_usuario_responsable_id?: string;
-  default_articulos_id?: string;
-  activo: boolean;
-};
+const optionalId = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.coerce.number().int().positive().optional(),
+);
 
-export const proveedorSchema = createEntitySchema<
-  ProveedorFormValues,
-  Omit<Proveedor, "id" | "created_at" | "updated_at" | "concepto">
->({
-  fields: {
-    nombre: stringField({
-      required: true,
-      maxLength: PROVEEDOR_VALIDATIONS.NOMBRE_MAX,
-      defaultValue: "",
-    }),
-    razon_social: stringField({
-      required: true,
-      maxLength: PROVEEDOR_VALIDATIONS.RAZON_SOCIAL_MAX,
-      defaultValue: "",
-    }),
-    cuit: stringField({
-      required: true,
-      maxLength: PROVEEDOR_VALIDATIONS.CUIT_MAX,
-      defaultValue: "",
-    }),
-    telefono: stringField({
-      required: false,
-      maxLength: PROVEEDOR_VALIDATIONS.TELEFONO_MAX,
-      defaultValue: "",
-    }),
-    email: stringField({
-      required: false,
-      maxLength: PROVEEDOR_VALIDATIONS.EMAIL_MAX,
-      defaultValue: "",
-    }),
-    direccion: stringField({
-      required: false,
-      maxLength: PROVEEDOR_VALIDATIONS.DIRECCION_MAX,
-      defaultValue: "",
-    }),
-    cbu: stringField({
-      required: false,
-      maxLength: PROVEEDOR_VALIDATIONS.CBU_MAX,
-      defaultValue: "",
-    }),
-    alias_bancario: stringField({
-      required: false,
-      maxLength: PROVEEDOR_VALIDATIONS.ALIAS_BANCARIO_MAX,
-      defaultValue: "",
-    }),
-    concepto_id: referenceField({
-      resource: CONCEPTOS_REFERENCE.resource,
-      labelField: CONCEPTOS_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    default_tipo_solicitud_id: referenceField({
-      resource: TIPOS_SOLICITUD_REFERENCE.resource,
-      labelField: TIPOS_SOLICITUD_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    default_departamento_id: referenceField({
-      resource: DEPARTAMENTOS_REFERENCE.resource,
-      labelField: DEPARTAMENTOS_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    default_metodo_pago_id: referenceField({
-      resource: METODOS_PAGO_REFERENCE.resource,
-      labelField: METODOS_PAGO_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    default_usuario_responsable_id: referenceField({
-      resource: USERS_REFERENCE.resource,
-      labelField: USERS_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-    default_articulos_id: referenceField({
-      resource: ARTICULOS_REFERENCE.resource,
-      labelField: ARTICULOS_REFERENCE.labelField,
-      required: false,
-      defaultValue: "",
-    }),
-  },
+const optionalString = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.string().optional(),
+);
+
+const optionalNumber = z.preprocess(
+  (v) => (v === "" || v === null ? undefined : v),
+  z.coerce.number().int().min(0).optional(),
+);
+
+const booleanFromInput = z.preprocess((value) => {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1" || value === 1) return true;
+  if (value === "false" || value === "0" || value === 0) return false;
+  if (value == null || value === "") return false;
+  return Boolean(value);
+}, z.boolean());
+
+export const proveedorSchema = z.object({
+  nombre: z.string().min(1).max(PROVEEDOR_VALIDATIONS.NOMBRE_MAX),
+  razon_social: z.string().min(1).max(PROVEEDOR_VALIDATIONS.RAZON_SOCIAL_MAX),
+  cuit: z.string().min(1).max(PROVEEDOR_VALIDATIONS.CUIT_MAX),
+  telefono: optionalString.pipe(
+    z.string().max(PROVEEDOR_VALIDATIONS.TELEFONO_MAX).optional(),
+  ),
+  email: optionalString.pipe(
+    z.string().email().max(PROVEEDOR_VALIDATIONS.EMAIL_MAX).optional(),
+  ),
+  direccion: optionalString.pipe(
+    z.string().max(PROVEEDOR_VALIDATIONS.DIRECCION_MAX).optional(),
+  ),
+  cbu: optionalString.pipe(
+    z.string().max(PROVEEDOR_VALIDATIONS.CBU_MAX).optional(),
+  ),
+  alias_bancario: optionalString.pipe(
+    z.string().max(PROVEEDOR_VALIDATIONS.ALIAS_BANCARIO_MAX).optional(),
+  ),
+  concepto_id: optionalId,
+  tipo_comprobante_id: optionalId,
+  dias_vencimiento: optionalNumber,
+  default_tipo_solicitud_id: optionalId,
+  default_departamento_id: optionalId,
+  default_metodo_pago_id: optionalId,
+  default_usuario_responsable_id: optionalId,
+  default_articulos_id: optionalId,
+  activo: booleanFromInput,
 });
 
-export const PROVEEDOR_DEFAULT: ProveedorFormValues = {
+export type ProveedorFormValues = z.infer<typeof proveedorSchema>;
+
+export const PROVEEDOR_DEFAULT: Partial<ProveedorFormValues> = {
   nombre: "",
   razon_social: "",
   cuit: "",
@@ -188,6 +154,8 @@ export const PROVEEDOR_DEFAULT: ProveedorFormValues = {
   cbu: "",
   alias_bancario: "",
   concepto_id: "",
+  tipo_comprobante_id: "",
+  dias_vencimiento: "",
   default_tipo_solicitud_id: "",
   default_departamento_id: "",
   default_metodo_pago_id: "",

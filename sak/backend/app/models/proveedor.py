@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from .departamento import Departamento
     from .metodo_pago import MetodoPago
     from .user import User
+    from .tipo_comprobante import TipoComprobante
+    from .taxes import TaxProfile
 
 class Proveedor(Base, table=True):
     """Modelo para proveedores"""
@@ -37,6 +39,26 @@ class Proveedor(Base, table=True):
         default=None,
         foreign_key="adm_conceptos.id",
         description="ID del concepto administrativo asociado",
+    )
+    
+    # Tipo de comprobante por defecto (opcional)
+    tipo_comprobante_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_comprobante.id",
+        description="ID del tipo de comprobante por defecto",
+    )
+    
+    # Perfil de impuestos (opcional)
+    tax_profile_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tax_profiles.id",
+        description="ID del perfil de impuestos asociado",
+    )
+    
+    # Términos de pago
+    dias_vencimiento: Optional[int] = Field(
+        default=None,
+        description="Días de vencimiento para pagos",
     )
     
     # Estado
@@ -71,6 +93,12 @@ class Proveedor(Base, table=True):
     
     # Relaciones
     concepto: Optional["AdmConcepto"] = Relationship()
+    tipo_comprobante: Optional["TipoComprobante"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.tipo_comprobante_id"}
+    )
+    tax_profile: Optional["TaxProfile"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "Proveedor.tax_profile_id"}
+    )
     facturas: List["Factura"] = Relationship(back_populates="proveedor")
     articulos: List["Articulo"] = Relationship(
         back_populates="proveedor",

@@ -5,7 +5,7 @@ import { useWatch } from "react-hook-form";
 
 export const useActiveRow = ({
   name,
-  focusSelector = '[data-articulo-field="true"]',
+  focusSelector = '[data-focus-field="true"]',
 }: {
   name: string;
   focusSelector?: string;

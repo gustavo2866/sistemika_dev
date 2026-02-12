@@ -18,6 +18,10 @@ export type SectionBaseTemplateProps = {
   main: ReactNode;
   /** Optional content toggled by "more/less" action. */
   optional?: ReactNode;
+  /** Optional summary content rendered in the header row. */
+  headerSummary?: ReactNode;
+  /** Extra classNames for the header summary container. */
+  headerSummaryClassName?: string;
   /** Whether the section is open on initial render. */
   defaultOpen?: boolean;
   /** Whether the optional content is visible on initial render. */
@@ -30,6 +34,8 @@ export const SectionBaseTemplate = ({
   title,
   main,
   optional,
+  headerSummary,
+  headerSummaryClassName,
   defaultOpen = true,
   defaultOptionalOpen = false,
   actions,
@@ -70,12 +76,16 @@ export const SectionBaseTemplate = ({
     </DropdownMenu>
   ) : null;
 
-  const headerActions = actionsMenu ? (
-    <div className="flex items-center gap-1">
-      {actionsMenu}
-      {toggleButton}
-    </div>
-  ) : undefined;
+  const headerActions =
+    actionsMenu || headerSummary ? (
+      <div className="flex items-center gap-2">
+        {headerSummary ? (
+          <div className={headerSummaryClassName}>{headerSummary}</div>
+        ) : null}
+        {actionsMenu}
+        {toggleButton}
+      </div>
+    ) : undefined;
 
   return (
     <SectionCard
