@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,7 @@ export const AutocompleteInput = (
 
   const [open, setOpen] = React.useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const didAutoFocusRef = useRef(false);
   const autoFocusNext = props.autoFocusNext !== false;
   const selectedChoice = allChoices.find(
     (choice) => getChoiceValue(choice) === fieldValue,
@@ -168,6 +169,14 @@ export const AutocompleteInput = (
       focusNext,
     ],
   );
+
+  useEffect(() => {
+    if (!props.autoFocus || didAutoFocusRef.current) return;
+    didAutoFocusRef.current = true;
+    window.setTimeout(() => {
+      triggerRef.current?.focus();
+    }, 0);
+  }, [props.autoFocus]);
 
   const {
     getCreateItem,

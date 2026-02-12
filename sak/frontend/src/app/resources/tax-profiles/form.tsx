@@ -5,8 +5,6 @@ import {
   type Identifier,
   required,
   useCreatePath,
-  useDataProvider,
-  useNotify,
   useRecordContext,
   useResourceContext,
   useSimpleFormIteratorItem,
@@ -15,7 +13,6 @@ import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useFormState } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
@@ -24,6 +21,7 @@ import {
   DetailRowActions,
   DetailRowProvider,
   FORM_FIELD_READONLY_CLASS,
+  FormErrorSummary,
   FormBoolean,
   FormDate,
   FormNumber,
@@ -34,7 +32,8 @@ import {
   HiddenInput,
   ResponsiveDetailRow,
   SectionBaseTemplate,
-  SectionDetailTemplate,
+  SectionDetailTemplateGrid,
+  useConfirmDelete,
   useDetailSectionContext,
 } from "@/components/forms/form_order";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
@@ -97,10 +96,8 @@ const HeaderSection = () => {
   const resource = useResourceContext();
   const createPath = useCreatePath();
   const navigate = useNavigate();
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const { confirmDelete, setConfirmDelete, deleting, handleDelete } =
+    useConfirmDelete({ record, resource });
   const hasRecord = Boolean(record?.id && resource);
 
   const handlePreview = (event: MouseEvent) => {
@@ -108,26 +105,6 @@ const HeaderSection = () => {
     event.stopPropagation();
     if (!record?.id || !resource) return;
     navigate(createPath({ resource, type: "show", id: record.id }));
-  };
-
-  const handleDelete = async () => {
-    if (!record || !record.id || !resource || deleting) return;
-    setDeleting(true);
-    try {
-      const previousData = record as TaxProfileFormValues & { id: Identifier };
-      await dataProvider.delete(resource, {
-        id: record.id,
-        previousData,
-      });
-      notify("Registro eliminado", { type: "info" });
-      navigate(createPath({ resource, type: "list" }));
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo eliminar", { type: "warning" });
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
   };
 
   const headerActions = hasRecord ? (
@@ -224,18 +201,18 @@ const DetailSection = () => {
 
   const columns = [
     { label: "Concepto" },
-    { label: "%", className: "text-right -translate-x-[50px]" },
-    { label: "Vigencia", className: "text-right -translate-x-[40px]" },
-    { label: "Activo", className: "text-right -translate-x-[30px]" },
+    { label: "%", className: "text-center" },
+    { label: "Vigencia", className: "text-center" },
+    { label: "Activo", className: "text-center" },
     { label: "" },
   ];
 
   return (
-    <SectionDetailTemplate
+    <SectionDetailTemplateGrid
       title="Detalle"
       detailsSource="details"
       columns={columns}
-      columnsClassName="grid-cols-[220px_80px_110px_70px_28px]"
+      gridTemplateColumns="220px 80px 110px 70px 28px"
       defaultDetailValues={detailDefaults}
       list={<DetailList defaultDetailValues={detailDefaults} />}
     />
@@ -258,7 +235,7 @@ const DetailList = ({
     <div className="mt-1 space-y-0 w-full" onClick={onContainerClick}>
       <div
         ref={containerRef}
-        className="w-full rounded-md border border-border p-2 md:max-h-64 md:overflow-y-auto"
+        className="w-full rounded-md border border-border px-2 pb-2 pt-0 md:max-h-64 md:overflow-y-auto"
       >
         <ArrayInput source="details" label={false}>
           <DetailIterator
@@ -285,6 +262,11 @@ const DetailItemRow = ({
   onRowClick: (index: number) => (event: MouseEvent) => void;
   setActiveIndex: (index: number | null) => void;
 }) => {
+  const detailContext = useDetailSectionContext();
+  if (!detailContext) {
+    throw new Error("DetailItemRow must be used within SectionDetailTemplate");
+  }
+  const { rowGridClassName, rowGridStyle } = detailContext;
   const [showOptional, setShowOptional] = useState(false);
   const { remove, index } = useSimpleFormIteratorItem();
   const isActive = activeIndex === index;
@@ -301,7 +283,7 @@ const DetailItemRow = ({
 
   const rowClassName = cn(
     isActive
-      ? "border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
+      ? "border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md"
       : "sm:border-transparent",
   );
 
@@ -320,10 +302,16 @@ const DetailItemRow = ({
         onClick={onRowClick(index)}
         onFocusCapture={() => setActiveIndex(index)}
       >
-        <div className="grid grid-cols-1 gap-1 sm:flex sm:flex-row sm:items-center sm:gap-2">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-1 sm:items-center sm:gap-2",
+            rowGridClassName,
+          )}
+          style={rowGridStyle}
+        >
           <HiddenInput source="id" />
           <div
-            className="col-span-1 w-full sm:col-auto sm:w-[220px] shrink-0"
+            className="col-span-1 w-full sm:col-auto sm:w-auto"
             data-focus-field="true"
           >
             <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
@@ -343,28 +331,43 @@ const DetailItemRow = ({
               className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
             />
           </div>
-          <FormNumber
-            source="porcentaje"
-            label={false}
-            inputMode="decimal"
-            step="0.01"
-            widthClass="w-[60px] sm:w-[60px] shrink-0"
-            readOnly={!isActive}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-          <FormDate
-            source="fecha_vigencia"
-            label={false}
-            widthClass="w-[110px] sm:w-[110px] shrink-0"
-            readOnly={!isActive}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-            format={formatDateValue}
-          />
-          <FormBoolean
-            source="activo"
-            label={false}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
+          <div>
+            <FormNumber
+              source="porcentaje"
+              label={false}
+              inputMode="decimal"
+              step="0.01"
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={cn(
+                "sm:text-center sm:[&_input]:text-center",
+                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+              )}
+            />
+          </div>
+          <div>
+            <FormDate
+              source="fecha_vigencia"
+              label={false}
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={cn(
+                "sm:text-center sm:[&_input]:text-center",
+                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+              )}
+              format={formatDateValue}
+            />
+          </div>
+          <div>
+            <FormBoolean
+              source="activo"
+              label={false}
+              className={cn(
+                "sm:text-center sm:justify-self-center sm:w-max",
+                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+              )}
+            />
+          </div>
           <DetailRowActions />
         </div>
         {showOptional ? (
@@ -384,48 +387,3 @@ const DetailItemRow = ({
   );
 };
 
-const FormErrorSummary = () => {
-  const { errors, submitCount } = useFormState();
-  const firstError = useMemo(
-    () => (submitCount > 0 ? getFirstError(errors) : undefined),
-    [errors, submitCount],
-  );
-
-  if (!firstError) return null;
-
-  const pathLabel = firstError.path.length
-    ? `${firstError.path.join(".")}: `
-    : "";
-
-  return (
-    <div className="text-[10px] text-destructive">
-      {pathLabel}
-      {firstError.message}
-    </div>
-  );
-};
-
-const getFirstError = (
-  errors: unknown,
-  path: string[] = [],
-): { path: string[]; message: string } | undefined => {
-  if (!errors || typeof errors !== "object") return undefined;
-  const errorAny = errors as {
-    message?: unknown;
-    root?: { message?: unknown };
-    [key: string]: unknown;
-  };
-  if (typeof errorAny.message === "string" && errorAny.message.trim()) {
-    return { path, message: errorAny.message };
-  }
-  if (typeof errorAny.root?.message === "string" && errorAny.root.message.trim()) {
-    return { path, message: errorAny.root.message };
-  }
-  for (const key of Object.keys(errorAny)) {
-    if (key === "ref" || key === "type" || key === "types") continue;
-    const child = errorAny[key];
-    const nested = getFirstError(child, [...path, key]);
-    if (nested) return nested;
-  }
-  return undefined;
-};

@@ -3,7 +3,9 @@
 import {
   createContext,
   useContext,
+  useMemo,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { ChevronDown, ChevronUp, MoreHorizontal, PlusCircle, Trash } from "lucide-react";
@@ -47,7 +49,10 @@ export type SectionDetailTemplateProps = {
   defaultDetailValues?: Record<string, unknown>;
 };
 
-type DetailSectionContextValue = ReturnType<typeof useActiveRow>;
+type DetailSectionContextValue = ReturnType<typeof useActiveRow> & {
+  rowGridClassName?: string;
+  rowGridStyle?: CSSProperties;
+};
 
 const DetailSectionContext = createContext<DetailSectionContextValue | null>(
   null,
@@ -75,6 +80,26 @@ export const SectionDetailTemplate = ({
   const activeRow = useActiveRow({ name: detailsSource, focusSelector });
   const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
   const hasDetails = (detalles ?? []).length > 0;
+  const gridTemplate = useMemo(() => {
+    if (!columnsClassName) return undefined;
+    const match = columnsClassName.match(/grid-cols-\[([^\]]+)\]/);
+    return match?.[1]?.replace(/_/g, " ");
+  }, [columnsClassName]);
+  const columnsClassNameSansGrid = useMemo(() => {
+    if (!columnsClassName) return undefined;
+    return columnsClassName.replace(/grid-cols-\[[^\]]+\]/g, "").trim();
+  }, [columnsClassName]);
+  const rowGridStyle = useMemo(() => {
+    if (!gridTemplate) return undefined;
+    return { ["--detail-grid" as any]: gridTemplate } as CSSProperties;
+  }, [gridTemplate]);
+  const rowGridClassName = useMemo(() => {
+    if (!gridTemplate) return columnsClassNameSansGrid;
+    return cn(
+      "sm:[grid-template-columns:var(--detail-grid)]",
+      columnsClassNameSansGrid,
+    );
+  }, [gridTemplate, columnsClassNameSansGrid]);
 
   const handleAdd = () => {
     const current = (getValues(detailsSource) as unknown[]) ?? [];
@@ -171,9 +196,10 @@ export const SectionDetailTemplate = ({
       {columns?.length ? (
         <div
           className={cn(
-            "hidden sm:grid mt-2 gap-2 text-[10px] font-semibold text-foreground [&>div]:pl-2 pb-0",
-            columnsClassName,
+            "hidden sm:grid sm:gap-2 mt-2 text-[10px] font-semibold text-foreground pb-0 px-2",
+            rowGridClassName ?? columnsClassNameSansGrid,
           )}
+          style={rowGridStyle}
         >
           {columns.map((column, index) => (
             <div key={`${column.label}-${index}`} className={column.className}>
@@ -186,6 +212,8 @@ export const SectionDetailTemplate = ({
         value={{
           ...activeRow,
           onContainerClick: handleContainerClick,
+          rowGridClassName,
+          rowGridStyle,
         }}
       >
         {list}

@@ -28,12 +28,15 @@ export { FormOrderBulkExportButton } from "./list/bulk/bulk_export_button";
 export { FormOrderListRowActions } from "./list/actions/list_row_actions";
 export { ResponsiveDataTable } from "./list/responsive-data-table";
 export { HiddenInput } from "./form/hidden_input";
+export { FormErrorSummary } from "./form/form_error_summary";
 export { SectionCard } from "./form/section_card";
 export { SectionBaseTemplate } from "./form/section_base_template";
 export {
   SectionDetailTemplate,
   useDetailSectionContext,
 } from "./form/section_detail_template";
+export { SectionDetailTemplateGrid } from "./form/section_detail_template_grid";
+export type { SectionDetailTemplateGridProps } from "./form/section_detail_template_grid";
 export { DetailFooterButtons } from "./form/detail_footer_buttons";
 export { CalculatedImporte } from "./form/calculated_importe";
 export { TotalCompute } from "./form/total_compute";
@@ -72,6 +75,8 @@ export {
   FORM_VALUE_READONLY_CLASS,
 } from "./form/field_styles";
 export { useActiveRow } from "./form/use_active_row";
+export { useConfirmDelete } from "./form/use_confirm_delete";
+export { useIdentityId } from "./form/use_identity_id";
 export { FormOrderPrintButton } from "./show/print_button";
 
 const baseButtonClasses =

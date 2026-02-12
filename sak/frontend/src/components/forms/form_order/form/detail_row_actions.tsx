@@ -52,7 +52,12 @@ export const DetailRowDesktopActions = ({
   className?: string;
 }) => {
   return (
-    <div className={cn("hidden sm:flex items-center gap-0 shrink-0", className)}>
+    <div
+      className={cn(
+        "hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start",
+        className,
+      )}
+    >
       <DetailToggleButton show={show} onToggle={onToggle} />
       <DetailDeleteButton onClick={onDelete} />
       {info}
@@ -84,7 +89,7 @@ export const DetailRowActions = ({
         <DetailDeleteButton onClick={remove} />
         <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
       </div>
-      <div className="hidden sm:flex items-center gap-0 shrink-0">
+      <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
         <DetailToggleButton show={showOptional} onToggle={collapse} />
         <DetailDeleteButton onClick={remove} />
         <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />

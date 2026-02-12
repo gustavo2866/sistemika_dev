@@ -268,7 +268,13 @@ class PoInvoice(Base, table=True):
 
     __searchable_fields__ = ["titulo", "numero"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "taxes"}
-    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "usuario_responsable", "invoice_status", "detalles"]
+    __auto_include_relations__: ClassVar[List[str]] = [
+        "proveedor",
+        "usuario_responsable",
+        "invoice_status",
+        "detalles",
+        "taxes",
+    ]
 
     titulo: str = Field(max_length=50, description="Titulo de factura")
     numero: str = Field(max_length=50, description="Numero de factura")

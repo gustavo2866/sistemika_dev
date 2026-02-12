@@ -5,9 +5,6 @@ import {
   type Identifier,
   required,
   useCreatePath,
-  useDataProvider,
-  useGetIdentity,
-  useNotify,
   useRecordContext,
   useResourceContext,
   useSimpleFormIteratorItem,
@@ -16,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useFormState, useWatch } from "react-hook-form";
+import { useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import { Loading } from "@/components/loading";
@@ -27,6 +24,7 @@ import {
   DetailIterator,
   DetailRowActions,
   DetailRowProvider,
+  FormErrorSummary,
   FORM_VALUE_READONLY_CLASS,
   FORM_FIELD_READONLY_CLASS,
   ResponsiveDetailRow,
@@ -38,9 +36,11 @@ import {
   FormTextarea,
   HiddenInput,
   SectionBaseTemplate,
-  SectionDetailTemplate,
+  SectionDetailTemplateGrid,
   TotalCompute,
   useDetailSectionContext,
+  useConfirmDelete,
+  useIdentityId,
 } from "@/components/forms/form_order";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
@@ -62,25 +62,19 @@ import {
 } from "./form_hooks";
 import { FormGenerar } from "./form_generar";
 
+type PoOrderRecord = PoOrderFormValues & {
+  id?: Identifier;
+  order_status?: {
+    nombre?: string | null;
+  } | null;
+};
+
 // PoOrderForm: SimpleForm wrapper with validation resolver and custom toolbar.
 export const PoOrderForm = () => {
-  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const record = useRecordContext<PoOrderRecord>();
   const isCreate = !record?.id;
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const identityResponse = useGetIdentity();
-  const identity =
-    (identityResponse as { data?: any; identity?: any }).data ??
-    (identityResponse as { identity?: any }).identity;
-  const identityId = useMemo(() => {
-    const raw = identity?.id;
-    if (raw == null || raw === "") return undefined;
-    const parsed = typeof raw === "string" ? Number(raw) : raw;
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }, [identity?.id]);
-
-  const isIdentityLoading = Boolean(
-    (identityResponse as { isLoading?: boolean }).isLoading,
-  );
+  const { identityId, isIdentityLoading } = useIdentityId();
 
   const defaultValues = useMemo(() => {
     if (!isCreate) return undefined;
@@ -108,7 +102,7 @@ export const PoOrderForm = () => {
 };
 
 const PoOrderFormToolbar = () => {
-  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const record = useRecordContext<PoOrderRecord>();
   const statusKey = String(record?.order_status?.nombre ?? "")
     .trim()
     .toLowerCase();
@@ -137,9 +131,9 @@ const PoOrderFormFields = () => {
 
       <HeaderSection />
 
-      <TotalsSummaryRow />
-
       <DetailSection articuloFilter={articuloFilter} />
+
+      <TotalsSummaryRow />
 
       <Confirm
         isOpen={confirmOpen}
@@ -154,14 +148,12 @@ const PoOrderFormFields = () => {
 
 // HeaderSection: wraps header template and composes main + optional fields.
 const HeaderSection = () => {
-  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const record = useRecordContext<PoOrderRecord>();
   const resource = useResourceContext();
   const createPath = useCreatePath();
   const navigate = useNavigate();
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const { confirmDelete, setConfirmDelete, deleting, handleDelete } =
+    useConfirmDelete({ record, resource });
 
   const statusKey = String(record?.order_status?.nombre ?? "")
     .trim()
@@ -174,26 +166,6 @@ const HeaderSection = () => {
     event.stopPropagation();
     if (!record?.id || !resource) return;
     navigate(createPath({ resource, type: "show", id: record.id }));
-  };
-
-  const handleDelete = async () => {
-    if (!record || !record.id || !resource || deleting) return;
-    setDeleting(true);
-    try {
-      const previousData = record as PoOrderFormValues & { id: Identifier };
-      await dataProvider.delete(resource, {
-        id: record.id,
-        previousData,
-      });
-      notify("Registro eliminado", { type: "info" });
-      navigate(createPath({ resource, type: "list" }));
-    } catch (error) {
-      console.error(error);
-      notify("No se pudo eliminar", { type: "warning" });
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
   };
 
   const headerActions = hasRecord ? (
@@ -254,51 +226,6 @@ const HeaderSection = () => {
   );
 };
 
-const FormErrorSummary = () => {
-  const { errors, submitCount } = useFormState();
-  const firstError = useMemo(
-    () => (submitCount > 0 ? getFirstError(errors) : undefined),
-    [errors, submitCount],
-  );
-
-  if (!firstError) return null;
-
-  const pathLabel = firstError.path.length
-    ? `${firstError.path.join(".")}: `
-    : "";
-
-  return (
-    <div className="text-[10px] text-destructive">
-      {pathLabel}
-      {firstError.message}
-    </div>
-  );
-};
-
-const getFirstError = (
-  errors: unknown,
-  path: string[] = [],
-): { path: string[]; message: string } | undefined => {
-  if (!errors || typeof errors !== "object") return undefined;
-  const errorAny = errors as {
-    message?: unknown;
-    root?: { message?: unknown };
-    [key: string]: unknown;
-  };
-  if (typeof errorAny.message === "string" && errorAny.message.trim()) {
-    return { path, message: errorAny.message };
-  }
-  if (typeof errorAny.root?.message === "string" && errorAny.root.message.trim()) {
-    return { path, message: errorAny.root.message };
-  }
-  for (const key of Object.keys(errorAny)) {
-    if (key === "ref" || key === "type" || key === "types") continue;
-    const child = errorAny[key];
-    const nested = getFirstError(child, [...path, key]);
-    if (nested) return nested;
-  }
-  return undefined;
-};
 
 // HeaderMainFields: required header inputs.
 const HeaderMainFields = () => {
@@ -435,10 +362,10 @@ const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unk
   ];
 
   return (
-    <SectionDetailTemplate
+    <SectionDetailTemplateGrid
       title="Detalle"
       columns={columns}
-      columnsClassName="grid-cols-[220px_150px_64px_84px_84px_28px]"
+      gridTemplateColumns="220px 150px 64px 84px 84px 28px"
       defaultDetailValues={detailDefaults}
       list={
         <DetailList
@@ -491,7 +418,7 @@ const DetailList = ({
     >
       <div
         ref={containerRef}
-        className="w-full rounded-md border border-border p-2 md:max-h-64 md:overflow-y-auto"
+        className="w-full rounded-md border border-border px-2 pb-2 pt-0 md:max-h-64 md:overflow-y-auto"
       >
         <ArrayInput source="detalles" label={false}>
           <DetailIterator
@@ -524,6 +451,11 @@ const DetailItemRow = ({
   onRowClick: (index: number) => (event: MouseEvent) => void;
   setActiveIndex: (index: number | null) => void;
 }) => {
+  const detailContext = useDetailSectionContext();
+  if (!detailContext) {
+    throw new Error("DetailItemRow must be used within SectionDetailTemplate");
+  }
+  const { rowGridClassName, rowGridStyle } = detailContext;
   const [showOptional, setShowOptional] = useState(false);
   const { remove, index } = useSimpleFormIteratorItem();
   const isActive = activeIndex === index;
@@ -555,7 +487,13 @@ const DetailItemRow = ({
       }}
     >
       <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
-        <div className="grid grid-cols-1 gap-1 sm:flex sm:flex-row sm:items-center sm:gap-2">
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-1 sm:items-center sm:gap-2",
+            rowGridClassName,
+          )}
+          style={rowGridStyle}
+        >
           <HiddenInput source="id" />
           <div
             className="col-span-1 w-full sm:col-auto sm:w-[220px] shrink-0"
@@ -582,61 +520,62 @@ const DetailItemRow = ({
               </div>
             </div>
           </div>
-          <FormText
-            source="descripcion"
-            label={false}
-            widthClass="w-full sm:w-[130px] shrink-0"
-            readOnly={!isActive}
-            className={cn("hidden sm:block", !isActive && FORM_FIELD_READONLY_CLASS)}
-          />
-          <div className="col-span-1 grid grid-cols-[1fr_auto] gap-1 sm:contents">
-            <div className="grid grid-cols-[36px_58px_64px] gap-1 sm:flex sm:items-center sm:gap-2">
-              <div className="flex flex-col gap-0.5">
-                <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-                  Cant.
-                </div>
-                <FormNumber
-                  source="cantidad"
-                  label={false}
-                  inputMode="decimal"
-                  step="0.001"
-                  widthClass="w-[36px] sm:w-[80px] shrink-0"
-                  readOnly={!isActive}
-                  className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-                />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-                  Precio
-                </div>
-                <FormNumber
-                  source="precio"
-                  label={false}
-                  inputMode="decimal"
-                  step="0.01"
-                  widthClass="w-[58px] sm:w-[84px] shrink-0"
-                  readOnly={!isActive}
-                  className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-                />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-                  Importe
-                </div>
-                <CalculatedImporte
-                  computeImporte={computeDetalleImporte}
-                  widthClass="w-[64px] sm:w-[84px] shrink-0"
-                  valueClassName={
-                    !isActive
-                      ? FORM_VALUE_READONLY_CLASS
-                      : undefined
-                  }
-                />
-                <HiddenInput source="importe" />
-              </div>
+          <div className="hidden sm:flex sm:flex-col gap-0.5">
+            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+              Descripcion
             </div>
-            <DetailRowActions />
+            <FormText
+              source="descripcion"
+              label={false}
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
+            />
           </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+              Cant.
+            </div>
+            <FormNumber
+              source="cantidad"
+              label={false}
+              inputMode="decimal"
+              step="0.001"
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+              Precio
+            </div>
+            <FormNumber
+              source="precio"
+              label={false}
+              inputMode="decimal"
+              step="0.01"
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
+              Importe
+            </div>
+            <CalculatedImporte
+              computeImporte={computeDetalleImporte}
+              widthClass="w-full"
+              valueClassName={
+                !isActive
+                  ? FORM_VALUE_READONLY_CLASS
+                  : undefined
+              }
+            />
+            <HiddenInput source="importe" />
+          </div>
+          <DetailRowActions />
         </div>
         <DetailOptionalFields showOptional={showOptional} isActive={isActive} />
         <div className="mt-0 pt-0 flex justify-end gap-1 sm:hidden" />

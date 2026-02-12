@@ -25,7 +25,11 @@ export const DetailToggleButton = ({
       type="button"
       variant="ghost"
       size="icon"
-      className={cn("h-4 w-4 md:h-5 md:w-5 text-muted-foreground", className)}
+      className={cn(
+        "h-4 w-4 md:h-5 md:w-5 text-primary bg-primary/10 border border-primary/30 shadow-sm " +
+          "hover:bg-primary/15 hover:text-primary focus-visible:ring-1 focus-visible:ring-primary",
+        className,
+      )}
       onClick={(event) => {
         event.stopPropagation();
         onToggle();
@@ -34,7 +38,7 @@ export const DetailToggleButton = ({
       title={label}
       tabIndex={tabIndex}
     >
-      <Check className={cn("size-2.5 md:size-3", iconClassName)} />
+      <Check className={cn("size-3 md:size-3.5", iconClassName)} />
     </Button>
   );
 };
