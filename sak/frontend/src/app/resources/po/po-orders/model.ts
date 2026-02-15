@@ -35,8 +35,8 @@ export const poOrderDetalleSchema = z
     unidad_medida: optionalString.pipe(z.string().max(50).optional()),
     centro_costo_id: optionalId,
     oportunidad_id: optionalId,
-    cantidad: z.coerce.number().min(0),
-    precio: z.coerce.number().min(0),
+    cantidad: z.coerce.number().gt(0),
+    precio: z.coerce.number().gt(0),
     importe: z.coerce.number().min(0),
   })
   .superRefine((val, ctx) => {
@@ -71,6 +71,30 @@ export const poOrderSchema = z.object({
 
 export type PoOrderFormValues = z.infer<typeof poOrderSchema>;
 export type PoOrderDetalleFormValues = z.infer<typeof poOrderDetalleSchema>;
+
+export const getPoOrderDetalleDefaults = () => ({
+  articulo_id: "",
+  descripcion: "",
+  unidad_medida: "",
+  centro_costo_id: "",
+  oportunidad_id: "",
+  cantidad: 1,
+  precio: 0,
+  importe: 0,
+});
+
+export const normalizeStatusName = (value?: string | null) =>
+  value ? String(value).trim().toLowerCase() : "";
+
+export const capitalizeStatusName = (value: string) =>
+  value.length > 0 ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+
+export const PO_ORDER_LOCKED_STATUS = ["aprobada", "rechazada"] as const;
+
+export const isPoOrderLocked = (statusName?: string | null) =>
+  PO_ORDER_LOCKED_STATUS.includes(
+    normalizeStatusName(statusName) as (typeof PO_ORDER_LOCKED_STATUS)[number],
+  );
 
 export const ORDER_STATUS_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",

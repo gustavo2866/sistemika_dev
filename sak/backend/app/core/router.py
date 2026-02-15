@@ -222,9 +222,10 @@ def create_generic_router(
         obj_id: int, 
         session: Session = Depends(get_session),
         deleted: str = Query("exclude", pattern="^(include|only|exclude)$"),
+        include: Optional[str] = Query(None, description="Relaciones a incluir (CSV)"),
     ):
         """Obtener recurso por ID"""
-        obj = crud.get(session, obj_id, deleted=deleted)
+        obj = crud.get(session, obj_id, deleted=deleted, include=include)
         if not obj:
             raise HTTPException(
                 status_code=404,

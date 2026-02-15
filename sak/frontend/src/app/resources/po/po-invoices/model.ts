@@ -8,7 +8,7 @@ const requiredId = z.preprocess(
 );
 
 const optionalId = z.preprocess(
-  (v) => (v === "" || v === null ? undefined : v),
+  (v) => (v === "" || v === null || v === 0 || v === "0" ? undefined : v),
   z.coerce.number().int().positive().optional(),
 );
 
@@ -70,6 +70,35 @@ export type PoInvoiceFormValues = z.infer<typeof poInvoiceSchema>;
 export type PoInvoiceDetalleFormValues = z.infer<typeof poInvoiceDetalleSchema>;
 export type PoInvoiceTaxFormValues = z.infer<typeof poInvoiceTaxSchema>;
 
+export type PoOrderDetailRaw = {
+  id?: number | string | null;
+  order_id?: number | string | null;
+  articulo_id?: number | string | null;
+  descripcion?: string | null;
+  cantidad?: number | string | null;
+  precio?: number | string | null;
+  importe?: number | string | null;
+  centro_costo_id?: number | string | null;
+  oportunidad_id?: number | string | null;
+};
+
+export const getPoInvoiceDetalleDefaults = () => ({
+  articulo_id: "",
+  descripcion: "",
+  centro_costo_id: "",
+  oportunidad_id: "",
+  cantidad: 1,
+  precio_unitario: 0,
+  importe: 0,
+  poOrderDetail_id: "",
+});
+
+export const getPoInvoiceTaxDefaults = () => ({
+  concepto_id: "",
+  descripcion: "",
+  importe: 0,
+});
+
 export const INVOICE_STATUS_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",
   emitida: "bg-sky-100 text-sky-800",
@@ -106,6 +135,45 @@ export const computeDetalleImporte = (d: {
   return round2(cantidad * precio);
 };
 
+export const mapPoOrderDetailToInvoiceDetail = (
+  detalle: PoOrderDetailRaw,
+): PoInvoiceDetalleFormValues => {
+  const cantidad = toNumber(detalle.cantidad);
+  const precioUnitario = toNumber(detalle.precio);
+  const importe = toOptionalNumber(detalle.importe) ?? round2(cantidad * precioUnitario);
+
+  return {
+    id: undefined,
+    poOrderDetail_id: toOptionalNumber(detalle.id),
+    articulo_id: toOptionalNumber(detalle.articulo_id),
+    descripcion: String(detalle.descripcion ?? ""),
+    cantidad,
+    precio_unitario: precioUnitario,
+    importe,
+    centro_costo_id: toOptionalNumber(detalle.centro_costo_id),
+    oportunidad_id: toOptionalNumber(detalle.oportunidad_id),
+  };
+};
+
+export const mergeInvoiceDetails = (
+  existing: PoInvoiceDetalleFormValues[],
+  incoming: PoInvoiceDetalleFormValues[],
+) => {
+  const existingIds = new Set(
+    (existing ?? [])
+      .map((item) => toOptionalNumber(item.poOrderDetail_id))
+      .filter((value): value is number => typeof value === "number"),
+  );
+
+  const filtered = (incoming ?? []).filter((item) => {
+    const id = toOptionalNumber(item.poOrderDetail_id);
+    if (typeof id !== "number") return true;
+    return !existingIds.has(id);
+  });
+
+  return [...(existing ?? []), ...filtered];
+};
+
 export const computePoInvoiceSubtotal = (
   detalles: Array<{ importe?: unknown; cantidad?: unknown; precio_unitario?: unknown }>,
 ) => {
@@ -127,12 +195,14 @@ export const computePoInvoiceTaxesImporte = (
 };
 
 const normalizeDetalle = (detalle: Record<string, unknown>) => {
+  const { poOrderDetail: _poOrderDetail, order_id: _orderId, ...rest } =
+    detalle as Record<string, unknown>;
   const cantidad = toOptionalNumber(detalle.cantidad) ?? 0;
   const precioUnitario = toOptionalNumber(detalle.precio_unitario) ?? 0;
   const importe = toOptionalNumber(detalle.importe) ?? round2(cantidad * precioUnitario);
 
   return {
-    ...detalle,
+    ...rest,
     cantidad,
     precio_unitario: precioUnitario,
     importe,

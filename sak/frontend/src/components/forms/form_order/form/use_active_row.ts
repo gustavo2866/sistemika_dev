@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { useWatch } from "react-hook-form";
+import { useFormState, useWatch } from "react-hook-form";
 
 export const useActiveRow = ({
   name,
@@ -13,10 +13,33 @@ export const useActiveRow = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const items = useWatch({ name }) as unknown[] | undefined;
+  const { dirtyFields } = useFormState();
+  const isArrayDirty = Boolean((dirtyFields as any)?.[name]);
   const prevLengthRef = useRef<number>(items?.length ?? 0);
+  const hasSeenItemsRef = useRef(false);
 
   useEffect(() => {
     const length = items?.length ?? 0;
+    if (!hasSeenItemsRef.current) {
+      if (items == null) return;
+      hasSeenItemsRef.current = true;
+      prevLengthRef.current = length;
+      if (length > 0 && isArrayDirty && containerRef.current) {
+        setActiveIndex(length - 1);
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        const container = containerRef.current;
+        window.setTimeout(() => {
+          const fields = container.querySelectorAll(focusSelector);
+          const last = fields[fields.length - 1];
+          const focusTarget =
+            (last?.querySelector('[role="combobox"]') as HTMLElement | null) ??
+            (last?.querySelector("input") as HTMLElement | null) ??
+            (last as HTMLElement | null);
+          focusTarget?.focus();
+        }, 0);
+      }
+      return;
+    }
     if (length > prevLengthRef.current && containerRef.current) {
       setActiveIndex(length - 1);
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
@@ -31,8 +54,11 @@ export const useActiveRow = ({
         focusTarget?.focus();
       }, 0);
     }
+    if (length < prevLengthRef.current) {
+      setActiveIndex(null);
+    }
     prevLengthRef.current = length;
-  }, [items?.length, focusSelector]);
+  }, [items, focusSelector, isArrayDirty]);
 
   const onContainerClick = useCallback(() => {
     setActiveIndex(null);

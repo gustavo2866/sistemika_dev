@@ -19,6 +19,7 @@ import {
   DetailFooterButtons,
   DetailIterator,
   DetailRowActions,
+  DetailRowError,
   DetailRowProvider,
   FORM_FIELD_READONLY_CLASS,
   FormErrorSummary,
@@ -369,6 +370,7 @@ const DetailItemRow = ({
             />
           </div>
           <DetailRowActions />
+          <DetailRowError />
         </div>
         {showOptional ? (
           <div className="mt-0 rounded-md border border-muted/60 bg-muted/30 p-2">

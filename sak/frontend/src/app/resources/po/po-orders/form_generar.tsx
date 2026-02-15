@@ -7,19 +7,19 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { PoOrderFormValues } from "./model";
-import { usePoOrderStatusTransition } from "./form_hooks";
+import { type PoOrderRecord, usePoOrderStatusTransition } from "./form_hooks";
 
 const buttonClasses = "h-6 px-2 text-[9px] sm:h-7 sm:px-2.5 sm:text-[10px] gap-1";
 
 export const FormGenerar = () => {
-  const record = useRecordContext<PoOrderFormValues & { id?: number }>();
+  const record = useRecordContext<PoOrderRecord>();
   const { control } = useFormContext<PoOrderFormValues>();
   const proveedorId = useWatch({ control, name: "proveedor_id" }) as number | undefined;
   const detalles = useWatch({ control, name: "detalles" }) as
     | Array<{ precio?: unknown }>
     | undefined;
   const [open, setOpen] = useState(false);
-  const { canGenerar, transition, loading } = usePoOrderStatusTransition();
+  const { canGenerar, cambiarEstado, loading } = usePoOrderStatusTransition();
   const isCreate = !record?.id;
   const statusKey = String(record?.order_status?.nombre ?? "")
     .trim()
@@ -82,7 +82,7 @@ export const FormGenerar = () => {
                 type="button"
                 onClick={() => {
                   setOpen(false);
-                  transition("solicitada");
+                  cambiarEstado("solicitada");
                 }}
                 disabled={loading}
               >
@@ -93,7 +93,7 @@ export const FormGenerar = () => {
               type="button"
               onClick={() => {
                 setOpen(false);
-                transition("emitida");
+                cambiarEstado("emitida");
               }}
               disabled={loading || !canOrdenCompra}
             >

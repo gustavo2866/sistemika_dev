@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { PoInvoiceForm } from "./form";
 import { getInvoiceStatusBadgeClass, normalizePoInvoicePayload } from "./model";
 
+// Titulo del formulario de edicion de Factura OC.
 const PoInvoiceEditTitle = () => {
   const { record } = useEditContext();
   if (!record) return "Editar Factura OC";
@@ -38,6 +39,7 @@ const PoInvoiceEditTitle = () => {
   );
 };
 
+// Wrapper de edit para Factura OC.
 export const PoInvoiceEdit = () => (
   <Edit
     redirect="list"

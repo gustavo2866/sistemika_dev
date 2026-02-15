@@ -1,0 +1,15 @@
+"use client";
+
+import { createContext, useContext, type CSSProperties } from "react";
+import type { useActiveRow } from "./use_active_row";
+
+export type DetailSectionContextValue = ReturnType<typeof useActiveRow> & {
+  rowGridClassName?: string;
+  rowGridStyle?: CSSProperties;
+};
+
+export const DetailSectionContext =
+  createContext<DetailSectionContextValue | null>(null);
+
+export const useDetailSectionContext = () =>
+  useContext(DetailSectionContext);

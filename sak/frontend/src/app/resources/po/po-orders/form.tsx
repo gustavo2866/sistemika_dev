@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useCallback } from "react";
 import {
   type Identifier,
   required,
-  useCreatePath,
   useRecordContext,
-  useResourceContext,
-  useSimpleFormIteratorItem,
 } from "ra-core";
-import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWatch } from "react-hook-form";
 
@@ -20,71 +15,55 @@ import { Loading } from "@/components/loading";
 import { NumberField } from "@/components/number-field";
 import {
   CalculatedImporte,
-  DetailFooterButtons,
-  DetailIterator,
-  DetailRowActions,
-  DetailRowProvider,
+  DetailFieldCell,
   FormErrorSummary,
   FORM_VALUE_READONLY_CLASS,
   FORM_FIELD_READONLY_CLASS,
-  ResponsiveDetailRow,
   FormDate,
   FormNumber,
   FormReferenceAutocomplete,
   FormSelect,
   FormText,
   FormTextarea,
+  FormOrderHeaderMenuActions,
   HiddenInput,
   SectionBaseTemplate,
-  SectionDetailTemplateGrid,
+  SectionDetailColumn,
+  SectionDetailFieldsProps,
+  SectionDetailTemplate2,
   TotalCompute,
-  useDetailSectionContext,
-  useConfirmDelete,
-  useIdentityId,
 } from "@/components/forms/form_order";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
-import { ArrayInput } from "@/components/array-input";
 import { Confirm } from "@/components/confirm";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
 import {
   computeDetalleImporte,
   computePoOrderTotal,
+  getPoOrderDetalleDefaults,
+  isPoOrderLocked,
   poOrderSchema,
 } from "./model";
 import type { PoOrderFormValues } from "./model";
 import {
+  type PoOrderRecord,
+  useAccionesCabeceraOrden,
+  usePoOrderFormDefaults,
+  usePoOrderDefaults,
+} from "./form_hooks";
+import {
   useCentroCostoOportunidadExclusion,
   useDetalleCentroCostoOportunidadExclusion,
-  usePoOrderDefaults,
   useTipoSolicitudChangeGuard,
-} from "./form_hooks";
+} from "../shared/po-hooks";
 import { FormGenerar } from "./form_generar";
 
-type PoOrderRecord = PoOrderFormValues & {
-  id?: Identifier;
-  order_status?: {
-    nombre?: string | null;
-  } | null;
-};
-
-// PoOrderForm: SimpleForm wrapper with validation resolver and custom toolbar.
+// === Formulario principal ===
+// Renderiza el formulario principal de Orden de compra.
 export const PoOrderForm = () => {
-  const record = useRecordContext<PoOrderRecord>();
-  const isCreate = !record?.id;
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const { identityId, isIdentityLoading } = useIdentityId();
+  const { defaultValues, isLoadingDefaults } = usePoOrderFormDefaults();
 
-  const defaultValues = useMemo(() => {
-    if (!isCreate) return undefined;
-    return {
-      ...(identityId != null ? { solicitante_id: identityId } : {}),
-      fecha_necesidad: today,
-    };
-  }, [isCreate, identityId, today]);
-
-  if (isCreate && isIdentityLoading && identityId == null) {
+  if (isLoadingDefaults) {
     return <Loading delay={200} />;
   }
 
@@ -93,20 +72,18 @@ export const PoOrderForm = () => {
       className="w-full max-w-3xl"
       // ra-core FormProps types resolver as Resolver<FieldValues>
       resolver={zodResolver(poOrderSchema) as any}
-      toolbar={<PoOrderFormToolbar />}
+      toolbar={<OrdenCompraToolbar />}
       defaultValues={defaultValues}
     >
-      <PoOrderFormFields />
+      <OrdenCompraContenido />
     </SimpleForm>
   );
 };
 
-const PoOrderFormToolbar = () => {
+// Barra de acciones del formulario de Orden de compra.
+const OrdenCompraToolbar = () => {
   const record = useRecordContext<PoOrderRecord>();
-  const statusKey = String(record?.order_status?.nombre ?? "")
-    .trim()
-    .toLowerCase();
-  const isLocked = statusKey === "aprobada" || statusKey === "rechazada";
+  const isLocked = isPoOrderLocked(record?.order_status?.nombre);
 
   return (
     <div className="flex w-full items-center justify-end gap-2">
@@ -117,8 +94,8 @@ const PoOrderFormToolbar = () => {
   );
 };
 
-// PoOrderFormFields: renders header + detail sections and the change guard.
-const PoOrderFormFields = () => {
+// Contenido principal del formulario (cabecera, detalle y totales).
+const OrdenCompraContenido = () => {
   usePoOrderDefaults();
   useCentroCostoOportunidadExclusion();
   useDetalleCentroCostoOportunidadExclusion();
@@ -129,11 +106,11 @@ const PoOrderFormFields = () => {
     <>
       <FormErrorSummary />
 
-      <HeaderSection />
+      <CabeceraOrdenCompra />
 
-      <DetailSection articuloFilter={articuloFilter} />
+      <DetalleOrdenCompra articuloFilter={articuloFilter} />
 
-      <TotalsSummaryRow />
+      <ResumenTotalesOrdenCompra />
 
       <Confirm
         isOpen={confirmOpen}
@@ -146,52 +123,29 @@ const PoOrderFormFields = () => {
   );
 };
 
-// HeaderSection: wraps header template and composes main + optional fields.
-const HeaderSection = () => {
-  const record = useRecordContext<PoOrderRecord>();
-  const resource = useResourceContext();
-  const createPath = useCreatePath();
-  const navigate = useNavigate();
-  const { confirmDelete, setConfirmDelete, deleting, handleDelete } =
-    useConfirmDelete({ record, resource });
-
-  const statusKey = String(record?.order_status?.nombre ?? "")
-    .trim()
-    .toLowerCase();
-  const isLocked = statusKey === "aprobada" || statusKey === "rechazada";
-  const hasRecord = Boolean(record?.id && resource);
-
-  const handlePreview = (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!record?.id || !resource) return;
-    navigate(createPath({ resource, type: "show", id: record.id }));
-  };
-
-  const headerActions = hasRecord ? (
-    <>
-      <DropdownMenuItem
-        onClick={handlePreview}
-        className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-      >
-        <Eye className="h-3 w-3" />
-        Preview
-      </DropdownMenuItem>
-      {!isLocked ? (
-        <>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setConfirmDelete(true)}
-            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-            variant="destructive"
-          >
-            <Trash2 className="h-3 w-3" />
-            Eliminar
-          </DropdownMenuItem>
-        </>
-      ) : null}
-    </>
-  ) : null;
+// === Seccion cabecera ===
+// Seccion de cabecera con campos principales y opcionales.
+const CabeceraOrdenCompra = () => {
+  const {
+    canPreview,
+    canDelete,
+    onPreview,
+    onRequestDelete,
+    confirmDelete,
+    setConfirmDelete,
+    deleting,
+    handleDelete,
+    isLocked,
+  } = useAccionesCabeceraOrden();
+  const accionesMenu =
+    canPreview || canDelete ? (
+      <FormOrderHeaderMenuActions
+        canPreview={canPreview}
+        canDelete={canDelete}
+        onPreview={onPreview}
+        onDelete={onRequestDelete}
+      />
+    ) : null;
 
   return (
     <>
@@ -199,7 +153,7 @@ const HeaderSection = () => {
         title="Cabecera"
         main={
           <>
-          <HeaderMainFields />
+            <CabeceraCamposPrincipales />
             {/* Always compute total for validation/payload */}
             <TotalCompute computeTotal={computePoOrderTotal} />
             <HiddenInput source="total" />
@@ -208,8 +162,8 @@ const HeaderSection = () => {
             <HiddenInput source="departamento_id" />
           </>
         }
-        actions={headerActions}
-        optional={<HeaderOptionalFields />}
+        actions={accionesMenu}
+        optional={<CabeceraCamposOpcionales />}
       />
       {!isLocked ? (
         <Confirm
@@ -226,9 +180,8 @@ const HeaderSection = () => {
   );
 };
 
-
-// HeaderMainFields: required header inputs.
-const HeaderMainFields = () => {
+// Campos principales de la cabecera de Orden de compra.
+const CabeceraCamposPrincipales = () => {
   const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
   const isCreate = !record?.id;
   return (
@@ -281,8 +234,8 @@ const HeaderMainFields = () => {
   );
 };
 
-// HeaderOptionalFields: optional header fields block with subtle panel styling.
-const HeaderOptionalFields = () => {
+// Campos opcionales de la cabecera con panel secundario.
+const CabeceraCamposOpcionales = () => {
   return (
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
@@ -336,265 +289,95 @@ const HeaderOptionalFields = () => {
   );
 };
 
-
-// DetailSection: wraps detail template and its list + header actions.
-const DetailSection = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
-  const detailDefaults = useMemo(
-    () => ({
-      articulo_id: "",
-      descripcion: "",
-      unidad_medida: "",
-      centro_costo_id: "",
-      oportunidad_id: "",
-      cantidad: 1,
-      precio: 0,
-      importe: 0,
-    }),
-    [],
-  );
-  const columns = [
-    { label: "Articulo" },
-    { label: "Descripcion" },
-    { label: "Cantidad", className: "-ml-[15px]" },
-    { label: "Precio", className: "ml-[0px]" },
-    { label: "Importe", className: "ml-[30px]" },
-    { label: "" },
+// === Seccion detalle ===
+// Seccion de detalle con lineas y campos opcionales.
+const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
+  const columns: SectionDetailColumn[] = [
+    { label: "Articulo", width: "220px" },
+    { label: "Descripcion", width: "150px" },
+    { label: "Cantidad", width: "64px", className: "-ml-[15px]" },
+    { label: "Precio", width: "84px", className: "ml-[0px]" },
+    { label: "Importe", width: "84px", className: "ml-[30px]" },
+    { label: "", width: "28px" },
   ];
 
-  return (
-    <SectionDetailTemplateGrid
-      title="Detalle"
-      columns={columns}
-      gridTemplateColumns="220px 150px 64px 84px 84px 28px"
-      defaultDetailValues={detailDefaults}
-      list={
-        <DetailList
-          articuloFilter={articuloFilter}
-          defaultDetailValues={detailDefaults}
-        />
-      }
-    />
-  );
-};
-
-const TotalsSummaryRow = () => {
-  const total = useWatch({ name: "total" }) as number | undefined;
-  const totalValue = Number(total ?? 0);
-
-  return (
-    <div className="flex flex-row flex-nowrap items-center justify-start gap-2 rounded-md border border-muted/60 bg-muted/30 px-2 py-1 text-[8px] text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3 sm:px-3 sm:py-2 sm:text-[10px]">
-      <span className="flex items-center gap-1.5 rounded-full bg-foreground/90 px-2 py-0.5 text-[8px] font-semibold text-background whitespace-nowrap sm:px-2.5 sm:py-1 sm:text-[10px]">
-        Total:
-        <NumberField
-          source="total"
-          record={{ total: totalValue }}
-          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
-          className="tabular-nums"
-        />
-      </span>
-    </div>
-  );
-};
-
-// DetailList: detail list container with labels, scrolling and add behavior.
-const DetailList = ({
-  articuloFilter,
-  defaultDetailValues,
-}: {
-  articuloFilter?: Record<string, unknown>;
-  defaultDetailValues?: Record<string, unknown>;
-}) => {
-  const detailContext = useDetailSectionContext();
-  if (!detailContext) {
-    throw new Error("DetailList must be used within SectionDetailTemplate");
-  }
-  const { containerRef, activeIndex, onContainerClick, onRowClick, setActiveIndex } =
-    detailContext;
-
-  return (
-    <div
-      className="mt-1 space-y-0 w-full"
-      onClick={onContainerClick}
-    >
-      <div
-        ref={containerRef}
-        className="w-full rounded-md border border-border px-2 pb-2 pt-0 md:max-h-64 md:overflow-y-auto"
-      >
-        <ArrayInput source="detalles" label={false}>
-          <DetailIterator
-            addButton={
-              <DetailFooterButtons defaultValues={defaultDetailValues} />
-            }
-          >
-            <DetailItemRow
-              articuloFilter={articuloFilter}
-              activeIndex={activeIndex}
-              onRowClick={onRowClick}
-              setActiveIndex={setActiveIndex}
-            />
-          </DetailIterator>
-        </ArrayInput>
-      </div>
-    </div>
-  );
-};
-
-// DetailItemRow: single detail row with click-to-edit and compact layout.
-const DetailItemRow = ({
-  articuloFilter,
-  activeIndex,
-  onRowClick,
-  setActiveIndex,
-}: {
-  articuloFilter?: Record<string, unknown>;
-  activeIndex: number | null;
-  onRowClick: (index: number) => (event: MouseEvent) => void;
-  setActiveIndex: (index: number | null) => void;
-}) => {
-  const detailContext = useDetailSectionContext();
-  if (!detailContext) {
-    throw new Error("DetailItemRow must be used within SectionDetailTemplate");
-  }
-  const { rowGridClassName, rowGridStyle } = detailContext;
-  const [showOptional, setShowOptional] = useState(false);
-  const { remove, index } = useSimpleFormIteratorItem();
-  const isActive = activeIndex === index;
-  const handleCollapse = () => {
-    setShowOptional(false);
-    setActiveIndex(null);
-  };
-  const toggleOptional = () => setShowOptional((prev) => !prev);
-  useEffect(() => {
-    if (!isActive && showOptional) {
-      setShowOptional(false);
-    }
-  }, [isActive, showOptional]);
-
-  const rowClassName = cn(
-    isActive
-      ? "border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
-      : "sm:border-transparent",
-  );
-
-  return (
-    <DetailRowProvider
-      value={{
-        isActive,
-        showOptional,
-        toggleOptional,
-        collapse: handleCollapse,
-        remove,
-      }}
-    >
-      <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
-        <div
-          className={cn(
-            "grid grid-cols-1 gap-1 sm:items-center sm:gap-2",
-            rowGridClassName,
-          )}
-          style={rowGridStyle}
+  // Campos principales del detalle.
+  const DetalleCamposPrincipales = useCallback(
+    ({ isActive }: SectionDetailFieldsProps) => (
+      <>
+        <DetailFieldCell
+          label="Articulo"
+          data-articulo-field="true"
+          data-focus-field="true"
         >
-          <HiddenInput source="id" />
-          <div
-            className="col-span-1 w-full sm:col-auto sm:w-[220px] shrink-0"
-            data-articulo-field="true"
-          >
-            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-              Articulo
-            </div>
-            <div className="grid grid-cols-[1fr_16px] items-center gap-0.5 sm:block">
-              <div className="flex-1">
-                <FormReferenceAutocomplete
-                  referenceProps={{
-                    source: "articulo_id",
-                    reference: "articulos",
-                    filter: articuloFilter,
-                  }}
-                  inputProps={{
-                    optionText: "nombre",
-                    label: false,
-                  }}
-                  widthClass="w-full"
-                  className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="hidden sm:flex sm:flex-col gap-0.5">
-            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-              Descripcion
-            </div>
-            <FormText
-              source="descripcion"
-              label={false}
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
-            />
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-              Cant.
-            </div>
-            <FormNumber
-              source="cantidad"
-              label={false}
-              inputMode="decimal"
-              step="0.001"
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-            />
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-              Precio
-            </div>
-            <FormNumber
-              source="precio"
-              label={false}
-              inputMode="decimal"
-              step="0.01"
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-            />
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="sm:hidden text-[8px] font-semibold text-muted-foreground leading-none">
-              Importe
-            </div>
-            <CalculatedImporte
-              computeImporte={computeDetalleImporte}
-              widthClass="w-full"
-              valueClassName={
-                !isActive
-                  ? FORM_VALUE_READONLY_CLASS
-                  : undefined
-              }
-            />
-            <HiddenInput source="importe" />
-          </div>
-          <DetailRowActions />
-        </div>
-        <DetailOptionalFields showOptional={showOptional} isActive={isActive} />
-        <div className="mt-0 pt-0 flex justify-end gap-1 sm:hidden" />
-      </ResponsiveDetailRow>
-    </DetailRowProvider>
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "articulo_id",
+              reference: "articulos",
+              filter: articuloFilter,
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: false,
+            }}
+            widthClass="w-full"
+            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+          />
+        </DetailFieldCell>
+        <DetailFieldCell label="Descripcion" desktopOnly>
+          <FormText
+            source="descripcion"
+            label={false}
+            widthClass="w-full"
+            readOnly={!isActive}
+            className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
+          />
+        </DetailFieldCell>
+        <DetailFieldCell label="Cant.">
+          <FormNumber
+            source="cantidad"
+            label={false}
+            inputMode="decimal"
+            step="0.001"
+            widthClass="w-full"
+            validate={required()}
+            readOnly={!isActive}
+            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+          />
+        </DetailFieldCell>
+        <DetailFieldCell label="Precio">
+          <FormNumber
+            source="precio"
+            label={false}
+            inputMode="decimal"
+            step="0.01"
+            widthClass="w-full"
+            validate={required()}
+            readOnly={!isActive}
+            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+          />
+        </DetailFieldCell>
+        <DetailFieldCell label="Importe">
+          <CalculatedImporte
+            computeImporte={computeDetalleImporte}
+            widthClass="w-full"
+            valueClassName={
+              !isActive
+                ? FORM_VALUE_READONLY_CLASS
+                : undefined
+            }
+          />
+          <HiddenInput source="importe" />
+        </DetailFieldCell>
+      </>
+    ),
+    [articuloFilter],
   );
-};
 
-// DetailOptionalFields: extra detail fields shown per-row when expanded.
-const DetailOptionalFields = ({
-  showOptional,
-  isActive,
-}: {
-  showOptional: boolean;
-  isActive: boolean;
-}) => {
-  return (
-    <div className="w-full">
-      {showOptional ? (
+  // Campos opcionales del detalle.
+  const DetalleCamposOpcionales = useCallback(
+    ({ isActive }: SectionDetailFieldsProps) => (
+      <div className="w-full">
         <div className="mt-0 rounded-md border border-muted/60 bg-muted/30 p-2">
           <div className="grid gap-2 md:grid-cols-[210px_210px] md:justify-start">
             <FormText
@@ -628,7 +411,39 @@ const DetailOptionalFields = ({
             </ReferenceInput>
           </div>
         </div>
-      ) : null}
+      </div>
+    ),
+    [],
+  );
+
+  return (
+    <SectionDetailTemplate2
+      title="Detalle"
+      mainColumns={columns}
+      mainFields={DetalleCamposPrincipales}
+      optionalFields={DetalleCamposOpcionales}
+      defaults={getPoOrderDetalleDefaults}
+    />
+  );
+};
+
+// Resumen de totales al pie del formulario.
+const ResumenTotalesOrdenCompra = () => {
+  const total = useWatch({ name: "total" }) as number | undefined;
+  const totalValue = Number(total ?? 0);
+
+  return (
+    <div className="flex flex-row flex-nowrap items-center justify-start gap-2 rounded-md border border-muted/60 bg-muted/30 px-2 py-1 text-[8px] text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3 sm:px-3 sm:py-2 sm:text-[10px]">
+      <span className="flex items-center gap-1.5 rounded-full bg-foreground/90 px-2 py-0.5 text-[8px] font-semibold text-background whitespace-nowrap sm:px-2.5 sm:py-1 sm:text-[10px]">
+        Total:
+        <NumberField
+          source="total"
+          record={{ total: totalValue }}
+          options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+          className="tabular-nums"
+        />
+      </span>
     </div>
   );
 };
+

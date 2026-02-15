@@ -109,6 +109,7 @@ const HIDDEN_RESOURCES = [
   "articulos",
   "tipos-solicitud",
   "po-order-status",
+  "po-invoice-status",
 ];
 
 type ResourceName = string;

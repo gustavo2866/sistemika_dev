@@ -22,6 +22,11 @@ export type { ListBooleanProps, ListIDProps, ListMoneyProps, ListNumberProps, Li
 export { BooleanListColumn, DateListColumn, ListColumn, NumberListColumn, TextListColumn } from "./list/list_column";
 export type { ListColumnProps } from "./list/list_column";
 export { ListPaginator } from "./list/list_paginator";
+export {
+  IdentityFilterSync,
+  useIdentityFilterDefaults,
+} from "./list/identity_filter";
+export type { IdentityFilterDefaultsOptions, IdentityFilterSyncProps } from "./list/identity_filter";
 export { FormOrderBulkActionsToolbar } from "./list/bulk/bulk_actions_toolbar";
 export { FormOrderBulkDeleteButton } from "./list/bulk/bulk_delete_button";
 export { FormOrderBulkExportButton } from "./list/bulk/bulk_export_button";
@@ -37,6 +42,16 @@ export {
 } from "./form/section_detail_template";
 export { SectionDetailTemplateGrid } from "./form/section_detail_template_grid";
 export type { SectionDetailTemplateGridProps } from "./form/section_detail_template_grid";
+export { SectionDetailTemplate2 } from "./form/section_detail_template2";
+export type {
+  SectionDetailColumn,
+  SectionDetailFieldsProps,
+  SectionDetailTemplate2Props,
+} from "./form/section_detail_template2";
+export {
+  FormOrderHeaderMenuActions,
+} from "./form/header_menu_actions";
+export type { FormOrderHeaderMenuActionsProps } from "./form/header_menu_actions";
 export { DetailFooterButtons } from "./form/detail_footer_buttons";
 export { CalculatedImporte } from "./form/calculated_importe";
 export { TotalCompute } from "./form/total_compute";
@@ -44,6 +59,9 @@ export { DetailHeaderActions } from "./form/detail_header_actions";
 export { DetailDeleteButton } from "./form/detail_delete_button";
 export { DetailInfoButton } from "./form/detail_info_button";
 export { DetailToggleButton } from "./form/detail_toggle_button";
+export { DetailRowError } from "./form/detail_row_error";
+export { DetailFieldCell } from "./form/detail_field_cell";
+export type { DetailFieldCellProps } from "./form/detail_field_cell";
 export {
   DetailRowProvider,
   useDetailRowContext,

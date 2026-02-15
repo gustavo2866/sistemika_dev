@@ -388,7 +388,13 @@ class GenericCRUD(Generic[M]):
             session.flush()  # Genera el ID sin hacer commit
         return obj
 
-    def get(self, session: Session, obj_id: Any, deleted: str = "exclude") -> Optional[M]:
+    def get(
+        self,
+        session: Session,
+        obj_id: Any,
+        deleted: str = "exclude",
+        include: Optional[str] = None,
+    ) -> Optional[M]:
         """Get by ID con soporte para soft delete"""
         print(f"DEBUG: GenericCRUD.get called for {self.model.__name__} with id {obj_id}")
         stmt = select(self.model).where(self.model.id == obj_id)
@@ -396,6 +402,10 @@ class GenericCRUD(Generic[M]):
         
         # Apply auto-includes (including nested relationships)
         stmt = self._apply_auto_includes(stmt)
+
+        # Apply includes from query param (supports nested relations)
+        if include:
+            stmt = self._apply_include(stmt, include)
         
         return session.exec(stmt).first()
 
@@ -423,17 +433,9 @@ class GenericCRUD(Generic[M]):
             # Apply auto-includes (including nested relationships)
             stmt = self._apply_auto_includes(stmt)
             
-            # Aplicar joins para relaciones incluidas
+            # Aplicar joins para relaciones incluidas (soporta anidado)
             if include:
-                include_list = [rel.strip() for rel in include.split(",")]
-                for relation in include_list:
-                    try:
-                        if hasattr(self.model, relation):
-                            stmt = stmt.options(selectinload(getattr(self.model, relation)))
-                    except Exception as e:
-                        # Log the error but don't fail the entire query
-                        print(f"Warning: Could not load relationship {relation} for {self.model.__name__}: {e}")
-                        pass
+                stmt = self._apply_include(stmt, include)
             
             # Aplicar filtros
             if filters:
@@ -592,6 +594,50 @@ class GenericCRUD(Generic[M]):
             
         print(f"DEBUG: Auto-discovered {len(options)} relations for {self.model.__name__}: {list(relations.keys())}")
         return options
+
+    def _build_include_option(self, relation_path: str):
+        """Construye un selectinload para una relación (soporta notación anidada)."""
+        if "." in relation_path:
+            parts = relation_path.split(".")
+            current_model = self.model
+            loader = None
+
+            for part in parts:
+                if not hasattr(current_model, part):
+                    return None
+
+                relation_attr = getattr(current_model, part)
+                loader = selectinload(relation_attr) if loader is None else loader.selectinload(relation_attr)
+
+                try:
+                    mapper = sqlalchemy_inspect(current_model)
+                    relationship = mapper.relationships.get(part)
+                    if relationship:
+                        current_model = relationship.mapper.class_
+                except Exception:
+                    return loader
+
+            return loader
+
+        if hasattr(self.model, relation_path):
+            return selectinload(getattr(self.model, relation_path))
+
+        return None
+
+    def _apply_include(self, stmt, include: str):
+        """Aplica includes dinámicos al statement (soporta notación anidada)."""
+        include_list = [rel.strip() for rel in include.split(",") if rel.strip()]
+        for relation in include_list:
+            try:
+                option = self._build_include_option(relation)
+                if option is not None:
+                    stmt = stmt.options(option)
+            except Exception as e:
+                print(
+                    f"Warning: Could not load relationship {relation} for {self.model.__name__}: {e}"
+                )
+                continue
+        return stmt
 
     def _get_auto_include(self) -> List[str]:
         """

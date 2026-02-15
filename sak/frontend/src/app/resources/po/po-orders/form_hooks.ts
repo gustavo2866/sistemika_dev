@@ -1,17 +1,107 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import {
+  type Identifier,
   useDataProvider,
   useNotify,
   useRecordContext,
   useRefresh,
   useResourceContext,
   useSaveContext,
+  useCreatePath,
 } from "ra-core";
-import type { PoOrderFormValues } from "./model";
+import { useNavigate } from "react-router-dom";
+import { useConfirmDelete, useIdentityId } from "@/components/forms/form_order";
+import {
+  capitalizeStatusName,
+  isPoOrderLocked,
+  normalizeStatusName,
+  type PoOrderFormValues,
+} from "./model";
 
+// === Tipos ===
+export type PoOrderRecord = PoOrderFormValues & {
+  id?: Identifier;
+  order_status?: {
+    id?: number | null;
+    nombre?: string | null;
+  } | null;
+};
+
+// === Defaults iniciales ===
+// Resuelve defaults del formulario en base a identidad y fecha actual.
+export const usePoOrderFormDefaults = () => {
+  const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
+  const isCreate = !record?.id;
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const { identityId, isIdentityLoading } = useIdentityId();
+
+  const defaultValues = useMemo(() => {
+    if (!isCreate) return undefined;
+    return {
+      ...(identityId != null ? { solicitante_id: identityId } : {}),
+      fecha_necesidad: today,
+    };
+  }, [isCreate, identityId, today]);
+
+  return {
+    defaultValues,
+    isLoadingDefaults: isCreate && isIdentityLoading && identityId == null,
+  };
+};
+
+// === Acciones de cabecera ===
+// Acciones del menu de cabecera y estado de eliminacion.
+export const useAccionesCabeceraOrden = () => {
+  const record = useRecordContext<PoOrderRecord>();
+  const resource = useResourceContext();
+  const createPath = useCreatePath();
+  const navigate = useNavigate();
+  const { confirmDelete, setConfirmDelete, deleting, handleDelete } =
+    useConfirmDelete({ record, resource });
+
+  const isLocked = isPoOrderLocked(record?.order_status?.nombre);
+  const canPreview = Boolean(record?.id && resource);
+  const canDelete = canPreview && !isLocked;
+
+  const onPreview = useCallback(
+    (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!record?.id || !resource) return;
+      navigate(createPath({ resource, type: "show", id: record.id }));
+    },
+    [record?.id, resource, navigate, createPath],
+  );
+
+  const onRequestDelete = useCallback(() => {
+    setConfirmDelete(true);
+  }, [setConfirmDelete]);
+
+  return {
+    canPreview,
+    canDelete,
+    onPreview,
+    onRequestDelete,
+    confirmDelete,
+    setConfirmDelete,
+    deleting,
+    handleDelete,
+    isLocked,
+  };
+};
+
+// === Defaults y dependencias de cabecera ===
+// Aplica defaults y dependencias basadas en solicitante, proveedor y estado.
 export const usePoOrderDefaults = () => {
   const dataProvider = useDataProvider();
   const record = useRecordContext<
@@ -24,11 +114,11 @@ export const usePoOrderDefaults = () => {
   const proveedorId = useWatch({ name: "proveedor_id" }) as number | undefined;
   const departamentoId = useWatch({ name: "departamento_id" }) as number | undefined;
   const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
-  const orderStatusId = useWatch({ name: "order_status_id" }) as number | undefined;
+  const estadoOrdenId = useWatch({ name: "order_status_id" }) as number | undefined;
   const metodoPagoId = useWatch({ name: "metodo_pago_id" }) as number | undefined;
-  const tipoCompra = useWatch({ name: "tipo_compra" }) as string | undefined;
-  const [orderStatusLabel, setOrderStatusLabel] = useState<string | undefined>();
-  const recordOrderStatusId = record?.order_status_id ?? record?.order_status?.id;
+  const tipoCompraActual = useWatch({ name: "tipo_compra" }) as string | undefined;
+  const [estadoOrdenNombre, setEstadoOrdenNombre] = useState<string | undefined>();
+  const estadoOrdenIdRegistro = record?.order_status_id ?? record?.order_status?.id;
 
   useEffect(() => {
     if (!solicitanteId) return;
@@ -72,14 +162,23 @@ export const usePoOrderDefaults = () => {
     return () => {
       active = false;
     };
-  }, [solicitanteId, departamentoId, centroCostoId, dataProvider, setValue]);
+  }, [
+    solicitanteId,
+    departamentoId,
+    centroCostoId,
+    dataProvider,
+    getValues,
+    setValue,
+    dirtyFields?.departamento_id,
+    dirtyFields?.centro_costo_id,
+  ]);
 
   useEffect(() => {
-    if (orderStatusId || (dirtyFields as any)?.order_status_id) return;
-    if (recordOrderStatusId) {
-      setValue("order_status_id", recordOrderStatusId, { shouldDirty: false });
+    if (estadoOrdenId || (dirtyFields as any)?.order_status_id) return;
+    if (estadoOrdenIdRegistro) {
+      setValue("order_status_id", estadoOrdenIdRegistro, { shouldDirty: false });
       if (record?.order_status?.nombre) {
-        setOrderStatusLabel(record.order_status.nombre);
+        setEstadoOrdenNombre(record.order_status.nombre);
       }
       return;
     }
@@ -94,15 +193,15 @@ export const usePoOrderDefaults = () => {
       const status = data?.[0];
       if (status?.id) {
         setValue("order_status_id", status.id, { shouldDirty: false });
-        setOrderStatusLabel(status.nombre);
+        setEstadoOrdenNombre(status.nombre);
       }
     })();
     return () => {
       active = false;
     };
   }, [
-    orderStatusId,
-    recordOrderStatusId,
+    estadoOrdenId,
+    estadoOrdenIdRegistro,
     record?.order_status?.nombre,
     dirtyFields,
     dataProvider,
@@ -157,161 +256,44 @@ export const usePoOrderDefaults = () => {
     return () => {
       active = false;
     };
-  }, [proveedorId, dataProvider, getValues, setValue, dirtyFields?.metodo_pago_id]);
+  }, [
+    proveedorId,
+    dataProvider,
+    getValues,
+    setValue,
+    dirtyFields,
+    dirtyFields?.metodo_pago_id,
+  ]);
 
   useEffect(() => {
-    if (tipoCompra || dirtyFields?.tipo_compra) return;
+    if (tipoCompraActual || dirtyFields?.tipo_compra) return;
     setValue("tipo_compra", "normal", { shouldDirty: false });
-  }, [tipoCompra, dirtyFields?.tipo_compra, setValue]);
+  }, [tipoCompraActual, dirtyFields?.tipo_compra, setValue]);
 
   useEffect(() => {
-    if (!orderStatusId || orderStatusLabel) return;
+    if (!estadoOrdenId || estadoOrdenNombre) return;
     let active = true;
     (async () => {
       const { data } = await dataProvider.getOne("po-order-status", {
-        id: orderStatusId,
+        id: estadoOrdenId,
       });
       if (!active) return;
       if (data?.nombre) {
-        setOrderStatusLabel(data.nombre);
+        setEstadoOrdenNombre(data.nombre);
       }
     })();
     return () => {
       active = false;
     };
-  }, [orderStatusId, orderStatusLabel, dataProvider]);
+  }, [estadoOrdenId, estadoOrdenNombre, dataProvider]);
 
-  return { orderStatusLabel };
+  return { orderStatusLabel: estadoOrdenNombre };
 };
 
-export const useTipoSolicitudChangeGuard = () => {
-  const { setValue } = useFormContext();
-  const tipoSolicitudId = useWatch({ name: "tipo_solicitud_id" }) as
-    | number
-    | undefined;
-  const detalles = useWatch({ name: "detalles" }) as unknown[] | undefined;
-
-  const prevTipoRef = useRef<number | undefined>(tipoSolicitudId);
-  const [pendingTipo, setPendingTipo] = useState<number | undefined>();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  const articuloFilter =
-    tipoSolicitudId != null ? { tipo_solicitud_id: tipoSolicitudId } : {};
-
-  useEffect(() => {
-    if (prevTipoRef.current === tipoSolicitudId) return;
-
-    const hasDetalles = (detalles ?? []).length > 0;
-    if (hasDetalles) {
-      setPendingTipo(tipoSolicitudId);
-      setConfirmOpen(true);
-      // revert until user confirms
-      setValue("tipo_solicitud_id", prevTipoRef.current, { shouldDirty: false });
-      return;
-    }
-
-    prevTipoRef.current = tipoSolicitudId;
-  }, [tipoSolicitudId, detalles, setValue]);
-
-  const confirmChange = () => {
-    setConfirmOpen(false);
-    prevTipoRef.current = pendingTipo;
-    setValue("tipo_solicitud_id", pendingTipo, { shouldDirty: true });
-    setValue("detalles", [], { shouldDirty: true });
-    setPendingTipo(undefined);
-  };
-
-  const cancelChange = () => {
-    setConfirmOpen(false);
-    setPendingTipo(undefined);
-  };
-
-  return { articuloFilter, confirmOpen, confirmChange, cancelChange };
-};
-
-export const useCentroCostoOportunidadExclusion = () => {
-  const { setValue, control } = useFormContext();
-  const { dirtyFields } = useFormState({ control });
-  const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
-  const oportunidadId = useWatch({ name: "oportunidad_id" }) as number | undefined;
-
-  const prevCentro = useRef(centroCostoId);
-  const prevOportunidad = useRef(oportunidadId);
-
-  useEffect(() => {
-    if (centroCostoId === prevCentro.current) return;
-    prevCentro.current = centroCostoId;
-
-    if (!dirtyFields?.centro_costo_id) return;
-    if (centroCostoId == null) return;
-    setValue("oportunidad_id", null, { shouldDirty: true });
-  }, [centroCostoId, dirtyFields?.centro_costo_id, setValue]);
-
-  useEffect(() => {
-    if (oportunidadId === prevOportunidad.current) return;
-    prevOportunidad.current = oportunidadId;
-
-    if (!dirtyFields?.oportunidad_id) return;
-    if (oportunidadId == null) return;
-    setValue("centro_costo_id", null, { shouldDirty: true });
-  }, [oportunidadId, dirtyFields?.oportunidad_id, setValue]);
-};
-
-export const useDetalleCentroCostoOportunidadExclusion = () => {
-  const { setValue, control } = useFormContext();
-  const { dirtyFields } = useFormState({ control });
-  const detalles = useWatch({ name: "detalles" }) as
-    | Array<Record<string, unknown>>
-    | undefined;
-
-  const prevDetalles = useRef<Array<Record<string, unknown>>>([]);
-
-  useEffect(() => {
-    const current = detalles ?? [];
-    const previous = prevDetalles.current ?? [];
-
-    current.forEach((row, index) => {
-      const prevRow = previous[index] ?? {};
-      const nextCentro = row?.centro_costo_id as number | undefined;
-      const nextOportunidad = row?.oportunidad_id as number | undefined;
-      const prevCentro = prevRow?.centro_costo_id as number | undefined;
-      const prevOportunidad = prevRow?.oportunidad_id as number | undefined;
-
-      if (nextCentro != null && nextCentro !== prevCentro) {
-        const centroDirty = (dirtyFields as any)?.detalles?.[index]
-          ?.centro_costo_id;
-        if (centroDirty) {
-          setValue(`detalles.${index}.oportunidad_id`, null, {
-            shouldDirty: true,
-          });
-        }
-      }
-
-      if (nextOportunidad != null && nextOportunidad !== prevOportunidad) {
-        const oportunidadDirty = (dirtyFields as any)?.detalles?.[index]
-          ?.oportunidad_id;
-        if (oportunidadDirty) {
-          setValue(`detalles.${index}.centro_costo_id`, null, {
-            shouldDirty: true,
-          });
-        }
-      }
-    });
-
-    prevDetalles.current = current;
-  }, [detalles, dirtyFields, setValue]);
-};
-
-const normalizeStatusName = (value?: string | null) =>
-  value ? String(value).trim().toLowerCase() : "";
-
-const capitalizeStatusName = (value: string) =>
-  value.length > 0 ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
-
+// === Transiciones de estado ===
+// Gestiona transiciones de estado de orden y persistencia asociada.
 export const usePoOrderStatusTransition = () => {
-  const record = useRecordContext<
-    PoOrderFormValues & { order_status?: { id?: number; nombre?: string } }
-  >();
+  const record = useRecordContext<PoOrderRecord>();
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
@@ -321,26 +303,26 @@ export const usePoOrderStatusTransition = () => {
   const form = useFormContext<PoOrderFormValues>();
   const { dirtyFields } = useFormState({ control: form.control });
   const orderStatusId = useWatch({ name: "order_status_id" }) as number | undefined;
-  const [currentStatusName, setCurrentStatusName] = useState<string | undefined>(
-    record?.order_status?.nombre
+  const [estadoActualNombre, setEstadoActualNombre] = useState<string | undefined>(
+    record?.order_status?.nombre ?? undefined,
   );
-  const lastStatusIdRef = useRef<number | undefined>(
+  const ultimoEstadoIdRef = useRef<number | undefined>(
     record?.order_status?.id ?? orderStatusId
   );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (record?.order_status?.nombre) {
-      setCurrentStatusName(record.order_status.nombre);
+      setEstadoActualNombre(record.order_status.nombre);
     }
     if (record?.order_status?.id) {
-      lastStatusIdRef.current = record.order_status.id;
+      ultimoEstadoIdRef.current = record.order_status.id;
     }
   }, [record?.order_status?.nombre, record?.order_status?.id]);
 
   useEffect(() => {
     if (!orderStatusId) return;
-    if (lastStatusIdRef.current === orderStatusId && currentStatusName) return;
+    if (ultimoEstadoIdRef.current === orderStatusId && estadoActualNombre) return;
     let active = true;
     (async () => {
       const { data } = await dataProvider.getOne("po-order-status", {
@@ -348,25 +330,25 @@ export const usePoOrderStatusTransition = () => {
       });
       if (!active) return;
       if (data?.nombre) {
-        setCurrentStatusName(data.nombre);
-        lastStatusIdRef.current = orderStatusId;
+        setEstadoActualNombre(data.nombre);
+        ultimoEstadoIdRef.current = orderStatusId;
       }
     })();
     return () => {
       active = false;
     };
-  }, [orderStatusId, currentStatusName, dataProvider]);
+  }, [orderStatusId, estadoActualNombre, dataProvider]);
 
-  const statusKey = useMemo(
-    () => normalizeStatusName(currentStatusName),
-    [currentStatusName]
+  const estadoKey = useMemo(
+    () => normalizeStatusName(estadoActualNombre),
+    [estadoActualNombre]
   );
 
-  const canSolicitar = statusKey === "borrador";
-  const canEmitir = statusKey === "solicitada";
-  const canGenerar = statusKey === "borrador" || statusKey === "solicitada";
+  const canSolicitar = estadoKey === "borrador";
+  const canEmitir = estadoKey === "solicitada";
+  const canGenerar = estadoKey === "borrador" || estadoKey === "solicitada";
 
-  const resolveStatusIdByName = async (statusName: string) => {
+  const resolverEstadoPorNombre = async (statusName: string) => {
     const candidates = [
       statusName,
       capitalizeStatusName(statusName),
@@ -386,10 +368,10 @@ export const usePoOrderStatusTransition = () => {
     return null;
   };
 
-  const transition = async (nextStatus: "borrador" | "solicitada" | "emitida") => {
+  const cambiarEstado = async (nextStatus: "borrador" | "solicitada" | "emitida") => {
     setLoading(true);
     try {
-      const status = await resolveStatusIdByName(nextStatus);
+      const status = await resolverEstadoPorNombre(nextStatus);
       if (!status?.id) {
         notify(`No se encontró el estado "${nextStatus}"`, { type: "warning" });
         return;
@@ -407,8 +389,8 @@ export const usePoOrderStatusTransition = () => {
           form.setValue("order_status_id", previousStatus, { shouldDirty: true });
           return;
         }
-        setCurrentStatusName(status.nombre);
-        lastStatusIdRef.current = status.id;
+        setEstadoActualNombre(status.nombre);
+        ultimoEstadoIdRef.current = status.id;
         notify(`Estado actualizado a ${status.nombre}`, { type: "info" });
         return;
       }
@@ -427,8 +409,8 @@ export const usePoOrderStatusTransition = () => {
       });
 
       form.setValue("order_status_id", status.id, { shouldDirty: false });
-      setCurrentStatusName(status.nombre);
-      lastStatusIdRef.current = status.id;
+      setEstadoActualNombre(status.nombre);
+      ultimoEstadoIdRef.current = status.id;
       refresh();
       notify(`Estado actualizado a ${status.nombre}`, { type: "info" });
     } catch (error) {
@@ -440,11 +422,11 @@ export const usePoOrderStatusTransition = () => {
   };
 
   return {
-    currentStatusName,
+    currentStatusName: estadoActualNombre,
     canSolicitar,
     canEmitir,
     canGenerar,
-    transition,
+    cambiarEstado,
     loading,
   };
 };

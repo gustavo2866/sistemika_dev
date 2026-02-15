@@ -5,7 +5,7 @@ import { PlusCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useDetailSectionContext } from "./section_detail_template";
+import { useDetailSectionContext } from "./detail_section_context";
 
 export const DetailFooterButtons = ({
   defaultValues = {},

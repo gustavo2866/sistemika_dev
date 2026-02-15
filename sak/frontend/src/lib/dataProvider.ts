@@ -85,7 +85,25 @@ export const dataProvider: DataProvider = {
     }
     return baseProvider.getList(resource, params);
   }),
-  getOne: withErrorHandling((resource, params) => baseProvider.getOne(resource, params)),
+  getOne: withErrorHandling(async (resource, params) => {
+    const meta = params?.meta as { include?: string | string[]; embed?: unknown } | undefined;
+    const include = meta?.include;
+    const embed = meta?.embed;
+    if (include || embed) {
+      const query = new URLSearchParams();
+      if (include) {
+        query.set("include", Array.isArray(include) ? include.join(",") : include);
+      }
+      if (embed) {
+        query.set("embed", JSON.stringify(embed));
+      }
+      const qs = query.toString();
+      const url = `${apiUrl}/${resource}/${encodeURIComponent(params.id)}${qs ? `?${qs}` : ""}`;
+      const { json } = await httpClient(url, { signal: params?.signal });
+      return { data: json };
+    }
+    return baseProvider.getOne(resource, params);
+  }),
   getMany: withErrorHandling((resource, params) => baseProvider.getMany(resource, params)),
   getManyReference: withErrorHandling((resource, params) =>
     baseProvider.getManyReference(resource, params)

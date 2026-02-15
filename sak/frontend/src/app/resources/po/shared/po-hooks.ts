@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDataProvider, useGetOne } from "ra-core";
-import type { FieldValues, UseFormGetValues, UseFormReset, UseFormReturn } from "react-hook-form";
-import { useFormContext, useWatch } from "react-hook-form";
+import type {
+  FieldValues,
+  Path,
+  UseFormGetValues,
+  UseFormReset,
+  UseFormReturn,
+} from "react-hook-form";
+import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { getArticuloFilterByTipo } from "./po-utils";
 import type { TipoSolicitud } from "../../tipos-solicitud/model";
 import { useReferenceFieldWatcher } from "@/components/generic";
@@ -91,6 +97,129 @@ export const useMutuallyExclusiveFields = ({
     fieldB,
     setValue,
   ]);
+};
+
+// Protege el cambio de tipo de solicitud y limpia detalle tras confirmacion.
+export const useTipoSolicitudChangeGuard = () => {
+  const { setValue } = useFormContext();
+  const tipoSolicitudId = useWatch({ name: "tipo_solicitud_id" }) as
+    | number
+    | undefined;
+  const detalles = useWatch({ name: "detalles" }) as unknown[] | undefined;
+
+  const prevTipoRef = useRef<number | undefined>(tipoSolicitudId);
+  const [pendingTipo, setPendingTipo] = useState<number | undefined>();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const articuloFilter = useMemo(
+    () => (tipoSolicitudId != null ? { tipo_solicitud_id: tipoSolicitudId } : {}),
+    [tipoSolicitudId]
+  );
+
+  useEffect(() => {
+    if (prevTipoRef.current === tipoSolicitudId) return;
+
+    const hasDetalles = (detalles ?? []).length > 0;
+    if (hasDetalles) {
+      setPendingTipo(tipoSolicitudId);
+      setConfirmOpen(true);
+      // revert until user confirms
+      setValue("tipo_solicitud_id", prevTipoRef.current, { shouldDirty: false });
+      return;
+    }
+
+    prevTipoRef.current = tipoSolicitudId;
+  }, [tipoSolicitudId, detalles, setValue]);
+
+  const confirmChange = () => {
+    setConfirmOpen(false);
+    prevTipoRef.current = pendingTipo;
+    setValue("tipo_solicitud_id", pendingTipo, { shouldDirty: true });
+    setValue("detalles", [], { shouldDirty: true });
+    setPendingTipo(undefined);
+  };
+
+  const cancelChange = () => {
+    setConfirmOpen(false);
+    setPendingTipo(undefined);
+  };
+
+  return { articuloFilter, confirmOpen, confirmChange, cancelChange };
+};
+
+// Mantiene exclusividad entre centro de costo y oportunidad en cabecera.
+export const useCentroCostoOportunidadExclusion = () => {
+  const { setValue, control } = useFormContext();
+  const { dirtyFields } = useFormState({ control });
+  const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
+  const oportunidadId = useWatch({ name: "oportunidad_id" }) as number | undefined;
+
+  const prevCentro = useRef(centroCostoId);
+  const prevOportunidad = useRef(oportunidadId);
+
+  useEffect(() => {
+    if (centroCostoId === prevCentro.current) return;
+    prevCentro.current = centroCostoId;
+
+    if (!dirtyFields?.centro_costo_id) return;
+    if (centroCostoId == null) return;
+    setValue("oportunidad_id", null, { shouldDirty: true });
+  }, [centroCostoId, dirtyFields?.centro_costo_id, setValue]);
+
+  useEffect(() => {
+    if (oportunidadId === prevOportunidad.current) return;
+    prevOportunidad.current = oportunidadId;
+
+    if (!dirtyFields?.oportunidad_id) return;
+    if (oportunidadId == null) return;
+    setValue("centro_costo_id", null, { shouldDirty: true });
+  }, [oportunidadId, dirtyFields?.oportunidad_id, setValue]);
+};
+
+// Mantiene exclusividad entre centro de costo y oportunidad en detalle.
+export const useDetalleCentroCostoOportunidadExclusion = () => {
+  const { setValue, control } = useFormContext();
+  const { dirtyFields } = useFormState({ control });
+  const detalles = useWatch({ name: "detalles" }) as
+    | Array<Record<string, unknown>>
+    | undefined;
+
+  const prevDetalles = useRef<Array<Record<string, unknown>>>([]);
+
+  useEffect(() => {
+    const current = detalles ?? [];
+    const previous = prevDetalles.current ?? [];
+
+    current.forEach((row, index) => {
+      const prevRow = previous[index] ?? {};
+      const nextCentro = row?.centro_costo_id as number | undefined;
+      const nextOportunidad = row?.oportunidad_id as number | undefined;
+      const prevCentro = prevRow?.centro_costo_id as number | undefined;
+      const prevOportunidad = prevRow?.oportunidad_id as number | undefined;
+
+      if (nextCentro != null && nextCentro !== prevCentro) {
+        const centroDirty = (dirtyFields as any)?.detalles?.[index]
+          ?.centro_costo_id;
+        if (centroDirty) {
+          setValue(`detalles.${index}.oportunidad_id`, null, {
+            shouldDirty: true,
+          });
+        }
+      }
+
+      if (nextOportunidad != null && nextOportunidad !== prevOportunidad) {
+        const oportunidadDirty = (dirtyFields as any)?.detalles?.[index]
+          ?.oportunidad_id;
+        if (oportunidadDirty) {
+          setValue(`detalles.${index}.centro_costo_id`, null, {
+            shouldDirty: true,
+          });
+        }
+      }
+    });
+
+    prevDetalles.current = current;
+  }, [detalles, dirtyFields, setValue]);
 };
 
 export const useMutuallyExclusiveFieldsWithControl = ({
@@ -312,24 +441,25 @@ export const useTipoSolicitudCatalog = () => {
 export const useSyncTotalFromDetalles = <T extends Record<string, unknown>>({
   form,
   detallesValue,
-  totalField = "total",
+  totalField,
   calculateTotal,
 }: {
   form: UseFormReturn<T>;
   detallesValue: unknown;
-  totalField?: keyof T & string;
+  totalField?: Path<T>;
   calculateTotal: (detalles: unknown[]) => number;
 }) => {
   useEffect(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
     const calculated = calculateTotal(detalles);
-    const currentTotal = Number(form.getValues(totalField) ?? 0);
+    const totalFieldKey = (totalField ?? ("total" as Path<T>));
+    const currentTotal = Number(form.getValues(totalFieldKey) ?? 0);
 
     if (
       !Number.isNaN(calculated) &&
       Number(currentTotal.toFixed(2)) !== calculated
     ) {
-      form.setValue(totalField, calculated as T[typeof totalField], {
+      form.setValue(totalFieldKey, calculated as any, {
         shouldDirty: true,
       });
     }
@@ -384,4 +514,79 @@ export const useArticuloPrecioDefault = ({
     }
     setValue(fieldName, precioArticulo, { shouldDirty: true });
   }, [articuloData, fieldName, precioValue, setValue]);
+};
+
+const poOrderIdCache = new Map<number, number | null>();
+const poOrderIdPending = new Map<number, Promise<number | null>>();
+
+const resolveOcIdByDetailId = async (
+  dataProvider: ReturnType<typeof useDataProvider>,
+  detailId: number,
+) => {
+  if (poOrderIdCache.has(detailId)) {
+    return poOrderIdCache.get(detailId) ?? null;
+  }
+  if (poOrderIdPending.has(detailId)) {
+    return poOrderIdPending.get(detailId) ?? null;
+  }
+
+  const request = dataProvider
+    .getOne("po-order-details", { id: detailId })
+    .then(({ data }) => {
+      const orderId = Number((data as { order_id?: number | string })?.order_id);
+      const resolved = Number.isFinite(orderId) && orderId > 0 ? orderId : null;
+      poOrderIdCache.set(detailId, resolved);
+      poOrderIdPending.delete(detailId);
+      return resolved;
+    })
+    .catch(() => {
+      poOrderIdCache.set(detailId, null);
+      poOrderIdPending.delete(detailId);
+      return null;
+    });
+
+  poOrderIdPending.set(detailId, request);
+  return request;
+};
+
+export const useOcIdByPoOrderDetailId = (
+  poOrderDetailId?: number | string | null,
+) => {
+  const dataProvider = useDataProvider();
+  const [ocId, setOcId] = useState<number | null>(null);
+
+  const numericId = useMemo(() => {
+    const value = Number(poOrderDetailId);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [poOrderDetailId]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!numericId) {
+      setOcId(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const cached = poOrderIdCache.get(numericId);
+    if (cached !== undefined) {
+      setOcId(cached);
+      return () => {
+        active = false;
+      };
+    }
+
+    resolveOcIdByDetailId(dataProvider, numericId).then((resolved) => {
+      if (!active) return;
+      setOcId(resolved);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [numericId, dataProvider]);
+
+  return ocId;
 };

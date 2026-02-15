@@ -1,18 +1,12 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, MoreHorizontal, PlusCircle, Trash } from "lucide-react";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SectionCard } from "./section_card";
 import { useActiveRow } from "./use_active_row";
+import { DetailSectionContext } from "./detail_section_context";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -49,18 +43,6 @@ export type SectionDetailTemplateProps = {
   defaultDetailValues?: Record<string, unknown>;
 };
 
-type DetailSectionContextValue = ReturnType<typeof useActiveRow> & {
-  rowGridClassName?: string;
-  rowGridStyle?: CSSProperties;
-};
-
-const DetailSectionContext = createContext<DetailSectionContextValue | null>(
-  null,
-);
-
-export const useDetailSectionContext = () =>
-  useContext(DetailSectionContext);
-
 export const SectionDetailTemplate = ({
   title,
   list,
@@ -78,6 +60,7 @@ export const SectionDetailTemplate = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { getValues, setValue } = useFormContext();
   const activeRow = useActiveRow({ name: detailsSource, focusSelector });
+  const disableAdd = activeRow.activeIndex != null;
   const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
   const hasDetails = (detalles ?? []).length > 0;
   const gridTemplate = useMemo(() => {
@@ -150,7 +133,11 @@ export const SectionDetailTemplate = ({
       <DropdownMenuContent align="end" className="w-32">
         <DropdownMenuItem
           className="gap-2 text-[9px] sm:text-[10px]"
-          onClick={handleAdd}
+          onClick={() => {
+            if (disableAdd) return;
+            handleAdd();
+          }}
+          disabled={disableAdd}
         >
           <PlusCircle className="h-3 w-3" />
           Agregar
@@ -228,3 +215,5 @@ export const SectionDetailTemplate = ({
     </SectionCard>
   );
 };
+
+export { useDetailSectionContext } from "./detail_section_context";

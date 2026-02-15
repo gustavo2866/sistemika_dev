@@ -7,6 +7,7 @@ import { TextInput as BaseTextInput } from "@/components/text-input";
 import { SelectInput as BaseSelectInput } from "@/components/select-input";
 import { ReferenceInput as BaseReferenceInput } from "@/components/reference-input";
 import { cn } from "@/lib/utils";
+import type { FilterElementProps } from "@/hooks/filter-context";
 
 export const CompactTextInput = ({ className, ...props }: TextInputProps) => {
   return <BaseTextInput {...props} className={cn("compact-filter", className)} />;
@@ -65,24 +66,28 @@ const buildKey = (fallback: Key, prefix?: string) =>
 export const buildListFilters = (
   items: FilterBuilderItem[],
   options: FilterBuilderOptions = {},
-): ReactElement[] => {
+): ReactElement<FilterElementProps>[] => {
   const { keyPrefix } = options;
 
   return items.map((item, index) => {
     if (item.type === "custom") {
-      return item.element;
+      return item.element as ReactElement<FilterElementProps>;
     }
 
     if (item.type === "text") {
       const key =
         item.key ?? String(item.props.source) ?? String(item.props.label) ?? `text-${index}`;
-      return <CompactTextInput key={buildKey(key, keyPrefix)} {...item.props} />;
+      return (
+        <CompactTextInput key={buildKey(key, keyPrefix)} {...item.props} />
+      ) as ReactElement<FilterElementProps>;
     }
 
     if (item.type === "select") {
       const key =
         item.key ?? String(item.props.source) ?? String(item.props.label) ?? `select-${index}`;
-      return <CompactSelectInput key={buildKey(key, keyPrefix)} {...item.props} />;
+      return (
+        <CompactSelectInput key={buildKey(key, keyPrefix)} {...item.props} />
+      ) as ReactElement<FilterElementProps>;
     }
 
     const referenceKey =
@@ -97,7 +102,6 @@ export const buildListFilters = (
       <CompactReferenceInput key={buildKey(referenceKey, keyPrefix)} {...item.referenceProps}>
         {children}
       </CompactReferenceInput>
-    );
+    ) as ReactElement<FilterElementProps>;
   });
 };
-

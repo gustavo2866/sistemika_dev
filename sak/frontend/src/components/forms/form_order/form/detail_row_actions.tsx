@@ -1,6 +1,8 @@
 "use client";
 
 import type { MouseEvent } from "react";
+import { useFormContext } from "react-hook-form";
+import { useSimpleFormIterator, useSimpleFormIteratorItem } from "ra-core";
 import { cn } from "@/lib/utils";
 import { DetailDeleteButton } from "./detail_delete_button";
 import { DetailInfoButton } from "./detail_info_button";
@@ -69,12 +71,49 @@ export const DetailRowActions = ({
 }: {} = {}) => {
   const { isActive, showOptional, toggleOptional, collapse, remove } =
     useDetailRowContext();
+  const { trigger, getValues } = useFormContext();
+  const { source } = useSimpleFormIterator();
+  const { index } = useSimpleFormIteratorItem();
   if (!isActive) return null;
+
+  const collectFieldNames = (value: unknown, path: string): string[] => {
+    if (value == null) return [path];
+    if (Array.isArray(value)) {
+      if (value.length === 0) return [path];
+      return value.flatMap((item, idx) =>
+        collectFieldNames(item, `${path}.${idx}`),
+      );
+    }
+    if (typeof value === "object") {
+      const keys = Object.keys(value as Record<string, unknown>);
+      if (keys.length === 0) return [path];
+      return keys.flatMap((key) =>
+        collectFieldNames(
+          (value as Record<string, unknown>)[key],
+          `${path}.${key}`,
+        ),
+      );
+    }
+    return [path];
+  };
 
   const infoLabel = showOptional ? "Ocultar datos" : "Mostrar datos";
   const handleToggleOptional = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     toggleOptional();
+  };
+  const handleCollapse = async () => {
+    if (source) {
+      const rowPath = `${source}.${index}`;
+      const rowValue = getValues(rowPath);
+      const fieldNames = collectFieldNames(rowValue, rowPath);
+      const target = fieldNames.length ? fieldNames : rowPath;
+      const isValid = await trigger(target, {
+        shouldFocus: true,
+      });
+      if (!isValid) return;
+    }
+    collapse();
   };
 
   return (
@@ -82,7 +121,7 @@ export const DetailRowActions = ({
       <div className="flex items-end justify-end gap-0.5 -mr-0.5 sm:hidden">
         <DetailToggleButton
           show={showOptional}
-          onToggle={collapse}
+          onToggle={handleCollapse}
           className="text-muted-foreground"
           label="Cerrar edicion"
         />
@@ -90,7 +129,7 @@ export const DetailRowActions = ({
         <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
       </div>
       <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
-        <DetailToggleButton show={showOptional} onToggle={collapse} />
+        <DetailToggleButton show={showOptional} onToggle={handleCollapse} />
         <DetailDeleteButton onClick={remove} />
         <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
       </div>
