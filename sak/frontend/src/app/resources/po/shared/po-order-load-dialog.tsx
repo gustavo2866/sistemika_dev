@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDataProvider, useNotify } from "ra-core";
 import { Download } from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -39,6 +39,9 @@ type PoOrderLoadDialogProps = {
   proveedorId?: number | null;
   onConfirm: (details: PoOrderDetailRaw[]) => void;
   disabled?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
 };
 
 const STATUS_CANDIDATES = ["aprobada", "aprobado", "Aprobada", "Aprobado"] as const;
@@ -77,19 +80,35 @@ export const PoOrderLoadDialog = ({
   proveedorId,
   onConfirm,
   disabled = false,
+  open,
+  onOpenChange,
+  showTrigger = true,
 }: PoOrderLoadDialogProps) => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [orders, setOrders] = useState<PoOrderSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
+  const isControlled = typeof open === "boolean";
+  const dialogOpen = isControlled ? open : internalOpen;
+  const setDialogOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (!isControlled) {
+        setInternalOpen(nextOpen);
+        return;
+      }
+      onOpenChange?.(nextOpen);
+    },
+    [isControlled, onOpenChange],
+  );
+
   const isDisabled = disabled || proveedorId == null;
 
   useEffect(() => {
-    if (!open) return;
+    if (!dialogOpen) return;
     if (proveedorId == null) {
       setOrders([]);
       return;
@@ -132,13 +151,13 @@ export const PoOrderLoadDialog = ({
     return () => {
       active = false;
     };
-  }, [open, proveedorId, dataProvider, notify]);
+  }, [dialogOpen, proveedorId, dataProvider, notify]);
 
   useEffect(() => {
-    if (!open) {
+    if (!dialogOpen) {
       setSelectedIds([]);
     }
-  }, [open]);
+  }, [dialogOpen]);
 
   const toggleSelection = (orderId: number) => {
     setSelectedIds((prev) =>
@@ -151,7 +170,7 @@ export const PoOrderLoadDialog = ({
   const handleConfirm = async () => {
     const ids = selectedIds.filter((id) => Number.isFinite(id));
     if (!ids.length) {
-      setOpen(false);
+      setDialogOpen(false);
       return;
     }
 
@@ -166,7 +185,7 @@ export const PoOrderLoadDialog = ({
       });
 
       onConfirm(details);
-      setOpen(false);
+      setDialogOpen(false);
     } catch (error) {
       console.error(error);
       notify("No se pudieron cargar los detalles de las ordenes", { type: "warning" });
@@ -187,22 +206,25 @@ export const PoOrderLoadDialog = ({
 
   return (
     <>
-      <DropdownMenuItem
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (isDisabled) return;
-          setOpen(true);
-        }}
-        disabled={isDisabled}
-        className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-      >
-        <Download className="h-3 w-3" />
-        Cargar OC
-      </DropdownMenuItem>
+      {showTrigger ? (
+        <DropdownMenuItem
+          onSelect={(event) => {
+            if (isDisabled) {
+              event.preventDefault();
+              return;
+            }
+            setDialogOpen(true);
+          }}
+          disabled={isDisabled}
+          className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+        >
+          <Download className="h-3 w-3" />
+          Cargar OC
+        </DropdownMenuItem>
+      ) : null}
       <Dialog
-        open={open}
-        onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : setOpen(false))}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -273,7 +295,7 @@ export const PoOrderLoadDialog = ({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setOpen(false)}
+              onClick={() => setDialogOpen(false)}
               disabled={loadingDetails}
             >
               Cancelar

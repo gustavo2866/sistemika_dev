@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Info, MoreHorizontal } from "lucide-react";
 
 import { SectionCard } from "./section_card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -98,21 +99,30 @@ export const SectionBaseTemplate = ({
       titleClassName="mb-2"
     >
       <div className="flex flex-col gap-0">
-        {main}
         {optional ? (
-          <div className="w-full md:w-[220px] mb-0 pb-0">
-            <button
-              type="button"
-              className="h-6 w-6 text-blue-600 hover:text-blue-700 -mb-1"
-              tabIndex={-1}
-              onClick={() => setShowOptional((v) => !v)}
-              aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
-              title={showOptional ? "Ocultar datos" : "Mostrar datos"}
-            >
-              <Info className="h-4 w-4" />
-            </button>
+          <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,max-content)_auto] items-end gap-2">
+            <div className="min-w-0">{main}</div>
+            <div className="flex items-end justify-end md:justify-self-start">
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex h-6 w-6 -mb-1 items-center justify-center rounded-full leading-none transition",
+                  showOptional
+                    ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]"
+                    : "text-blue-600 hover:text-blue-700 hover:bg-blue-50/60",
+                )}
+                tabIndex={-1}
+                onClick={() => setShowOptional((v) => !v)}
+                aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
+                title={showOptional ? "Ocultar datos" : "Mostrar datos"}
+              >
+                <Info className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-        ) : null}
+        ) : (
+          main
+        )}
       </div>
       {optional && showOptional ? optional : null}
     </SectionCard>

@@ -12,6 +12,7 @@ import { ChevronDown, ChevronUp, MoreHorizontal, PlusCircle, Trash } from "lucid
 import { useFormContext, useWatch } from "react-hook-form";
 import { useSimpleFormIteratorItem } from "ra-core";
 
+import { DetailFieldIndexProvider } from "./detail_field_cell";
 import { SectionCard } from "./section_card";
 import { useActiveRow } from "./use_active_row";
 import { DetailSectionContext, useDetailSectionContext } from "./detail_section_context";
@@ -38,6 +39,7 @@ export type SectionDetailColumn = {
   label: string;
   width?: string;
   className?: string;
+  mobileSpan?: number | "full";
 };
 
 export type SectionDetailFieldsProps = {
@@ -59,9 +61,10 @@ export type SectionDetailTemplate2Props = {
 type DetailItemRowProps = {
   MainFields: ComponentType<SectionDetailFieldsProps>;
   OptionalFields?: ComponentType<SectionDetailFieldsProps>;
+  columns: SectionDetailColumn[];
 };
 
-const DetailItemRow = ({ MainFields, OptionalFields }: DetailItemRowProps) => {
+const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowProps) => {
   const detailContext = useDetailSectionContext();
   if (!detailContext) {
     throw new Error("DetailItemRow must be used within SectionDetailTemplate2");
@@ -101,17 +104,26 @@ const DetailItemRow = ({ MainFields, OptionalFields }: DetailItemRowProps) => {
       }}
     >
       <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
-        <div
-          className={cn(
-            "grid grid-cols-1 gap-1 sm:items-center sm:gap-2",
-            rowGridClassName,
-          )}
-          style={rowGridStyle}
-        >
-          <HiddenInput source="id" />
-          <MainFields isActive={isActive} />
-          <DetailRowActions />
-          <DetailRowError />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1 sm:block">
+          <div
+            className={cn(
+              "grid grid-cols-[repeat(auto-fit,minmax(64px,1fr))] gap-1 sm:items-center sm:gap-2",
+              rowGridClassName,
+            )}
+            style={rowGridStyle}
+          >
+            <HiddenInput source="id" />
+            <DetailFieldIndexProvider
+              mobileSpans={columns.map((column) => column.mobileSpan)}
+            >
+              <MainFields isActive={isActive} />
+            </DetailFieldIndexProvider>
+            <DetailRowActions mode="desktop" />
+            <DetailRowError />
+          </div>
+          <div className="flex items-end justify-end self-end sm:hidden">
+            <DetailRowActions mode="mobile" />
+          </div>
         </div>
         {OptionalFields && showOptional ? (
           <OptionalFields isActive={isActive} />
@@ -238,6 +250,7 @@ export const SectionDetailTemplate2 = ({
   const handleAdd = () => {
     const current = (getValues(detailsSource) as unknown[]) ?? [];
     const nextItem = getDefaultValues();
+    activeRow.requestAutoActivate();
     setValue(detailsSource, [...current, nextItem], {
       shouldDirty: true,
       shouldValidate: true,
@@ -356,9 +369,18 @@ export const SectionDetailTemplate2 = ({
           >
             <ArrayInput source={detailsSource} label={false}>
               <DetailIterator
-                addButton={<DetailFooterButtons defaultValues={getDefaultValues()} />}
+                addButton={
+                  <DetailFooterButtons
+                    defaultValues={getDefaultValues()}
+                    onAdd={activeRow.requestAutoActivate}
+                  />
+                }
               >
-                <DetailItemRow MainFields={MainFields} OptionalFields={OptionalFields} />
+                <DetailItemRow
+                  MainFields={MainFields}
+                  OptionalFields={OptionalFields}
+                  columns={mainColumns}
+                />
               </DetailIterator>
             </ArrayInput>
           </div>

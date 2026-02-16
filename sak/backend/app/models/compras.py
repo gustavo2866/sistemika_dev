@@ -156,6 +156,15 @@ class PoOrderDetail(Base, table=True):
 
     __searchable_fields__ = ["descripcion"]
     __auto_include_relations__: ClassVar[List[str]] = ["articulo"]
+    __calculated_fields__: ClassVar[List[str]] = ["cantidad_facturada_calc"]
+    __agg_calculated__ = {
+        "cantidad_facturada_calc": {
+            "op": "sum",
+            "source": "PoInvoiceDetail",
+            "fk": "poOrderDetail_id",
+            "field": "cantidad",
+        }
+    }
 
     order_id: int = Field(
         foreign_key="po_orders.id",

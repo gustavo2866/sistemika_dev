@@ -27,6 +27,7 @@ type PoOrderDetalle = {
   descripcion?: string | null;
   unidad_medida?: string | null;
   cantidad?: number | null;
+  cantidad_facturada_calc?: number | null;
   precio?: number | null;
   importe?: number | null;
   centro_costo_id?: number | null;
@@ -166,6 +167,9 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
               <th className="w-[52px] px-1 py-1 text-center text-[7px] sm:w-[60px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
                 Cantidad
               </th>
+              <th className="w-[70px] px-1 py-1 text-center text-[7px] sm:w-[80px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
+                Facturada
+              </th>
               <th className="w-[80px] px-1.5 py-1 text-right text-[8px] sm:w-[90px] sm:px-2.5 sm:py-2 sm:text-[9px]">
                 Precio
               </th>
@@ -194,6 +198,9 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
                   </td>
                   <td className="px-1 py-1 text-center text-[7px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
                     {detalle.cantidad ?? "-"}
+                  </td>
+                  <td className="px-1 py-1 text-center text-[7px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
+                    {detalle.cantidad_facturada_calc ?? "-"}
                   </td>
                   <td className="px-1.5 py-1 text-right text-[8px] sm:px-2.5 sm:py-2 sm:text-[9px]">
                     {CURRENCY_FORMATTER.format(Number(detalle.precio ?? 0))}
@@ -227,6 +234,12 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
                   <div className="uppercase">Cantidad</div>
                   <div className="text-[10px] text-foreground">
                     {detalle.cantidad ?? "-"}
+                  </div>
+                </div>
+                <div>
+                  <div className="uppercase">Facturada</div>
+                  <div className="text-[10px] text-foreground">
+                    {detalle.cantidad_facturada_calc ?? "-"}
                   </div>
                 </div>
                 <div className="text-right">

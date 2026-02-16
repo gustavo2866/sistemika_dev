@@ -293,7 +293,7 @@ const CabeceraCamposOpcionales = () => {
 // Seccion de detalle con lineas y campos opcionales.
 const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
   const columns: SectionDetailColumn[] = [
-    { label: "Articulo", width: "220px" },
+    { label: "Articulo", width: "220px", mobileSpan: "full" },
     { label: "Descripcion", width: "150px" },
     { label: "Cantidad", width: "64px", className: "-ml-[15px]" },
     { label: "Precio", width: "84px", className: "ml-[0px]" },
@@ -446,4 +446,3 @@ const ResumenTotalesOrdenCompra = () => {
     </div>
   );
 };
-

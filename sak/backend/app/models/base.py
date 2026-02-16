@@ -108,6 +108,17 @@ def filtrar_respuesta(obj: SQLModel, context: str = "display", _depth: int = 0, 
         if k in campos_validos or (not k.startswith('_') and (k not in STAMP_FIELDS or k in VISIBLE_STAMP_FIELDS)):
             result[k] = v
 
+    # Inyectar campos calculados si fueron agregados al objeto
+    calculated_fields = getattr(type(obj), "__calculated_fields__", None)
+    if isinstance(calculated_fields, dict):
+        for output_field, attr_name in calculated_fields.items():
+            if hasattr(obj, attr_name):
+                result[output_field] = getattr(obj, attr_name)
+    elif isinstance(calculated_fields, (list, tuple, set)):
+        for field_name in calculated_fields:
+            if hasattr(obj, field_name):
+                result[field_name] = getattr(obj, field_name)
+
     # Inyectar campos calculados cuando existan propiedades auxiliares
     _calculated_overrides = [
         ("dias_totales", "dias_totales_calculado"),

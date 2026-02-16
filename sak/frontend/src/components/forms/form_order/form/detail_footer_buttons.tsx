@@ -24,6 +24,7 @@ export const DetailFooterButtons = ({
 
   const handleAdd = () => {
     if (disableAdd) return;
+    detailContext?.requestAutoActivate?.();
     add(defaultValues);
     onAdd?.();
   };

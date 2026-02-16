@@ -39,7 +39,7 @@ export const CalculatedImporte = ({
     <FormValue
       label={false}
       className={className}
-      widthClass={widthClass ?? "w-[80px] sm:w-[84px] shrink-0"}
+      widthClass={widthClass ?? "w-[64px] sm:w-[84px] shrink-0"}
       valueClassName={valueClassName}
     >
       <NumberField

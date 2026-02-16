@@ -55,6 +55,22 @@ El `form.tsx` del recurso se usa en create y edit:
 
 El payload incluye `detalles` y el backend lo sincroniza via `NestedCRUD`.
 
+### Layout mobile del detalle (SectionDetailTemplate2)
+- El detalle en mobile usa grid auto-fit para compactar filas.
+- El orden de los campos define la columna (campo 1 -> columna 1).
+- `mainColumns` acepta `mobileSpan` para controlar el ancho en mobile.
+
+Ejemplo:
+```ts
+const columns: SectionDetailColumn[] = [
+  { label: "Articulo", width: "220px", mobileSpan: "full" },
+  { label: "Descripcion", width: "150px", mobileSpan: "full" },
+  { label: "Cantidad", width: "64px", mobileSpan: 1 },
+  { label: "Precio", width: "84px", mobileSpan: 1 },
+  { label: "Importe", width: "84px", mobileSpan: 1 },
+];
+```
+
 ## Logica de dominio en model.ts
 La logica de dominio vive en `model.ts` del recurso:
 - Tipos y schemas.

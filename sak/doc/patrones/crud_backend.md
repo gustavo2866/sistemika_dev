@@ -17,6 +17,29 @@ Este patron describe el CRUD generico del backend usando `Solicitud` como ejempl
 3. Registrar el router generico con `create_generic_router`.
 4. Incluir el router en `app.main`.
 
+## Campos agregados (calculated)
+El CRUD soporta agregados calculados por configuraciÃ³n en el modelo:
+
+```python
+class PoOrderDetail(Base, table=True):
+    __calculated_fields__ = ["cantidad_facturada_calc"]
+    __agg_calculated__ = {
+        "cantidad_facturada_calc": {
+            "op": "sum",               # sum | count | min | max | avg
+            "source": "PoInvoiceDetail",
+            "fk": "poOrderDetail_id",
+            "field": "cantidad",
+        }
+    }
+```
+
+Reglas:
+- `__calculated_fields__` indica quÃ© atributos deben incluirse en la respuesta.
+- `__agg_calculated__` define la fuente del agregado.
+- Se excluyen registros con `deleted_at` si el modelo origen tiene soft delete.
+- Los agregados se calculan en `get` y `list` del CRUD, e incluyen relaciones embebidas
+  definidas en `__expanded_list_relations__`.
+
 ## Ejemplo concreto: Solicitudes
 Modelo principal: `backend/app/models/solicitud.py`
 - Define `__searchable_fields__` para el filtro `q`.

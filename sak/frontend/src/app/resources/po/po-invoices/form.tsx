@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { required, useWrappedSource } from "ra-core";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFormContext, useWatch } from "react-hook-form";
 
@@ -31,6 +32,7 @@ import {
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
 import { Confirm } from "@/components/confirm";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 import {
   computeDetalleImporte,
@@ -243,14 +245,15 @@ const CabeceraCamposOpcionales = () => (
 const DetalleFactura = () => {
   const { getValues, setValue } = useFormContext<PoInvoiceFormValues>();
   const proveedorId = useWatch({ name: "proveedor_id" }) as number | undefined;
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
 
   const columns: SectionDetailColumn[] = [
-    { label: "Articulo", width: "180px" },
-    { label: "Descripcion", width: "150px" },
-    { label: "Cantidad", width: "64px", className: "-ml-[15px]" },
-    { label: "Precio", width: "84px", className: "ml-[0px]" },
-    { label: "Importe", width: "60px", className: "ml-[30px]" },
-    { label: "OC", width: "60px", className: "text-center" },
+    { label: "Articulo", width: "180px", mobileSpan: "full" },
+    { label: "Descripcion", width: "150px", mobileSpan: "full" },
+    { label: "Cantidad", width: "64px", mobileSpan: 1, className: "-ml-[15px]" },
+    { label: "Precio", width: "84px", mobileSpan: 1, className: "ml-[0px]" },
+    { label: "Importe", width: "60px", mobileSpan: 1, className: "ml-[30px]" },
+    { label: "OC", width: "60px", mobileSpan: 1, className: "text-center" },
     { label: "", width: "28px" },
   ];
 
@@ -366,17 +369,39 @@ const DetalleFactura = () => {
     [getValues, setValue],
   );
 
+  const isLoadDisabled = proveedorId == null;
+
   return (
-    <SectionDetailTemplate2
-      title="Detalle"
-      mainColumns={columns}
-      mainFields={DetalleCamposPrincipales}
-      optionalFields={DetalleCamposOpcionales}
-      defaults={getPoInvoiceDetalleDefaults}
-      actions={
-        <PoOrderLoadDialog proveedorId={proveedorId} onConfirm={handleLoadOrders} />
-      }
-    />
+    <>
+      <SectionDetailTemplate2
+        title="Detalle"
+        mainColumns={columns}
+        mainFields={DetalleCamposPrincipales}
+        optionalFields={DetalleCamposOpcionales}
+        defaults={getPoInvoiceDetalleDefaults}
+        actions={
+          <DropdownMenuItem
+            onSelect={() => {
+              if (isLoadDisabled) return;
+              setLoadDialogOpen(true);
+            }}
+            disabled={isLoadDisabled}
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            <Download className="h-3 w-3" />
+            Cargar OC
+          </DropdownMenuItem>
+        }
+      />
+      <PoOrderLoadDialog
+        proveedorId={proveedorId}
+        onConfirm={handleLoadOrders}
+        open={loadDialogOpen}
+        onOpenChange={setLoadDialogOpen}
+        showTrigger={false}
+        disabled={isLoadDisabled}
+      />
+    </>
   );
 };
 
@@ -554,7 +579,7 @@ const CalculatedImporteDetalle = ({
     <FormValue
       label={false}
       className={className}
-      widthClass={widthClass ?? "w-[80px] sm:w-[84px] shrink-0"}
+      widthClass={widthClass ?? "w-[64px] sm:w-[84px] shrink-0"}
       valueClassName={valueClassName}
     >
       <NumberField

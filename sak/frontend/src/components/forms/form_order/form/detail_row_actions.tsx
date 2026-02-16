@@ -68,7 +68,10 @@ export const DetailRowDesktopActions = ({
 };
 
 export const DetailRowActions = ({
-}: {} = {}) => {
+  mode = "both",
+}: {
+  mode?: "mobile" | "desktop" | "both";
+} = {}) => {
   const { isActive, showOptional, toggleOptional, collapse, remove } =
     useDetailRowContext();
   const { trigger, getValues } = useFormContext();
@@ -118,21 +121,33 @@ export const DetailRowActions = ({
 
   return (
     <>
-      <div className="flex items-end justify-end gap-0.5 -mr-0.5 sm:hidden">
-        <DetailToggleButton
-          show={showOptional}
-          onToggle={handleCollapse}
-          className="text-muted-foreground"
-          label="Cerrar edicion"
-        />
-        <DetailDeleteButton onClick={remove} />
-        <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
-      </div>
-      <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
-        <DetailToggleButton show={showOptional} onToggle={handleCollapse} />
-        <DetailDeleteButton onClick={remove} />
-        <DetailInfoButton onClick={handleToggleOptional} label={infoLabel} />
-      </div>
+      {mode !== "desktop" ? (
+        <div className="flex items-end justify-end gap-0.5 -mr-0.5 sm:hidden">
+          <DetailToggleButton
+            show={showOptional}
+            onToggle={handleCollapse}
+            className="text-muted-foreground"
+            label="Cerrar edicion"
+          />
+          <DetailDeleteButton onClick={remove} />
+          <DetailInfoButton
+            onClick={handleToggleOptional}
+            label={infoLabel}
+            active={showOptional}
+          />
+        </div>
+      ) : null}
+      {mode !== "mobile" ? (
+        <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
+          <DetailToggleButton show={showOptional} onToggle={handleCollapse} />
+          <DetailDeleteButton onClick={remove} />
+          <DetailInfoButton
+            onClick={handleToggleOptional}
+            label={infoLabel}
+            active={showOptional}
+          />
+        </div>
+      ) : null}
     </>
   );
 };

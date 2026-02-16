@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 import json
 import inspect
+from importlib import import_module
 from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union, Tuple, List, get_args, get_origin
 from datetime import UTC, datetime, date
 from decimal import Decimal
@@ -10,6 +11,14 @@ from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 from app.models.base import campos_editables
 
 M = TypeVar("M", bound=SQLModel)
+
+AGG_FUNCS = {
+    "sum": func.sum,
+    "count": func.count,
+    "min": func.min,
+    "max": func.max,
+    "avg": func.avg,
+}
 
 class FilterOperator:
     """Operadores de filtro soportados"""
@@ -172,6 +181,94 @@ class GenericCRUD(Generic[M]):
             if k in allowed:
                 cleaned[k] = self._coerce_field_value(k, v)
         return cleaned
+
+    def _resolve_model(self, model_ref: Any):
+        if isinstance(model_ref, str):
+            module = import_module("app.models")
+            resolved = getattr(module, model_ref, None)
+            if resolved is None:
+                raise ValueError(f"Model '{model_ref}' not found in app.models")
+            return resolved
+        return model_ref
+
+    def _populate_calculated(self, session: Session, objs: Sequence[M]) -> None:
+        agg_config = getattr(self.model, "__agg_calculated__", None)
+        if not agg_config or not objs:
+            return
+
+        ids = [getattr(obj, "id", None) for obj in objs]
+        ids = [obj_id for obj_id in ids if obj_id is not None]
+        if not ids:
+            return
+
+        for target_field, cfg in agg_config.items():
+            if not isinstance(cfg, dict):
+                continue
+
+            op_name = str(cfg.get("op", "sum")).lower()
+            agg_fn = AGG_FUNCS.get(op_name)
+            if not agg_fn:
+                continue
+
+            source_ref = cfg.get("source")
+            fk_field = cfg.get("fk")
+            src_field = cfg.get("field")
+            if not source_ref or not fk_field or not src_field:
+                continue
+
+            try:
+                source_model = self._resolve_model(source_ref)
+            except Exception as e:
+                print(f"WARNING: Could not resolve model for calculated field {target_field}: {e}")
+                continue
+
+            fk_col = getattr(source_model, fk_field, None)
+            src_col = getattr(source_model, src_field, None)
+            if fk_col is None or src_col is None:
+                continue
+
+            agg_expr = agg_fn(src_col)
+            if op_name in ("sum", "count"):
+                agg_expr = func.coalesce(agg_expr, 0)
+
+            stmt = select(fk_col, agg_expr).where(fk_col.in_(ids))
+            if hasattr(source_model, "deleted_at"):
+                stmt = stmt.where(getattr(source_model, "deleted_at").is_(None))
+            stmt = stmt.group_by(fk_col)
+
+            totals = dict(session.exec(stmt).all())
+            default_value = Decimal("0") if op_name == "sum" else 0 if op_name == "count" else None
+
+            for obj in objs:
+                obj_id = getattr(obj, "id", None)
+                value = totals.get(obj_id, default_value)
+                try:
+                    setattr(obj, target_field, value)
+                except Exception:
+                    object.__setattr__(obj, target_field, value)
+
+    def _collect_related_list_items(self, objs: Sequence[M]) -> Dict[Type[SQLModel], List[SQLModel]]:
+        related: Dict[Type[SQLModel], List[SQLModel]] = {}
+        for obj in objs:
+            rel_names = getattr(type(obj), "__expanded_list_relations__", set())
+            if not rel_names:
+                continue
+            for rel_name in rel_names:
+                if rel_name not in obj.__dict__:
+                    continue
+                rel_value = obj.__dict__[rel_name]
+                if not isinstance(rel_value, list) or not rel_value:
+                    continue
+                first = rel_value[0]
+                if not hasattr(first, "model_fields"):
+                    continue
+                related.setdefault(type(first), []).extend(rel_value)
+        return related
+
+    def _populate_calculated_relations(self, session: Session, objs: Sequence[M]) -> None:
+        related = self._collect_related_list_items(objs)
+        for model_cls, items in related.items():
+            GenericCRUD(model_cls)._populate_calculated(session, items)
 
     def _extract_update(self, data: Dict[str, Any]) -> Dict[str, Any]:
         allowed = campos_editables(self.model)
@@ -407,7 +504,11 @@ class GenericCRUD(Generic[M]):
         if include:
             stmt = self._apply_include(stmt, include)
         
-        return session.exec(stmt).first()
+        obj = session.exec(stmt).first()
+        if obj:
+            self._populate_calculated(session, [obj])
+            self._populate_calculated_relations(session, [obj])
+        return obj
 
     def list(
         self,
@@ -464,6 +565,9 @@ class GenericCRUD(Generic[M]):
             stmt = stmt.offset(offset).limit(per_page)
             
             items = session.exec(stmt).all()
+            if items:
+                self._populate_calculated(session, list(items))
+                self._populate_calculated_relations(session, list(items))
             return items, total
         except Exception as e:
             print(f"ERROR in list() for {self.model.__name__}: {e}")

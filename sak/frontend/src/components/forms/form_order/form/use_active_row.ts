@@ -17,6 +17,11 @@ export const useActiveRow = ({
   const isArrayDirty = Boolean((dirtyFields as any)?.[name]);
   const prevLengthRef = useRef<number>(items?.length ?? 0);
   const hasSeenItemsRef = useRef(false);
+  const autoActivateRef = useRef(false);
+
+  const requestAutoActivate = useCallback(() => {
+    autoActivateRef.current = true;
+  }, []);
 
   useEffect(() => {
     const length = items?.length ?? 0;
@@ -24,7 +29,8 @@ export const useActiveRow = ({
       if (items == null) return;
       hasSeenItemsRef.current = true;
       prevLengthRef.current = length;
-      if (length > 0 && isArrayDirty && containerRef.current) {
+      if (length > 0 && isArrayDirty && containerRef.current && autoActivateRef.current) {
+        autoActivateRef.current = false;
         setActiveIndex(length - 1);
         containerRef.current.scrollTop = containerRef.current.scrollHeight;
         const container = containerRef.current;
@@ -41,6 +47,11 @@ export const useActiveRow = ({
       return;
     }
     if (length > prevLengthRef.current && containerRef.current) {
+      if (!autoActivateRef.current) {
+        prevLengthRef.current = length;
+        return;
+      }
+      autoActivateRef.current = false;
       setActiveIndex(length - 1);
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
       const container = containerRef.current;
@@ -72,5 +83,12 @@ export const useActiveRow = ({
     [],
   );
 
-  return { containerRef, activeIndex, setActiveIndex, onContainerClick, onRowClick };
+  return {
+    containerRef,
+    activeIndex,
+    setActiveIndex,
+    onContainerClick,
+    onRowClick,
+    requestAutoActivate,
+  };
 };

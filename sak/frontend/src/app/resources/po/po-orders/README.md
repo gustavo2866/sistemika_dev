@@ -31,9 +31,29 @@ reutilizar piezas en `form_order` para aplicar el mismo esquema a otras entidade
 
 ### Detalle (SectionDetailTemplate2)
 - `DetalleOrdenCompra` define `mainColumns` con `width`.
+- `mainColumns` ahora soporta `mobileSpan` para ajustar el layout en mobile (por orden).
 - `SectionDetailTemplate2` **arma la grilla** y la aplica a cabecera y filas.
 - `DetailFieldCell` estandariza etiqueta mobile y layout base por campo.
 - Defaults del detalle vienen de `getPoOrderDetalleDefaults()` en `model.ts`.
+
+#### Layout mobile (cards)
+- En mobile, las filas usan grid auto-fit con columnas mÃ­nimas compactas.
+- El orden de los campos define el orden de columnas en mobile (campo 1 -> columna 1).
+- `mobileSpan: "full"` hace que un campo ocupe toda la fila en mobile.
+
+Ejemplo:
+```ts
+const columns: SectionDetailColumn[] = [
+  { label: "Articulo", width: "220px", mobileSpan: "full" },
+  { label: "Descripcion", width: "150px", mobileSpan: "full" },
+  { label: "Cantidad", width: "64px", mobileSpan: 1 },
+  { label: "Precio", width: "84px", mobileSpan: 1 },
+  { label: "Importe", width: "84px", mobileSpan: 1 },
+];
+```
+
+Notas:
+- Aplica el mismo criterio en otros recursos (ej: `po-invoices/form.tsx`) para mantener cards compactas.
 
 ## Componentes reutilizables clave (form_order)
 - `SectionBaseTemplate`: seccion con cabecera y menu de acciones.
