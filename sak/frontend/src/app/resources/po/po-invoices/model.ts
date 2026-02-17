@@ -34,8 +34,8 @@ export const poInvoiceDetalleSchema = z.object({
   centro_costo_id: optionalId,
   oportunidad_id: optionalId,
   poOrderDetail_id: optionalId,
-  cantidad: z.coerce.number().min(0),
-  precio_unitario: z.coerce.number().min(0),
+  cantidad: z.coerce.number().gt(0),
+  precio_unitario: z.coerce.number().gt(0),
   importe: z.coerce.number().min(0),
 });
 
@@ -61,6 +61,7 @@ export const poInvoiceSchema = z.object({
   proveedor_id: requiredId,
   usuario_responsable_id: requiredId,
   invoice_status_id: requiredId,
+  invoice_status_fin_id: optionalId,
   fecha_estado: optionalString,
   detalles: z.array(poInvoiceDetalleSchema).min(1),
   taxes: z.array(poInvoiceTaxSchema).optional(),

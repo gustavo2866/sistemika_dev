@@ -52,6 +52,7 @@ from app.routers.crm_dashboard_router import router as crm_dashboard_router
 # Routers módulo de compras (PO)
 from app.routers.po_invoice_router import po_invoice_router
 from app.routers.po_invoice_status_router import po_invoice_status_router
+from app.routers.po_invoice_status_fin_router import po_invoice_status_fin_router
 from app.routers.po_order_router import po_order_router
 from app.routers.po_order_detail_router import po_order_detail_router
 from app.routers.po_order_status_router import po_order_status_router
@@ -189,6 +190,7 @@ app.include_router(emprendimiento_router)
 # Routers módulo de compras (PO)
 app.include_router(po_invoice_router)
 app.include_router(po_invoice_status_router)
+app.include_router(po_invoice_status_fin_router)
 app.include_router(po_order_router)
 app.include_router(po_order_detail_router)
 app.include_router(po_order_status_router)

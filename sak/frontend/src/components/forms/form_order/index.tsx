@@ -30,7 +30,10 @@ export type { IdentityFilterDefaultsOptions, IdentityFilterSyncProps } from "./l
 export { FormOrderBulkActionsToolbar } from "./list/bulk/bulk_actions_toolbar";
 export { FormOrderBulkDeleteButton } from "./list/bulk/bulk_delete_button";
 export { FormOrderBulkExportButton } from "./list/bulk/bulk_export_button";
-export { FormOrderListRowActions } from "./list/actions/list_row_actions";
+export {
+  FormOrderListRowActions,
+  useRowActionDialog,
+} from "./list/actions/list_row_actions";
 export { ResponsiveDataTable } from "./list/responsive-data-table";
 export { HiddenInput } from "./form/hidden_input";
 export { FormErrorSummary } from "./form/form_error_summary";

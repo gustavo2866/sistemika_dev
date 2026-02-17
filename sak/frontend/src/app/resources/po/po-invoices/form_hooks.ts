@@ -60,6 +60,9 @@ export const usePoInvoiceDefaults = () => {
   const invoiceStatusId = useWatch({ name: "invoice_status_id", control }) as
     | number
     | undefined;
+  const invoiceStatusFinId = useWatch({ name: "invoice_status_fin_id", control }) as
+    | number
+    | undefined;
   const proveedorId = useWatch({ name: "proveedor_id", control }) as
     | number
     | undefined;
@@ -91,6 +94,11 @@ export const usePoInvoiceDefaults = () => {
       active = false;
     };
   }, [invoiceStatusId, dirtyFields?.invoice_status_id, dataProvider, setValue]);
+
+  useEffect(() => {
+    if (invoiceStatusFinId || dirtyFields?.invoice_status_fin_id) return;
+    setValue("invoice_status_fin_id", 1, { shouldDirty: false });
+  }, [invoiceStatusFinId, dirtyFields?.invoice_status_fin_id, setValue]);
 
   useEffect(() => {
     if (!proveedorId) return;

@@ -69,15 +69,21 @@ export const DetailRowDesktopActions = ({
 
 export const DetailRowActions = ({
   mode = "both",
+  readOnly = false,
+  forceVisible = false,
+  showInfo = true,
 }: {
   mode?: "mobile" | "desktop" | "both";
+  readOnly?: boolean;
+  forceVisible?: boolean;
+  showInfo?: boolean;
 } = {}) => {
   const { isActive, showOptional, toggleOptional, collapse, remove } =
     useDetailRowContext();
   const { trigger, getValues } = useFormContext();
   const { source } = useSimpleFormIterator();
   const { index } = useSimpleFormIteratorItem();
-  if (!isActive) return null;
+  if (!isActive && !forceVisible) return null;
 
   const collectFieldNames = (value: unknown, path: string): string[] => {
     if (value == null) return [path];
@@ -105,6 +111,32 @@ export const DetailRowActions = ({
     event.stopPropagation();
     toggleOptional();
   };
+
+  if (readOnly) {
+    if (!showInfo) return null;
+    return (
+      <>
+        {mode !== "desktop" ? (
+          <div className="flex items-end justify-end gap-0.5 -mr-0.5 sm:hidden">
+            <DetailInfoButton
+              onClick={handleToggleOptional}
+              label={infoLabel}
+              active={showOptional}
+            />
+          </div>
+        ) : null}
+        {mode !== "mobile" ? (
+          <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
+            <DetailInfoButton
+              onClick={handleToggleOptional}
+              label={infoLabel}
+              active={showOptional}
+            />
+          </div>
+        ) : null}
+      </>
+    );
+  }
   const handleCollapse = async () => {
     if (source) {
       const rowPath = `${source}.${index}`;
@@ -130,22 +162,26 @@ export const DetailRowActions = ({
             label="Cerrar edicion"
           />
           <DetailDeleteButton onClick={remove} />
-          <DetailInfoButton
-            onClick={handleToggleOptional}
-            label={infoLabel}
-            active={showOptional}
-          />
+          {showInfo ? (
+            <DetailInfoButton
+              onClick={handleToggleOptional}
+              label={infoLabel}
+              active={showOptional}
+            />
+          ) : null}
         </div>
       ) : null}
       {mode !== "mobile" ? (
         <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
           <DetailToggleButton show={showOptional} onToggle={handleCollapse} />
           <DetailDeleteButton onClick={remove} />
-          <DetailInfoButton
-            onClick={handleToggleOptional}
-            label={infoLabel}
-            active={showOptional}
-          />
+          {showInfo ? (
+            <DetailInfoButton
+              onClick={handleToggleOptional}
+              label={infoLabel}
+              active={showOptional}
+            />
+          ) : null}
         </div>
       ) : null}
     </>

@@ -6,6 +6,7 @@ import type { useActiveRow } from "./use_active_row";
 export type DetailSectionContextValue = ReturnType<typeof useActiveRow> & {
   rowGridClassName?: string;
   rowGridStyle?: CSSProperties;
+  readOnly?: boolean;
 };
 
 export const DetailSectionContext =

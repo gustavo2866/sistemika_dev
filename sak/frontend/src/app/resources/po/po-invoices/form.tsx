@@ -49,6 +49,7 @@ import {
   usePoInvoiceFormDefaults,
   usePoInvoiceTotals,
 } from "./form_hooks";
+import { FormConfirmarButton } from "./form_confirmar";
 import {
   useDetalleCentroCostoOportunidadExclusion,
   useOcIdByPoOrderDetailId,
@@ -81,6 +82,7 @@ const FacturaToolbar = () => (
   <div className="flex w-full items-center justify-end gap-2">
     <FormOrderCancelButton />
     <FormOrderSaveButton variant="secondary" />
+    <FormConfirmarButton />
   </div>
 );
 
@@ -140,6 +142,7 @@ const CabeceraFactura = () => {
             <HiddenInput source="total_impuestos" />
             <HiddenInput source="total" />
             <HiddenInput source="invoice_status_id" />
+            <HiddenInput source="invoice_status_fin_id" />
           </>
         }
         actions={accionesMenu}
@@ -291,6 +294,7 @@ const DetalleFactura = () => {
             inputMode="decimal"
             step="0.001"
             widthClass="w-full"
+            validate={required()}
             readOnly={!isActive}
             className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
           />
@@ -302,6 +306,7 @@ const DetalleFactura = () => {
             inputMode="decimal"
             step="0.01"
             widthClass="w-full"
+            validate={required()}
             readOnly={!isActive}
             className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
           />

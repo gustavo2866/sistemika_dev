@@ -116,6 +116,11 @@ import {
   PoInvoiceStatusEdit,
 } from "@/app/resources/po/po-invoice-status";
 import {
+  PoInvoiceStatusFinList,
+  PoInvoiceStatusFinCreate,
+  PoInvoiceStatusFinEdit,
+} from "@/app/resources/po/po-invoice-status-fin";
+import {
   DepartamentoList,
   DepartamentoCreate,
   DepartamentoEdit,
@@ -429,6 +434,15 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={ListChecks}
         options={{ label: "Estados de Factura OC" }}
+      />
+      <Resource
+        name="po-invoice-status-fin"
+        list={PoInvoiceStatusFinList}
+        create={PoInvoiceStatusFinCreate}
+        edit={PoInvoiceStatusFinEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Estados Financieros Factura OC" }}
       />
       <Resource
         name="po-orders"

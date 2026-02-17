@@ -11,24 +11,26 @@ import { type PoOrderRecord, usePoOrderStatusTransition } from "./form_hooks";
 
 const buttonClasses = "h-6 px-2 text-[9px] sm:h-7 sm:px-2.5 sm:text-[10px] gap-1";
 
-export const FormGenerar = () => {
+export const FormGenerar = ({ disabled }: { disabled?: boolean } = {}) => {
   const record = useRecordContext<PoOrderRecord>();
   const { control } = useFormContext<PoOrderFormValues>();
   const proveedorId = useWatch({ control, name: "proveedor_id" }) as number | undefined;
   const detalles = useWatch({ control, name: "detalles" }) as
     | Array<{ precio?: unknown }>
     | undefined;
+  const rows = Array.isArray(detalles) ? detalles : [];
+  const hasDetalles = rows.length > 0;
   const [open, setOpen] = useState(false);
-  const { canGenerar, cambiarEstado, loading } = usePoOrderStatusTransition();
+  const { cambiarEstado, loading } = usePoOrderStatusTransition();
   const isCreate = !record?.id;
   const statusKey = String(record?.order_status?.nombre ?? "")
     .trim()
     .toLowerCase();
-  const isEditAllowed = Boolean(record?.id && canGenerar);
+  const statusOrden = record?.order_status?.orden;
+  const isEditAllowed = Boolean(record?.id && (statusOrden === 1 || statusOrden === 2));
 
   const canOrdenCompra = useMemo(() => {
     const proveedorOk = Number.isFinite(Number(proveedorId)) && Number(proveedorId) > 0;
-    const rows = Array.isArray(detalles) ? detalles : [];
     if (rows.length === 0) return false;
     const preciosOk = rows.every((row) => Number(row?.precio ?? 0) > 0);
     return proveedorOk && preciosOk;
@@ -43,7 +45,7 @@ export const FormGenerar = () => {
         variant="default"
         onClick={() => setOpen(true)}
         className={buttonClasses}
-        disabled={loading}
+        disabled={loading || !hasDetalles || disabled}
       >
         <CheckCircle2 className="size-3 sm:size-4" />
         Generar

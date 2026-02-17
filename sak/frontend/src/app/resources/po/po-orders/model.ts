@@ -36,7 +36,7 @@ export const poOrderDetalleSchema = z
     centro_costo_id: optionalId,
     oportunidad_id: optionalId,
     cantidad: z.coerce.number().gt(0),
-    precio: z.coerce.number().gt(0),
+    precio: z.coerce.number().min(0),
     importe: z.coerce.number().min(0),
   })
   .superRefine((val, ctx) => {

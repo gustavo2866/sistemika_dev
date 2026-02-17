@@ -13,6 +13,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Confirm } from "@/components/confirm";
 import { formatCurrency } from "@/lib/formatters";
 import type { PoOrderFormValues } from "./model";
+import { useRowActionDialog } from "@/components/forms/form_order";
 
 type ConfirmAction = "approve" | "reject";
 
@@ -62,6 +63,7 @@ export const FormConfirmar = ({
   const resource = useResourceContext() ?? "po-orders";
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const dialog = useRowActionDialog();
 
   const label = resolveStatusLabel(action);
 
@@ -75,7 +77,7 @@ export const FormConfirmar = ({
 
   if (!record?.id || !visible || !isEmitida) return null;
 
-  const handleConfirm = async () => {
+  const runConfirm = async () => {
     if (!record?.id) return;
     setLoading(true);
     try {
@@ -100,8 +102,12 @@ export const FormConfirmar = ({
       notify("No se pudo actualizar la orden", { type: "warning" });
     } finally {
       setLoading(false);
-      setOpen(false);
     }
+  };
+
+  const handleConfirm = async () => {
+    await runConfirm();
+    setOpen(false);
   };
 
   const proveedorLabel =
@@ -145,11 +151,23 @@ export const FormConfirmar = ({
   return (
     <>
       <DropdownMenuItem
-        onClick={(event) => {
-          event.preventDefault();
+        onSelect={(event) => {
           event.stopPropagation();
           if (disabled || loading) return;
+          if (dialog) {
+            dialog.openDialog({
+              title: `${label} orden`,
+              content: confirmContent,
+              confirmLabel: label,
+              confirmColor: action === "reject" ? "warning" : "primary",
+              onConfirm: runConfirm,
+            });
+            return;
+          }
           setOpen(true);
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
         }}
         disabled={disabled || loading}
         className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
@@ -161,16 +179,18 @@ export const FormConfirmar = ({
         )}
         {label}
       </DropdownMenuItem>
-      <Confirm
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        onConfirm={handleConfirm}
-        title={`${label} orden`}
-        content={confirmContent}
-        confirm={label}
-        confirmColor={action === "reject" ? "warning" : "primary"}
-        loading={loading}
-      />
+      {!dialog ? (
+        <Confirm
+          isOpen={open}
+          onClose={() => setOpen(false)}
+          onConfirm={handleConfirm}
+          title={`${label} orden`}
+          content={confirmContent}
+          confirm={label}
+          confirmColor={action === "reject" ? "warning" : "primary"}
+          loading={loading}
+        />
+      ) : null}
     </>
   );
 };

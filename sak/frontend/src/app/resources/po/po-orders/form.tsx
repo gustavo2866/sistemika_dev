@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import {
   type Identifier,
   required,
   useRecordContext,
+  useWrappedSource,
 } from "ra-core";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,7 @@ import {
   useAccionesCabeceraOrden,
   usePoOrderFormDefaults,
   usePoOrderDefaults,
+  usePoOrderReadOnly,
 } from "./form_hooks";
 import {
   useCentroCostoOportunidadExclusion,
@@ -58,25 +60,35 @@ import {
 } from "../shared/po-hooks";
 import { FormGenerar } from "./form_generar";
 
+const PoOrderDetailEditContext = createContext<{
+  isEditing: boolean;
+  setIsEditing: (value: boolean) => void;
+} | null>(null);
+
+const usePoOrderDetailEdit = () => useContext(PoOrderDetailEditContext);
+
 // === Formulario principal ===
 // Renderiza el formulario principal de Orden de compra.
 export const PoOrderForm = () => {
   const { defaultValues, isLoadingDefaults } = usePoOrderFormDefaults();
+  const [isEditing, setIsEditing] = useState(false);
 
   if (isLoadingDefaults) {
     return <Loading delay={200} />;
   }
 
   return (
-    <SimpleForm<PoOrderFormValues>
-      className="w-full max-w-3xl"
-      // ra-core FormProps types resolver as Resolver<FieldValues>
-      resolver={zodResolver(poOrderSchema) as any}
-      toolbar={<OrdenCompraToolbar />}
-      defaultValues={defaultValues}
-    >
-      <OrdenCompraContenido />
-    </SimpleForm>
+    <PoOrderDetailEditContext.Provider value={{ isEditing, setIsEditing }}>
+      <SimpleForm<PoOrderFormValues>
+        className="w-full max-w-3xl"
+        // ra-core FormProps types resolver as Resolver<FieldValues>
+        resolver={zodResolver(poOrderSchema) as any}
+        toolbar={<OrdenCompraToolbar />}
+        defaultValues={defaultValues}
+      >
+        <OrdenCompraContenido />
+      </SimpleForm>
+    </PoOrderDetailEditContext.Provider>
   );
 };
 
@@ -84,12 +96,15 @@ export const PoOrderForm = () => {
 const OrdenCompraToolbar = () => {
   const record = useRecordContext<PoOrderRecord>();
   const isLocked = isPoOrderLocked(record?.order_status?.nombre);
+  const editContext = usePoOrderDetailEdit();
+  const disableGenerar = editContext?.isEditing ?? false;
+  const isReadOnly = usePoOrderReadOnly();
 
   return (
     <div className="flex w-full items-center justify-end gap-2">
       <FormOrderCancelButton />
-      <FormOrderSaveButton variant="secondary" disabled={isLocked} />
-      {!isLocked ? <FormGenerar /> : null}
+      <FormOrderSaveButton variant="secondary" disabled={isLocked || isReadOnly} />
+      {!isLocked ? <FormGenerar disabled={disableGenerar} /> : null}
     </div>
   );
 };
@@ -137,6 +152,7 @@ const CabeceraOrdenCompra = () => {
     handleDelete,
     isLocked,
   } = useAccionesCabeceraOrden();
+  const isReadOnly = usePoOrderReadOnly();
   const accionesMenu =
     canPreview || canDelete ? (
       <FormOrderHeaderMenuActions
@@ -149,11 +165,12 @@ const CabeceraOrdenCompra = () => {
 
   return (
     <>
-      <SectionBaseTemplate
-        title="Cabecera"
-        main={
-          <>
-            <CabeceraCamposPrincipales />
+    <SectionBaseTemplate
+      title="Cabecera"
+      readOnly={isReadOnly}
+      main={
+        <>
+          <CabeceraCamposPrincipales />
             {/* Always compute total for validation/payload */}
             <TotalCompute computeTotal={computePoOrderTotal} />
             <HiddenInput source="total" />
@@ -292,6 +309,15 @@ const CabeceraCamposOpcionales = () => {
 // === Seccion detalle ===
 // Seccion de detalle con lineas y campos opcionales.
 const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
+  const editContext = usePoOrderDetailEdit();
+  const handleActiveRowChange = useMemo(
+    () => (index: number | null) => {
+      editContext?.setIsEditing(index != null);
+    },
+    [editContext],
+  );
+  const isReadOnly = usePoOrderReadOnly();
+
   const columns: SectionDetailColumn[] = [
     { label: "Articulo", width: "220px", mobileSpan: "full" },
     { label: "Descripcion", width: "150px" },
@@ -303,74 +329,82 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
 
   // Campos principales del detalle.
   const DetalleCamposPrincipales = useCallback(
-    ({ isActive }: SectionDetailFieldsProps) => (
-      <>
-        <DetailFieldCell
-          label="Articulo"
-          data-articulo-field="true"
-          data-focus-field="true"
-        >
-          <FormReferenceAutocomplete
-            referenceProps={{
-              source: "articulo_id",
-              reference: "articulos",
-              filter: articuloFilter,
-            }}
-            inputProps={{
-              optionText: "nombre",
-              label: false,
-            }}
-            widthClass="w-full"
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Descripcion" desktopOnly>
-          <FormText
-            source="descripcion"
-            label={false}
-            widthClass="w-full"
-            readOnly={!isActive}
-            className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Cant.">
-          <FormNumber
-            source="cantidad"
-            label={false}
-            inputMode="decimal"
-            step="0.001"
-            widthClass="w-full"
-            validate={required()}
-            readOnly={!isActive}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Precio">
-          <FormNumber
-            source="precio"
-            label={false}
-            inputMode="decimal"
-            step="0.01"
-            widthClass="w-full"
-            validate={required()}
-            readOnly={!isActive}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Importe">
-          <CalculatedImporte
-            computeImporte={computeDetalleImporte}
-            widthClass="w-full"
-            valueClassName={
-              !isActive
-                ? FORM_VALUE_READONLY_CLASS
-                : undefined
-            }
-          />
-          <HiddenInput source="importe" />
-        </DetailFieldCell>
-      </>
-    ),
+    ({ isActive }: SectionDetailFieldsProps) => {
+      const descripcionSource = useWrappedSource("descripcion");
+      const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
+      const hasDescripcion = Boolean(descripcion?.trim());
+
+      return (
+        <>
+          <DetailFieldCell
+            label="Articulo"
+            data-articulo-field="true"
+            data-focus-field="true"
+          >
+            <FormReferenceAutocomplete
+              referenceProps={{
+                source: "articulo_id",
+                reference: "articulos",
+                filter: articuloFilter,
+              }}
+              inputProps={{
+                optionText: "nombre",
+                label: false,
+              }}
+              widthClass="w-full"
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell
+            label="Descripcion"
+            className={cn(!hasDescripcion && "hidden sm:flex")}
+          >
+            <FormText
+              source="descripcion"
+              label={false}
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell label="Cant.">
+            <FormNumber
+              source="cantidad"
+              label={false}
+              inputMode="decimal"
+              step="0.001"
+              widthClass="w-full"
+              validate={required()}
+              readOnly={!isActive}
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell label="Precio">
+            <FormNumber
+              source="precio"
+              label={false}
+              inputMode="decimal"
+              step="0.01"
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell label="Importe">
+            <CalculatedImporte
+              computeImporte={computeDetalleImporte}
+              widthClass="w-full"
+              valueClassName={
+                !isActive
+                  ? FORM_VALUE_READONLY_CLASS
+                  : undefined
+              }
+            />
+            <HiddenInput source="importe" />
+          </DetailFieldCell>
+        </>
+      );
+    },
     [articuloFilter],
   );
 
@@ -380,13 +414,6 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
       <div className="w-full">
         <div className="mt-0 rounded-md border border-muted/60 bg-muted/30 p-2">
           <div className="grid gap-2 md:grid-cols-[210px_210px] md:justify-start">
-            <FormText
-              source="descripcion"
-              label="Descripcion"
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={cn("sm:hidden", !isActive && FORM_FIELD_READONLY_CLASS)}
-            />
             <ReferenceInput
               source="centro_costo_id"
               reference="centros-costo"
@@ -423,6 +450,9 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
       mainFields={DetalleCamposPrincipales}
       optionalFields={DetalleCamposOpcionales}
       defaults={getPoOrderDetalleDefaults}
+      maxHeightClassName="md:max-h-48"
+      onActiveRowChange={handleActiveRowChange}
+      readOnly={isReadOnly}
     />
   );
 };

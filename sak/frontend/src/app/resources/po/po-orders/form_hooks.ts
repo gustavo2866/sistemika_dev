@@ -34,7 +34,20 @@ export type PoOrderRecord = PoOrderFormValues & {
   order_status?: {
     id?: number | null;
     nombre?: string | null;
+    orden?: number | null;
   } | null;
+};
+
+export const isPoOrderEditableByOrden = (orden?: number | null) => {
+  if (orden == null) return false;
+  return [1, 2, 3].includes(Number(orden));
+};
+
+export const usePoOrderReadOnly = () => {
+  const record = useRecordContext<PoOrderRecord>();
+  if (!record?.id) return false;
+  const orden = record?.order_status?.orden;
+  return !isPoOrderEditableByOrden(orden);
 };
 
 // === Defaults iniciales ===
@@ -105,7 +118,7 @@ export const useAccionesCabeceraOrden = () => {
 export const usePoOrderDefaults = () => {
   const dataProvider = useDataProvider();
   const record = useRecordContext<
-    PoOrderFormValues & { order_status?: { id?: number; nombre?: string } }
+    PoOrderFormValues & { order_status?: { id?: number; nombre?: string; orden?: number } }
   >();
   const { setValue, getValues, control } = useFormContext();
   const { dirtyFields } = useFormState({ control });

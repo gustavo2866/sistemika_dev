@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type MouseEvent,
   type CSSProperties,
   type ComponentType,
   type ReactNode,
@@ -56,6 +57,9 @@ export type SectionDetailTemplate2Props = {
   actions?: ReactNode;
   defaultOpen?: boolean;
   focusSelector?: string;
+  maxHeightClassName?: string;
+  onActiveRowChange?: (activeIndex: number | null) => void;
+  readOnly?: boolean;
 };
 
 type DetailItemRowProps = {
@@ -73,7 +77,8 @@ const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowPro
     detailContext;
   const [showOptional, setShowOptional] = useState(false);
   const { remove, index } = useSimpleFormIteratorItem();
-  const isActive = activeIndex === index;
+  const isActive = !detailContext.readOnly && activeIndex === index;
+  const hasOptional = Boolean(OptionalFields);
 
   const handleCollapse = () => {
     setShowOptional(false);
@@ -82,14 +87,15 @@ const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowPro
   const toggleOptional = () => setShowOptional((prev) => !prev);
 
   useEffect(() => {
+    if (detailContext.readOnly) return;
     if (!isActive && showOptional) {
       setShowOptional(false);
     }
-  }, [isActive, showOptional]);
+  }, [isActive, showOptional, detailContext.readOnly]);
 
   const rowClassName = cn(
     isActive
-      ? "border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
+      ? "is-active border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
       : "sm:border-transparent",
   );
 
@@ -118,11 +124,21 @@ const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowPro
             >
               <MainFields isActive={isActive} />
             </DetailFieldIndexProvider>
-            <DetailRowActions mode="desktop" />
+            <DetailRowActions
+              mode="desktop"
+              readOnly={detailContext.readOnly}
+              forceVisible={detailContext.readOnly}
+              showInfo={hasOptional}
+            />
             <DetailRowError />
           </div>
           <div className="flex items-end justify-end self-end sm:hidden">
-            <DetailRowActions mode="mobile" />
+            <DetailRowActions
+              mode="mobile"
+              readOnly={detailContext.readOnly}
+              forceVisible={detailContext.readOnly}
+              showInfo={hasOptional}
+            />
           </div>
         </div>
         {OptionalFields && showOptional ? (
@@ -144,12 +160,15 @@ export const SectionDetailTemplate2 = ({
   actions,
   defaultOpen = true,
   focusSelector,
+  maxHeightClassName,
+  onActiveRowChange,
+  readOnly = false,
 }: SectionDetailTemplate2Props) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { getValues, setValue } = useFormContext();
   const activeRow = useActiveRow({ name: detailsSource, focusSelector });
-  const disableAdd = activeRow.activeIndex != null;
+  const disableAdd = readOnly || activeRow.activeIndex != null;
   const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
   const hasDetails = (detalles ?? []).length > 0;
 
@@ -248,6 +267,7 @@ export const SectionDetailTemplate2 = ({
   const getDefaultValues = () => (defaults ? defaults() : {});
 
   const handleAdd = () => {
+    if (readOnly) return;
     const current = (getValues(detailsSource) as unknown[]) ?? [];
     const nextItem = getDefaultValues();
     activeRow.requestAutoActivate();
@@ -258,6 +278,7 @@ export const SectionDetailTemplate2 = ({
   };
 
   const handleClear = () => {
+    if (readOnly) return;
     setValue(detailsSource, [], { shouldDirty: true, shouldValidate: true });
     setConfirmOpen(false);
   };
@@ -265,6 +286,24 @@ export const SectionDetailTemplate2 = ({
   const handleContainerClick = () => {
     // Intentionally no-op: exiting edit mode is handled explicitly via row actions
   };
+
+  const handleRowClick = useMemo(
+    () => (index: number) => (event: MouseEvent) => {
+      if (readOnly) {
+        event.stopPropagation();
+        return;
+      }
+      activeRow.onRowClick(index)(event);
+    },
+    [readOnly, activeRow.onRowClick],
+  );
+
+  useEffect(() => {
+    onActiveRowChange?.(activeRow.activeIndex ?? null);
+    return () => {
+      onActiveRowChange?.(null);
+    };
+  }, [activeRow.activeIndex, onActiveRowChange]);
 
   const toggleButton = (
     <Button
@@ -306,7 +345,7 @@ export const SectionDetailTemplate2 = ({
           <PlusCircle className="h-3 w-3" />
           Agregar
         </DropdownMenuItem>
-        {hasDetails ? (
+        {hasDetails && !readOnly ? (
           <DropdownMenuItem
             className="gap-2 text-[9px] sm:text-[10px]"
             onClick={() => setConfirmOpen(true)}
@@ -358,14 +397,19 @@ export const SectionDetailTemplate2 = ({
         value={{
           ...activeRow,
           onContainerClick: handleContainerClick,
+          onRowClick: handleRowClick,
           rowGridClassName,
           rowGridStyle,
+          readOnly,
         }}
       >
         <div className="mt-1 space-y-0 w-full" onClick={handleContainerClick}>
           <div
             ref={activeRow.containerRef}
-            className="w-full rounded-md border border-border px-2 pb-2 pt-0 md:max-h-64 md:overflow-y-auto"
+            className={cn(
+              "w-full rounded-md border border-border px-2 pb-2 pt-0 md:overflow-y-auto",
+              maxHeightClassName ?? "md:max-h-64",
+            )}
           >
             <ArrayInput source={detailsSource} label={false}>
               <DetailIterator

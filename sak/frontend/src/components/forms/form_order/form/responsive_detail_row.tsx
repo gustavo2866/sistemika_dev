@@ -22,7 +22,7 @@ export const ResponsiveDetailRow = forwardRef<HTMLDivElement, ResponsiveDetailRo
         data-focus-scope="detail-row"
         {...props}
       >
-        <div className="pointer-events-none absolute right-1 top-1/2 hidden -translate-y-1/2 items-center text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
+        <div className="pointer-events-none absolute right-1 top-1/2 hidden -translate-y-1/2 items-center text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100 group-[.is-active]:opacity-0 sm:flex">
           <Pencil className="h-3 w-3" />
         </div>
         {children}

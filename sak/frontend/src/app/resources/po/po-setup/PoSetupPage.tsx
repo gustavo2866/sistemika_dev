@@ -30,6 +30,11 @@ const setupLinks = [
     resource: "po-invoice-status",
   },
   {
+    label: "Estados financieros factura",
+    description: "Configurar estados financieros de factura de compra.",
+    resource: "po-invoice-status-fin",
+  },
+  {
     label: "Departamentos",
     description: "Administrar departamentos para imputacion.",
     resource: "departamentos",

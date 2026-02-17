@@ -23,6 +23,7 @@ import { List } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 
 import { INVOICE_STATUS_BADGES } from "./model";
+import { FormConfirmar } from "./form_confirmar";
 
 // === Filtros ===
 const LIST_FILTERS = buildListFilters(
@@ -175,6 +176,7 @@ const ListaFacturas = () => {
       pagination={<ListPaginator />}
       sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={defaultFilters}
+      queryOptions={{ refetchOnMount: "always" }}
     >
       <InvoiceStatusFilterSync statusId={statusId} />
       <ResponsiveDataTable
@@ -215,7 +217,9 @@ const ListaFacturas = () => {
           <ListMoney source="total" showCurrency={false} className="whitespace-nowrap" />
         </ListColumn>
         <ListColumn label="Acciones" className="w-[60px]">
-          <FormOrderListRowActions />
+          <FormOrderListRowActions
+            extraMenuItems={<FormConfirmar />}
+          />
         </ListColumn>
       </ResponsiveDataTable>
     </List>

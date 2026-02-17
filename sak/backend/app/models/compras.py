@@ -270,6 +270,44 @@ class PoInvoiceStatus(Base, table=True):
     invoices: List["PoInvoice"] = Relationship(back_populates="invoice_status")
 
 
+class PoInvoiceStatusFin(Base, table=True):
+    """Estados financieros de facturas (modulo PO)."""
+
+    __tablename__ = "po_invoice_status_fin"
+
+    __searchable_fields__ = ["nombre", "descripcion"]
+
+    nombre: str = Field(
+        max_length=50,
+        description="Nombre del estado financiero",
+        nullable=False,
+        unique=True,
+    )
+    descripcion: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Descripción del estado financiero",
+    )
+    orden: int = Field(
+        description="Orden de visualización",
+        nullable=False,
+    )
+    activo: bool = Field(
+        default=True,
+        description="Si el estado está activo",
+    )
+    es_inicial: bool = Field(
+        default=False,
+        description="Si es el estado inicial por defecto",
+    )
+    es_final: bool = Field(
+        default=False,
+        description="Si es un estado final",
+    )
+
+    invoices: List["PoInvoice"] = Relationship(back_populates="invoice_status_fin")
+
+
 class PoInvoice(Base, table=True):
     """Factura de compras basada en orden de compra (modulo PO)."""
 
@@ -281,6 +319,7 @@ class PoInvoice(Base, table=True):
         "proveedor",
         "usuario_responsable",
         "invoice_status",
+        "invoice_status_fin",
         "detalles",
         "taxes",
     ]
@@ -302,6 +341,11 @@ class PoInvoice(Base, table=True):
     invoice_status_id: int = Field(
         foreign_key="po_invoice_status.id",
         description="ID del estado de la factura",
+    )
+    invoice_status_fin_id: Optional[int] = Field(
+        default=None,
+        foreign_key="po_invoice_status_fin.id",
+        description="ID del estado financiero de la factura",
     )
     fecha_estado: Optional[datetime] = Field(
         default=None,
@@ -346,6 +390,7 @@ class PoInvoice(Base, table=True):
     proveedor: "Proveedor" = Relationship()
     usuario_responsable: "User" = Relationship(sa_relationship_kwargs={"foreign_keys": "PoInvoice.usuario_responsable_id"})
     invoice_status: "PoInvoiceStatus" = Relationship(back_populates="invoices")
+    invoice_status_fin: Optional["PoInvoiceStatusFin"] = Relationship(back_populates="invoices")
     detalles: List["PoInvoiceDetail"] = Relationship(
         back_populates="invoice",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},

@@ -29,6 +29,8 @@ export type SectionBaseTemplateProps = {
   defaultOptionalOpen?: boolean;
   /** Optional custom menu items shown in the header actions menu. */
   actions?: ReactNode;
+  /** When true, disables pointer interactions for section fields. */
+  readOnly?: boolean;
 };
 
 export const SectionBaseTemplate = ({
@@ -40,6 +42,7 @@ export const SectionBaseTemplate = ({
   defaultOpen = true,
   defaultOptionalOpen = false,
   actions,
+  readOnly = false,
 }: SectionBaseTemplateProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [showOptional, setShowOptional] = useState(defaultOptionalOpen);
@@ -101,7 +104,9 @@ export const SectionBaseTemplate = ({
       <div className="flex flex-col gap-0">
         {optional ? (
           <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,max-content)_auto] items-end gap-2">
-            <div className="min-w-0">{main}</div>
+            <div className={cn("min-w-0", readOnly && "pointer-events-none")}>
+              {main}
+            </div>
             <div className="flex items-end justify-end md:justify-self-start">
               <button
                 type="button"
@@ -121,10 +126,12 @@ export const SectionBaseTemplate = ({
             </div>
           </div>
         ) : (
-          main
+          <div className={cn(readOnly && "pointer-events-none")}>{main}</div>
         )}
       </div>
-      {optional && showOptional ? optional : null}
+      {optional && showOptional ? (
+        <div className={cn(readOnly && "pointer-events-none")}>{optional}</div>
+      ) : null}
     </SectionCard>
   );
 };
