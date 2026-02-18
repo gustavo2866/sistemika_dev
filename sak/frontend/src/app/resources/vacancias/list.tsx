@@ -1,95 +1,182 @@
 "use client";
 
-import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { DateField } from "@/components/date-field";
-import { ReferenceField } from "@/components/reference-field";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
-import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
-import { ShowButton } from "@/components/show-button";
-import { Badge } from "@/components/ui/badge";
-import { useRecordContext } from "ra-core";
+import {
+  FormOrderBulkActionsToolbar,
+  FormOrderListRowActions,
+  ListColumn,
+  ListDate,
+  ListID,
+  ListNumber,
+  ListPaginator,
+  ListStatus,
+  ListText,
+  ResponsiveDataTable,
+  buildListFilters,
+} from "@/components/forms/form_order";
+import { List } from "@/components/list";
+import { ReferenceField } from "@/components/reference-field";
+
 import type { Vacancia } from "../propiedades/model";
 
-const filters = [
-  <ReferenceInput
-    key="propiedad_id"
-    source="propiedad_id"
-    reference="propiedades"
-    label="Propiedad"
-    alwaysOn
-    perPage={50}
-  >
-    <SelectInput optionText="nombre" />
-  </ReferenceInput>,
-  <SelectInput
-    key="ciclo_activo"
-    source="ciclo_activo"
-    label="Ciclo activo"
-    choices={[
-      { id: "true", name: "Activas" },
-      { id: "false", name: "Cerradas" },
-    ]}
-  />,
-  <TextInput key="fecha_recibida__gte" source="fecha_recibida__gte" label="Recibida desde" type="date" />,
-  <TextInput key="fecha_recibida__lte" source="fecha_recibida__lte" label="Recibida hasta" type="date" />,
-  <TextInput key="fecha_alquilada__gte" source="fecha_alquilada__gte" label="Realizada desde" type="date" />,
-  <TextInput key="fecha_alquilada__lte" source="fecha_alquilada__lte" label="Realizada hasta" type="date" />,
-];
+const CICLO_BADGES: Record<string, string> = {
+  true: "bg-emerald-100 text-emerald-800",
+  false: "bg-slate-200 text-slate-800",
+};
+
+const LIST_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "propiedad_id",
+        reference: "propiedades",
+        label: "Propiedad",
+        perPage: 50,
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todas",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "propiedad.tipo",
+        label: "Tipo",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "ciclo_activo",
+        label: "Ciclo activo",
+        choices: [
+          { id: "true", name: "Activas" },
+          { id: "false", name: "Cerradas" },
+        ],
+        className: "w-full",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "fecha_recibida__gte",
+        label: "Recibida desde",
+        type: "date",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "fecha_recibida__lte",
+        label: "Recibida hasta",
+        type: "date",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "fecha_alquilada__gte",
+        label: "Realizada desde",
+        type: "date",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "fecha_alquilada__lte",
+        label: "Realizada hasta",
+        type: "date",
+      },
+    },
+  ],
+  { keyPrefix: "vacancias" },
+);
+
+const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
+    <FilterButton
+      filters={LIST_FILTERS}
+      size="sm"
+      buttonClassName={ACTION_BUTTON_CLASS}
+    />
   </div>
 );
 
 export const VacanciaList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={25}>
-    <DataTable rowClick="show">
-      <DataTable.Col label="Propiedad">
-        <ReferenceField source="propiedad_id" reference="propiedades">
+  <List
+    title="Vacancias"
+    filters={LIST_FILTERS}
+    actions={<ListActions />}
+    debounce={300}
+    perPage={25}
+    containerClassName="max-w-[980px] w-full mr-auto"
+    pagination={<ListPaginator />}
+    sort={{ field: "id", order: "DESC" }}
+  >
+    <ResponsiveDataTable
+      rowClick="show"
+      bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
+      mobileConfig={{
+        primaryField: "propiedad_id",
+        secondaryFields: ["ciclo_activo", "fecha_recibida", "fecha_alquilada", "dias_totales"],
+        detailFields: [],
+      }}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <ListColumn source="id" label="ID" className="w-[50px] text-center">
+        <ListID source="id" widthClass="w-[50px]" />
+      </ListColumn>
+      <ListColumn label="Propiedad" className="w-[220px]">
+        <ReferenceField source="propiedad_id" reference="propiedades" link={false}>
           <div className="flex flex-col">
-            <TextField source="nombre" />
-            <span className="text-xs text-muted-foreground">
-              <TextField source="tipo" />
+            <ListText source="nombre" />
+            <span className="text-[9px] text-muted-foreground">
+              <ListText source="tipo" />
             </span>
           </div>
         </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col source="ciclo_activo" label="Estado" className="w-[140px]">
-        <CicloBadge />
-      </DataTable.Col>
-      <DataTable.Col source="fecha_recibida" label="Recibida" className="w-[160px]">
-        <DateField source="fecha_recibida" showTime />
-      </DataTable.Col>
-      <DataTable.Col source="fecha_disponible" label="Disponible" className="w-[160px]">
-        <DateField source="fecha_disponible" showTime />
-      </DataTable.Col>
-      <DataTable.Col source="fecha_alquilada" label="Realizada" className="w-[160px]">
-        <DateField source="fecha_alquilada" showTime />
-      </DataTable.Col>
-      <DataTable.Col source="dias_totales" label="Dias totales" className="w-[110px] text-right">
-        <TextField source="dias_totales" />
-      </DataTable.Col>
-      <DataTable.Col className="w-[120px]">
-        <ShowButton />
-      </DataTable.Col>
-    </DataTable>
+      </ListColumn>
+      <ListColumn source="ciclo_activo" label="Estado" className="w-[70px]">
+        <ListStatus source="ciclo_activo" statusClasses={CICLO_BADGES} />
+      </ListColumn>
+      <ListColumn source="fecha_recibida" label="Recibida" className="w-[75px]">
+        <ListDate source="fecha_recibida" />
+      </ListColumn>
+      <ListColumn source="fecha_disponible" label="Disponible" className="w-[75px]">
+        <ListDate source="fecha_disponible" />
+      </ListColumn>
+      <ListColumn source="fecha_alquilada" label="Realizada" className="w-[75px]">
+        <ListDate source="fecha_alquilada" />
+      </ListColumn>
+      <ListColumn source="dias_totales" label="Dias" className="w-[50px] text-right">
+        <ListNumber source="dias_totales" />
+      </ListColumn>
+      <ListColumn label="Acciones" className="w-[60px]">
+        <FormOrderListRowActions />
+      </ListColumn>
+    </ResponsiveDataTable>
   </List>
 );
 
-const CicloBadge = () => {
-  const record = useRecordContext<Vacancia>();
-  if (!record) return null;
-  return (
-    <Badge variant={record.ciclo_activo ? "default" : "outline"}>
-      {record.ciclo_activo ? "Activo" : "Cerrado"}
-    </Badge>
-  );
+const toBoolString = (value?: boolean | string | null) => {
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return "";
 };
 
-// Backwards compat export to match previous naming convention
-export { VacanciaList as VacanciasList };
+export const VacanciasList = VacanciaList;

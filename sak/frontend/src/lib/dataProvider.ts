@@ -100,16 +100,24 @@ const sanitizeIdsInData = (value: unknown): unknown => {
   return value;
 };
 
+const RESOURCE_ALIASES: Record<string, string> = {
+  "propiedades-inmobiliaria": "propiedades",
+};
+
+const resolveResource = (resource: string) => RESOURCE_ALIASES[resource] ?? resource;
+
 export const dataProvider: DataProvider = {
   ...baseProvider,
   getList: withErrorHandling((resource, params) => {
-    if (resource === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
+    const resolved = resolveResource(resource);
+    if (resolved === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
       const { default_scope, ...restFilter } = params.filter as Record<string, unknown>;
       return baseProvider.getList("crm/eventos/default", { ...params, filter: restFilter });
     }
-    return baseProvider.getList(resource, params);
+    return baseProvider.getList(resolved, params);
   }),
   getOne: withErrorHandling(async (resource, params) => {
+    const resolved = resolveResource(resource);
     const meta = params?.meta as { include?: string | string[]; embed?: unknown } | undefined;
     const include = meta?.include;
     const embed = meta?.embed;
@@ -122,44 +130,53 @@ export const dataProvider: DataProvider = {
         query.set("embed", JSON.stringify(embed));
       }
       const qs = query.toString();
-      const url = `${apiUrl}/${resource}/${encodeURIComponent(params.id)}${qs ? `?${qs}` : ""}`;
+      const url = `${apiUrl}/${resolved}/${encodeURIComponent(params.id)}${qs ? `?${qs}` : ""}`;
       const { json } = await httpClient(url, { signal: params?.signal });
       return { data: json };
     }
-    return baseProvider.getOne(resource, params);
+    return baseProvider.getOne(resolved, params);
   }),
-  getMany: withErrorHandling((resource, params) => baseProvider.getMany(resource, params)),
+  getMany: withErrorHandling((resource, params) => baseProvider.getMany(resolveResource(resource), params)),
   getManyReference: withErrorHandling((resource, params) =>
-    baseProvider.getManyReference(resource, params)
+    baseProvider.getManyReference(resolveResource(resource), params)
   ),
   create: withErrorHandling(async (resource, params) => {
+    const resolved = resolveResource(resource);
     if (typeof window !== "undefined") {
-      console.log("[dataProvider] create", resource, params);
+      console.log("[dataProvider] create", resolved, params);
     }
-    const sanitized = sanitizeIdsInData(params.data);
-    return baseProvider.create(resource, { ...params, data: sanitized });
+    const dataWithoutId = { ...(params.data as Record<string, unknown>) };
+    if ("id" in dataWithoutId) {
+      delete dataWithoutId.id;
+    }
+    const sanitized = sanitizeIdsInData(dataWithoutId);
+    return baseProvider.create(resolved, { ...params, data: sanitized });
   }),
   update: withErrorHandling(async (resource, params) => {
+    const resolved = resolveResource(resource);
     if (typeof window !== "undefined") {
-      console.log("[dataProvider] update", resource, params);
+      console.log("[dataProvider] update", resolved, params);
     }
     const sanitized = sanitizeIdsInData(params.data);
-    const response = await baseProvider.update(resource, { ...params, data: sanitized });
+    const response = await baseProvider.update(resolved, { ...params, data: sanitized });
     if (typeof window !== "undefined") {
-      console.log("[dataProvider] update response", resource, response);
+      console.log("[dataProvider] update response", resolved, response);
     }
     return response;
   }),
   updateMany: withErrorHandling((resource, params) =>
-    baseProvider.updateMany(resource, params)
+    baseProvider.updateMany(resolveResource(resource), params)
   ),
-  delete: withErrorHandling((resource, params) => baseProvider.delete(resource, params)),
+  delete: withErrorHandling((resource, params) =>
+    baseProvider.delete(resolveResource(resource), params)
+  ),
   deleteMany: async (resource, params) => {
+    const resolved = resolveResource(resource);
     const { ids } = params;
     try {
       const results = await Promise.allSettled(
         ids.map((id) =>
-          baseProvider.delete(resource, { id }),
+          baseProvider.delete(resolved, { id }),
         ),
       );
       const rejected = results.find((result) => result.status === "rejected");

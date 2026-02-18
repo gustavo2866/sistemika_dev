@@ -62,8 +62,8 @@ const CONSTRUCTORA_RESOURCES = [
   "parte-diario",
 ] as const;
 const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores", "po-setup"] as const;
-const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
-const INMOBILIARIA_RESOURCES = ["propiedades-inmobiliaria"] as const;
+const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "dashboard-vacancias"] as const;
+const INMOBILIARIA_RESOURCES = ["propiedades-inmobiliaria", "emprendimientos", "tipos-propiedad", "vacancias"] as const;
 const ADMIN_RESOURCES = [
   "po-invoices-agenda",
   "facturas",

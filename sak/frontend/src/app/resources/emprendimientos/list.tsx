@@ -1,53 +1,107 @@
-﻿"use client";
+"use client";
 
-import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { SelectInput } from "@/components/select-input";
-import { TextInput } from "@/components/text-input";
-import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
+import { FilterButton } from "@/components/filter-form";
+import {
+  FormOrderBulkActionsToolbar,
+  FormOrderListRowActions,
+  ListBoolean,
+  ListColumn,
+  ListDate,
+  ListID,
+  ListPaginator,
+  ListStatus,
+  ListText,
+  ResponsiveDataTable,
+  buildListFilters,
+} from "@/components/forms/form_order";
+import { List } from "@/components/list";
 
-const estadoChoices = [
-  { id: "planificacion", name: "Planificación" },
-  { id: "construccion", name: "Construcción" },
-  { id: "finalizado", name: "Finalizado" },
-  { id: "cancelado", name: "Cancelado" },
-];
+import { EMPRENDIMIENTO_ESTADO_CHOICES, EMPRENDIMIENTO_STATUS_BADGES } from "./model";
 
-const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar emprendimientos" className="w-full" />,
-  <SelectInput key="estado" source="estado" label="Estado" choices={estadoChoices} emptyText="Todos" />,
-];
+const LIST_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar emprendimientos",
+        alwaysOn: true,
+        className: "w-[140px] sm:w-[180px]",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "estado",
+        label: "Estado",
+        choices: EMPRENDIMIENTO_ESTADO_CHOICES,
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "emprendimientos" },
+);
+
+const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton
+      filters={LIST_FILTERS}
+      size="sm"
+      buttonClassName={ACTION_BUTTON_CLASS}
+    />
+    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
+    <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
 
 export const EmprendimientoList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={25} sort={{ field: "nombre", order: "ASC" }}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="id" label="ID">
-        <TextField source="id" />
-      </DataTable.Col>
-      <DataTable.Col source="nombre" label="Nombre">
-        <TextField source="nombre" />
-      </DataTable.Col>
-      <DataTable.Col source="estado" label="Estado">
-        <TextField source="estado" />
-      </DataTable.Col>
-      <DataTable.Col source="activo" label="Activo">
-        <TextField source="activo" />
-      </DataTable.Col>
-      <DataTable.Col>
-        <EditButton />
-      </DataTable.Col>
-    </DataTable>
+  <List
+    title="Emprendimientos"
+    filters={LIST_FILTERS}
+    actions={<ListActions />}
+    debounce={300}
+    perPage={25}
+    containerClassName="max-w-[980px] w-full mr-auto"
+    pagination={<ListPaginator />}
+    sort={{ field: "nombre", order: "ASC" }}
+  >
+    <ResponsiveDataTable
+      rowClick="edit"
+      bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
+      mobileConfig={{
+        primaryField: "nombre",
+        secondaryFields: ["estado", "activo"],
+        detailFields: [],
+      }}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <ListColumn source="id" label="ID" className="w-[50px] text-center">
+        <ListID source="id" widthClass="w-[50px]" />
+      </ListColumn>
+      <ListColumn source="nombre" label="Nombre" className="w-[170px]">
+        <ListText source="nombre" className="whitespace-normal break-words" />
+      </ListColumn>
+      <ListColumn source="estado" label="Estado" className="w-[120px]">
+        <ListStatus source="estado" statusClasses={EMPRENDIMIENTO_STATUS_BADGES} />
+      </ListColumn>
+      <ListColumn source="fecha_inicio" label="Fecha inicio" className="w-[110px]">
+        <ListDate source="fecha_inicio" />
+      </ListColumn>
+      <ListColumn source="fecha_fin_estimada" label="Fecha fin" className="w-[110px]">
+        <ListDate source="fecha_fin_estimada" />
+      </ListColumn>
+      <ListColumn source="activo" label="Activo" className="w-[80px]">
+        <ListBoolean source="activo" />
+      </ListColumn>
+      <ListColumn label="Acciones" className="w-[60px]">
+        <FormOrderListRowActions />
+      </ListColumn>
+    </ResponsiveDataTable>
   </List>
 );

@@ -1,28 +1,73 @@
-﻿"use client";
+"use client";
+
+import { required } from "ra-core";
 
 import { SimpleForm } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
-import { SelectInput } from "@/components/select-input";
-import { BooleanInput } from "@/components/boolean-input";
-import { required } from "ra-core";
-import { EMPRENDIMIENTO_ESTADO_CHOICES } from "./model";
+import {
+  FormBoolean,
+  FormDate,
+  FormErrorSummary,
+  FormSelect,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+
+import {
+  EMPRENDIMIENTO_ESTADO_CHOICES,
+  EMPRENDIMIENTO_DEFAULTS,
+  type EmprendimientoFormValues,
+} from "./model";
 
 export const EmprendimientoForm = () => (
-  <SimpleForm>
-    <TextInput source="nombre" label="Nombre" validate={required()} className="w-full" />
-    <TextInput source="descripcion" label="Descripción" multiline className="w-full" />
-    <TextInput source="ubicacion" label="Ubicación" className="w-full" />
-    <SelectInput
+  <SimpleForm<EmprendimientoFormValues>
+    className="w-full max-w-3xl"
+    warnWhenUnsavedChanges
+    defaultValues={EMPRENDIMIENTO_DEFAULTS}
+  >
+    <FormErrorSummary />
+    <SectionBaseTemplate
+      title="Cabecera"
+      main={<CabeceraFields />}
+      optional={<CabeceraOpcionales />}
+      defaultOpen
+    />
+    {/* Fechas ahora se muestran en cabecera (opcionales) */}
+  </SimpleForm>
+);
+
+const CabeceraFields = () => (
+  <div className="grid gap-2 md:grid-cols-5">
+    <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-[120px]" />
+    <FormSelect
       source="estado"
       label="Estado"
       choices={EMPRENDIMIENTO_ESTADO_CHOICES}
-      defaultValue="planificacion"
-      className="w-full"
+      widthClass="w-[120px]"
+      validate={required()}
     />
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <TextInput source="fecha_inicio" label="Fecha de inicio" type="date" className="w-full" />
-      <TextInput source="fecha_fin_estimada" label="Fecha estimada de fin" type="date" className="w-full" />
+    <FormBoolean
+      source="activo"
+      label="Activo"
+      className="max-w-[70px] justify-self-center"
+    />
+    <FormDate source="fecha_inicio" label="Fecha inicio" widthClass="w-[120px]" />
+    <FormDate source="fecha_fin_estimada" label="Fecha fin" widthClass="w-[120px]" />
+  </div>
+);
+
+const CabeceraOpcionales = () => (
+  <div className="mt-1 space-y-0">
+    <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+      <div className="grid gap-2 md:grid-cols-2">
+        <FormText source="ubicacion" label="Ubicación" widthClass="w-full" />
+        <FormTextarea
+          source="descripcion"
+          label="Descripción"
+          widthClass="w-full"
+          className="md:col-span-2 [&_textarea]:min-h-[80px]"
+        />
+      </div>
     </div>
-    <BooleanInput source="activo" label="Activo" />
-  </SimpleForm>
+  </div>
 );

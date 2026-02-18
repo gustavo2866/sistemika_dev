@@ -60,6 +60,18 @@ export const EMPRENDIMIENTO_DEFAULTS: EmprendimientoFormValues = {
   activo: true,
 };
 
+export const EMPRENDIMIENTO_STATUS_BADGES: Record<string, string> = {
+  planificacion: "bg-slate-100 text-slate-800",
+  construccion: "bg-amber-100 text-amber-800",
+  finalizado: "bg-emerald-100 text-emerald-800",
+  cancelado: "bg-rose-100 text-rose-800",
+};
+
+export const getEmprendimientoStatusBadgeClass = (status?: string | null) => {
+  const key = String(status ?? "").trim().toLowerCase();
+  return EMPRENDIMIENTO_STATUS_BADGES[key] ?? "bg-slate-100 text-slate-800";
+};
+
 export const emprendimientoSchema = createEntitySchema<
   EmprendimientoFormValues,
   Emprendimiento

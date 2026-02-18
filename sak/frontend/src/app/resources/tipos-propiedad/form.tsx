@@ -1,21 +1,30 @@
 "use client";
 
-import { SimpleForm } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
-import { BooleanInput } from "@/components/boolean-input";
 import { required } from "ra-core";
 
+import { SimpleForm } from "@/components/simple-form";
+import {
+  FormBoolean,
+  FormErrorSummary,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+
 export const TipoPropiedadForm = () => (
-  <SimpleForm className="w-full max-w-2xl">
-    <TextInput source="nombre" label="Nombre" validate={required()} className="w-full" />
-    <TextInput
-      source="descripcion"
-      label="Descripcion"
-      multiline
-      className="w-full"
-      rows={3}
+  <SimpleForm className="w-full max-w-2xl" warnWhenUnsavedChanges>
+    <FormErrorSummary />
+    <SectionBaseTemplate
+      title="Cabecera"
+      main={
+        <div className="grid gap-2 md:grid-cols-3 md:items-end">
+          <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-full" />
+          <FormText source="descripcion" label="Descripcion" widthClass="w-full" />
+          <FormBoolean source="activo" label="Activo" />
+        </div>
+      }
+      defaultOpen
     />
-    <BooleanInput source="activo" label="Activo" defaultValue />
   </SimpleForm>
 );
 
