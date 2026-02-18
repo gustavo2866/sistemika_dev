@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import {
   type Identifier,
@@ -17,13 +17,133 @@ import {
   type PoInvoiceFormValues,
 } from "./model";
 
+const resolveNumericId = (value: unknown) => {
+  if (value == null) return undefined;
+  if (typeof value === "object") {
+    const maybeId = (value as { id?: unknown; value?: unknown }).id ??
+      (value as { value?: unknown }).value;
+    return resolveNumericId(maybeId);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "0") return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+  return undefined;
+};
+
 // === Tipos ===
 export type PoInvoiceRecord = PoInvoiceFormValues & {
   id?: Identifier;
   invoice_status?: {
     id?: number | null;
     nombre?: string | null;
+    orden?: number | null;
   } | null;
+};
+
+export const isPoInvoiceEditableByOrden = (orden?: number | null) => {
+  if (orden == null) return false;
+  return [1, 2].includes(Number(orden));
+};
+
+const normalizeStatusName = (value?: string | null) =>
+  value ? String(value).trim().toLowerCase() : "";
+
+export const usePoInvoiceReadOnly = () => {
+  const record = useRecordContext<PoInvoiceRecord>();
+  const isCreate = !record?.id;
+  if (isCreate) return false;
+  const { control } = useFormContext<PoInvoiceFormValues>();
+  const formStatusId = useWatch({ name: "invoice_status_id", control }) as
+    | number
+    | undefined;
+  const orden =
+    record?.invoice_status?.orden ??
+    record?.invoice_status?.id ??
+    formStatusId;
+  if (orden != null) {
+    return !isPoInvoiceEditableByOrden(orden);
+  }
+  const statusKey = normalizeStatusName(record?.invoice_status?.nombre);
+  if (statusKey) {
+    return !["borrador", "confirmada", "confirmado"].includes(statusKey);
+  }
+  return true;
+};
+
+export const useResponsableCentroCostoSync = () => {
+  const dataProvider = useDataProvider();
+  const { setValue, getValues } = useFormContext<PoInvoiceFormValues>();
+  const responsableId = useWatch({ name: "usuario_responsable_id" }) as unknown;
+  const oportunidadId = useWatch({ name: "oportunidad_id" }) as unknown;
+  const prevResponsableId = useRef<number | undefined>(undefined);
+
+  const syncFromResponsable = useCallback(
+    async (nextId: number, forceDirty: boolean) => {
+      const currentOportunidad =
+        resolveNumericId(getValues("oportunidad_id")) ??
+        resolveNumericId(oportunidadId);
+      if (currentOportunidad) return;
+
+      try {
+        const { data: usuario } = await dataProvider.getOne("users", {
+          id: nextId,
+        });
+
+        const deptoId = resolveNumericId(usuario?.departamento_id);
+        if (deptoId) {
+          setValue("departamento_id", deptoId, { shouldDirty: forceDirty });
+        } else {
+          setValue("departamento_id", null, { shouldDirty: forceDirty });
+          setValue("centro_costo_id", null, { shouldDirty: forceDirty });
+          return;
+        }
+
+        const { data: depto } = await dataProvider.getOne("departamentos", {
+          id: deptoId,
+        });
+        const centroId = resolveNumericId(depto?.centro_costo_id);
+        if (centroId) {
+          setValue("centro_costo_id", centroId, { shouldDirty: forceDirty });
+        } else {
+          setValue("centro_costo_id", null, { shouldDirty: forceDirty });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [dataProvider, getValues, oportunidadId, setValue],
+  );
+
+  const handleResponsableChange = useCallback(
+    async (choice: { id?: unknown; value?: unknown } | null) => {
+      const nextId = resolveNumericId(choice?.id ?? choice?.value ?? choice);
+      if (!nextId) return;
+      if (prevResponsableId.current === nextId) return;
+      prevResponsableId.current = nextId;
+      await syncFromResponsable(nextId, true);
+    },
+    [syncFromResponsable],
+  );
+
+  useEffect(() => {
+    const resolvedId = resolveNumericId(responsableId);
+    if (!resolvedId) return;
+    if (prevResponsableId.current == null) {
+      prevResponsableId.current = resolvedId;
+      const currentCentro = resolveNumericId(getValues("centro_costo_id"));
+      if (!currentCentro) {
+        void syncFromResponsable(resolvedId, false);
+      }
+    }
+  }, [responsableId, getValues, syncFromResponsable]);
+
+  return { handleResponsableChange };
 };
 
 // === Defaults iniciales ===
@@ -63,9 +183,18 @@ export const usePoInvoiceDefaults = () => {
   const invoiceStatusFinId = useWatch({ name: "invoice_status_fin_id", control }) as
     | number
     | undefined;
+  const metodoPagoId = useWatch({ name: "metodo_pago_id", control }) as
+    | number
+    | undefined;
+  const fechaEmision = useWatch({ name: "fecha_emision", control }) as
+    | string
+    | undefined;
   const proveedorId = useWatch({ name: "proveedor_id", control }) as
     | number
     | undefined;
+  const [diasVencimientoProveedor, setDiasVencimientoProveedor] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     if (invoiceStatusId || dirtyFields?.invoice_status_id) return;
@@ -101,6 +230,11 @@ export const usePoInvoiceDefaults = () => {
   }, [invoiceStatusFinId, dirtyFields?.invoice_status_fin_id, setValue]);
 
   useEffect(() => {
+    if (metodoPagoId || dirtyFields?.metodo_pago_id) return;
+    setValue("metodo_pago_id", 1, { shouldDirty: false });
+  }, [metodoPagoId, dirtyFields?.metodo_pago_id, setValue]);
+
+  useEffect(() => {
     if (!proveedorId) return;
     let active = true;
     (async () => {
@@ -111,8 +245,10 @@ export const usePoInvoiceDefaults = () => {
 
       const defaults = proveedor as
         | {
+            default_metodo_pago_id?: number | null;
             default_tipo_comprobante_id?: number | null;
             tipo_comprobante_id?: number | null;
+            dias_vencimiento?: number | null;
           }
         | undefined;
 
@@ -120,6 +256,19 @@ export const usePoInvoiceDefaults = () => {
         value == null ||
         (typeof value === "string" && value.trim() === "") ||
         (typeof value === "number" && value <= 0);
+
+      const defaultMetodo = defaults?.default_metodo_pago_id;
+      if (defaultMetodo) {
+        const currentMetodo = getValues("metodo_pago_id");
+        if (isEmpty(currentMetodo) || !dirtyFields?.metodo_pago_id) {
+          setValue("metodo_pago_id", Number(defaultMetodo), {
+            shouldDirty: true,
+          });
+        }
+      }
+
+      const diasVencimiento = defaults?.dias_vencimiento ?? null;
+      setDiasVencimientoProveedor(diasVencimiento);
 
       const defaultTipoComprobante =
         defaults?.tipo_comprobante_id ?? defaults?.default_tipo_comprobante_id;
@@ -142,6 +291,32 @@ export const usePoInvoiceDefaults = () => {
     getValues,
     setValue,
     dirtyFields?.id_tipocomprobante,
+    dirtyFields?.metodo_pago_id,
+  ]);
+
+  useEffect(() => {
+    if (diasVencimientoProveedor == null) return;
+    const currentVencimiento = getValues("fecha_vencimiento");
+    const isEmpty = (value: unknown) =>
+      value == null ||
+      (typeof value === "string" && value.trim() === "") ||
+      (typeof value === "number" && value <= 0);
+    if (!isEmpty(currentVencimiento) && dirtyFields?.fecha_vencimiento) return;
+
+    const baseDate = isEmpty(fechaEmision)
+      ? new Date()
+      : new Date(String(fechaEmision));
+    if (Number.isNaN(baseDate.getTime())) return;
+    const nextDate = new Date(baseDate);
+    nextDate.setDate(nextDate.getDate() + Number(diasVencimientoProveedor));
+    const iso = nextDate.toISOString().slice(0, 10);
+    setValue("fecha_vencimiento", iso, { shouldDirty: false });
+  }, [
+    diasVencimientoProveedor,
+    fechaEmision,
+    dirtyFields?.fecha_vencimiento,
+    getValues,
+    setValue,
   ]);
 };
 

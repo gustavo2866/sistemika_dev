@@ -76,6 +76,30 @@ const withErrorHandling =
     }
   }) as T;
 
+const normalizeIdValue = (value: unknown) => {
+  if (value === "" || value === null || value === undefined) return null;
+  if (value === 0 || value === "0") return null;
+  return value;
+};
+
+const isIdKey = (key: string) =>
+  key !== "id" && (key.endsWith("_id") || key.startsWith("id_"));
+
+const sanitizeIdsInData = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeIdsInData(item));
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    return entries.reduce<Record<string, unknown>>((acc, [key, val]) => {
+      const sanitized = sanitizeIdsInData(val);
+      acc[key] = isIdKey(key) ? normalizeIdValue(sanitized) : sanitized;
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
 export const dataProvider: DataProvider = {
   ...baseProvider,
   getList: withErrorHandling((resource, params) => {
@@ -112,13 +136,15 @@ export const dataProvider: DataProvider = {
     if (typeof window !== "undefined") {
       console.log("[dataProvider] create", resource, params);
     }
-    return baseProvider.create(resource, params);
+    const sanitized = sanitizeIdsInData(params.data);
+    return baseProvider.create(resource, { ...params, data: sanitized });
   }),
   update: withErrorHandling(async (resource, params) => {
     if (typeof window !== "undefined") {
       console.log("[dataProvider] update", resource, params);
     }
-    const response = await baseProvider.update(resource, params);
+    const sanitized = sanitizeIdsInData(params.data);
+    const response = await baseProvider.update(resource, { ...params, data: sanitized });
     if (typeof window !== "undefined") {
       console.log("[dataProvider] update response", resource, response);
     }

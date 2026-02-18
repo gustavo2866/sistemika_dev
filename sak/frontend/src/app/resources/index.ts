@@ -14,6 +14,7 @@ export * from "./po/po-invoice-status-fin";
 export * from "./centros-costo";
 export * from "./tipos-articulo";
 export * from "./propiedades";
+export * from "./inmobiliaria";
 export * from "./vacancias";
 export * from "./crm-catalogos/crm-catalogos-tipos-operacion";
 export * from "./crm-catalogos/crm-catalogos-motivos-perdida";

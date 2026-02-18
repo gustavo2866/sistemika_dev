@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { required, useWrappedSource } from "ra-core";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Download } from "lucide-react";
@@ -47,10 +47,13 @@ import {
   useAccionesCabeceraFactura,
   usePoInvoiceDefaults,
   usePoInvoiceFormDefaults,
+  usePoInvoiceReadOnly,
+  useResponsableCentroCostoSync,
   usePoInvoiceTotals,
 } from "./form_hooks";
 import { FormConfirmarButton } from "./form_confirmar";
 import {
+  useCentroCostoOportunidadExclusion,
   useDetalleCentroCostoOportunidadExclusion,
   useOcIdByPoOrderDetailId,
 } from "../shared/po-hooks";
@@ -60,36 +63,49 @@ import { PoOrderLoadDialog } from "../shared/po-order-load-dialog";
 // Renderiza el formulario principal de Factura OC.
 export const PoInvoiceForm = () => {
   const { defaultValues, isLoadingDefaults } = usePoInvoiceFormDefaults();
+  const [isEditing, setIsEditing] = useState(false);
 
   if (isLoadingDefaults) {
     return <Loading delay={200} />;
   }
 
   return (
-    <SimpleForm<PoInvoiceFormValues>
-      className="w-full max-w-3xl"
-      resolver={zodResolver(poInvoiceSchema) as any}
-      toolbar={<FacturaToolbar />}
-      defaultValues={defaultValues}
-    >
-      <FacturaContenido />
-    </SimpleForm>
+    <PoInvoiceDetailEditContext.Provider value={{ isEditing, setIsEditing }}>
+      <SimpleForm<PoInvoiceFormValues>
+        className="w-full max-w-3xl"
+        resolver={zodResolver(poInvoiceSchema) as any}
+        toolbar={<FacturaToolbar />}
+        defaultValues={defaultValues}
+      >
+        <FacturaContenido />
+      </SimpleForm>
+    </PoInvoiceDetailEditContext.Provider>
   );
 };
 
 // Barra de acciones del formulario de factura.
-const FacturaToolbar = () => (
-  <div className="flex w-full items-center justify-end gap-2">
-    <FormOrderCancelButton />
-    <FormOrderSaveButton variant="secondary" />
-    <FormConfirmarButton />
-  </div>
-);
+const FacturaToolbar = () => {
+  const editContext = usePoInvoiceDetailEdit();
+  const isDetailEditing = editContext?.isEditing ?? false;
+  const isReadOnly = usePoInvoiceReadOnly();
+
+  return (
+    <div className="flex w-full items-center justify-end gap-2">
+      <FormOrderCancelButton />
+      <FormOrderSaveButton
+        variant="secondary"
+        disabled={isDetailEditing || isReadOnly}
+      />
+      <FormConfirmarButton disabled={isDetailEditing || isReadOnly} />
+    </div>
+  );
+};
 
 // Contenido principal del formulario (cabecera, detalle e impuestos).
 const FacturaContenido = () => {
   usePoInvoiceDefaults();
   usePoInvoiceTotals();
+  useCentroCostoOportunidadExclusion();
   useDetalleCentroCostoOportunidadExclusion();
 
   return (
@@ -121,6 +137,7 @@ const CabeceraFactura = () => {
     handleDelete,
   } = useAccionesCabeceraFactura();
 
+  const isReadOnly = usePoInvoiceReadOnly();
   const accionesMenu =
     canPreview || canDelete ? (
       <FormOrderHeaderMenuActions
@@ -135,6 +152,7 @@ const CabeceraFactura = () => {
     <>
       <SectionBaseTemplate
         title="Cabecera"
+        readOnly={isReadOnly}
         main={
           <>
             <CabeceraCamposPrincipales />
@@ -214,34 +232,72 @@ const CabeceraCamposPrincipales = () => {
 const CabeceraCamposOpcionales = () => (
   <div className="mt-1 space-y-0">
     <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
-      <div className="grid gap-2 md:grid-cols-4">
-        <FormReferenceAutocomplete
-          referenceProps={{
-            source: "usuario_responsable_id",
-            reference: "users",
-          }}
-          inputProps={{
-            optionText: "nombre",
-            label: "Responsable",
-            validate: required(),
-          }}
-          widthClass="w-full"
-        />
-        <FormDate
-          source="fecha_vencimiento"
-          label="Fecha vencimiento"
-          widthClass="w-full"
-        />
-        <FormTextarea
-          source="observaciones"
-          label="Observaciones"
-          widthClass="w-full"
-          className="md:col-span-4 [&_textarea]:min-h-[64px]"
-        />
-      </div>
+      <CabeceraCamposOpcionalesFields />
     </div>
   </div>
 );
+
+const CabeceraCamposOpcionalesFields = () => {
+  const { handleResponsableChange } = useResponsableCentroCostoSync();
+
+  return (
+    <div className="grid gap-2 md:grid-cols-4">
+      <FormReferenceAutocomplete
+        referenceProps={{
+          source: "centro_costo_id",
+          reference: "centros-costo",
+        }}
+        inputProps={{
+          optionText: "nombre",
+          label: "Centro de costo",
+        }}
+        widthClass="w-full"
+      />
+      <FormReferenceAutocomplete
+        referenceProps={{
+          source: "oportunidad_id",
+          reference: "crm/oportunidades",
+        }}
+        inputProps={{
+          optionText: "titulo",
+          label: "Oportunidad",
+        }}
+        widthClass="w-full"
+      />
+      <FormReferenceAutocomplete
+        referenceProps={{
+          source: "usuario_responsable_id",
+          reference: "users",
+        }}
+        inputProps={{
+          optionText: "nombre",
+          label: "Responsable",
+          validate: required(),
+          onSelectionChange: handleResponsableChange,
+        }}
+        widthClass="w-full"
+      />
+      <ReferenceInput source="metodo_pago_id" reference="metodos-pago">
+        <FormSelect
+          optionText="nombre"
+          label="Metodo de pago"
+          widthClass="w-full"
+        />
+      </ReferenceInput>
+      <FormDate
+        source="fecha_vencimiento"
+        label="Fecha vencimiento"
+        widthClass="w-full"
+      />
+      <FormTextarea
+        source="observaciones"
+        label="Observaciones"
+        widthClass="w-full"
+        className="md:col-span-4 [&_textarea]:min-h-[64px]"
+      />
+    </div>
+  );
+};
 
 // === Seccion detalle ===
 // Seccion de detalle con articulos.
@@ -249,6 +305,14 @@ const DetalleFactura = () => {
   const { getValues, setValue } = useFormContext<PoInvoiceFormValues>();
   const proveedorId = useWatch({ name: "proveedor_id" }) as number | undefined;
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const editContext = usePoInvoiceDetailEdit();
+  const isReadOnly = usePoInvoiceReadOnly();
+  const handleActiveRowChange = useMemo(
+    () => (index: number | null) => {
+      editContext?.setIsEditing(index != null);
+    },
+    [editContext],
+  );
 
   const columns: SectionDetailColumn[] = [
     { label: "Articulo", width: "180px", mobileSpan: "full" },
@@ -262,67 +326,76 @@ const DetalleFactura = () => {
 
   // Campos principales del detalle de factura.
   const DetalleCamposPrincipales = useCallback(
-    ({ isActive }: SectionDetailFieldsProps) => (
-      <>
-        <DetailFieldCell label="Articulo" data-focus-field="true">
-          <FormReferenceAutocomplete
-            referenceProps={{
-              source: "articulo_id",
-              reference: "articulos",
-            }}
-            inputProps={{
-              optionText: "nombre",
-              label: false,
-            }}
-            widthClass="w-full"
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Descripcion" desktopOnly>
-          <FormText
-            source="descripcion"
-            label={false}
-            widthClass="w-full"
-            readOnly={!isActive}
-            className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Cant.">
-          <FormNumber
-            source="cantidad"
-            label={false}
-            inputMode="decimal"
-            step="0.001"
-            widthClass="w-full"
-            validate={required()}
-            readOnly={!isActive}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Precio">
-          <FormNumber
-            source="precio_unitario"
-            label={false}
-            inputMode="decimal"
-            step="0.01"
-            widthClass="w-full"
-            validate={required()}
-            readOnly={!isActive}
-            className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-          />
-        </DetailFieldCell>
-        <DetailFieldCell label="Importe">
-          <CalculatedImporteDetalle
-            widthClass="w-full"
-            valueClassName={!isActive ? FORM_VALUE_READONLY_CLASS : undefined}
-          />
-          <HiddenInput source="importe" />
-        </DetailFieldCell>
-        <DetailFieldCell label="OC" className="items-center text-center">
-          <DetalleOrdenId />
-        </DetailFieldCell>
-      </>
-    ),
+    ({ isActive }: SectionDetailFieldsProps) => {
+      const descripcionSource = useWrappedSource("descripcion");
+      const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
+      const hasDescripcion = Boolean(descripcion?.trim());
+
+      return (
+        <>
+          <DetailFieldCell label="Articulo" data-focus-field="true">
+            <FormReferenceAutocomplete
+              referenceProps={{
+                source: "articulo_id",
+                reference: "articulos",
+              }}
+              inputProps={{
+                optionText: "nombre",
+                label: false,
+              }}
+              widthClass="w-full"
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell
+            label="Descripcion"
+            className={cn(!hasDescripcion && "hidden sm:flex")}
+          >
+            <FormText
+              source="descripcion"
+              label={false}
+              widthClass="w-full"
+              readOnly={!isActive}
+              className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell label="Cant.">
+            <FormNumber
+              source="cantidad"
+              label={false}
+              inputMode="decimal"
+              step="0.001"
+              widthClass="w-full"
+              validate={required()}
+              readOnly={!isActive}
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell label="Precio">
+            <FormNumber
+              source="precio_unitario"
+              label={false}
+              inputMode="decimal"
+              step="0.01"
+              widthClass="w-full"
+              validate={required()}
+              readOnly={!isActive}
+              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+            />
+          </DetailFieldCell>
+          <DetailFieldCell label="Importe">
+            <CalculatedImporteDetalle
+              widthClass="w-full"
+              valueClassName={!isActive ? FORM_VALUE_READONLY_CLASS : undefined}
+            />
+            <HiddenInput source="importe" />
+          </DetailFieldCell>
+          <DetailFieldCell label="OC" className="items-center text-center">
+            <DetalleOrdenId />
+          </DetailFieldCell>
+        </>
+      );
+    },
     [],
   );
 
@@ -331,14 +404,7 @@ const DetalleFactura = () => {
     ({ isActive }: SectionDetailFieldsProps) => (
       <div className="w-full">
         <div className="mt-0 rounded-md border border-muted/60 bg-muted/30 p-2">
-          <div className="grid gap-2 md:grid-cols-3 md:justify-start">
-            <FormText
-              source="descripcion"
-              label="Descripcion"
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={cn("sm:hidden", !isActive && FORM_FIELD_READONLY_CLASS)}
-            />
+          <div className="grid gap-2 md:grid-cols-2 md:justify-start">
             <ReferenceInput source="centro_costo_id" reference="centros-costo">
               <FormSelect
                 optionText="nombre"
@@ -384,13 +450,16 @@ const DetalleFactura = () => {
         mainFields={DetalleCamposPrincipales}
         optionalFields={DetalleCamposOpcionales}
         defaults={getPoInvoiceDetalleDefaults}
+        maxHeightClassName="md:max-h-48"
+        onActiveRowChange={handleActiveRowChange}
+        readOnly={isReadOnly}
         actions={
           <DropdownMenuItem
             onSelect={() => {
               if (isLoadDisabled) return;
               setLoadDialogOpen(true);
             }}
-            disabled={isLoadDisabled}
+            disabled={isLoadDisabled || isReadOnly}
             className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
           >
             <Download className="h-3 w-3" />
@@ -410,9 +479,17 @@ const DetalleFactura = () => {
   );
 };
 
+const PoInvoiceDetailEditContext = createContext<{
+  isEditing: boolean;
+  setIsEditing: (value: boolean) => void;
+} | null>(null);
+
+const usePoInvoiceDetailEdit = () => useContext(PoInvoiceDetailEditContext);
+
 // === Seccion impuestos ===
 // Seccion de impuestos y conceptos adicionales.
 const ImpuestosFactura = () => {
+  const isReadOnly = usePoInvoiceReadOnly();
   const columns: SectionDetailColumn[] = [
     { label: "Concepto", width: "180px" },
     { label: "Descripcion", width: "200px" },
@@ -504,6 +581,8 @@ const ImpuestosFactura = () => {
       mainFields={ImpuestoCamposPrincipales}
       optionalFields={ImpuestoCamposOpcionales}
       defaults={getPoInvoiceTaxDefaults}
+      maxHeightClassName="md:max-h-48"
+      readOnly={isReadOnly}
     />
   );
 };

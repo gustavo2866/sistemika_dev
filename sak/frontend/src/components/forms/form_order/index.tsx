@@ -103,6 +103,41 @@ export { FormOrderPrintButton } from "./show/print_button";
 const baseButtonClasses =
   "h-6 px-2 text-[9px] sm:h-7 sm:px-2.5 sm:text-[10px] gap-1";
 
+const focusableSelector =
+  "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+
+const getFormFocusables = (form: HTMLElement) =>
+  Array.from(form.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (el) =>
+      !el.hasAttribute("disabled") &&
+      el.getAttribute("aria-disabled") !== "true" &&
+      el.tabIndex !== -1 &&
+      (el.offsetParent !== null || el.getClientRects().length > 0),
+  );
+
+export const handleFormTabLoop = (
+  event: React.KeyboardEvent<HTMLElement>,
+) => {
+  if (event.defaultPrevented || event.key !== "Tab") return;
+  const currentTarget = event.currentTarget as HTMLElement;
+  const form = currentTarget.closest("form");
+  if (!form) return;
+  const focusables = getFormFocusables(form);
+  if (!focusables.length) return;
+  const active = document.activeElement as HTMLElement | null;
+  const current =
+    active && focusables.includes(active) ? active : currentTarget;
+  const index = focusables.indexOf(current);
+  if (index === -1) return;
+  if (!event.shiftKey && index === focusables.length - 1) {
+    event.preventDefault();
+    focusables[0]?.focus();
+  } else if (event.shiftKey && index === 0) {
+    event.preventDefault();
+    focusables[focusables.length - 1]?.focus();
+  }
+};
+
 export const FormOrderCancelButton = (props: React.ComponentProps<"button">) => {
   const navigate = useNavigate();
   const { className, ...rest } = props;
@@ -124,12 +159,18 @@ export const FormOrderCancelButton = (props: React.ComponentProps<"button">) => 
 export type FormOrderSaveButtonProps = React.ComponentProps<typeof SaveButton>;
 
 export const FormOrderSaveButton = (props: FormOrderSaveButtonProps) => {
-  const { className, ...rest } = props;
+  const { className, onKeyDown, ...rest } = props;
   return (
     <SaveButton
       label="Guardar"
       className={cn(baseButtonClasses, className)}
       icon={<Save className="size-3 sm:size-4" />}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (!event.defaultPrevented) {
+          handleFormTabLoop(event);
+        }
+      }}
       tabIndex={-1}
       {...rest}
     />

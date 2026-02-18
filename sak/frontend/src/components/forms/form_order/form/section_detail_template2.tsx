@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
   type CSSProperties,
@@ -168,9 +170,51 @@ export const SectionDetailTemplate2 = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { getValues, setValue } = useFormContext();
   const activeRow = useActiveRow({ name: detailsSource, focusSelector });
+  const sectionRef = useRef<HTMLDivElement | null>(null);
   const disableAdd = readOnly || activeRow.activeIndex != null;
   const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
   const hasDetails = (detalles ?? []).length > 0;
+  const getFormElement = useCallback(() => {
+    const form =
+      sectionRef.current?.closest("form") ??
+      document.querySelector("[data-form-scope='main']");
+    return (form as HTMLFormElement | null) ?? null;
+  }, []);
+  const tabbingOutRef = useRef(false);
+
+  const getFocusableElements = useCallback((form: HTMLElement) => {
+    const selector =
+      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+    return Array.from(form.querySelectorAll<HTMLElement>(selector)).filter(
+      (el) =>
+        !el.hasAttribute("disabled") &&
+        el.getAttribute("aria-disabled") !== "true" &&
+        el.tabIndex !== -1 &&
+        (el.offsetParent !== null || el.getClientRects().length > 0),
+    );
+  }, []);
+
+  const focusNextWithinForm = useCallback(() => {
+    const form = getFormElement();
+    if (!form) return;
+    const focusables = getFocusableElements(form);
+    if (!focusables.length) return;
+    let next: HTMLElement | undefined;
+    if (sectionRef.current) {
+      next = focusables.find((el) => sectionRef.current?.contains(el));
+      if (!next) {
+        next = focusables.find((el) => {
+          if (sectionRef.current?.contains(el)) return false;
+          const position = sectionRef.current?.compareDocumentPosition(el) ?? 0;
+          return (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+        });
+      }
+    }
+    next = next ?? focusables[0];
+    requestAnimationFrame(() => {
+      next?.focus();
+    });
+  }, [getFormElement, getFocusableElements]);
 
   const gridTemplateColumns = useMemo(() => {
     if (!mainColumns?.length) return undefined;
@@ -333,7 +377,23 @@ export const SectionDetailTemplate2 = ({
           <MoreHorizontal className="h-3 w-3" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-32">
+      <DropdownMenuContent
+        align="end"
+        className="w-32"
+        onKeyDown={(event) => {
+          if (event.key !== "Tab" || event.shiftKey) return;
+          tabbingOutRef.current = true;
+        }}
+        onCloseAutoFocus={(event) => {
+          if (!tabbingOutRef.current) return;
+          tabbingOutRef.current = false;
+          event.preventDefault();
+          focusNextWithinForm();
+        }}
+        onInteractOutside={() => {
+          tabbingOutRef.current = false;
+        }}
+      >
         <DropdownMenuItem
           className="gap-2 text-[9px] sm:text-[10px]"
           onClick={() => {
@@ -368,7 +428,8 @@ export const SectionDetailTemplate2 = ({
   );
 
   return (
-    <SectionCard
+    <div ref={sectionRef}>
+      <SectionCard
       title={title}
       isOpen={isOpen}
       onToggle={() => setIsOpen((v) => !v)}
@@ -401,6 +462,7 @@ export const SectionDetailTemplate2 = ({
           rowGridClassName,
           rowGridStyle,
           readOnly,
+          getFormElement,
         }}
       >
         <div className="mt-1 space-y-0 w-full" onClick={handleContainerClick}>
@@ -437,6 +499,7 @@ export const SectionDetailTemplate2 = ({
         onConfirm={handleClear}
         onClose={() => setConfirmOpen(false)}
       />
-    </SectionCard>
+      </SectionCard>
+    </div>
   );
 };

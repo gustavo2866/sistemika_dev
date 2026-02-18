@@ -53,6 +53,7 @@ export const SectionBaseTemplate = ({
       variant="ghost"
       size="icon"
       className="h-6 w-6 text-muted-foreground"
+      tabIndex={-1}
       onClick={() => setIsOpen((v) => !v)}
       aria-label={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
       title={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
@@ -97,6 +98,7 @@ export const SectionBaseTemplate = ({
       isOpen={isOpen}
       onToggle={() => setIsOpen((v) => !v)}
       headerActions={headerActions}
+      headerTabIndex={-1}
       cardClassName="pt-3 pb-2"
       contentClassName="px-3 pt-0 pb-2"
       titleClassName="mb-2"

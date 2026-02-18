@@ -45,7 +45,11 @@ export const useArticuloFilterByTipoSolicitud = ({
 };
 
 const hasValue = (value: unknown) =>
-  value !== null && value !== undefined && value !== "";
+  value !== null &&
+  value !== undefined &&
+  value !== "" &&
+  value !== 0 &&
+  value !== "0";
 
 export const useMutuallyExclusiveFields = ({
   fieldA,
@@ -149,8 +153,7 @@ export const useTipoSolicitudChangeGuard = () => {
 
 // Mantiene exclusividad entre centro de costo y oportunidad en cabecera.
 export const useCentroCostoOportunidadExclusion = () => {
-  const { setValue, control } = useFormContext();
-  const { dirtyFields } = useFormState({ control });
+  const { setValue } = useFormContext();
   const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
   const oportunidadId = useWatch({ name: "oportunidad_id" }) as number | undefined;
 
@@ -158,28 +161,35 @@ export const useCentroCostoOportunidadExclusion = () => {
   const prevOportunidad = useRef(oportunidadId);
 
   useEffect(() => {
-    if (centroCostoId === prevCentro.current) return;
+    const centroChanged = prevCentro.current !== centroCostoId;
+    const oportunidadChanged = prevOportunidad.current !== oportunidadId;
+
+    if (
+      centroChanged &&
+      !oportunidadChanged &&
+      hasValue(centroCostoId) &&
+      hasValue(oportunidadId)
+    ) {
+      setValue("oportunidad_id", null, { shouldDirty: true, shouldValidate: true });
+    }
+
+    if (
+      oportunidadChanged &&
+      !centroChanged &&
+      hasValue(oportunidadId) &&
+      hasValue(centroCostoId)
+    ) {
+      setValue("centro_costo_id", null, { shouldDirty: true, shouldValidate: true });
+    }
+
     prevCentro.current = centroCostoId;
-
-    if (!dirtyFields?.centro_costo_id) return;
-    if (centroCostoId == null) return;
-    setValue("oportunidad_id", null, { shouldDirty: true });
-  }, [centroCostoId, dirtyFields?.centro_costo_id, setValue]);
-
-  useEffect(() => {
-    if (oportunidadId === prevOportunidad.current) return;
     prevOportunidad.current = oportunidadId;
-
-    if (!dirtyFields?.oportunidad_id) return;
-    if (oportunidadId == null) return;
-    setValue("centro_costo_id", null, { shouldDirty: true });
-  }, [oportunidadId, dirtyFields?.oportunidad_id, setValue]);
+  }, [centroCostoId, oportunidadId, setValue]);
 };
 
 // Mantiene exclusividad entre centro de costo y oportunidad en detalle.
 export const useDetalleCentroCostoOportunidadExclusion = () => {
-  const { setValue, control } = useFormContext();
-  const { dirtyFields } = useFormState({ control });
+  const { setValue } = useFormContext();
   const detalles = useWatch({ name: "detalles" }) as
     | Array<Record<string, unknown>>
     | undefined;
@@ -196,30 +206,36 @@ export const useDetalleCentroCostoOportunidadExclusion = () => {
       const nextOportunidad = row?.oportunidad_id as number | undefined;
       const prevCentro = prevRow?.centro_costo_id as number | undefined;
       const prevOportunidad = prevRow?.oportunidad_id as number | undefined;
+      const centroChanged = prevCentro !== nextCentro;
+      const oportunidadChanged = prevOportunidad !== nextOportunidad;
 
-      if (nextCentro != null && nextCentro !== prevCentro) {
-        const centroDirty = (dirtyFields as any)?.detalles?.[index]
-          ?.centro_costo_id;
-        if (centroDirty) {
-          setValue(`detalles.${index}.oportunidad_id`, null, {
-            shouldDirty: true,
-          });
-        }
+      if (
+        centroChanged &&
+        !oportunidadChanged &&
+        hasValue(nextCentro) &&
+        hasValue(nextOportunidad)
+      ) {
+        setValue(`detalles.${index}.oportunidad_id`, null, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
       }
 
-      if (nextOportunidad != null && nextOportunidad !== prevOportunidad) {
-        const oportunidadDirty = (dirtyFields as any)?.detalles?.[index]
-          ?.oportunidad_id;
-        if (oportunidadDirty) {
-          setValue(`detalles.${index}.centro_costo_id`, null, {
-            shouldDirty: true,
-          });
-        }
+      if (
+        oportunidadChanged &&
+        !centroChanged &&
+        hasValue(nextOportunidad) &&
+        hasValue(nextCentro)
+      ) {
+        setValue(`detalles.${index}.centro_costo_id`, null, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
       }
     });
 
     prevDetalles.current = current;
-  }, [detalles, dirtyFields, setValue]);
+  }, [detalles, setValue]);
 };
 
 export const useMutuallyExclusiveFieldsWithControl = ({

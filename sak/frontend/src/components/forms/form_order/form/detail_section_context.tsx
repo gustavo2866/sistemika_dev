@@ -7,6 +7,7 @@ export type DetailSectionContextValue = ReturnType<typeof useActiveRow> & {
   rowGridClassName?: string;
   rowGridStyle?: CSSProperties;
   readOnly?: boolean;
+  getFormElement?: () => HTMLElement | null;
 };
 
 export const DetailSectionContext =

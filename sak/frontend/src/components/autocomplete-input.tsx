@@ -228,14 +228,19 @@ export const AutocompleteInput = (
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className="w-full justify-between h-9 px-3 py-2 font-normal disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-70 disabled:border-0 disabled:shadow-none"
+                className="w-full min-w-0 justify-between h-9 px-3 py-2 font-normal disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-70 disabled:border-0 disabled:shadow-none"
                 disabled={isDisabled}
                 tabIndex={props.tabIndex ?? 0}
               >
                 {selectedChoice ? (
-                  <span className="text-sm font-normal">{getInputText(selectedChoice)}</span>
+                  <span className="min-w-0 truncate text-sm font-normal">
+                    {getInputText(selectedChoice)}
+                  </span>
                 ) : (
-                  <span className="text-sm font-normal text-muted-foreground" data-placeholder>
+                  <span
+                    className="min-w-0 truncate text-sm font-normal text-muted-foreground"
+                    data-placeholder
+                  >
                     {placeholder}
                   </span>
                 )}

@@ -54,7 +54,10 @@ export const poInvoiceSchema = z.object({
   id_tipocomprobante: requiredId,
   fecha_emision: z.string().min(1),
   fecha_vencimiento: optionalDate,
+  fecha_pago: optionalDate,
   observaciones: optionalString.pipe(z.string().max(1000).optional()),
+  centro_costo_id: optionalId,
+  oportunidad_id: optionalId,
   subtotal: z.coerce.number().min(0),
   total_impuestos: z.coerce.number().min(0),
   total: z.coerce.number().min(0),
@@ -62,6 +65,7 @@ export const poInvoiceSchema = z.object({
   usuario_responsable_id: requiredId,
   invoice_status_id: requiredId,
   invoice_status_fin_id: optionalId,
+  metodo_pago_id: optionalId,
   fecha_estado: optionalString,
   detalles: z.array(poInvoiceDetalleSchema).min(1),
   taxes: z.array(poInvoiceTaxSchema).optional(),
@@ -110,9 +114,23 @@ export const INVOICE_STATUS_BADGES: Record<string, string> = {
   anulada: "bg-zinc-100 text-zinc-800",
 };
 
+export const INVOICE_STATUS_FIN_BADGES: Record<string, string> = {
+  inicial: "bg-slate-100 text-slate-800",
+  agendada: "bg-sky-100 text-sky-800",
+  autorizada: "bg-emerald-100 text-emerald-800",
+  pagada: "bg-indigo-100 text-indigo-800",
+  cancelada: "bg-rose-100 text-rose-800",
+  cancelado: "bg-rose-100 text-rose-800",
+};
+
 export const getInvoiceStatusBadgeClass = (status?: string | null) => {
   const key = String(status ?? "").toLowerCase();
   return INVOICE_STATUS_BADGES[key] ?? "bg-slate-100 text-slate-800";
+};
+
+export const getInvoiceStatusFinBadgeClass = (status?: string | null) => {
+  const key = String(status ?? "").toLowerCase();
+  return INVOICE_STATUS_FIN_BADGES[key] ?? "bg-slate-100 text-slate-800";
 };
 
 const toNumber = (value: unknown) => {

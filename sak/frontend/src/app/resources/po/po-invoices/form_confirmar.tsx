@@ -17,7 +17,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { Button } from "@/components/ui/button";
 import { useFormContext, useWatch } from "react-hook-form";
 import type { PoInvoiceFormValues } from "./model";
-import { useRowActionDialog } from "@/components/forms/form_order";
+import { handleFormTabLoop, useRowActionDialog } from "@/components/forms/form_order";
 
 const normalizeStatusName = (value?: string | null) =>
   value ? String(value).trim().toLowerCase() : "";
@@ -40,6 +40,43 @@ const resolveStatusId = async (
   }
   return null;
 };
+
+const resolveStatusByOrden = async (
+  dataProvider: ReturnType<typeof useDataProvider>,
+  orden: number,
+) => {
+  const { data } = await dataProvider.getList("po-invoice-status", {
+    pagination: { page: 1, perPage: 1 },
+    sort: { field: "orden", order: "ASC" },
+    filter: { orden },
+  });
+  const status = data?.[0];
+  if (status?.id) {
+    return { id: status.id as number, nombre: status.nombre as string };
+  }
+  return null;
+};
+
+const resolveStatusFinByOrden = async (
+  dataProvider: ReturnType<typeof useDataProvider>,
+  orden: number,
+) => {
+  const { data } = await dataProvider.getList("po-invoice-status-fin", {
+    pagination: { page: 1, perPage: 1 },
+    sort: { field: "orden", order: "ASC" },
+    filter: { orden },
+  });
+  const status = data?.[0];
+  if (status?.id) {
+    return { id: status.id as number, nombre: status.nombre as string };
+  }
+  return null;
+};
+
+const allDetallesHavePoOrder = (detalles?: Array<any>) =>
+  Array.isArray(detalles) &&
+  detalles.length > 0 &&
+  detalles.every((detalle) => Boolean(detalle?.poOrderDetail_id));
 
 const buttonClasses = "h-6 px-2 text-[9px] sm:h-7 sm:px-2.5 sm:text-[10px] gap-1";
 
@@ -79,20 +116,42 @@ export const FormConfirmar = ({
     if (!record?.id) return;
     setLoading(true);
     try {
-      const status = await resolveStatusId(dataProvider);
-      if (!status?.id) {
-        notify("No se encontró el estado Confirmada", { type: "warning" });
+      const detalles = (record as any)?.detalles as Array<any> | undefined;
+      const allLinked = allDetallesHavePoOrder(detalles);
+      const targetStatus = allLinked
+        ? await resolveStatusByOrden(dataProvider, 3)
+        : await resolveStatusId(dataProvider);
+      const targetFin = allLinked
+        ? await resolveStatusFinByOrden(dataProvider, 2)
+        : await resolveStatusFinByOrden(dataProvider, 1);
+
+      if (!targetStatus?.id) {
+        notify(
+          allLinked ? "No se encontró el estado Aprobada" : "No se encontró el estado Confirmada",
+          { type: "warning" },
+        );
+        return;
+      }
+      if (!targetFin?.id) {
+        notify(
+          allLinked
+            ? "No se encontró el estado financiero Agendada"
+            : "No se encontró el estado financiero Inicial",
+          { type: "warning" },
+        );
         return;
       }
       await dataProvider.update(resource, {
         id: record.id,
         data: {
-          invoice_status_id: status.id,
-          invoice_status_fin_id: 1,
+          invoice_status_id: targetStatus.id,
+          invoice_status_fin_id: targetFin.id,
         },
         previousData: record,
       });
-      notify("Factura confirmada", { type: "info" });
+      notify(allLinked ? "Factura aprobada y agendada" : "Factura confirmada", {
+        type: "info",
+      });
       refresh();
     } catch (error) {
       console.error(error);
@@ -219,30 +278,55 @@ export const FormConfirmarButton = ({
   if (!visible || (!isCreate && !isBorrador)) return null;
 
   const handleConfirm = async () => {
+    const isValid = await form.trigger();
+    if (!isValid) {
+      notify("Completa los campos requeridos", { type: "warning" });
+      return;
+    }
     setLoading(true);
     try {
-      const status = await resolveStatusId(dataProvider);
-      if (!status?.id) {
-        notify("No se encontró el estado Confirmada", { type: "warning" });
+      const allLinked = allDetallesHavePoOrder(detalles as Array<any> | undefined);
+      const targetStatus = allLinked
+        ? await resolveStatusByOrden(dataProvider, 3)
+        : await resolveStatusId(dataProvider);
+      const targetFin = allLinked
+        ? await resolveStatusFinByOrden(dataProvider, 2)
+        : await resolveStatusFinByOrden(dataProvider, 1);
+      if (!targetStatus?.id) {
+        notify(
+          allLinked ? "No se encontró el estado Aprobada" : "No se encontró el estado Confirmada",
+          { type: "warning" },
+        );
+        return;
+      }
+      if (!targetFin?.id) {
+        notify(
+          allLinked
+            ? "No se encontró el estado financiero Agendada"
+            : "No se encontró el estado financiero Inicial",
+          { type: "warning" },
+        );
         return;
       }
 
       if (saveContext?.save) {
         const previousStatus = form.getValues("invoice_status_id");
         const previousFin = form.getValues("invoice_status_fin_id");
-        form.setValue("invoice_status_id", status.id, { shouldDirty: true });
-        form.setValue("invoice_status_fin_id", 1, { shouldDirty: true });
+        form.setValue("invoice_status_id", targetStatus.id, { shouldDirty: true });
+        form.setValue("invoice_status_fin_id", targetFin.id, { shouldDirty: true });
         const errors = await saveContext.save({
           ...form.getValues(),
-          invoice_status_id: status.id,
-          invoice_status_fin_id: 1,
+          invoice_status_id: targetStatus.id,
+          invoice_status_fin_id: targetFin.id,
         });
         if (errors) {
           form.setValue("invoice_status_id", previousStatus, { shouldDirty: true });
           form.setValue("invoice_status_fin_id", previousFin, { shouldDirty: true });
           return;
         }
-        notify("Factura confirmada", { type: "info" });
+        notify(allLinked ? "Factura aprobada y agendada" : "Factura confirmada", {
+          type: "info",
+        });
         refresh();
         return;
       }
@@ -251,12 +335,14 @@ export const FormConfirmarButton = ({
       await dataProvider.update(resource, {
         id: record.id,
         data: {
-          invoice_status_id: status.id,
-          invoice_status_fin_id: 1,
+          invoice_status_id: targetStatus.id,
+          invoice_status_fin_id: targetFin.id,
         },
         previousData: record,
       });
-      notify("Factura confirmada", { type: "info" });
+      notify(allLinked ? "Factura aprobada y agendada" : "Factura confirmada", {
+        type: "info",
+      });
       refresh();
     } catch (error) {
       console.error(error);
@@ -303,6 +389,7 @@ export const FormConfirmarButton = ({
         type="button"
         variant="default"
         onClick={() => setOpen(true)}
+        onKeyDown={handleFormTabLoop}
         className={buttonClasses}
         disabled={disabled || loading || !hasDetalles}
       >

@@ -51,6 +51,7 @@ import {
   useAccionesCabeceraOrden,
   usePoOrderFormDefaults,
   usePoOrderDefaults,
+  useSolicitanteCentroCostoSync,
   usePoOrderReadOnly,
 } from "./form_hooks";
 import {
@@ -201,6 +202,7 @@ const CabeceraOrdenCompra = () => {
 const CabeceraCamposPrincipales = () => {
   const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
   const isCreate = !record?.id;
+  const { handleSolicitanteChange } = useSolicitanteCentroCostoSync();
   return (
     <div className="flex flex-col gap-0">
       <div className="flex flex-col gap-2 md:flex-row md:items-end">
@@ -217,6 +219,7 @@ const CabeceraCamposPrincipales = () => {
             optionText: "nombre",
             label: "Solicitante",
             validate: required(),
+            onSelectionChange: handleSolicitanteChange,
           }}
           widthClass="w-full md:w-[200px]"
         />

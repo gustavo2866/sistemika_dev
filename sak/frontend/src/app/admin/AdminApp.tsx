@@ -1,5 +1,4 @@
 "use client";
-
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource, CustomRoutes } from "ra-core";
@@ -64,6 +63,12 @@ import {
 } from "@/app/resources/tax-profiles";
 import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
 import {
+  PropiedadList as InmoPropiedadList,
+  PropiedadCreate as InmoPropiedadCreate,
+  PropiedadEdit as InmoPropiedadEdit,
+  PropiedadShow as InmoPropiedadShow,
+} from "@/app/resources/inmobiliaria/propiedades";
+import {
   TipoPropiedadList,
   TipoPropiedadCreate,
   TipoPropiedadEdit,
@@ -101,6 +106,7 @@ import {
 } from "@/app/resources/po/po-orders";
 import {
   PoInvoiceList,
+  PoInvoiceAgendaList,
   PoInvoiceCreate,
   PoInvoiceEdit,
   PoInvoiceShow,
@@ -363,6 +369,16 @@ const AdminApp = () => {
         icon={Home}
       />
       <Resource
+        name="propiedades-inmobiliaria"
+        list={InmoPropiedadList}
+        create={InmoPropiedadCreate}
+        edit={InmoPropiedadEdit}
+        show={InmoPropiedadShow}
+        recordRepresentation="nombre"
+        icon={Home}
+        options={{ label: "Propiedades (Inmobiliaria)" }}
+      />
+      <Resource
         name="vacancias"
         list={VacanciaList}
         show={VacanciaShow}
@@ -463,6 +479,13 @@ const AdminApp = () => {
         recordRepresentation="numero"
         icon={Receipt}
         options={{ label: "Facturas OC" }}
+      />
+      <Resource
+        name="po-invoices-agenda"
+        list={PoInvoiceAgendaList}
+        recordRepresentation="numero"
+        icon={CalendarDays}
+        options={{ label: "Agenda de pagos" }}
       />
       <Resource
         name="po-setup"

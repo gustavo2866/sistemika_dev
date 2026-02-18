@@ -56,6 +56,7 @@ export const SectionCard = ({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-muted-foreground"
+                tabIndex={-1}
                 onClick={onToggle}
                 aria-label={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
                 title={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}

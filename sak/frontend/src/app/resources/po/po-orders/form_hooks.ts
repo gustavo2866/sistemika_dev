@@ -28,6 +28,66 @@ import {
   type PoOrderFormValues,
 } from "./model";
 
+const resolveNumericId = (value: unknown) => {
+  if (value == null) return undefined;
+  if (typeof value === "object") {
+    const maybeId = (value as { id?: unknown; value?: unknown }).id ??
+      (value as { value?: unknown }).value;
+    return resolveNumericId(maybeId);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "0") return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+  return undefined;
+};
+
+const resolveCentroCostoFromSolicitante = async (
+  dataProvider: ReturnType<typeof useDataProvider>,
+  solicitanteId: unknown,
+) => {
+  const resolvedSolicitanteId = resolveNumericId(solicitanteId);
+  if (!resolvedSolicitanteId) return undefined;
+  const { data: usuario } = await dataProvider.getOne("users", {
+    id: resolvedSolicitanteId,
+  });
+  const deptoId = resolveNumericId(usuario?.departamento_id);
+  if (!deptoId) return undefined;
+  const { data: depto } = await dataProvider.getOne("departamentos", {
+    id: deptoId,
+  });
+  return resolveNumericId(depto?.centro_costo_id);
+};
+
+export const ensureCentroCostoIfMissing = async ({
+  dataProvider,
+  values,
+  setValue,
+}: {
+  dataProvider: ReturnType<typeof useDataProvider>;
+  values: Partial<PoOrderFormValues> | null | undefined;
+  setValue?: ReturnType<typeof useFormContext<PoOrderFormValues>>["setValue"];
+}) => {
+  if (!values) return values;
+  const centroActual = resolveNumericId(values.centro_costo_id);
+  const oportunidadActual = resolveNumericId(values.oportunidad_id);
+  if (centroActual || oportunidadActual) return values;
+  const centroFromSolicitante = await resolveCentroCostoFromSolicitante(
+    dataProvider,
+    values.solicitante_id,
+  );
+  if (!centroFromSolicitante) return values;
+  if (setValue) {
+    setValue("centro_costo_id", centroFromSolicitante, { shouldDirty: true });
+  }
+  return { ...values, centro_costo_id: centroFromSolicitante };
+};
+
 // === Tipos ===
 export type PoOrderRecord = PoOrderFormValues & {
   id?: Identifier;
@@ -45,9 +105,70 @@ export const isPoOrderEditableByOrden = (orden?: number | null) => {
 
 export const usePoOrderReadOnly = () => {
   const record = useRecordContext<PoOrderRecord>();
-  if (!record?.id) return false;
-  const orden = record?.order_status?.orden;
+  const isCreate = !record?.id;
+  if (isCreate) return false;
+  const { control } = useFormContext<PoOrderFormValues>();
+  const formStatusId = useWatch({ name: "order_status_id", control }) as
+    | number
+    | undefined;
+  const orden =
+    record?.order_status?.orden ??
+    record?.order_status?.id ??
+    formStatusId;
+  if (orden == null) return true;
   return !isPoOrderEditableByOrden(orden);
+};
+
+export const useSolicitanteCentroCostoSync = () => {
+  const dataProvider = useDataProvider();
+  const { setValue, getValues } = useFormContext<PoOrderFormValues>();
+  const oportunidadId = useWatch({ name: "oportunidad_id" }) as unknown;
+  const prevSolicitanteId = useRef<number | undefined>(undefined);
+
+  const handleSolicitanteChange = useCallback(
+    async (choice: { id?: unknown; value?: unknown } | null) => {
+      const nextId = resolveNumericId(choice?.id ?? choice?.value ?? choice);
+      if (!nextId) return;
+
+      if (prevSolicitanteId.current === nextId) return;
+      prevSolicitanteId.current = nextId;
+
+      const currentOportunidad =
+        resolveNumericId(getValues("oportunidad_id")) ??
+        resolveNumericId(oportunidadId);
+      if (currentOportunidad) return;
+
+      try {
+        const { data: usuario } = await dataProvider.getOne("users", {
+          id: nextId,
+        });
+
+        const deptoId = resolveNumericId(usuario?.departamento_id);
+        if (deptoId) {
+          setValue("departamento_id", deptoId, { shouldDirty: true });
+        } else {
+          setValue("departamento_id", null, { shouldDirty: true });
+          setValue("centro_costo_id", null, { shouldDirty: true });
+          return;
+        }
+
+        const { data: depto } = await dataProvider.getOne("departamentos", {
+          id: deptoId,
+        });
+        const centroId = resolveNumericId(depto?.centro_costo_id);
+        if (centroId) {
+          setValue("centro_costo_id", centroId, { shouldDirty: true });
+        } else {
+          setValue("centro_costo_id", null, { shouldDirty: true });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [dataProvider, getValues, oportunidadId, setValue],
+  );
+
+  return { handleSolicitanteChange };
 };
 
 // === Defaults iniciales ===
@@ -125,49 +246,77 @@ export const usePoOrderDefaults = () => {
 
   const solicitanteId = useWatch({ name: "solicitante_id" }) as number | undefined;
   const proveedorId = useWatch({ name: "proveedor_id" }) as number | undefined;
-  const departamentoId = useWatch({ name: "departamento_id" }) as number | undefined;
-  const centroCostoId = useWatch({ name: "centro_costo_id" }) as number | undefined;
+  const oportunidadId = useWatch({ name: "oportunidad_id" }) as number | undefined;
   const estadoOrdenId = useWatch({ name: "order_status_id" }) as number | undefined;
   const metodoPagoId = useWatch({ name: "metodo_pago_id" }) as number | undefined;
   const tipoCompraActual = useWatch({ name: "tipo_compra" }) as string | undefined;
   const [estadoOrdenNombre, setEstadoOrdenNombre] = useState<string | undefined>();
   const estadoOrdenIdRegistro = record?.order_status_id ?? record?.order_status?.id;
 
+  const prevSolicitanteId = useRef<number | undefined>(undefined);
+
+
+
   useEffect(() => {
-    if (!solicitanteId) return;
-    if (departamentoId && centroCostoId) return;
+    const resolvedSolicitanteId = resolveNumericId(solicitanteId);
+    if (!resolvedSolicitanteId) return;
+
+    const resolvedOportunidadId = resolveNumericId(oportunidadId);
+    const prevValue = prevSolicitanteId.current;
+    const changed =
+      prevValue != null && Number(prevValue) !== Number(resolvedSolicitanteId);
+    const forceDefaults = changed && !resolvedOportunidadId;
+
+    if (prevValue == null || changed) {
+      prevSolicitanteId.current = resolvedSolicitanteId;
+    }
+
+    const currentDepartamento = resolveNumericId(getValues("departamento_id"));
+    const currentCentro = resolveNumericId(getValues("centro_costo_id"));
+
+    const shouldSetDepartamento =
+      forceDefaults ||
+      (!currentDepartamento && !dirtyFields?.departamento_id);
+    const shouldSetCentro =
+      forceDefaults || (!currentCentro && !dirtyFields?.centro_costo_id);
+
+    if (!shouldSetDepartamento && !shouldSetCentro) return;
 
     let active = true;
     (async () => {
       const { data: usuario } = await dataProvider.getOne("users", {
-        id: solicitanteId,
+        id: resolvedSolicitanteId,
       });
       if (!active) return;
 
-      if (!departamentoId && usuario?.departamento_id && !dirtyFields?.departamento_id) {
-        const currentDepartamento = getValues("departamento_id");
-        if (!currentDepartamento) {
-          setValue("departamento_id", usuario.departamento_id, {
-            shouldDirty: false,
-          });
-        }
+      const deptoId =
+        resolveNumericId(usuario?.departamento_id) ?? currentDepartamento;
+
+      if (shouldSetDepartamento && deptoId) {
+        setValue("departamento_id", deptoId, {
+          shouldDirty: forceDefaults,
+        });
       }
 
-      const deptoId = departamentoId ?? usuario?.departamento_id;
-      if (!deptoId) return;
+      if (!deptoId) {
+        if (forceDefaults && shouldSetCentro) {
+          setValue("centro_costo_id", null, { shouldDirty: true });
+        }
+        return;
+      }
 
-      if (!centroCostoId && !dirtyFields?.centro_costo_id) {
+      if (shouldSetCentro) {
         const { data: depto } = await dataProvider.getOne("departamentos", {
           id: deptoId,
         });
         if (!active) return;
-        if (depto?.centro_costo_id) {
-          const currentCentro = getValues("centro_costo_id");
-          if (!currentCentro) {
-            setValue("centro_costo_id", depto.centro_costo_id, {
-              shouldDirty: false,
-            });
-          }
+        const deptoCentro = resolveNumericId(depto?.centro_costo_id);
+        if (deptoCentro) {
+          setValue("centro_costo_id", deptoCentro, {
+            shouldDirty: forceDefaults,
+          });
+        } else if (forceDefaults) {
+          setValue("centro_costo_id", null, { shouldDirty: true });
         }
       }
     })();
@@ -177,8 +326,7 @@ export const usePoOrderDefaults = () => {
     };
   }, [
     solicitanteId,
-    departamentoId,
-    centroCostoId,
+    oportunidadId,
     dataProvider,
     getValues,
     setValue,
@@ -394,8 +542,13 @@ export const usePoOrderStatusTransition = () => {
         if (!saveContext?.save) return;
         const previousStatus = form.getValues("order_status_id");
         form.setValue("order_status_id", status.id, { shouldDirty: true });
+        const patchedValues = await ensureCentroCostoIfMissing({
+          dataProvider,
+          values: form.getValues(),
+          setValue: form.setValue,
+        });
         const errors = await saveContext.save({
-          ...form.getValues(),
+          ...(patchedValues ?? form.getValues()),
           order_status_id: status.id,
         });
         if (errors) {
@@ -409,15 +562,29 @@ export const usePoOrderStatusTransition = () => {
       }
 
       if (Object.keys(dirtyFields).length > 0 && saveContext?.save) {
-        const errors = await saveContext.save(form.getValues());
+        const patchedValues = await ensureCentroCostoIfMissing({
+          dataProvider,
+          values: form.getValues(),
+          setValue: form.setValue,
+        });
+        const errors = await saveContext.save(patchedValues ?? form.getValues());
         if (errors) {
           return;
         }
       }
 
+      const patchedValues = await ensureCentroCostoIfMissing({
+        dataProvider,
+        values: form.getValues(),
+        setValue: form.setValue,
+      });
+      const centroId = (patchedValues as PoOrderFormValues | undefined)?.centro_costo_id;
       await dataProvider.update(resource, {
         id: record.id,
-        data: { order_status_id: status.id },
+        data: {
+          order_status_id: status.id,
+          ...(centroId ? { centro_costo_id: centroId } : {}),
+        },
         previousData: record,
       });
 

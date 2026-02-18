@@ -20,6 +20,7 @@ export const SimpleForm = <TFieldValues extends FieldValues = FieldValues>({
   sectionHeaderDensity?: FormHeaderDensity;
 } & FormProps<TFieldValues>) => (
   <Form
+    data-form-scope="main"
     className={cn("flex w-full max-w-lg flex-col gap-3 sm:gap-4", className)}
     {...rest}
   >

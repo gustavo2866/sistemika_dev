@@ -63,7 +63,14 @@ const CONSTRUCTORA_RESOURCES = [
 ] as const;
 const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores", "po-setup"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "emprendimientos", "vacancias", "dashboard-vacancias", "tipos-propiedad"] as const;
-const ADMIN_RESOURCES = ["facturas", "orden-compra", "nominas", "centros-costo"] as const;
+const INMOBILIARIA_RESOURCES = ["propiedades-inmobiliaria"] as const;
+const ADMIN_RESOURCES = [
+  "po-invoices-agenda",
+  "facturas",
+  "orden-compra",
+  "nominas",
+  "centros-costo",
+] as const;
 const CONFIG_RESOURCES = [
   "users",
   "tipos-operacion",
@@ -154,6 +161,10 @@ export function AppSidebar() {
     () => CRM_RESOURCES.filter((name) => resources[name]?.hasList),
     [resources],
   );
+  const inmobiliariaResources = useMemo(
+    () => INMOBILIARIA_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
 
   const groupedNames = useMemo(
     () =>
@@ -161,6 +172,7 @@ export function AppSidebar() {
         ...constructoraResources,
         ...comprasResources,
         ...operationsResources,
+        ...inmobiliariaResources,
         ...adminResources,
         ...configResources,
         ...crmResources,
@@ -187,6 +199,7 @@ export function AppSidebar() {
   const [constructoraOpen, setConstructoraOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
+  const [inmobiliariaOpen, setInmobiliariaOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
   const [crmSetupOpen, setCrmSetupOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
@@ -259,6 +272,23 @@ export function AppSidebar() {
                   onToggle={() => setOperationsOpen((open) => !open)}
                 >
                   {operationsResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                </GroupMenuItem>
+              ) : null}
+
+              {inmobiliariaResources.length > 0 ? (
+                <GroupMenuItem
+                  label="Inmobiliaria"
+                  icon={Home}
+                  isOpen={inmobiliariaOpen}
+                  onToggle={() => setInmobiliariaOpen((open) => !open)}
+                >
+                  {inmobiliariaResources.map((name) => (
                     <ResourceSubMenuItem
                       key={name}
                       name={name}

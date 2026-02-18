@@ -31,6 +31,7 @@ type PoInvoice = {
   id_tipocomprobante?: number | null;
   fecha_emision?: string | null;
   fecha_vencimiento?: string | null;
+  fecha_pago?: string | null;
   subtotal?: number | null;
   total_impuestos?: number | null;
   total?: number | null;
@@ -271,6 +272,9 @@ const PoInvoiceShowContent = () => {
           </LabelValueCompact>
           <LabelValueCompact label="Vencimiento">
             <DateField source="fecha_vencimiento" record={record} />
+          </LabelValueCompact>
+          <LabelValueCompact label="Fecha pago">
+            <DateField source="fecha_pago" record={record} />
           </LabelValueCompact>
           <LabelValueCompact label="Subtotal">
             {CURRENCY_FORMATTER.format(Number(record.subtotal ?? 0))}

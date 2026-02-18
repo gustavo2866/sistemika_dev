@@ -328,6 +328,7 @@ class PoInvoice(Base, table=True):
     numero: str = Field(max_length=50, description="Numero de factura")
     fecha_emision: str = Field(description="Fecha de emision (formato ISO: YYYY-MM-DD)")
     fecha_vencimiento: Optional[str] = Field(default=None, description="Fecha de vencimiento (formato ISO: YYYY-MM-DD)")
+    fecha_pago: Optional[date] = Field(default=None, description="Fecha de pago")
     observaciones: Optional[str] = Field(default=None, description="Observaciones")
     
     # Importes
