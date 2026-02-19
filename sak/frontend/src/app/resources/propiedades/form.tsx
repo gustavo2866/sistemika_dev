@@ -7,8 +7,7 @@ import { NumberInput } from "@/components/number-input";
 import { SelectInput } from "@/components/select-input";
 import { ReferenceInput } from "@/components/reference-input";
 import { FormLayout, FormSimpleSection } from "@/components/forms";
-import { ESTADOS_PROPIEDAD_OPTIONS, formatEstadoPropiedad } from "./model";
-import type { Propiedad, Vacancia, PropiedadEstado } from "./model";
+import type { Propiedad, Vacancia } from "./model";
 import {
   Table,
   TableBody,
@@ -51,7 +50,6 @@ export const PropiedadForm = () => {
     <SimpleForm
       className="w-full max-w-4xl"
       warnWhenUnsavedChanges
-      defaultValues={{ estado: "1-recibida" }}
     >
       <PropiedadFormContent />
     </SimpleForm>
@@ -66,7 +64,7 @@ const PropiedadFormContent = () => {
 
   const nombreWatch = useWatch({ control, name: "nombre" });
   const propietarioWatch = useWatch({ control, name: "propietario" });
-  const estadoWatch = useWatch({ control, name: "estado" });
+  const propiedadStatusWatch = useWatch({ control, name: "propiedad_status_id" });
   const valorAlquilerWatch = useWatch({ control, name: "valor_alquiler" });
   const expensasWatch = useWatch({ control, name: "expensas" });
   const vencimientoWatch = useWatch({ control, name: "vencimiento_contrato" });
@@ -77,13 +75,14 @@ const PropiedadFormContent = () => {
   const precioVentaWatch = useWatch({ control, name: "precio_venta_estimado" });
   const precioMonedaWatch = useWatch({ control, name: "precio_moneda_id" });
 
-  const estadoValue: PropiedadEstado | undefined =
-    (estadoWatch as PropiedadEstado) || record?.estado;
+  const propiedadStatusLabel =
+    record?.propiedad_status?.nombre ||
+    (propiedadStatusWatch ? `Estado #${propiedadStatusWatch}` : null);
 
   const generalSubtitleItems = [
     nombreWatch || record?.nombre,
     propietarioWatch || record?.propietario,
-    estadoValue ? formatEstadoPropiedad(estadoValue) : null,
+    propiedadStatusLabel,
   ].filter(Boolean);
   const generalSubtitle =
     generalSubtitleItems.join(" - ") ||
@@ -159,25 +158,22 @@ const PropiedadFormContent = () => {
                 <TextInput source="tipo" label="Tipo" validate={required()} className="w-full" />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
+                <TextInput source="propiedad_id" label="Propiedad ID" className="w-full" />
+                <ReferenceInput
+                  source="propiedad_status_id"
+                  reference="propiedades-status"
+                  label="Estado"
+                >
+                  <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
+                </ReferenceInput>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <TextInput source="propietario" label="Propietario" validate={required()} className="w-full" />
-                <SelectInput
-                  source="estado"
-                  label="Estado actual"
-                  choices={ESTADOS_PROPIEDAD_OPTIONS.map((option) => ({
-                    id: option.value,
-                    name: option.label,
-                  }))}
-                  className="w-full"
-                  disabled
-                  validate={required()}
-                />
+                <TextInput source="fecha_ingreso" label="Fecha de ingreso" type="date" className="w-full" />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <NumberInput source="ambientes" label="Ambientes" min={0} className="w-full" />
                 <NumberInput source="metros_cuadrados" label="Metros cuadrados" step={0.1} min={0} className="w-full" />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <TextInput source="fecha_ingreso" label="Fecha de ingreso" type="date" className="w-full" />
               </div>
               <TextInput
                 source="estado_comentario"

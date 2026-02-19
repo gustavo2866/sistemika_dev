@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/dashboard/vacancias", tags=["dashboard-vacancias
 def get_dashboard(
     startDate: str = Query(..., description="Fecha inicio rango YYYY-MM-DD"),
     endDate: str = Query(..., description="Fecha fin rango YYYY-MM-DD"),
-    estadoPropiedad: str | None = Query(None),
+    estadoPropiedad: str | None = Query(None, description="ID o nombre parcial de propiedades_status"),
     propietario: str | None = Query(None),
     ambientes: int | None = Query(None),
     limitTop: int = Query(5, ge=1, le=50),
@@ -42,7 +42,7 @@ def get_dashboard(
 def get_dashboard_detalle(
     startDate: str = Query(..., description="Fecha inicio rango YYYY-MM-DD"),
     endDate: str = Query(..., description="Fecha fin rango YYYY-MM-DD"),
-    estadoPropiedad: str | None = Query(None),
+    estadoPropiedad: str | None = Query(None, description="ID o nombre parcial de propiedades_status"),
     propietario: str | None = Query(None),
     ambientes: int | None = Query(None),
     page: int = Query(1, ge=1),
@@ -67,15 +67,21 @@ def get_dashboard_detalle(
         estadoVacancia = estadoVacancia.lower()
         filtered = []
         for item in items:
-            prop_estado = item.vacancia.propiedad.estado if item.vacancia.propiedad else None
+            status_name = (
+                (item.vacancia.propiedad.propiedad_status.nombre.lower())
+                if item.vacancia.propiedad and item.vacancia.propiedad.propiedad_status
+                else ""
+            )
             if estadoVacancia == "activas":
-                if item.estado_corte == "Activo" and prop_estado not in {"4-realizada", "5-retirada"}:
+                if item.estado_corte == "Activo" and not any(
+                    key in status_name for key in ("realizada", "retirada", "alquilada", "final")
+                ):
                     filtered.append(item)
-            elif estadoVacancia == "recibida" and prop_estado == "1-recibida":
+            elif estadoVacancia == "recibida" and "recibida" in status_name:
                 filtered.append(item)
-            elif estadoVacancia == "en_reparacion" and prop_estado == "2-en_reparacion":
+            elif estadoVacancia == "en_reparacion" and "reparacion" in status_name:
                 filtered.append(item)
-            elif estadoVacancia == "disponible" and prop_estado == "3-disponible":
+            elif estadoVacancia == "disponible" and "disponible" in status_name:
                 filtered.append(item)
             elif estadoVacancia == "alquilada" and item.estado_corte == "Alquilada":
                 filtered.append(item)

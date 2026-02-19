@@ -21,7 +21,6 @@ from app.models import (
 from app.models.enums import (
     EstadoOportunidad,
     TRANSICIONES_ESTADO_OPORTUNIDAD,
-    EstadoPropiedad,
 )
 
 
@@ -117,7 +116,6 @@ class CRMOportunidadService:
         hoy = date.today()
 
         if oportunidad.estado == EstadoOportunidad.GANADA.value:
-            propiedad.estado = EstadoPropiedad.REALIZADA.value
             vacancia = self._vacancia_activa(session, propiedad.id)
             if vacancia:
                 vacancia.fecha_alquilada = hoy
@@ -130,7 +128,6 @@ class CRMOportunidadService:
             EstadoOportunidad.RESERVA.value,
             EstadoOportunidad.PERDIDA.value,
         ):
-            propiedad.estado = EstadoPropiedad.DISPONIBLE.value
             vacancia = self._vacancia_activa(session, propiedad.id)
             if not vacancia:
                 vacancia = Vacancia(

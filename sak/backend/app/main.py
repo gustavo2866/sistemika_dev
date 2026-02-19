@@ -32,6 +32,8 @@ from app.routers.tipo_comprobante_router import tipo_comprobante_router
 from app.routers.tipo_propiedad_router import router as tipo_propiedad_router
 from app.routers.metodo_pago_router import metodo_pago_router
 from app.routers.propiedad_router import propiedad_router
+from app.routers.propiedades_status_router import propiedades_status_router
+from app.routers.propiedades_log_status_router import propiedades_log_status_router
 from app.routers.setting_router import setting_router
 from app.routers.articulo_router import articulo_router
 from app.routers.tipo_articulo_router import tipo_articulo_router
@@ -49,6 +51,7 @@ from app.routers.vacancia_router import vacancia_router
 from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.vacancia_dashboard_router import router as vacancia_dashboard_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
+from app.routers.propiedades_dashboard_router import router as propiedades_dashboard_router
 # Routers módulo de compras (PO)
 from app.routers.po_invoice_router import po_invoice_router
 from app.routers.po_invoice_status_router import po_invoice_status_router
@@ -154,6 +157,8 @@ app.include_router(tipo_comprobante_router)
 app.include_router(tipo_propiedad_router)
 app.include_router(metodo_pago_router)
 app.include_router(propiedad_router)
+app.include_router(propiedades_status_router)
+app.include_router(propiedades_log_status_router)
 app.include_router(setting_router)
 app.include_router(articulo_router)
 app.include_router(tipo_articulo_router)
@@ -168,6 +173,7 @@ app.include_router(centro_costo_router)
 app.include_router(vacancia_router)
 app.include_router(adm_concepto_router)
 app.include_router(vacancia_dashboard_router)
+app.include_router(propiedades_dashboard_router)
 app.include_router(crm_dashboard_router)
 app.include_router(crm_tipo_operacion_router)
 app.include_router(crm_motivo_perdida_router)

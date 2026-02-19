@@ -40,10 +40,14 @@ export const FormOrderListRowActions = ({
   contextSearch,
   className,
   extraMenuItems,
+  showShow = true,
+  showDelete = true,
 }: {
   contextSearch?: string;
   className?: string;
   extraMenuItems?: ReactNode;
+  showShow?: boolean;
+  showDelete?: boolean;
 }) => {
   const record = useRecordContext();
   const dataProvider = useDataProvider();
@@ -145,15 +149,17 @@ export const FormOrderListRowActions = ({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-24 sm:w-32" forceMount>
-              <DropdownMenuItem
-                onClick={handleShow}
-                disabled={busy}
-                className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-              >
-                <Eye className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-                Visualizar
-              </DropdownMenuItem>
-              {!isLocked ? (
+              {showShow ? (
+                <DropdownMenuItem
+                  onClick={handleShow}
+                  disabled={busy}
+                  className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+                >
+                  <Eye className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+                  Visualizar
+                </DropdownMenuItem>
+              ) : null}
+              {!isLocked && showDelete ? (
                 <DropdownMenuItem
                   onClick={(event) => {
                     stopRowClick(event);

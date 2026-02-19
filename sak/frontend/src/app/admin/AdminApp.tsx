@@ -61,13 +61,25 @@ import {
   TaxProfileEdit,
   TaxProfileShow,
 } from "@/app/resources/tax-profiles";
-import { PropiedadList, PropiedadCreate, PropiedadEdit, PropiedadShow } from "@/app/resources/propiedades";
+import {
+  PropiedadList,
+  PropiedadCreate,
+  PropiedadEdit,
+  PropiedadShow,
+} from "@/app/resources/propiedades";
+import {
+  PropiedadesStatusList,
+  PropiedadesStatusCreate,
+  PropiedadesStatusEdit,
+} from "@/app/resources/propiedades/propiedades_status";
 import {
   PropiedadList as InmoPropiedadList,
   PropiedadCreate as InmoPropiedadCreate,
   PropiedadEdit as InmoPropiedadEdit,
   PropiedadShow as InmoPropiedadShow,
 } from "@/app/resources/inmobiliaria/propiedades";
+import { PropiedadesDashboardPage } from "@/app/resources/inmobiliaria/propiedades";
+import { PropiedadesLogStatusList } from "@/app/resources/inmobiliaria/propiedades_log_status";
 import {
   TipoPropiedadList,
   TipoPropiedadCreate,
@@ -250,6 +262,7 @@ import {
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
 import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
+import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria-setup/InmobiliariaSetupPage";
 
 declare const window: Window | undefined;
 
@@ -369,6 +382,15 @@ const AdminApp = () => {
         icon={Home}
       />
       <Resource
+        name="propiedades-status"
+        list={PropiedadesStatusList}
+        create={PropiedadesStatusCreate}
+        edit={PropiedadesStatusEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Estados de Propiedad" }}
+      />
+      <Resource
         name="propiedades-inmobiliaria"
         list={InmoPropiedadList}
         create={InmoPropiedadCreate}
@@ -376,7 +398,21 @@ const AdminApp = () => {
         show={InmoPropiedadShow}
         recordRepresentation="nombre"
         icon={Home}
-        options={{ label: "Propiedades (Inmobiliaria)" }}
+        options={{ label: "Propiedades" }}
+      />
+      <Resource
+        name="dashboard-propiedades"
+        list={PropiedadesDashboardPage}
+        recordRepresentation="id"
+        icon={BarChart2}
+        options={{ label: "Dashboard Propiedades" }}
+      />
+      <Resource
+        name="propiedades-log-status"
+        list={PropiedadesLogStatusList}
+        recordRepresentation="id"
+        icon={ListChecks}
+        options={{ label: "Log Estados Propiedad" }}
       />
       <Resource
         name="vacancias"
@@ -490,6 +526,13 @@ const AdminApp = () => {
       <Resource
         name="po-setup"
         list={PoSetupPage}
+        recordRepresentation="id"
+        icon={Settings}
+        options={{ label: "Setup" }}
+      />
+      <Resource
+        name="inmobiliaria-setup"
+        list={InmobiliariaSetupPage}
         recordRepresentation="id"
         icon={Settings}
         options={{ label: "Setup" }}

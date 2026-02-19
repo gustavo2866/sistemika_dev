@@ -1,11 +1,4 @@
-import { createEntitySchema, numberField, selectField, stringField } from "@/lib/form-detail-schema";
-
-export type PropiedadEstado =
-  | "1-recibida"
-  | "2-en_reparacion"
-  | "3-disponible"
-  | "4-realizada"
-  | "5-retirada";
+import { createEntitySchema, numberField, stringField } from "@/lib/form-detail-schema";
 
 export type Vacancia = {
   id: number;
@@ -35,6 +28,11 @@ type CRMReference = {
   nombre: string;
 };
 
+type TipoPropiedadRef = {
+  id: number;
+  nombre: string;
+};
+
 type Moneda = {
   id: number;
   nombre: string;
@@ -44,16 +42,15 @@ type Moneda = {
 export type Propiedad = {
   id: number;
   nombre: string;
-  tipo: string;
+  tipo_propiedad_id?: number | null;
+  tipo_propiedad?: TipoPropiedadRef | null;
   propietario: string;
-  estado: PropiedadEstado;
   ambientes?: number | null;
   metros_cuadrados?: number | null;
   valor_alquiler?: number | null;
   expensas?: number | null;
   fecha_ingreso?: string | null;
   vencimiento_contrato?: string | null;
-  estado_fecha: string;
   estado_comentario?: string | null;
   tipo_operacion_id?: number | null;
   tipo_operacion?: CRMReference | null;
@@ -65,14 +62,17 @@ export type Propiedad = {
   precio_venta_estimado?: number | null;
   precio_moneda_id?: number | null;
   precio_moneda?: Moneda | null;
+  vacancia_activa?: boolean | null;
+  vacancia_fecha?: string | null;
+  propiedad_status_id?: number | null;
+  propiedad_status?: CRMReference | null;
   vacancias?: Vacancia[];
 };
 
 export type PropiedadFormValues = {
   nombre: string;
-  tipo: string;
+  tipo_propiedad_id?: number | null;
   propietario: string;
-  estado: PropiedadEstado;
   ambientes?: number | null;
   metros_cuadrados?: number | null;
   valor_alquiler?: number | null;
@@ -86,19 +86,10 @@ export type PropiedadFormValues = {
   costo_moneda_id?: number | null;
   precio_venta_estimado?: number | null;
   precio_moneda_id?: number | null;
+  vacancia_activa?: boolean | null;
+  vacancia_fecha?: string | null;
+  propiedad_status_id?: number | null;
 };
-
-export const ESTADOS_PROPIEDAD_OPTIONS: Array<{
-  value: PropiedadEstado;
-  label: string;
-  badgeColor: string;
-}> = [
-  { value: "1-recibida", label: "1 - Recibida", badgeColor: "bg-blue-100 text-blue-800" },
-  { value: "2-en_reparacion", label: "2 - En reparacion", badgeColor: "bg-amber-100 text-amber-800" },
-  { value: "3-disponible", label: "3 - Disponible", badgeColor: "bg-emerald-100 text-emerald-800" },
-  { value: "4-realizada", label: "4 - Realizada", badgeColor: "bg-violet-100 text-violet-800" },
-  { value: "5-retirada", label: "5 - Retirada", badgeColor: "bg-slate-200 text-slate-800" },
-];
 
 export const VACANCIA_STATE_STEPS = [
   {
@@ -136,13 +127,8 @@ export const VACANCIA_STATE_STEPS = [
 export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad>({
   fields: {
     nombre: stringField({ required: true, maxLength: 255, defaultValue: "" }),
-    tipo: stringField({ required: true, maxLength: 100, defaultValue: "" }),
+    tipo_propiedad_id: numberField({ required: false, min: 1 }),
     propietario: stringField({ required: true, maxLength: 255, defaultValue: "" }),
-    estado: selectField({
-      required: true,
-      options: ESTADOS_PROPIEDAD_OPTIONS.map((estado) => ({ id: estado.value, name: estado.label })),
-      defaultValue: "1-recibida",
-    }),
     ambientes: numberField({ required: false, min: 0 }),
     metros_cuadrados: numberField({ required: false, min: 0 }),
     valor_alquiler: numberField({ required: false, min: 0 }),
@@ -156,6 +142,8 @@ export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad
     costo_moneda_id: numberField({ required: false, min: 1 }),
     precio_venta_estimado: numberField({ required: false, min: 0 }),
     precio_moneda_id: numberField({ required: false, min: 1 }),
+    vacancia_fecha: stringField({ required: false }),
+    propiedad_status_id: numberField({ required: false, min: 1 }),
   },
 });
 
@@ -177,28 +165,33 @@ export const vacanciaComentarioSchema = createEntitySchema<VacanciaComentarioFor
   },
 });
 
-export const formatEstadoPropiedad = (estado?: PropiedadEstado | null) => {
-  if (!estado) return "Sin estado";
-  const found = ESTADOS_PROPIEDAD_OPTIONS.find((option) => option.value === estado);
-  return found?.label ?? estado;
-};
+const ESTADO_BADGE_CLASSES: Array<{ keys: string[]; className: string }> = [
+  { keys: ["recibida", "1-recibida", "1 - recibida"], className: "bg-blue-100 text-blue-800" },
+  {
+    keys: ["en reparacion", "en reparación", "reparacion", "2-en_reparacion", "2 - en reparacion"],
+    className: "bg-amber-100 text-amber-800",
+  },
+  { keys: ["disponible", "3-disponible", "3 - disponible"], className: "bg-emerald-100 text-emerald-800" },
+  { keys: ["realizada", "4-realizada", "4 - realizada"], className: "bg-violet-100 text-violet-800" },
+  { keys: ["alquilada", "4-alquilada", "4 - alquilada"], className: "bg-violet-100 text-violet-800" },
+  { keys: ["retirada", "5-retirada", "5 - retirada"], className: "bg-slate-200 text-slate-800" },
+];
 
-export const TRANSICIONES_ESTADO_PROPIEDAD: Record<PropiedadEstado, PropiedadEstado[]> = {
-  "1-recibida": ["2-en_reparacion", "3-disponible", "4-realizada"],
-  "2-en_reparacion": ["3-disponible", "5-retirada"],
-  "3-disponible": ["4-realizada", "5-retirada"],
-  "4-realizada": ["1-recibida", "5-retirada"],
-  "5-retirada": [],
-};
-
-export const normalizeEstadoPropiedad = (value?: string | null) =>
-  value ? String(value).trim().toLowerCase() : "";
-
-export const PROPIEDAD_STATUS_BADGES: Record<string, string> = Object.fromEntries(
-  ESTADOS_PROPIEDAD_OPTIONS.map((option) => [option.value, option.badgeColor]),
+export const PROPIEDAD_STATUS_BADGES: Record<string, string> = ESTADO_BADGE_CLASSES.reduce(
+  (acc, item) => {
+    item.keys.forEach((key) => {
+      acc[key.toLowerCase()] = item.className;
+    });
+    return acc;
+  },
+  {} as Record<string, string>,
 );
 
-export const getPropiedadStatusBadgeClass = (estado?: string | null) => {
-  const key = normalizeEstadoPropiedad(estado);
-  return PROPIEDAD_STATUS_BADGES[key] ?? "bg-slate-100 text-slate-800";
+export const getPropiedadStatusBadgeClass = (label?: string | null) => {
+  if (!label) return "bg-slate-100 text-slate-800";
+  const normalized = label.trim().toLowerCase();
+  const direct = PROPIEDAD_STATUS_BADGES[normalized];
+  if (direct) return direct;
+  const match = ESTADO_BADGE_CLASSES.find((item) => item.keys.some((key) => normalized.includes(key)));
+  return match?.className ?? "bg-slate-100 text-slate-800";
 };

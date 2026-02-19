@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { CalculatedVacancia } from "./model";
 import { VACANCIA_STATE_STEPS } from "../propiedades/model";
-import { formatEstadoPropiedad } from "../propiedades/model";
 
 type VacanciaShowProps = {
   vacancia: CalculatedVacancia;
@@ -114,8 +113,6 @@ export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
               nombre: `Propiedad ${vacanciaData.propiedad_id}`,
               tipo: "",
               propietario: "",
-              estado: "1-recibida",
-              estado_fecha: "",
               vacancias,
             };
           });
@@ -155,7 +152,7 @@ export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
               <div>
                 <div className="text-lg font-semibold">Datos de la Propiedad</div>
                 <div className="text-sm font-normal text-muted-foreground">
-                  {propiedad?.nombre ?? "Sin nombre"} - {propiedad?.propietario ?? "Sin propietario"} - {formatEstadoPropiedad(propiedad?.estado)}
+                  {propiedad?.nombre ?? "Sin nombre"} - {propiedad?.propietario ?? "Sin propietario"} - {propiedad?.propiedad_status?.nombre ?? (propiedad?.propiedad_status_id != null ? `Estado #${propiedad?.propiedad_status_id}` : "Sin asignar")}
                 </div>
               </div>
             } 
@@ -165,7 +162,15 @@ export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
               <DataRow label="Nombre" value={propiedad?.nombre} />
               <DataRow label="Tipo" value={propiedad?.tipo} />
               <DataRow label="Propietario" value={propiedad?.propietario} />
-              <DataRow label="Estado" value={formatEstadoPropiedad(propiedad?.estado)} />
+              <DataRow
+                label="Estado"
+                value={
+                  propiedad?.propiedad_status?.nombre ??
+                  (propiedad?.propiedad_status_id != null
+                    ? `Estado #${propiedad?.propiedad_status_id}`
+                    : "Sin asignar")
+                }
+              />
               <DataRow label="Ambientes" value={propiedad?.ambientes} />
               <DataRow label="Metros cuadrados" value={propiedad?.metros_cuadrados} />
               <DataRow label="Valor alquiler" value={propiedad?.valor_alquiler ? `$${propiedad.valor_alquiler}` : null} />
@@ -184,10 +189,14 @@ export default function VacanciaShow({ vacancia, onClose }: VacanciaShowProps) {
                 label="Vencimiento contrato" 
                 value={propiedad?.vencimiento_contrato ? new Date(propiedad.vencimiento_contrato).toLocaleDateString('es-AR') : null} 
               />
-              <DataRow label="Estado" value={formatEstadoPropiedad(propiedad?.estado)} />
-              <DataRow 
-                label="Fecha de estado" 
-                value={propiedad?.estado_fecha ? new Date(propiedad.estado_fecha).toLocaleDateString('es-AR') : null} 
+              <DataRow
+                label="Estado"
+                value={
+                  propiedad?.propiedad_status?.nombre ??
+                  (propiedad?.propiedad_status_id != null
+                    ? `Estado #${propiedad?.propiedad_status_id}`
+                    : "Sin asignar")
+                }
               />
               {propiedad?.estado_comentario && (
                 <div className="pt-2">

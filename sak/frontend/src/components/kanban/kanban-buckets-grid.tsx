@@ -17,7 +17,7 @@ const KanbanBucket = React.forwardRef<HTMLDivElement, KanbanBucketProps>(
     <div
       ref={ref}
       className={cn(
-        "flex min-h-[320px] flex-col gap-3 rounded-3xl border border-slate-200/70 bg-gradient-to-b px-3 py-4 shadow-inner",
+        "flex min-h-[220px] flex-col gap-1.5 rounded-xl border border-slate-200/70 bg-gradient-to-b px-2 py-2 shadow-inner",
         className,
         accentClass
       )}
@@ -73,19 +73,19 @@ const KanbanBucketHeader = ({
         <button
           type="button"
           onClick={onPrev}
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-primary/20 bg-gradient-to-br from-primary/90 to-primary/70 text-white shadow-md transition hover:from-primary hover:to-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/20 bg-gradient-to-br from-primary/90 to-primary/70 text-white shadow-md transition hover:from-primary hover:to-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         >
-          <ChevronsLeft className="h-3.5 w-3.5" />
+          <ChevronsLeft className="h-2.5 w-2.5" />
         </button>
       ) : null}
       {headerContent ? (
         <div>{headerContent}</div>
       ) : (
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-600">
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-600">
             {title}
           </p>
-          {helper ? <p className="text-xs text-slate-500">{helper}</p> : null}
+          {helper ? <p className="text-[8px] text-slate-500">{helper}</p> : null}
         </div>
       )}
     </div>
@@ -107,9 +107,9 @@ const KanbanBucketHeader = ({
         <button
           type="button"
           onClick={onNext}
-          className="flex h-7 w-7 items-center justify-center rounded-full border border-primary/20 bg-gradient-to-br from-primary/90 to-primary/70 text-white shadow-md transition hover:from-primary hover:to-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          className="flex h-5 w-5 items-center justify-center rounded-full border border-primary/20 bg-gradient-to-br from-primary/90 to-primary/70 text-white shadow-md transition hover:from-primary hover:to-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         >
-          <ChevronsRight className="h-3.5 w-3.5" />
+          <ChevronsRight className="h-2.5 w-2.5" />
         </button>
       ) : null}
     </div>
@@ -126,7 +126,7 @@ const KanbanBucketCounter = ({
   <Badge
     variant="outline"
     className={cn(
-      "rounded-full border-slate-200/80 px-3 py-1 text-xs font-semibold",
+      "rounded-full border-slate-200/80 px-2 py-0.5 text-[9px] font-semibold",
       className
     )}
   >
@@ -140,10 +140,10 @@ const KanbanBucketBody = React.forwardRef<HTMLDivElement, KanbanBucketBodyProps>
   ({ className, children, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("kanban-scroll flex h-[380px] overflow-y-auto rounded-2xl -mx-3", className)}
+      className={cn("kanban-scroll flex h-[240px] overflow-y-auto rounded-lg -mx-2", className)}
       {...props}
     >
-      <div className="flex min-w-0 w-full flex-col gap-3 px-3">{children}</div>
+      <div className="flex min-w-0 w-full flex-col gap-1.5 px-2">{children}</div>
     </div>
   )
 );
@@ -158,7 +158,7 @@ const KanbanBucketEmpty = ({
 }) => (
   <div
     className={cn(
-      "flex flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200/80 bg-slate-50/70 px-3 py-6 text-center text-xs text-slate-400",
+      "flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200/80 bg-slate-50/70 px-2 py-3 text-center text-[9px] text-slate-400",
       className
     )}
   >
@@ -226,7 +226,7 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
   onBucketDragLeave,
   bucketNavigation,
 }: KanbanBucketsGridProps<TItem, K>) => (
-  <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-4", className)}>
+  <div className={cn("grid gap-2 sm:grid-cols-2 lg:grid-cols-4", className)}>
     {bucketDefinitions.map(({ key, title, helper, accentClass, bucketClassName, interactive = true, headerContent }, index) => {
       const items = bucketItems[key] ?? [];
       const isInteractive = interactive;
@@ -235,8 +235,8 @@ export const KanbanBucketsGrid = <TItem, K extends string>({
       const isLast = index === bucketDefinitions.length - 1;
       const isCollapsed = Boolean(bucketCollapsed?.[key]);
       const handleToggle = onToggleBucketCollapse ? () => onToggleBucketCollapse(key) : undefined;
-      const showPrevControl = Boolean(bucketNavigation?.canPrev && isFirst);
-      const showNextControl = Boolean(bucketNavigation?.canNext && isLast);
+      const showPrevControl = false;
+      const showNextControl = false;
       return (
         <KanbanBucket key={key} accentClass={accentClass} className={bucketClassName}>
           <KanbanBucketHeader

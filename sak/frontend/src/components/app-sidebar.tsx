@@ -63,7 +63,12 @@ const CONSTRUCTORA_RESOURCES = [
 ] as const;
 const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores", "po-setup"] as const;
 const OPERATIONS_RESOURCES = ["propiedades", "solicitudes", "dashboard-vacancias"] as const;
-const INMOBILIARIA_RESOURCES = ["propiedades-inmobiliaria", "emprendimientos", "tipos-propiedad", "vacancias"] as const;
+const INMOBILIARIA_RESOURCES = [
+  "propiedades-inmobiliaria",
+  "dashboard-propiedades",
+  "emprendimientos",
+  "inmobiliaria-setup",
+] as const;
 const ADMIN_RESOURCES = [
   "po-invoices-agenda",
   "facturas",
@@ -118,6 +123,10 @@ const HIDDEN_RESOURCES = [
   "po-order-status",
   "po-invoice-status",
   "po-invoice-status-fin",
+  "vacancias",
+  "tipos-propiedad",
+  "propiedades-log-status",
+  "propiedades-status",
 ];
 
 type ResourceName = string;

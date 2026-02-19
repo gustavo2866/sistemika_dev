@@ -80,7 +80,6 @@ export type KpiStats = {
 export type DashboardFilters = {
   startDate: string;
   endDate: string;
-  estadoPropiedad: string;
   propietario: string;
   ambientes: string;
 };
@@ -131,7 +130,6 @@ export const buildDefaultFilters = (period: PeriodType = DEFAULT_PERIOD): Dashbo
   return {
     startDate: start,
     endDate: end,
-    estadoPropiedad: "",
     propietario: "",
     ambientes: "",
   };

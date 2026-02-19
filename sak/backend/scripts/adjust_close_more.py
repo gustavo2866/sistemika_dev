@@ -22,7 +22,7 @@ from sqlmodel import Session, create_engine, select
 from dotenv import load_dotenv
 from app.models.crm import CRMOportunidad, CRMOportunidadLogEstado, CRMMotivoPerdida
 from app.models.user import User
-from app.models.enums import EstadoOportunidad, EstadoPropiedad
+from app.models.enums import EstadoOportunidad
 from app.models.propiedad import Propiedad
 
 # Cargar variables de entorno
@@ -171,12 +171,7 @@ def adjust_closures(session: Session):
                 session.add(log_cierre)
                 session.add(opp)
                 
-                # Actualizar estado de propiedad si es ganada
-                if nuevo_estado == EstadoOportunidad.GANADA.value and opp.propiedad_id:
-                    propiedad = session.get(Propiedad, opp.propiedad_id)
-                    if propiedad:
-                        propiedad.estado = EstadoPropiedad.REALIZADA.value
-                        session.add(propiedad)
+                # Nota: el estado operativo de la propiedad fue deprecado.
                 
                 modificadas += 1
         

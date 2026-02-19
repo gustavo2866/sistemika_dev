@@ -7,6 +7,7 @@ from uuid import UUID
 import logging
 
 from sqlmodel import Session, select
+from sqlalchemy import func
 from fastapi import HTTPException
 
 from app.models import CRMMensaje, CRMCelular, CRMContacto, WebhookLog, CRMOportunidad
@@ -34,13 +35,17 @@ class MetaWebhookService:
               en estados operativos (3-disponible o 4-alquilada)
             - None en caso contrario
         """
-        from app.models.propiedad import Propiedad
+        from app.models.propiedad import Propiedad, PropiedadesStatus
         
         # Buscar propiedades en alquiler activas y en estados operativos
-        stmt = select(Propiedad).where(
-            Propiedad.contacto_id == contacto_id,
-            Propiedad.tipo_operacion_id == 1,  # Alquiler
-            Propiedad.estado.in_(["3-disponible", "4-alquilada"])  # Estados operativos
+        stmt = (
+            select(Propiedad)
+            .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id, isouter=True)
+            .where(
+                Propiedad.contacto_id == contacto_id,
+                Propiedad.tipo_operacion_id == 1,  # Alquiler
+                func.lower(PropiedadesStatus.nombre).op("~")("disponible|realizada|alquilada")
+            )
         )
         propiedad_alquiler = self.session.exec(stmt).first()
         

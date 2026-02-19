@@ -3,9 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { List } from "@/components/list";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
-import { TextInput } from "@/components/text-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -27,63 +24,64 @@ import { CRMOportunidadKanbanCard } from "./crm-panel-card";
 import { KanbanBoardView } from "@/components/kanban";
 import { calculateOportunidadBucketKey, prepareMoveOportunidadPayload, getBucketLabel } from "./model";
 import { ESTADO_BG_COLORS, type BucketKey } from "../crm-oportunidades/model";
-import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
+import { CompactSoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
+import { buildListFilters } from "@/components/forms/form_order";
 
 // Definición de buckets (usando todos los estados)
 const getBucketHeader = (estado: BucketKey, label: string) => {
   switch (estado) {
     case "0-prospect":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-          <Sparkles className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-sky-700">
+          <Sparkles className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     case "1-abierta":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
-          <FolderOpen className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-blue-700">
+          <FolderOpen className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     case "2-visita":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-cyan-700">
-          <Calendar className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-cyan-700">
+          <Calendar className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     case "3-cotiza":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-          <FileText className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-amber-700">
+          <FileText className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     case "4-reserva":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-violet-700">
-          <Bookmark className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-violet-700">
+          <Bookmark className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     case "5-ganada":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-          <CheckCircle2 className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-emerald-700">
+          <CheckCircle2 className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     case "6-perdida":
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700">
-          <XCircle className="h-3.5 w-3.5" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-rose-700">
+          <XCircle className="h-2.5 w-2.5" />
           {label}
         </span>
       );
     default:
       return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-slate-600">
           {label}
         </span>
       );
@@ -98,46 +96,101 @@ const getBuckets = () => {
       title: label,
       helper: "",
       accentClass: ESTADO_BG_COLORS[estado] ?? "from-white/95 to-slate-50/70",
-      bucketClassName: "w-full min-w-[240px]",
+      bucketClassName: "w-full min-w-[160px]",
       headerContent: getBucketHeader(estado as BucketKey, label),
     };
   });
 };
 
-const filters = [
-  <TextInput key="q" source="q" label="Buscar" placeholder="Buscar oportunidades" alwaysOn />,
-  <ReferenceInput key="contacto_id" source="contacto_id" reference="crm/contactos" label="Contacto">
-    <SelectInput optionText="nombre_completo" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="tipo_operacion_id"
-    source="tipo_operacion_id"
-    reference="crm/catalogos/tipos-operacion"
-    label="Tipo de operación"
-    alwaysOn
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <ReferenceInput key="propiedad_id" source="propiedad_id" reference="propiedades" label="Propiedad">
-    <SelectInput optionText="nombre" emptyText="Todas" />
-  </ReferenceInput>,
-  <ReferenceInput
-    key="responsable_id"
-    source="responsable_id"
-    reference="users"
-    label="Responsable"
-    alwaysOn
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <SoloActivasToggleFilter key="solo_activas" className="ml-auto" alwaysOn />,
-];
+const LIST_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar oportunidades",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "contacto_id",
+        reference: "crm/contactos",
+        label: "Contacto",
+      },
+      selectProps: {
+        optionText: "nombre_completo",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "tipo_operacion_id",
+        reference: "crm/catalogos/tipos-operacion",
+        label: "Tipo de operación",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "propiedad_id",
+        reference: "propiedades",
+        label: "Propiedad",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todas",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "responsable_id",
+        reference: "users",
+        label: "Responsable",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "custom",
+      element: (
+        <CompactSoloActivasToggleFilter
+          key="activo"
+          source="activo"
+          label="Activos"
+          alwaysOn
+          className="ml-auto"
+        />
+      ),
+    },
+  ],
+  { keyPrefix: "crm-panel" },
+);
+
+const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton state={{ fromPanel: true }} />
-    <ExportButton />
+    <FilterButton
+      filters={LIST_FILTERS}
+      size="sm"
+      buttonClassName={actionButtonClass}
+    />
+    <CreateButton className={actionButtonClass} label="Crear" state={{ fromPanel: true }} />
+    <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
@@ -305,7 +358,7 @@ export const CRMOportunidadListKanban = () => {
       resource="crm/oportunidades"
       title={<ResourceTitle icon={Target} text="CRM - Oportunidades (Kanban)" />}
       showBreadcrumb={false}
-      filters={filters}
+      filters={LIST_FILTERS}
       actions={<ListActions />}
       perPage={500}
       pagination={false}

@@ -1,15 +1,17 @@
 "use client";
 
-import { required, useRecordContext } from "ra-core";
+import { required, useDataProvider, useRecordContext } from "ra-core";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
   FormDate,
   FormErrorSummary,
+  FormBoolean,
   FormNumber,
   FormSelect,
   FormText,
   FormTextarea,
+  FormValue,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
@@ -32,7 +34,7 @@ export const PropiedadForm = () => (
   <SimpleForm<PropiedadFormValues>
     className="w-full max-w-4xl"
     warnWhenUnsavedChanges
-    defaultValues={{ estado: "1-recibida" }}
+    validate={useNombreUnicoFormValidator()}
   >
     <FormErrorSummary />
     <SectionBaseTemplate
@@ -51,7 +53,9 @@ const CabeceraFields = () => (
   <div className="grid gap-2 md:grid-cols-4">
     <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-full" />
     <FormText source="propietario" label="Propietario" validate={required()} widthClass="w-full" />
-    <FormText source="tipo" label="Tipo" validate={required()} widthClass="w-full" />
+    <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo propiedad">
+      <FormSelect optionText="nombre" label="Tipo propiedad" widthClass="w-full" emptyText="Sin asignar" />
+    </ReferenceInput>
     <ReferenceInput
       source="tipo_operacion_id"
       reference="crm/catalogos/tipos-operacion"
@@ -61,6 +65,35 @@ const CabeceraFields = () => (
     </ReferenceInput>
   </div>
 );
+
+const useNombreUnicoFormValidator = () => {
+  const dataProvider = useDataProvider();
+  const record = useRecordContext<Propiedad>();
+
+  return async (values: PropiedadFormValues) => {
+    const normalized = String(values?.nombre ?? "").trim();
+    if (!normalized) return {};
+    const currentNombre = String(record?.nombre ?? "").trim();
+    if (currentNombre && currentNombre.toLowerCase() === normalized.toLowerCase()) {
+      return {};
+    }
+    try {
+      const result = await dataProvider.getList<Propiedad>("propiedades-inmobiliaria", {
+        filter: { nombre__eq: normalized },
+        pagination: { page: 1, perPage: 10 },
+        sort: { field: "id", order: "DESC" },
+      });
+      const exists = (result.data ?? []).some(
+        (item) =>
+          String(item?.nombre ?? "").trim().toLowerCase() === normalized.toLowerCase() &&
+          item.id !== record?.id,
+      );
+      return exists ? { nombre: "Ya existe una propiedad con ese nombre" } : {};
+    } catch {
+      return {};
+    }
+  };
+};
 
 const CabeceraOpcionales = () => (
   <div className="mt-1 space-y-0">
@@ -90,6 +123,9 @@ const CabeceraOpcionales = () => (
           step={0.1}
           widthClass="w-full"
         />
+        <ReferenceInput source="propiedad_status_id" reference="propiedades-status" label="Estado (catalogo)">
+          <FormSelect optionText="nombre" label="Estado (catalogo)" widthClass="w-full" emptyText="Sin asignar" />
+        </ReferenceInput>
         <FormTextarea
           source="estado_comentario"
           label="Comentario"

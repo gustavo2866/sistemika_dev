@@ -4,24 +4,6 @@ Enumeraciones para el modelo de propiedades y CRM.
 from enum import Enum
 
 
-class EstadoPropiedad(str, Enum):
-    """Estados posibles de una propiedad con prefijo numérico para secuencia."""
-    RECIBIDA = "1-recibida"
-    EN_REPARACION = "2-en_reparacion"
-    DISPONIBLE = "3-disponible"
-    REALIZADA = "4-realizada"
-    RETIRADA = "5-retirada"
-
-
-# Transiciones permitidas (usar .value para strings)
-TRANSICIONES_ESTADO_PROPIEDAD = {
-    "1-recibida": ["2-en_reparacion", "3-disponible", "4-realizada"],
-    "2-en_reparacion": ["3-disponible", "5-retirada"],
-    "3-disponible": ["4-realizada", "5-retirada"],
-    "4-realizada": ["1-recibida", "5-retirada"],
-    "5-retirada": [],  # Estado final
-}
-
 
 class EstadoOportunidad(str, Enum):
     """Pipeline de oportunidad con prefijos numéricos."""

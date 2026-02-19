@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 
 from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
-from app.models.propiedad import Propiedad
+from app.models.propiedad import Propiedad, PropiedadesStatus
 
 
 @dataclass
@@ -451,12 +451,19 @@ def build_crm_dashboard_payload(
 
     # Ranking de propiedades disponibles
     propiedades_disponibles: Dict[int, dict] = {}
-    
+
+    def _is_propiedad_disponible(prop: Propiedad) -> bool:
+        if not prop or not prop.propiedad_status:
+            return False
+        nombre = (prop.propiedad_status.nombre or "").lower()
+        return "disponible" in nombre
+
     # Si hay sesión disponible, consultar TODAS las propiedades disponibles
     if session:
         all_props_disponibles = session.exec(
             select(Propiedad)
-            .where(Propiedad.estado == "3-disponible")
+            .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id, isouter=True)
+            .where(func.lower(PropiedadesStatus.nombre).contains("disponible"))
             .where(Propiedad.deleted_at.is_(None))
         ).all()
         
@@ -487,7 +494,7 @@ def build_crm_dashboard_payload(
         # Fallback: usar solo las oportunidades del período (comportamiento anterior)
         for item in items:
             prop = item.oportunidad.propiedad
-            if not prop or prop.estado != "3-disponible":
+            if not prop or not _is_propiedad_disponible(prop):
                 continue
             
             if prop.id not in propiedades_disponibles:

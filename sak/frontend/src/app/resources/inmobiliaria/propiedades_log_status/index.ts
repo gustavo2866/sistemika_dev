@@ -1,0 +1,1 @@
+export { PropiedadesLogStatusList } from "./List";

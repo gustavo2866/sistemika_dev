@@ -63,8 +63,6 @@ from .partediario import (
 )
 from .vacancia import Vacancia
 from .enums import (
-    EstadoPropiedad,
-    TRANSICIONES_ESTADO_PROPIEDAD,
     EstadoOportunidad,
     TRANSICIONES_ESTADO_OPORTUNIDAD,
     EstadoEvento,
@@ -128,8 +126,6 @@ __all__ = [
     "EstadoParteDiario",
     "TipoLicencia",
     "Vacancia",
-    "EstadoPropiedad",
-    "TRANSICIONES_ESTADO_PROPIEDAD",
     "EstadoOportunidad",
     "TRANSICIONES_ESTADO_OPORTUNIDAD",
     "EstadoEvento",

@@ -9,9 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDataProvider, useRecordContext } from "ra-core";
 import { preferCalculated } from "@/lib/vacancias/metrics";
 import type { Propiedad, Vacancia } from "./model";
-import { formatEstadoPropiedad } from "./model";
 import { VacanciaTimeline } from "./components/vacancia-timeline";
-import { ChangeStateDialog } from "./components/change-state-dialog";
 import {
   Table,
   TableBody,
@@ -32,7 +30,6 @@ const PropiedadDetails = () => {
   const record = useRecordContext<Propiedad>();
   const dataProvider = useDataProvider();
   const [vacancias, setVacancias] = useState<Vacancia[]>(record?.vacancias ?? []);
-  const [vacanciaVersion, setVacanciaVersion] = useState(0);
 
   useEffect(() => {
     if (!record?.id) return;
@@ -61,7 +58,7 @@ const PropiedadDetails = () => {
     return () => {
       isCancelled = true;
     };
-  }, [dataProvider, record, vacanciaVersion]);
+  }, [dataProvider, record]);
 
   const vacanciasOrdenadas = useMemo(() => {
     return [...vacancias].sort((a, b) => {
@@ -137,19 +134,14 @@ const PropiedadDetails = () => {
           <p className="text-muted-foreground">{record.propietario}</p>
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="outline">{record.tipo}</Badge>
-            <Badge>{formatEstadoPropiedad(record.estado)}</Badge>
+            <Badge variant="outline">
+              {record.propiedad_status?.nombre ??
+                (record.propiedad_status_id != null
+                  ? `Estado #${record.propiedad_status_id}`
+                  : "Sin asignar")}
+            </Badge>
           </div>
         </div>
-        {record.id && (
-          <ChangeStateDialog
-            propiedadId={record.id}
-            currentEstado={record.estado}
-            estadoFecha={record.estado_fecha}
-            onCompleted={() => {
-              setVacanciaVersion((version) => version + 1);
-            }}
-          />
-        )}
       </section>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -169,7 +161,12 @@ const PropiedadDetails = () => {
                 <TextField source="propietario" />
               </Field>
               <Field label="Estado">
-                <span>{formatEstadoPropiedad(record.estado)}</span>
+                <span>
+                  {record.propiedad_status?.nombre ??
+                    (record.propiedad_status_id != null
+                      ? `Estado #${record.propiedad_status_id}`
+                      : "Sin asignar")}
+                </span>
               </Field>
             </div>
           </CardContent>

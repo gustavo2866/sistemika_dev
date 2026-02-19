@@ -9,16 +9,10 @@ import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { BulkDeleteButton } from "@/components/bulk-delete-button";
 import { NumberField } from "@/components/number-field";
-import { Badge } from "@/components/ui/badge";
 import { SelectInput } from "@/components/select-input";
-import {
-  formatEstadoPropiedad,
-  ESTADOS_PROPIEDAD_OPTIONS,
-  type Propiedad,
-} from "./model";
+import { type Propiedad } from "./model";
 import {
   useRecordContext,
-  useRefresh,
   useRedirect,
   useResourceContext,
 } from "ra-core";
@@ -34,19 +28,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Home } from "lucide-react";
 import { ResourceTitle } from "@/components/resource-title";
-import { ChangeStateDialog } from "./components/change-state-dialog";
-import { AggregateEstadoChips } from "@/components/lists/AggregateEstadoChips";
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar por nombre o propietario" alwaysOn />,
   <TextInput key="tipo" source="tipo" label="Tipo" />,
   <TextInput key="propietario" source="propietario" label="Propietario" />,
-  <SelectInput
-    key="estado"
-    source="estado"
+  <ReferenceInput
+    key="propiedad_status_id"
+    source="propiedad_status_id"
+    reference="propiedades-status"
     label="Estado"
-    choices={ESTADOS_PROPIEDAD_OPTIONS.map((option) => ({ id: option.value, name: option.label }))}
-  />,
+  >
+    <SelectInput optionText="nombre" emptyText="Todos" className="w-full" />
+  </ReferenceInput>,
   <TextInput key="ambientes__gte" source="ambientes__gte" label="Ambientes >=" type="number" />,
   <TextInput key="ambientes__lte" source="ambientes__lte" label="Ambientes <=" type="number" />,
   <TextInput key="metros_cuadrados__gte" source="metros_cuadrados__gte" label="Metros2 >=" type="number" />,
@@ -71,15 +65,6 @@ const filters = [
   </ReferenceInput>,
 ];
 
-const estadoChipClass = (estado: string, selected = false) => {
-  const palette =
-    ESTADOS_PROPIEDAD_OPTIONS.find((option) => option.value === estado)?.badgeColor ??
-    "bg-slate-200 text-slate-800";
-  return selected
-    ? `${palette} border-transparent ring-1 ring-offset-1 ring-offset-background`
-    : `${palette} border-transparent`;
-};
-
 const ListActions = () => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} />
@@ -101,12 +86,6 @@ export const PropiedadList = () => (
     actions={<ListActions />}
     perPage={10}
   >
-    <AggregateEstadoChips
-      endpoint="propiedades/aggregates/estado"
-      choices={ESTADOS_PROPIEDAD_OPTIONS.map(opt => ({ id: opt.value, name: opt.label }))}
-      badges={Object.fromEntries(ESTADOS_PROPIEDAD_OPTIONS.map(opt => [opt.value, opt.badgeColor]))}
-      getChipClassName={estadoChipClass}
-    />
     <DataTable rowClick="edit" bulkActionButtons={<PropiedadBulkActions />}>
       <DataTable.Col source="nombre" label="Nombre" className="w-[180px]">
         <div className="flex flex-col gap-0.5">
@@ -141,8 +120,10 @@ export const PropiedadList = () => (
           options={{ style: "currency", currency: "ARS", maximumFractionDigits: 0 }}
         />
       </DataTable.Col>
-      <DataTable.Col source="estado" label="Estado" className="w-[120px]">
-        <EstadoBadge />
+      <DataTable.Col source="propiedad_status_id" label="Estado" className="w-[160px]">
+        <ReferenceField source="propiedad_status_id" reference="propiedades-status" link={false} empty="Sin asignar">
+          <TextField source="nombre" />
+        </ReferenceField>
       </DataTable.Col>
       <DataTable.Col source="emprendimiento_id" label="Emprendimiento" className="w-[160px]">
         <ReferenceField source="emprendimiento_id" reference="emprendimientos" link={false} empty="Sin asignar">
@@ -158,21 +139,13 @@ export const PropiedadList = () => (
 
 export const PropiedadActionsMenu = ({
   propiedad,
-  onChanged,
 }: {
   propiedad?: Propiedad;
-  onChanged?: () => void;
 }) => {
   const contextRecord = useRecordContext<Propiedad>();
   const record = propiedad ?? contextRecord;
   const resource = useResourceContext() || "propiedades";
   const redirect = useRedirect();
-  const refresh = useRefresh();
-
-  const handleCompleted = () => {
-    refresh();
-    onChanged?.();
-  };
 
   if (!record) {
     return null;
@@ -206,44 +179,8 @@ export const PropiedadActionsMenu = ({
           Mostrar
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <ChangeStateDialog
-          propiedadId={record.id}
-          currentEstado={record.estado}
-          estadoFecha={record.estado_fecha}
-          onCompleted={handleCompleted}
-          trigger={
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-            >
-              Cambiar estado
-            </DropdownMenuItem>
-          }
-        />
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-};
-
-const EstadoBadge = () => {
-  const record = useRecordContext<Propiedad>();
-
-  if (!record) {
-    return null;
-  }
-
-  const estado = ESTADOS_PROPIEDAD_OPTIONS.find((option) => option.value === record.estado);
-
-  return (
-    <Badge className={estado?.badgeColor ?? "bg-slate-200 text-slate-800"} variant="outline">
-      {formatEstadoPropiedad(record.estado)}
-    </Badge>
   );
 };
 

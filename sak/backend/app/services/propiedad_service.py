@@ -24,13 +24,12 @@ def seed_propiedades(session: Session) -> None:
             nombre,
             tipo,
             propietario,
-            estado,
             ambientes,
             metros_cuadrados,
             valor_alquiler,
             expensas,
             fecha_ingreso,
-        ) = data[:10]
+        ) = data[:9]
 
         prop = session.exec(select(Propiedad).where(Propiedad.id == prop_id)).first()
         if prop:
@@ -41,7 +40,6 @@ def seed_propiedades(session: Session) -> None:
                 nombre=nombre,
                 tipo=tipo,
                 propietario=propietario,
-                estado=estado,
                 ambientes=ambientes,
                 metros_cuadrados=metros_cuadrados,
                 valor_alquiler=valor_alquiler,

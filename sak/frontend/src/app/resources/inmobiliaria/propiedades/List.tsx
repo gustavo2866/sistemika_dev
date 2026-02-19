@@ -7,7 +7,7 @@ import {
   FormOrderBulkActionsToolbar,
   FormOrderListRowActions,
   ListColumn,
-  ListStatus,
+  ListEstado,
   ListText,
   ResponsiveDataTable,
   buildListFilters,
@@ -16,7 +16,8 @@ import {
 import { List } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 
-import { ESTADOS_PROPIEDAD_OPTIONS, PROPIEDAD_STATUS_BADGES } from "./model";
+import { PROPIEDAD_STATUS_BADGES } from "./model";
+
 
 // === Filtros ===
 const LIST_FILTERS = buildListFilters(
@@ -34,27 +35,8 @@ const LIST_FILTERS = buildListFilters(
     {
       type: "text",
       props: {
-        source: "tipo",
-        label: "Tipo",
-      },
-    },
-    {
-      type: "text",
-      props: {
         source: "propietario",
         label: "Propietario",
-      },
-    },
-    {
-      type: "select",
-      props: {
-        source: "estado",
-        label: "Estado",
-        choices: ESTADOS_PROPIEDAD_OPTIONS.map((option) => ({
-          id: option.value,
-          name: option.label,
-        })),
-        className: "w-full",
       },
     },
     {
@@ -63,6 +45,19 @@ const LIST_FILTERS = buildListFilters(
         source: "tipo_operacion_id",
         reference: "crm/catalogos/tipos-operacion",
         label: "Tipo operacion",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+        className: "w-full",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "propiedad_status_id",
+        reference: "propiedades-status",
+        label: "Estado",
       },
       selectProps: {
         optionText: "nombre",
@@ -102,12 +97,13 @@ const AccionesLista = () => (
   </div>
 );
 
+
 // === Listado ===
 export const PropiedadList = () => <ListaPropiedades />;
 
 const ListaPropiedades = () => (
   <List
-    title="Propiedades (Inmobiliaria)"
+    title="Propiedades"
     filters={LIST_FILTERS}
     actions={<AccionesLista />}
     debounce={300}
@@ -123,22 +119,31 @@ const ListaPropiedades = () => (
         primaryField: "nombre",
         secondaryFields: [
           "propietario",
-          "tipo",
-          "estado",
+          "propiedad_status_id",
           "valor_alquiler",
         ],
         detailFields: [],
       }}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
+      <ListColumn source="id" label="ID" className="w-[60px]">
+        <ListText source="id" />
+      </ListColumn>
       <ListColumn source="nombre" label="Nombre" className="w-[180px]">
         <div className="flex flex-col gap-0.5">
           <ListText source="nombre" className="font-medium" />
           <ListText source="propietario" className="text-[9px] text-muted-foreground" />
         </div>
       </ListColumn>
-      <ListColumn source="tipo" label="Tipo" className="w-[110px]">
-        <ListText source="tipo" />
+      <ListColumn source="tipo_propiedad_id" label="Tipo prop." className="w-[140px]">
+        <ReferenceField
+          source="tipo_propiedad_id"
+          reference="tipos-propiedad"
+          link={false}
+          emptyText="Sin asignar"
+        >
+          <ListText source="nombre" />
+        </ReferenceField>
       </ListColumn>
       <ListColumn source="tipo_operacion_id" label="Operacion" className="w-[150px]">
         <ReferenceField
@@ -150,12 +155,17 @@ const ListaPropiedades = () => (
           <ListText source="nombre" />
         </ReferenceField>
       </ListColumn>
-      
-      <ListColumn source="estado" label="Estado" className="w-[120px]">
-        <ListStatus source="estado" statusClasses={PROPIEDAD_STATUS_BADGES} />
+      <ListColumn source="propiedad_status_id" label="Estado" className="w-[90px]">
+        <ListEstado
+          source="propiedad_status.nombre"
+          statusClasses={PROPIEDAD_STATUS_BADGES}
+        />
       </ListColumn>
       <ListColumn label="Acciones" className="w-[60px]">
-        <FormOrderListRowActions />
+        <FormOrderListRowActions
+          showShow={false}
+          showDelete
+        />
       </ListColumn>
     </ResponsiveDataTable>
   </List>

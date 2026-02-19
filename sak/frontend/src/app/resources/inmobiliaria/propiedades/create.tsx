@@ -9,7 +9,7 @@ import { PropiedadForm } from "./form";
 export const PropiedadCreate = () => (
   <Create
     redirect="list"
-    title={<ResourceTitle icon={Home} text="Crear propiedad (Inmobiliaria)" />}
+    title={<ResourceTitle icon={Home} text="Crear propiedad" />}
   >
     <PropiedadForm />
   </Create>

@@ -352,7 +352,12 @@ function CotizacionSection() {
     <CompactFormSection>
       <CompactFormGrid style={{ gridTemplateColumns: "1fr auto 1fr" }}>
         <div>
-          <ReferenceInput source="propiedad_id" reference="propiedades" label="Propiedad">
+          <ReferenceInput
+            source="propiedad_id"
+            reference="propiedades"
+            label="Propiedad"
+            filter={{ estado: "3-disponible" }}
+          >
             <CompactSelectInput optionText="nombre" className="w-full" />
           </ReferenceInput>
         </div>

@@ -1,5 +1,5 @@
 from typing import Optional, List, TYPE_CHECKING
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 from decimal import Decimal
 
 from sqlmodel import Field, Relationship
@@ -14,14 +14,110 @@ if TYPE_CHECKING:
     from .crm_catalogos import CRMTipoOperacion
     from .crm_oportunidad import CRMOportunidad
     from .emprendimiento import Emprendimiento
+    from .user import User
+    from .tipo_propiedad import TipoPropiedad
 
 DEFAULT_PROPIEDADES = (
-    (1, 'Casa Central', 'Departamento', 'Inversiones SA', '1-recibida', 3, 85.5, 450000, 120000, '2020-03-15'),
-    (2, 'Depósito Norte', 'Galpón', 'Logística SRL', '1-recibida', None, 500.0, 800000, 50000, '2019-06-01'),
-    (3, 'Oficina Microcentro', 'Oficina', 'Inmobiliaria SA', '1-recibida', 2, 65.0, 350000, 80000, '2021-11-20'),
-    (4, 'Local Comercial 45', 'Local', 'Retail Partners', '1-recibida', 1, 45.0, 280000, 60000, '2022-02-10'),
-    (5, 'Terreno Ruta 9', 'Terreno', 'Desarrollos SRL', '1-recibida', None, 1200.0, None, None, '2023-01-05'),
+    (1, 'Casa Central', 'Departamento', 'Inversiones SA', 3, 85.5, 450000, 120000, '2020-03-15'),
+    (2, 'Depósito Norte', 'Galpón', 'Logística SRL', None, 500.0, 800000, 50000, '2019-06-01'),
+    (3, 'Oficina Microcentro', 'Oficina', 'Inmobiliaria SA', 2, 65.0, 350000, 80000, '2021-11-20'),
+    (4, 'Local Comercial 45', 'Local', 'Retail Partners', 1, 45.0, 280000, 60000, '2022-02-10'),
+    (5, 'Terreno Ruta 9', 'Terreno', 'Desarrollos SRL', None, 1200.0, None, None, '2023-01-05'),
 )
+
+
+class PropiedadesStatus(Base, table=True):
+    """Estados de propiedades."""
+
+    __tablename__ = "propiedades_status"
+
+    __searchable_fields__ = ["nombre", "descripcion"]
+
+    nombre: str = Field(
+        max_length=50,
+        description="Nombre del estado",
+        nullable=False,
+        unique=True,
+    )
+    descripcion: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Descripción del estado",
+    )
+    orden: int = Field(
+        description="Orden de visualización",
+        nullable=False,
+    )
+    activo: bool = Field(
+        default=True,
+        description="Si el estado está activo",
+    )
+    es_inicial: bool = Field(
+        default=False,
+        description="Si es el estado inicial por defecto",
+    )
+    es_final: bool = Field(
+        default=False,
+        description="Si es un estado final",
+    )
+
+    propiedades: List["Propiedad"] = Relationship(back_populates="propiedad_status")
+
+
+class PropiedadesLogStatus(Base, table=True):
+    """Log de cambios de estado de propiedades."""
+
+    __tablename__ = "propiedades_log_status"
+
+    __searchable_fields__ = ["estado_nuevo", "estado_anterior", "motivo"]
+
+    propiedad_id: int = Field(foreign_key="propiedades.id", index=True, description="ID de la propiedad")
+    estado_anterior_id: Optional[int] = Field(
+        default=None,
+        foreign_key="propiedades_status.id",
+        description="ID del estado anterior (null para primer estado)"
+    )
+    estado_nuevo_id: int = Field(
+        foreign_key="propiedades_status.id",
+        description="ID del nuevo estado"
+    )
+    estado_anterior: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="Nombre del estado anterior (para referencia)"
+    )
+    estado_nuevo: str = Field(
+        max_length=50,
+        description="Nombre del nuevo estado (para referencia)"
+    )
+    fecha_cambio: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Fecha y hora del cambio de estado"
+    )
+    usuario_id: int = Field(
+        foreign_key="users.id",
+        description="ID del usuario que realizó el cambio"
+    )
+    motivo: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Motivo del cambio de estado"
+    )
+    observaciones: Optional[str] = Field(
+        default=None,
+        max_length=1000,
+        description="Observaciones adicionales del cambio"
+    )
+
+    # Relaciones
+    propiedad: Optional["Propiedad"] = Relationship(back_populates="logs_estado")
+    estado_anterior_ref: Optional["PropiedadesStatus"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "PropiedadesLogStatus.estado_anterior_id"}
+    )
+    estado_nuevo_ref: Optional["PropiedadesStatus"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "PropiedadesLogStatus.estado_nuevo_id"}
+    )
+    usuario: Optional["User"] = Relationship()
 
 
 class Propiedad(Base, table=True):
@@ -29,14 +125,14 @@ class Propiedad(Base, table=True):
 
     __tablename__ = 'propiedades'
 
-    nombre: str = Field(max_length=255, unique=True, index=True)
-    tipo: str = Field(max_length=100, description='Tipo de propiedad')
-    propietario: str = Field(max_length=255, description='Propietario o responsable')
-    estado: str = Field(
-        default='1-recibida',
-        max_length=20,
-        description='Estado actual: 1-recibida, 2-en_reparacion, 3-disponible, 4-realizada, 5-retirada'
+    nombre: str = Field(max_length=255, index=True)
+    tipo_propiedad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_propiedad.id",
+        index=True,
+        description="Referencia al catálogo de tipos de propiedad"
     )
+    propietario: str = Field(max_length=255, description='Propietario o responsable')
     
     # Características físicas
     ambientes: Optional[int] = Field(
@@ -86,6 +182,17 @@ class Propiedad(Base, table=True):
         max_length=500,
         description="Comentario sobre el cambio de estado"
     )
+    
+    # Control de vacancia
+    vacancia_activa: bool = Field(
+        default=False,
+        description="Indica si la propiedad tiene una vacancia activa"
+    )
+    vacancia_fecha: Optional[date] = Field(
+        default=None,
+        description="Fecha de inicio de la vacancia actual"
+    )
+    
     contacto_id: Optional[int] = Field(
         default=None,
         foreign_key="crm_contactos.id",
@@ -103,6 +210,12 @@ class Propiedad(Base, table=True):
         foreign_key="emprendimientos.id",
         index=True,
         description="Emprendimiento al que pertenece",
+    )
+    propiedad_status_id: Optional[int] = Field(
+        default=None,
+        foreign_key="propiedades_status.id",
+        index=True,
+        description="Estado de la propiedad desde tabla de estados",
     )
     costo_propiedad: Optional[Decimal] = Field(
         default=None,
@@ -130,11 +243,17 @@ class Propiedad(Base, table=True):
         back_populates='propiedad',
         sa_relationship_kwargs={'cascade': 'all, delete-orphan'}
     )
+    tipo_propiedad: Optional['TipoPropiedad'] = Relationship(back_populates="propiedades")
     tipo_operacion: Optional['CRMTipoOperacion'] = Relationship()
     emprendimiento: Optional['Emprendimiento'] = Relationship()
+    propiedad_status: Optional['PropiedadesStatus'] = Relationship(back_populates="propiedades")
+    logs_estado: List['PropiedadesLogStatus'] = Relationship(
+        back_populates='propiedad',
+        sa_relationship_kwargs={'cascade': 'all, delete-orphan'}
+    )
     oportunidades: List['CRMOportunidad'] = Relationship(back_populates="propiedad")
     
-    __searchable_fields__ = ['nombre', 'tipo', 'propietario', 'estado']
+    __searchable_fields__ = ['nombre', 'propietario']
     __expanded_list_relations__ = []
     
     @field_validator('ambientes')

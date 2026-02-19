@@ -62,6 +62,15 @@ const extractErrorMessage = (error: unknown) => {
     return `El campo ${label} es obligatorio.`;
   }
 
+  const uniqueMatch = /duplicate key value violates unique constraint "([^"]+)"/i.exec(rawMessage);
+  if (uniqueMatch?.[1]) {
+    const constraint = uniqueMatch[1];
+    if (constraint === "ix_propiedades_nombre") {
+      return "Ya existe una propiedad con ese nombre.";
+    }
+    return "Registro duplicado. Verifica los datos.";
+  }
+
   return rawMessage;
 };
 

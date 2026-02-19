@@ -89,7 +89,12 @@ const AccionCotizarContent = ({ returnTo }: { returnTo: string }) => {
           <AccionOportunidadHeader oportunidad={record} />
           <Card className="flex w-full flex-col gap-5 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-5 shadow-lg">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <ReferenceInput source="propiedad_id" reference="propiedades" label="Propiedad">
+              <ReferenceInput
+                source="propiedad_id"
+                reference="propiedades"
+                label="Propiedad"
+                filter={{ estado: "3-disponible" }}
+              >
                 <SelectInput optionText="nombre" emptyText="Seleccionar" validate={required()} />
               </ReferenceInput>
               <ReferenceInput

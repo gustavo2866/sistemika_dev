@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
-from app.models.propiedad import Propiedad
+from app.models.propiedad import Propiedad, PropiedadesStatus
 from app.models.vacancia import Vacancia
 
 
@@ -122,19 +122,32 @@ def fetch_vacancias_for_dashboard(
     today = datetime.utcnow().date()
     cut = min(end, today)
 
+    status_id: Optional[int] = None
+    status_name: Optional[str] = None
+    if estado_propiedad:
+        try:
+            status_id = int(estado_propiedad)
+        except ValueError:
+            status_name = estado_propiedad.strip().lower()
+
     # Construir query base desde Vacancia
     query = (
         select(Vacancia)
         .where(Vacancia.deleted_at.is_(None))
-        .options(selectinload(Vacancia.propiedad))
+        .options(
+            selectinload(Vacancia.propiedad).selectinload(Propiedad.propiedad_status)
+        )
     )
 
     # Si hay filtros de propiedad, hacer join
     join_propiedad = any([estado_propiedad, propietario, ambientes is not None])
     if join_propiedad:
         query = query.join(Propiedad, Vacancia.propiedad_id == Propiedad.id, isouter=False)
-        if estado_propiedad:
-            query = query.where(Propiedad.estado == estado_propiedad)
+        if status_id is not None:
+            query = query.where(Propiedad.propiedad_status_id == status_id)
+        elif status_name:
+            query = query.join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id, isouter=True)
+            query = query.where(func.lower(PropiedadesStatus.nombre).contains(status_name))
         if propietario:
             query = query.where(func.lower(Propiedad.propietario).contains(propietario.lower()))
         if ambientes is not None:
@@ -156,6 +169,17 @@ def fetch_vacancias_for_dashboard(
 
 
 def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, end_date: str, limit_top: int = 5) -> dict:
+    def _status_name(propiedad: Optional[Propiedad]) -> str:
+        if not propiedad or not propiedad.propiedad_status:
+            return ""
+        return (propiedad.propiedad_status.nombre or "").lower()
+
+    def _is_status(name: str, keyword: str) -> bool:
+        return keyword in name
+
+    def _is_final_status(name: str) -> bool:
+        return any(key in name for key in ("realizada", "retirada", "alquilada", "final"))
+
     def _vacancia_cost(v: Vacancia, dias: int) -> float:
         alquiler = float(v.propiedad.valor_alquiler or 0) if v.propiedad else 0.0
         expensas = float(v.propiedad.expensas or 0) if v.propiedad else 0.0
@@ -180,10 +204,10 @@ def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, en
         reparacion = 0
         disponible = 0
         for item in subset:
-            estado_propiedad = item.vacancia.propiedad.estado if item.vacancia.propiedad else None
-            if estado_propiedad == "2-en_reparacion":
+            estado_propiedad = _status_name(item.vacancia.propiedad)
+            if _is_status(estado_propiedad, "reparacion"):
                 reparacion += 1
-            elif estado_propiedad == "3-disponible":
+            elif _is_status(estado_propiedad, "disponible"):
                 disponible += 1
         return {"reparacion": reparacion, "disponible": disponible}
 
@@ -233,10 +257,19 @@ def build_dashboard_payload(items: List[CalculatedVacancia], start_date: str, en
 
     kpi_cards = {
         "totales": _kpi_stats(items),
-        "disponible": _kpi_stats([i for i in items if i.vacancia.propiedad and i.vacancia.propiedad.estado == "3-disponible"]),
-        "reparacion": _kpi_stats([i for i in items if i.vacancia.propiedad and i.vacancia.propiedad.estado == "2-en_reparacion"]),
+        "disponible": _kpi_stats(
+            [i for i in items if _is_status(_status_name(i.vacancia.propiedad), "disponible")]
+        ),
+        "reparacion": _kpi_stats(
+            [i for i in items if _is_status(_status_name(i.vacancia.propiedad), "reparacion")]
+        ),
         "activas": _kpi_stats(
-            [i for i in items if i.estado_corte == "Activo" and (i.vacancia.propiedad is None or i.vacancia.propiedad.estado not in {"4-realizada", "5-retirada"})]
+            [
+                i
+                for i in items
+                if i.estado_corte == "Activo"
+                and not _is_final_status(_status_name(i.vacancia.propiedad))
+            ]
         ),
     }
 

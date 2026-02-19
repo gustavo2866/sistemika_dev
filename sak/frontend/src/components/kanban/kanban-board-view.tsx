@@ -350,7 +350,7 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
       onToggleBucketCollapse={enableBucketCollapseToggle ? handleToggleBucketCollapse : undefined}
       bucketCollapseToggleVariant="icon"
       bucketCollapseToggleLabel={bucketCollapseToggleLabel}
-      bucketCollapseToggleClassName="h-7 w-7"
+      bucketCollapseToggleClassName="h-5 w-5"
       bucketCollapseToggleStopPropagation
       renderCard={(item, bucketKey) => {
         const bucketOverride = bucketKey ? bucketCollapseOverrides[String(bucketKey)] : undefined;

@@ -6,6 +6,7 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .crm_oportunidad import CRMOportunidad
+    from .propiedad import Propiedad
 
 
 class TipoPropiedad(Base, table=True):
@@ -19,6 +20,7 @@ class TipoPropiedad(Base, table=True):
     activo: bool = Field(default=True, description="Indica si el tipo está activo")
 
     oportunidades: list["CRMOportunidad"] = Relationship(back_populates="tipo_propiedad")
+    propiedades: list["Propiedad"] = Relationship(back_populates="tipo_propiedad")
 
     def __str__(self) -> str:  # pragma: no cover
         return f"TipoPropiedad(id={self.id}, nombre='{self.nombre}')"

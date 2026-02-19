@@ -32,7 +32,7 @@ from app.models.crm import (
 )
 from app.models.propiedad import Propiedad
 from app.models.user import User
-from app.models.enums import EstadoOportunidad, EstadoPropiedad
+from app.models.enums import EstadoOportunidad
 
 # Cargar variables de entorno
 load_dotenv()
@@ -58,16 +58,6 @@ MOTIVOS_PERDIDA_NOMBRES = [
     "Cambió de opinión",
     "Problemas de financiamiento",
 ]
-
-# Mapeo de estado de oportunidad a estado de propiedad
-ESTADO_OPP_A_PROPIEDAD = {
-    EstadoOportunidad.GANADA.value: EstadoPropiedad.REALIZADA.value,
-    EstadoOportunidad.RESERVA.value: EstadoPropiedad.DISPONIBLE.value,
-    EstadoOportunidad.ABIERTA.value: EstadoPropiedad.DISPONIBLE.value,
-    EstadoOportunidad.VISITA.value: EstadoPropiedad.DISPONIBLE.value,
-    EstadoOportunidad.COTIZA.value: EstadoPropiedad.DISPONIBLE.value,
-    EstadoOportunidad.PERDIDA.value: EstadoPropiedad.DISPONIBLE.value,
-}
 
 
 def generar_fecha_aleatoria(desde: datetime, hasta: datetime) -> datetime:
@@ -141,15 +131,8 @@ def crear_log_estado(
 
 
 def actualizar_estado_propiedad(session: Session, propiedad_id: int, estado_oportunidad: str):
-    """Actualiza el estado de la propiedad según el estado de la oportunidad."""
-    propiedad = session.get(Propiedad, propiedad_id)
-    if not propiedad:
-        return
-    
-    nuevo_estado = ESTADO_OPP_A_PROPIEDAD.get(estado_oportunidad)
-    if nuevo_estado and propiedad.estado != nuevo_estado:
-        propiedad.estado = nuevo_estado
-        session.add(propiedad)
+    """Estado operativo de propiedad deprecado: sin sincronización automática."""
+    return
 
 
 def populate_oportunidades(session: Session):
@@ -204,13 +187,7 @@ def populate_oportunidades(session: Session):
     session.commit()
     print(f"  ✅ {len(existing_opps)} oportunidades eliminadas")
     
-    # Restablecer estados de propiedades
-    print("\n🔄 Restableciendo estados de propiedades a DISPONIBLE...")
-    for prop in propiedades:
-        if prop.estado != EstadoPropiedad.DISPONIBLE.value:
-            prop.estado = EstadoPropiedad.DISPONIBLE.value
-            session.add(prop)
-    session.commit()
+    print("\n🔄 Estado operativo de propiedades deprecado: omitiendo sincronización.")
     
     # Fecha de inicio: hace 2 años desde hoy
     hoy = datetime(2025, 11, 25, tzinfo=UTC)

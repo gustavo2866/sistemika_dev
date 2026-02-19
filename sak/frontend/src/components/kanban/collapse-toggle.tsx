@@ -26,9 +26,9 @@ export const KanbanCollapseToggle = ({
   const computedLabel = label ?? (collapsed ? "Expandir tarjetas" : "Contraer tarjetas");
   const baseClass =
     variant === "icon"
-      ? "h-8 w-8 rounded-full"
+      ? "h-6 w-6 rounded-full"
       : variant === "pill"
-      ? "h-8 rounded-full px-4 text-xs font-semibold uppercase tracking-wide"
+      ? "h-6 rounded-full px-3 text-[10px] font-semibold uppercase tracking-wide"
       : "";
 
   if (variant === "icon-with-label") {
@@ -49,10 +49,10 @@ export const KanbanCollapseToggle = ({
           className,
         )}
       >
-        <div className="h-8 w-8 rounded-full border border-slate-300 bg-white/80 text-slate-600 shadow-sm flex items-center justify-center hover:bg-slate-100">
-          {collapsed ? <Expand className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+        <div className="h-6 w-6 rounded-full border border-slate-300 bg-white/80 text-slate-600 shadow-sm flex items-center justify-center hover:bg-slate-100">
+          {collapsed ? <Expand className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
         </div>
-        <span className="text-[9px] text-slate-500 font-medium">
+        <span className="text-[8px] text-slate-500 font-medium">
           {collapsed ? "Expandir" : "Contraer"}
         </span>
       </button>
@@ -78,7 +78,7 @@ export const KanbanCollapseToggle = ({
         className,
       )}
     >
-      {children ?? (collapsed ? <Expand className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />)}
+      {children ?? (collapsed ? <Expand className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />)}
     </button>
   );
 };

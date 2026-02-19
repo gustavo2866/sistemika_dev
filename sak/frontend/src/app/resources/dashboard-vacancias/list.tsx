@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PeriodRangeNavigator, type PeriodRange, type PeriodType } from "@/components/forms/period-range-navigator";
-import type { Propiedad } from "../propiedades/model";
-import { ESTADOS_PROPIEDAD_OPTIONS } from "../propiedades/model";
-import { ChangeStateDialog } from "../propiedades/components/change-state-dialog";
-import { Eye, GitBranch } from "lucide-react";
+import { Eye } from "lucide-react";
 import { apiUrl } from "@/lib/dataProvider";
 import { DashboardKpiCard, DashboardRanking, RankingItem } from "@/components/dashboard";
 import {
@@ -79,7 +76,6 @@ export default function DashboardVacanciasList() {
           endDate: filters.endDate,
           limitTop: "5",
         });
-        if (filters.estadoPropiedad) params.set("estadoPropiedad", filters.estadoPropiedad);
         if (filters.propietario) params.set("propietario", filters.propietario);
         if (filters.ambientes) params.set("ambientes", filters.ambientes);
         const response = await fetch(`${apiUrl}/api/dashboard/vacancias?${params.toString()}`);
@@ -119,7 +115,6 @@ export default function DashboardVacanciasList() {
         const estadoVacancia = longestFilter === "todos" ? "" : longestFilter;
         if (estadoVacancia) params.set("estadoVacancia", estadoVacancia);
         if (rankingBucket !== "todos") params.set("bucket", rankingBucket);
-        if (filters.estadoPropiedad) params.set("estadoPropiedad", filters.estadoPropiedad);
         if (filters.propietario) params.set("propietario", filters.propietario);
         if (filters.ambientes) params.set("ambientes", filters.ambientes);
 
@@ -235,7 +230,6 @@ export default function DashboardVacanciasList() {
         const estadoVacancia = longestFilter === "todos" ? "" : longestFilter;
         if (estadoVacancia) params.set("estadoVacancia", estadoVacancia);
         if (rankingBucket !== "todos") params.set("bucket", rankingBucket);
-        if (filters.estadoPropiedad) params.set("estadoPropiedad", filters.estadoPropiedad);
         if (filters.propietario) params.set("propietario", filters.propietario);
         if (filters.ambientes) params.set("ambientes", filters.ambientes);
 
@@ -546,17 +540,11 @@ const VacanciaRankingItem = ({
   const costo = getVacanciaCost(item.vacancia, item.diasTotales);
   const ambientes = item.vacancia.propiedad?.ambientes;
   const propietario = item.vacancia.propiedad?.propietario ?? "Sin propietario";
-  const estadoPropiedad = item.vacancia.propiedad?.estado;
-  const estadoInfo = ESTADOS_PROPIEDAD_OPTIONS.find(e => e.value === estadoPropiedad);
-  
-  const actionRecord: Propiedad = item.vacancia.propiedad ?? {
-    id: item.vacancia.propiedad_id,
-    estado: "1-recibida",
-    nombre: `Propiedad ${item.vacancia.propiedad_id}`,
-    tipo: "",
-    propietario,
-    estado_fecha: "",
-  };
+  const estadoPropiedadLabel =
+    item.vacancia.propiedad?.propiedad_status?.nombre ??
+    (item.vacancia.propiedad?.propiedad_status_id != null
+      ? `Estado #${item.vacancia.propiedad?.propiedad_status_id}`
+      : "Sin asignar");
 
   return (
     <RankingItem
@@ -577,25 +565,6 @@ const VacanciaRankingItem = ({
               <Eye className="h-4 w-4" />
               <span className="sr-only">Consultar vacancia</span>
             </Button>
-            <ChangeStateDialog
-              propiedadId={actionRecord.id}
-              currentEstado={actionRecord.estado}
-              estadoFecha={actionRecord.estado_fecha}
-              onCompleted={() => setFilters((prev) => ({ ...prev }))} // refrescar filtros para re-cargar lista
-              trigger={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title="Cambiar estado"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
-                >
-                  <GitBranch className="h-4 w-4" />
-                  <span className="sr-only">Cambiar estado</span>
-                </Button>
-              }
-            />
           </div>
         </div>
       }
@@ -606,11 +575,9 @@ const VacanciaRankingItem = ({
           <p className="text-xs text-muted-foreground">
             Ciclo #{item.vacancia.id} - {getVacanciaEstadoLabel(item.estadoCorte)}
           </p>
-          {estadoInfo && (
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${estadoInfo.badgeColor}`}>
-              {estadoInfo.label}
-            </span>
-          )}
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-foreground">
+            {estadoPropiedadLabel}
+          </span>
         </div>
         <p className="text-xs text-muted-foreground">
           {propietario} - {ambientes ?? "s/amb"} ambientes - Costo: {formatCurrency(costo)}
