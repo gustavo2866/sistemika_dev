@@ -5,8 +5,10 @@ from datetime import date
 from typing import Any, Optional
 
 from sqlmodel import Session, select
+from sqlalchemy import func
 
 from app.models.propiedad import Propiedad, PropiedadesStatus
+from app.models.vacancia import Vacancia
 from app.models.crm.catalogos import CRMTipoOperacion
 
 
@@ -27,13 +29,34 @@ def _estado_sort_key(value: str) -> tuple[int, str]:
         return (999, value)
 
 
-def build_propiedades_dashboard(session: Session, pivot_date: date) -> dict[str, Any]:
+def _resolve_status_id(session: Session, name_fragment: str) -> Optional[int]:
+    status = session.exec(
+        select(PropiedadesStatus)
+        .where(PropiedadesStatus.nombre.ilike(f"%{name_fragment}%"))
+        .order_by(PropiedadesStatus.orden.asc())
+    ).first()
+    return status.id if status else None
+
+
+def _normalize_estado(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+def build_propiedades_dashboard(
+    session: Session,
+    pivot_date: date,
+    tipo_operacion_id: Optional[int] = None,
+) -> dict[str, Any]:
+    statuses = session.exec(select(PropiedadesStatus)).all()
     query = (
         select(Propiedad, CRMTipoOperacion, PropiedadesStatus)
         .where(Propiedad.deleted_at.is_(None))
+        .where(Propiedad.vacancia_activa.is_(True))
         .join(CRMTipoOperacion, Propiedad.tipo_operacion_id == CRMTipoOperacion.id, isouter=True)
         .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id, isouter=True)
     )
+    if tipo_operacion_id is not None:
+        query = query.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
     rows = session.exec(query).all()
 
     # estado -> tipo_operacion_id -> agregado
@@ -66,6 +89,18 @@ def build_propiedades_dashboard(session: Session, pivot_date: date) -> dict[str,
         state_totals[estado]["count"] += 1
         state_totals[estado]["dias_total"] += dias
 
+    # Asegurar tarjetas vacías para estados finales aunque no haya registros vinculados
+    for status in statuses:
+        nombre = status.nombre or ""
+        nombre_key = nombre.lower()
+        if "realizada" in nombre_key or "retirada" in nombre_key:
+            if nombre not in state_map:
+                state_map[nombre] = {}
+            if nombre not in state_totals:
+                state_totals[nombre] = {"count": 0, "dias_total": 0}
+            if nombre not in state_order:
+                state_order[nombre] = status.orden
+
     cards = []
     for estado, tipos in state_map.items():
         tipo_items = list(tipos.values())
@@ -87,8 +122,101 @@ def build_propiedades_dashboard(session: Session, pivot_date: date) -> dict[str,
 
     cards.sort(key=lambda item: (item.get("orden", 999), item["estado"]))
 
+    retirada_id = _resolve_status_id(session, "retirada")
+    if retirada_id is not None:
+        retiro_subq = (
+            select(
+                Propiedad.id.label("propiedad_id"),
+                func.coalesce(func.max(Vacancia.fecha_retirada), Propiedad.estado_fecha).label("fecha_retiro"),
+            )
+            .select_from(Propiedad)
+            .join(Vacancia, Vacancia.propiedad_id == Propiedad.id, isouter=True)
+            .where(Propiedad.deleted_at.is_(None))
+            .where(Propiedad.propiedad_status_id == retirada_id)
+            .group_by(Propiedad.id, Propiedad.estado_fecha)
+        )
+        if tipo_operacion_id is not None:
+            retiro_subq = retiro_subq.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
+
+        rows_retiro = session.exec(retiro_subq).all()
+        recientes = 0
+        antiguas = 0
+        for _, fecha_retiro in rows_retiro:
+            if not fecha_retiro:
+                continue
+            days = (pivot_date - fecha_retiro).days
+            if days <= 30:
+                recientes += 1
+            else:
+                antiguas += 1
+
+        for card in cards:
+            if "retirada" in _normalize_estado(card["estado"]):
+                card["retiradaBuckets"] = [
+                    {"key": "lt_30", "label": "< 30 dias", "count": recientes},
+                    {"key": "gt_30", "label": "Mas antiguas", "count": antiguas},
+                ]
+                break
+
     return {
         "pivotDate": pivot_date.isoformat(),
         "totalPropiedades": sum(item["propiedades"] for item in cards),
         "cards": cards,
+    }
+
+
+def build_realizada_vencimientos(
+    session: Session,
+    pivot_date: date,
+    tipo_operacion_id: Optional[int] = None,
+) -> dict[str, Any]:
+    if tipo_operacion_id is None:
+        alquiler = session.exec(
+            select(CRMTipoOperacion).where(
+                (CRMTipoOperacion.nombre.ilike("%alquiler%"))
+                | (CRMTipoOperacion.codigo.ilike("%alquiler%"))
+            )
+        ).first()
+        tipo_operacion_id = alquiler.id if alquiler else None
+    realizada_id = _resolve_status_id(session, "realizada")
+    if realizada_id is None:
+        return {
+            "pivotDate": pivot_date.isoformat(),
+            "tipoOperacionId": tipo_operacion_id,
+            "ranges": [
+                {"key": "vencidos", "label": "Vencidos", "count": 0},
+                {"key": "lt_30", "label": "Vencen < 30 dias", "count": 0},
+            ],
+            "total": 0,
+        }
+
+    query = (
+        select(Propiedad.vencimiento_contrato)
+        .where(Propiedad.deleted_at.is_(None))
+        .where(Propiedad.propiedad_status_id == realizada_id)
+    )
+    if tipo_operacion_id is not None:
+        query = query.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
+
+    vencimientos = session.exec(query).all()
+
+    lt_30 = 0
+    lt_60 = 0
+    for vencimiento in vencimientos:
+        if vencimiento is None:
+            continue
+        days = (vencimiento - pivot_date).days
+        if days < 30:
+            lt_30 += 1
+        elif days < 60:
+            lt_60 += 1
+
+    return {
+        "pivotDate": pivot_date.isoformat(),
+        "tipoOperacionId": tipo_operacion_id,
+        "ranges": [
+            {"key": "lt_30", "label": "< 30 dias", "count": lt_30},
+            {"key": "lt_60", "label": "< 60 dias", "count": lt_60},
+        ],
+        "total": len(vencimientos),
     }

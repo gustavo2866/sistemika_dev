@@ -69,6 +69,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     title,
     children,
     actions,
+    topContent,
     showBreadcrumb = true,
     containerClassName,
   } = props;
@@ -119,6 +120,11 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             </div>
           )}
         </div>
+        {topContent ? (
+          <div className="mb-2 w-full max-w-3xl">
+            {topContent}
+          </div>
+        ) : null}
         <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full max-w-3xl">
           <FilterForm className="list-filters pointer-events-auto flex w-full flex-wrap items-center gap-3" />
         </div>
@@ -136,6 +142,7 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   render?: (props: ListControllerResult<RecordType, Error>) => ReactNode;
   actions?: ReactElement | false;
   filters?: ReactElement<FilterElementProps>[];
+  topContent?: ReactNode;
   pagination?: ReactNode;
   title?: ReactNode | string | false;
   className?: string;

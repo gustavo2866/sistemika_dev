@@ -51,6 +51,7 @@ export type Propiedad = {
   expensas?: number | null;
   fecha_ingreso?: string | null;
   vencimiento_contrato?: string | null;
+  estado_fecha?: string | null;
   estado_comentario?: string | null;
   tipo_operacion_id?: number | null;
   tipo_operacion?: CRMReference | null;
@@ -79,6 +80,7 @@ export type PropiedadFormValues = {
   expensas?: number | null;
   fecha_ingreso?: string | null;
   vencimiento_contrato?: string | null;
+  estado_fecha?: string | null;
   estado_comentario?: string | null;
   tipo_operacion_id?: number | null;
   emprendimiento_id?: number | null;
@@ -174,7 +176,7 @@ const ESTADO_BADGE_CLASSES: Array<{ keys: string[]; className: string }> = [
   { keys: ["disponible", "3-disponible", "3 - disponible"], className: "bg-emerald-100 text-emerald-800" },
   { keys: ["realizada", "4-realizada", "4 - realizada"], className: "bg-violet-100 text-violet-800" },
   { keys: ["alquilada", "4-alquilada", "4 - alquilada"], className: "bg-violet-100 text-violet-800" },
-  { keys: ["retirada", "5-retirada", "5 - retirada"], className: "bg-slate-200 text-slate-800" },
+  { keys: ["retirada", "5-retirada", "5 - retirada"], className: "bg-red-600 text-white" },
 ];
 
 export const PROPIEDAD_STATUS_BADGES: Record<string, string> = ESTADO_BADGE_CLASSES.reduce(

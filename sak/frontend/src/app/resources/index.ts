@@ -14,7 +14,7 @@ export * from "./po/po-invoice-status-fin";
 export * from "./centros-costo";
 export * from "./tipos-articulo";
 export * from "./propiedades";
-export * from "./propiedades/propiedades_status";
+export * from "./inmobiliaria/propiedades-status";
 export * from "./inmobiliaria";
 export * from "./vacancias";
 export * from "./crm-catalogos/crm-catalogos-tipos-operacion";
@@ -36,4 +36,3 @@ export * from "./adm-conceptos";
 export * from "./tax-profiles";
 // Los dashboards no necesitan ser exportados aquí
 // export * from "./dashboard-proyectos";
-// export * from "./dashboard-vacancias";

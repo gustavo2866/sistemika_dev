@@ -50,7 +50,7 @@ def main():
             # Consultar propiedad 13
             cur.execute("""
                 SELECT 
-                    id, nombre, estado, vacancia_activa, 
+                    id, nombre, propiedad_status_id, vacancia_activa, 
                     vacancia_fecha, estado_fecha, estado_comentario,
                     updated_at
                 FROM propiedades 
@@ -64,7 +64,7 @@ def main():
                 return
             
             print(f"🏠 Propiedad: {prop['nombre']}")
-            print(f"   Estado: {prop['estado']}")
+            print(f"   Estado ID: {prop['propiedad_status_id']} ({'Realizada' if prop['propiedad_status_id'] == 4 else 'Otro'})")
             print(f"   Vacancia activa: {prop['vacancia_activa']}")
             print(f"   Fecha estado: {prop['estado_fecha']}")
             print(f"   Fecha vacancia: {prop['vacancia_fecha']}")
@@ -95,13 +95,13 @@ def main():
             # Verificar inconsistencia
             inconsistencia = False
             
-            if prop['estado'] == '4-realizada' and prop['vacancia_activa']:
+            if prop['propiedad_status_id'] == 4 and prop['vacancia_activa']:
                 print("\n⚠️  INCONSISTENCIA DETECTADA:")
                 print("   Estado 'realizada' con vacancia_activa=true")
                 inconsistencia = True
             
             vacancias_activas = [v for v in vacancias if v['ciclo_activo']]
-            if vacancias_activas and prop['estado'] == '4-realizada':
+            if vacancias_activas and prop['propiedad_status_id'] == 4:
                 print(f"\n⚠️  {len(vacancias_activas)} vacancia(s) activa(s) en estado realizada")
                 inconsistencia = True
             
@@ -139,7 +139,7 @@ def aplicar_correccion(conn, prop, vacancias_activas):
             cur.execute("""
                 UPDATE propiedades 
                 SET vacancia_activa = false, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s AND estado = '4-realizada' AND vacancia_activa = true
+                WHERE id = %s AND propiedad_status_id = 4 AND vacancia_activa = true
             """, (prop['id'],))
             
             if cur.rowcount > 0:

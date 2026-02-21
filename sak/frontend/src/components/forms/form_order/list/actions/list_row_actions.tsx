@@ -186,6 +186,7 @@ export const FormOrderListRowActions = ({
           </DropdownMenu>
           {dialogConfig ? (
             <DialogContent
+              className={cn(dialogConfig.contentClassName)}
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
             >
@@ -231,6 +232,7 @@ export type RowActionDialogConfig = {
   confirmLabel?: string;
   confirmColor?: "primary" | "warning";
   onConfirm: () => Promise<void> | void;
+  contentClassName?: string;
 };
 
 const RowActionDialogContext = createContext<{

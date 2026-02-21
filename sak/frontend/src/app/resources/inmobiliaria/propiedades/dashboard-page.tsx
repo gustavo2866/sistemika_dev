@@ -1,12 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useGetList } from "ra-core";
 import { PropiedadesDashboard } from "./dashboard";
 
-const getToday = () => new Date().toISOString().slice(0, 10);
-
 export const PropiedadesDashboardPage = () => {
-  const [pivotDate, setPivotDate] = useState(getToday);
+  const [tipoOperacionId, setTipoOperacionId] = useState("");
+  const appliedDefaultTipoRef = useRef(false);
+  const { data: tiposOperacion = [] } = useGetList("crm/catalogos/tipos-operacion", {
+    pagination: { page: 1, perPage: 500 },
+    sort: { field: "nombre", order: "ASC" },
+  });
+  const alquilerId = useMemo(() => {
+    const alquiler = tiposOperacion.find(
+      (tipo: any) =>
+        tipo?.codigo?.toLowerCase().includes("alquiler") ||
+        tipo?.nombre?.toLowerCase().includes("alquiler"),
+    );
+    return alquiler?.id ? String(alquiler.id) : "";
+  }, [tiposOperacion]);
+
+  useEffect(() => {
+    if (appliedDefaultTipoRef.current) {
+      return;
+    }
+    if (tipoOperacionId) {
+      appliedDefaultTipoRef.current = true;
+      return;
+    }
+    if (!alquilerId) {
+      return;
+    }
+    setTipoOperacionId(alquilerId);
+    appliedDefaultTipoRef.current = true;
+  }, [alquilerId, tipoOperacionId]);
 
   return (
     <div className="w-full max-w-none space-y-3">
@@ -18,20 +45,26 @@ export const PropiedadesDashboardPage = () => {
           <p className="text-sm text-muted-foreground">
             Resumen por estado y tipo de operacion.
           </p>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Fecha pivot</span>
-            <input
-              type="date"
-              value={pivotDate}
-              onChange={(event) => setPivotDate(event.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-            />
-          </label>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <label className="flex items-center gap-2">
+              <span>Operacion</span>
+              <select
+                value={tipoOperacionId}
+                onChange={(event) => setTipoOperacionId(event.target.value)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+              >
+                {tiposOperacion.map((tipo: any) => (
+                  <option key={tipo.id} value={String(tipo.id)}>
+                    {tipo.nombre ?? tipo.codigo ?? `Operacion #${tipo.id}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </div>
       <PropiedadesDashboard
-        pivotDate={pivotDate}
-        onPivotDateChange={setPivotDate}
+        tipoOperacionId={tipoOperacionId}
       />
     </div>
   );

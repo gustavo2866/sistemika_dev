@@ -71,7 +71,7 @@ import {
   PropiedadesStatusList,
   PropiedadesStatusCreate,
   PropiedadesStatusEdit,
-} from "@/app/resources/propiedades/propiedades_status";
+} from "@/app/resources/inmobiliaria/propiedades-status";
 import {
   PropiedadList as InmoPropiedadList,
   PropiedadCreate as InmoPropiedadCreate,
@@ -156,7 +156,6 @@ import {
 } from "@/app/resources/tipos-solicitud";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
-import DashboardVacanciasList from "@/app/resources/dashboard-vacancias/list";
 import DashboardCrmList from "@/app/resources/dashboard-crm/list";
 import TarjasList from "@/app/resources/tarjas/list";
 import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
@@ -262,7 +261,7 @@ import {
 } from "@/app/resources/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
 import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
-import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria-setup/InmobiliariaSetupPage";
+import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
 
 declare const window: Window | undefined;
 
@@ -550,13 +549,6 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={BarChart3}
         options={{ label: "Dashboard" }}
-      />
-      <Resource
-        name="dashboard-vacancias"
-        list={DashboardVacanciasList}
-        recordRepresentation="id"
-        icon={BarChart2}
-        options={{ label: "Dashboard Vacancias" }}
       />
       <Resource
         name="dashboard-crm"
