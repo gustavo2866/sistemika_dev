@@ -581,7 +581,7 @@ const DataTableRow = ({
       className={cn(rowClick !== false && "cursor-pointer", className)}
     >
       {hasBulkActions ? (
-        <TableCell className="flex w-8" onClick={handleToggle}>
+        <TableCell className="flex w-8 items-start align-top" onClick={handleToggle}>
           <Checkbox
             checked={selectedIds?.includes(record.id)}
             onClick={handleToggle}
@@ -785,7 +785,7 @@ function DataTableCell<
   return (
     <TableCell
       className={cn(
-        "py-1",
+        "py-1 align-top",
         className,
         cellClassName,
         record && conditionalClassName?.(record)

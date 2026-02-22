@@ -1,4 +1,5 @@
 export * from "./List";
+export * from "./panel";
 export * from "./dashboard-page";
 export * from "./form";
 export * from "./create";

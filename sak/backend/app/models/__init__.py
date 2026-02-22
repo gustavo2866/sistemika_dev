@@ -61,7 +61,7 @@ from .partediario import (
     EstadoParteDiario,
     TipoLicencia,
 )
-from .vacancia import Vacancia
+
 from .enums import (
     EstadoOportunidad,
     TRANSICIONES_ESTADO_OPORTUNIDAD,
@@ -125,7 +125,7 @@ __all__ = [
     "ParteDiarioDetalle",
     "EstadoParteDiario",
     "TipoLicencia",
-    "Vacancia",
+
     "EstadoOportunidad",
     "TRANSICIONES_ESTADO_OPORTUNIDAD",
     "EstadoEvento",

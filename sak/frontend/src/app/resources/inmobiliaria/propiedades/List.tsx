@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useGetList, useListContext, useRecordContext } from "ra-core";
+import {
+  useDataProvider,
+  useGetList,
+  useListContext,
+  useNotify,
+  useRecordContext,
+  useRefresh,
+} from "ra-core";
+import { Pencil, Workflow } from "lucide-react";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
@@ -15,22 +23,34 @@ import {
   ResponsiveDataTable,
   buildListFilters,
   ListPaginator,
+  SectionBaseTemplate,
   useRowActionDialog,
 } from "@/components/forms/form_order";
 import { List } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { FormProvider, useForm } from "react-hook-form";
 
-import { PROPIEDAD_STATUS_BADGES, type Propiedad } from "./model";
-import { PropiedadesDashboard } from "./dashboard";
+import {
+  PROPIEDAD_STATUS_BADGES,
+  type Propiedad,
+  excludeMantenimientoTipoOperacion,
+} from "./model";
 import { FormStatus, FormStatusContent, type FormStatusValues } from "./form_status";
 import { getAllowedPropiedadStatusTargets } from "./status_transitions";
 import { usePropiedadStatusTransition } from "./form_hooks";
 
 
 // === Filtros ===
-const LIST_FILTERS = buildListFilters(
+export const LIST_FILTERS = buildListFilters(
   [
     {
       type: "text",
@@ -60,7 +80,8 @@ const LIST_FILTERS = buildListFilters(
       selectProps: {
         optionText: "nombre",
         className: "w-full",
-        disabled: true,
+        disabled: false,
+        choicesFilter: excludeMantenimientoTipoOperacion,
       },
     },
     {
@@ -90,13 +111,13 @@ const LIST_FILTERS = buildListFilters(
       },
     },
   ],
-  { keyPrefix: "propiedades-inmobiliaria" },
+  { keyPrefix: "propiedades" },
 );
 
 // === Acciones ===
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const AccionesLista = () => (
+export const AccionesLista = () => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={LIST_FILTERS}
@@ -117,13 +138,18 @@ const ListaPropiedades = () => (
     title="Propiedades"
     filters={LIST_FILTERS}
     actions={<AccionesLista />}
-    topContent={<PropiedadesDashboardEmbedded />}
     debounce={300}
     perPage={10}
     containerClassName="max-w-[980px] w-full mr-auto"
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
   >
+    <PropiedadesListContent />
+  </List>
+);
+
+export const PropiedadesListContent = () => (
+  <>
     <AlquilerFilterLock />
     <ResponsiveDataTable
       rowClick="edit"
@@ -143,30 +169,17 @@ const ListaPropiedades = () => (
         <ListText source="id" />
       </ListColumn>
       <ListColumn source="nombre" label="Nombre" className="w-[150px]">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0">
           <ListText source="nombre" className="font-medium" />
-          <ListText source="propietario" className="text-[9px] text-muted-foreground" />
+          <ListText source="propietario" className="text-[8px] text-muted-foreground leading-tight" />
+          <ReferenceField
+            source="tipo_propiedad_id"
+            reference="tipos-propiedad"
+            link={false}
+          >
+            <ListText source="nombre" className="text-[7px] text-muted-foreground leading-tight" />
+          </ReferenceField>
         </div>
-      </ListColumn>
-      <ListColumn source="tipo_propiedad_id" label="Tipo prop." className="w-[110px]">
-        <ReferenceField
-          source="tipo_propiedad_id"
-          reference="tipos-propiedad"
-          link={false}
-          emptyText="Sin asignar"
-        >
-          <ListText source="nombre" />
-        </ReferenceField>
-      </ListColumn>
-      <ListColumn source="tipo_operacion_id" label="Operacion" className="w-[90px]">
-        <ReferenceField
-          source="tipo_operacion_id"
-          reference="crm/catalogos/tipos-operacion"
-          link={false}
-          emptyText="Sin asignar"
-        >
-          <ListText source="nombre" />
-        </ReferenceField>
       </ListColumn>
       <ListColumn source="propiedad_status_id" label="Estado" className="w-[90px]">
         <ListEstado
@@ -177,8 +190,8 @@ const ListaPropiedades = () => (
       <ListColumn source="estado_fecha" label="Fecha Est" className="w-[80px]">
         <ListDate source="estado_fecha" />
       </ListColumn>
-      <ListColumn source="vencimiento_contrato" label="Fecha Cont" className="w-[90px]">
-        <ListDate source="vencimiento_contrato" />
+      <ListColumn source="estado_comentario" label="Comentario" className="w-[200px]">
+        <ComentarioCell />
       </ListColumn>
       <ListColumn label="Acciones" className="w-[60px]">
         <FormOrderListRowActions
@@ -188,7 +201,7 @@ const ListaPropiedades = () => (
         />
       </ListColumn>
     </ResponsiveDataTable>
-  </List>
+  </>
 );
 
 const PropiedadStatusMenu = () => {
@@ -257,17 +270,28 @@ const PropiedadStatusMenu = () => {
 
   return (
     <>
-      {allowedTargets.map((option) => (
-        <DropdownMenuItem
-          key={option.key}
-          onSelect={(event) => handleOpenDialog(event, option.id)}
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger
           onClick={(event) => event.stopPropagation()}
-          data-row-click="ignore"
-          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+          className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
         >
-          {option.label}
-        </DropdownMenuItem>
-      ))}
+          <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+          Cambio de estado
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-28 sm:w-36">
+          {allowedTargets.map((option) => (
+            <DropdownMenuItem
+              key={option.key}
+              onSelect={(event) => handleOpenDialog(event, option.id)}
+              onClick={(event) => event.stopPropagation()}
+              data-row-click="ignore"
+              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
       {nextStatusId != null ? (
         <FormStatus
           open={dialogOpen}
@@ -277,6 +301,109 @@ const PropiedadStatusMenu = () => {
         />
       ) : null}
     </>
+  );
+};
+
+const ComentarioCell = () => {
+  const record = useRecordContext<Propiedad>();
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setValue(String(record?.estado_comentario ?? ""));
+  }, [open, record?.estado_comentario]);
+
+  if (!record) return null;
+
+  const handleSave = async () => {
+    if (!record?.id || saving) return;
+    setSaving(true);
+    try {
+      await dataProvider.update("propiedades", {
+        id: record.id,
+        data: { estado_comentario: value },
+        previousData: record,
+      });
+      notify("Comentario actualizado", { type: "info" });
+      setOpen(false);
+      refresh();
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo actualizar el comentario", { type: "warning" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div onClick={(event) => event.stopPropagation()}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="group block w-full text-left"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(true);
+            }}
+            data-row-click="ignore"
+            aria-label="Editar comentario"
+            title="Editar comentario"
+          >
+            <span className="inline-block w-full whitespace-normal break-words line-clamp-3 rounded-sm px-1 text-[9px] text-foreground/90 transition group-hover:bg-amber-100/80">
+              {record.estado_comentario ? record.estado_comentario : "-"}
+              <Pencil className="ml-1 inline-block h-2.5 w-2.5 text-amber-700/70 opacity-0 transition group-hover:opacity-100 group-hover:text-amber-700 align-[-1px]" />
+            </span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="bottom"
+          sideOffset={6}
+          className="w-72 border-none bg-transparent p-0 shadow-none"
+        >
+          <SectionBaseTemplate
+            title="Editar comentario"
+            main={
+              <div className="space-y-2">
+                <Textarea
+                  value={value}
+                  onChange={(event) => setValue(event.target.value)}
+                  className="min-h-[80px] !text-[9px] !leading-tight px-2 py-1"
+                  placeholder="Escribe un comentario..."
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-[10px]"
+                    disabled={saving}
+                    onClick={() => setOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 px-2 text-[10px]"
+                    disabled={saving}
+                    onClick={handleSave}
+                  >
+                    Guardar
+                  </Button>
+                </div>
+              </div>
+            }
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 };
 
@@ -300,7 +427,11 @@ const AlquilerFilterLock = () => {
     if (!alquilerId) {
       return;
     }
-    if (appliedRef.current && filterValues.tipo_operacion_id === alquilerId) {
+    if (filterValues.tipo_operacion_id) {
+      appliedRef.current = true;
+      return;
+    }
+    if (appliedRef.current) {
       return;
     }
     setFilters({ ...filterValues, tipo_operacion_id: alquilerId }, {});
@@ -308,194 +439,4 @@ const AlquilerFilterLock = () => {
   }, [alquilerId, filterValues, setFilters]);
 
   return null;
-};
-
-const PropiedadesDashboardEmbedded = () => {
-  const { filterValues, setFilters } = useListContext();
-  const [refreshKey, setRefreshKey] = useState(0);
-  const { data: estados = [] } = useGetList("propiedades-status", {
-    pagination: { page: 1, perPage: 500 },
-    sort: { field: "orden", order: "ASC" },
-  });
-
-  const normalizeEstado = (value: string) =>
-    value
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[_-]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const getEstadoKeyFromNombre = (estado: string) => {
-    const key = normalizeEstado(estado);
-    if (key.includes("recibida")) return "recibida";
-    if (key.includes("reparacion")) return "en_reparacion";
-    if (key.includes("disponible")) return "disponible";
-    if (key.includes("realizada")) return "realizada";
-    if (key.includes("retirada")) return "retirada";
-    return undefined;
-  };
-
-  const estadoMap = useMemo(() => {
-    const map = new Map<string, string>();
-    estados.forEach((estado: any) => {
-      if (!estado?.nombre || estado?.id == null) return;
-      map.set(normalizeEstado(String(estado.nombre)), String(estado.id));
-    });
-    return map;
-  }, [estados]);
-
-  const getEstadoId = (estadoKey: string) => {
-    const normalizedKey = normalizeEstado(estadoKey);
-    for (const [name, id] of estadoMap.entries()) {
-      if (name.includes(normalizedKey)) {
-        return id;
-      }
-    }
-    return undefined;
-  };
-
-  const selectedEstadoKey = useMemo(() => {
-    const selectedId = filterValues.propiedad_status_id;
-    if (!selectedId) return undefined;
-    const estado = estados.find((item: any) => String(item?.id) === String(selectedId));
-    if (!estado?.nombre) return undefined;
-    return getEstadoKeyFromNombre(String(estado.nombre));
-  }, [filterValues.propiedad_status_id, estados]);
-
-  const formatDate = (value: Date) => value.toISOString().slice(0, 10);
-  const addDays = (value: Date, days: number) => {
-    const next = new Date(value);
-    next.setDate(next.getDate() + days);
-    return next;
-  };
-
-  const getSelectedBucketKey = () => {
-    const today = new Date();
-    const plus30 = formatDate(addDays(today, 30));
-    const plus60 = formatDate(addDays(today, 60));
-    const minus30 = formatDate(addDays(today, -30));
-
-    const vencLt = filterValues.vencimiento_contrato__lt;
-    const vencGte = filterValues.vencimiento_contrato__gte;
-    if (vencLt === plus30 && !vencGte) return "lt_30";
-    if (vencLt === plus60 && vencGte === plus30) return "lt_60";
-
-    const estadoGte = filterValues.estado_fecha__gte;
-    const estadoLt = filterValues.estado_fecha__lt;
-    if (estadoGte === minus30) return "lt_30";
-    if (estadoLt === minus30) return "gt_30";
-
-    return undefined;
-  };
-
-  const selectedBucketKey = useMemo(
-    () => getSelectedBucketKey(),
-    [filterValues],
-  );
-
-  const clearRangeFilters = (filters: Record<string, any>) => {
-    const next = { ...filters };
-    [
-      "vencimiento_contrato__lt",
-      "vencimiento_contrato__lte",
-      "vencimiento_contrato__gt",
-      "vencimiento_contrato__gte",
-      "estado_fecha__lt",
-      "estado_fecha__lte",
-      "estado_fecha__gt",
-      "estado_fecha__gte",
-    ].forEach((key) => {
-      if (key in next) delete next[key];
-    });
-    return next;
-  };
-
-  const clearEstadoFilter = () => {
-    const next = clearRangeFilters({ ...filterValues });
-    if ("propiedad_status_id" in next) {
-      delete next.propiedad_status_id;
-    }
-    setFilters(next, {});
-  };
-
-  const applyEstadoFilter = (estadoKey: string, extra: Record<string, any> = {}) => {
-    const estadoId = getEstadoId(estadoKey);
-    if (!estadoId) return;
-    const next = clearRangeFilters({ ...filterValues });
-    Object.assign(next, extra);
-    next.propiedad_status_id = estadoId;
-    setFilters(next, {});
-  };
-
-  const handleCardClick = (payload: { estadoKey: string }) => {
-    if (selectedEstadoKey === payload.estadoKey && !selectedBucketKey) {
-      clearEstadoFilter();
-      return;
-    }
-    applyEstadoFilter(payload.estadoKey);
-  };
-
-  const handleBucketClick = (payload: { estadoKey: string; bucketKey: string }) => {
-    if (
-      selectedEstadoKey === payload.estadoKey &&
-      selectedBucketKey === payload.bucketKey
-    ) {
-      clearEstadoFilter();
-      return;
-    }
-    const today = new Date();
-    if (payload.estadoKey === "realizada") {
-      if (payload.bucketKey === "lt_30") {
-        applyEstadoFilter(payload.estadoKey, {
-          vencimiento_contrato__lt: formatDate(addDays(today, 30)),
-        });
-        return;
-      }
-      if (payload.bucketKey === "lt_60") {
-        applyEstadoFilter(payload.estadoKey, {
-          vencimiento_contrato__gte: formatDate(addDays(today, 30)),
-          vencimiento_contrato__lt: formatDate(addDays(today, 60)),
-        });
-        return;
-      }
-    }
-    if (payload.estadoKey === "retirada") {
-      if (payload.bucketKey === "lt_30") {
-        applyEstadoFilter(payload.estadoKey, {
-          estado_fecha__gte: formatDate(addDays(today, -30)),
-        });
-        return;
-      }
-      if (payload.bucketKey === "gt_30") {
-        applyEstadoFilter(payload.estadoKey, {
-          estado_fecha__lt: formatDate(addDays(today, -30)),
-        });
-        return;
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handler = () => setRefreshKey((prev) => prev + 1);
-    window.addEventListener("propiedades-dashboard-refresh", handler);
-    return () => {
-      window.removeEventListener("propiedades-dashboard-refresh", handler);
-    };
-  }, []);
-
-  return (
-    <div className="mb-4">
-      <PropiedadesDashboard
-        tipoOperacionId={String(filterValues.tipo_operacion_id ?? "")}
-        onCardClick={handleCardClick}
-        onBucketClick={handleBucketClick}
-        selectedEstadoKey={selectedEstadoKey}
-        selectedBucketKey={selectedBucketKey}
-        refreshKey={refreshKey}
-      />
-    </div>
-  );
 };

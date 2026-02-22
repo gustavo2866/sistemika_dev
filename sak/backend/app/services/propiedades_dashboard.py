@@ -8,7 +8,6 @@ from sqlmodel import Session, select
 from sqlalchemy import func
 
 from app.models.propiedad import Propiedad, PropiedadesStatus
-from app.models.vacancia import Vacancia
 from app.models.crm.catalogos import CRMTipoOperacion
 
 
@@ -51,7 +50,6 @@ def build_propiedades_dashboard(
     query = (
         select(Propiedad, CRMTipoOperacion, PropiedadesStatus)
         .where(Propiedad.deleted_at.is_(None))
-        .where(Propiedad.vacancia_activa.is_(True))
         .join(CRMTipoOperacion, Propiedad.tipo_operacion_id == CRMTipoOperacion.id, isouter=True)
         .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id, isouter=True)
     )
@@ -61,7 +59,7 @@ def build_propiedades_dashboard(
 
     # estado -> tipo_operacion_id -> agregado
     state_map: dict[str, dict[Optional[int], dict[str, Any]]] = defaultdict(dict)
-    state_totals: dict[str, dict[str, int]] = defaultdict(lambda: {"count": 0, "dias_total": 0})
+    state_totals: dict[str, dict[str, int]] = defaultdict(lambda: {"count": 0})
     state_order: dict[str, int] = {}
 
     for prop, tipo_operacion, estado_ref in rows:
@@ -70,7 +68,6 @@ def build_propiedades_dashboard(
             state_order[estado] = estado_ref.orden if estado_ref else 999
         tipo_id = tipo_operacion.id if tipo_operacion else None
         tipo_nombre = tipo_operacion.nombre if tipo_operacion else "Sin tipo de operacion"
-        dias = _safe_days(pivot_date, prop.vacancia_fecha)
 
         bucket = state_map[estado].get(tipo_id)
         if not bucket:
@@ -84,29 +81,26 @@ def build_propiedades_dashboard(
             state_map[estado][tipo_id] = bucket
 
         bucket["propiedades"] += 1
-        bucket["dias_vacancia_total"] += dias
-
+        bucket["dias_vacancia_total"] += _safe_days(pivot_date, prop.estado_fecha)
         state_totals[estado]["count"] += 1
-        state_totals[estado]["dias_total"] += dias
 
     # Asegurar tarjetas vacías para estados finales aunque no haya registros vinculados
     for status in statuses:
         nombre = status.nombre or ""
-        nombre_key = nombre.lower()
-        if "realizada" in nombre_key or "retirada" in nombre_key:
-            if nombre not in state_map:
-                state_map[nombre] = {}
-            if nombre not in state_totals:
-                state_totals[nombre] = {"count": 0, "dias_total": 0}
-            if nombre not in state_order:
-                state_order[nombre] = status.orden
+        if nombre not in state_map:
+            state_map[nombre] = {}
+        if nombre not in state_totals:
+            state_totals[nombre] = {"count": 0}
+        if nombre not in state_order:
+            state_order[nombre] = status.orden
 
     cards = []
     for estado, tipos in state_map.items():
         tipo_items = list(tipos.values())
         for item in tipo_items:
-            props = item["propiedades"] or 1
-            item["dias_vacancia_promedio"] = int(round(item["dias_vacancia_total"] / props))
+            props = item.get("propiedades", 0) or 0
+            total_days = item.get("dias_vacancia_total", 0) or 0
+            item["dias_vacancia_promedio"] = round(total_days / props) if props else 0
         tipo_items.sort(key=lambda item: item["propiedades"], reverse=True)
         total = state_totals[estado]
         cards.append(
@@ -114,34 +108,27 @@ def build_propiedades_dashboard(
                 "estado": estado,
                 "orden": state_order.get(estado, 999),
                 "propiedades": total["count"],
-                "dias_vacancia_total": total["dias_total"],
-                "dias_vacancia_promedio": int(round(total["dias_total"] / max(total["count"], 1))),
                 "tipos": tipo_items,
             }
         )
 
     cards.sort(key=lambda item: (item.get("orden", 999), item["estado"]))
 
+    # Simplificar métricas de retiro sin usar vacancias
     retirada_id = _resolve_status_id(session, "retirada")
     if retirada_id is not None:
-        retiro_subq = (
-            select(
-                Propiedad.id.label("propiedad_id"),
-                func.coalesce(func.max(Vacancia.fecha_retirada), Propiedad.estado_fecha).label("fecha_retiro"),
-            )
-            .select_from(Propiedad)
-            .join(Vacancia, Vacancia.propiedad_id == Propiedad.id, isouter=True)
+        retiro_query = (
+            select(Propiedad.estado_fecha)
             .where(Propiedad.deleted_at.is_(None))
             .where(Propiedad.propiedad_status_id == retirada_id)
-            .group_by(Propiedad.id, Propiedad.estado_fecha)
         )
         if tipo_operacion_id is not None:
-            retiro_subq = retiro_subq.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
+            retiro_query = retiro_query.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
 
-        rows_retiro = session.exec(retiro_subq).all()
+        fechas_retiro = session.exec(retiro_query).all()
         recientes = 0
         antiguas = 0
-        for _, fecha_retiro in rows_retiro:
+        for fecha_retiro in fechas_retiro:
             if not fecha_retiro:
                 continue
             days = (pivot_date - fecha_retiro).days

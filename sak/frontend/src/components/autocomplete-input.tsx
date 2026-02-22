@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,6 @@ import {
 } from "@/hooks/useSupportCreateSuggestion";
 
 import type { RaRecord } from "ra-core";
-import { focusNextInScope } from "@/components/forms/form_order/form/focus_utils";
 
 type Choice = RaRecord;
 
@@ -58,7 +57,6 @@ export const AutocompleteInput = (
         | React.ReactNode
         | ((option: Choice | undefined) => React.ReactNode);
       onSelectionChange?: (choice: Choice | null) => void;
-      autoFocusNext?: boolean;
     },
 ) => {
   const {
@@ -95,11 +93,8 @@ export const AutocompleteInput = (
   });
 
   const [filterValue, setFilterValue] = React.useState("");
-
   const [open, setOpen] = React.useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const didAutoFocusRef = useRef(false);
-  const autoFocusNext = props.autoFocusNext !== false;
+
   const selectedChoice = allChoices.find(
     (choice) => getChoiceValue(choice) === fieldValue,
   );
@@ -128,10 +123,6 @@ export const AutocompleteInput = (
   });
 
   const handleSelectionChange = props.onSelectionChange;
-  const focusNext = useMemo(
-    () => (autoFocusNext ? () => focusNextInScope(triggerRef.current) : () => false),
-    [autoFocusNext],
-  );
   const handleChange = useCallback(
     (choice: Choice) => {
       if (fieldValue === getChoiceValue(choice) && !isRequired) {
@@ -142,17 +133,11 @@ export const AutocompleteInput = (
         }
         setOpen(false);
         handleSelectionChange?.(null);
-        if (autoFocusNext) {
-          window.setTimeout(() => focusNext(), 0);
-        }
         return;
       }
       handleFieldChange(getChoiceValue(choice));
       setOpen(false);
       handleSelectionChange?.(choice ?? null);
-      if (autoFocusNext) {
-        window.setTimeout(() => focusNext(), 0);
-      }
     },
     [
       fieldValue,
@@ -165,18 +150,8 @@ export const AutocompleteInput = (
       filterToQuery,
       setOpen,
       handleSelectionChange,
-      autoFocusNext,
-      focusNext,
     ],
   );
-
-  useEffect(() => {
-    if (!props.autoFocus || didAutoFocusRef.current) return;
-    didAutoFocusRef.current = true;
-    window.setTimeout(() => {
-      triggerRef.current?.focus();
-    }, 0);
-  }, [props.autoFocus]);
 
   const {
     getCreateItem,
@@ -223,14 +198,13 @@ export const AutocompleteInput = (
           <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger asChild>
               <Button
-                ref={triggerRef}
                 type="button"
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
                 className="w-full min-w-0 justify-between h-9 px-3 py-2 font-normal disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-70 disabled:border-0 disabled:shadow-none"
                 disabled={isDisabled}
-                tabIndex={props.tabIndex ?? 0}
+                tabIndex={0}
               >
                 {selectedChoice ? (
                   <span className="min-w-0 truncate text-sm font-normal">

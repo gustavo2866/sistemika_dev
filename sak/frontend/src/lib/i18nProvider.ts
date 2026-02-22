@@ -31,7 +31,7 @@ const spanishOverrides = {
 };
 
 export const i18nProvider = polyglotI18nProvider(
-	() => ({ ...defaultMessages, ...spanishOverrides }),
+	() => ({ ...defaultMessages, ...spanishOverrides } as any),
 	"en",
 	[{ name: "en", value: "English" }],
 	{ allowMissing: true }

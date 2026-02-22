@@ -62,21 +62,15 @@ import {
   TaxProfileShow,
 } from "@/app/resources/tax-profiles";
 import {
-  PropiedadList,
-  PropiedadCreate,
-  PropiedadEdit,
-  PropiedadShow,
-} from "@/app/resources/propiedades";
-import {
   PropiedadesStatusList,
   PropiedadesStatusCreate,
   PropiedadesStatusEdit,
 } from "@/app/resources/inmobiliaria/propiedades-status";
 import {
-  PropiedadList as InmoPropiedadList,
-  PropiedadCreate as InmoPropiedadCreate,
-  PropiedadEdit as InmoPropiedadEdit,
-  PropiedadShow as InmoPropiedadShow,
+  PropiedadCreate,
+  PropiedadEdit,
+  PropiedadShow,
+  PropiedadesPanel,
 } from "@/app/resources/inmobiliaria/propiedades";
 import { PropiedadesDashboardPage } from "@/app/resources/inmobiliaria/propiedades";
 import { PropiedadesLogStatusList } from "@/app/resources/inmobiliaria/propiedades_log_status";
@@ -158,7 +152,6 @@ import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
 import DashboardCrmList from "@/app/resources/dashboard-crm/list";
 import TarjasList from "@/app/resources/tarjas/list";
-import { VacanciaList, VacanciaShow } from "@/app/resources/vacancias";
 import {
   NominaList,
   NominaCreate,
@@ -372,15 +365,6 @@ const AdminApp = () => {
         options={{ label: "Tipos de Articulo" }}
       />
       <Resource
-        name="propiedades"
-        list={PropiedadList}
-        create={PropiedadCreate}
-        edit={PropiedadEdit}
-        show={PropiedadShow}
-        recordRepresentation="nombre"
-        icon={Home}
-      />
-      <Resource
         name="propiedades-status"
         list={PropiedadesStatusList}
         create={PropiedadesStatusCreate}
@@ -390,14 +374,14 @@ const AdminApp = () => {
         options={{ label: "Estados de Propiedad" }}
       />
       <Resource
-        name="propiedades-inmobiliaria"
-        list={InmoPropiedadList}
-        create={InmoPropiedadCreate}
-        edit={InmoPropiedadEdit}
-        show={InmoPropiedadShow}
+        name="propiedades"
+        list={PropiedadesPanel}
+        create={PropiedadCreate}
+        edit={PropiedadEdit}
+        show={PropiedadShow}
         recordRepresentation="nombre"
         icon={Home}
-        options={{ label: "Propiedades" }}
+        options={{ label: "Propiedades Panel" }}
       />
       <Resource
         name="dashboard-propiedades"
@@ -412,14 +396,6 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={ListChecks}
         options={{ label: "Log Estados Propiedad" }}
-      />
-      <Resource
-        name="vacancias"
-        list={VacanciaList}
-        show={VacanciaShow}
-        recordRepresentation="id"
-        icon={AlertTriangle}
-        options={{ label: "Vacancias" }}
       />
       <Resource
         name="tipos-propiedad"

@@ -55,6 +55,7 @@ export {
   FormOrderHeaderMenuActions,
 } from "./form/header_menu_actions";
 export type { FormOrderHeaderMenuActionsProps } from "./form/header_menu_actions";
+export * from "./dashboard";
 export { DetailFooterButtons } from "./form/detail_footer_buttons";
 export { CalculatedImporte } from "./form/calculated_importe";
 export { TotalCompute } from "./form/total_compute";

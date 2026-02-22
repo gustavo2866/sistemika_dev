@@ -109,11 +109,7 @@ const sanitizeIdsInData = (value: unknown): unknown => {
   return value;
 };
 
-const RESOURCE_ALIASES: Record<string, string> = {
-  "propiedades-inmobiliaria": "propiedades",
-};
-
-const resolveResource = (resource: string) => RESOURCE_ALIASES[resource] ?? resource;
+const resolveResource = (resource: string) => resource;
 
 export const dataProvider: DataProvider = {
   ...baseProvider,
@@ -159,7 +155,7 @@ export const dataProvider: DataProvider = {
       delete dataWithoutId.id;
     }
     const sanitized = sanitizeIdsInData(dataWithoutId);
-    return baseProvider.create(resolved, { ...params, data: sanitized });
+    return baseProvider.create(resolved, { ...params, data: sanitized as any });
   }),
   update: withErrorHandling(async (resource, params) => {
     const resolved = resolveResource(resource);
@@ -167,7 +163,7 @@ export const dataProvider: DataProvider = {
       console.log("[dataProvider] update", resolved, params);
     }
     const sanitized = sanitizeIdsInData(params.data);
-    const response = await baseProvider.update(resolved, { ...params, data: sanitized });
+    const response = await baseProvider.update(resolved, { ...params, data: sanitized as any });
     if (typeof window !== "undefined") {
       console.log("[dataProvider] update response", resolved, response);
     }

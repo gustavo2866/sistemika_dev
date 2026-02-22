@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDataProvider, useRecordContext } from "ra-core";
 import { preferCalculated } from "@/lib/vacancias/metrics";
 import type { Propiedad, Vacancia } from "./model";
-import { VacanciaTimeline } from "@/app/resources/propiedades/components/vacancia-timeline";
+import { VacanciaTimeline } from "./components/vacancia-timeline";
 import {
   Table,
   TableBody,

@@ -47,7 +47,7 @@ from app.routers.centro_costo_router import centro_costo_router
 from app.routers.proyecto_router import proyecto_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
-from app.routers.vacancia_router import vacancia_router
+
 from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
 from app.routers.propiedades_dashboard_router import router as propiedades_dashboard_router
@@ -169,7 +169,7 @@ app.include_router(file_router)
 app.include_router(departamento_router)
 app.include_router(tipo_solicitud_router)
 app.include_router(centro_costo_router)
-app.include_router(vacancia_router)
+
 app.include_router(adm_concepto_router)
 app.include_router(propiedades_dashboard_router)
 app.include_router(crm_dashboard_router)

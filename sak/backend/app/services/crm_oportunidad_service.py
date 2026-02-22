@@ -14,10 +14,10 @@ from app.models import (
     CRMMotivoPerdida,
     Moneda,
     Propiedad,
-    Vacancia,
     CRMMensaje,
     CRMEvento,
 )
+from app.models.propiedad import PropiedadesLogStatus, PropiedadesStatus
 from app.models.enums import (
     EstadoOportunidad,
     TRANSICIONES_ESTADO_OPORTUNIDAD,
@@ -84,7 +84,7 @@ class CRMOportunidadService:
         session.refresh(oportunidad)
 
         self._crear_log(session, oportunidad, usuario_id, descripcion, estado_anterior)
-        self._sincronizar_propiedad(session, oportunidad)
+        self._sincronizar_propiedad(session, oportunidad, usuario_id, descripcion)
         session.commit()
         session.refresh(oportunidad)
         return oportunidad
@@ -106,46 +106,72 @@ class CRMOportunidadService:
         )
         session.add(log)
 
-    def _sincronizar_propiedad(self, session: Session, oportunidad: CRMOportunidad) -> None:
+    def _sincronizar_propiedad(
+        self,
+        session: Session,
+        oportunidad: CRMOportunidad,
+        usuario_id: int,
+        descripcion: str,
+    ) -> None:
+        """
+        Si la oportunidad pasa a GANADA, actualizar la propiedad a Realizada
+        y registrar el log de estado de propiedad.
+        """
         if not oportunidad.propiedad_id:
             return
+        if oportunidad.estado != EstadoOportunidad.GANADA.value:
+            return
+
         propiedad = session.get(Propiedad, oportunidad.propiedad_id)
         if not propiedad:
             return
 
-        hoy = date.today()
+        estado_realizada = session.exec(
+            select(PropiedadesStatus).where(PropiedadesStatus.orden == 4)
+        ).first()
+        if not estado_realizada:
+            return
 
-        if oportunidad.estado == EstadoOportunidad.GANADA.value:
-            vacancia = self._vacancia_activa(session, propiedad.id)
-            if vacancia:
-                vacancia.fecha_alquilada = hoy
-                vacancia.ciclo_activo = False
-                session.add(vacancia)
-        elif oportunidad.estado in (
-            EstadoOportunidad.ABIERTA.value,
-            EstadoOportunidad.VISITA.value,
-            EstadoOportunidad.COTIZA.value,
-            EstadoOportunidad.RESERVA.value,
-            EstadoOportunidad.PERDIDA.value,
-        ):
-            vacancia = self._vacancia_activa(session, propiedad.id)
-            if not vacancia:
-                vacancia = Vacancia(
-                    propiedad_id=propiedad.id,
-                    ciclo_activo=True,
-                    fecha_recibida=hoy,
-                    fecha_disponible=hoy,
-                )
-                session.add(vacancia)
-            else:
-                if vacancia.fecha_disponible is None:
-                    vacancia.fecha_disponible = hoy
-                vacancia.ciclo_activo = True
-                session.add(vacancia)
+        prev_status_id = propiedad.propiedad_status_id
+        fecha_cambio = (
+            oportunidad.fecha_estado.date()
+            if oportunidad.fecha_estado
+            else date.today()
+        )
 
+        propiedad.propiedad_status_id = estado_realizada.id
+        propiedad.estado_fecha = fecha_cambio
+        propiedad.vacancia_activa = False
+        propiedad.vacancia_fecha = None
         session.add(propiedad)
 
-    def eliminar_oportunidad_y_relaciones(self, session: Session, oportunidad_id: int) -> None:
+        if prev_status_id != estado_realizada.id:
+            estado_anterior = (
+                session.get(PropiedadesStatus, prev_status_id)
+                if prev_status_id
+                else None
+            )
+            motivo = descripcion.strip() if descripcion else None
+            motivo_corto = motivo[:200] if motivo else None
+            log = PropiedadesLogStatus(
+                propiedad_id=propiedad.id,
+                estado_anterior_id=prev_status_id,
+                estado_nuevo_id=estado_realizada.id,
+                estado_anterior=estado_anterior.nombre if estado_anterior else None,
+                estado_nuevo=estado_realizada.nombre,
+                fecha_cambio=datetime(
+                    fecha_cambio.year,
+                    fecha_cambio.month,
+                    fecha_cambio.day,
+                    tzinfo=UTC,
+                ),
+                usuario_id=usuario_id or 1,
+                motivo=motivo_corto,
+                observaciones=motivo,
+            )
+            session.add(log)
+
+def eliminar_oportunidad_y_relaciones(self, session: Session, oportunidad_id: int) -> None:
         oportunidad = session.get(CRMOportunidad, oportunidad_id)
         if not oportunidad:
             raise ValueError("Oportunidad no encontrada")
@@ -168,14 +194,6 @@ class CRMOportunidadService:
         session.exec(delete(CRMOportunidad).where(CRMOportunidad.id == oportunidad_id))
 
         session.commit()
-
-    def _vacancia_activa(self, session: Session, propiedad_id: int) -> Optional[Vacancia]:
-        return session.exec(
-            select(Vacancia)
-            .where(Vacancia.propiedad_id == propiedad_id)
-            .where(Vacancia.ciclo_activo == True)
-            .order_by(Vacancia.id.desc())
-        ).first()
 
 
 crm_oportunidad_service = CRMOportunidadService()

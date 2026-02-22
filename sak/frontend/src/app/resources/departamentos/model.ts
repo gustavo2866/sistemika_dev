@@ -87,6 +87,6 @@ export const DEPARTAMENTO_DEFAULT: DepartamentoFormValues = {
   nombre: "",
   descripcion: "",
   activo: true,
-  centro_costo_id: "",
+  centro_costo_id: undefined,
 };
 

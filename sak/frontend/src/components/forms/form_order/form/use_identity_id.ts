@@ -16,11 +16,11 @@ export const useIdentityId = (): UseIdentityIdResult => {
     (identityResponse as { identity?: unknown }).identity;
 
   const identityIdRaw = (identity as { id?: unknown } | undefined)?.id;
-  const identityId = useMemo(() => {
+  const identityId = useMemo((): number | undefined => {
     const raw = identityIdRaw;
     if (raw == null || raw === "") return undefined;
     const parsed = typeof raw === "string" ? Number(raw) : raw;
-    return Number.isFinite(parsed) ? parsed : undefined;
+    return Number.isFinite(parsed) ? (parsed as number) : undefined;
   }, [identityIdRaw]);
 
   const isIdentityLoading = Boolean(

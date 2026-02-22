@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiUrl } from "@/lib/dataProvider";
+import {
+  DashboardCard,
+  type DashboardCardBucket,
+  type DashboardCardTone,
+} from "@/components/forms/form_order";
 import { VACANCIA_STATE_STEPS } from "./model";
 
 type TipoOperacionBucket = {
@@ -48,8 +53,8 @@ type PropiedadesDashboardProps = {
   tipoOperacionId?: string;
   selectedEstadoKey?: string;
   selectedBucketKey?: string;
-  onCardClick?: (payload: { estadoKey: string }) => void;
-  onBucketClick?: (payload: { estadoKey: string; bucketKey: string; label: string }) => void;
+  onCardClick?: (payload: { estadoKey?: string }) => void;
+  onBucketClick?: (payload: { estadoKey: string; bucketKey?: string; label?: string }) => void;
   refreshKey?: number;
 };
 
@@ -71,6 +76,7 @@ export const PropiedadesDashboard = ({
     useState<RealizadaVencimientosPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
 
   const normalizeEstado = (value: string) =>
     value
@@ -78,16 +84,6 @@ export const PropiedadesDashboard = ({
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .trim();
-
-  const getEstadoColorClass = (estado: string) => {
-    const key = estado.toLowerCase();
-    if (key.includes("disponible")) return "bg-emerald-400";
-    if (key.includes("reparacion") || key.includes("reparación")) return "bg-amber-400";
-    if (key.includes("recibida")) return "bg-blue-400";
-    if (key.includes("realizada")) return "bg-green-400";
-    if (key.includes("retirada")) return "bg-rose-500";
-    return "bg-muted-foreground/40";
-  };
 
   const getEstadoKey = (estado: string) => {
     const key = normalizeEstado(estado);
@@ -97,6 +93,16 @@ export const PropiedadesDashboard = ({
     if (key.includes("realizada")) return "realizada";
     if (key.includes("retirada")) return "retirada";
     return "otro";
+  };
+
+  const getEstadoTone = (estado: string): DashboardCardTone => {
+    const key = getEstadoKey(estado);
+    if (key === "retirada") return "danger";
+    if (key === "realizada") return "success";
+    if (key === "disponible") return "success";
+    if (key === "en_reparacion") return "warning";
+    if (key === "recibida") return "info";
+    return "muted";
   };
 
   useEffect(() => {
@@ -177,6 +183,14 @@ export const PropiedadesDashboard = ({
   );
   const realizadaTotal = realizadaVencimientos?.total ?? 0;
 
+  const getCardOpen = (key: string) => openCards[key] ?? false;
+  const setCardOpen = (key: string, open: boolean) => {
+    setOpenCards((prev) => {
+      if (prev[key] === open) return prev;
+      return { ...prev, [key]: open };
+    });
+  };
+
   return (
     <section className="space-y-3">
       {/* Encabezado movido al page para evitar duplicados */}
@@ -199,157 +213,133 @@ export const PropiedadesDashboard = ({
         </div>
       ) : null}
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))]">
+      <div className="grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))]">
         {cards.map((card) => {
           const cardKey = getEstadoKey(card.estado);
-          const isSelectedCard =
-            selectedEstadoKey === cardKey && !selectedBucketKey;
-          return (
-          <div
-            key={card.estado}
-            className={`min-w-0 rounded-md border bg-card p-1.5 shadow-sm ${
-              onCardClick ? "cursor-pointer transition hover:bg-muted/30" : ""
-            } ${
-              isSelectedCard
-                ? "border-primary/70 ring-1 ring-primary/40 bg-primary/5"
-                : "border-border"
-            }`}
-            role={onCardClick ? "button" : undefined}
-            tabIndex={onCardClick ? 0 : undefined}
-            onClick={() => {
-              if (!onCardClick) return;
-              onCardClick({ estadoKey: cardKey });
-            }}
-            onKeyDown={(event) => {
-              if (!onCardClick) return;
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onCardClick({ estadoKey: cardKey });
-              }
-            }}
-          >
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${getEstadoColorClass(
-                    card.estado,
-                  )}`}
-                />
-                <div className="w-full truncate whitespace-nowrap text-[11px] font-semibold leading-snug">
-                {card.estado}
-                </div>
-              </div>
-              <div className="flex items-center justify-end text-[9px] text-muted-foreground">
-                <span className="inline-flex rounded-full border border-border bg-muted px-1.5 py-0.5 font-semibold text-foreground">
-                  {normalizeEstado(card.estado).includes("realizada")
-                    ? `${realizadaTotal} props`
-                    : normalizeEstado(card.estado).includes("retirada")
-                      ? `${(card.retiradaBuckets ?? []).reduce(
-                          (acc, item) => acc + item.count,
-                          0,
-                        )} props`
-                      : `${card.propiedades} props`}
-                </span>
-              </div>
-            </div>
+          const isRealizada = normalizeEstado(card.estado).includes("realizada");
+          const isRetirada = normalizeEstado(card.estado).includes("retirada");
+          const dotClassName = cardKey === "realizada" ? "bg-violet-500" : undefined;
+          const summary = (
+            <span className="inline-flex rounded-full border border-border bg-muted px-1.5 py-0.5 font-semibold text-foreground">
+              {isRealizada
+                ? `${realizadaTotal}`
+                : isRetirada
+                  ? `${(card.retiradaBuckets ?? []).reduce(
+                      (acc, item) => acc + item.count,
+                      0,
+                    )}`
+                  : `${card.propiedades}`}
+            </span>
+          );
 
-            {normalizeEstado(card.estado).includes("realizada") ? (
-              <div className="mt-2.5 rounded-md border border-border/70">
-                <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-border/70 bg-muted/30 px-2 py-1 text-[8px] uppercase tracking-wide text-muted-foreground">
-                  <span>Vencimiento</span>
-                  <span className="text-right">Props</span>
-                </div>
-                <div className="divide-y divide-border/60">
-                  {realizadaRanges.length === 0 ? (
-                    <div className="px-2 py-1.5 text-[9px] text-muted-foreground">
-                      Sin datos de vencimientos.
-                    </div>
-                  ) : (
-                    realizadaRanges.map((range) => {
-                      const isVencidos = range.key === "vencidos";
-                      const isSelectedBucket =
-                        selectedEstadoKey === cardKey &&
-                        selectedBucketKey === range.key;
-                      return (
-                        <button
-                          type="button"
-                          key={range.key}
-                          className={`grid w-full grid-cols-[1fr_auto] items-center gap-2 px-2 py-1.5 text-left text-[9px] hover:bg-muted/40 ${
-                            isSelectedBucket ? "bg-primary/10 ring-1 ring-primary/30" : ""
-                          }`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onBucketClick?.({
-                              estadoKey: getEstadoKey(card.estado),
-                              bucketKey: range.key,
-                              label: range.label,
-                            });
-                          }}
-                        >
-                          <span
-                            className={`truncate ${
-                              isVencidos ? "text-red-600" : "text-muted-foreground"
-                            }`}
-                          >
-                            {range.label}
-                          </span>
-                          <span
-                            className={`text-right font-semibold ${
-                              isVencidos ? "text-red-600" : "text-foreground"
-                            }`}
-                          >
-                            {range.count}
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ) : normalizeEstado(card.estado).includes("retirada") ? (
-              <div className="mt-2.5 rounded-md border border-border/70">
-                <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-border/70 bg-muted/30 px-2 py-1 text-[8px] uppercase tracking-wide text-muted-foreground">
-                  <span>Retiro</span>
-                  <span className="text-right">Props</span>
-                </div>
-                <div className="divide-y divide-border/60">
-                  {(card.retiradaBuckets ?? []).length === 0 ? (
-                    <div className="px-2 py-1.5 text-[9px] text-muted-foreground">
-                      Sin datos de retiros.
-                    </div>
-                  ) : (
-                    (card.retiradaBuckets ?? []).map((bucket) => {
-                      const isSelectedBucket =
-                        selectedEstadoKey === cardKey &&
-                        selectedBucketKey === bucket.key;
-                      return (
-                        <button
-                          type="button"
-                          key={bucket.key}
-                          className={`grid w-full grid-cols-[1fr_auto] items-center gap-2 px-2 py-1.5 text-left text-[9px] hover:bg-muted/40 ${
-                            isSelectedBucket ? "bg-primary/10 ring-1 ring-primary/30" : ""
-                          }`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onBucketClick?.({
-                              estadoKey: getEstadoKey(card.estado),
-                              bucketKey: bucket.key,
-                              label: bucket.label,
-                            });
-                          }}
-                        >
-                          <span className="truncate text-muted-foreground">{bucket.label}</span>
-                          <span className="text-right font-semibold text-foreground">
-                            {bucket.count}
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-2.5 rounded-md border border-border/70">
+          if (isRealizada) {
+            const buckets: DashboardCardBucket[] = realizadaRanges.map((range) => ({
+              key: range.key,
+              label: range.label,
+              value: range.count,
+              tone: range.key === "vencidos" ? "danger" : "muted",
+            }));
+
+            return (
+              <DashboardCard
+                key={card.estado}
+                id={cardKey}
+                title={card.estado}
+                summary={summary}
+                dotTone={getEstadoTone(card.estado)}
+                dotClassName={dotClassName}
+                selectedId={selectedEstadoKey}
+                selectedBucketKey={selectedBucketKey}
+                bucketsOpen={getCardOpen(cardKey)}
+                onBucketsOpenChange={(open) => setCardOpen(cardKey, open)}
+                onSelect={(estadoKey) => onCardClick?.({ estadoKey })}
+                onBucketSelect={(payload) => {
+                  onBucketClick?.({
+                    estadoKey: payload.id,
+                    bucketKey: payload.bucketKey,
+                    label: realizadaRanges.find((item) => item.key === payload.bucketKey)?.label,
+                  });
+                }}
+                buckets={buckets}
+                bucketHeader={
+                  <>
+                    <span>Vencimiento</span>
+                    <span className="text-right">Props</span>
+                  </>
+                }
+                bucketColumnsClassName="grid-cols-[1fr_auto]"
+              >
+                {realizadaRanges.length === 0 ? (
+                  <div className="rounded-md border border-border/70 px-2 py-1.5 text-[9px] text-muted-foreground">
+                    Sin datos de vencimientos.
+                  </div>
+                ) : null}
+              </DashboardCard>
+            );
+          }
+
+          if (isRetirada) {
+            const buckets: DashboardCardBucket[] = (card.retiradaBuckets ?? []).map((bucket) => ({
+              key: bucket.key,
+              label: bucket.label,
+              value: bucket.count,
+              labelClassName: "text-muted-foreground",
+              valueClassName: "text-foreground",
+            }));
+
+            return (
+              <DashboardCard
+                key={card.estado}
+                id={cardKey}
+                title={card.estado}
+                summary={summary}
+                dotTone={getEstadoTone(card.estado)}
+                dotClassName={dotClassName}
+                selectedId={selectedEstadoKey}
+                selectedBucketKey={selectedBucketKey}
+                bucketsOpen={getCardOpen(cardKey)}
+                onBucketsOpenChange={(open) => setCardOpen(cardKey, open)}
+                onSelect={(estadoKey) => onCardClick?.({ estadoKey })}
+                onBucketSelect={(payload) => {
+                  onBucketClick?.({
+                    estadoKey: payload.id,
+                    bucketKey: payload.bucketKey,
+                    label: (card.retiradaBuckets ?? []).find((item) => item.key === payload.bucketKey)?.label,
+                  });
+                }}
+                buckets={buckets}
+                bucketHeader={
+                  <>
+                    <span>Retiro</span>
+                    <span className="text-right">Props</span>
+                  </>
+                }
+                bucketColumnsClassName="grid-cols-[1fr_auto]"
+              >
+                {(card.retiradaBuckets ?? []).length === 0 ? (
+                  <div className="rounded-md border border-border/70 px-2 py-1.5 text-[9px] text-muted-foreground">
+                    Sin datos de retiros.
+                  </div>
+                ) : null}
+              </DashboardCard>
+            );
+          }
+
+          return (
+            <DashboardCard
+              key={card.estado}
+              id={cardKey}
+              title={card.estado}
+              summary={summary}
+              dotTone={getEstadoTone(card.estado)}
+              dotClassName={dotClassName}
+              selectedId={selectedEstadoKey}
+              selectedBucketKey={selectedBucketKey}
+              bucketsOpen={getCardOpen(cardKey)}
+              onBucketsOpenChange={(open) => setCardOpen(cardKey, open)}
+              onSelect={(estadoKey) => onCardClick?.({ estadoKey })}
+            >
+              <div className="rounded-md border border-border/70">
                 <div className="grid grid-cols-[1fr_auto_auto] gap-2 border-b border-border/70 bg-muted/30 px-2 py-1 text-[8px] uppercase tracking-wide text-muted-foreground">
                   <span>Operacion</span>
                   <span className="text-right">Props</span>
@@ -374,9 +364,8 @@ export const PropiedadesDashboard = ({
                   ))}
                 </div>
               </div>
-            )}
-          </div>
-        );
+            </DashboardCard>
+          );
         })}
       </div>
     </section>

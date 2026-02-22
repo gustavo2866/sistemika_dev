@@ -10,7 +10,6 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .factura import Factura
-    from .vacancia import Vacancia
     from .crm_catalogos import CRMTipoOperacion
     from .crm_oportunidad import CRMOportunidad
     from .emprendimiento import Emprendimiento
@@ -171,6 +170,17 @@ class Propiedad(Base, table=True):
         description="Fecha de vencimiento del contrato actual (si está alquilada)"
     )
     
+    # Campos de vacancia
+    vacancia_activa: bool = Field(
+        default=False,
+        description="Indica si la propiedad está actualmente vacante"
+    )
+    
+    vacancia_fecha: Optional[date] = Field(
+        default=None,
+        description="Fecha desde la cual la propiedad está vacante"
+    )
+    
     # Control de estado
     estado_fecha: date = Field(
         default_factory=date.today,
@@ -181,16 +191,6 @@ class Propiedad(Base, table=True):
         default=None,
         max_length=500,
         description="Comentario sobre el cambio de estado"
-    )
-    
-    # Control de vacancia
-    vacancia_activa: bool = Field(
-        default=False,
-        description="Indica si la propiedad tiene una vacancia activa"
-    )
-    vacancia_fecha: Optional[date] = Field(
-        default=None,
-        description="Fecha de inicio de la vacancia actual"
     )
     
     contacto_id: Optional[int] = Field(
@@ -239,10 +239,6 @@ class Propiedad(Base, table=True):
     )
 
     facturas: List['Factura'] = Relationship(back_populates='propiedad')
-    vacancias: List['Vacancia'] = Relationship(
-        back_populates='propiedad',
-        sa_relationship_kwargs={'cascade': 'all, delete-orphan'}
-    )
     tipo_propiedad: Optional['TipoPropiedad'] = Relationship(back_populates="propiedades")
     tipo_operacion: Optional['CRMTipoOperacion'] = Relationship()
     emprendimiento: Optional['Emprendimiento'] = Relationship()
@@ -276,6 +272,37 @@ class Propiedad(Base, table=True):
         if v is not None and v < 0:
             raise ValueError('Los importes deben ser mayores o iguales a 0')
         return v
+    
+    def actualizar_campos_vacancia(self, nuevo_estado_orden: int, fecha_cambio: Optional[date] = None) -> None:
+        """
+        Actualiza los campos de vacancia segun reglas de negocio.
+
+        Reglas actuales:
+        - Orden 1 (Recibida): vacancia_activa = true y vacancia_fecha = fecha_cambio.
+        - Orden 4 (Realizada): vacancia_activa = false y vacancia_fecha = null.
+        - Otros estados: no modificar vacancia.
+        """
+        if fecha_cambio is None:
+            fecha_cambio = date.today()
+
+        if nuevo_estado_orden == 1:
+            self.vacancia_activa = True
+            self.vacancia_fecha = fecha_cambio
+        elif nuevo_estado_orden == 4:
+            self.vacancia_activa = False
+            self.vacancia_fecha = None
+
+
+    def esta_vacante(self) -> bool:
+        """
+        Determina si la propiedad esta actualmente vacante basandose en su estado.
+
+        Returns:
+            bool: True si la propiedad esta vacante
+        """
+        if self.propiedad_status and hasattr(self.propiedad_status, 'orden'):
+            return self.propiedad_status.orden == 1
+        return False
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Propiedad(id={self.id}, nombre='{self.nombre}')"

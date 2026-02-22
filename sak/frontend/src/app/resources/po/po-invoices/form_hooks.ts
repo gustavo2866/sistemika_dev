@@ -97,10 +97,10 @@ export const useResponsableCentroCostoSync = () => {
 
         const deptoId = resolveNumericId(usuario?.departamento_id);
         if (deptoId) {
-          setValue("departamento_id", deptoId, { shouldDirty: forceDirty });
+          // setValue("departamento_id", deptoId, { shouldDirty: forceDirty });
         } else {
-          setValue("departamento_id", null, { shouldDirty: forceDirty });
-          setValue("centro_costo_id", null, { shouldDirty: forceDirty });
+          // setValue("departamento_id", null, { shouldDirty: forceDirty });
+          setValue("centro_costo_id", undefined, { shouldDirty: forceDirty });
           return;
         }
 
@@ -111,7 +111,7 @@ export const useResponsableCentroCostoSync = () => {
         if (centroId) {
           setValue("centro_costo_id", centroId, { shouldDirty: forceDirty });
         } else {
-          setValue("centro_costo_id", null, { shouldDirty: forceDirty });
+          setValue("centro_costo_id", undefined, { shouldDirty: forceDirty });
         }
       } catch (error) {
         console.error(error);

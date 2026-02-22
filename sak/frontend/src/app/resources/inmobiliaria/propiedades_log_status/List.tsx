@@ -95,7 +95,7 @@ export const PropiedadesLogStatusList = () => (
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <ListColumn source="propiedad_id" label="Propiedad" className="w-[160px]">
-        <ReferenceField source="propiedad_id" reference="propiedades" link={false} emptyText="Sin propiedad">
+        <ReferenceField source="propiedad_id" reference="propiedades" link={false}>
           <ListText source="nombre" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
@@ -109,7 +109,7 @@ export const PropiedadesLogStatusList = () => (
         <ListDate source="fecha_cambio" />
       </ListColumn>
       <ListColumn source="usuario_id" label="Usuario" className="w-[140px]">
-        <ReferenceField source="usuario_id" reference="users" link={false} emptyText="-">
+        <ReferenceField source="usuario_id" reference="users" link={false}>
           <ListText source="nombre" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>

@@ -147,8 +147,8 @@ export const useSolicitanteCentroCostoSync = () => {
         if (deptoId) {
           setValue("departamento_id", deptoId, { shouldDirty: true });
         } else {
-          setValue("departamento_id", null, { shouldDirty: true });
-          setValue("centro_costo_id", null, { shouldDirty: true });
+          setValue("departamento_id", undefined, { shouldDirty: true });
+          setValue("centro_costo_id", undefined, { shouldDirty: true });
           return;
         }
 
@@ -159,7 +159,7 @@ export const useSolicitanteCentroCostoSync = () => {
         if (centroId) {
           setValue("centro_costo_id", centroId, { shouldDirty: true });
         } else {
-          setValue("centro_costo_id", null, { shouldDirty: true });
+          setValue("centro_costo_id", undefined, { shouldDirty: true });
         }
       } catch (error) {
         console.error(error);

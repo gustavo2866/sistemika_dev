@@ -15,11 +15,6 @@ const setupLinks = [
     resource: "propiedades-status",
   },
   {
-    label: "Vacancias",
-    description: "Gestionar ciclos y registros de vacancia.",
-    resource: "vacancias",
-  },
-  {
     label: "Log estados de propiedad",
     description: "Auditoria de cambios de estado de propiedades.",
     resource: "propiedades-log-status",

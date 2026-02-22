@@ -211,9 +211,9 @@ export const SimpleFormIterator = (props: SimpleFormIteratorProps) => {
                   onClose={() => setConfirmIsOpen(false)}
                 />
                 {clearButton
-                  ? React.cloneElement(clearButton, {
+                  ? React.cloneElement(clearButton as React.ReactElement<any>, {
                       onClick: (event: any) => {
-                        clearButton.props.onClick?.(event);
+                        (clearButton as any).props.onClick?.(event);
                         handleClearClick();
                       },
                     })

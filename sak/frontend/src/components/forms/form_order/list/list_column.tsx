@@ -44,14 +44,12 @@ export const ListColumn = <RecordType extends RaRecord = RaRecord>({
 
   const inferred = findWidthFromChildren(props.children);
   const resolvedWidthClass = props.className ?? widthClass ?? inferred.widthClass ?? defaultWidthClass;
-  const resolvedStyle = width != null ? { width } : inferred.width != null ? { width: inferred.width } : undefined;
 
   return (
     <ResponsiveDataTable.Col
       {...props}
       label={resolvedLabel}
       className={resolvedWidthClass}
-      style={resolvedStyle}
     />
   );
 };

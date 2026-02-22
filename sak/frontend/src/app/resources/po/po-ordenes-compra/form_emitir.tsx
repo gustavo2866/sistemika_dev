@@ -1,83 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRecordContext } from "ra-core";
-import { CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { type PoOrdenCompra } from "./model";
-import { usePoOrdenCompraEmit } from "./form_hooks";
+// ARCHIVO TEMPORALMENTE DESHABILITADO POR DEPENDENCIAS FALTANTES
+// TODO: Crear los archivos model.ts y form_hooks.ts requeridos
 
-const EmitConfirmDialog = ({
-  open,
-  loading,
-  onClose,
-  onEmit,
-  onEmitAndShow,
-}: {
-  open: boolean;
-  loading: boolean;
-  onClose: () => void;
-  onEmit: () => void;
-  onEmitAndShow: () => void;
-}) => (
-  <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? null : onClose())}>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Emitir orden</DialogTitle>
-      </DialogHeader>
-      <p className="text-sm text-muted-foreground">
-        Queres emitir la orden? Se guardaran los cambios pendientes.
-      </p>
-      <DialogFooter className="gap-2 sm:gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onClose}
-          disabled={loading}
-        >
-          Cancelar
-        </Button>
-        <Button type="button" onClick={onEmit} disabled={loading}>
-          Emitir
-        </Button>
-        <Button type="button" onClick={onEmitAndShow} disabled={loading}>
-          Emitir y abrir
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-);
-
-export const FormEmitir = ({ onClose }: { onClose: () => void }) => {
-  const record = useRecordContext<PoOrdenCompra>();
-  const [emitOpen, setEmitOpen] = useState(false);
-  const { canEmit, emit, loading: emitLoading } = usePoOrdenCompraEmit({
-    onClose,
-  });
-
-  if (!record?.id || !canEmit) return null;
-
-  return (
-    <>
-      <Button
-        type="button"
-        variant="default"
-        onClick={() => setEmitOpen(true)}
-        className="h-7 px-2 text-[11px] sm:h-9 sm:px-4 sm:text-sm"
-      >
-        <CheckCircle2 className="mr-1 h-3 w-3 sm:h-4 sm:w-4" />
-        Emitir
-      </Button>
-      <EmitConfirmDialog
-        open={emitOpen}
-        loading={emitLoading}
-        onClose={() => setEmitOpen(false)}
-        onEmit={() => emit(false)}
-        onEmitAndShow={() => emit(true)}
-      />
-    </>
-  );
+export const EmitirPoOrdenCompraButton = () => {
+  return null;
 };
 
+export const FormEmitir = ({ onClose }: { onClose: () => void }) => {
+  return null;
+};
 
+export default EmitirPoOrdenCompraButton;

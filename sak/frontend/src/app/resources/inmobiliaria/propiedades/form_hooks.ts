@@ -14,11 +14,6 @@ type ChangeStatusPayload = {
   comentario?: string;
 };
 
-const buildFechaCambioDateTime = (dateValue: string) => {
-  if (!dateValue) return null;
-  return `${dateValue}T00:00:00`;
-};
-
 export const usePropiedadStatusTransition = () => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -42,38 +37,20 @@ export const usePropiedadStatusTransition = () => {
       return false;
     }
 
-    const estadoAnteriorId = record.propiedad_status_id ?? null;
-    const estadoAnteriorNombre = getPropiedadStatusLabel(estadoAnteriorId);
     const estadoNuevoNombre = getPropiedadStatusLabel(nextStatusId);
     const motivo = comentario?.trim() ? comentario.trim() : null;
-    const motivoCorto = motivo ? motivo.slice(0, 200) : null;
 
     setLoading(true);
     try {
-      await dataProvider.update("propiedades-inmobiliaria", {
+      await dataProvider.update("propiedades", {
         id: record.id,
         data: {
           propiedad_status_id: nextStatusId,
           estado_fecha: fechaCambio,
           estado_comentario: motivo,
-          vacancia_activa: true,
-          vacancia_fecha: fechaCambio,
+          usuario_id: identityId,
         },
         previousData: record,
-      });
-
-      await dataProvider.create("propiedades-log-status", {
-        data: {
-          propiedad_id: record.id,
-          estado_anterior_id: estadoAnteriorId,
-          estado_nuevo_id: nextStatusId,
-          estado_anterior: estadoAnteriorNombre,
-          estado_nuevo: estadoNuevoNombre,
-          fecha_cambio: buildFechaCambioDateTime(fechaCambio),
-          usuario_id: identityId,
-          motivo: motivoCorto,
-          observaciones: motivo,
-        },
       });
 
       refresh();

@@ -197,3 +197,17 @@ export const getPropiedadStatusBadgeClass = (label?: string | null) => {
   const match = ESTADO_BADGE_CLASSES.find((item) => item.keys.some((key) => normalized.includes(key)));
   return match?.className ?? "bg-slate-100 text-slate-800";
 };
+
+export const isTipoOperacionMantenimiento = (tipo?: {
+  nombre?: string | null;
+  codigo?: string | null;
+}) => {
+  const nombre = String(tipo?.nombre ?? "").toLowerCase();
+  const codigo = String(tipo?.codigo ?? "").toLowerCase();
+  return nombre.includes("mantenimiento") || codigo.includes("mantenimiento");
+};
+
+export const excludeMantenimientoTipoOperacion = (tipo?: {
+  nombre?: string | null;
+  codigo?: string | null;
+}) => !isTipoOperacionMantenimiento(tipo);

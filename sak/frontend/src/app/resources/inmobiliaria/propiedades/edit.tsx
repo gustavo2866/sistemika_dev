@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Home } from "lucide-react";
 
 import { PropiedadForm } from "./form";
-import type { Propiedad } from "./model";
+import { getPropiedadStatusBadgeClass, type Propiedad } from "./model";
 
 export const PropiedadEdit = () => (
   <Edit title={<PropiedadEditTitle />} actions={false}>
@@ -38,7 +38,9 @@ const PropiedadEditTitle = () => {
         {record?.id ? <span className="text-xs text-muted-foreground">#{record.id}</span> : null}
       </span>
       {estadoCatalogoLabel ? (
-        <Badge variant="outline">{estadoCatalogoLabel}</Badge>
+        <Badge variant="outline" className={getPropiedadStatusBadgeClass(estadoCatalogoLabel)}>
+          {estadoCatalogoLabel}
+        </Badge>
       ) : null}
       <Badge variant="outline">{vacanciaLabel}</Badge>
     </div>

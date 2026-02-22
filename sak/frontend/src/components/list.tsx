@@ -71,6 +71,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     actions,
     topContent,
     showBreadcrumb = true,
+    showHeader = true,
     containerClassName,
   } = props;
   const translate = useTranslate();
@@ -99,27 +100,29 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
       ) : null}
 
       <FilterContext.Provider value={filters}>
-        <div className="flex flex-wrap items-center justify-between gap-3 my-2 sm:my-3 w-full max-w-3xl">
-          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-            {finalTitle}
-          </h2>
-          {actions ?? (
-            <div className="flex items-center gap-2">
-              {hasCreate ? (
-                <CreateButton
-                  size="sm"
-                  className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
-                />
-              ) : null}
-              {
-                <ExportButton
-                  size="sm"
-                  className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
-                />
-              }
-            </div>
-          )}
-        </div>
+        {showHeader ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 my-2 sm:my-3 w-full max-w-3xl">
+            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+              {finalTitle}
+            </h2>
+            {actions ?? (
+              <div className="flex items-center gap-2">
+                {hasCreate ? (
+                  <CreateButton
+                    size="sm"
+                    className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
+                  />
+                ) : null}
+                {
+                  <ExportButton
+                    size="sm"
+                    className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
+                  />
+                }
+              </div>
+            )}
+          </div>
+        ) : null}
         {topContent ? (
           <div className="mb-2 w-full max-w-3xl">
             {topContent}
@@ -147,6 +150,7 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   title?: ReactNode | string | false;
   className?: string;
   showBreadcrumb?: boolean;
+  showHeader?: boolean;
   containerClassName?: string;
 }
 

@@ -62,9 +62,9 @@ const CONSTRUCTORA_RESOURCES = [
   "parte-diario",
 ] as const;
 const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores", "po-setup"] as const;
-const OPERATIONS_RESOURCES = ["propiedades", "solicitudes"] as const;
+const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
-  "propiedades-inmobiliaria",
+  "propiedades",
   "dashboard-propiedades",
   "emprendimientos",
   "inmobiliaria-setup",
@@ -123,7 +123,6 @@ const HIDDEN_RESOURCES = [
   "po-order-status",
   "po-invoice-status",
   "po-invoice-status-fin",
-  "vacancias",
   "tipos-propiedad",
   "propiedades-log-status",
   "propiedades-status",
@@ -443,7 +442,6 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "tipos-operacion": Workflow,
   "metodos-pago": FileText,
   proyectos: Kanban,
-  propiedades: Home,
   articulos: Package,
   facturas: FileText,
   solicitudes: ClipboardList,

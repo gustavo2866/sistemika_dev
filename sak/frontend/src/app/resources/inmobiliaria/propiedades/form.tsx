@@ -28,13 +28,14 @@ import {
   type Propiedad,
   type PropiedadFormValues,
   type Vacancia,
+  excludeMantenimientoTipoOperacion,
 } from "./model";
 
 export const PropiedadForm = () => (
   <SimpleForm<PropiedadFormValues>
     className="w-full max-w-4xl"
     warnWhenUnsavedChanges
-    validate={useNombreUnicoFormValidator()}
+    validate={useNombreUnicoFormValidator() as any}
   >
     <FormErrorSummary />
     <SectionBaseTemplate
@@ -45,7 +46,6 @@ export const PropiedadForm = () => (
     />
     {/* Datos generales ahora van como opcionales de Cabecera */}
     <SectionBaseTemplate title="Datos del contrato" main={<DatosContratoFields />} defaultOpen={false} />
-    <SectionBaseTemplate title="Vacancias" main={<PropiedadVacanciasTable />} defaultOpen={false} />
   </SimpleForm>
 );
 
@@ -61,7 +61,13 @@ const CabeceraFields = () => (
       reference="crm/catalogos/tipos-operacion"
       label="Tipo de operacion"
     >
-      <FormSelect optionText="nombre" label="Tipo de operacion" widthClass="w-full" emptyText="Sin asignar" />
+      <FormSelect
+        optionText="nombre"
+        label="Tipo de operacion"
+        widthClass="w-full"
+        emptyText="Sin asignar"
+        choicesFilter={excludeMantenimientoTipoOperacion}
+      />
     </ReferenceInput>
   </div>
 );
@@ -78,7 +84,7 @@ const useNombreUnicoFormValidator = () => {
       return {};
     }
     try {
-      const result = await dataProvider.getList<Propiedad>("propiedades-inmobiliaria", {
+      const result = await dataProvider.getList<Propiedad>("propiedades", {
         filter: { nombre__eq: normalized },
         pagination: { page: 1, perPage: 10 },
         sort: { field: "id", order: "DESC" },

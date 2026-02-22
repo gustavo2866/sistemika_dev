@@ -1,4 +1,4 @@
-import type { Vacancia } from "@/app/resources/propiedades/model";
+import type { Vacancia } from "@/app/resources/inmobiliaria/propiedades/model";
 
 export type VacanciaKPIs = {
   totalActivas: number;

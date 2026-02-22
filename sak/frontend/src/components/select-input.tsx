@@ -79,6 +79,7 @@ export const SelectInput = (props: SelectInputProps) => {
     onCreate,
     triggerProps,
     autoFocusNext = false,
+    choicesFilter,
 
     ...rest
   } = props;
@@ -159,6 +160,26 @@ export const SelectInput = (props: SelectInputProps) => {
     (choice: unknown) => getChoiceText(choice),
     [getChoiceText],
   );
+
+  const selectedChoice = useMemo(() => {
+    if (!allChoices || field.value == null) return undefined;
+    return allChoices.find((choice) => getChoiceValue(choice) === field.value);
+  }, [allChoices, field.value, getChoiceValue]);
+
+  const filteredChoices = useMemo(() => {
+    let result = allChoices ?? [];
+    if (!choicesFilter) {
+      return result;
+    }
+    result = result.filter((choice) => choicesFilter(choice));
+    if (
+      selectedChoice &&
+      !result.some((choice) => getChoiceValue(choice) === getChoiceValue(selectedChoice))
+    ) {
+      result = [{ ...selectedChoice, [disableValue]: true }, ...result];
+    }
+    return result;
+  }, [allChoices, choicesFilter, selectedChoice, disableValue, getChoiceValue]);
 
   const handleSelectionChange = props.onSelectionChange;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -245,7 +266,7 @@ export const SelectInput = (props: SelectInputProps) => {
   }
 
   const createItem = create || onCreate ? getCreateItem() : null;
-  let finalChoices = fetchError ? [] : allChoices;
+  let finalChoices = fetchError ? [] : filteredChoices;
   if (create || onCreate) {
     finalChoices = [...finalChoices, createItem];
   }
@@ -376,4 +397,5 @@ export type SelectInputProps = ChoicesProps &
     onSelectionChange?: (value: string) => void;
     autoFocusNext?: boolean;
     triggerProps?: SelectTriggerProps;
+    choicesFilter?: (choice: any) => boolean;
   } & Omit<ComponentProps<typeof FormField>, "id" | "name" | "children">;

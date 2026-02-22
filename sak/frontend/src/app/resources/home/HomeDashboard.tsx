@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useCreatePath, useDataProvider, useGetIdentity } from "ra-core";
-import { 
-  CalendarCheck, 
-  Target, 
+import {
+  CalendarCheck,
+  Target,
   AlertTriangle,
   Users,
-  Building2,
   Activity
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -325,12 +324,6 @@ export default function HomeDashboard() {
               </Link>
             </Button>
             
-            <Button asChild variant="outline" className="h-16 flex-col gap-1">
-              <Link to="/propiedades">
-                <Building2 className="h-6 w-6" />
-                <span className="text-sm">Ver Propiedades</span>
-              </Link>
-            </Button>
           </div>
         </CardContent>
       </Card>
