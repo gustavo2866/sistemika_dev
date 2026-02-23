@@ -1,6 +1,8 @@
 "use client";
 
-import { required, useDataProvider, useRecordContext } from "ra-core";
+import { useMemo } from "react";
+import { ListBase, required, useDataProvider, useRecordContext } from "ra-core";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
@@ -14,6 +16,9 @@ import {
   FormValue,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
+import { CRMOportunidadPoListBody } from "@/app/resources/crm/crm-oportunidades/List";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Plus } from "lucide-react";
 import { ReferenceInput } from "@/components/reference-input";
 import {
   Table,
@@ -44,6 +49,7 @@ export const PropiedadForm = () => (
       optional={<CabeceraOpcionales />}
       defaultOpen
     />
+    <OportunidadesSection />
     {/* Datos generales ahora van como opcionales de Cabecera */}
     <SectionBaseTemplate title="Datos del contrato" main={<DatosContratoFields />} defaultOpen={false} />
   </SimpleForm>
@@ -199,5 +205,55 @@ const PropiedadVacanciasTable = () => {
         </TableBody>
       </Table>
     </div>
+  );
+};
+
+const OportunidadesSection = () => {
+  const record = useRecordContext<Propiedad>();
+  const propiedadId = record?.id;
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  if (!propiedadId) {
+    return null;
+  }
+
+  const returnTo = `${location.pathname}${location.search}`;
+  const createTo = useMemo(() => {
+    const basePath = "/crm/crm-oportunidades/create";
+    const params = new URLSearchParams();
+    params.set("propiedad_id", String(propiedadId));
+    params.set("returnTo", returnTo);
+    return `${basePath}?${params.toString()}`;
+  }, [propiedadId, returnTo]);
+
+  return (
+    <ListBase
+      resource="crm/crm-oportunidades"
+      perPage={10}
+      sort={{ field: "created_at", order: "DESC" }}
+      filterDefaultValues={{ propiedad_id: propiedadId, activo: true }}
+      disableSyncWithLocation
+      storeKey={`crm-oportunidades-propiedad-${propiedadId}`}
+    >
+      <SectionBaseTemplate
+        title="Oportunidades"
+        defaultOpen={false}
+        persistKey={`propiedades-oportunidades-${propiedadId}`}
+        actions={
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              navigate(createTo);
+            }}
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            <Plus className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Agregar oportunidad
+          </DropdownMenuItem>
+        }
+        main={<CRMOportunidadPoListBody compact showBulkActions={false} />}
+      />
+    </ListBase>
   );
 };

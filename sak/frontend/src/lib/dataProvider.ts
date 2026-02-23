@@ -109,7 +109,11 @@ const sanitizeIdsInData = (value: unknown): unknown => {
   return value;
 };
 
-const resolveResource = (resource: string) => resource;
+const resolveResource = (resource: string) => {
+  if (resource === "crm/crm-eventos") return "crm/eventos";
+  if (resource === "crm/crm-oportunidades") return "crm/oportunidades";
+  return resource;
+};
 
 export const dataProvider: DataProvider = {
   ...baseProvider,

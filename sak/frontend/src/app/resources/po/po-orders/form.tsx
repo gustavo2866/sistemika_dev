@@ -1,15 +1,17 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   type Identifier,
   required,
   useRecordContext,
+  useGetOne,
   useWrappedSource,
 } from "ra-core";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn } from "@/lib/utils";
-import { useWatch } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
+import { useLocation } from "react-router-dom";
 
 import { SimpleForm } from "@/components/simple-form";
 import { Loading } from "@/components/loading";
@@ -26,6 +28,7 @@ import {
   FormSelect,
   FormText,
   FormTextarea,
+  FormValue,
   FormOrderHeaderMenuActions,
   HiddenInput,
   SectionBaseTemplate,
@@ -68,29 +71,129 @@ const PoOrderDetailEditContext = createContext<{
 
 const usePoOrderDetailEdit = () => useContext(PoOrderDetailEditContext);
 
+type PoOrderExternalLockState = {
+  lockOportunidad: boolean;
+  lockCentro: boolean;
+  lockedOportunidadId?: number;
+  lockedCentroId?: number;
+};
+
+const PoOrderExternalLockContext = createContext<PoOrderExternalLockState>({
+  lockOportunidad: false,
+  lockCentro: false,
+});
+
+const usePoOrderExternalLock = () => useContext(PoOrderExternalLockContext);
+
+const resolveNumericId = (value: unknown) => {
+  if (value == null) return undefined;
+  if (typeof value === "object") {
+    const maybeId = (value as { id?: unknown; value?: unknown }).id ??
+      (value as { value?: unknown }).value;
+    return resolveNumericId(maybeId);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "0") return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+  return undefined;
+};
+
+const parseNumericParam = (value: string | null) => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const PoOrderExternalLockSync = () => {
+  const { lockCentro, lockOportunidad, lockedOportunidadId, lockedCentroId } =
+    usePoOrderExternalLock();
+  const { setValue } = useFormContext<PoOrderFormValues>();
+  const oportunidadValue = useWatch({ name: "oportunidad_id" }) as unknown;
+  const centroValue = useWatch({ name: "centro_costo_id" }) as unknown;
+
+  useEffect(() => {
+    if (!lockOportunidad || !lockedOportunidadId) return;
+    const current = resolveNumericId(oportunidadValue);
+    if (current === lockedOportunidadId) return;
+    setValue("oportunidad_id", lockedOportunidadId, { shouldDirty: true });
+  }, [lockOportunidad, lockedOportunidadId, oportunidadValue, setValue]);
+
+  useEffect(() => {
+    if (!lockCentro || !lockedCentroId) return;
+    const current = resolveNumericId(centroValue);
+    if (current === lockedCentroId) return;
+    setValue("centro_costo_id", lockedCentroId, { shouldDirty: true });
+  }, [lockCentro, lockedCentroId, centroValue, setValue]);
+
+  return null;
+};
+
 // === Formulario principal ===
 // Renderiza el formulario principal de Orden de compra.
 export const PoOrderForm = () => {
+  const record = useRecordContext<PoOrderRecord>();
   const { defaultValues, isLoadingDefaults } = usePoOrderFormDefaults();
   const [isEditing, setIsEditing] = useState(false);
-
-  if (isLoadingDefaults) {
-    return <Loading delay={200} />;
-  }
-
-  return (
-    <PoOrderDetailEditContext.Provider value={{ isEditing, setIsEditing }}>
-      <SimpleForm<PoOrderFormValues>
-        className="w-full max-w-3xl"
-        // ra-core FormProps types resolver as Resolver<FieldValues>
-        resolver={zodResolver(poOrderSchema) as any}
-        toolbar={<OrdenCompraToolbar />}
-        defaultValues={defaultValues}
-      >
-        <OrdenCompraContenido />
-      </SimpleForm>
-    </PoOrderDetailEditContext.Provider>
+  const location = useLocation();
+  const isCreate = !record?.id;
+  const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const lockedOportunidadId = useMemo(
+    () => parseNumericParam(search.get("oportunidad_id")),
+    [search],
   );
+  const lockedCentroId = useMemo(
+    () => parseNumericParam(search.get("centro_costo_id")),
+    [search],
+  );
+  const lockOportunidad = isCreate && (search.get("lock_oportunidad") === "1" || lockedOportunidadId != null);
+  const lockCentro = isCreate && (search.get("lock_centro") === "1");
+
+  const mergedDefaultValues = useMemo(() => {
+    if (!isCreate) return defaultValues;
+    if (!defaultValues && !lockedOportunidadId && !lockedCentroId) return defaultValues;
+    return {
+      ...(defaultValues ?? {}),
+      ...(lockedOportunidadId ? { oportunidad_id: lockedOportunidadId } : {}),
+      ...(lockedCentroId ? { centro_costo_id: lockedCentroId } : {}),
+    };
+  }, [defaultValues, isCreate, lockedCentroId, lockedOportunidadId]);
+
+  const lockState = useMemo(
+    () => ({
+      lockOportunidad,
+      lockCentro,
+      lockedOportunidadId,
+      lockedCentroId,
+    }),
+    [lockCentro, lockOportunidad, lockedCentroId, lockedOportunidadId],
+  );
+
+    if (isLoadingDefaults) {
+      return <Loading delay={200} />;
+    }
+
+    return (
+      <PoOrderDetailEditContext.Provider value={{ isEditing, setIsEditing }}>
+        <PoOrderExternalLockContext.Provider value={lockState}>
+          <SimpleForm<PoOrderFormValues>
+            className="w-full max-w-3xl"
+            // ra-core FormProps types resolver as Resolver<FieldValues>
+            resolver={zodResolver(poOrderSchema) as any}
+            toolbar={<OrdenCompraToolbar />}
+            defaultValues={mergedDefaultValues}
+          >
+            <PoOrderExternalLockSync />
+            <OrdenCompraContenido />
+          </SimpleForm>
+        </PoOrderExternalLockContext.Provider>
+      </PoOrderDetailEditContext.Provider>
+    );
 };
 
 // Barra de acciones del formulario de Orden de compra.
@@ -256,32 +359,71 @@ const CabeceraCamposPrincipales = () => {
 
 // Campos opcionales de la cabecera con panel secundario.
 const CabeceraCamposOpcionales = () => {
+  const { lockCentro, lockOportunidad, lockedOportunidadId, lockedCentroId } =
+    usePoOrderExternalLock();
+  const oportunidadValue = useWatch({ name: "oportunidad_id" }) as unknown;
+  const centroValue = useWatch({ name: "centro_costo_id" }) as unknown;
+
+  const resolvedOportunidadId = resolveNumericId(oportunidadValue) ?? lockedOportunidadId;
+  const resolvedCentroId = resolveNumericId(centroValue) ?? lockedCentroId;
+
+  const { data: oportunidadLocked } = useGetOne(
+    "crm/oportunidades",
+    { id: resolvedOportunidadId ?? 0 },
+    { enabled: lockOportunidad && Boolean(resolvedOportunidadId) },
+  );
+  const { data: centroLocked } = useGetOne(
+    "centros-costo",
+    { id: resolvedCentroId ?? 0 },
+    { enabled: lockCentro && Boolean(resolvedCentroId) },
+  );
+
+  const oportunidadLabel =
+    (oportunidadLocked as any)?.titulo ??
+    (oportunidadLocked as any)?.descripcion_estado ??
+    (resolvedOportunidadId ? `#${resolvedOportunidadId}` : "Sin oportunidad");
+  const centroLabel =
+    (centroLocked as any)?.nombre ??
+    (resolvedCentroId ? `#${resolvedCentroId}` : "Sin centro de costo");
+
   return (
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
         <div className="grid gap-2 md:grid-cols-4">
-          <FormReferenceAutocomplete
-            referenceProps={{
-              source: "centro_costo_id",
-              reference: "centros-costo",
-            }}
-            inputProps={{
-              optionText: "nombre",
-              label: "Centro de costo",
-            }}
-            widthClass="w-full"
-          />
-          <FormReferenceAutocomplete
-            referenceProps={{
-              source: "oportunidad_id",
-              reference: "crm/oportunidades",
-            }}
-            inputProps={{
-              optionText: "titulo",
-              label: "Oportunidad",
-            }}
-            widthClass="w-full"
-          />
+          {lockCentro ? (
+            <FormValue label="Centro de costo" widthClass="w-full">
+              {centroLabel}
+            </FormValue>
+          ) : (
+            <FormReferenceAutocomplete
+              referenceProps={{
+                source: "centro_costo_id",
+                reference: "centros-costo",
+              }}
+              inputProps={{
+                optionText: "nombre",
+                label: "Centro de costo",
+              }}
+              widthClass="w-full"
+            />
+          )}
+          {lockOportunidad ? (
+            <FormValue label="Oportunidad" widthClass="w-full">
+              {oportunidadLabel}
+            </FormValue>
+          ) : (
+            <FormReferenceAutocomplete
+              referenceProps={{
+                source: "oportunidad_id",
+                reference: "crm/oportunidades",
+              }}
+              inputProps={{
+                optionText: "titulo",
+                label: "Oportunidad",
+              }}
+              widthClass="w-full"
+            />
+          )}
           <ReferenceInput
             source="metodo_pago_id"
             reference="metodos-pago"

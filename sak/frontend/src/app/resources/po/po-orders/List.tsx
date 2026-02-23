@@ -139,63 +139,77 @@ const ListaOrdenes = () => {
       sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={defaultFilters}
     >
-      <IdentityFilterSync identityId={identityId} source="solicitante_id" />
-      <ResponsiveDataTable
-        rowClick="edit"
-        bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
-        mobileConfig={{
-          primaryField: "titulo",
-          secondaryFields: [
-            "solicitante_id",
-            "tipo_solicitud_id",
-            "proveedor_id",
-            "total",
-          ],
-          detailFields: [],
-        }}
-        className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
-      >
-        <ListColumn source="id" label="ID" className="w-[45px] text-center">
-          <ListID source="id" widthClass="w-[45px]" className="whitespace-normal break-words" />
-        </ListColumn>
-        <ListColumn source="titulo" label="Titulo" className="w-[120px]">
-          <ListText source="titulo" className="whitespace-normal break-words" />
-        </ListColumn>
-        <ListColumn source="solicitante_id" label="Solicitante" className="w-[90px]">
-          <ReferenceField source="solicitante_id" reference="users" link={false}>
-            <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
-          </ReferenceField>
-        </ListColumn>
-        <ListColumn source="tipo_solicitud_id" label="Tipo solicitud" className="w-[90px]">
-          <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud" link={false}>
-            <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
-          </ReferenceField>
-        </ListColumn>
-        <ListColumn source="proveedor_id" label="Proveedor" className="w-[90px]">
-          <ReferenceField source="proveedor_id" reference="proveedores" link={false}>
-            <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
-          </ReferenceField>
-        </ListColumn>
-        <ListColumn source="order_status_id" label="Estado" className="w-[75px]">
-          <ListEstado source="order_status.nombre" statusClasses={ORDER_STATUS_BADGES} />
-        </ListColumn>
-        <ListColumn source="total" label="Importe" className="w-[90px] text-right">
-          <ListMoney source="total" showCurrency={false} className="whitespace-nowrap" />
-        </ListColumn>
-        <ListColumn label="Acciones" className="w-[60px]">
-          <FormOrderListRowActions
-            extraMenuItems={
-              <>
-                <FormConfirmar action="approve" />
-                <FormConfirmar action="reject" />
-              </>
-            }
-          />
-        </ListColumn>
-      </ResponsiveDataTable>
+      <PoOrderListBody identityId={identityId} />
     </List>
   );
 };
+
+type PoOrderListBodyProps = {
+  identityId?: number | string;
+  compact?: boolean;
+};
+
+export const PoOrderListBody = ({ identityId, compact = false }: PoOrderListBodyProps) => (
+  <>
+    {identityId ? (
+      <IdentityFilterSync identityId={identityId} source="solicitante_id" />
+    ) : null}
+    <ResponsiveDataTable
+      rowClick="edit"
+      bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
+      compact={compact}
+      mobileConfig={{
+        primaryField: "titulo",
+        secondaryFields: [
+          "solicitante_id",
+          "tipo_solicitud_id",
+          "proveedor_id",
+          "total",
+        ],
+        detailFields: [],
+      }}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <ListColumn source="id" label="ID" className="w-[45px] text-center">
+        <ListID source="id" widthClass="w-[45px]" className="whitespace-normal break-words" />
+      </ListColumn>
+      <ListColumn source="titulo" label="Titulo" className="w-[120px]">
+        <ListText source="titulo" className="whitespace-normal break-words" />
+      </ListColumn>
+      <ListColumn source="solicitante_id" label="Solicitante" className="w-[90px]">
+        <ReferenceField source="solicitante_id" reference="users" link={false}>
+          <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn source="tipo_solicitud_id" label="Tipo solicitud" className="w-[90px]">
+        <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud" link={false}>
+          <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn source="proveedor_id" label="Proveedor" className="w-[90px]">
+        <ReferenceField source="proveedor_id" reference="proveedores" link={false}>
+          <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn source="order_status_id" label="Estado" className="w-[75px]">
+        <ListEstado source="order_status.nombre" statusClasses={ORDER_STATUS_BADGES} />
+      </ListColumn>
+      <ListColumn source="total" label="Importe" className="w-[90px] text-right">
+        <ListMoney source="total" showCurrency={false} className="whitespace-nowrap" />
+      </ListColumn>
+      <ListColumn label="Acciones" className="w-[60px]">
+        <FormOrderListRowActions
+          extraMenuItems={
+            <>
+              <FormConfirmar action="approve" />
+              <FormConfirmar action="reject" />
+            </>
+          }
+        />
+      </ListColumn>
+    </ResponsiveDataTable>
+  </>
+);
 
 // === Helpers ===
 // (sin helpers locales)

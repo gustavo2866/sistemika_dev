@@ -9,7 +9,7 @@ export const CRMEventoShow = () => {
 
   useEffect(() => {
     if (record?.id) {
-      redirect("edit", "crm/eventos", record.id);
+      redirect("edit", "crm/crm-eventos", record.id);
     }
   }, [record, redirect]);
 

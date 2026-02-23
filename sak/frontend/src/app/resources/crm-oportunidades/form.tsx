@@ -176,7 +176,7 @@ function DatosGeneralesSection() {
     params.set("filter", JSON.stringify(filter));
     params.set("context", "oportunidad");
     params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
-    navigate(`/crm/eventos?${params.toString()}`);
+    navigate(`/crm/crm-eventos?${params.toString()}`);
   };
 
 

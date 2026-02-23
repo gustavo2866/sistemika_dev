@@ -361,7 +361,6 @@ export const CRMOportunidadListKanban = () => {
       filters={LIST_FILTERS}
       actions={<ListActions />}
       perPage={500}
-      pagination={false}
       filterDefaultValues={defaultFilters}
       sort={{ field: "fecha_estado", order: "DESC" }}
       className="space-y-5"

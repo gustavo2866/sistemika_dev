@@ -42,7 +42,7 @@ const OportunidadHeaderActions = ({
           appendFilterParam(params, buildOportunidadFilter(record.id));
           params.set("context", "oportunidad");
           params.set("returnTo", returnTo ?? `/crm/oportunidades/${record.id}`);
-          navigate(`/crm/eventos?${params.toString()}`);
+          navigate(`/crm/crm-eventos?${params.toString()}`);
         }}
       >
         <Calendar className="h-4 w-4" />

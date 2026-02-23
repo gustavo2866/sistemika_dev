@@ -1,38 +1,38 @@
 "use client";
 
 import { Create } from "@/components/create";
-import { ClipboardList } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { PoOrderForm } from "./form";
-import { normalizePoOrderPayload } from "./model";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
+import { CRMOportunidadPoForm } from "./form";
+import { Target } from "lucide-react";
 
-export const PoOrderCreate = () => {
+export const CRMOportunidadPoCreate = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const params = new URLSearchParams(location.search);
-  const returnTo = params.get("returnTo");
+  const returnTo = getReturnToFromLocation(location);
 
   return (
     <Create
       redirect={false}
       title={
         <span className="inline-flex items-center gap-2">
-          <ClipboardList className="h-4 w-4" />
-          Crear Orden
+          <Target className="h-4 w-4" />
+          Crear Oportunidad
         </span>
       }
-      transform={(data: any) => normalizePoOrderPayload(data)}
       mutationOptions={{
         onSuccess: () => {
           if (returnTo) {
             navigate(returnTo);
             return;
           }
-          navigate("/po-orders");
+          navigate("/crm/crm-oportunidades");
         },
       }}
     >
-      <PoOrderForm />
+      <CRMOportunidadPoForm />
     </Create>
   );
 };
+
+export default CRMOportunidadPoCreate;

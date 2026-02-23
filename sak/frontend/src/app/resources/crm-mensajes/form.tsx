@@ -181,7 +181,7 @@ const CRMMensajeSections = () => {
                 >
                   <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
                 </ReferenceInput>
-                <ReferenceInput source="evento_id" reference="crm/eventos" label="Evento vinculado">
+                <ReferenceInput source="evento_id" reference="crm/crm-eventos" label="Evento vinculado">
                   <SelectInput optionText="descripcion" emptyText="Sin evento" className="w-full" />
                 </ReferenceInput>
               </div>

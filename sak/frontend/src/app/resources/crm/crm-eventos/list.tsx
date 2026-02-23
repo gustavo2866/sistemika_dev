@@ -2,16 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { List } from "@/components/list";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { TextInput } from "@/components/text-input";
 import { ResourceTitle } from "@/components/resource-title";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { SoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 import { TodoBoard } from "@/components/todo/todo-board";
 import { AlarmClock, Calendar, CalendarCheck, CalendarClock, CalendarDays, CalendarRange, House, MessageCircle, ArrowLeft } from "lucide-react";
 import { useGetIdentity, useGetOne, useListContext } from "ra-core";
@@ -20,6 +16,8 @@ import type { CRMEvento, FechaBucket } from "./model";
 import { bucketLabels, bucketOrder, getFechaBucketLabel, isEventoCompleted } from "./model";
 import { CRMEventoTodoItem } from "./todo-item";
 import { FormCompletarDialog } from "./form_completar";
+import { buildListFilters } from "@/components/forms/form_order";
+import type { FilterElementProps } from "@/hooks/filter-context";
 import {
   appendFilterParam,
   buildOportunidadFilter,
@@ -34,82 +32,134 @@ const estadoChoices = [
   { id: "hecho", name: "Hecho" },
 ];
 
-const filters = [
-  <TextInput
-    key="q"
-    source="q"
-    label="Buscar"
-    placeholder="Buscar eventos"
-    className="w-[120px] sm:w-[170px] [&_input]:h-7 [&_input]:px-2.5 [&_input]:py-1 [&_input]:text-[10px] [&_input]:leading-none sm:[&_input]:h-9 sm:[&_input]:px-3 sm:[&_input]:py-2 sm:[&_input]:text-sm sm:[&_input]:leading-normal"
-    alwaysOn
-  />,
-  <ReferenceInput
-    key="asignado_a_id"
-    source="asignado_a_id"
-    reference="users"
-    label={false}
-    alwaysOn
-  >
-    <SelectInput
-      optionText="nombre"
-      emptyText="Todos"
-      label="Responsable"
-      triggerProps={{
-        size: "sm",
-        className:
-          "h-7 gap-1 px-2 py-0.5 text-[10px] leading-none text-left [&_[data-slot=select-value]]:text-left sm:h-9 sm:px-3 sm:py-2 sm:text-sm sm:leading-normal",
-      }}
-    />
-  </ReferenceInput>,
-  <ReferenceInput key="contacto_id" source="contacto_id" reference="crm/contactos" label="Contacto">
-    <SelectInput
-      optionText="nombre_completo"
-      emptyText="Todos"
-      triggerProps={{
-        size: "sm",
-        className:
-          "h-7 gap-1 px-2 py-0.5 text-[10px] leading-none text-left [&_[data-slot=select-value]]:text-left sm:h-9 sm:px-3 sm:py-2 sm:text-sm sm:leading-normal",
-      }}
-    />
-  </ReferenceInput>,
-  <SelectInput
-    key="estado_evento"
-    source="estado_evento"
-    label="Estado"
-    choices={estadoChoices}
-    emptyText="Todos"
-    triggerProps={{
-      size: "sm",
-      className:
-        "h-7 gap-1 px-2 py-0.5 text-[10px] leading-none text-left [&_[data-slot=select-value]]:text-left sm:h-9 sm:px-3 sm:py-2 sm:text-sm sm:leading-normal",
-    }}
-  />,
-  <SoloActivasToggleFilter
-    key="solo_pendientes"
-    source="solo_pendientes"
-    label="Activos"
-    alwaysOn
-    className="ml-auto"
-  />,
-];
+export const MinimalActivosToggleFilter = ({
+  source = "solo_pendientes",
+  className,
+}: FilterElementProps & { className?: string }) => {
+  const { filterValues, setFilters } = useListContext();
+  const isActivos = Boolean((filterValues as Record<string, unknown>)[source]);
+
+  const setMode = (activos: boolean) => {
+    const next = { ...filterValues } as Record<string, unknown>;
+    if (activos) {
+      next[source] = true;
+    } else {
+      delete next[source];
+    }
+    setFilters(next, {});
+  };
+
+  return (
+    <div className={`compact-filter flex items-end ${className ?? ""}`}>
+      <div className="flex items-center gap-0 leading-none text-blue-600 [&_button]:!h-[10px] sm:[&_button]:!h-[11px] [&_button]:!min-h-0 [&_button]:!px-[2px] [&_button]:!pt-0 [&_button]:!pb-0 [&_button]:!m-0 [&_button]:border [&_button]:border-slate-200/60 [&_button]:rounded-sm [&_button]:!leading-none [&_button]:min-w-[44px] [&_button]:text-center [&_button]:flex [&_button]:items-center [&_button]:justify-center">
+        <button
+          type="button"
+          onClick={() => setMode(true)}
+          style={{ padding: 0 }}
+          className={
+            isActivos
+              ? "font-semibold text-white bg-slate-900 !text-[8px] sm:!text-[9px] leading-none px-[3px] py-0"
+              : "text-muted-foreground !text-[8px] sm:!text-[9px] leading-none px-[3px] py-0 hover:text-slate-700"
+          }
+        >
+          Activos
+        </button>
+        <span className="text-muted-foreground !text-[8px] sm:!text-[9px] leading-none mx-0">/</span>
+        <button
+          type="button"
+          onClick={() => setMode(false)}
+          style={{ padding: 0 }}
+          className={
+            !isActivos
+              ? "font-semibold text-white bg-slate-900 !text-[8px] sm:!text-[9px] leading-none px-[3px] py-0"
+              : "text-muted-foreground !text-[8px] sm:!text-[9px] leading-none px-[3px] py-0 hover:text-slate-700"
+          }
+        >
+          Todos
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const LIST_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar eventos",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[170px]",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "asignado_a_id",
+        reference: "users",
+        label: "Responsable",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+        className: "w-full",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "contacto_id",
+        reference: "crm/contactos",
+        label: "Contacto",
+      },
+      selectProps: {
+        optionText: "nombre_completo",
+        emptyText: "Todos",
+        className: "w-full",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "estado_evento",
+        label: "Estado",
+        choices: estadoChoices,
+        optionText: "name",
+        optionValue: "id",
+        emptyText: "Todos",
+        className: "w-[90px]",
+      },
+    },
+    {
+      type: "custom",
+      element: (
+        <MinimalActivosToggleFilter
+          key="solo_pendientes"
+          source="solo_pendientes"
+          alwaysOn
+          className="ml-auto"
+        />
+      ),
+    },
+  ],
+  { keyPrefix: "crm-eventos" },
+);
 
 // Top-right list actions with filters/create/export buttons.
+const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+
 const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton
-      filters={filters}
+      filters={LIST_FILTERS}
       size="sm"
-      buttonClassName="h-7 px-2 gap-1 text-[10px] sm:h-9 sm:px-3 sm:gap-2 sm:text-sm [&_svg]:size-3 sm:[&_svg]:size-4"
+      buttonClassName={ACTION_BUTTON_CLASS}
     />
-    <CreateButton
-      size="sm"
-      className="h-7 px-2 gap-1 text-[10px] sm:h-9 sm:px-3 sm:gap-2 sm:text-sm [&_svg]:size-3 sm:[&_svg]:size-4"
-      to={createTo}
-    />
-    <ExportButton
-      size="sm"
-      className="h-7 px-2 gap-1 text-[10px] sm:h-9 sm:px-3 sm:gap-2 sm:text-sm [&_svg]:size-3 sm:[&_svg]:size-4"
-    />
+    <CreateButton className={ACTION_BUTTON_CLASS} to={createTo} />
+    <ExportButton className={ACTION_BUTTON_CLASS} />
   </div>
 );
 
@@ -118,8 +168,6 @@ export const CRMEventoList = () => {
   const { data: identity } = useGetIdentity();
   const location = useLocation();
   const navigate = useNavigate();
-  const [completarDialogOpen, setCompletarDialogOpen] = useState(false);
-  const [selectedCompletar, setSelectedCompletar] = useState<CRMEvento | null>(null);
   const responsableId = useMemo(() => {
     const numeric = Number(identity?.id);
     return Number.isFinite(numeric) ? numeric : undefined;
@@ -180,7 +228,7 @@ export const CRMEventoList = () => {
     const params = new URLSearchParams();
     params.set(
       "returnTo",
-      returnTo ?? buildReturnToWithOportunidad("/crm/eventos", oportunidadIdFilter),
+      returnTo ?? buildReturnToWithOportunidad("/crm/crm-eventos", oportunidadIdFilter),
     );
     navigate(`/crm/chat/op-${oportunidadIdFilter}/show?${params.toString()}`);
   };
@@ -189,12 +237,12 @@ export const CRMEventoList = () => {
     const params = new URLSearchParams();
     params.set(
       "returnTo",
-      returnTo ?? buildReturnToWithOportunidad("/crm/eventos", oportunidadIdFilter),
+      returnTo ?? buildReturnToWithOportunidad("/crm/crm-eventos", oportunidadIdFilter),
     );
     navigate(`/crm/oportunidades/${oportunidadIdFilter}?${params.toString()}`);
   };
   const createTo = useMemo(() => {
-    const createPath = "/crm/eventos/create";
+    const createPath = "/crm/crm-eventos/create";
     if (!oportunidadIdFilter) return createPath;
     const params = new URLSearchParams();
     appendFilterParam(
@@ -203,7 +251,7 @@ export const CRMEventoList = () => {
     );
     params.set(
       "returnTo",
-      returnTo ?? buildReturnToWithOportunidad("/crm/eventos", oportunidadIdFilter),
+      returnTo ?? buildReturnToWithOportunidad("/crm/crm-eventos", oportunidadIdFilter),
     );
     return `${createPath}?${params.toString()}`;
   }, [contactoId, oportunidadIdFilter, returnTo]);
@@ -212,33 +260,98 @@ export const CRMEventoList = () => {
     <List
       key={listKey}
       title={<ResourceTitle icon={CalendarCheck} text="CRM - Eventos" />}
-      filters={filters}
+      filters={LIST_FILTERS}
       filterDefaultValues={defaultFilters}
       actions={<ListActions createTo={createTo} />}
       perPage={300}
-      pagination={false}
       sort={{ field: "fecha_evento", order: "DESC" }}
       className="space-y-5"
     >
-        <EventosFilterSync
-          fromChat={fromChat}
-          fromOportunidad={fromOportunidad}
-          responsableId={responsableId}
-        />
-      <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3">
-        {oportunidadIdFilter ? (
+      <CRMEventoListBody
+        fromChat={fromChat}
+        fromOportunidad={fromOportunidad}
+        responsableId={responsableId}
+        oportunidadIdFilter={oportunidadIdFilter ?? undefined}
+        contactoNombre={contactoNombre}
+        oportunidadTitulo={oportunidadTitulo}
+        returnTo={returnTo}
+        onBack={() => {
+          if (returnTo) {
+            navigate(returnTo);
+          } else {
+            navigate(-1);
+          }
+        }}
+        onOpenChat={handleOpenChat}
+        onOpenOportunidad={handleOpenOportunidad}
+      />
+    </List>
+  );
+};
+
+type CRMEventoListBodyProps = {
+  fromChat: boolean;
+  fromOportunidad: boolean;
+  responsableId?: number;
+  oportunidadIdFilter?: number;
+  contactoNombre?: string | null;
+  oportunidadTitulo?: string | null;
+  returnTo?: string | null;
+  onBack?: () => void;
+  onOpenChat?: () => void;
+  onOpenOportunidad?: () => void;
+  showContextHeader?: boolean;
+  compact?: boolean;
+  showCreateButton?: boolean;
+  createTo?: string;
+};
+
+export const CRMEventoListBody = ({
+  fromChat,
+  fromOportunidad,
+  responsableId,
+  oportunidadIdFilter,
+  contactoNombre,
+  oportunidadTitulo,
+  onBack,
+  onOpenChat,
+  onOpenOportunidad,
+  showContextHeader = true,
+  compact = false,
+  showCreateButton = false,
+  createTo,
+}: CRMEventoListBodyProps) => {
+  const [completarDialogOpen, setCompletarDialogOpen] = useState(false);
+  const [selectedCompletar, setSelectedCompletar] = useState<CRMEvento | null>(null);
+  const shouldShowHeader = Boolean(showContextHeader && oportunidadIdFilter);
+  const containerClassName = compact
+    ? "rounded-xl border border-slate-200/70 bg-white/95 p-1 shadow-sm"
+    : "rounded-2xl border border-slate-200/70 bg-white/95 p-1.5 shadow-sm sm:p-3";
+
+  return (
+    <>
+      <EventosFilterSync
+        fromChat={fromChat}
+        fromOportunidad={fromOportunidad}
+        responsableId={responsableId}
+      />
+      <div className={containerClassName}>
+        {compact && showCreateButton ? (
+          <div className="flex items-center justify-end pb-1">
+            <CreateButton
+              className="h-6 px-2 text-[10px]"
+              label="Agregar"
+              to={createTo}
+            />
+          </div>
+        ) : null}
+        {shouldShowHeader ? (
           <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-3">
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={() => {
-                if (returnTo) {
-                  navigate(returnTo);
-                } else {
-                  navigate(-1);
-                }
-              }}
+              onClick={onBack ?? (() => {})}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -266,7 +379,7 @@ export const CRMEventoList = () => {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={handleOpenChat}
+                onClick={onOpenChat ?? (() => {})}
                 disabled={!oportunidadIdFilter}
               >
                 <MessageCircle className="h-4 w-4" />
@@ -275,7 +388,7 @@ export const CRMEventoList = () => {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={handleOpenOportunidad}
+                onClick={onOpenOportunidad ?? (() => {})}
                 disabled={!oportunidadIdFilter}
               >
                 <House className="h-4 w-4" />
@@ -288,6 +401,7 @@ export const CRMEventoList = () => {
             setSelectedCompletar(evento);
             setCompletarDialogOpen(true);
           }}
+          compact={compact}
         />
       </div>
       <FormCompletarDialog
@@ -301,7 +415,7 @@ export const CRMEventoList = () => {
           setSelectedCompletar(null);
         }}
       />
-    </List>
+    </>
   );
 };
 
@@ -393,7 +507,13 @@ const bucketDefinitions = bucketOrder.map((bucket) => ({
 }));
 
 // Groups eventos by bucket and renders them via the reusable TodoBoard.
-const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => void }) => {
+const EventosTodoList = ({
+  onCompletar,
+  compact = false,
+}: {
+  onCompletar: (evento: CRMEvento) => void;
+  compact?: boolean;
+}) => {
   const { data = [], isLoading, filterValues } = useListContext<CRMEvento>();
   const soloPendientes = Boolean((filterValues as { solo_pendientes?: boolean })?.solo_pendientes);
 
@@ -417,7 +537,10 @@ const EventosTodoList = ({ onCompletar }: { onCompletar: (evento: CRMEvento) => 
         const bTime = b.fecha_evento ? new Date(b.fecha_evento).getTime() : 0;
         return bTime - aTime;
       }}
-      renderItem={(evento) => <CRMEventoTodoItem record={evento} onCompletar={onCompletar} />}
+      renderItem={(evento) => (
+        <CRMEventoTodoItem record={evento} onCompletar={onCompletar} compact={compact} />
+      )}
+      compact={compact}
       collapseAllByDefault
     />
   );

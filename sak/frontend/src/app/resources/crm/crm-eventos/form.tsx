@@ -2,30 +2,24 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { required, useGetIdentity, useGetList, useGetOne, useRecordContext } from "ra-core";
-import { useController, useFormContext, useWatch } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
-  CompactFormField,
-  CompactComboboxQuery,
-  CompactFormGrid,
-  CompactFormSection,
-  CompactSelectInput,
-  CompactTextInput,
-  FormField,
-  ResponsableSelector,
-} from "@/components/forms";
-import { ReferenceInput } from "@/components/reference-input";
-import { TextInput } from "@/components/text-input";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { CompactOportunidadSelector } from "@/app/resources/crm-oportunidades/OportunidadSelector";
+  FormErrorSummary,
+  FormOrderToolbar,
+  FormReferenceAutocomplete,
+  FormText,
+  FormTextarea,
+  FormValue,
+  HiddenInput,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
 
 const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: number }) => {
   const record = useRecordContext();
   const form = useFormContext();
   const { data: identity } = useGetIdentity();
-  const { field: asignadoField } = useController({ name: "asignado_a_id" });
   const isEdit = Boolean(record?.id);
   const descripcionValue = useWatch({ control: form.control, name: "descripcion" });
   const contactoIdRaw = useWatch({ control: form.control, name: "contacto_id" });
@@ -102,6 +96,18 @@ const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: n
     const minutes = String(d.getMinutes()).padStart(2, "0");
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const formEl = document.querySelector('form[data-form-scope="main"]');
+    if (!formEl) return;
+    const focusable = formEl.querySelector<HTMLElement>(
+      '[role="combobox"], input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])',
+    );
+    if (focusable) {
+      requestAnimationFrame(() => focusable.focus());
+    }
+  }, []);
 
   // Transformar fecha_evento al formato datetime-local cuando se carga el record en modo edit
   useEffect(() => {
@@ -206,98 +212,114 @@ const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: n
     (contactoLocked as any)?.nombre ??
     (lockedContactoId ? `Contacto #${lockedContactoId}` : "");
 
+  const oportunidadLabel =
+    (oportunidadLocked as any)?.titulo ??
+    (oportunidadLocked as any)?.descripcion_estado ??
+    (lockedOportunidadId ? `Oportunidad #${lockedOportunidadId}` : "");
+
   return (
-    <CompactFormSection>
-      <ReferenceInput
-        source="tipo_id"
-        reference="crm/catalogos/tipos-evento"
-        label="Tipo de evento"
-        perPage={200}
-        filter={{ activo: true }}
-      >
-        <CompactSelectInput optionText="nombre" className="w-full" validate={required()} />
-      </ReferenceInput>
+    <SectionBaseTemplate
+      title="Cabecera"
+      main={
+        <div className="grid gap-2 md:grid-cols-4">
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "tipo_id",
+              reference: "crm/catalogos/tipos-evento",
+              filter: { activo: true },
+              perPage: 200,
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: "Tipo de evento",
+              validate: required(),
+            }}
+            widthClass="w-full md:col-span-2"
+          />
 
-      {shouldLockFromOportunidad ? (
-        <CompactFormGrid columns="two">
-          <CompactFormField label="Contacto">
-            <Input value={contactoLabel} readOnly className="w-full" />
-          </CompactFormField>
-          <CompactFormField label="Oportunidad">
-            <CompactOportunidadSelector
-              source="oportunidad_id"
-              placeholder="Selecciona una oportunidad"
-              className="w-full justify-between"
-              filter={{ id: lockedOportunidadId }}
-              dependsOn={`locked-${lockedOportunidadId ?? "none"}`}
-              disabled
-              clearable={false}
-              showWideDropdown={false}
-            />
-          </CompactFormField>
-        </CompactFormGrid>
-      ) : (
-        <CompactFormGrid columns="two">
-          <FormField
-            label="Contacto"
-            required
-            error={form.formState.errors.contacto_id}
-            className="space-y-1"
-          >
-            <CompactComboboxQuery
-              resource="crm/contactos"
-              labelField="nombre_completo"
-              limit={200}
-              source="contacto_id"
-              placeholder="Selecciona un contacto"
-              className="w-full justify-between"
-            />
-          </FormField>
-          <FormField
-            label="Oportunidad"
-            error={form.formState.errors.oportunidad_id}
-            className="space-y-1"
-          >
-            <CompactOportunidadSelector
-              source="oportunidad_id"
-              placeholder="Selecciona una oportunidad"
-              className="w-full justify-between"
-              filter={selectedContactoId ? { contacto_id: selectedContactoId, activo: true } : undefined}
-              dependsOn={selectedContactoId ?? "all"}
-              clearable
-              showWideDropdown={false}
-            />
-          </FormField>
-        </CompactFormGrid>
-      )}
+          <FormText
+            source="fecha_evento"
+            label="Fecha y hora"
+            type="datetime-local"
+            format={formatDateTimeInput}
+            validate={required()}
+            widthClass="w-full md:col-span-2"
+          />
 
-      <CompactFormGrid columns="two">
-        <CompactTextInput
-          source="fecha_evento"
-          label="Fecha y hora"
-          type="datetime-local"
-          format={formatDateTimeInput}
-          validate={required()}
-        />
-        <CompactTextInput source="titulo" label="Titulo" validate={required()} />
-      </CompactFormGrid>
+          <FormText
+            source="titulo"
+            label="Titulo"
+            validate={required()}
+            widthClass="w-full md:col-span-4"
+          />
 
-      <CompactTextInput source="descripcion" label="Descripcion" multiline rows={3} />
+          {shouldLockFromOportunidad ? (
+            <>
+              <FormValue
+                label="Contacto"
+                widthClass="w-full md:col-span-4"
+                valueClassName="justify-start text-left"
+              >
+                {contactoLabel || "-"}
+              </FormValue>
+              <FormValue
+                label="Oportunidad"
+                widthClass="w-full md:col-span-4"
+                valueClassName="justify-start text-left"
+              >
+                {oportunidadLabel || "-"}
+              </FormValue>
+            </>
+          ) : (
+            <>
+              <FormReferenceAutocomplete
+                referenceProps={{
+                  source: "contacto_id",
+                  reference: "crm/contactos",
+                }}
+                inputProps={{
+                  optionText: "nombre_completo",
+                  label: "Contacto",
+                  validate: required(),
+                }}
+                widthClass="w-full md:col-span-4"
+              />
+              <FormReferenceAutocomplete
+                referenceProps={{
+                  source: "oportunidad_id",
+                  reference: "crm/oportunidades",
+                  filter: selectedContactoId ? { contacto_id: selectedContactoId, activo: true } : undefined,
+                }}
+                inputProps={{
+                  optionText: "titulo",
+                  label: "Oportunidad",
+                }}
+                widthClass="w-full md:col-span-4"
+              />
+            </>
+          )}
 
-      <CompactFormField label="Asignado a">
-        <ResponsableSelector
-          includeTodos={false}
-          value={asignadoField.value ? String(asignadoField.value) : ""}
-          onValueChange={(value) => asignadoField.onChange(value ? Number(value) : null)}
-        />
-      </CompactFormField>
+          <FormTextarea
+            source="descripcion"
+            label="Descripcion"
+            widthClass="w-full md:col-span-4"
+            className="[&_textarea]:min-h-[70px]"
+          />
 
-      <TextInput source="tipo_evento" label={false} className="hidden" />
-      <TextInput source="motivo_id" label={false} className="hidden" />
-      <TextInput source="contacto_id" label={false} className="hidden" />
-      <TextInput source="oportunidad_id" label={false} className="hidden" />
-      <TextInput source="estado_evento" label={false} className="hidden" defaultValue="1-pendiente" />
-    </CompactFormSection>
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "asignado_a_id",
+              reference: "users",
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: "Asignado a",
+            }}
+            widthClass="w-full md:col-span-4"
+          />
+        </div>
+      }
+    />
   );
 };
 
@@ -307,7 +329,17 @@ type CRMEventoFormProps = {
 };
 
 export const CRMEventoForm = ({ defaultValues, lockedOportunidadId }: CRMEventoFormProps) => (
-  <SimpleForm defaultValues={defaultValues}>
+  <SimpleForm
+    defaultValues={defaultValues}
+    className="w-full max-w-md"
+    toolbar={<FormOrderToolbar saveProps={{ tabIndex: 0 }} />}
+  >
+    <FormErrorSummary />
     <CRMEventoFormContent lockedOportunidadId={lockedOportunidadId} />
+    <HiddenInput source="tipo_evento" />
+    <HiddenInput source="motivo_id" />
+    <HiddenInput source="contacto_id" />
+    <HiddenInput source="oportunidad_id" />
+    <HiddenInput source="estado_evento" defaultValue="1-pendiente" />
   </SimpleForm>
 );

@@ -99,6 +99,9 @@ export const isPoOrderLocked = (statusName?: string | null) =>
 export const ORDER_STATUS_BADGES: Record<string, string> = {
   borrador: "bg-slate-100 text-slate-800",
   pendiente: "bg-amber-100 text-amber-800",
+  solicitada: "bg-amber-100 text-amber-800",
+  emitida: "bg-sky-100 text-sky-800",
+  cotizada: "bg-indigo-100 text-indigo-800",
   aprobado: "bg-emerald-100 text-emerald-800",
   aprobada: "bg-emerald-100 text-emerald-800",
   rechazada: "bg-rose-100 text-rose-800",
@@ -110,7 +113,7 @@ export const ORDER_STATUS_BADGES: Record<string, string> = {
 };
 
 export const getOrderStatusBadgeClass = (status?: string | null) => {
-  const key = String(status ?? "").toLowerCase();
+  const key = normalizeStatusName(status ?? "");
   return ORDER_STATUS_BADGES[key] ?? "bg-slate-100 text-slate-800";
 };
 

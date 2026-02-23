@@ -226,6 +226,12 @@ import {
   CRMOportunidadEdit,
   CRMOportunidadShow,
 } from "@/app/resources/crm-oportunidades";
+import {
+  CRMOportunidadPoList,
+  CRMOportunidadPoCreate,
+  CRMOportunidadPoEdit,
+  CRMOportunidadPoShow,
+} from "@/app/resources/crm/crm-oportunidades";
 import { CRMOportunidadPanelPage } from "@/app/resources/crm-panel/list-panel";
 import { CRMOportunidadAccionCotizar } from "@/app/resources/crm-oportunidades/accion_cotizar";
 import { CRMOportunidadAccionAgendar } from "@/app/resources/crm-oportunidades/accion_agendar";
@@ -237,7 +243,7 @@ import {
   CRMEventoCreate,
   CRMEventoEdit,
   CRMEventoShow,
-} from "@/app/resources/crm-eventos";
+} from "@/app/resources/crm/crm-eventos";
 import { CRMChatList, CRMChatShow } from "@/app/resources/crm-chat";
 import {
   CRMMensajeList,
@@ -661,7 +667,17 @@ const AdminApp = () => {
         options={{ label: "CRM · Oportunidades" }}
       />
       <Resource
-        name="crm/eventos"
+        name="crm/crm-oportunidades"
+        list={CRMOportunidadPoList}
+        create={CRMOportunidadPoCreate}
+        edit={CRMOportunidadPoEdit}
+        show={CRMOportunidadPoShow}
+        recordRepresentation="id"
+        icon={Target}
+        options={{ label: "CRM ? Oportunidades (PO)" }}
+      />
+      <Resource
+        name="crm/crm-eventos"
         list={CRMEventoList}
         create={CRMEventoCreate}
         edit={CRMEventoEdit}

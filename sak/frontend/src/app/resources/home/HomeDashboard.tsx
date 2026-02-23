@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/spinner";
-import type { CRMEvento } from "@/app/resources/crm-eventos/model";
+import type { CRMEvento } from "@/app/resources/crm/crm-eventos/model";
 import type { CRMOportunidad } from "@/app/resources/crm-oportunidades/model";
 
 type SectionState<T> = {
@@ -76,7 +76,7 @@ export default function HomeDashboard() {
       try {
         // Consultas paralelas para datos principales y de performance
         const [eventos, oportunidades, eventosVencidos, nuevasOportunidades, oportunidadesGanadas] = await Promise.all([
-          dataProvider.getList<CRMEvento>("crm/eventos", {
+          dataProvider.getList<CRMEvento>("crm/crm-eventos", {
             pagination: { page: 1, perPage: PAGE_SIZE },
             sort: { field: "fecha_evento", order: "ASC" },
             filter: {
@@ -95,7 +95,7 @@ export default function HomeDashboard() {
             },
           }),
           // Eventos vencidos (fecha_evento < hoy y pendientes)
-          dataProvider.getList<CRMEvento>("crm/eventos", {
+          dataProvider.getList<CRMEvento>("crm/crm-eventos", {
             pagination: { page: 1, perPage: 1 },
             sort: { field: "fecha_evento", order: "DESC" },
             filter: {
@@ -177,7 +177,7 @@ export default function HomeDashboard() {
     [userId]
   );
 
-  const eventosListPath = createPath({ resource: "crm/eventos", type: "list" });
+  const eventosListPath = createPath({ resource: "crm/crm-eventos", type: "list" });
   const oportunidadesListPath = createPath({ resource: "crm/oportunidades", type: "list" });
 
   return (
@@ -311,7 +311,7 @@ export default function HomeDashboard() {
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Button asChild className="h-16 flex-col gap-1">
-              <Link to="/crm/eventos/create">
+              <Link to="/crm/crm-eventos/create">
                 <CalendarCheck className="h-6 w-6" />
                 <span className="text-sm">Evento</span>
               </Link>

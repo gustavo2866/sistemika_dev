@@ -65,7 +65,6 @@ const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores", "po-setup"
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
   "propiedades",
-  "dashboard-propiedades",
   "emprendimientos",
   "inmobiliaria-setup",
 ] as const;
@@ -86,7 +85,7 @@ const CONFIG_RESOURCES = [
   "api/v1/tax-profiles",
 ] as const;
 const CRM_RESOURCES = [
-  "crm/eventos",
+  "crm/crm-eventos",
   "dashboard-crm",
   "crm/contactos",
 ] as const;

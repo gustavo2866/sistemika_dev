@@ -156,7 +156,7 @@ export const ListStatus = <RecordType extends RaRecord = RaRecord>({
   }
 
   const valueKey = String(value);
-  const lookupKey = valueKey.toLowerCase();
+  const lookupKey = valueKey.trim().toLowerCase();
   const badgeClass = statusClasses?.[valueKey] ?? statusClasses?.[lookupKey];
 
   return (

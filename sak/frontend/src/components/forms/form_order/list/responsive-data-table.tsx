@@ -117,10 +117,12 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   children,
   rowClassName,
   mobileConfig,
+  compact = false,
 }: {
   children: ReactNode;
   mobileConfig?: MobileConfig;
   rowClassName?: (record: RecordType) => string | undefined;
+  compact?: boolean;
 }) => {
   const data = useDataTableDataContext();
   const { rowClick, handleToggleItem } = useDataTableCallbacksContext();
@@ -183,6 +185,10 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   if (!data || data.length === 0) {
     return <DataTableEmpty />;
   }
+
+  const checkboxClassName = compact
+    ? "mt-0.5 size-2.5 rounded-[3px] [&_[data-slot=checkbox-indicator]_*]:size-2"
+    : "mt-0 h-3.5 w-3.5";
 
   return (
     <div className="space-y-3 pl-0.5 pr-4 py-3 sm:px-4 sm:py-4">
@@ -599,7 +605,7 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                     checked={isSelected}
                     onCheckedChange={handleToggle}
                     onClick={(e) => e.stopPropagation()}
-                    className="mt-0 h-3.5 w-3.5"
+                    className={checkboxClassName}
                     aria-label="Seleccionar registro"
                   />
                 )}
@@ -627,6 +633,7 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
   const {
     children,
     rowClassName,
+    compact = false,
     bulkActionButtons = defaultBulkActionButtons,
     bulkActionsToolbar,
     mobileConfig,
@@ -644,6 +651,7 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
       <DataTable<RecordType>
         {...rest}
         rowClassName={rowClassName}
+        compact={compact}
         bulkActionButtons={bulkActionButtons}
         bulkActionsToolbar={bulkActionsToolbar}
       >
@@ -662,6 +670,7 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
       <DataTableMobileView<RecordType>
         mobileConfig={mobileConfig}
         rowClassName={rowClassName}
+        compact={compact}
       >
         {columns}
       </DataTableMobileView>

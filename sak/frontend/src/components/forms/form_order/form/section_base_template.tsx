@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Info, MoreHorizontal } from "lucide-react";
 
 import { SectionCard } from "./section_card";
@@ -20,7 +20,7 @@ export type SectionBaseTemplateProps = {
   /** Optional content toggled by "more/less" action. */
   optional?: ReactNode;
   /** Optional summary content rendered in the header row. */
-  headerSummary?: ReactNode;
+  headerSummary?: ReactNode | ((isOpen: boolean) => ReactNode);
   /** Extra classNames for the header summary container. */
   headerSummaryClassName?: string;
   /** Whether the section is open on initial render. */
@@ -31,6 +31,8 @@ export type SectionBaseTemplateProps = {
   actions?: ReactNode;
   /** When true, disables pointer interactions for section fields. */
   readOnly?: boolean;
+  /** Optional key to persist open state across navigations. */
+  persistKey?: string;
 };
 
 export const SectionBaseTemplate = ({
@@ -43,9 +45,25 @@ export const SectionBaseTemplate = ({
   defaultOptionalOpen = false,
   actions,
   readOnly = false,
+  persistKey,
 }: SectionBaseTemplateProps) => {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const resolveInitialOpen = () => {
+    if (!persistKey || typeof window === "undefined") return defaultOpen;
+    const stored = window.localStorage.getItem(`section-open:${persistKey}`);
+    if (stored == null) return defaultOpen;
+    return stored === "true";
+  };
+
+  const [isOpen, setIsOpen] = useState(resolveInitialOpen);
   const [showOptional, setShowOptional] = useState(defaultOptionalOpen);
+
+  const resolvedHeaderSummary =
+    typeof headerSummary === "function" ? headerSummary(isOpen) : headerSummary;
+
+  useEffect(() => {
+    if (!persistKey || typeof window === "undefined") return;
+    window.localStorage.setItem(`section-open:${persistKey}`, String(isOpen));
+  }, [isOpen, persistKey]);
 
   const toggleButton = (
     <Button
@@ -82,10 +100,10 @@ export const SectionBaseTemplate = ({
   ) : null;
 
   const headerActions =
-    actionsMenu || headerSummary ? (
+    actionsMenu || resolvedHeaderSummary ? (
       <div className="flex items-center gap-2">
-        {headerSummary ? (
-          <div className={headerSummaryClassName}>{headerSummary}</div>
+        {resolvedHeaderSummary ? (
+          <div className={headerSummaryClassName}>{resolvedHeaderSummary}</div>
         ) : null}
         {actionsMenu}
         {toggleButton}

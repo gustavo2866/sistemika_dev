@@ -20,6 +20,7 @@ export const CRMEventoEdit = () => {
     <Edit
       title={<ResourceTitle icon={CalendarCheck} text="Editar Evento CRM" />}
       redirect={false}
+      actions={false}
       mutationOptions={{
         onSuccess: () => {
           navigate(-1);

@@ -92,10 +92,12 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   children,
   rowClassName,
   mobileConfig,
+  compact = false,
 }: {
   children: ReactNode;
   mobileConfig?: MobileConfig;
   rowClassName?: (record: RecordType) => string | undefined;
+  compact?: boolean;
 }) => {
   const data = useDataTableDataContext();
   const { rowClick, handleToggleItem } = useDataTableCallbacksContext();
@@ -151,6 +153,10 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   if (!data || data.length === 0) {
     return <DataTableEmpty />;
   }
+
+  const checkboxClassName = compact
+    ? "mt-0.5 size-2.5 rounded-[3px] [&_[data-slot=checkbox-indicator]_*]:size-2"
+    : "mt-1";
 
   return (
     <div className="space-y-3 p-4">
@@ -371,7 +377,7 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
                     checked={isSelected}
                     onCheckedChange={handleToggle}
                     onClick={(e) => e.stopPropagation()}
-                    className="mt-1"
+                    className={checkboxClassName}
                     aria-label="Seleccionar registro"
                   />
                 )}
@@ -395,6 +401,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
     children,
     className,
     rowClassName,
+    compact = false,
     bulkActionButtons = defaultBulkActionButtons,
     bulkActionsToolbar,
     mobileConfig,
@@ -420,6 +427,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
         <DataTableMobileView<RecordType> 
           mobileConfig={mobileConfig}
           rowClassName={rowClassName}
+          compact={compact}
         >
           {columns}
         </DataTableMobileView>
@@ -427,9 +435,9 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
         <div className={cn("w-full rounded-md border", className)}>
           <Table className="table-fixed w-full">
             <DataTableRenderContext.Provider value="header">
-              <DataTableHead>{columns}</DataTableHead>
+              <DataTableHead compact={compact}>{columns}</DataTableHead>
             </DataTableRenderContext.Provider>
-            <DataTableBody<RecordType> rowClassName={rowClassName}>
+            <DataTableBody<RecordType> rowClassName={rowClassName} compact={compact}>
               {columns}
             </DataTableBody>
           </Table>
@@ -453,7 +461,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
 DataTable.Col = DataTableColumn;
 DataTable.NumberCol = DataTableNumberColumn;
 
-const DataTableHead = ({ children }: { children: ReactNode }) => {
+const DataTableHead = ({ children, compact = false }: { children: ReactNode; compact?: boolean }) => {
   const data = useDataTableDataContext();
   const { hasBulkActions = false } = useDataTableConfigContext();
   const { onSelect } = useDataTableCallbacksContext();
@@ -473,11 +481,14 @@ const DataTableHead = ({ children }: { children: ReactNode }) => {
   const selectableIds = Array.isArray(data)
     ? data.map((record) => record.id)
     : [];
+  const checkboxClassName = compact
+    ? "mb-1 size-2.5 rounded-[3px] [&_[data-slot=checkbox-indicator]_*]:size-2"
+    : "mb-2";
   return (
     <TableHeader>
       <TableRow>
         {hasBulkActions ? (
-          <TableHead className="w-8">
+          <TableHead className={compact ? "w-6" : "w-8"}>
             <Checkbox
               onCheckedChange={handleToggleSelectAll}
               checked={
@@ -486,7 +497,7 @@ const DataTableHead = ({ children }: { children: ReactNode }) => {
                 selectableIds.length > 0 &&
                 selectableIds.every((id) => selectedIds.includes(id))
               }
-              className="mb-2"
+              className={checkboxClassName}
             />
           </TableHead>
         ) : null}
@@ -499,9 +510,11 @@ const DataTableHead = ({ children }: { children: ReactNode }) => {
 const DataTableBody = <RecordType extends RaRecord = RaRecord>({
   children,
   rowClassName,
+  compact = false,
 }: {
   children: ReactNode;
   rowClassName?: (record: RecordType) => string | undefined;
+  compact?: boolean;
 }) => {
   const data = useDataTableDataContext();
   return (
@@ -511,7 +524,7 @@ const DataTableBody = <RecordType extends RaRecord = RaRecord>({
           value={record}
           key={record.id ?? `row${rowIndex}`}
         >
-          <DataTableRow className={rowClassName?.(record)}>
+          <DataTableRow className={rowClassName?.(record)} compact={compact}>
             {children}
           </DataTableRow>
         </RecordContextProvider>
@@ -523,9 +536,11 @@ const DataTableBody = <RecordType extends RaRecord = RaRecord>({
 const DataTableRow = ({
   children,
   className,
+  compact = false,
 }: {
   children: ReactNode;
   className?: string;
+  compact?: boolean;
 }) => {
   const { rowClick, handleToggleItem } = useDataTableCallbacksContext();
   const selectedIds = useDataTableSelectedIdsContext();
@@ -574,6 +589,10 @@ const DataTableRow = ({
     });
   }, [record, resource, rowClick, navigate, getPathForRecord]);
 
+  const checkboxClassName = compact
+    ? "size-2.5 rounded-[3px] [&_[data-slot=checkbox-indicator]_*]:size-2"
+    : undefined;
+
   return (
     <TableRow
       key={record.id}
@@ -581,10 +600,14 @@ const DataTableRow = ({
       className={cn(rowClick !== false && "cursor-pointer", className)}
     >
       {hasBulkActions ? (
-        <TableCell className="flex w-8 items-start align-top" onClick={handleToggle}>
+        <TableCell
+          className={cn("flex items-start align-top", compact ? "w-6" : "w-8")}
+          onClick={handleToggle}
+        >
           <Checkbox
             checked={selectedIds?.includes(record.id)}
             onClick={handleToggle}
+            className={checkboxClassName}
           />
         </TableCell>
       ) : null}
@@ -612,6 +635,7 @@ export interface DataTableProps<RecordType extends RaRecord = RaRecord>
   children: ReactNode;
   className?: string;
   rowClassName?: (record: RecordType) => string | undefined;
+  compact?: boolean;
   bulkActionButtons?: ReactNode;
   bulkActionsToolbar?: ReactNode;
   mobileConfig?: MobileConfig;

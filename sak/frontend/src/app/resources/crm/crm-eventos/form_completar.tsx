@@ -105,7 +105,7 @@ export const FormCompletarDialog = ({
     }
     setLoading(true);
     try {
-      await dataProvider.update("crm/eventos", {
+      await dataProvider.update("crm/crm-eventos", {
         id: selectedEvento.id,
         data: {
           estado_evento: "2-realizado",

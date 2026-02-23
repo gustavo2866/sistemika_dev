@@ -64,7 +64,7 @@ export const CRMOportunidadAccionAgendar = () => {
 
   return (
     <Create
-      resource="crm/eventos"
+      resource="crm/crm-eventos"
       redirect={false}
       mutationOptions={{
         onSuccess: async () => {

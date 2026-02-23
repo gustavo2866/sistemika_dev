@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDataProvider, useRecordContext } from "ra-core";
 import type { CRMOportunidad } from "./model";
-import type { CRMEvento } from "../crm-eventos/model";
+import type { CRMEvento } from "../crm/crm-eventos/model";
 import { CRM_OPORTUNIDAD_ESTADO_BADGES, formatEstadoOportunidad } from "./model";
 
 export const CRMOportunidadShow = () => (
@@ -34,7 +34,7 @@ const CRMOportunidadDetails = () => {
     const fetchEventos = async () => {
       setLoadingEventos(true);
       try {
-        const response = await dataProvider.getList<CRMEvento>("crm/eventos", {
+        const response = await dataProvider.getList<CRMEvento>("crm/crm-eventos", {
           filter: { oportunidad_id: record.id },
           pagination: { page: 1, perPage: 50 },
           sort: { field: "fecha_evento", order: "DESC" },

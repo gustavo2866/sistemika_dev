@@ -7,6 +7,8 @@ import { DateField } from "@/components/date-field";
 import { cn } from "@/lib/utils";
 import { PoOrderForm } from "./form";
 import { getOrderStatusBadgeClass, normalizePoOrderPayload } from "./model";
+import { useLocation, useNavigate } from "react-router-dom";
+import { ClipboardList } from "lucide-react";
 
 const PoOrderEditTitle = () => {
   const { record } = useEditContext();
@@ -15,7 +17,10 @@ const PoOrderEditTitle = () => {
   const formattedId = String(record.id ?? "").padStart(6, "0");
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>Editar Orden</span>
+      <span className="inline-flex items-center gap-2">
+        <ClipboardList className="h-4 w-4" />
+        <span>Editar Orden</span>
+      </span>
       <Badge variant="outline" className="text-[11px]">
         #{formattedId}
       </Badge>
@@ -29,13 +34,29 @@ const PoOrderEditTitle = () => {
   );
 };
 
-export const PoOrderEdit = () => (
-  <Edit
-    redirect="list"
-    title={<PoOrderEditTitle />}
-    actions={false}
-    transform={(data: any) => normalizePoOrderPayload(data)}
-  >
-    <PoOrderForm />
-  </Edit>
-);
+export const PoOrderEdit = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const returnTo = params.get("returnTo");
+
+  return (
+    <Edit
+      redirect={false}
+      title={<PoOrderEditTitle />}
+      actions={false}
+      transform={(data: any) => normalizePoOrderPayload(data)}
+      mutationOptions={{
+        onSuccess: () => {
+          if (returnTo) {
+            navigate(returnTo);
+            return;
+          }
+          navigate("/po-orders");
+        },
+      }}
+    >
+      <PoOrderForm />
+    </Edit>
+  );
+};

@@ -376,7 +376,7 @@ export const CRMChatShow = () => {
   const handleOpenEventos = () => {
     if (!resolveOportunidadId) return;
     const path = createPath({
-      resource: "crm/eventos",
+      resource: "crm/crm-eventos",
       type: "list",
     });
     const contactoId = oportunidadContactoId ?? undefined;
