@@ -237,7 +237,7 @@ import {
   CRMOportunidadCreate,
   CRMOportunidadEdit,
   CRMOportunidadShow,
-} from "@/app/resources/crm-oportunidades";
+} from "@/app/resources/crm/crm-oportunidades";
 import {
   CRMOportunidadPoList,
   CRMOportunidadPoCreate,
@@ -245,11 +245,11 @@ import {
   CRMOportunidadPoShow,
 } from "@/app/resources/crm/crm-oportunidades";
 import { CRMOportunidadPanelPage } from "@/app/resources/crm-panel/list-panel";
-import { CRMOportunidadAccionCotizar } from "@/app/resources/crm-oportunidades/accion_cotizar";
-import { CRMOportunidadAccionAgendar } from "@/app/resources/crm-oportunidades/accion_agendar";
-import { CRMOportunidadAccionCerrar } from "@/app/resources/crm-oportunidades/accion_cerrar";
-import { CRMOportunidadAccionDescartar } from "@/app/resources/crm-oportunidades/accion_descartar";
-import { CRMOportunidadAccionAceptar } from "@/app/resources/crm-oportunidades/accion_aceptar";
+import { CRMOportunidadAccionCotizar } from "@/app/resources/crm/crm-oportunidades/accion_cotizar";
+import { CRMOportunidadAccionAgendar } from "@/app/resources/crm/crm-oportunidades/accion_agendar";
+import { CRMOportunidadAccionCerrar } from "@/app/resources/crm/crm-oportunidades/accion_cerrar";
+import { CRMOportunidadAccionDescartar } from "@/app/resources/crm/crm-oportunidades/accion_descartar";
+import { CRMOportunidadAccionAceptar } from "@/app/resources/crm/crm-oportunidades/accion_aceptar";
 import {
   CRMEventoList,
   CRMEventoCreate,

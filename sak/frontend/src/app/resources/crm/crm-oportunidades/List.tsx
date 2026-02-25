@@ -31,7 +31,7 @@ import { Pencil, Target } from "lucide-react";
 import {
   CRM_OPORTUNIDAD_ESTADO_CHOICES,
   CRM_OPORTUNIDAD_ESTADO_BADGES,
-} from "@/app/resources/crm-oportunidades/model";
+} from "./model";
 
 // === Filtros ===
 const LIST_FILTERS = buildListFilters(

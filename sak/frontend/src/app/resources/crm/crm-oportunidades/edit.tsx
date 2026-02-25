@@ -9,7 +9,7 @@ import { CRMOportunidadPoForm } from "./form";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   formatEstadoOportunidad,
-} from "@/app/resources/crm-oportunidades/model";
+} from "./model";
 import { Target } from "lucide-react";
 
 const OportunidadEditTitle = () => {

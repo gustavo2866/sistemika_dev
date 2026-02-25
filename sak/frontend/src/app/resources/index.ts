@@ -24,7 +24,7 @@ export * from "./crm-catalogos/crm-catalogos-respuestas";
 export * from "./monedas";
 export * from "./crm-cotizaciones";
 export * from "./crm-contactos";
-export * from "./crm-oportunidades";
+export * from "./crm/crm-oportunidades";
 export * from "./crm/crm-eventos";
 export * from "./crm-chat";
 export * from "./crm-mensajes";

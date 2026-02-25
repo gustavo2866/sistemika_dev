@@ -14,7 +14,7 @@ import {
   FormOrderEditButton,
   FormOrderPrintButton,
 } from "@/components/forms/form_order";
-import { formatOportunidadLabel } from "@/app/resources/crm-oportunidades/OportunidadSelector";
+import { formatOportunidadLabel } from "@/app/resources/crm/crm-oportunidades/OportunidadSelector";
 
 import {
   getOrderStatusBadgeClass,

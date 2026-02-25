@@ -32,7 +32,7 @@ import { Plus } from "lucide-react";
 import {
   CRM_OPORTUNIDAD_ESTADO_CHOICES,
   CRM_OPORTUNIDAD_ESTADOS,
-} from "@/app/resources/crm-oportunidades/model";
+} from "./model";
 
 type CRMOportunidadFormValues = Record<string, unknown>;
 

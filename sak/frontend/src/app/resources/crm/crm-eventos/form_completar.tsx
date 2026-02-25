@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useDataProvider, useGetList, useGetOne, useNotify, useRefresh } from "ra-core";
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CRM_OPORTUNIDAD_ESTADO_CHOICES } from "@/app/resources/crm-oportunidades/model";
+import { CRM_OPORTUNIDAD_ESTADO_CHOICES } from "@/app/resources/crm/crm-oportunidades/model";
 import { CompactFormField } from "@/components/forms";
 import type { CRMEvento } from "./model";
 

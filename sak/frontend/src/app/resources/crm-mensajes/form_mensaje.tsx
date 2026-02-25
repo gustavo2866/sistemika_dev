@@ -9,7 +9,7 @@ import { CancelButton } from "@/components/cancel-button";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
 import { ComboboxQuery } from "@/components/forms";
-import { CompactOportunidadSelector } from "@/app/resources/crm-oportunidades/OportunidadSelector";
+import { CompactOportunidadSelector } from "@/app/resources/crm/crm-oportunidades/OportunidadSelector";
 import { TextInput } from "@/components/text-input";
 import { useFormContext, useWatch } from "react-hook-form";
 

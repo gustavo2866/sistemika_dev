@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/spinner";
 import type { CRMEvento } from "@/app/resources/crm/crm-eventos/model";
-import type { CRMOportunidad } from "@/app/resources/crm-oportunidades/model";
+import type { CRMOportunidad } from "@/app/resources/crm/crm-oportunidades/model";
 
 type SectionState<T> = {
   data: T[];

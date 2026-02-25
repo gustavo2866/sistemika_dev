@@ -34,7 +34,7 @@ import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   formatEstadoOportunidad,
   type CRMOportunidadEstado,
-} from "../crm-oportunidades/model";
+} from "../crm/crm-oportunidades/model";
 
 const ensureReplySubject = (subject?: string | null) => {
   if (!subject) return "RE:";

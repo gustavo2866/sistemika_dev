@@ -18,12 +18,12 @@ import {
   XCircle,
 } from "lucide-react";
 import { useListContext, useGetIdentity, useGetList } from "ra-core";
-import type { CRMOportunidad } from "../crm-oportunidades/model";
-import { CRM_OPORTUNIDAD_ESTADOS } from "../crm-oportunidades/model";
+import type { CRMOportunidad } from "../crm/crm-oportunidades/model";
+import { CRM_OPORTUNIDAD_ESTADOS } from "../crm/crm-oportunidades/model";
 import { CRMOportunidadKanbanCard } from "./crm-panel-card";
 import { KanbanBoardView } from "@/components/kanban";
 import { calculateOportunidadBucketKey, prepareMoveOportunidadPayload, getBucketLabel } from "./model";
-import { ESTADO_BG_COLORS, type BucketKey } from "../crm-oportunidades/model";
+import { ESTADO_BG_COLORS, type BucketKey } from "../crm/crm-oportunidades/model";
 import { CompactSoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
 import { buildListFilters } from "@/components/forms/form_order";
 
