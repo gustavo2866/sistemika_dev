@@ -72,6 +72,18 @@ import {
   PropiedadShow,
   PropiedadesPanel,
 } from "@/app/resources/inmobiliaria/propiedades";
+import {
+  PropietarioList,
+  PropietarioCreate,
+  PropietarioEdit,
+  PropietarioShow,
+} from "@/app/resources/inmobiliaria/propietarios";
+import {
+  TipoActualizacionList,
+  TipoActualizacionCreate,
+  TipoActualizacionEdit,
+  TipoActualizacionShow,
+} from "@/app/resources/inmobiliaria/tipos-actualizacion";
 import { PropiedadesDashboardPage } from "@/app/resources/inmobiliaria/propiedades";
 import { PropiedadesLogStatusList } from "@/app/resources/inmobiliaria/propiedades_log_status";
 import {
@@ -264,6 +276,10 @@ import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria
 
 declare const window: Window | undefined;
 
+const AgendaPagosIcon = (props: { className?: string }) => (
+  <CalendarDays className={`h-4 w-4 text-rose-600 ${props.className ?? ""}`} />
+);
+
 const AdminApp = () => {
   if (typeof window === "undefined") {
     return null;
@@ -404,6 +420,26 @@ const AdminApp = () => {
         options={{ label: "Log Estados Propiedad" }}
       />
       <Resource
+        name="propietarios"
+        list={PropietarioList}
+        create={PropietarioCreate}
+        edit={PropietarioEdit}
+        show={PropietarioShow}
+        recordRepresentation="nombre"
+        icon={UserRound}
+        options={{ label: "Propietarios" }}
+      />
+      <Resource
+        name="tipos-actualizacion"
+        list={TipoActualizacionList}
+        create={TipoActualizacionCreate}
+        edit={TipoActualizacionEdit}
+        show={TipoActualizacionShow}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Tipos de actualizacion" }}
+      />
+      <Resource
         name="tipos-propiedad"
         list={TipoPropiedadList}
         create={TipoPropiedadCreate}
@@ -501,7 +537,7 @@ const AdminApp = () => {
         name="po-invoices-agenda"
         list={PoInvoiceAgendaList}
         recordRepresentation="numero"
-        icon={CalendarDays}
+        icon={AgendaPagosIcon}
         options={{ label: "Agenda de pagos" }}
       />
       <Resource

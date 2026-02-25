@@ -1,4 +1,4 @@
-from typing import Optional, List, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING, ClassVar
 from datetime import date, datetime, UTC
 from decimal import Decimal
 
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from .emprendimiento import Emprendimiento
     from .user import User
     from .tipo_propiedad import TipoPropiedad
+    from .propietario import Propietario
+    from .tipo_actualizacion import TipoActualizacion
 
 DEFAULT_PROPIEDADES = (
     (1, 'Casa Central', 'Departamento', 'Inversiones SA', 3, 85.5, 450000, 120000, '2020-03-15'),
@@ -123,6 +125,7 @@ class Propiedad(Base, table=True):
     """Catálogo de propiedades sobre las que se pueden imputar facturas."""
 
     __tablename__ = 'propiedades'
+    REALIZADA_ALERT_DAYS: ClassVar[int] = 60
 
     nombre: str = Field(max_length=255, index=True)
     tipo_propiedad_id: Optional[int] = Field(
@@ -132,6 +135,28 @@ class Propiedad(Base, table=True):
         description="Referencia al catálogo de tipos de propiedad"
     )
     propietario: str = Field(max_length=255, description='Propietario o responsable')
+    
+    # FK a propietario (nueva relación sin eliminar el campo actual)
+    propietario_id: Optional[int] = Field(
+        default=None,
+        foreign_key="propietarios.id",
+        index=True,
+        description="ID del propietario desde la tabla propietarios"
+    )
+    
+    # FK a tipo de actualización/renovación
+    tipo_actualizacion_id: Optional[int] = Field(
+        default=None,
+        foreign_key="tipos_actualizacion.id",
+        index=True,
+        description="Tipo de actualización/renovación de contratos"
+    )
+    
+    # Fecha de renovación
+    fecha_renovacion: Optional[date] = Field(
+        default=None,
+        description="Fecha de la próxima renovación del contrato"
+    )
     
     # Características físicas
     ambientes: Optional[int] = Field(
@@ -160,9 +185,9 @@ class Propiedad(Base, table=True):
     )
     
     # Datos de contrato
-    fecha_ingreso: Optional[date] = Field(
+    fecha_inicio_contrato: Optional[date] = Field(
         default=None,
-        description="Fecha original de ingreso de la propiedad al sistema"
+        description="Fecha de inicio del contrato actual"
     )
     
     vencimiento_contrato: Optional[date] = Field(
@@ -240,6 +265,8 @@ class Propiedad(Base, table=True):
 
     facturas: List['Factura'] = Relationship(back_populates='propiedad')
     tipo_propiedad: Optional['TipoPropiedad'] = Relationship(back_populates="propiedades")
+    propietario_ref: Optional['Propietario'] = Relationship()
+    tipo_actualizacion: Optional['TipoActualizacion'] = Relationship()
     tipo_operacion: Optional['CRMTipoOperacion'] = Relationship()
     emprendimiento: Optional['Emprendimiento'] = Relationship()
     propiedad_status: Optional['PropiedadesStatus'] = Relationship(back_populates="propiedades")

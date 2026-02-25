@@ -19,6 +19,16 @@ const setupLinks = [
     description: "Auditoria de cambios de estado de propiedades.",
     resource: "propiedades-log-status",
   },
+  {
+    label: "Propietarios",
+    description: "Administrar propietarios vinculados a inmuebles.",
+    resource: "propietarios",
+  },
+  {
+    label: "Tipos de actualizacion",
+    description: "Configurar tipos de actualizacion de contratos.",
+    resource: "tipos-actualizacion",
+  },
 ];
 
 export const InmobiliariaSetupPage = () => {

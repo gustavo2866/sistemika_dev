@@ -60,9 +60,9 @@ export const TodoRowActions = ({
   const [confirmActionId, setConfirmActionId] = useState<string | null>(null);
 
   const resolvedTriggerClassName =
-    triggerClassName ?? (compact ? "!h-[8px] !w-[8px] !min-h-[8px] !min-w-[8px] !p-0 !m-0" : "h-8 w-8");
+    triggerClassName ?? (compact ? "!h-[14px] !w-[14px] !min-h-[14px] !min-w-[14px] !p-0 !m-0" : "h-8 w-8");
   const resolvedTriggerIconClassName =
-    triggerIconClassName ?? (compact ? "!h-[6px] !w-[6px]" : "h-4 w-4");
+    triggerIconClassName ?? (compact ? "!h-[10px] !w-[10px]" : "h-4 w-4");
   const resolvedMenuClassName =
     menuClassName ?? (compact ? "w-36 text-[10px]" : "w-40 text-xs sm:w-44 sm:text-sm");
   const actionIconClassName = compact ? "h-3 w-3" : "h-3.5 w-3.5";

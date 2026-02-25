@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ListBase, required, useDataProvider, useRecordContext } from "ra-core";
+import { ListBase, required, useDataProvider, useGetList, useRecordContext } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { SimpleForm } from "@/components/simple-form";
@@ -34,6 +34,7 @@ import {
   type PropiedadFormValues,
   type Vacancia,
   excludeMantenimientoTipoOperacion,
+  isTipoOperacionMantenimiento,
 } from "./model";
 
 export const PropiedadForm = () => (
@@ -50,6 +51,7 @@ export const PropiedadForm = () => (
       defaultOpen
     />
     <OportunidadesSection />
+    <ReparacionesSection />
     {/* Datos generales ahora van como opcionales de Cabecera */}
     <SectionBaseTemplate title="Datos del contrato" main={<DatosContratoFields />} defaultOpen={false} />
   </SimpleForm>
@@ -58,7 +60,6 @@ export const PropiedadForm = () => (
 const CabeceraFields = () => (
   <div className="grid gap-2 md:grid-cols-4">
     <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-full" />
-    <FormText source="propietario" label="Propietario" validate={required()} widthClass="w-full" />
     <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo propiedad">
       <FormSelect optionText="nombre" label="Tipo propiedad" widthClass="w-full" emptyText="Sin asignar" />
     </ReferenceInput>
@@ -126,7 +127,6 @@ const CabeceraOpcionales = () => (
         <ReferenceInput source="costo_moneda_id" reference="monedas" label="Moneda del costo">
           <FormSelect optionText="nombre" label="Moneda del costo" widthClass="w-full" />
         </ReferenceInput>
-        <FormDate source="fecha_ingreso" label="Fecha de ingreso" widthClass="w-full" />
         <FormNumber source="ambientes" label="Ambientes" min={0} widthClass="w-full" />
         <FormNumber
           source="metros_cuadrados"
@@ -152,9 +152,17 @@ const CabeceraOpcionales = () => (
 
 const DatosContratoFields = () => (
   <div className="grid gap-2 md:grid-cols-2">
+    <ReferenceInput source="propietario_id" reference="propietarios" label="Propietario">
+      <FormSelect optionText="nombre" label="Propietario" widthClass="w-full" emptyText="Sin asignar" />
+    </ReferenceInput>
     <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full" />
     <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full" />
+    <FormDate source="fecha_inicio_contrato" label="Fecha inicio contrato" widthClass="w-full" />
     <FormDate source="vencimiento_contrato" label="Vencimiento contrato" widthClass="w-full" />
+    <ReferenceInput source="tipo_actualizacion_id" reference="tipos-actualizacion" label="Tipo actualizacion">
+      <FormSelect optionText="nombre" label="Tipo actualizacion" widthClass="w-full" emptyText="Sin asignar" />
+    </ReferenceInput>
+    <FormDate source="fecha_renovacion" label="Fecha renovacion" widthClass="w-full" />
   </div>
 );
 
@@ -211,6 +219,62 @@ const PropiedadVacanciasTable = () => {
 const OportunidadesSection = () => {
   const record = useRecordContext<Propiedad>();
   const propiedadId = record?.id;
+  const tipoOperacionId = record?.tipo_operacion_id ?? null;
+
+  return (
+    <OportunidadesListSection
+      title="Oportunidades"
+      propiedadId={propiedadId}
+      tipoOperacionId={tipoOperacionId}
+      persistKey={`propiedades-oportunidades-${propiedadId ?? "sin-propiedad"}`}
+      storeKey={`crm-oportunidades-propiedad-${propiedadId ?? "sin-propiedad"}`}
+    />
+  );
+};
+
+const useMantenimientoTipoOperacionId = () => {
+  const { data: tiposOperacion } = useGetList("crm/catalogos/tipos-operacion", {
+    pagination: { page: 1, perPage: 500 },
+    sort: { field: "nombre", order: "ASC" },
+  });
+
+  return useMemo(() => {
+    const mantenimiento = (tiposOperacion ?? []).find((tipo: any) => isTipoOperacionMantenimiento(tipo));
+    return mantenimiento?.id ?? null;
+  }, [tiposOperacion]);
+};
+
+const ReparacionesSection = () => {
+  const record = useRecordContext<Propiedad>();
+  const propiedadId = record?.id;
+  const tipoOperacionId = useMantenimientoTipoOperacionId();
+
+  return (
+    <OportunidadesListSection
+      title="Reparaciones"
+      propiedadId={propiedadId}
+      tipoOperacionId={tipoOperacionId}
+      persistKey={`propiedades-reparaciones-${propiedadId ?? "sin-propiedad"}`}
+      storeKey={`crm-oportunidades-reparaciones-${propiedadId ?? "sin-propiedad"}`}
+    />
+  );
+};
+
+type OportunidadesListSectionProps = {
+  title: string;
+  propiedadId?: number;
+  tipoOperacionId: number | null;
+  persistKey: string;
+  storeKey: string;
+};
+
+const OportunidadesListSection = ({
+  title,
+  propiedadId,
+  tipoOperacionId,
+  persistKey,
+  storeKey,
+}: OportunidadesListSectionProps) => {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -227,19 +291,28 @@ const OportunidadesSection = () => {
     return `${basePath}?${params.toString()}`;
   }, [propiedadId, returnTo]);
 
+  const defaultFilters = useMemo(
+    () => ({
+      propiedad_id: propiedadId,
+      activo: true,
+      tipo_operacion_id: tipoOperacionId ?? null,
+    }),
+    [propiedadId, tipoOperacionId],
+  );
+
   return (
     <ListBase
       resource="crm/crm-oportunidades"
       perPage={10}
       sort={{ field: "created_at", order: "DESC" }}
-      filterDefaultValues={{ propiedad_id: propiedadId, activo: true }}
+      filterDefaultValues={defaultFilters}
       disableSyncWithLocation
-      storeKey={`crm-oportunidades-propiedad-${propiedadId}`}
+      storeKey={storeKey}
     >
       <SectionBaseTemplate
-        title="Oportunidades"
+        title={title}
         defaultOpen={false}
-        persistKey={`propiedades-oportunidades-${propiedadId}`}
+        persistKey={persistKey}
         actions={
           <DropdownMenuItem
             onSelect={(event) => {

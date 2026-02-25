@@ -199,6 +199,7 @@ export const PoOrderListBody = ({ identityId, compact = false }: PoOrderListBody
       </ListColumn>
       <ListColumn label="Acciones" className="w-[60px]">
         <FormOrderListRowActions
+          className={compact ? "h-4 w-4 sm:h-4 sm:w-4" : undefined}
           extraMenuItems={
             <>
               <FormConfirmar action="approve" />

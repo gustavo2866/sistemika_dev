@@ -83,14 +83,16 @@ const PropiedadesPanelContent = () => {
 
   const getSelectedBucketKey = () => {
     const today = new Date();
-    const plus30 = formatDate(addDays(today, 30));
     const plus60 = formatDate(addDays(today, 60));
     const minus30 = formatDate(addDays(today, -30));
 
     const vencLt = filterValues.vencimiento_contrato__lt;
     const vencGte = filterValues.vencimiento_contrato__gte;
-    if (vencLt === plus30 && !vencGte) return "lt_30";
-    if (vencLt === plus60 && vencGte === plus30) return "lt_60";
+    if (vencLt === plus60 && vencGte === formatDate(today)) return "vencimiento_lt_60";
+
+    const renovLt = filterValues.fecha_renovacion__lt;
+    const renovGte = filterValues.fecha_renovacion__gte;
+    if (renovLt === plus60 && renovGte === formatDate(today)) return "renovacion_lt_60";
 
     const estadoGte = filterValues.estado_fecha__gte;
     const estadoLt = filterValues.estado_fecha__lt;
@@ -109,6 +111,10 @@ const PropiedadesPanelContent = () => {
       "vencimiento_contrato__lte",
       "vencimiento_contrato__gt",
       "vencimiento_contrato__gte",
+      "fecha_renovacion__lt",
+      "fecha_renovacion__lte",
+      "fecha_renovacion__gt",
+      "fecha_renovacion__gte",
       "estado_fecha__lt",
       "estado_fecha__lte",
       "estado_fecha__gt",
@@ -168,16 +174,17 @@ const PropiedadesPanelContent = () => {
     }
     const today = new Date();
     if (payload.estadoKey === "realizada") {
-      if (payload.bucketKey === "lt_30") {
+      if (payload.bucketKey === "vencimiento_lt_60") {
         applyEstadoFilter(payload.estadoKey, {
-          vencimiento_contrato__lt: formatDate(addDays(today, 30)),
+          vencimiento_contrato__gte: formatDate(today),
+          vencimiento_contrato__lt: formatDate(addDays(today, 60)),
         });
         return;
       }
-      if (payload.bucketKey === "lt_60") {
+      if (payload.bucketKey === "renovacion_lt_60") {
         applyEstadoFilter(payload.estadoKey, {
-          vencimiento_contrato__gte: formatDate(addDays(today, 30)),
-          vencimiento_contrato__lt: formatDate(addDays(today, 60)),
+          fecha_renovacion__gte: formatDate(today),
+          fecha_renovacion__lt: formatDate(addDays(today, 60)),
         });
         return;
       }

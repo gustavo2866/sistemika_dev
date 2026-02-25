@@ -109,6 +109,11 @@ const sanitizeIdsInData = (value: unknown): unknown => {
   return value;
 };
 
+const isNotFoundError = (error: unknown) => {
+  const err = error as { status?: number; response?: Response };
+  return err?.status === 404 || err?.response?.status === 404;
+};
+
 const resolveResource = (resource: string) => {
   if (resource === "crm/crm-eventos") return "crm/eventos";
   if (resource === "crm/crm-oportunidades") return "crm/oportunidades";
@@ -121,7 +126,16 @@ export const dataProvider: DataProvider = {
     const resolved = resolveResource(resource);
     if (resolved === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
       const { default_scope, ...restFilter } = params.filter as Record<string, unknown>;
-      return baseProvider.getList("crm/eventos/default", { ...params, filter: restFilter });
+      return (async () => {
+        try {
+          return await baseProvider.getList("crm/eventos/default", { ...params, filter: restFilter });
+        } catch (error) {
+          if (isNotFoundError(error)) {
+            return baseProvider.getList(resolved, params);
+          }
+          throw error;
+        }
+      })();
     }
     return baseProvider.getList(resolved, params);
   }),

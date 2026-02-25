@@ -148,7 +148,7 @@ export const FormOrderListRowActions = ({
                 <span className="sr-only">Acciones</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-24 sm:w-32" forceMount>
+            <DropdownMenuContent align="end" className="w-32 sm:w-40" forceMount>
               {showShow ? (
                 <DropdownMenuItem
                   onClick={handleShow}

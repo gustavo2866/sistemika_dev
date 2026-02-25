@@ -8,6 +8,7 @@ from .proveedor import Proveedor
 from .tipo_operacion import TipoOperacion
 from .tipo_comprobante import TipoComprobante
 from .tipo_propiedad import TipoPropiedad
+from .tipo_actualizacion import TipoActualizacion
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
 from .setting import Setting
@@ -53,6 +54,7 @@ from .taxes import (
 from .departamento import Departamento
 from .tipo_solicitud import TipoSolicitud
 from .centro_costo import CentroCosto
+from .propietario import Propietario
 from .proyecto import Proyecto
 from .nomina import Nomina, CategoriaNomina
 from .partediario import (
@@ -83,6 +85,7 @@ __all__ = [
     "TipoOperacion", 
     "TipoComprobante",
     "TipoPropiedad",
+    "TipoActualizacion",
     "MetodoPago", 
     "Propiedad",
     "Setting",
@@ -118,6 +121,7 @@ __all__ = [
     "Departamento",
     "TipoSolicitud",
     "CentroCosto",
+    "Propietario",
     "Proyecto",
     "Nomina",
     "CategoriaNomina",

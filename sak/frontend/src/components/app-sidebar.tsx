@@ -125,6 +125,8 @@ const HIDDEN_RESOURCES = [
   "tipos-propiedad",
   "propiedades-log-status",
   "propiedades-status",
+  "propietarios",
+  "tipos-actualizacion",
 ];
 
 type ResourceName = string;

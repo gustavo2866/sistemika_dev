@@ -47,6 +47,7 @@ import {
 import { FormStatus, FormStatusContent, type FormStatusValues } from "./form_status";
 import { getAllowedPropiedadStatusTargets } from "./status_transitions";
 import { usePropiedadStatusTransition } from "./form_hooks";
+import { FormRenovar } from "./form_renovar";
 
 
 // === Filtros ===
@@ -65,8 +66,8 @@ export const LIST_FILTERS = buildListFilters(
     {
       type: "text",
       props: {
-        source: "propietario",
-        label: "Propietario",
+        source: "nombre",
+        label: "Nombre",
       },
     },
     {
@@ -157,13 +158,12 @@ export const PropiedadesListContent = () => (
       mobileConfig={{
         primaryField: "nombre",
         secondaryFields: [
-          "propietario",
           "propiedad_status_id",
           "valor_alquiler",
         ],
         detailFields: [],
       }}
-      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px] [&_tbody_td]:align-top"
     >
       <ListColumn source="id" label="ID" className="w-[60px]">
         <ListText source="id" />
@@ -171,7 +171,9 @@ export const PropiedadesListContent = () => (
       <ListColumn source="nombre" label="Nombre" className="w-[150px]">
         <div className="flex flex-col gap-0">
           <ListText source="nombre" className="font-medium" />
-          <ListText source="propietario" className="text-[8px] text-muted-foreground leading-tight" />
+          <ReferenceField source="propietario_id" reference="propietarios" link={false}>
+            <ListText source="nombre" className="text-[8px] text-muted-foreground leading-tight" />
+          </ReferenceField>
           <ReferenceField
             source="tipo_propiedad_id"
             reference="tipos-propiedad"
@@ -197,7 +199,12 @@ export const PropiedadesListContent = () => (
         <FormOrderListRowActions
           showShow={false}
           showDelete
-          extraMenuItems={<PropiedadStatusMenu />}
+          extraMenuItems={
+            <>
+              <PropiedadStatusMenu />
+              <FormRenovar />
+            </>
+          }
         />
       </ListColumn>
     </ResponsiveDataTable>
@@ -276,7 +283,7 @@ const PropiedadStatusMenu = () => {
           className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
         >
           <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-          Cambio de estado
+          Cambiar estado
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent className="w-28 sm:w-36">
           {allowedTargets.map((option) => (

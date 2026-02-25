@@ -33,6 +33,16 @@ type TipoPropiedadRef = {
   nombre: string;
 };
 
+type TipoActualizacionRef = {
+  id: number;
+  nombre: string;
+};
+
+type PropietarioRef = {
+  id: number;
+  nombre: string;
+};
+
 type Moneda = {
   id: number;
   nombre: string;
@@ -44,12 +54,16 @@ export type Propiedad = {
   nombre: string;
   tipo_propiedad_id?: number | null;
   tipo_propiedad?: TipoPropiedadRef | null;
-  propietario: string;
+  tipo_actualizacion_id?: number | null;
+  tipo_actualizacion?: TipoActualizacionRef | null;
+  propietario_id?: number | null;
+  propietario_ref?: PropietarioRef | null;
+  fecha_renovacion?: string | null;
   ambientes?: number | null;
   metros_cuadrados?: number | null;
   valor_alquiler?: number | null;
   expensas?: number | null;
-  fecha_ingreso?: string | null;
+  fecha_inicio_contrato?: string | null;
   vencimiento_contrato?: string | null;
   estado_fecha?: string | null;
   estado_comentario?: string | null;
@@ -73,12 +87,13 @@ export type Propiedad = {
 export type PropiedadFormValues = {
   nombre: string;
   tipo_propiedad_id?: number | null;
-  propietario: string;
+  tipo_actualizacion_id?: number | null;
+  fecha_renovacion?: string | null;
   ambientes?: number | null;
   metros_cuadrados?: number | null;
   valor_alquiler?: number | null;
   expensas?: number | null;
-  fecha_ingreso?: string | null;
+  fecha_inicio_contrato?: string | null;
   vencimiento_contrato?: string | null;
   estado_fecha?: string | null;
   estado_comentario?: string | null;
@@ -130,12 +145,13 @@ export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad
   fields: {
     nombre: stringField({ required: true, maxLength: 255, defaultValue: "" }),
     tipo_propiedad_id: numberField({ required: false, min: 1 }),
-    propietario: stringField({ required: true, maxLength: 255, defaultValue: "" }),
+    tipo_actualizacion_id: numberField({ required: false, min: 1 }),
+    fecha_renovacion: stringField({ required: false }),
     ambientes: numberField({ required: false, min: 0 }),
     metros_cuadrados: numberField({ required: false, min: 0 }),
     valor_alquiler: numberField({ required: false, min: 0 }),
     expensas: numberField({ required: false, min: 0 }),
-    fecha_ingreso: stringField({ required: false }),
+    fecha_inicio_contrato: stringField({ required: false }),
     vencimiento_contrato: stringField({ required: false }),
     estado_comentario: stringField({ required: false, maxLength: 500 }),
     tipo_operacion_id: numberField({ required: false, min: 1 }),

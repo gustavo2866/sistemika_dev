@@ -98,7 +98,6 @@ const PropiedadDetails = () => {
         { label: "Metros2", value: record.metros_cuadrados ?? "N/D", format: "decimal" as const },
         { label: "Valor alquiler", value: record.valor_alquiler, format: "currency" as const },
         { label: "Expensas", value: record.expensas, format: "currency" as const },
-        { label: "Fecha ingreso", value: record.fecha_ingreso ?? "Sin registrar" },
         { label: "Vencimiento contrato", value: record.vencimiento_contrato ?? "Sin registrar" },
       ];
     },
@@ -136,7 +135,6 @@ const PropiedadDetails = () => {
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{record.nombre}</h1>
-          <p className="text-muted-foreground">{record.propietario}</p>
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="outline">{propiedadStatusLabel}</Badge>
           </div>
@@ -167,8 +165,36 @@ const PropiedadDetails = () => {
                   <span className="text-sm text-muted-foreground">Sin asignar</span>
                 )}
               </Field>
+              <Field label="Tipo actualizacion">
+                {record.tipo_actualizacion_id ? (
+                  <ReferenceField
+                    source="tipo_actualizacion_id"
+                    reference="tipos-actualizacion"
+                    link={false}
+                    empty="Sin asignar"
+                  >
+                    <TextField source="nombre" />
+                  </ReferenceField>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Sin asignar</span>
+                )}
+              </Field>
               <Field label="Propietario">
-                <TextField source="propietario" />
+                {record.propietario_id ? (
+                  <ReferenceField
+                    source="propietario_id"
+                    reference="propietarios"
+                    link={false}
+                    empty="Sin asignar"
+                  >
+                    <TextField source="nombre" />
+                  </ReferenceField>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Sin asignar</span>
+                )}
+              </Field>
+              <Field label="Fecha renovacion">
+                <TextField source="fecha_renovacion" />
               </Field>
               <Field label="Estado">
                 <span>{propiedadStatusLabel}</span>

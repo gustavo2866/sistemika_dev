@@ -237,7 +237,6 @@ export const PropiedadesDashboard = ({
               key: range.key,
               label: range.label,
               value: range.count,
-              tone: range.key === "vencidos" ? "danger" : "muted",
             }));
 
             return (
@@ -263,7 +262,7 @@ export const PropiedadesDashboard = ({
                 buckets={buckets}
                 bucketHeader={
                   <>
-                    <span>Vencimiento</span>
+                    <span>Alertas</span>
                     <span className="text-right">Props</span>
                   </>
                 }

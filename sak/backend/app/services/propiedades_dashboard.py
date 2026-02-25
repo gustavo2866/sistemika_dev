@@ -41,6 +41,7 @@ def _normalize_estado(value: str) -> str:
     return (value or "").strip().lower()
 
 
+
 def build_propiedades_dashboard(
     session: Session,
     pivot_date: date,
@@ -178,32 +179,47 @@ def build_realizada_vencimientos(
         }
 
     query = (
-        select(Propiedad.vencimiento_contrato)
+        select(
+            Propiedad.vencimiento_contrato,
+            Propiedad.fecha_renovacion,
+        )
         .where(Propiedad.deleted_at.is_(None))
         .where(Propiedad.propiedad_status_id == realizada_id)
     )
     if tipo_operacion_id is not None:
         query = query.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
 
-    vencimientos = session.exec(query).all()
+    rows = session.exec(query).all()
 
-    lt_30 = 0
-    lt_60 = 0
-    for vencimiento in vencimientos:
-        if vencimiento is None:
-            continue
-        days = (vencimiento - pivot_date).days
-        if days < 30:
-            lt_30 += 1
-        elif days < 60:
-            lt_60 += 1
+    bucket_days = getattr(Propiedad, "REALIZADA_ALERT_DAYS", 60)
+    vencimiento_lt_60 = 0
+    renovacion_lt_60 = 0
+    for vencimiento, fecha_renovacion in rows:
+        if vencimiento is not None:
+            days = (vencimiento - pivot_date).days
+            if 0 <= days < bucket_days:
+                vencimiento_lt_60 += 1
+        if fecha_renovacion is not None:
+            if vencimiento is not None and fecha_renovacion > vencimiento:
+                continue
+            days = (fecha_renovacion - pivot_date).days
+            if 0 <= days < bucket_days:
+                renovacion_lt_60 += 1
 
     return {
         "pivotDate": pivot_date.isoformat(),
         "tipoOperacionId": tipo_operacion_id,
         "ranges": [
-            {"key": "lt_30", "label": "< 30 dias", "count": lt_30},
-            {"key": "lt_60", "label": "< 60 dias", "count": lt_60},
+            {
+                "key": "vencimiento_lt_60",
+                "label": f"Vencimiento < {bucket_days} dias",
+                "count": vencimiento_lt_60,
+            },
+            {
+                "key": "renovacion_lt_60",
+                "label": f"Renovacion < {bucket_days} dias",
+                "count": renovacion_lt_60,
+            },
         ],
-        "total": len(vencimientos),
+        "total": len(rows),
     }

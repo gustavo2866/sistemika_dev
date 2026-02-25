@@ -259,7 +259,14 @@ export const CRMEventoList = () => {
   return (
     <List
       key={listKey}
-      title={<ResourceTitle icon={CalendarCheck} text="CRM - Eventos" />}
+      title={
+        <ResourceTitle
+          icon={CalendarCheck}
+          text="CRM - Eventos"
+          iconWrapperClassName="h-9 w-9 rounded-xl bg-rose-100 text-rose-700"
+          iconClassName="h-4 w-4"
+        />
+      }
       filters={LIST_FILTERS}
       filterDefaultValues={defaultFilters}
       actions={<ListActions createTo={createTo} />}

@@ -125,11 +125,7 @@ export const CRMEventoTodoItem = ({ record, onCompletar, compact = false }: CRME
 
   return (
     <div
-      className={
-        compact
-          ? "flex h-[14px] items-center gap-0.5 border-b border-slate-100 px-2 py-0 leading-none last:border-b-0 hover:bg-slate-50/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
-          : "flex items-center gap-1 border-b border-slate-100 px-2.5 py-1 last:border-b-0 hover:bg-slate-50/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300 sm:gap-1.5 sm:px-4 sm:py-2"
-      }
+      className="flex items-center gap-1 border-b border-slate-100 px-2.5 py-1 last:border-b-0 hover:bg-slate-50/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300 sm:gap-1.5 sm:px-4 sm:py-2"
       role="button"
       tabIndex={0}
       onClick={handleOpen}
@@ -141,33 +137,23 @@ export const CRMEventoTodoItem = ({ record, onCompletar, compact = false }: CRME
       }}
     >
       <span
-        className={
-          compact
-            ? "w-[52px] shrink-0 text-[7px] font-semibold leading-none text-slate-500"
-            : "w-[60px] shrink-0 text-[9px] font-semibold text-slate-500 sm:w-[80px] sm:text-[12px]"
-        }
+        className="w-[60px] shrink-0 text-[8px] font-semibold text-slate-500 sm:w-[80px] sm:text-[10px]"
       >
         {formatDateTimeShort(record.fecha_evento)}
       </span>
       <span
-        className={
-          compact
-            ? "flex h-2 w-2 items-center justify-center rounded-full border border-slate-200 text-slate-600"
-            : "flex h-3.5 w-3.5 items-center justify-center rounded-full border border-slate-200 text-slate-600 sm:h-5 sm:w-5"
-        }
+        className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-slate-200 text-slate-600 sm:h-5 sm:w-5"
       >
         {(() => {
           const Icon = tipoIcon;
-          return compact ? (
-            <Icon className="h-1 w-1" />
-          ) : (
-            <Icon className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" />
+          return (
+            <Icon className={compact ? "h-3 w-3" : "h-2.5 w-2.5 sm:h-3.5 sm:w-3.5"} />
           );
         })()}
       </span>
       <div className="min-w-0 flex-1">
         <div
-          className={`truncate ${compact ? "text-[8px] leading-none" : "text-[10px] sm:text-[12px]"} text-slate-700 ${
+          className={`truncate text-[9px] sm:text-[11px] text-slate-700 ${
             isCompleted ? "line-through text-slate-400" : ""
           }`}
         >
@@ -178,12 +164,24 @@ export const CRMEventoTodoItem = ({ record, onCompletar, compact = false }: CRME
           <span className="text-slate-700">{record.titulo || "Sin titulo"}</span>
         </div>
       </div>
-      <div className={compact ? "flex items-center gap-0.5" : "flex items-center gap-1 sm:gap-2"}>
-        <Avatar className={compact ? "size-3 border border-slate-200" : "size-4.5 border border-slate-200 sm:size-6"}>
+      <div className="flex items-center gap-1 sm:gap-2">
+        <Avatar
+          className={
+            compact
+              ? "size-5 border border-slate-200"
+              : "size-4.5 border border-slate-200 sm:size-6"
+          }
+        >
           {responsableAvatar ? (
             <AvatarImage src={responsableAvatar} alt={responsable} />
           ) : null}
-          <AvatarFallback className={compact ? "bg-slate-100 text-[4px] font-semibold uppercase leading-none text-slate-600" : "bg-slate-100 text-[7px] font-semibold uppercase text-slate-600 sm:text-[9px]"}>
+          <AvatarFallback
+            className={
+              compact
+                ? "bg-slate-100 text-[8px] font-semibold uppercase text-slate-600"
+                : "bg-slate-100 text-[7px] font-semibold uppercase text-slate-600 sm:text-[9px]"
+            }
+          >
             {responsableInitials || "??"}
           </AvatarFallback>
         </Avatar>
@@ -193,6 +191,8 @@ export const CRMEventoTodoItem = ({ record, onCompletar, compact = false }: CRME
             triggerIcon={Flag}
             triggerLabel="Opciones de seguimiento"
             compact={compact}
+            triggerClassName={compact ? "!h-[18px] !w-[18px] !min-h-[18px] !min-w-[18px] !p-0 !m-0" : undefined}
+            triggerIconClassName={compact ? "!h-[12px] !w-[12px]" : undefined}
             actions={[
               ...seguimientoOptions.map((option) => ({
                 id: option.id,
