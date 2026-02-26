@@ -139,7 +139,12 @@ export const KanbanBoardView = <TItem extends { id?: number }, K extends string>
         const payload = await Promise.resolve(onItemMove(item, bucket));
         if (!payload) return;
 
-        if (resource) {
+        const shouldSkipUpdate =
+          typeof payload === "object" &&
+          payload !== null &&
+          "__skipUpdate" in (payload as Record<string, unknown>);
+
+        if (resource && !shouldSkipUpdate) {
           await dataProvider.update<TItem & { id: number }>(resource, {
             id: item.id!,
             data: payload,

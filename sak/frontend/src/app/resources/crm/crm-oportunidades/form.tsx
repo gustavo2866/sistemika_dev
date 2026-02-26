@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { ListBase, required, useGetIdentity, useGetOne, useRecordContext } from "ra-core";
+import { ListBase, required, useGetIdentity, useGetList, useGetOne, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
+import { ReferenceInput } from "@/components/reference-input";
 import {
-  FormBoolean,
   FormDate,
   FormErrorSummary,
   FormNumber,
   FormOrderToolbar,
   FormReferenceAutocomplete,
   FormSelect,
+  FormSelectFijo,
   FormText,
   FormTextarea,
   FormValue,
@@ -21,7 +22,7 @@ import {
 } from "@/components/forms/form_order";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
 import { PoOrderListBody } from "@/app/resources/po/po-orders/List";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   appendFilterParam,
   buildOportunidadFilter,
@@ -83,6 +84,78 @@ const LockedPropiedadSync = ({ lockedPropiedadId }: { lockedPropiedadId?: number
   return null;
 };
 
+const TipoOperacionAlquilerDefault = () => {
+  const record = useRecordContext<any>();
+  const { setValue } = useFormContext<CRMOportunidadFormValues>();
+  const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
+  const { data: tiposOperacion = [] } = useGetList("crm/catalogos/tipos-operacion", {
+    pagination: { page: 1, perPage: 500 },
+    sort: { field: "nombre", order: "ASC" },
+  });
+
+  const alquilerId = useMemo(() => {
+    const alquiler = (tiposOperacion as any[]).find(
+      (tipo) =>
+        tipo?.codigo?.toLowerCase().includes("alquiler") ||
+        tipo?.nombre?.toLowerCase().includes("alquiler"),
+    );
+    return alquiler?.id ? Number(alquiler.id) : undefined;
+  }, [tiposOperacion]);
+
+  useEffect(() => {
+    if (record?.id) return;
+    if (!alquilerId) return;
+    const current = resolveNumericId(tipoOperacionValue);
+    if (current) return;
+    setValue("tipo_operacion_id", alquilerId, { shouldDirty: false });
+  }, [alquilerId, record?.id, setValue, tipoOperacionValue]);
+
+  return null;
+};
+
+const useMantenimientoRules = () => {
+  const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
+  const resolvedTipoOperacionId = resolveNumericId(tipoOperacionValue);
+  const { data: tiposOperacion = [] } = useGetList("crm/catalogos/tipos-operacion", {
+    pagination: { page: 1, perPage: 500 },
+    sort: { field: "nombre", order: "ASC" },
+  });
+
+  const mantenimientoIds = useMemo(() => {
+    return new Set(
+      (tiposOperacion as any[])
+        .filter((tipo) => {
+          const key = String(tipo?.codigo ?? tipo?.nombre ?? "").toLowerCase();
+          return key.includes("mantenimiento");
+        })
+        .map((tipo) => Number(tipo.id))
+        .filter((id) => Number.isFinite(id)),
+    );
+  }, [tiposOperacion]);
+
+  const isMantenimiento = resolvedTipoOperacionId
+    ? mantenimientoIds.has(Number(resolvedTipoOperacionId))
+    : false;
+
+  const validatePropiedad = useMemo(
+    () => (value: unknown, allValues: Record<string, unknown>) => {
+      const tipoId = resolveNumericId(allValues?.tipo_operacion_id);
+      if (tipoId && mantenimientoIds.has(Number(tipoId))) {
+        return resolveNumericId(value) ? undefined : "Propiedad obligatoria";
+      }
+      return undefined;
+    },
+    [mantenimientoIds],
+  );
+
+  const propiedadValidators = useMemo(
+    () => (isMantenimiento ? [required(), validatePropiedad] : validatePropiedad),
+    [isMantenimiento, validatePropiedad],
+  );
+
+  return { isMantenimiento, validatePropiedad: propiedadValidators };
+};
+
 export const CRMOportunidadPoForm = () => {
   const record = useRecordContext<any>();
   const { identity } = useGetIdentity();
@@ -92,7 +165,7 @@ export const CRMOportunidadPoForm = () => {
     () => ({
       responsable_id: identity?.id ?? undefined,
       estado: CRM_OPORTUNIDAD_ESTADOS[0],
-      activo: true,
+      activo: false,
       fecha_estado: new Date().toISOString().slice(0, 10),
       ...(isCreate && lockedPropiedadId ? { propiedad_id: lockedPropiedadId } : {}),
     }),
@@ -108,6 +181,7 @@ export const CRMOportunidadPoForm = () => {
       <FormErrorSummary />
       {lockedPropiedadId ? <HiddenInput source="propiedad_id" /> : null}
       <LockedPropiedadSync lockedPropiedadId={lockedPropiedadId} />
+      <TipoOperacionAlquilerDefault />
       <SectionBaseTemplate
         title="Cabecera"
         main={<CabeceraFields />}
@@ -125,51 +199,85 @@ export const CRMOportunidadPoForm = () => {
   );
 };
 
-const CabeceraFields = () => (
-  <div className="grid gap-2 md:grid-cols-12">
-    <FormText
-      source="titulo"
-      label="Titulo"
-      validate={required()}
-      widthClass="w-full md:col-span-4"
-    />
-    <FormReferenceAutocomplete
-      referenceProps={{
-        source: "contacto_id",
-        reference: "crm/contactos",
-      }}
-      inputProps={{
-        optionText: "nombre_completo",
-        label: "Contacto",
-        validate: required(),
-      }}
-      widthClass="w-full md:col-span-4"
-    />
-    <FormReferenceAutocomplete
-      referenceProps={{
-        source: "tipo_operacion_id",
-        reference: "crm/catalogos/tipos-operacion",
-      }}
-      inputProps={{
-        optionText: "nombre",
-        label: "Tipo operacion",
-      }}
-      widthClass="w-full md:col-span-2"
-    />
-    <FormReferenceAutocomplete
-      referenceProps={{ source: "responsable_id", reference: "users" }}
-      inputProps={{
-        optionText: "nombre",
-        label: "Responsable",
-        validate: required(),
-      }}
-      widthClass="w-full md:col-span-2"
-    />
-  </div>
-);
+const CabeceraFields = () => {
+  const lockedPropiedadId = useLockedPropiedadId();
+  const { isMantenimiento, validatePropiedad } = useMantenimientoRules();
+  const { data: propiedadLocked } = useGetOne(
+    "propiedades",
+    { id: lockedPropiedadId ?? 0 },
+    { enabled: Boolean(lockedPropiedadId) },
+  );
+  const propiedadLabel =
+    (propiedadLocked as any)?.nombre ??
+    (lockedPropiedadId ? `Propiedad #${lockedPropiedadId}` : "Sin asignar");
+
+  return (
+    <div className="grid gap-2 md:grid-cols-12">
+      <FormText
+        source="titulo"
+        label="Titulo"
+        validate={required()}
+        widthClass="w-full md:col-span-3"
+      />
+      <FormReferenceAutocomplete
+        referenceProps={{
+          source: "contacto_id",
+          reference: "crm/contactos",
+        }}
+        inputProps={{
+          optionText: "nombre_completo",
+          label: "Contacto",
+          validate: required(),
+        }}
+        widthClass="w-full md:col-span-3"
+      />
+      <ReferenceInput
+        source="tipo_operacion_id"
+        reference="crm/catalogos/tipos-operacion"
+      >
+        <FormSelectFijo
+          optionText="nombre"
+          label="Tipo operacion"
+          widthClass="w-full md:col-span-2"
+          fixedWidth="110px"
+        />
+      </ReferenceInput>
+      <FormReferenceAutocomplete
+        referenceProps={{ source: "responsable_id", reference: "users" }}
+        inputProps={{
+          optionText: "nombre",
+          label: "Responsable",
+          validate: required(),
+        }}
+        widthClass="w-full md:col-span-2"
+      />
+      {isMantenimiento ? (
+        lockedPropiedadId ? (
+          <FormValue label="Propiedad" widthClass="w-full md:col-span-4">
+            {propiedadLabel}
+          </FormValue>
+        ) : (
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "propiedad_id",
+              reference: "propiedades",
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: "Propiedad",
+              validate: validatePropiedad,
+            }}
+            widthClass="w-full md:col-span-4"
+          />
+        )
+      ) : null}
+    </div>
+  );
+};
 
 const CabeceraOpcionales = () => {
   const lockedPropiedadId = useLockedPropiedadId();
+  const { isMantenimiento, validatePropiedad } = useMantenimientoRules();
   const { data: propiedadLocked } = useGetOne(
     "propiedades",
     { id: lockedPropiedadId ?? 0 },
@@ -183,23 +291,26 @@ const CabeceraOpcionales = () => {
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
         <div className="grid gap-2 md:grid-cols-12">
-          {lockedPropiedadId ? (
-            <FormValue label="Propiedad" widthClass="w-full md:col-span-4">
-              {propiedadLabel}
-            </FormValue>
-          ) : (
-            <FormReferenceAutocomplete
-              referenceProps={{
-                source: "propiedad_id",
-                reference: "propiedades",
-              }}
-              inputProps={{
-                optionText: "nombre",
-                label: "Propiedad",
-              }}
-              widthClass="w-full md:col-span-4"
-            />
-          )}
+          {!isMantenimiento ? (
+            lockedPropiedadId ? (
+              <FormValue label="Propiedad" widthClass="w-full md:col-span-4">
+                {propiedadLabel}
+              </FormValue>
+            ) : (
+              <FormReferenceAutocomplete
+                referenceProps={{
+                  source: "propiedad_id",
+                  reference: "propiedades",
+                }}
+                inputProps={{
+                  optionText: "nombre",
+                  label: "Propiedad",
+                  validate: validatePropiedad,
+                }}
+                widthClass="w-full md:col-span-4"
+              />
+            )
+          ) : null}
         <FormReferenceAutocomplete
           referenceProps={{
             source: "tipo_propiedad_id",
@@ -222,9 +333,6 @@ const CabeceraOpcionales = () => {
           }}
           widthClass="w-full md:col-span-3"
         />
-        <div className="flex items-end md:col-span-2">
-          <FormBoolean source="activo" label="Activo" />
-        </div>
         <FormTextarea
           source="descripcion_estado"
           label="Descripcion"
@@ -405,6 +513,13 @@ const OrdenesSection = () => {
     return `${basePath}?${params.toString()}`;
   }, [oportunidadId, location.pathname, location.search]);
 
+  const listTo = useMemo(() => {
+    const basePath = "/po-orders";
+    const params = new URLSearchParams();
+    appendFilterParam(params, buildOportunidadFilter(oportunidadId));
+    return `${basePath}?${params.toString()}`;
+  }, [oportunidadId]);
+
   return (
     <ListBase
       resource="po-orders"
@@ -430,7 +545,20 @@ const OrdenesSection = () => {
             Agregar orden
           </DropdownMenuItem>
         }
-        main={<PoOrderListBody compact />}
+        main={
+          <div className="flex flex-col gap-2">
+            <PoOrderListBody compact />
+            <div className="flex items-center justify-end text-[9px] text-muted-foreground">
+              <Link
+                to={listTo}
+                className="font-medium text-primary hover:underline"
+                onClick={(event) => event.stopPropagation()}
+              >
+                Mostrar todas
+              </Link>
+            </div>
+          </div>
+        }
       />
     </ListBase>
   );

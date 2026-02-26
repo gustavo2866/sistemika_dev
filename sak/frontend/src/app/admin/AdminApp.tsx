@@ -84,7 +84,6 @@ import {
   TipoActualizacionEdit,
   TipoActualizacionShow,
 } from "@/app/resources/inmobiliaria/tipos-actualizacion";
-import { PropiedadesDashboardPage } from "@/app/resources/inmobiliaria/propiedades";
 import { PropiedadesLogStatusList } from "@/app/resources/inmobiliaria/propiedades_log_status";
 import {
   TipoPropiedadList,
@@ -246,10 +245,12 @@ import {
 } from "@/app/resources/crm/crm-oportunidades";
 import { CRMOportunidadPanelPage } from "@/app/resources/crm-panel/list-panel";
 import { CRMOportunidadAccionCotizar } from "@/app/resources/crm/crm-oportunidades/accion_cotizar";
+import { CRMOportunidadAccionReservar } from "@/app/resources/crm/crm-oportunidades/accion_reservar";
 import { CRMOportunidadAccionAgendar } from "@/app/resources/crm/crm-oportunidades/accion_agendar";
 import { CRMOportunidadAccionCerrar } from "@/app/resources/crm/crm-oportunidades/accion_cerrar";
 import { CRMOportunidadAccionDescartar } from "@/app/resources/crm/crm-oportunidades/accion_descartar";
 import { CRMOportunidadAccionAceptar } from "@/app/resources/crm/crm-oportunidades/accion_aceptar";
+import { CRMOportunidadesDashboardPage } from "@/app/resources/crm/crm-oportunidades/dashboard-page";
 import {
   CRMEventoList,
   CRMEventoCreate,
@@ -404,13 +405,6 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Home}
         options={{ label: "Propiedades Panel" }}
-      />
-      <Resource
-        name="dashboard-propiedades"
-        list={PropiedadesDashboardPage}
-        recordRepresentation="id"
-        icon={BarChart2}
-        options={{ label: "Dashboard Propiedades" }}
       />
       <Resource
         name="propiedades-log-status"
@@ -710,7 +704,7 @@ const AdminApp = () => {
         show={CRMOportunidadPoShow}
         recordRepresentation="id"
         icon={Target}
-        options={{ label: "CRM ? Oportunidades (PO)" }}
+        options={{ label: "CRM ? Oportunidades (PO)", menu: false }}
       />
       <Resource
         name="crm/crm-eventos"
@@ -754,6 +748,7 @@ const AdminApp = () => {
         <Route path="/crm/setup" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
+        <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />
         <Route path="/crm/oportunidades/:id/accion_agendar" element={<CRMOportunidadAccionAgendar />} />
         <Route path="/crm/oportunidades/:id/accion_cerrar" element={<CRMOportunidadAccionCerrar />} />
         <Route path="/crm/oportunidades/:id/accion_descartar" element={<CRMOportunidadAccionDescartar />} />

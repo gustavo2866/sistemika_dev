@@ -62,7 +62,7 @@ class CRMOportunidad(Base, table=True):
         index=True,
     )
     activo: bool = Field(
-        default=True,
+        default=False,
         description="Oportunidad activa",
         index=True,
     )

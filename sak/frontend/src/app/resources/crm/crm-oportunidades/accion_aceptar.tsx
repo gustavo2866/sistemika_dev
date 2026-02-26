@@ -1,19 +1,38 @@
 "use client";
 
 import { Target } from "lucide-react";
-import { required, useNotify, useRecordContext, useRefresh } from "ra-core";
-import { Edit } from "@/components/edit";
-import { ResourceTitle } from "@/components/resource-title";
-import { SimpleForm, FormToolbar } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
+import { useMemo, useState } from "react";
+import {
+  required,
+  useDataProvider,
+  useGetIdentity,
+  useGetList,
+  useGetOne,
+  useNotify,
+  useRefresh,
+} from "ra-core";
+import { useWatch } from "react-hook-form";
+import { SimpleForm } from "@/components/simple-form";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  FormReferenceAutocomplete,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
-import { SaveButton } from "@/components/form";
-import { CancelButton } from "@/components/cancel-button";
-import { Card } from "@/components/ui/card";
 import type { CRMOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
@@ -21,94 +40,304 @@ const normalizeId = (value: unknown) => {
   return Number.isFinite(numeric) ? Number(numeric) : null;
 };
 
+const resolveNumericId = (value: unknown): number | undefined => {
+  if (value == null) return undefined;
+  if (typeof value === "object") {
+    const maybeId = (value as { id?: unknown; value?: unknown }).id ??
+      (value as { value?: unknown }).value;
+    return resolveNumericId(maybeId);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "0") return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+  return undefined;
+};
+
 export const CRMOportunidadAccionAceptar = () => {
+  const { id } = useParams();
+  const oportunidadId = Number(id);
+  const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
+  const { identity } = useGetIdentity();
   const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
 
+  const { data: oportunidad, isLoading } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadId },
+    { enabled: Number.isFinite(oportunidadId) },
+  );
+  const { data: tiposOperacion = [] } = useGetList(
+    "crm/catalogos/tipos-operacion",
+    {
+      pagination: { page: 1, perPage: 500 },
+      sort: { field: "nombre", order: "ASC" },
+    },
+  );
+  const mantenimientoIds = useMemo(() => {
+    return new Set(
+      (tiposOperacion as any[])
+        .filter((tipo) => {
+          const key = String(tipo?.codigo ?? tipo?.nombre ?? "").toLowerCase();
+          return key.includes("mantenimiento");
+        })
+        .map((tipo) => Number(tipo.id))
+        .filter((id) => Number.isFinite(id)),
+    );
+  }, [tiposOperacion]);
+
+  const defaultValues = useMemo(
+    () => ({
+      titulo: oportunidad?.titulo ?? "",
+      tipo_operacion_id: oportunidad?.tipo_operacion_id ?? "",
+      tipo_propiedad_id: oportunidad?.tipo_propiedad_id ?? "",
+      propiedad_id: oportunidad?.propiedad_id ?? "",
+      emprendimiento_id: oportunidad?.emprendimiento_id ?? "",
+      descripcion_estado: oportunidad?.descripcion_estado ?? "",
+    }),
+    [oportunidad],
+  );
+
+  if (!Number.isFinite(oportunidadId) || isLoading) {
+    return null;
+  }
+
   return (
-    <Edit
-      resource="crm/oportunidades"
-      redirect={false}
-      mutationMode="pessimistic"
-      actions={false}
-      transform={(data) => ({
-        ...data,
-        estado: "1-abierta",
-        fecha_estado: new Date().toISOString(),
-        tipo_operacion_id: normalizeId((data as any).tipo_operacion_id),
-        tipo_propiedad_id: normalizeId((data as any).tipo_propiedad_id),
-        emprendimiento_id: normalizeId((data as any).emprendimiento_id),
-      })}
-      mutationOptions={{
-        onSuccess: () => {
-          notify("Oportunidad confirmada y movida a Abierta", { type: "success" });
-          refresh();
-          navigate(returnTo);
-        },
-      }}
-      title={<ResourceTitle icon={Target} text="Confirmar oportunidad" />}
-    >
-      <AccionAceptarContent returnTo={returnTo} />
-    </Edit>
+    <AccionAceptarContent
+      returnTo={returnTo}
+      oportunidadId={oportunidadId}
+      oportunidad={oportunidad ?? null}
+      defaultValues={defaultValues}
+      mantenimientoIds={mantenimientoIds}
+      dataProvider={dataProvider}
+      notify={notify}
+      refresh={refresh}
+      navigate={navigate}
+      usuarioId={identity?.id ?? 1}
+    />
   );
 };
 
 export default CRMOportunidadAccionAceptar;
 
-const AccionAceptarContent = ({ returnTo }: { returnTo: string }) => {
-  const navigate = useNavigate();
-  const record = useRecordContext<CRMOportunidad>();
+const AccionAceptarContent = ({
+  returnTo,
+  oportunidadId,
+  oportunidad,
+  defaultValues,
+  mantenimientoIds,
+  dataProvider,
+  notify,
+  refresh,
+  navigate,
+  usuarioId,
+}: {
+  returnTo: string;
+  oportunidadId: number;
+  oportunidad: CRMOportunidad | null;
+  defaultValues: Record<string, unknown>;
+  mantenimientoIds: Set<number>;
+  dataProvider: ReturnType<typeof useDataProvider>;
+  notify: ReturnType<typeof useNotify>;
+  refresh: ReturnType<typeof useRefresh>;
+  navigate: ReturnType<typeof useNavigate>;
+  usuarioId: number;
+}) => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (values: Record<string, unknown>) => {
+    if (!oportunidadId) return;
+    try {
+      const descripcion = String(values.descripcion_estado ?? "").trim();
+      if (!descripcion) {
+        notify("La descripcion es obligatoria", { type: "warning" });
+        return;
+      }
+      setSaving(true);
+      await dataProvider.update("crm/oportunidades", {
+        id: oportunidadId,
+        data: {
+          titulo: (values.titulo as string | undefined)?.trim() ?? null,
+          tipo_operacion_id: normalizeId(values.tipo_operacion_id),
+          tipo_propiedad_id: normalizeId(values.tipo_propiedad_id),
+          propiedad_id: normalizeId(values.propiedad_id),
+          emprendimiento_id: normalizeId(values.emprendimiento_id),
+        },
+        previousData: oportunidad ?? undefined,
+      });
+
+      await dataProvider.create(`crm/oportunidades/${oportunidadId}/cambiar-estado`, {
+        data: {
+          nuevo_estado: "1-abierta",
+          descripcion,
+          usuario_id: usuarioId,
+          fecha_estado: new Date().toISOString(),
+        },
+      });
+
+      notify("Oportunidad confirmada y movida a Abierta", { type: "success" });
+      refresh();
+      navigate(returnTo);
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo confirmar la oportunidad", { type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="w-full max-w-3xl mr-auto ml-0">
-      <SimpleForm
-        className="w-full max-w-none"
-        toolbar={
-          <FormToolbar className="mt-4 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm md:flex md:items-center md:justify-end md:py-3">
-            <div className="flex justify-end gap-2">
-              <CancelButton className="h-8 px-3 text-xs" onClick={() => navigate(returnTo)} />
-              <SaveButton label="Confirmar" className="h-8 px-3 text-xs" />
-            </div>
-          </FormToolbar>
-        }
+    <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
+      <DialogContent
+        className="sm:max-w-sm"
+        overlayClassName="!bg-transparent !backdrop-blur-0"
       >
-        <div className="space-y-4">
-          <AccionOportunidadHeader oportunidad={record} />
-          <Card className="flex w-full flex-col gap-4 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-5 text-sm shadow-lg [&_label]:!text-[10px] [&_label]:uppercase [&_label]:tracking-[0.25em] [&_[data-slot=form-label]]:!text-[10px] [&_[data-slot=form-label]]:uppercase [&_[data-slot=form-label]]:tracking-[0.25em] [&_input]:!h-8 [&_input]:!px-2 [&_input]:!text-xs [&_[data-slot=input]]:!h-8 [&_[data-slot=input]]:!px-2 [&_[data-slot=input]]:!text-xs [&_textarea]:!min-h-12 [&_textarea]:!px-2 [&_textarea]:!py-2 [&_textarea]:!text-xs [&_[data-slot=textarea]]:!min-h-12 [&_[data-slot=textarea]]:!px-2 [&_[data-slot=textarea]]:!py-2 [&_[data-slot=textarea]]:!text-xs [&_[data-slot=select-trigger]]:!h-8 [&_[data-slot=select-trigger]]:!px-2 [&_[data-slot=select-trigger]]:!text-xs">
-            <TextInput source="titulo" label="Titulo" className="w-full" validate={required()} />
-            <ReferenceInput
-              source="tipo_operacion_id"
-              reference="crm/catalogos/tipos-operacion"
-              label="Tipo de operacion"
-            >
-              <SelectInput optionText="nombre" emptyText="Seleccionar" validate={required()} />
-            </ReferenceInput>
-            <ReferenceInput
-              source="tipo_propiedad_id"
-              reference="tipos-propiedad"
-              label="Tipo de propiedad"
-            >
-              <SelectInput optionText="nombre" emptyText="Seleccionar" validate={required()} />
-            </ReferenceInput>
-            <ReferenceInput
-              source="emprendimiento_id"
-              reference="emprendimientos"
-              label="Emprendimiento"
-            >
-              <SelectInput optionText="nombre" emptyText="Seleccionar" />
-            </ReferenceInput>
-            <TextInput
-              source="descripcion_estado"
-              label="Descripcion"
-              multiline
-              className="w-full"
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Target className="h-4 w-4" />
+            Confirmar oportunidad
+          </DialogTitle>
+          <DialogDescription className="text-[11px] sm:text-xs">
+            Ajusta los datos principales antes de confirmar.
+          </DialogDescription>
+        </DialogHeader>
+        <SimpleForm
+          className="w-full"
+          defaultValues={defaultValues}
+          key={oportunidadId}
+          onSubmit={handleSubmit}
+          toolbar={null}
+        >
+          <div className="space-y-3">
+            <AccionOportunidadHeader oportunidad={oportunidad} compact />
+            <SectionBaseTemplate
+              title="Confirmacion"
+              defaultOpen
+              main={
+                <div className="text-[11px] sm:text-xs">
+                  <AccionAceptarFields mantenimientoIds={mantenimientoIds} />
+                </div>
+              }
             />
-          </Card>
-        </div>
-      </SimpleForm>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(returnTo)}
+              disabled={saving}
+              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={saving}
+              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+            >
+              {saving ? "Confirmando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </SimpleForm>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const AccionAceptarFields = ({ mantenimientoIds }: { mantenimientoIds: Set<number> }) => {
+  const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
+  const resolvedTipoOperacionId = resolveNumericId(tipoOperacionValue);
+  const isMantenimiento = resolvedTipoOperacionId
+    ? mantenimientoIds.has(Number(resolvedTipoOperacionId))
+    : false;
+
+  const validatePropiedad = useMemo(
+    () => (value: unknown, allValues: Record<string, unknown>) => {
+      const tipoId = resolveNumericId(allValues?.tipo_operacion_id);
+      if (tipoId && mantenimientoIds.has(Number(tipoId))) {
+        return resolveNumericId(value) ? undefined : "Propiedad obligatoria";
+      }
+      return undefined;
+    },
+    [mantenimientoIds],
+  );
+  const propiedadValidators = useMemo(
+    () => (isMantenimiento ? [required(), validatePropiedad] : validatePropiedad),
+    [isMantenimiento, validatePropiedad],
+  );
+
+  return (
+    <div className="grid gap-2 md:grid-cols-12">
+      <FormText
+        source="titulo"
+        label="Titulo"
+        validate={required()}
+        widthClass="w-full md:col-span-6"
+      />
+      <ReferenceInput
+        source="tipo_operacion_id"
+        reference="crm/catalogos/tipos-operacion"
+        label="Tipo de operacion"
+      >
+        <SelectInput
+          optionText="nombre"
+          emptyText="Seleccionar"
+          validate={required()}
+          className="text-[11px] [&_[data-slot=select-trigger]]:h-7 [&_[data-slot=select-trigger]]:px-2 [&_[data-slot=select-trigger]]:text-[11px] [&_[data-slot=form-label]]:text-[10px]"
+        />
+      </ReferenceInput>
+      <FormReferenceAutocomplete
+        referenceProps={{
+          source: "emprendimiento_id",
+          reference: "emprendimientos",
+        }}
+        inputProps={{
+          optionText: "nombre",
+          label: "Emprendimiento",
+        }}
+        widthClass="w-full md:col-span-6"
+      />
+      <ReferenceInput
+        source="tipo_propiedad_id"
+        reference="tipos-propiedad"
+        label="Tipo de propiedad"
+      >
+        <SelectInput
+          optionText="nombre"
+          emptyText="Seleccionar"
+          validate={required()}
+          className="text-[11px] [&_[data-slot=select-trigger]]:h-7 [&_[data-slot=select-trigger]]:px-2 [&_[data-slot=select-trigger]]:text-[11px] [&_[data-slot=form-label]]:text-[10px]"
+        />
+      </ReferenceInput>
+      {isMantenimiento ? (
+        <FormReferenceAutocomplete
+          referenceProps={{
+            source: "propiedad_id",
+            reference: "propiedades",
+          }}
+          inputProps={{
+            optionText: "nombre",
+            label: "Propiedad",
+            validate: propiedadValidators,
+          }}
+          widthClass="w-full md:col-span-12"
+        />
+      ) : null}
+      <FormTextarea
+        source="descripcion_estado"
+        label="Descripcion"
+        validate={required()}
+        widthClass="w-full md:col-span-12"
+        className="[&_textarea]:min-h-[64px]"
+      />
     </div>
   );
 };

@@ -88,8 +88,9 @@ const CRM_RESOURCES = [
   "crm/crm-eventos",
   "dashboard-crm",
   "crm/contactos",
+  "crm/oportunidades",
 ] as const;
-const CRM_SETUP_RESOURCES = ["crm/oportunidades"] as const;
+const CRM_SETUP_RESOURCES = [] as const;
 const CRM_CUSTOM_LINKS: Array<{
   label: string;
   to: string;
@@ -116,6 +117,7 @@ const HIDDEN_RESOURCES = [
   "crm/catalogos/respuestas",
   "crm/chat",
   "crm/mensajes",
+  "crm/crm-oportunidades",
   "departamentos",
   "articulos",
   "tipos-solicitud",
@@ -314,18 +316,32 @@ export function AppSidebar() {
                   isOpen={crmOpen}
                   onToggle={() => setCrmOpen((open) => !open)}
                 >
-                  {CRM_TOP_CUSTOM_LINKS.map((link) => (
-                    <SidebarCustomMenuItem
-                      key={link.to}
-                      label={link.label}
-                      to={link.to}
-                      icon={link.icon}
+                  <SidebarCustomMenuItem
+                    key="/crm/chat"
+                    label="CRM Chat"
+                    to="/crm/chat"
+                    icon={MessageCircle}
+                    onClick={handleItemClick}
+                  />
+                  {crmResources.includes("crm/oportunidades") ? (
+                    <ResourceSubMenuItem
+                      key="crm/oportunidades"
+                      name="crm/oportunidades"
                       onClick={handleItemClick}
                     />
-                  ))}
-                  {crmResources.map((name) => (
-                    <ResourceSubMenuItem key={name} name={name} onClick={handleItemClick} />
-                  ))}
+                  ) : null}
+                  <SidebarCustomMenuItem
+                    key="/crm/panel"
+                    label="CRM Panel"
+                    to="/crm/panel"
+                    icon={LayoutGrid}
+                    onClick={handleItemClick}
+                  />
+                  {crmResources
+                    .filter((name) => name !== "crm/oportunidades")
+                    .map((name) => (
+                      <ResourceSubMenuItem key={name} name={name} onClick={handleItemClick} />
+                    ))}
                   <SidebarCustomMenuItem
                     label="Calculadora Financiera"
                     to="/calculadora-financiera"

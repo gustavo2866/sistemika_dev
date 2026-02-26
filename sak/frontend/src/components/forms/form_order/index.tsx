@@ -85,6 +85,7 @@ export {
   FormNumber,
   FormReferenceAutocomplete,
   FormSelect,
+  FormSelectFijo,
   FormText,
   FormTextarea,
   FormValue,

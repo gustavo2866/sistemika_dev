@@ -6,7 +6,14 @@ import { FilterButton } from "@/components/filter-form";
 import { List } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useDataProvider, useGetList, useListContext, useNotify, useRecordContext, useRefresh } from "ra-core";
+import {
+  useDataProvider,
+  useGetList,
+  useListContext,
+  useNotify,
+  useRecordContext,
+  useRefresh,
+} from "ra-core";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
@@ -23,15 +30,23 @@ import {
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import { CompactSoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
+import {
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Pencil, Target } from "lucide-react";
+import { CheckCircle2, Pencil, Target, Trash2, Workflow } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   CRM_OPORTUNIDAD_ESTADO_CHOICES,
   CRM_OPORTUNIDAD_ESTADO_BADGES,
 } from "./model";
+import { CRMOportunidadesDashboard } from "./dashboard";
 
 // === Filtros ===
 const LIST_FILTERS = buildListFilters(
@@ -148,6 +163,8 @@ const AccionesLista = () => (
   </div>
 );
 
+const TIPO_OPERACION_STORAGE_KEY = "crm-oportunidades:tipo-operacion";
+
 const TipoOperacionAlquilerDefault = () => {
   const { filterValues, setFilters } = useListContext<any>();
   const appliedRef = useRef(false);
@@ -166,16 +183,220 @@ const TipoOperacionAlquilerDefault = () => {
 
   useEffect(() => {
     if (appliedRef.current) return;
-    if (filterValues?.tipo_operacion_id) {
+    const currentValue = filterValues?.tipo_operacion_id;
+    if (currentValue) {
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem(TIPO_OPERACION_STORAGE_KEY, String(currentValue));
+        } catch {}
+      }
       appliedRef.current = true;
       return;
     }
-    if (!alquilerId) return;
-    setFilters({ ...filterValues, tipo_operacion_id: alquilerId }, {});
+    const storedValue =
+      typeof window !== "undefined"
+        ? (() => {
+            try {
+              return sessionStorage.getItem(TIPO_OPERACION_STORAGE_KEY) ?? undefined;
+            } catch {
+              return undefined;
+            }
+          })()
+        : undefined;
+    const defaultValue = storedValue ?? alquilerId;
+    if (!defaultValue) return;
+    setFilters({ ...filterValues, tipo_operacion_id: defaultValue }, {});
     appliedRef.current = true;
   }, [alquilerId, filterValues, setFilters]);
 
   return null;
+};
+
+const OportunidadesDashboardTop = () => {
+  const { filterValues, setFilters } = useListContext<any>();
+  const tipoOperacionId = filterValues?.tipo_operacion_id
+    ? String(filterValues.tipo_operacion_id)
+    : "";
+  const estadoValue = typeof filterValues?.estado === "string" ? filterValues.estado : "";
+  const estadoInRaw = filterValues?.estado__in as unknown;
+  const estadoInValues = useMemo(() => {
+    if (Array.isArray(estadoInRaw)) {
+      return estadoInRaw.map((value) => String(value));
+    }
+    if (typeof estadoInRaw === "string") {
+      return estadoInRaw.split(",").map((value) => value.trim()).filter(Boolean);
+    }
+    return [];
+  }, [estadoInRaw]);
+  const isEnProcesoFilter =
+    !estadoValue &&
+    estadoInValues.length > 0 &&
+    ["1-abierta", "2-visita", "3-cotiza"].every((estado) => estadoInValues.includes(estado));
+  const isCerradasFilter =
+    !estadoValue &&
+    estadoInValues.length > 0 &&
+    ["5-ganada", "6-perdida"].every((estado) => estadoInValues.includes(estado));
+
+  const { selectedCardId, selectedBucketKey } = useMemo(() => {
+    if (isEnProcesoFilter) {
+      return { selectedCardId: "en_proceso", selectedBucketKey: undefined };
+    }
+    if (isCerradasFilter) {
+      return { selectedCardId: "cerradas", selectedBucketKey: undefined };
+    }
+    switch (estadoValue) {
+      case "0-prospect":
+        return { selectedCardId: "prospect", selectedBucketKey: "prospect" };
+      case "1-abierta":
+        return { selectedCardId: "en_proceso", selectedBucketKey: "abierta" };
+      case "2-visita":
+        return { selectedCardId: "en_proceso", selectedBucketKey: "visita" };
+      case "3-cotiza":
+        return { selectedCardId: "en_proceso", selectedBucketKey: "cotiza" };
+      case "4-reserva":
+        return { selectedCardId: "reservas", selectedBucketKey: "reserva" };
+      case "5-ganada":
+        return { selectedCardId: "cerradas", selectedBucketKey: "ganada" };
+      case "6-perdida":
+        return { selectedCardId: "cerradas", selectedBucketKey: "perdida" };
+      default:
+        return { selectedCardId: undefined, selectedBucketKey: undefined };
+    }
+  }, [estadoValue, isEnProcesoFilter, isCerradasFilter]);
+
+  useEffect(() => {
+    if (!estadoValue) return;
+    if (!estadoInValues.length) return;
+    const next = { ...filterValues };
+    if ("estado__in" in next) {
+      delete next.estado__in;
+      setFilters(next, {});
+    }
+  }, [estadoValue, estadoInValues, filterValues, setFilters]);
+
+  const clearEstadoFilter = () => {
+    const next = { ...filterValues };
+    if ("estado" in next) {
+      delete next.estado;
+    }
+    if ("estado__in" in next) {
+      delete next.estado__in;
+    }
+    setFilters(next, {});
+  };
+
+  const applyEstadoFilter = (estado: string) => {
+    const next = { ...filterValues, estado };
+    if ("estado__in" in next) {
+      delete next.estado__in;
+    }
+    setFilters(next, {});
+  };
+
+  const applyEnProcesoFilter = () => {
+    const next = { ...filterValues };
+    if ("estado" in next) {
+      delete next.estado;
+    }
+    next.estado__in = ["1-abierta", "2-visita", "3-cotiza"];
+    setFilters(next, {});
+  };
+
+  const applyCerradasFilter = () => {
+    const next = { ...filterValues };
+    if ("estado" in next) {
+      delete next.estado;
+    }
+    next.estado__in = ["5-ganada", "6-perdida"];
+    setFilters(next, {});
+  };
+
+  const handleCardClick = (payload: { cardKey?: string }) => {
+    const { cardKey } = payload;
+    if (!cardKey) {
+      clearEstadoFilter();
+      return;
+    }
+    if (cardKey === "prospect") {
+      if (selectedCardId === cardKey) {
+        clearEstadoFilter();
+        return;
+      }
+      applyEstadoFilter("0-prospect");
+      return;
+    }
+    if (cardKey === "reservas") {
+      if (selectedCardId === cardKey) {
+        clearEstadoFilter();
+        return;
+      }
+      applyEstadoFilter("4-reserva");
+      return;
+    }
+    if (cardKey === "en_proceso") {
+      if (selectedCardId === cardKey) {
+        clearEstadoFilter();
+        return;
+      }
+      applyEnProcesoFilter();
+      return;
+    }
+    if (cardKey === "cerradas") {
+      if (selectedCardId === cardKey) {
+        clearEstadoFilter();
+        return;
+      }
+      applyCerradasFilter();
+    }
+  };
+
+  const handleBucketClick = (payload: { cardKey: string; bucketKey?: string }) => {
+    const { cardKey, bucketKey } = payload;
+    if (!bucketKey) {
+      clearEstadoFilter();
+      return;
+    }
+    if (cardKey === "en_proceso") {
+      const estadoMap: Record<string, string> = {
+        abierta: "1-abierta",
+        visita: "2-visita",
+        cotiza: "3-cotiza",
+      };
+      const estado = estadoMap[bucketKey];
+      if (estado) {
+        applyEstadoFilter(estado);
+      }
+      return;
+    }
+    if (cardKey === "prospect") {
+      applyEstadoFilter("0-prospect");
+      return;
+    }
+    if (cardKey === "reservas") {
+      applyEstadoFilter("4-reserva");
+      return;
+    }
+    if (cardKey === "cerradas") {
+      const estadoMap: Record<string, string> = {
+        ganada: "5-ganada",
+        perdida: "6-perdida",
+      };
+      const estado = estadoMap[bucketKey];
+      if (estado) {
+        applyEstadoFilter(estado);
+      }
+    }
+  };
+
+  return (
+    <CRMOportunidadesDashboard
+      tipoOperacionId={tipoOperacionId}
+      selectedCardId={selectedCardId}
+      selectedBucketKey={selectedBucketKey}
+      onCardClick={handleCardClick}
+      onBucketClick={handleBucketClick}
+    />
+  );
 };
 
 const ContactoTituloCell = () => (
@@ -366,10 +587,162 @@ export const CRMOportunidadPoListBody = ({
       <DescripcionCell />
     </ListColumn>
     <ListColumn label="Acciones" className="w-[70px]">
-      <FormOrderListRowActions />
+      <FormOrderListRowActions
+        showDelete={false}
+        extraMenuItems={
+          <>
+            <OportunidadEliminarMenuItem />
+            <OportunidadAceptarMenuItem />
+            <OportunidadCambioEstadoMenu />
+          </>
+        }
+      />
     </ListColumn>
   </ResponsiveDataTable>
 );
+
+const OportunidadEliminarMenuItem = () => {
+  const record = useRecordContext<any>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+  const estado = String(record?.estado ?? "");
+  const isProspect = estado === "0-prospect";
+
+  if (!record?.id || !isProspect) return null;
+
+  return (
+    <DropdownMenuItem
+      onSelect={(event) => {
+        event.stopPropagation();
+        const recordPayload = {
+          id: record.id,
+          contacto_id: record.contacto_id,
+          titulo: record.titulo,
+          descripcion_estado: record.descripcion_estado,
+          fecha_estado: record.fecha_estado,
+          created_at: record.created_at,
+        };
+        navigate(`/crm/oportunidades/${record.id}/accion_descartar`, {
+          state: { returnTo, record: recordPayload },
+        });
+      }}
+      onClick={(event) => event.stopPropagation()}
+      data-row-click="ignore"
+      className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+      variant="destructive"
+    >
+      <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+      Eliminar
+    </DropdownMenuItem>
+  );
+};
+
+const OportunidadAceptarMenuItem = () => {
+  const record = useRecordContext<any>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+  const estado = String(record?.estado ?? "");
+  const isProspect = estado === "0-prospect";
+
+  if (!record?.id || !isProspect) return null;
+
+  return (
+    <DropdownMenuItem
+      onSelect={(event) => {
+        event.stopPropagation();
+        navigate(`/crm/oportunidades/${record.id}/accion_aceptar`, {
+          state: { returnTo },
+        });
+      }}
+      onClick={(event) => event.stopPropagation()}
+      data-row-click="ignore"
+      className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+    >
+      <CheckCircle2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+      Aceptar
+    </DropdownMenuItem>
+  );
+};
+
+const OportunidadCambioEstadoMenu = () => {
+  const record = useRecordContext<any>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+  const estado = String(record?.estado ?? "");
+  const isClosed = estado === "5-ganada" || estado === "6-perdida";
+
+  if (!record?.id || isClosed) return null;
+
+  if (estado === "0-prospect") return null;
+
+  const goTo = (path: string) => {
+    navigate(path, { state: { returnTo } });
+  };
+  const canReservar = estado === "3-cotiza";
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        onClick={(event) => event.stopPropagation()}
+        className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+      >
+        <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+        Cambiar estado
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-28 sm:w-36">
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.stopPropagation();
+            goTo(`/crm/oportunidades/${record.id}/accion_agendar`);
+          }}
+          onClick={(event) => event.stopPropagation()}
+          data-row-click="ignore"
+          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+        >
+          Agendar
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.stopPropagation();
+            goTo(`/crm/oportunidades/${record.id}/accion_cotizar`);
+          }}
+          onClick={(event) => event.stopPropagation()}
+          data-row-click="ignore"
+          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+        >
+          Cotizar
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.stopPropagation();
+            if (!canReservar) return;
+            goTo(`/crm/oportunidades/${record.id}/accion_reservar`);
+          }}
+          onClick={(event) => event.stopPropagation()}
+          data-row-click="ignore"
+          disabled={!canReservar}
+          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+        >
+          Reservar
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.stopPropagation();
+            goTo(`/crm/oportunidades/${record.id}/accion_cerrar`);
+          }}
+          onClick={(event) => event.stopPropagation()}
+          data-row-click="ignore"
+          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+        >
+          Cerrar
+        </DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+};
 
 // === Listado ===
 export const CRMOportunidadPoList = () => (
@@ -388,6 +761,7 @@ export const CRMOportunidadPoList = () => (
     pagination={<ListPaginator />}
     sort={{ field: "created_at", order: "DESC" }}
     filterDefaultValues={{ activo: true }}
+    topContent={<OportunidadesDashboardTop />}
   >
     <TipoOperacionAlquilerDefault />
     <CRMOportunidadPoListBody />

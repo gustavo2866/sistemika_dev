@@ -17,7 +17,7 @@ import {
   Target,
   XCircle,
 } from "lucide-react";
-import { useListContext, useGetIdentity, useGetList } from "ra-core";
+import { useListContext, useGetIdentity, useGetList, useDataProvider } from "ra-core";
 import type { CRMOportunidad } from "../crm/crm-oportunidades/model";
 import { CRM_OPORTUNIDAD_ESTADOS } from "../crm/crm-oportunidades/model";
 import { CRMOportunidadKanbanCard } from "./crm-panel-card";
@@ -197,6 +197,8 @@ const ListActions = () => (
 const OportunidadListContent = () => {
   const { data: oportunidades = [], isLoading, filterValues, setFilters } =
     useListContext<CRMOportunidad>();
+  const { identity } = useGetIdentity();
+  const dataProvider = useDataProvider();
   const navigate = useNavigate();
   const appliedDefaultTipoRef = useRef(false);
   const { data: tiposOperacion } = useGetList("crm/catalogos/tipos-operacion", {
@@ -286,6 +288,22 @@ const OportunidadListContent = () => {
     [navigate]
   );
 
+  const handleItemMove = useCallback(
+    async (oportunidad: CRMOportunidad, targetBucket: BucketKey) => {
+      const descripcion = `Cambio de estado a ${getBucketLabel(targetBucket)}`;
+      await dataProvider.create(`crm/oportunidades/${oportunidad.id}/cambiar-estado`, {
+        data: {
+          nuevo_estado: targetBucket,
+          descripcion,
+          usuario_id: identity?.id ?? 1,
+          fecha_estado: new Date().toISOString(),
+        },
+      });
+      return { __skipUpdate: true };
+    },
+    [dataProvider, identity?.id],
+  );
+
   // Definición de buckets
   const buckets = useMemo(() => getBuckets(), []);
 
@@ -298,7 +316,7 @@ const OportunidadListContent = () => {
           getBucketKey={calculateOportunidadBucketKey}
           maxBucketsPerPage={4}
           bucketGridClassName="gap-3 md:gap-4 xl:gap-4"
-          onItemMove={prepareMoveOportunidadPayload}
+          onItemMove={handleItemMove}
           resource="crm/oportunidades"
           getMoveSuccessMessage={(oportunidad, bucket) => `Oportunidad movida a ${getBucketLabel(bucket)}`}
           initialCollapsedAll={true}

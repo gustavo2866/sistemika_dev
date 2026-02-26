@@ -1,19 +1,35 @@
 "use client";
 
 import { Target } from "lucide-react";
-import { required, useNotify, useRecordContext, useRefresh } from "ra-core";
-import { Edit } from "@/components/edit";
-import { ResourceTitle } from "@/components/resource-title";
-import { SimpleForm, FormToolbar } from "@/components/simple-form";
-import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
-import { TextInput } from "@/components/text-input";
-import { SaveButton } from "@/components/form";
-import { CancelButton } from "@/components/cancel-button";
-import { Card } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import {
+  required,
+  useDataProvider,
+  useGetIdentity,
+  useGetOne,
+  useNotify,
+  useRefresh,
+} from "ra-core";
+import { useWatch } from "react-hook-form";
+import { SimpleForm } from "@/components/simple-form";
+import {
+  FormReferenceAutocomplete,
+  FormSelect,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { CRMOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
@@ -22,80 +38,211 @@ const normalizeId = (value: unknown) => {
 };
 
 export const CRMOportunidadAccionCerrar = () => {
+  const { id } = useParams();
+  const oportunidadId = Number(id);
+  const dataProvider = useDataProvider();
   const notify = useNotify();
   const refresh = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
+  const { identity } = useGetIdentity();
   const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
 
+  const { data: oportunidad, isLoading } = useGetOne(
+    "crm/oportunidades",
+    { id: oportunidadId },
+    { enabled: Number.isFinite(oportunidadId) },
+  );
+
+  const defaultValues = useMemo(
+    () => ({
+      resultado: "ganada",
+      motivo_perdida_id: oportunidad?.motivo_perdida_id ?? "",
+      descripcion_estado: oportunidad?.descripcion_estado ?? "",
+    }),
+    [oportunidad],
+  );
+
+  if (!Number.isFinite(oportunidadId) || isLoading) {
+    return null;
+  }
+
   return (
-    <Edit
-      resource="crm/oportunidades"
-      redirect={false}
-      mutationMode="pessimistic"
-      actions={false}
-      transform={(data) => ({
-        ...data,
-        estado: "6-perdida",
-        fecha_estado: new Date().toISOString(),
-        perder_motivo_id: normalizeId((data as any).perder_motivo_id),
-        perder_nota: (data as any).perder_nota?.trim() || null,
-      })}
-      mutationOptions={{
-        onSuccess: () => {
-          notify("Oportunidad cerrada como perdida", { type: "success" });
-          refresh();
-          navigate(returnTo);
-        },
-      }}
-      title={<ResourceTitle icon={Target} text="Cerrar oportunidad" />}
-    >
-      <AccionCerrarContent returnTo={returnTo} />
-    </Edit>
+    <AccionCerrarContent
+      returnTo={returnTo}
+      oportunidadId={oportunidadId}
+      oportunidad={oportunidad ?? null}
+      defaultValues={defaultValues}
+      dataProvider={dataProvider}
+      notify={notify}
+      refresh={refresh}
+      navigate={navigate}
+      usuarioId={identity?.id ?? 1}
+    />
   );
 };
 
 export default CRMOportunidadAccionCerrar;
 
-const AccionCerrarContent = ({ returnTo }: { returnTo: string }) => {
-  const navigate = useNavigate();
-  const record = useRecordContext<CRMOportunidad>();
+const AccionCerrarContent = ({
+  returnTo,
+  oportunidadId,
+  oportunidad,
+  defaultValues,
+  dataProvider,
+  notify,
+  refresh,
+  navigate,
+  usuarioId,
+}: {
+  returnTo: string;
+  oportunidadId: number;
+  oportunidad: CRMOportunidad | null;
+  defaultValues: Record<string, unknown>;
+  dataProvider: ReturnType<typeof useDataProvider>;
+  notify: ReturnType<typeof useNotify>;
+  refresh: ReturnType<typeof useRefresh>;
+  navigate: ReturnType<typeof useNavigate>;
+  usuarioId: number;
+}) => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (values: Record<string, unknown>) => {
+    if (!oportunidadId) return;
+    const descripcion = String(values.descripcion_estado ?? "").trim();
+    const motivoPerdidaId = normalizeId(values.motivo_perdida_id);
+    const resultado = String(values.resultado ?? "perdida");
+    const nuevoEstado = resultado === "ganada" ? "5-ganada" : "6-perdida";
+    if (!descripcion) {
+      notify("La descripcion es obligatoria", { type: "warning" });
+      return;
+    }
+    if (nuevoEstado === "6-perdida" && !motivoPerdidaId) {
+      notify("El motivo de perdida es obligatorio", { type: "warning" });
+      return;
+    }
+    try {
+      setSaving(true);
+      await dataProvider.create(`crm/oportunidades/${oportunidadId}/cambiar-estado`, {
+        data: {
+          nuevo_estado: nuevoEstado,
+          descripcion,
+          usuario_id: usuarioId,
+          fecha_estado: new Date().toISOString(),
+          ...(nuevoEstado === "6-perdida" ? { motivo_perdida_id: motivoPerdidaId } : {}),
+        },
+      });
+      notify(
+        nuevoEstado === "6-perdida"
+          ? "Oportunidad cerrada como perdida"
+          : "Oportunidad marcada como ganada",
+        { type: "success" },
+      );
+      refresh();
+      navigate(returnTo);
+    } catch (error) {
+      console.error(error);
+      notify("No se pudo cerrar la oportunidad", { type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="w-full max-w-3xl mr-auto ml-0">
-      <SimpleForm
-        className="w-full max-w-none"
-        toolbar={
-          <FormToolbar className="mt-4 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm md:flex md:items-center md:justify-end md:py-3">
-            <div className="flex justify-end gap-2">
-              <CancelButton onClick={() => navigate(returnTo)} />
-              <SaveButton label="Cerrar oportunidad" variant="destructive" />
-            </div>
-          </FormToolbar>
-        }
+    <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
+      <DialogContent
+        className="sm:max-w-sm"
+        overlayClassName="!bg-transparent !backdrop-blur-0"
       >
-        <div className="space-y-4">
-          <AccionOportunidadHeader oportunidad={record} />
-          <Card className="flex w-full flex-col gap-5 rounded-[30px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-5 shadow-lg">
-            <ReferenceInput
-              source="perder_motivo_id"
-              reference="crm/catalogos/motivos-perdida"
-              label="Motivo"
-            >
-              <SelectInput optionText="nombre" emptyText="Seleccionar" validate={required()} />
-            </ReferenceInput>
-            <TextInput
-              source="perder_nota"
-              label="Notas"
-              multiline
-              className="w-full"
-              placeholder="Informacion adicional (opcional)"
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Target className="h-4 w-4" />
+            Cerrar oportunidad
+          </DialogTitle>
+          <DialogDescription className="text-[11px] sm:text-xs">
+            Completa el motivo y notas de cierre.
+          </DialogDescription>
+        </DialogHeader>
+        <SimpleForm
+          className="w-full"
+          key={oportunidadId}
+          defaultValues={defaultValues}
+          onSubmit={handleSubmit}
+          toolbar={null}
+        >
+          <div className="space-y-3">
+            <AccionOportunidadHeader oportunidad={oportunidad} compact />
+            <SectionBaseTemplate
+              title="Cierre"
+              defaultOpen
+              main={<AccionCerrarFields />}
             />
-          </Card>
-        </div>
-      </SimpleForm>
-    </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate(returnTo)}
+              disabled={saving}
+              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={saving}
+              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+            >
+              {saving ? "Cerrando..." : "Cerrar"}
+            </Button>
+          </DialogFooter>
+        </SimpleForm>
+      </DialogContent>
+    </Dialog>
   );
 };
 
+const AccionCerrarFields = () => {
+  const resultadoValue = useWatch({ name: "resultado" }) as string | undefined;
+  const isPerdida = (resultadoValue ?? "perdida") === "perdida";
+
+  return (
+    <div className="grid gap-2 md:grid-cols-12">
+      <FormSelect
+        source="resultado"
+        label="Resultado"
+        optionText="name"
+        optionValue="id"
+        choices={[
+          { id: "ganada", name: "Ganada" },
+          { id: "perdida", name: "Perdida" },
+        ]}
+        validate={required()}
+        widthClass="w-full md:col-span-6"
+      />
+      {isPerdida ? (
+        <FormReferenceAutocomplete
+          referenceProps={{
+            source: "motivo_perdida_id",
+            reference: "crm/catalogos/motivos-perdida",
+          }}
+          inputProps={{
+            optionText: "nombre",
+            label: "Motivo",
+            validate: required(),
+          }}
+          widthClass="w-full md:col-span-6"
+        />
+      ) : null}
+      <FormTextarea
+        source="descripcion_estado"
+        label="Notas"
+        validate={required()}
+        widthClass="w-full md:col-span-12"
+        className="[&_textarea]:min-h-[64px]"
+      />
+    </div>
+  );
+};
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Target } from "lucide-react";
+import { Bookmark } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   required,
@@ -66,7 +66,7 @@ const resolveNumericId = (value: unknown): number | undefined => {
   return undefined;
 };
 
-export const CRMOportunidadAccionCotizar = () => {
+export const CRMOportunidadAccionReservar = () => {
   const { id } = useParams();
   const oportunidadId = Number(id);
   const dataProvider = useDataProvider();
@@ -111,7 +111,7 @@ export const CRMOportunidadAccionCotizar = () => {
   }
 
   return (
-    <AccionCotizarContent
+    <AccionReservarContent
       returnTo={returnTo}
       oportunidadId={oportunidadId}
       oportunidad={oportunidad ?? null}
@@ -126,9 +126,9 @@ export const CRMOportunidadAccionCotizar = () => {
   );
 };
 
-export default CRMOportunidadAccionCotizar;
+export default CRMOportunidadAccionReservar;
 
-const AccionCotizarContent = ({
+const AccionReservarContent = ({
   returnTo,
   oportunidadId,
   oportunidad,
@@ -180,7 +180,7 @@ const AccionCotizarContent = ({
 
       await dataProvider.create(`crm/oportunidades/${oportunidadId}/cambiar-estado`, {
         data: {
-          nuevo_estado: "3-cotiza",
+          nuevo_estado: "4-reserva",
           descripcion,
           usuario_id: usuarioId,
           fecha_estado: new Date().toISOString(),
@@ -190,12 +190,12 @@ const AccionCotizarContent = ({
         },
       });
 
-      notify("Cotizacion registrada exitosamente", { type: "success" });
+      notify("Reserva registrada exitosamente", { type: "success" });
       refresh();
       navigate(returnTo, { replace: true });
     } catch (error) {
       console.error(error);
-      notify("No se pudo registrar la cotizacion", { type: "error" });
+      notify("No se pudo registrar la reserva", { type: "error" });
     } finally {
       setSaving(false);
     }
@@ -209,11 +209,11 @@ const AccionCotizarContent = ({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Target className="h-4 w-4" />
-            Cotizar oportunidad
+            <Bookmark className="h-4 w-4" />
+            Reservar oportunidad
           </DialogTitle>
           <DialogDescription className="text-[11px] sm:text-xs">
-            Completa los datos de la cotizacion.
+            Completa los datos de la reserva.
           </DialogDescription>
         </DialogHeader>
         <SimpleForm
@@ -226,7 +226,7 @@ const AccionCotizarContent = ({
           <div className="space-y-3">
             <AccionOportunidadHeader oportunidad={oportunidad} compact />
             <SectionBaseTemplate
-              title="Cotizacion"
+              title="Reserva"
               defaultOpen
               main={
                 <div className="grid gap-2 md:grid-cols-12">
@@ -286,6 +286,7 @@ const AccionCotizarContent = ({
                     <FormSelect
                       optionText="nombre"
                       emptyText="Sin asignar"
+                      validate={required()}
                       widthClass="w-full"
                       triggerProps={{ className: "w-full min-w-0" }}
                     />
@@ -296,7 +297,7 @@ const AccionCotizarContent = ({
                     validate={required()}
                     widthClass="w-full md:col-span-12"
                     className="[&_textarea]:min-h-[64px]"
-                    placeholder="Notas adicionales para la cotizacion"
+                    placeholder="Notas adicionales para la reserva"
                   />
                   <FormTextarea
                     source="forma_pago_descripcion"

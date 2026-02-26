@@ -71,6 +71,19 @@ class CRMOportunidadService:
         oportunidad.descripcion_estado = descripcion
         oportunidad.fecha_estado = self._parse_fecha(fecha_estado)
 
+        if nuevo_estado in (
+            EstadoOportunidad.ABIERTA.value,
+            EstadoOportunidad.VISITA.value,
+            EstadoOportunidad.COTIZA.value,
+            EstadoOportunidad.RESERVA.value,
+        ):
+            oportunidad.activo = True
+        elif nuevo_estado in (
+            EstadoOportunidad.GANADA.value,
+            EstadoOportunidad.PERDIDA.value,
+        ):
+            oportunidad.activo = False
+
         if monto is not None:
             oportunidad.monto = monto
         if moneda_id is not None:
@@ -171,7 +184,7 @@ class CRMOportunidadService:
             )
             session.add(log)
 
-def eliminar_oportunidad_y_relaciones(self, session: Session, oportunidad_id: int) -> None:
+    def eliminar_oportunidad_y_relaciones(self, session: Session, oportunidad_id: int) -> None:
         oportunidad = session.get(CRMOportunidad, oportunidad_id)
         if not oportunidad:
             raise ValueError("Oportunidad no encontrada")
