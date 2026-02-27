@@ -18,9 +18,13 @@ import {
 } from "@/components/forms/form_order";
 import { List } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
+import { Button } from "@/components/ui/button";
 
 import { FormConfirmar } from "./form_confirmar";
 import { ORDER_STATUS_BADGES } from "./model";
+import { ArrowLeft } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 
 // === Filtros ===
 const LIST_FILTERS = buildListFilters(
@@ -105,8 +109,22 @@ const LIST_FILTERS = buildListFilters(
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 // Acciones de toolbar del listado de ordenes.
-const AccionesListaOrdenes = () => (
-  <div className="flex items-center gap-2">
+const AccionesListaOrdenes = ({ returnTo }: { returnTo?: string | null }) => {
+  const navigate = useNavigate();
+
+  return (
+    <div className="flex items-center gap-2">
+      {returnTo ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className={ACTION_BUTTON_CLASS}
+          onClick={() => navigate(returnTo)}
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Volver
+        </Button>
+      ) : null}
     <FilterButton
       filters={LIST_FILTERS}
       size="sm"
@@ -115,7 +133,8 @@ const AccionesListaOrdenes = () => (
     <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
-);
+  );
+};
 
 // === Listado ===
 // Listado principal de ordenes de compra.
@@ -126,12 +145,14 @@ const ListaOrdenes = () => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "solicitante_id",
   });
+  const location = useLocation();
+  const returnTo = getReturnToFromLocation(location);
 
   return (
     <List
       title="Ordenes"
       filters={LIST_FILTERS}
-      actions={<AccionesListaOrdenes />}
+      actions={<AccionesListaOrdenes returnTo={returnTo} />}
       debounce={300}
       perPage={10}
       containerClassName="max-w-[900px] w-full mr-auto"
@@ -147,16 +168,22 @@ const ListaOrdenes = () => {
 type PoOrderListBodyProps = {
   identityId?: number | string;
   compact?: boolean;
+  showBulkActions?: boolean;
 };
 
-export const PoOrderListBody = ({ identityId, compact = false }: PoOrderListBodyProps) => (
+export const PoOrderListBody = ({
+  identityId,
+  compact = false,
+  showBulkActions = true,
+}: PoOrderListBodyProps) => (
   <>
     {identityId ? (
       <IdentityFilterSync identityId={identityId} source="solicitante_id" />
     ) : null}
     <ResponsiveDataTable
       rowClick="edit"
-      bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
+      bulkActionsToolbar={showBulkActions ? <FormOrderBulkActionsToolbar /> : undefined}
+      bulkActionButtons={showBulkActions ? undefined : false}
       compact={compact}
       mobileConfig={{
         primaryField: "titulo",

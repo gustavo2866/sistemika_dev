@@ -121,7 +121,7 @@ export const CRMOportunidadAccionCotizar = () => {
       notify={notify}
       refresh={refresh}
       navigate={navigate}
-      usuarioId={identity?.id ?? 1}
+      usuarioId={Number(identity?.id) || 1}
     />
   );
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { ListBase, required, useGetIdentity, useGetList, useGetOne, useRecordContext } from "ra-core";
+import { ListBase, required, useGetIdentity, useGetList, useGetOne, useListContext, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
@@ -517,15 +517,21 @@ const OrdenesSection = () => {
     const basePath = "/po-orders";
     const params = new URLSearchParams();
     appendFilterParam(params, buildOportunidadFilter(oportunidadId));
+    params.set("returnTo", `${location.pathname}${location.search}`);
     return `${basePath}?${params.toString()}`;
-  }, [oportunidadId]);
+  }, [location.pathname, location.search, oportunidadId]);
+
+  const defaultFilters = useMemo(
+    () => ({ oportunidad_id: oportunidadId }),
+    [oportunidadId],
+  );
 
   return (
     <ListBase
       resource="po-orders"
-      perPage={10}
+      perPage={5}
       sort={{ field: "id", order: "DESC" }}
-      filterDefaultValues={{ oportunidad_id: oportunidadId }}
+      filterDefaultValues={defaultFilters}
       disableSyncWithLocation
       storeKey={`po-orders-oportunidad-${oportunidadId}`}
     >
@@ -533,6 +539,8 @@ const OrdenesSection = () => {
         title="Ordenes"
         defaultOpen={false}
         persistKey={`crm-oportunidades-ordenes-${oportunidadId}`}
+        headerSummary={(isOpen) => (isOpen ? <OrdenesHeaderSummary /> : null)}
+        headerSummaryClassName="text-[9px] text-muted-foreground"
         actions={
           <DropdownMenuItem
             onSelect={(event) => {
@@ -547,20 +555,70 @@ const OrdenesSection = () => {
         }
         main={
           <div className="flex flex-col gap-2">
-            <PoOrderListBody compact />
-            <div className="flex items-center justify-end text-[9px] text-muted-foreground">
-              <Link
-                to={listTo}
-                className="font-medium text-primary hover:underline"
-                onClick={(event) => event.stopPropagation()}
-              >
-                Mostrar todas
-              </Link>
-            </div>
+            <PoOrderListBody compact showBulkActions={false} />
+            <OrdenesFooter listTo={listTo} />
           </div>
         }
       />
     </ListBase>
+  );
+};
+
+const OrdenesHeaderSummary = () => {
+  const { total, isLoading, isFetching } = useListContext();
+  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
+  const label = isLoading || isFetching ? "..." : resolvedTotal ?? "-";
+
+  return <span>Ordenes: {label}</span>;
+};
+
+const OrdenesFooter = ({ listTo }: { listTo: string }) => {
+  const { page, perPage, total, setPage } = useListContext();
+  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
+  const totalPages =
+    resolvedTotal != null && perPage > 0 ? Math.max(1, Math.ceil(resolvedTotal / perPage)) : 1;
+  const canPrev = page > 1;
+  const canNext = resolvedTotal != null ? page < totalPages : false;
+
+  return (
+    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="px-1 hover:text-foreground disabled:opacity-40"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (canPrev) setPage(page - 1);
+          }}
+          disabled={!canPrev}
+          aria-label="Pagina anterior"
+        >
+          &lt;&lt;
+        </button>
+        <span>
+          pag {page}/{totalPages}
+        </span>
+        <button
+          type="button"
+          className="px-1 hover:text-foreground disabled:opacity-40"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (canNext) setPage(page + 1);
+          }}
+          disabled={!canNext}
+          aria-label="Pagina siguiente"
+        >
+          &gt;&gt;
+        </button>
+      </div>
+      <Link
+        to={listTo}
+        className="font-medium text-primary hover:underline"
+        onClick={(event) => event.stopPropagation()}
+      >
+        Mostrar todas
+      </Link>
+    </div>
   );
 };
 
