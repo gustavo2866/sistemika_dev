@@ -35,6 +35,7 @@ import {
   Factory,
   HandCoins,
   MessageCircle,
+  Phone,
   Settings,
   ClipboardList,
 } from "lucide-react";
@@ -257,7 +258,13 @@ import {
   CRMEventoEdit,
   CRMEventoShow,
 } from "@/app/resources/crm/crm-eventos";
-import { CRMChatList, CRMChatShow } from "@/app/resources/crm-chat";
+import {
+  CRMCelularList,
+  CRMCelularCreate,
+  CRMCelularEdit,
+  CRMCelularShow,
+} from "@/app/resources/crm/crm-celulares";
+import { CRMChatList, CRMChatShow } from "@/app/resources/crm/crm-chat";
 import {
   CRMMensajeList,
   CRMMensajeCreate,
@@ -687,6 +694,16 @@ const AdminApp = () => {
         options={{ label: "CRM · Contactos" }}
       />
       <Resource
+        name="crm/celulares"
+        list={CRMCelularList}
+        create={CRMCelularCreate}
+        edit={CRMCelularEdit}
+        show={CRMCelularShow}
+        recordRepresentation="numero_celular"
+        icon={Phone}
+        options={{ label: "CRM · Celulares" }}
+      />
+      <Resource
         name="crm/oportunidades"
         list={CRMOportunidadList}
         create={CRMOportunidadCreate}
@@ -761,6 +778,3 @@ const AdminApp = () => {
 };
 
 export default AdminApp;
-
-
-

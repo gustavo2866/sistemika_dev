@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from .tarea import Tarea
     from .departamento import Departamento
     from .centro_costo import CentroCosto
+    from .crm.celular import CRMCelular
 
 class User(Base, table=True):
     """Modelo para usuarios del sistema"""
@@ -30,11 +31,13 @@ class User(Base, table=True):
     pais_id: Optional[int] = Field(default=None, foreign_key="paises.id", description="ID del país")
     departamento_id: Optional[int] = Field(default=None, foreign_key="departamentos.id", description="ID del departamento")
     centro_costo_id: Optional[int] = Field(default=None, foreign_key="centros_costo.id", description="ID del centro de costo")
+    celular_id: Optional[int] = Field(default=None, foreign_key="crm_celulares.id", description="ID del celular asignado para WhatsApp")
     
     # Relaciones
     pais: Optional["Paises"] = Relationship(back_populates="users")
     departamento: Optional["Departamento"] = Relationship(back_populates="usuarios")
     centro_costo: Optional["CentroCosto"] = Relationship(back_populates="usuarios")
+    celular: Optional["CRMCelular"] = Relationship()
     
     def __str__(self) -> str:
         return f"User(id={self.id}, nombre='{self.nombre}', email='{self.email}')"

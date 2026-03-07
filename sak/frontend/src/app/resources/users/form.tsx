@@ -74,6 +74,19 @@ export const UserForm = () => (
                     />
                   </ReferenceInput>
                 </CompactFormField>
+                <CompactFormField label="Celular CRM">
+                  <ReferenceInput
+                    source="celular_id"
+                    reference="crm/celulares"
+                  >
+                    <CompactSelectInput
+                      optionText="numero_celular"
+                      emptyText="Seleccionar celular"
+                      className="w-full"
+                      label={false}
+                    />
+                  </ReferenceInput>
+                </CompactFormField>
               </CompactFormGrid>
             </CompactFormSection>
           ),

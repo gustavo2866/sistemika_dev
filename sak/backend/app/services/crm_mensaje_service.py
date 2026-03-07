@@ -558,9 +558,23 @@ class CRMMensajeService:
         if not contacto_referencia:
             raise ValueError("No se encontro un telefono para enviar el mensaje")
 
-        celular = session.exec(
-            select(CRMCelular).where(CRMCelular.activo == True).limit(1)  # noqa: E712
-        ).first()
+        # Buscar celular asignado al usuario responsable
+        celular = None
+        
+        # Obtener el usuario responsable y su celular asignado
+        from app.models.user import User
+        usuario = session.get(User, responsable_id)
+        if usuario and usuario.celular_id:
+            user_celular = session.get(CRMCelular, usuario.celular_id)
+            if user_celular and user_celular.activo:
+                celular = user_celular
+        
+        # Si no hay celular del usuario o está inactivo, usar cualquier celular activo
+        if not celular:
+            celular = session.exec(
+                select(CRMCelular).where(CRMCelular.activo == True).limit(1)  # noqa: E712
+            ).first()
+        
         if not celular:
             raise ValueError("No hay celular (canal WhatsApp) activo configurado")
 

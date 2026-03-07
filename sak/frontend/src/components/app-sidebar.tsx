@@ -90,7 +90,7 @@ const CRM_RESOURCES = [
   "crm/contactos",
   "crm/oportunidades",
 ] as const;
-const CRM_SETUP_RESOURCES = [] as const;
+const CRM_SETUP_RESOURCES = ["crm/celulares"] as const;
 const CRM_CUSTOM_LINKS: Array<{
   label: string;
   to: string;

@@ -61,16 +61,29 @@ class MetaWebhookService:
     def _ensure_crm_celular(self, meta_celular_id: str, numero_celular: str) -> CRMCelular:
         """
         Asegura que exista el CRMCelular.
-        Lo crea automáticamente si no existe.
+        Busca por meta_celular_id primero, luego por numero_celular para evitar duplicados.
         """
-        # Buscar por meta_celular_id
+        # 1. Buscar por meta_celular_id (exacto)
         stmt = select(CRMCelular).where(CRMCelular.meta_celular_id == meta_celular_id)
         celular = self.session.exec(stmt).first()
         
         if celular:
             return celular
 
-        # No existe, crear automáticamente
+        # 2. Buscar por numero_celular (fallback anti-duplicados)
+        stmt_numero = select(CRMCelular).where(CRMCelular.numero_celular == numero_celular)
+        celular_existente = self.session.exec(stmt_numero).first()
+        
+        if celular_existente:
+            # Actualizar meta_celular_id del registro existente
+            celular_existente.meta_celular_id = meta_celular_id
+            self.session.add(celular_existente)
+            self.session.commit()
+            self.session.refresh(celular_existente)
+            logger.info(f"CRMCelular actualizado: {celular_existente.id} - nuevo meta_id: {meta_celular_id}")
+            return celular_existente
+
+        # 3. No existe, crear automáticamente
         celular = CRMCelular(
             meta_celular_id=meta_celular_id,
             numero_celular=numero_celular,

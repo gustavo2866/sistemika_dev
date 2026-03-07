@@ -273,9 +273,20 @@ async def responder_mensaje_whatsapp(
     session.commit()
     session.refresh(mensaje_original)
     
-    # 5. Obtener celular activo (primer celular activo)
-    stmt = select(CRMCelular).where(CRMCelular.activo == True).limit(1)
-    celular = session.exec(stmt).first()
+    # 5. Obtener celular para respuesta (priorizar el del mensaje original)
+    celular = None
+    
+    # Intentar usar el mismo celular del mensaje original
+    if mensaje_original.celular_id:
+        celular = session.get(CRMCelular, mensaje_original.celular_id)
+        if celular and not celular.activo:
+            celular = None  # Fallback si el celular original está inactivo
+    
+    # Si no hay celular del mensaje original, buscar uno activo
+    if not celular:
+        stmt = select(CRMCelular).where(CRMCelular.activo == True).limit(1)
+        celular = session.exec(stmt).first()
+    
     if not celular:
         raise HTTPException(
             status_code=404,
