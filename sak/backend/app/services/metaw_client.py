@@ -51,9 +51,7 @@ class MetaWClient:
             "empresa_id": empresa_id,
             "celular_id": celular_id,
             "telefono_destino": telefono_destino,
-            "texto": texto,
-            "template_fallback_name": template_fallback_name,
-            "template_fallback_language": template_fallback_language
+            "texto": texto
         }
         
         if nombre_contacto:
