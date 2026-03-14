@@ -55,6 +55,7 @@ import {
 
 const CONSTRUCTORA_RESOURCES = [
   "proyectos",
+  "proy-fases",
   "solicitudes",
   "recepciones",
   "dashboard-proyectos",
@@ -111,7 +112,6 @@ const CRM_CATALOG_RESOURCES = [
   "crm/catalogos/motivos-evento",
   "monedas",
   "crm/catalogos/monedas",
-  "crm/cotizaciones",
 ] as const;
 const HIDDEN_RESOURCES = [
   "crm/catalogos/respuestas",

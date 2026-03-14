@@ -29,12 +29,11 @@ import {
 } from "@/components/ui/dialog";
 import { useLocation, useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
-import { ActividadesPanel } from "../crm-actividades/Panel";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   formatEstadoOportunidad,
   type CRMOportunidadEstado,
-} from "../crm/crm-oportunidades/model";
+} from "../crm-oportunidades/model";
 
 const ensureReplySubject = (subject?: string | null) => {
   if (!subject) return "RE:";
@@ -66,7 +65,6 @@ const CRMMensajeMinimalView = () => {
   const [replyContent, setReplyContent] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
   const [contactoNombre, setContactoNombre] = useState("");
-  const [actividadesReload, setActividadesReload] = useState(0);
   const [cameFromAction, setCameFromAction] = useState(false);
 
   useEffect(() => {
@@ -184,7 +182,6 @@ const CRMMensajeMinimalView = () => {
       setReplyContent("");
       setContactoNombre("");
       refresh();
-      setActividadesReload((prev) => prev + 1);
     } catch (error: any) {
       notify(error?.message ?? "No se pudo guardar la respuesta", { type: "warning" });
       setReplyLoading(false);
@@ -195,8 +192,8 @@ const CRMMensajeMinimalView = () => {
 
   return (
     <>
-      <div className="mr-auto flex w-full max-w-6xl flex-col gap-6 rounded-[32px] border border-border/60 bg-background/80 p-4 shadow-lg backdrop-blur lg:flex-row lg:items-stretch">
-        <Card className="flex w-full flex-col gap-6 rounded-[28px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-8 shadow-xl lg:basis-[64%] lg:self-stretch">
+      <div className="mr-auto flex w-full max-w-6xl flex-col gap-6 rounded-[32px] border border-border/60 bg-background/80 p-4 shadow-lg backdrop-blur">
+        <Card className="flex w-full flex-col gap-6 rounded-[28px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-8 shadow-xl">
           <div className="flex flex-col gap-2 border-b border-border/30 pb-2 lg:flex-row lg:items-center">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Seccion</p>
@@ -310,28 +307,6 @@ const CRMMensajeMinimalView = () => {
             >
               Cancelar
             </Button>
-          </div>
-        </Card>
-        <Card className="flex w-full flex-col gap-4 rounded-[28px] border border-border/40 bg-gradient-to-b from-background to-muted/10 p-6 shadow-xl lg:basis-[36%] lg:self-stretch">
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-              Acciones pendientes
-            </p>
-            <h3 className="text-xl font-semibold text-foreground">Actividades</h3>
-          </div>
-          <div className="flex-1">
-            <ActividadesPanel
-              mensajeId={record.id}
-              oportunidadId={record.oportunidad_id ?? undefined}
-              contactoId={record.contacto_id ?? undefined}
-              contactoNombre={record.contacto?.nombre_completo ?? undefined}
-              asuntoMensaje={record.asunto ?? undefined}
-              onActividadCreated={() => {
-                refresh();
-                setActividadesReload((prev) => prev + 1);
-              }}
-              reloadKey={actividadesReload}
-            />
           </div>
         </Card>
       </div>

@@ -47,6 +47,7 @@ from app.routers.tipo_actualizacion_router import tipo_actualizacion_router
 from app.routers.centro_costo_router import centro_costo_router
 from app.routers.propietario_router import propietario_router
 from app.routers.proyecto_router import proyecto_router
+from app.routers.proy_fase_router import proy_fase_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
 
@@ -204,6 +205,7 @@ app.include_router(po_order_detail_router)
 app.include_router(po_order_status_router)
 app.include_router(tax_profile_router)
 app.include_router(proyecto_router)
+app.include_router(proy_fase_router)
 app.include_router(nomina_router)
 app.include_router(parte_diario_router)
 

@@ -56,6 +56,7 @@ from .tipo_solicitud import TipoSolicitud
 from .centro_costo import CentroCosto
 from .propietario import Propietario
 from .proyecto import Proyecto
+from .proy_fase import ProyFase
 from .nomina import Nomina, CategoriaNomina
 from .partediario import (
     ParteDiario,

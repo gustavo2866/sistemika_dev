@@ -117,6 +117,11 @@ import {
   ProyectoShow,
 } from "@/app/resources/proyectos";
 import {
+  ProyFaseList,
+  ProyFaseCreate,
+  ProyFaseEdit,
+} from "@/app/resources/constructora/proy-fases";
+import {
   PoOrderList,
   PoOrderCreate,
   PoOrderEdit,
@@ -162,7 +167,7 @@ import {
 } from "@/app/resources/tipos-solicitud";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
-import DashboardCrmList from "@/app/resources/dashboard-crm/list";
+import DashboardCrmList from "@/app/resources/crm/dashboard-crm/list";
 import TarjasList from "@/app/resources/tarjas/list";
 import {
   NominaList,
@@ -181,37 +186,37 @@ import {
   CRMTipoOperacionCreate,
   CRMTipoOperacionEdit,
   CRMTipoOperacionShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-tipos-operacion";
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-operacion";
 import {
   CRMMotivoPerdidaList,
   CRMMotivoPerdidaCreate,
   CRMMotivoPerdidaEdit,
   CRMMotivoPerdidaShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-motivos-perdida";
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-motivos-perdida";
 import {
   CRMCondicionPagoList,
   CRMCondicionPagoCreate,
   CRMCondicionPagoEdit,
   CRMCondicionPagoShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-condiciones-pago";
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-condiciones-pago";
 import {
   CRMTipoEventoList,
   CRMTipoEventoCreate,
   CRMTipoEventoEdit,
   CRMTipoEventoShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-tipos-evento";
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-evento";
 import {
   CRMMotivoEventoList,
   CRMMotivoEventoCreate,
   CRMMotivoEventoEdit,
   CRMMotivoEventoShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-motivos-evento";
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-motivos-evento";
 import {
   CRMCatalogoRespuestaList,
   CRMCatalogoRespuestaCreate,
   CRMCatalogoRespuestaEdit,
   CRMCatalogoRespuestaShow,
-} from "@/app/resources/crm-catalogos/crm-catalogos-respuestas";
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-respuestas";
 import { CalculadoraFinanciera } from "@/app/resources/calculadora-financiera";
 import HomeDashboard from "@/app/resources/home/HomeDashboard";
 import {
@@ -221,17 +226,11 @@ import {
   MonedaShow,
 } from "@/app/resources/monedas";
 import {
-  CRMCotizacionList,
-  CRMCotizacionCreate,
-  CRMCotizacionEdit,
-  CRMCotizacionShow,
-} from "@/app/resources/crm-cotizaciones";
-import {
   CRMContactoList,
   CRMContactoCreate,
   CRMContactoEdit,
   CRMContactoShow,
-} from "@/app/resources/crm-contactos";
+} from "@/app/resources/crm/crm-contactos";
 import {
   CRMOportunidadList,
   CRMOportunidadCreate,
@@ -244,7 +243,7 @@ import {
   CRMOportunidadPoEdit,
   CRMOportunidadPoShow,
 } from "@/app/resources/crm/crm-oportunidades";
-import { CRMOportunidadPanelPage } from "@/app/resources/crm-panel/list-panel";
+import { CRMOportunidadPanelPage } from "@/app/resources/crm/crm-panel/list-panel";
 import { CRMOportunidadAccionCotizar } from "@/app/resources/crm/crm-oportunidades/accion_cotizar";
 import { CRMOportunidadAccionReservar } from "@/app/resources/crm/crm-oportunidades/accion_reservar";
 import { CRMOportunidadAccionAgendar } from "@/app/resources/crm/crm-oportunidades/accion_agendar";
@@ -270,15 +269,15 @@ import {
   CRMMensajeCreate,
   CRMMensajeEdit,
   CRMMensajeShow,
-} from "@/app/resources/crm-mensajes";
-import { CRMMensajeReply } from "@/app/resources/crm-mensajes/form_responder";
+} from "@/app/resources/crm/crm-mensajes";
+import { CRMMensajeReply } from "@/app/resources/crm/crm-mensajes/form_responder";
 import {
   EmprendimientoList,
   EmprendimientoCreate,
   EmprendimientoEdit,
   EmprendimientoShow,
 } from "@/app/resources/emprendimientos";
-import { CRMSetupPage } from "@/app/resources/crm-setup/CRMSetupPage";
+import { CRMSetupPage } from "@/app/resources/crm/crm-setup/CRMSetupPage";
 import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
 import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
 
@@ -375,6 +374,15 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Kanban}
         options={{ label: "Proyectos" }}
+      />
+      <Resource
+        name="proy-fases"
+        list={ProyFaseList}
+        create={ProyFaseCreate}
+        edit={ProyFaseEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Fases de Proyecto" }}
       />
       <Resource
         name="articulos"
@@ -672,16 +680,6 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Coins}
         options={{ label: "CRM ?? Monedas" }}
-      />
-      <Resource
-        name="crm/cotizaciones"
-        list={CRMCotizacionList}
-        create={CRMCotizacionCreate}
-        edit={CRMCotizacionEdit}
-        show={CRMCotizacionShow}
-        recordRepresentation="id"
-        icon={LineChart}
-        options={{ label: "CRM · Cotizaciones" }}
       />
       <Resource
         name="crm/contactos"

@@ -39,11 +39,6 @@ const catalogLinks = [
     description: "Monedas disponibles (entidad cross).",
     resource: "monedas",
   },
-  {
-    label: "Cotizaciones",
-    description: "Tipos de cambio entre monedas.",
-    resource: "crm/cotizaciones",
-  },
 ];
 
 export const CRMSetupPage = () => {

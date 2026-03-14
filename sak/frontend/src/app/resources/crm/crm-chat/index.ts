@@ -1,2 +1,2 @@
-export * from "../../crm-chat";
-
+export * from "./list";
+export * from "./show";

@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { CRMOportunidad, CRMOportunidadEstado } from "../crm/crm-oportunidades/model";
+import type { CRMOportunidad, CRMOportunidadEstado } from "../crm-oportunidades/model";
 import {
   KanbanCardWithCollapse,
   KanbanMeta,
@@ -41,7 +41,7 @@ import {
   getEstadoBadgeClass,
   getResponsableAvatarInfo,
   type BucketKey,
-} from "../crm/crm-oportunidades/model";
+} from "../crm-oportunidades/model";
 
 // ============================================================================
 // Card Configuration (inline)
