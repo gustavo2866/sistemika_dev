@@ -18,10 +18,18 @@ export const Create = ({
   children,
   actions,
   className,
+  showBreadcrumb,
+  showHeader,
   ...rest
 }: CreateProps) => (
   <CreateBase {...rest}>
-    <CreateView title={title} actions={actions} className={className}>
+    <CreateView
+      title={title}
+      actions={actions}
+      className={className}
+      showBreadcrumb={showBreadcrumb}
+      showHeader={showHeader}
+    >
       {children}
     </CreateView>
   </CreateBase>
@@ -32,6 +40,8 @@ export type CreateViewProps = {
   children: ReactNode;
   className?: string;
   title?: ReactNode | string | false;
+  showBreadcrumb?: boolean;
+  showHeader?: boolean;
 };
 
 export const CreateView = ({
@@ -39,6 +49,8 @@ export const CreateView = ({
   title,
   children,
   className,
+  showBreadcrumb = true,
+  showHeader = true,
 }: CreateViewProps) => {
   const context = useCreateContext();
 
@@ -57,26 +69,30 @@ export const CreateView = ({
   });
   return (
     <>
-      <AppBreadcrumb
-        items={[
-          { label: listLabel, to: listLink },
-          {
-            label: <Translate i18nKey="ra.action.create">Create</Translate>,
-            current: true,
-          },
-        ]}
-      />
-      <div
-        className={cn(
-          "flex justify-between items-start flex-wrap gap-2 my-2",
-          className,
-        )}
-      >
-        <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-          {title !== undefined ? title : context.defaultTitle}
-        </h2>
-        {actions}
-      </div>
+      {showBreadcrumb ? (
+        <AppBreadcrumb
+          items={[
+            { label: listLabel, to: listLink },
+            {
+              label: <Translate i18nKey="ra.action.create">Create</Translate>,
+              current: true,
+            },
+          ]}
+        />
+      ) : null}
+      {showHeader ? (
+        <div
+          className={cn(
+            "flex justify-between items-start flex-wrap gap-2 my-2",
+            className,
+          )}
+        >
+          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+            {title !== undefined ? title : context.defaultTitle}
+          </h2>
+          {actions}
+        </div>
+      ) : null}
       <div className="my-2">{children}</div>
     </>
   );

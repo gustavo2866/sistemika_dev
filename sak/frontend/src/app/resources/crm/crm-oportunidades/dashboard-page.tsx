@@ -63,7 +63,9 @@ export const CRMOportunidadesDashboardPage = () => {
           </div>
         </div>
       </div>
-      <CRMOportunidadesDashboard tipoOperacionId={tipoOperacionId} />
+      <CRMOportunidadesDashboard 
+        baseFilter={tipoOperacionId ? { tipo_operacion_id: tipoOperacionId } : {}} 
+      />
     </div>
   );
 };

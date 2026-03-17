@@ -1,44 +1,125 @@
 "use client";
 
-import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { TextInput } from "@/components/text-input";
-import { BooleanInput } from "@/components/boolean-input";
-import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
+import { FilterButton } from "@/components/filter-form";
+import { List } from "@/components/list";
+import {
+  BooleanListColumn,
+  FormOrderListRowActions,
+  ListPaginator,
+  ListText,
+  ResponsiveDataTable,
+  TextListColumn,
+  buildListFilters,
+} from "@/components/forms/form_order";
 
-const filters = [
-  <TextInput key="q" source="q" label={false} placeholder="Buscar respuestas" className="w-full" />,
-  <TextInput key="titulo" source="titulo" label="Titulo" />,
-  <BooleanInput key="activo" source="activo" label="Solo activos" />,
-];
+//#region Configuracion del listado
 
-const ListActions = () => (
+// Define los filtros persistidos y visibles del listado.
+const listFilters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar respuestas",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[170px]",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "titulo",
+        label: "Titulo",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "activo",
+        label: "Estado",
+        choices: [
+          { id: "", name: "Todos" },
+          { id: "true", name: "Activas" },
+          { id: "false", name: "Inactivas" },
+        ],
+        optionText: "name",
+        optionValue: "id",
+        className: "w-[120px]",
+      },
+    },
+  ],
+  { keyPrefix: "crm-catalogos-respuestas" },
+);
+
+const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listMobileConfig = {
+  primaryField: "titulo",
+  secondaryFields: ["texto", "activo"],
+};
+
+//#endregion Configuracion del listado
+
+//#region Componentes del listado
+
+type CRMCatalogoRespuestaListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+};
+
+// Renderiza las acciones principales del encabezado del listado.
+const CRMCatalogoRespuestaListActions = ({ embedded = false }: { embedded?: boolean }) => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton
+      filters={listFilters}
+      size="sm"
+      buttonClassName={listActionButtonClass}
+    />
+    {!embedded ? <CreateButton className={listActionButtonClass} label="Crear" /> : null}
+    <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );
 
-export const CRMCatalogoRespuestaList = () => (
-  <List filters={filters} actions={<ListActions />} debounce={300} perPage={10} sort={{ field: "titulo", order: "ASC" }}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="id" label="ID">
-        <TextField source="id" />
-      </DataTable.Col>
-      <DataTable.Col source="titulo" label="Titulo">
-        <TextField source="titulo" />
-      </DataTable.Col>
-      <DataTable.Col source="activo" label="Activo">
-        <TextField source="activo" />
-      </DataTable.Col>
-      <DataTable.Col>
-        <EditButton />
-      </DataTable.Col>
-    </DataTable>
+// Renderiza la grilla principal del catalogo de respuestas.
+export const CRMCatalogoRespuestaList = ({
+  embedded = false,
+  rowClick = "edit",
+}: CRMCatalogoRespuestaListProps) => (
+  <List
+    title="CRM - Respuestas"
+    filters={listFilters}
+    actions={<CRMCatalogoRespuestaListActions embedded={embedded} />}
+    debounce={300}
+    perPage={25}
+    pagination={<ListPaginator />}
+    sort={{ field: "id", order: "DESC" }}
+    containerClassName="max-w-[920px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
+  >
+    <ResponsiveDataTable
+      rowClick={rowClick}
+      mobileConfig={listMobileConfig}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <TextListColumn source="id" label="ID" className="w-[60px]">
+        <ListText source="id" className="tabular-nums" />
+      </TextListColumn>
+      <TextListColumn source="titulo" label="Titulo" className="w-[200px]">
+        <ListText source="titulo" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <TextListColumn source="texto" label="Texto" className="w-[280px]">
+        <ListText source="texto" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <BooleanListColumn source="activo" label="Activo" />
+      <TextListColumn label="Acciones" className="w-[80px]">
+        <FormOrderListRowActions showShow={!embedded} />
+      </TextListColumn>
+    </ResponsiveDataTable>
   </List>
 );
+
+//#endregion Componentes del listado

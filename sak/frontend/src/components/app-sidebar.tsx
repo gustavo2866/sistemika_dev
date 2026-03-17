@@ -48,7 +48,6 @@ import {
   FileStack,
   Handshake,
   LayoutGrid,
-  Mail,
   MessageCircle,
   Calculator,
 } from "lucide-react";
@@ -89,9 +88,10 @@ const CRM_RESOURCES = [
   "crm/crm-eventos",
   "dashboard-crm",
   "crm/contactos",
+  "crm/mensajes",
   "crm/oportunidades",
 ] as const;
-const CRM_SETUP_RESOURCES = ["crm/celulares"] as const;
+const CRM_SETUP_RESOURCES: readonly string[] = [];
 const CRM_CUSTOM_LINKS: Array<{
   label: string;
   to: string;
@@ -100,7 +100,6 @@ const CRM_CUSTOM_LINKS: Array<{
 }> = [
   { label: "CRM Chat", to: "/crm/chat", icon: MessageCircle, position: "top" },
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
-  { label: "Calculadora Financiera", to: "/calculadora-financiera", icon: Calculator, position: "bottom" },
 ] as const;
 const CRM_TOP_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "top");
 const CRM_BOTTOM_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "bottom");
@@ -116,7 +115,7 @@ const CRM_CATALOG_RESOURCES = [
 const HIDDEN_RESOURCES = [
   "crm/catalogos/respuestas",
   "crm/chat",
-  "crm/mensajes",
+  "crm/celulares",
   "crm/crm-oportunidades",
   "departamentos",
   "articulos",
@@ -212,7 +211,6 @@ export function AppSidebar() {
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [inmobiliariaOpen, setInmobiliariaOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
-  const [crmSetupOpen, setCrmSetupOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -306,6 +304,12 @@ export function AppSidebar() {
                       onClick={handleItemClick}
                     />
                   ))}
+                  <SidebarCustomMenuItem
+                    label="Calculadora Financiera"
+                    to="/calculadora-financiera"
+                    icon={Calculator}
+                    onClick={handleItemClick}
+                  />
                 </GroupMenuItem>
               ) : null}
 
@@ -343,37 +347,11 @@ export function AppSidebar() {
                       <ResourceSubMenuItem key={name} name={name} onClick={handleItemClick} />
                     ))}
                   <SidebarCustomMenuItem
-                    label="Calculadora Financiera"
-                    to="/calculadora-financiera"
-                    icon={Calculator}
+                    label="Setup"
+                    to="/crm/setup"
+                    icon={Settings}
                     onClick={handleItemClick}
                   />
-                  <SubGroupMenuItem
-                    label="Setup"
-                    icon={Settings}
-                    isOpen={crmSetupOpen}
-                    onToggle={() => setCrmSetupOpen((open) => !open)}
-                  >
-                    <SidebarCustomMenuItem
-                      label="Setup"
-                      to="/crm/setup"
-                      icon={Settings}
-                      onClick={handleItemClick}
-                    />
-                    {CRM_SETUP_RESOURCES.map((name) => (
-                      <ResourceSubMenuItem
-                        key={name}
-                        name={name}
-                        onClick={handleItemClick}
-                      />
-                    ))}
-                    <SidebarCustomMenuItem
-                      label="CRM Mensajes"
-                      to="/crm/mensajes"
-                      icon={Mail}
-                      onClick={handleItemClick}
-                    />
-                  </SubGroupMenuItem>
                   {CRM_BOTTOM_CUSTOM_LINKS.filter((link) => link.to !== "/calculadora-financiera").map((link) => (
                     <SidebarCustomMenuItem
                       key={link.to}
@@ -540,39 +518,6 @@ const GroupMenuItem = ({
     </SidebarMenuButton>
     {isOpen ? <SidebarMenuSub>{children}</SidebarMenuSub> : null}
   </SidebarMenuItem>
-);
-
-const SubGroupMenuItem = ({
-  label,
-  icon: Icon,
-  isOpen,
-  onToggle,
-  children,
-}: {
-  label: string;
-  icon: React.ComponentType;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) => (
-  <SidebarMenuSubItem>
-    <SidebarMenuSubButton
-      type="button"
-      onClick={onToggle}
-      className="justify-between"
-      size="sm"
-      isActive={isOpen}
-    >
-      <span className="flex items-center gap-2">
-        {createElement(Icon)}
-        <span>{label}</span>
-      </span>
-      <ChevronDown
-        className={`size-3 transition-transform ${isOpen ? "" : "-rotate-90"}`}
-      />
-    </SidebarMenuSubButton>
-    {isOpen ? <SidebarMenuSub>{children}</SidebarMenuSub> : null}
-  </SidebarMenuSubItem>
 );
 
 const ResourceSubMenuItem = ({

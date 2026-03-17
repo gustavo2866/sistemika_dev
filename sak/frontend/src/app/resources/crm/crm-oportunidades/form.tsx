@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { ListBase, required, useGetIdentity, useGetList, useGetOne, useListContext, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 
-import { SimpleForm } from "@/components/simple-form";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import { ReferenceInput } from "@/components/reference-input";
 import {
   FormDate,
@@ -12,7 +12,6 @@ import {
   FormNumber,
   FormOrderToolbar,
   FormReferenceAutocomplete,
-  FormSelect,
   FormSelectFijo,
   FormText,
   FormTextarea,
@@ -20,6 +19,7 @@ import {
   HiddenInput,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
+import { CRMChatShow } from "@/app/resources/crm/crm-chat";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
 import { PoOrderListBody } from "@/app/resources/po/po-orders/List";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -27,15 +27,23 @@ import {
   appendFilterParam,
   buildOportunidadFilter,
 } from "@/lib/oportunidad-context";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Plus } from "lucide-react";
+import {
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CheckCircle2, Plus, Trash2, Workflow } from "lucide-react";
 
 import {
-  CRM_OPORTUNIDAD_ESTADO_CHOICES,
   CRM_OPORTUNIDAD_ESTADOS,
 } from "./model";
 
 type CRMOportunidadFormValues = Record<string, unknown>;
+
+const isProspectState = (estado: string) => estado === "0-prospect";
+const isClosedState = (estado: string) =>
+  estado === "5-ganada" || estado === "6-perdida";
 
 const parseNumericParam = (value: string | null) => {
   if (!value) return undefined;
@@ -182,12 +190,8 @@ export const CRMOportunidadPoForm = () => {
       {lockedPropiedadId ? <HiddenInput source="propiedad_id" /> : null}
       <LockedPropiedadSync lockedPropiedadId={lockedPropiedadId} />
       <TipoOperacionAlquilerDefault />
-      <SectionBaseTemplate
-        title="Cabecera"
-        main={<CabeceraFields />}
-        optional={<CabeceraOpcionales />}
-        defaultOpen
-      />
+      <CabeceraSection />
+      <ChatSection />
       <EventosSection />
       <OrdenesSection />
       <SectionBaseTemplate
@@ -196,6 +200,138 @@ export const CRMOportunidadPoForm = () => {
         defaultOpen={false}
       />
     </SimpleForm>
+  );
+};
+
+const CabeceraSection = () => {
+  const record = useRecordContext<any>();
+  const estado = String(record?.estado ?? "");
+  const hasActions =
+    Boolean(record?.id) &&
+    (isProspectState(estado) || !isClosedState(estado));
+
+  return (
+    <SectionBaseTemplate
+      title="Cabecera"
+      main={<CabeceraFields />}
+      optional={<CabeceraOpcionales />}
+      defaultOpen
+      actions={hasActions ? <CabeceraActionsMenu /> : undefined}
+    />
+  );
+};
+
+const CabeceraActionsMenu = () => {
+  const record = useRecordContext<any>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+  const listReturnTo =
+    (location.state as { returnTo?: string } | null)?.returnTo ??
+    (location.pathname.includes("/crm/crm-oportunidades")
+      ? "/crm/crm-oportunidades"
+      : "/crm/oportunidades");
+  const estado = String(record?.estado ?? "");
+
+  if (!record?.id) return null;
+
+  const goTo = (
+    path: string,
+    state?: Record<string, unknown>,
+    nextReturnTo = returnTo,
+  ) => {
+    navigate(path, { state: { returnTo: nextReturnTo, ...state } });
+  };
+
+  const canReservar = estado === "3-cotiza";
+
+  return (
+    <>
+      {isProspectState(estado) ? (
+        <>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              const recordPayload = {
+                id: record.id,
+                contacto_id: record.contacto_id,
+                titulo: record.titulo,
+                descripcion_estado: record.descripcion_estado,
+                fecha_estado: record.fecha_estado,
+                created_at: record.created_at,
+              };
+              goTo(`/crm/oportunidades/${record.id}/accion_descartar`, {
+                record: recordPayload,
+              }, listReturnTo);
+            }}
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+            variant="destructive"
+          >
+            <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Eliminar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              goTo(`/crm/oportunidades/${record.id}/accion_aceptar`);
+            }}
+            className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            <CheckCircle2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Aceptar
+          </DropdownMenuItem>
+        </>
+      ) : null}
+
+      {!isProspectState(estado) && !isClosedState(estado) ? (
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]">
+            <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Cambiar estado
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-28 sm:w-36">
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.stopPropagation();
+                goTo(`/crm/oportunidades/${record.id}/accion_agendar`);
+              }}
+              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              Agendar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.stopPropagation();
+                goTo(`/crm/oportunidades/${record.id}/accion_cotizar`);
+              }}
+              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              Cotizar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.stopPropagation();
+                if (!canReservar) return;
+                goTo(`/crm/oportunidades/${record.id}/accion_reservar`);
+              }}
+              disabled={!canReservar}
+              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              Reservar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.stopPropagation();
+                goTo(`/crm/oportunidades/${record.id}/accion_cerrar`);
+              }}
+              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              Cerrar
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      ) : null}
+    </>
   );
 };
 
@@ -351,6 +487,28 @@ const CabeceraOpcionales = () => {
   );
 };
 
+const ChatSection = () => {
+  const record = useRecordContext<any>();
+  const oportunidadId = record?.id;
+
+  return (
+    <SectionBaseTemplate
+      title="Chat"
+      defaultOpen={false}
+      persistKey={`crm-oportunidades-chat-${oportunidadId ?? "nuevo"}`}
+      main={
+        oportunidadId ? (
+          <CRMChatShow forcedId={`op-${oportunidadId}`} embedded />
+        ) : (
+          <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+            El chat estara disponible despues de guardar la oportunidad.
+          </div>
+        )
+      }
+    />
+  );
+};
+
 const CotizacionFields = () => (
   <div className="grid gap-2 md:grid-cols-4">
     <FormNumber
@@ -435,10 +593,8 @@ const EventosSection = () => {
         : undefined,
     [oportunidadId],
   );
-
-  if (!oportunidadId) return null;
-
   const createTo = useMemo(() => {
+    if (!oportunidadId) return "";
     const basePath = "/crm/crm-eventos/create";
     const params = new URLSearchParams();
     appendFilterParam(
@@ -451,6 +607,8 @@ const EventosSection = () => {
     params.set("returnTo", returnTo);
     return `${basePath}?${params.toString()}`;
   }, [oportunidadId, record?.contacto_id, returnTo]);
+
+  if (!oportunidadId) return null;
 
   return (
     <ListBase
@@ -501,9 +659,8 @@ const OrdenesSection = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  if (!oportunidadId) return null;
-
   const createTo = useMemo(() => {
+    if (!oportunidadId) return "";
     const basePath = "/po-orders/create";
     const params = new URLSearchParams();
     params.set("oportunidad_id", String(oportunidadId));
@@ -514,6 +671,7 @@ const OrdenesSection = () => {
   }, [oportunidadId, location.pathname, location.search]);
 
   const listTo = useMemo(() => {
+    if (!oportunidadId) return "";
     const basePath = "/po-orders";
     const params = new URLSearchParams();
     appendFilterParam(params, buildOportunidadFilter(oportunidadId));
@@ -525,6 +683,8 @@ const OrdenesSection = () => {
     () => ({ oportunidad_id: oportunidadId }),
     [oportunidadId],
   );
+
+  if (!oportunidadId) return null;
 
   return (
     <ListBase

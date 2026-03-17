@@ -128,6 +128,32 @@ export const formatOportunidadTitulo = (oportunidad: CRMOportunidad): string => 
   return oportunidad.titulo || `Oportunidad #${oportunidad.id}`;
 };
 
+// Formatea una oportunidad para selects y referencias compactas.
+export const formatOportunidadLabel = (oportunidad: any): string => {
+  const titulo = (oportunidad.titulo || "")?.slice(0, 20)?.trim();
+  const contacto =
+    (oportunidad.contacto?.nombre_completo || oportunidad.contacto_nombre || "")
+      ?.slice(0, 15)
+      ?.trim();
+  const tipo = (oportunidad.tipo_operacion?.nombre || "")?.slice(0, 3)?.trim();
+
+  const parts = [];
+  if (titulo) parts.push(titulo);
+  if (contacto) parts.push(contacto);
+  if (tipo) parts.push(`(${tipo})`);
+
+  if (parts.length === 0) return `#${oportunidad.id}`;
+
+  const result = parts.slice(0, -1).join(" - ");
+  const lastPart = parts[parts.length - 1];
+
+  if (lastPart?.startsWith("(")) {
+    return result ? `${result} ${lastPart}` : lastPart;
+  }
+
+  return parts.join(" - ");
+};
+
 // Obtiene el nombre del contacto asociado.
 export const getContactoName = (oportunidad: CRMOportunidad): string => {
   const contacto = (oportunidad as { contacto?: { nombre_completo?: string; nombre?: string } })

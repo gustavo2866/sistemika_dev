@@ -23,6 +23,10 @@ export { BooleanListColumn, DateListColumn, ListColumn, NumberListColumn, TextLi
 export type { ListColumnProps } from "./list/list_column";
 export { ListPaginator } from "./list/list_paginator";
 export {
+  CompactSoloActivasToggleFilter,
+  SoloActivasToggleFilter,
+} from "./list/solo_activas_toggle";
+export {
   IdentityFilterSync,
   useIdentityFilterDefaults,
 } from "./list/identity_filter";
@@ -101,6 +105,24 @@ export { useActiveRow } from "./form/use_active_row";
 export { useConfirmDelete } from "./form/use_confirm_delete";
 export { useIdentityId } from "./form/use_identity_id";
 export { FormOrderPrintButton } from "./show/print_button";
+export { SetupLayout } from "./setup/SetupLayout";
+export { SetupSidebar } from "./setup/SetupSidebar";
+export { SetupSidebarItem } from "./setup/SetupSidebarItem";
+export { SetupContentHeader } from "./setup/SetupContentHeader";
+export { SetupViewSwitcher } from "./setup/SetupViewSwitcher";
+export { SetupContentPanel } from "./setup/SetupContentPanel";
+export { SetupEmptyState } from "./setup/SetupEmptyState";
+export { SetupMobileNav } from "./setup/SetupMobileNav";
+export type {
+  SetupItem,
+  SetupView,
+  SetupListComponent,
+  SetupCreateComponent,
+  SetupEditComponent,
+  SetupListComponentProps,
+  SetupCreateComponentProps,
+  SetupEditComponentProps,
+} from "./setup/types";
 
 const baseButtonClasses =
   "h-6 px-2 text-[9px] sm:h-7 sm:px-2.5 sm:text-[10px] gap-1";

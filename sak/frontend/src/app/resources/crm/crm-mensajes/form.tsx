@@ -1,219 +1,220 @@
 "use client";
 
-import { SimpleForm } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
-import { SelectInput } from "@/components/select-input";
-import { ReferenceInput } from "@/components/reference-input";
-import { BooleanInput } from "@/components/boolean-input";
-import { ComboboxQuery, FormLayout, FormSimpleSection } from "@/components/forms";
-import { required } from "ra-core";
-import { useFormContext, useWatch } from "react-hook-form";
-import { useRecordContext } from "ra-core";
-import type { CRMMensaje } from "./model";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { required, useEditContext } from "ra-core";
 import {
-  CRM_MENSAJE_TIPO_CHOICES,
+  FormReferenceAutocomplete,
+  FormSelect,
+  FormText,
+  FormTextarea,
+  FormOrderToolbar,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
+import {
   CRM_MENSAJE_CANAL_CHOICES,
+  CRM_MENSAJE_DEFAULTS,
   CRM_MENSAJE_ESTADO_CHOICES,
   CRM_MENSAJE_PRIORIDAD_CHOICES,
+  CRM_MENSAJE_TIPO_CHOICES,
+  crmMensajeSchema,
   formatMensajeCanal,
   formatMensajeEstado,
-  formatMensajeTipo,
   formatMensajePrioridad,
+  formatMensajeTipo,
+  type CRMMensaje,
+  type CRMMensajeRecord,
+  type CRMMensajeFormValues,
 } from "./model";
 
+//#region Componentes auxiliares del formulario
+
+// Renderiza los campos principales del mensaje CRM.
+const CamposPrincipalesMensaje = () => (
+  <div className="grid gap-2 md:grid-cols-2">
+    <FormSelect
+      source="tipo"
+      label="Tipo"
+      choices={CRM_MENSAJE_TIPO_CHOICES}
+      optionText="name"
+      optionValue="id"
+      widthClass="w-full"
+      validate={required()}
+    />
+    <FormSelect
+      source="canal"
+      label="Canal"
+      choices={CRM_MENSAJE_CANAL_CHOICES}
+      optionText="name"
+      optionValue="id"
+      widthClass="w-full"
+      validate={required()}
+    />
+    <FormReferenceAutocomplete
+      referenceProps={{ source: "contacto_id", reference: "crm/contactos" }}
+      inputProps={{
+        label: "Contacto",
+        optionText: "nombre_completo",
+        placeholder: "Selecciona un contacto",
+      }}
+      widthClass="w-full"
+    />
+    <FormText
+      source="contacto_referencia"
+      label="Referencia externa"
+      widthClass="w-full"
+      placeholder="Telefono, email o referencia"
+    />
+    <FormText
+      source="contacto_nombre_propuesto"
+      label="Nombre propuesto"
+      widthClass="w-full"
+    />
+    <FormText
+      source="fecha_mensaje"
+      label="Fecha del mensaje"
+      type="datetime-local"
+      widthClass="w-full"
+    />
+    <FormText
+      source="asunto"
+      label="Asunto"
+      widthClass="w-full md:col-span-2"
+    />
+    <FormTextarea
+      source="contenido"
+      label="Contenido"
+      rows={5}
+      widthClass="w-full md:col-span-2"
+    />
+    <FormText
+      source="origen_externo_id"
+      label="ID externo"
+      widthClass="w-full md:col-span-2"
+    />
+  </div>
+);
+
+// Renderiza los campos de gestion y seguimiento del mensaje.
+const CamposGestionMensaje = () => (
+  <div className="grid gap-2 md:grid-cols-2">
+    <FormSelect
+      source="estado"
+      label="Estado"
+      choices={CRM_MENSAJE_ESTADO_CHOICES}
+      optionText="name"
+      optionValue="id"
+      widthClass="w-full"
+      validate={required()}
+    />
+    <FormSelect
+      source="prioridad"
+      label="Prioridad"
+      choices={CRM_MENSAJE_PRIORIDAD_CHOICES}
+      optionText="name"
+      optionValue="id"
+      widthClass="w-full"
+      validate={required()}
+    />
+    <FormReferenceAutocomplete
+      referenceProps={{ source: "responsable_id", reference: "users" }}
+      inputProps={{
+        label: "Responsable",
+        optionText: "nombre",
+        placeholder: "Selecciona un responsable",
+      }}
+      widthClass="w-full"
+    />
+    <FormReferenceAutocomplete
+      referenceProps={{ source: "evento_id", reference: "crm/crm-eventos" }}
+      inputProps={{
+        label: "Evento vinculado",
+        optionText: "descripcion",
+        placeholder: "Selecciona un evento",
+      }}
+      widthClass="w-full"
+    />
+  </div>
+);
+
+// Renderiza las referencias funcionales del mensaje dentro del CRM.
+const CamposRelacionesMensaje = () => (
+  <div className="grid gap-2 md:grid-cols-2">
+    <FormReferenceAutocomplete
+      referenceProps={{ source: "oportunidad_id", reference: "crm/oportunidades" }}
+      inputProps={{
+        label: "Oportunidad",
+        optionText: (record?: any) =>
+          record?.descripcion_estado
+            ? `${record.id} - ${record.descripcion_estado}`
+            : `Oportunidad #${record?.id}`,
+        placeholder: "Selecciona una oportunidad",
+      }}
+      widthClass="w-full md:col-span-2"
+    />
+  </div>
+);
+
+// Muestra una ayuda breve sobre la administracion del mensaje.
+const AyudaMensajeCRM = () => (
+  <div className="rounded-md border border-muted/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+    Usa este formulario para corregir metadatos, reasignar responsables o vincular
+    el mensaje con contactos, eventos y oportunidades existentes.
+  </div>
+);
+
+// Resume el contexto actual del registro durante la edicion.
+const ResumenContextoMensaje = () => {
+  const { record } = useEditContext<CRMMensajeRecord>();
+  if (!record) return null;
+
+  const resumen = [
+    formatMensajeTipo(record.tipo),
+    formatMensajeCanal(record.canal),
+    formatMensajeEstado(record.estado),
+    formatMensajePrioridad(record.prioridad),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return resumen ? (
+    <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {resumen}
+    </span>
+  ) : null;
+};
+
+//#endregion Componentes auxiliares del formulario
+
+//#region Formulario principal
+
+// Renderiza el formulario compartido por alta y edicion del recurso.
 export const CRMMensajeForm = () => (
-  <SimpleForm warnWhenUnsavedChanges>
-    <CRMMensajeSections />
+  <SimpleForm<CRMMensajeFormValues>
+    className="w-full max-w-3xl"
+    warnWhenUnsavedChanges
+    resolver={zodResolver(crmMensajeSchema) as any}
+    toolbar={<FormOrderToolbar saveProps={{ variant: "secondary" }} />}
+    defaultValues={CRM_MENSAJE_DEFAULTS}
+  >
+    <SectionBaseTemplate
+      title="Datos del mensaje"
+      main={<CamposPrincipalesMensaje />}
+      optional={<AyudaMensajeCRM />}
+      defaultOpen
+      headerSummary={<ResumenContextoMensaje />}
+    />
+    <SectionBaseTemplate
+      title="Gestion CRM"
+      main={<CamposGestionMensaje />}
+      defaultOpen={false}
+    />
+    <SectionBaseTemplate
+      title="Relaciones"
+      main={<CamposRelacionesMensaje />}
+      defaultOpen={false}
+    />
   </SimpleForm>
 );
 
-const CRMMensajeSections = () => {
-  const record = useRecordContext<CRMMensaje>();
-  const form = useFormContext();
-  const control = form.control;
-  const isEditMode = Boolean(record?.id);
-
-  const tipoWatch = useWatch({ control, name: "tipo" });
-  const canalWatch = useWatch({ control, name: "canal" });
-  const contactoWatch = useWatch({ control, name: "contacto_id" });
-  const asuntoWatch = useWatch({ control, name: "asunto" });
-  const estadoWatch = useWatch({ control, name: "estado" });
-  const prioridadWatch = useWatch({ control, name: "prioridad" });
-  const responsableWatch = useWatch({ control, name: "responsable_id" });
-  const oportunidadWatch = useWatch({ control, name: "oportunidad_id" });
-  const eventoWatch = useWatch({ control, name: "evento_id" });
-
-  const contactoLabel =
-    record?.contacto?.nombre_completo ||
-    (contactoWatch ? `Contacto #${contactoWatch}` : record?.contacto_referencia) ||
-    "Sin contacto";
-
-  const detalleSubtitle = [
-    formatMensajeTipo(tipoWatch ?? (record?.tipo as any)),
-    formatMensajeCanal(canalWatch ?? (record?.canal as any)),
-    contactoLabel,
-    asuntoWatch || record?.asunto,
-  ]
-    .filter(Boolean)
-    .join(" - ");
-
-  const gestionSubtitle = [
-    formatMensajeEstado(estadoWatch ?? (record?.estado as any)),
-    formatMensajePrioridad(prioridadWatch ?? (record?.prioridad as any)),
-    responsableWatch
-      ? `Resp. #${responsableWatch}`
-      : record?.responsable?.nombre && `Resp. ${record.responsable.nombre}`,
-  ]
-    .filter(Boolean)
-    .join(" - ");
-
-  const relacionesSubtitle = [
-    oportunidadWatch
-      ? `Op #${oportunidadWatch}`
-      : record?.oportunidad?.id && `Op #${record.oportunidad.id}`,
-    eventoWatch ? `Evento #${eventoWatch}` : record?.evento_id && `Evento #${record.evento_id}`,
-  ]
-    .filter(Boolean)
-    .join(" - ");
-
-  return (
-    <FormLayout
-      sections={[
-        {
-          id: "datos-mensaje",
-          title: "Datos del mensaje",
-          subtitle: detalleSubtitle || "Definí el canal, tipo y contenido recibido.",
-          defaultOpen: !isEditMode,
-          children: (
-            <FormSimpleSection className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <SelectInput
-                  source="tipo"
-                  label="Tipo"
-                  choices={CRM_MENSAJE_TIPO_CHOICES}
-                  className="w-full"
-                  validate={required()}
-                  defaultValue="entrada"
-                />
-                <SelectInput
-                  source="canal"
-                  label="Canal"
-                  choices={CRM_MENSAJE_CANAL_CHOICES}
-                  className="w-full"
-                  validate={required()}
-                  defaultValue="whatsapp"
-                />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Contacto</label>
-                  <ComboboxQuery
-                    resource="crm/contactos"
-                    labelField="nombre_completo"
-                    source="contacto_id"
-                    placeholder="Selecciona un contacto"
-                    className="w-full"
-                    clearable
-                  />
-                </div>
-                <TextInput
-                  source="contacto_referencia"
-                  label="Referencia externa (tel/email)"
-                  className="w-full"
-                />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <TextInput
-                  source="contacto_nombre_propuesto"
-                  label="Nombre propuesto"
-                  className="w-full"
-                />
-                <TextInput source="fecha_mensaje" label="Fecha" type="datetime-local" className="w-full" />
-              </div>
-              <TextInput source="asunto" label="Asunto" className="w-full" />
-              <TextInput
-                source="contenido"
-                label="Contenido"
-                multiline
-                rows={4}
-                className="w-full"
-                helperText="Resumen del mensaje recibido o a enviar."
-              />
-              <TextInput
-                source="origen_externo_id"
-                label="ID externo"
-                className="w-full"
-                helperText="Identificador provisto por el canal (opcional)."
-              />
-            </FormSimpleSection>
-          ),
-        },
-        {
-          id: "gestion-crm",
-          title: "Gestión CRM",
-          subtitle: gestionSubtitle || "Actualizá estado, prioridad y responsable.",
-          defaultOpen: false,
-          children: (
-            <FormSimpleSection className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <SelectInput
-                  source="estado"
-                  label="Estado"
-                  choices={CRM_MENSAJE_ESTADO_CHOICES}
-                  className="w-full"
-                  validate={required()}
-                  defaultValue="nuevo"
-                />
-                <SelectInput
-                  source="prioridad"
-                  label="Prioridad"
-                  choices={CRM_MENSAJE_PRIORIDAD_CHOICES}
-                  className="w-full"
-                  validate={required()}
-                  defaultValue="media"
-                />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <ReferenceInput
-                  source="responsable_id"
-                  reference="users"
-                  label="Responsable"
-                >
-                  <SelectInput optionText="nombre" emptyText="Sin asignar" className="w-full" />
-                </ReferenceInput>
-                <ReferenceInput source="evento_id" reference="crm/crm-eventos" label="Evento vinculado">
-                  <SelectInput optionText="descripcion" emptyText="Sin evento" className="w-full" />
-                </ReferenceInput>
-              </div>
-            </FormSimpleSection>
-          ),
-        },
-        {
-          id: "relaciones",
-          title: "Relaciones",
-          subtitle: relacionesSubtitle || "Asociá oportunidades y automatizá acciones.",
-          defaultOpen: false,
-          children: (
-            <FormSimpleSection className="space-y-5">
-              <ReferenceInput
-                source="oportunidad_id"
-                reference="crm/oportunidades"
-                label="Oportunidad"
-              >
-                <SelectInput
-                  optionText={(record) =>
-                    record?.descripcion_estado
-                      ? `${record.id} - ${record.descripcion_estado}`
-                      : `Oportunidad #${record?.id}`
-                  }
-                  emptyText="Sin asignar"
-                  className="w-full"
-                />
-              </ReferenceInput>
-            </FormSimpleSection>
-          ),
-        },
-      ]}
-    />
-  );
-};
+//#endregion Formulario principal

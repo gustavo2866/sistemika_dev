@@ -1,5 +1,6 @@
-﻿export * from "./list";
-export * from "./create";
-export * from "./edit";
-export * from "./show";
-
+export { CRMCondicionPagoList } from "./List";
+export { CRMCondicionPagoForm } from "./form";
+export { CRMCondicionPagoCreate } from "./create";
+export { CRMCondicionPagoEdit } from "./edit";
+export { CRMCondicionPagoShow } from "./show";
+export type { CRMCondicionPago, CRMCondicionPagoFormValues } from "./model";

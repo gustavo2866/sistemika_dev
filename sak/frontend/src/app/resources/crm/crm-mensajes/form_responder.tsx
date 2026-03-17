@@ -4,7 +4,7 @@ import { useCallback, useState, useEffect } from "react";
 import { useNotify, useDataProvider } from "ra-core";
 import { useGetOne } from "ra-core";
 import { useNavigate, useParams } from "react-router-dom";
-import type { CRMMensaje } from "./model";
+import type { CRMMensaje, CRMMensajeRecord } from "./model";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -285,7 +285,7 @@ export const CRMMensajeReply = () => {
   const mensajeId = useMensajeId();
   const mensajeIdNumber = Number(mensajeId);
   const [open, setOpen] = useState(true);
-  const { data: mensaje } = useGetOne<CRMMensaje>(
+  const { data: mensaje } = useGetOne<CRMMensajeRecord>(
     "crm/mensajes",
     { id: mensajeIdNumber },
     { enabled: Number.isFinite(mensajeIdNumber) && mensajeIdNumber > 0 }

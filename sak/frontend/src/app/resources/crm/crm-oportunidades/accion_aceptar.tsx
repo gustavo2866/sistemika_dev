@@ -12,7 +12,7 @@ import {
   useRefresh,
 } from "ra-core";
 import { useWatch } from "react-hook-form";
-import { SimpleForm } from "@/components/simple-form";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

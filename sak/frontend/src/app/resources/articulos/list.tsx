@@ -5,8 +5,10 @@ import { ReferenceField } from "@/components/reference-field";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { CompactSoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
-import { FormOrderListRowActions } from "@/components/forms/form_order";
+import {
+  CompactSoloActivasToggleFilter,
+  FormOrderListRowActions,
+} from "@/components/forms/form_order";
 import {
   BooleanListColumn,
   ListMoney,

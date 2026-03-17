@@ -760,7 +760,7 @@ const AdminApp = () => {
         options={{ label: "Emprendimientos" }}
       />
       <CustomRoutes>
-        <Route path="/crm/setup" element={<CRMSetupPage />} />
+        <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />

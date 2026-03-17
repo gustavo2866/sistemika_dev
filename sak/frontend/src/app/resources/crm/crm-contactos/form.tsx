@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { SimpleForm } from "@/components/simple-form";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
 import {

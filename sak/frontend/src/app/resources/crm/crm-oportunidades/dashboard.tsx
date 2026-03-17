@@ -8,7 +8,7 @@ import {
 } from "@/components/forms/form_order";
 
 type OportunidadesDashboardProps = {
-  tipoOperacionId?: string;
+  baseFilter?: Record<string, unknown>;
   refreshKey?: number;
   selectedCardId?: string;
   selectedBucketKey?: string;
@@ -39,7 +39,7 @@ const defaultCounts: EstadoCounts = {
 const formatDate = (value: Date) => value.toISOString().slice(0, 10);
 
 export const CRMOportunidadesDashboard = ({
-  tipoOperacionId,
+  baseFilter,
   refreshKey,
   selectedCardId,
   selectedBucketKey,
@@ -50,11 +50,10 @@ export const CRMOportunidadesDashboard = ({
   const [counts, setCounts] = useState<EstadoCounts>(defaultCounts);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const baseFilter = useMemo(() => {
-    if (!tipoOperacionId) return {};
-    return { tipo_operacion_id: tipoOperacionId };
-  }, [tipoOperacionId]);
+  const normalizedBaseFilter = useMemo(
+    () => baseFilter ?? {},
+    [baseFilter],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +68,7 @@ export const CRMOportunidadesDashboard = ({
         const response = await dataProvider.getList("crm/oportunidades", {
           pagination: { page: 1, perPage: 1 },
           sort: { field: "id", order: "ASC" },
-          filter: { ...baseFilter, ...filter },
+          filter: { ...normalizedBaseFilter, ...filter },
         });
         const total = response?.total;
         if (typeof total === "number") return total;
@@ -121,7 +120,7 @@ export const CRMOportunidadesDashboard = ({
     return () => {
       cancelled = true;
     };
-  }, [dataProvider, baseFilter, refreshKey]);
+  }, [dataProvider, normalizedBaseFilter, refreshKey]);
 
   const enProcesoTotal = counts.abierta + counts.visita + counts.cotiza;
   const cerradasTotal = counts.ganada + counts.perdida;

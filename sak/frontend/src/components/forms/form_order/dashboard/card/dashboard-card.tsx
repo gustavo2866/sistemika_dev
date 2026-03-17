@@ -102,7 +102,7 @@ export const DashboardCard = ({
   summaryClassName,
   children,
 }: DashboardCardProps) => {
-  const isSelectedCard = selectedId === id && !selectedBucketKey;
+  const isSelectedCard = selectedId === id;
   const isInteractive = Boolean(onSelect);
   const hasBuckets = (buckets?.length ?? 0) > 0;
   const hasBodyContent = hasBuckets || Boolean(children);

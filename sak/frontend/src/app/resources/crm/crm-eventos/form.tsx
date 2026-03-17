@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { required, useGetIdentity, useGetList, useGetOne, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 
-import { SimpleForm } from "@/components/simple-form";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import {
   FormErrorSummary,
   FormOrderToolbar,

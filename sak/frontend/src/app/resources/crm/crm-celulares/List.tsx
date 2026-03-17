@@ -1,13 +1,13 @@
 "use client";
 
 import { List } from "@/components/list";
-import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { FormOrderListRowActions } from "@/components/forms/form_order";
+import { FilterButton } from "@/components/filter-form";
 import {
   BooleanListColumn,
   DateListColumn,
+  FormOrderListRowActions,
   ListDate,
   ListPaginator,
   ListText,
@@ -16,7 +16,10 @@ import {
   buildListFilters,
 } from "@/components/forms/form_order";
 
-const filters = buildListFilters(
+//#region Configuracion del listado
+
+// Define los filtros persistidos y visibles del listado.
+const listFilters = buildListFilters(
   [
     {
       type: "text",
@@ -25,7 +28,7 @@ const filters = buildListFilters(
         label: "Buscar",
         placeholder: "Buscar celulares",
         alwaysOn: true,
-        className: "w-[120px] sm:w-[160px]",
+        className: "w-[120px] sm:w-[170px]",
       },
     },
     {
@@ -46,59 +49,76 @@ const filters = buildListFilters(
   { keyPrefix: "crm-celulares" },
 );
 
-const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listMobileConfig = {
+  primaryField: "alias",
+  secondaryFields: ["numero_celular", "activo"],
+};
 
-const ListActions = () => (
+//#endregion Configuracion del listado
+
+//#region Componentes del listado
+
+type CRMCelularListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+};
+
+// Renderiza las acciones principales del encabezado del listado.
+const CRMCelularListActions = ({ embedded = false }: { embedded?: boolean }) => (
   <div className="flex items-center gap-2">
     <FilterButton
-      filters={filters}
+      filters={listFilters}
       size="sm"
-      buttonClassName={actionButtonClass}
+      buttonClassName={listActionButtonClass}
     />
-    <CreateButton className={actionButtonClass} label="Crear" />
-    <ExportButton className={actionButtonClass} label="Exportar" />
+    {!embedded ? (
+      <CreateButton className={listActionButtonClass} label="Crear" />
+    ) : null}
+    <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );
 
-export const CRMCelularList = () => (
+// Renderiza la grilla principal del recurso de celulares CRM.
+export const CRMCelularList = ({
+  embedded = false,
+  rowClick = "edit",
+}: CRMCelularListProps) => (
   <List
     title="CRM - Celulares"
-    filters={filters}
-    actions={<ListActions />}
+    filters={listFilters}
+    actions={<CRMCelularListActions embedded={embedded} />}
     debounce={300}
     perPage={25}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[900px] w-full mr-auto"
+    containerClassName="max-w-[920px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
-      mobileConfig={{
-        primaryField: "alias",
-        secondaryFields: ["numero_celular", "meta_celular_id", "activo"],
-      }}
+      rowClick={rowClick}
+      mobileConfig={listMobileConfig}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <TextListColumn source="id" label="ID" className="w-[60px]">
         <ListText source="id" className="tabular-nums" />
       </TextListColumn>
-      <TextListColumn source="alias" label="Alias">
+      <TextListColumn source="alias" label="Alias" className="w-[180px]">
         <ListText source="alias" className="whitespace-normal break-words" />
       </TextListColumn>
-      <TextListColumn source="numero_celular" label="Numero">
-        <ListText source="numero_celular" className="whitespace-nowrap" />
-      </TextListColumn>
-      <TextListColumn source="meta_celular_id" label="Meta celular ID">
-        <ListText source="meta_celular_id" className="whitespace-normal break-words" />
+      <TextListColumn source="numero_celular" label="Numero" className="w-[160px]">
+        <ListText source="numero_celular" className="whitespace-normal break-words" />
       </TextListColumn>
       <BooleanListColumn source="activo" label="Activo" />
-      <DateListColumn source="updated_at" label="Actualizado">
+      <DateListColumn source="updated_at" label="Actualizado" className="w-[140px]">
         <ListDate source="updated_at" />
       </DateListColumn>
-      <TextListColumn label="Acciones">
-        <FormOrderListRowActions />
+      <TextListColumn label="Acciones" className="w-[80px]">
+        <FormOrderListRowActions showShow={!embedded} />
       </TextListColumn>
     </ResponsiveDataTable>
   </List>
 );
 
+//#endregion Componentes del listado

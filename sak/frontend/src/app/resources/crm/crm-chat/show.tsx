@@ -8,7 +8,6 @@ import {
   CalendarPlus,
   Sparkles,
   House,
-  MessageCircle,
   Image as ImageIcon,
   Mic,
   Paperclip,
@@ -115,13 +114,25 @@ const buildCursorUrl = (
 
 const mergeMessages = (current: CRMMensaje[], incoming: CRMMensaje[]) => {
   const map = new Map<number, CRMMensaje>();
-  current.forEach((item) => map.set(item.id, item));
-  incoming.forEach((item) => map.set(item.id, item));
+  current.forEach((item) => {
+    if (item.id != null) map.set(Number(item.id), item);
+  });
+  incoming.forEach((item) => {
+    if (item.id != null) map.set(Number(item.id), item);
+  });
   return Array.from(map.values()).sort((a, b) => getMensajeTimestamp(a) - getMensajeTimestamp(b));
 };
 
-export const CRMChatShow = () => {
-  const { id } = useParams<{ id: string }>();
+type CRMChatShowProps = {
+  forcedId?: string;
+  embedded?: boolean;
+};
+
+export const CRMChatShow = ({
+  forcedId,
+  embedded = false,
+}: CRMChatShowProps = {}) => {
+  const { id: routeId } = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const createPath = useCreatePath();
@@ -130,8 +141,9 @@ export const CRMChatShow = () => {
   const locationState = location.state as { conversation?: CRMChatConversation } | null;
   const conversationState = locationState?.conversation;
   const returnTo = useMemo(() => getReturnToFromLocation(location), [location]);
+  const conversationId = forcedId ?? routeId ?? "";
 
-  const target = useMemo(() => parseConversationId(id), [id]);
+  const target = useMemo(() => parseConversationId(conversationId), [conversationId]);
   const [messages, setMessages] = useState<CRMMensaje[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -155,7 +167,7 @@ export const CRMChatShow = () => {
 
   useEffect(() => {
     markReadRef.current = false;
-  }, [id]);
+  }, [conversationId]);
 
   const canSend = useMemo(() => {
     if (target.oportunidad_id) return true;
@@ -361,15 +373,13 @@ export const CRMChatShow = () => {
     }
   };
 
-  const handleChatFocus = () => {
-    if (!listRef.current) return;
-    listRef.current.scrollTop = listRef.current.scrollHeight;
-  };
-
   const handleOpenOportunidad = () => {
     if (!resolveOportunidadId) return;
     const params = new URLSearchParams();
-    params.set("returnTo", `/crm/chat/${id}/show`);
+    params.set(
+      "returnTo",
+      embedded ? `${location.pathname}${location.search}` : `/crm/chat/${conversationId}/show`,
+    );
     navigate(`/crm/oportunidades/${resolveOportunidadId}?${params.toString()}`);
   };
 
@@ -386,11 +396,18 @@ export const CRMChatShow = () => {
       buildOportunidadFilter(resolveOportunidadId, contactoId ? { contacto_id: contactoId } : undefined)
     );
     params.set("context", "chat");
-    params.set("returnTo", `/crm/chat/${id}/show`);
+    params.set(
+      "returnTo",
+      embedded ? `${location.pathname}${location.search}` : `/crm/chat/${conversationId}/show`,
+    );
     navigate(`${path}?${params.toString()}`);
   };
 
-  const chatReturnTo = id ? `/crm/chat/${id}/show` : "/crm/chat";
+  const chatReturnTo = embedded
+    ? `${location.pathname}${location.search}`
+    : conversationId
+      ? `/crm/chat/${conversationId}/show`
+      : "/crm/chat";
 
 
   const handleOpenAccion = (accion: "accion_descartar" | "accion_aceptar" | "accion_agendar" | "accion_cerrar") => {
@@ -408,17 +425,39 @@ export const CRMChatShow = () => {
     });
   };
 
+  if (!conversationId) {
+    return (
+      <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+        Conversacion no disponible.
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]">
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200/70 bg-white/80 px-3 py-2 backdrop-blur">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => navigate(returnTo ?? "/crm/chat")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+    <div
+      className={
+        embedded
+          ? "flex h-[540px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8]"
+          : "mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]"
+      }
+    >
+      <header
+        className={
+          embedded
+            ? "sticky top-0 z-10 flex items-center gap-2.5 border-b border-slate-200/70 bg-white/80 px-2.5 py-1.5 backdrop-blur"
+            : "sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200/70 bg-white/80 px-3 py-2 backdrop-blur"
+        }
+      >
+        {!embedded ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => navigate(returnTo ?? "/crm/chat")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        ) : null}
         <Avatar className="size-9 border border-slate-200">
           <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
             {displayName
@@ -511,7 +550,11 @@ export const CRMChatShow = () => {
         </DialogContent>
       </Dialog>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-3 pb-28 pt-4" onScroll={handleScroll}>
+      <div
+        ref={listRef}
+        className={embedded ? "flex-1 overflow-y-auto px-2.5 pb-16 pt-3" : "flex-1 overflow-y-auto px-3 pb-28 pt-4"}
+        onScroll={handleScroll}
+      >
         {loading ? (
           <div className="py-6 text-center text-xs text-slate-500">Cargando mensajes...</div>
         ) : messages.length === 0 ? (
@@ -530,12 +573,16 @@ export const CRMChatShow = () => {
                   className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[78%] rounded-2xl px-3 py-2 text-xs shadow-sm ${
+                    className={`max-w-[78%] rounded-2xl shadow-sm ${
+                      embedded ? "px-2.5 py-1.5 text-[10px] leading-[1.35]" : "px-3 py-2 text-xs"
+                    } ${
                       isOutgoing ? "bg-[#e3a78c] text-white" : "bg-white text-slate-700"
                     }`}
                   >
                     <p className="whitespace-pre-wrap break-words">{mensaje.contenido ?? ""}</p>
-                    <div className="mt-1 text-[10px] opacity-70">{timeLabel}</div>
+                    <div className={`mt-1 opacity-70 ${embedded ? "text-[8px]" : "text-[10px]"}`}>
+                      {timeLabel}
+                    </div>
                   </div>
                 </div>
               );
@@ -544,34 +591,65 @@ export const CRMChatShow = () => {
         )}
       </div>
 
-      <div className="sticky bottom-0 bg-[#f6f2e8] pb-2 pt-1.5">
-        <div className="mx-3 rounded-2xl border border-slate-200/70 bg-white/90 px-2 py-1 shadow-[0_12px_22px_rgba(15,23,42,0.12)] sm:px-3 sm:py-1.5">
-          <div className="flex items-center gap-2 pb-1 text-[9px] text-slate-400 sm:pb-1.5 sm:text-[10px]">
-            <div className="flex items-center gap-1.5">
-              <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
-                <Mic className="h-3.5 w-3.5" />
+      <div className={embedded ? "sticky bottom-0 bg-[#f6f2e8] pb-1.5 pt-1" : "sticky bottom-0 bg-[#f6f2e8] pb-2 pt-1.5"}>
+        <div
+          className={
+            embedded
+              ? "mx-2 rounded-2xl border border-slate-200/70 bg-white/90 px-1.5 py-1 shadow-[0_10px_18px_rgba(15,23,42,0.10)]"
+              : "mx-3 rounded-2xl border border-slate-200/70 bg-white/90 px-2 py-1 shadow-[0_12px_22px_rgba(15,23,42,0.12)] sm:px-3 sm:py-1.5"
+          }
+        >
+          <div
+            className={
+              embedded
+                ? "flex items-center gap-1.5 pb-0.5 text-[8px] text-slate-400"
+                : "flex items-center gap-2 pb-1 text-[9px] text-slate-400 sm:pb-1.5 sm:text-[10px]"
+            }
+          >
+            <div className={embedded ? "flex items-center gap-1" : "flex items-center gap-1.5"}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={embedded ? "h-4.5 w-4.5 text-slate-400" : "h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6"}
+              >
+                <Mic className={embedded ? "h-3 w-3" : "h-3.5 w-3.5"} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
-                <Paperclip className="h-3.5 w-3.5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className={embedded ? "h-4.5 w-4.5 text-slate-400" : "h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6"}
+              >
+                <Paperclip className={embedded ? "h-3 w-3" : "h-3.5 w-3.5"} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6">
-                <ImageIcon className="h-3.5 w-3.5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className={embedded ? "h-4.5 w-4.5 text-slate-400" : "h-5.5 w-5.5 text-slate-400 sm:h-6 sm:w-6"}
+              >
+                <ImageIcon className={embedded ? "h-3 w-3" : "h-3.5 w-3.5"} />
               </Button>
             </div>
           </div>
-          <div className="flex items-end gap-2">
+          <div className={embedded ? "flex items-end gap-1.5" : "flex items-end gap-2"}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="h-7 w-7 rounded-full border border-slate-200 text-slate-500 sm:h-8 sm:w-8"
+                  className={
+                    embedded
+                      ? "h-6 w-6 rounded-full border border-slate-200 text-slate-500"
+                      : "h-7 w-7 rounded-full border border-slate-200 text-slate-500 sm:h-8 sm:w-8"
+                  }
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className={embedded ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40 text-xs">
+              <DropdownMenuContent
+                align="start"
+                className={embedded ? "w-36 text-[11px]" : "w-40 text-xs"}
+              >
                 <DropdownMenuItem
                   onSelect={() => setRespuestasOpen(true)}
                   disabled={!canSend}
@@ -622,17 +700,25 @@ export const CRMChatShow = () => {
               onChange={(event) => setDraft(event.target.value)}
               rows={1}
               placeholder={canSend ? "Responder..." : "Sin oportunidad asociada"}
-              className="min-h-[34px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base shadow-sm sm:min-h-[38px] sm:text-xs"
+              className={
+                embedded
+                  ? "min-h-[30px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] leading-tight shadow-sm placeholder:text-[11px]"
+                  : "min-h-[34px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base shadow-sm sm:min-h-[38px] sm:text-xs"
+              }
               disabled={!canSend || sending}
             />
             <Button
               type="button"
               size="icon"
-              className="h-8 w-8 rounded-full bg-[#e3a78c] text-white shadow-sm hover:bg-[#d99677] sm:h-9 sm:w-9"
+              className={
+                embedded
+                  ? "h-7 w-7 rounded-full bg-[#e3a78c] text-white shadow-sm hover:bg-[#d99677]"
+                  : "h-8 w-8 rounded-full bg-[#e3a78c] text-white shadow-sm hover:bg-[#d99677] sm:h-9 sm:w-9"
+              }
               onClick={handleSend}
               disabled={!canSend || !draft.trim() || sending}
             >
-              <Send className="h-4 w-4" />
+              <Send className={embedded ? "h-3.5 w-3.5" : "h-4 w-4"} />
             </Button>
           </div>
         </div>

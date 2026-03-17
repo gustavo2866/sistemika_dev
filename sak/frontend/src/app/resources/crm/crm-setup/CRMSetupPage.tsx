@@ -1,75 +1,246 @@
 "use client";
 
-import { Link } from "react-router-dom";
-import { useCreatePath } from "ra-core";
+import { Link, useLocation } from "react-router";
+import { ResourceContextProvider, useCreatePath } from "ra-core";
 
-const catalogLinks = [
-  {
-    label: "Tipos de Operación",
-    description: "Administrar pipeline y operaciones disponibles.",
-    resource: "crm/catalogos/tipos-operacion",
-  },
-  {
-    label: "Motivos de Pérdida",
-    description: "Razones para registrar oportunidades perdidas.",
-    resource: "crm/catalogos/motivos-perdida",
-  },
-  {
-    label: "Condiciones de Pago",
-    description: "Términos de cobro/financiación ofrecidos.",
-    resource: "crm/catalogos/condiciones-pago",
-  },
-  {
-    label: "Tipos de Evento",
-    description: "Clasificaciones de actividades comerciales.",
-    resource: "crm/catalogos/tipos-evento",
-  },
-  {
-    label: "Motivos de Evento",
-    description: "Disparadores o resultados de cada evento.",
-    resource: "crm/catalogos/motivos-evento",
-  },
-  {
-    label: "Respuestas",
-    description: "Respuestas rapidas para el equipo.",
-    resource: "crm/catalogos/respuestas",
-  },
-  {
-    label: "Monedas",
-    description: "Monedas disponibles (entidad cross).",
-    resource: "monedas",
-  },
-];
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
+import {
+  SetupContentHeader,
+  SetupContentPanel,
+  SetupEmptyState,
+  SetupLayout,
+  SetupMobileNav,
+  SetupSidebar,
+  SetupViewSwitcher,
+  type SetupItem,
+  type SetupView,
+} from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
 
-export const CRMSetupPage = () => {
-  const createPath = useCreatePath();
+import { CRM_SETUP_ITEMS, getCRMSetupItem } from "./crmSetupRegistry";
+
+//#region Helpers de navegacion
+
+const setupBasePath = "/crm/setup";
+
+// Devuelve la ruta base de una opcion dentro del workspace de setup.
+const getSetupItemPath = (item: SetupItem) => `${setupBasePath}/${item.key}`;
+
+// Devuelve la ruta interna de la vista seleccionada para una opcion del setup.
+const getSetupViewPath = (
+  item: SetupItem,
+  view: SetupView,
+  recordId?: string | number | null,
+) => {
+  if (view === "create") return `${getSetupItemPath(item)}/create`;
+  if (view === "edit" && recordId != null) {
+    return `${getSetupItemPath(item)}/edit/${recordId}`;
+  }
+  return getSetupItemPath(item);
+};
+
+// Resuelve la opcion seleccionada y la vista actual a partir de la URL.
+const getSetupRouteState = (pathname: string) => {
+  const relativePath = pathname.startsWith(setupBasePath)
+    ? pathname.slice(setupBasePath.length)
+    : "";
+  const segments = relativePath.split("/").filter(Boolean);
+  const selectedKey = segments[0] ?? null;
+  const currentView: SetupView =
+    segments[1] === "create" ? "create" : segments[1] === "edit" ? "edit" : "list";
+  const recordId = currentView === "edit" ? segments[2] ?? null : null;
+  return { selectedKey, currentView, recordId };
+};
+
+//#endregion Helpers de navegacion
+
+//#region Componentes auxiliares
+
+// Renderiza el estado vacio inicial del workspace de setup.
+const CRMSetupHome = () => (
+  <SetupEmptyState
+    title="Configuracion CRM"
+    description="Selecciona una opcion del menu para administrar los parametros y catalogos del modulo."
+  />
+);
+
+// Renderiza el estado para opciones que viven fuera del modulo CRM.
+const CRMSetupExternalResource = ({
+  label,
+  description,
+  to,
+}: {
+  label: string;
+  description?: string;
+  to: string;
+}) => (
+  <SetupEmptyState
+    title={label}
+    description={
+      description ??
+      "Este parametro se administra fuera del setup CRM, pero se mantiene accesible desde aqui."
+    }
+    action={
+      <Button asChild variant="secondary" size="sm">
+        <Link to={to}>Abrir modulo</Link>
+      </Button>
+    }
+  />
+);
+
+// Renderiza la vista embebida del catalogo seleccionado dentro del setup.
+const CRMSetupEmbeddedContent = ({
+  item,
+  view,
+  recordId,
+}: {
+  item: SetupItem;
+  view: SetupView;
+  recordId?: string | null;
+}) => {
+  if (!item.resource) return null;
+
+  const listPath = getSetupViewPath(item, "list");
+
+  if (view === "list") {
+    const ListComponent = item.listComponent;
+    if (!ListComponent) return null;
+
+    return (
+      <ResourceContextProvider value={item.resource}>
+        <ListComponent
+          embedded
+          rowClick={(id: string | number) => getSetupViewPath(item, "edit", id)}
+        />
+      </ResourceContextProvider>
+    );
+  }
+
+  if (view === "create") {
+    const CreateComponent = item.createComponent;
+    if (!CreateComponent) return null;
+
+    return (
+      <ResourceContextProvider value={item.resource}>
+        <CreateComponent embedded redirect={listPath} />
+      </ResourceContextProvider>
+    );
+  }
+
+  const EditComponent = item.editComponent;
+  if (!EditComponent || !recordId) return null;
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Configuración CRM</h1>
-        <p className="text-muted-foreground">
-          Accesos directos para mantener los catálogos del módulo CRM.
-        </p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {catalogLinks.map((link) => {
-          const to = createPath({
-            resource: link.resource,
-            type: "list",
-          });
-          return (
-            <Link
-              key={link.resource}
-              to={to}
-              className="rounded-lg border border-border bg-card p-4 shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <h2 className="text-lg font-medium">{link.label}</h2>
-              <p className="text-sm text-muted-foreground">{link.description}</p>
-            </Link>
-          );
-        })}
-      </div>
+    <ResourceContextProvider value={item.resource}>
+      <EditComponent embedded id={recordId} redirect={listPath} />
+    </ResourceContextProvider>
+  );
+};
+
+//#endregion Componentes auxiliares
+
+// Renderiza el workspace principal de configuracion del modulo CRM.
+export const CRMSetupPage = () => {
+  const location = useLocation();
+  const createPath = useCreatePath();
+  const { selectedKey, currentView, recordId } = getSetupRouteState(location.pathname);
+  const selectedItem = getCRMSetupItem(selectedKey);
+
+  const externalResourcePath = selectedItem?.externalResource
+    ? createPath({
+        resource: selectedItem.externalResource,
+        type: "list",
+      })
+    : null;
+
+  const breadcrumbItems = selectedItem
+    ? [
+        { label: "CRM" },
+        { label: "Configuracion", to: setupBasePath },
+        {
+          label: selectedItem.label,
+          to: getSetupItemPath(selectedItem),
+          current: currentView === "list",
+        },
+        ...(currentView === "create"
+          ? [{ label: "Crear", current: true }]
+          : currentView === "edit"
+            ? [{ label: `Editar${recordId ? ` #${recordId}` : ""}`, current: true }]
+          : []),
+      ]
+    : [
+        { label: "CRM" },
+        { label: "Configuracion", current: true },
+      ];
+
+  return (
+    <div className="space-y-4 p-4 sm:p-6">
+      <AppBreadcrumb items={breadcrumbItems} />
+
+      <SetupLayout
+        sidebar={
+          <SetupSidebar
+            items={CRM_SETUP_ITEMS}
+            currentKey={selectedItem?.key ?? null}
+            getItemHref={getSetupItemPath}
+            title="CRM Setup"
+            description="Configuracion operativa y catalogos del modulo."
+            showItemDescriptions={false}
+          />
+        }
+        mobileNav={
+          <SetupMobileNav
+            title="CRM Setup"
+            description="Selecciona el catalogo o parametro que queres administrar."
+          >
+            <SetupSidebar
+              items={CRM_SETUP_ITEMS}
+              currentKey={selectedItem?.key ?? null}
+              getItemHref={getSetupItemPath}
+              title="CRM Setup"
+              description="Selecciona el item a administrar."
+            />
+          </SetupMobileNav>
+        }
+        header={
+          <SetupContentHeader
+            title={selectedItem?.label ?? "Configuracion CRM"}
+            description={
+              selectedItem?.description ??
+              "Accede a los catalogos y parametros operativos del modulo desde un unico lugar."
+            }
+            actions={
+              selectedItem?.resource ? (
+                <SetupViewSwitcher
+                  currentView={currentView}
+                  listTo={getSetupViewPath(selectedItem, "list")}
+                  createTo={getSetupViewPath(selectedItem, "create")}
+                  canCreate={Boolean(selectedItem.createComponent)}
+                />
+              ) : undefined
+            }
+          />
+        }
+        content={
+          <SetupContentPanel>
+            {!selectedItem ? (
+              <CRMSetupHome />
+            ) : selectedItem.externalResource && externalResourcePath ? (
+              <CRMSetupExternalResource
+                label={selectedItem.label}
+                description={selectedItem.description}
+                to={externalResourcePath}
+              />
+            ) : (
+              <CRMSetupEmbeddedContent
+                item={selectedItem}
+                view={currentView}
+                recordId={recordId}
+              />
+            )}
+          </SetupContentPanel>
+        }
+      />
     </div>
   );
 };

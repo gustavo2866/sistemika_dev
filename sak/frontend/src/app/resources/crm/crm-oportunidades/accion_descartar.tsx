@@ -5,7 +5,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useGetOne, useNotify, useRefresh } from "ra-core";
 import { Target } from "lucide-react";
 
-import { SimpleForm } from "@/components/simple-form";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

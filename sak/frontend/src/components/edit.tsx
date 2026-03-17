@@ -21,6 +21,8 @@ export const Edit = ({
   children,
   actions,
   className,
+  showBreadcrumb,
+  showHeader,
   ...rest
 }: EditProps) => {
   const { redirect: redirectProp, ...baseProps } = rest;
@@ -28,7 +30,13 @@ export const Edit = ({
 
   return (
     <EditBase {...baseProps} redirect={redirect}>
-      <EditView title={title} actions={actions} className={className}>
+      <EditView
+        title={title}
+        actions={actions}
+        className={className}
+        showBreadcrumb={showBreadcrumb}
+        showHeader={showHeader}
+      >
         {children}
       </EditView>
     </EditBase>
@@ -40,6 +48,8 @@ export interface EditViewProps {
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
+  showBreadcrumb?: boolean;
+  showHeader?: boolean;
 }
 
 export const EditView = ({
@@ -47,6 +57,8 @@ export const EditView = ({
   actions,
   className,
   children,
+  showBreadcrumb = true,
+  showHeader = true,
 }: EditViewProps) => {
   const context = useEditContext();
 
@@ -76,28 +88,32 @@ export const EditView = ({
 
   return (
     <>
-      <AppBreadcrumb
-        items={[
-          { label: listLabel, to: listLink },
-          { label: recordRepresentation, current: true },
-        ]}
-      />
-      <div
-        className={cn(
-          "flex justify-between items-start flex-wrap gap-2 my-2 w-full max-w-3xl",
-          className,
-        )}
-      >
-        <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-          {title !== undefined ? title : context.defaultTitle}
-        </h2>
-        {actions ?? (
-          <div className="flex justify-end items-center gap-2">
-            {hasShow ? <ShowButton /> : null}
-            <DeleteButton />
-          </div>
-        )}
-      </div>
+      {showBreadcrumb ? (
+        <AppBreadcrumb
+          items={[
+            { label: listLabel, to: listLink },
+            { label: recordRepresentation, current: true },
+          ]}
+        />
+      ) : null}
+      {showHeader ? (
+        <div
+          className={cn(
+            "flex justify-between items-start flex-wrap gap-2 my-2 w-full max-w-3xl",
+            className,
+          )}
+        >
+          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+            {title !== undefined ? title : context.defaultTitle}
+          </h2>
+          {actions ?? (
+            <div className="flex justify-end items-center gap-2">
+              {hasShow ? <ShowButton /> : null}
+              <DeleteButton />
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="my-2 w-full max-w-3xl">{children}</div>
     </>
   );

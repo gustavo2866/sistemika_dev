@@ -24,8 +24,10 @@ import { CRMOportunidadKanbanCard } from "./crm-panel-card";
 import { KanbanBoardView } from "@/components/kanban";
 import { calculateOportunidadBucketKey, prepareMoveOportunidadPayload, getBucketLabel } from "./model";
 import { ESTADO_BG_COLORS, type BucketKey } from "../crm-oportunidades/model";
-import { CompactSoloActivasToggleFilter } from "@/components/lists/solo-activas-toggle";
-import { buildListFilters } from "@/components/forms/form_order";
+import {
+  CompactSoloActivasToggleFilter,
+  buildListFilters,
+} from "@/components/forms/form_order";
 
 // Definición de buckets (usando todos los estados)
 const getBucketHeader = (estado: BucketKey, label: string) => {
