@@ -1,13 +1,15 @@
 from typing import List, Optional
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models.base import filtrar_respuesta
+from app.models.crm import CRMEvento, CRMMensaje, CRMOportunidad
+from app.models.enums import EstadoEvento, EstadoMensaje, EstadoOportunidad, TipoMensaje
 from app.services.crm_dashboard import (
     build_crm_dashboard_payload,
     fetch_oportunidades_for_dashboard,
@@ -100,7 +102,11 @@ def get_crm_dashboard_detalle(
     responsable: Optional[str] = Query(None),
     emprendimiento: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
-    kpiKey: str = Query("totales", pattern="^(totales|nuevas|ganadas|pendientes)$"),
+    kpiKey: str = Query("pendientes", pattern="^(pendientes|nuevas|cerradas|en_proceso)$"),
+    alertKey: Optional[str] = Query(
+        None,
+        pattern="^(mensajesSinLeer|prospectSinResolver|tareasVencidas|enProcesoSinMovimiento)$",
+    ),
     stage: Optional[str] = Query(None, description="Filtro de estado al corte"),
     bucket: Optional[str] = Query(None, description="Bucket YYYY-MM"),
     orderBy: str = Query("monto", pattern="^(monto|created_at|fecha_cierre|probabilidad)$"),
@@ -121,24 +127,87 @@ def get_crm_dashboard_detalle(
     )
 
     def _filter_by_kpi(data):
+        if kpiKey == "pendientes":
+            return [item for item in data if item.es_pendiente_inicio]
         if kpiKey == "nuevas":
             return [item for item in data if item.es_nueva_periodo]
-        if kpiKey == "ganadas":
-            return [item for item in data if item.es_ganada_periodo]
-        if kpiKey == "pendientes":
-            return [item for item in data if item.es_pendiente]
+        if kpiKey == "cerradas":
+            return [item for item in data if item.es_cerrada_periodo]
+        if kpiKey == "en_proceso":
+            return [
+                item
+                for item in data
+                if item.es_pendiente and item.estado_al_corte != "0-prospect"
+            ]
         return data
 
-    filtered = _filter_by_kpi(items)
+    def _filter_by_alert(data):
+        if not alertKey:
+            return data
+        if alertKey == "prospectSinResolver":
+            return [
+                item
+                for item in data
+                if item.oportunidad.estado == EstadoOportunidad.PROSPECT.value
+                and item.oportunidad.activo
+            ]
+        if alertKey == "enProcesoSinMovimiento":
+            stale_cutoff = datetime.now(UTC) - timedelta(days=30)
+            return [
+                item
+                for item in data
+                if item.oportunidad.activo
+                and item.oportunidad.estado
+                not in (
+                    EstadoOportunidad.PROSPECT.value,
+                    EstadoOportunidad.GANADA.value,
+                    EstadoOportunidad.PERDIDA.value,
+                )
+                and item.oportunidad.fecha_estado
+                and item.oportunidad.fecha_estado < stale_cutoff
+            ]
+
+        data_ids = [item.oportunidad.id for item in data if item.oportunidad.id is not None]
+        if not data_ids:
+            return []
+
+        if alertKey == "mensajesSinLeer":
+            query = (
+                select(CRMMensaje.oportunidad_id)
+                .where(CRMMensaje.deleted_at.is_(None))
+                .where(CRMMensaje.oportunidad_id.in_(data_ids))
+                .where(CRMMensaje.tipo == TipoMensaje.ENTRADA.value)
+                .where(CRMMensaje.estado == EstadoMensaje.NUEVO.value)
+            )
+            matched_ids = set(session.exec(query).all())
+            return [item for item in data if item.oportunidad.id in matched_ids]
+
+        if alertKey == "tareasVencidas":
+            query = (
+                select(CRMEvento.oportunidad_id)
+                .where(CRMEvento.deleted_at.is_(None))
+                .where(CRMEvento.oportunidad_id.in_(data_ids))
+                .where(CRMEvento.estado_evento == EstadoEvento.PENDIENTE.value)
+                .where(CRMEvento.fecha_evento.is_not(None))
+                .where(CRMEvento.fecha_evento < datetime.now(UTC))
+            )
+            matched_ids = set(session.exec(query).all())
+            return [item for item in data if item.oportunidad.id in matched_ids]
+
+        return data
+
+    filtered = _filter_by_alert(items) if alertKey else _filter_by_kpi(items)
 
     if stage:
         filtered = [item for item in filtered if item.estado_al_corte == stage]
 
     if bucket:
-        if kpiKey == "ganadas":
+        if kpiKey == "cerradas":
             filtered = [
                 item for item in filtered if item.bucket_cierre == bucket or item.bucket_creacion == bucket
             ]
+        elif kpiKey == "nuevas":
+            filtered = [item for item in filtered if item.bucket_pipeline == bucket]
         else:
             filtered = [item for item in filtered if item.bucket_creacion == bucket]
 
@@ -172,7 +241,13 @@ def get_crm_dashboard_detalle(
                 "monto_propiedad": float(item.monto_propiedad) if item.monto_propiedad else 0.0,
                 "moneda": item.oportunidad.moneda.codigo if item.oportunidad.moneda else None,
                 "kpiKey": kpiKey,
-                "bucket": item.bucket_cierre if kpiKey == "ganadas" else item.bucket_creacion,
+                "bucket": (
+                    item.bucket_cierre
+                    if kpiKey == "cerradas"
+                    else item.bucket_pipeline
+                    if kpiKey == "nuevas"
+                    else item.bucket_creacion
+                ),
             }
         )
 

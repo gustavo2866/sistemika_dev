@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import {
   useDataProvider,
+  useGetIdentity,
+  useListContext,
   useNotify,
   useRecordContext,
   useRefresh,
@@ -41,9 +43,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import {
+  canUseOportunidadAction,
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   CRM_OPORTUNIDAD_ESTADO_CHOICES,
+  isClosedOportunidad,
+  isProspectOportunidad,
 } from "./model";
+import { captureOportunidadModalBackground } from "./modal_background";
 import { CRMOportunidadesListDashboard } from "./list_dashboard";
 
 //#region Base CRUD: configuracion del listado
@@ -94,8 +100,24 @@ const listFilters = buildListFilters(
           key="activo"
           source="activo"
           label="Activos"
+          alwaysOn
+          className="ml-auto"
         />
       ),
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "responsable_id",
+        reference: "users",
+        label: "Responsable",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
     },
     {
       type: "reference",
@@ -152,8 +174,62 @@ const listContainerClassName = "max-w-[980px] w-full mr-auto";
 const listTableClassName = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
 const compactListTableClassName = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
 const listDefaultFilters = { activo: true };
+const FILTER_DEFAULTS_MARKER = "crm-oportunidades:filters-initialized";
+
+const isMeaningfulFilterValue = (value: unknown) => {
+  if (value === "" || value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+};
 
 //#endregion Base CRUD: configuracion del listado
+
+const CRMOportunidadListDefaultsSync = () => {
+  const { filterValues, setFilters } = useListContext<any>();
+  const { identity, isPending: isIdentityPending } = useGetIdentity();
+
+  useEffect(() => {
+    if (isIdentityPending) {
+      return;
+    }
+
+    const hasInitializedDefaults =
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem(FILTER_DEFAULTS_MARKER) === "1";
+
+    if (hasInitializedDefaults) {
+      return;
+    }
+
+    const nextFilters = {
+      ...(filterValues as Record<string, unknown>),
+    };
+    let hasChanges = false;
+
+    if (!isMeaningfulFilterValue(nextFilters.activo)) {
+      nextFilters.activo = true;
+      hasChanges = true;
+    }
+
+    if (
+      identity?.id &&
+      !isMeaningfulFilterValue(nextFilters.responsable_id)
+    ) {
+      nextFilters.responsable_id = identity.id;
+      hasChanges = true;
+    }
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(FILTER_DEFAULTS_MARKER, "1");
+    }
+
+    if (hasChanges) {
+      setFilters(nextFilters, {});
+    }
+  }, [filterValues, identity?.id, isIdentityPending, setFilters]);
+
+  return null;
+};
 
 //#region Fuera del patron: helpers de presentacion enriquecida
 
@@ -174,10 +250,6 @@ const oportunidadRowClass = (record: any) =>
   record?.activo === false
     ? "text-muted-foreground/70 bg-muted/20 hover:bg-muted/30"
     : undefined;
-
-const isProspectState = (estado: string) => estado === "0-prospect";
-const isClosedState = (estado: string) =>
-  estado === "5-ganada" || estado === "6-perdida";
 
 //#endregion Fuera del patron: helpers de presentacion enriquecida
 
@@ -334,9 +406,8 @@ const OportunidadEliminarMenuItem = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = buildListReturnTo(location.pathname, location.search);
-  const estado = String(record?.estado ?? "");
 
-  if (!record?.id || !isProspectState(estado)) return null;
+  if (!record?.id || !isProspectOportunidad(record.estado)) return null;
 
   return (
     <DropdownMenuItem
@@ -351,7 +422,11 @@ const OportunidadEliminarMenuItem = () => {
           created_at: record.created_at,
         };
         navigate(`/crm/oportunidades/${record.id}/accion_descartar`, {
-          state: { returnTo, record: recordPayload },
+          state: {
+            returnTo,
+            record: recordPayload,
+            background: captureOportunidadModalBackground(),
+          },
         });
       }}
       onClick={(event) => event.stopPropagation()}
@@ -370,16 +445,18 @@ const OportunidadAceptarMenuItem = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = buildListReturnTo(location.pathname, location.search);
-  const estado = String(record?.estado ?? "");
 
-  if (!record?.id || !isProspectState(estado)) return null;
+  if (!record?.id || !isProspectOportunidad(record.estado)) return null;
 
   return (
     <DropdownMenuItem
       onSelect={(event) => {
         event.stopPropagation();
         navigate(`/crm/oportunidades/${record.id}/accion_aceptar`, {
-          state: { returnTo },
+          state: {
+            returnTo,
+            background: captureOportunidadModalBackground(),
+          },
         });
       }}
       onClick={(event) => event.stopPropagation()}
@@ -387,7 +464,7 @@ const OportunidadAceptarMenuItem = () => {
       className="px-1.5 py-1 text-[8px] sm:text-[10px]"
     >
       <CheckCircle2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-      Aceptar
+      Confirmar
     </DropdownMenuItem>
   );
 };
@@ -397,15 +474,22 @@ const OportunidadCambioEstadoMenu = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = buildListReturnTo(location.pathname, location.search);
-  const estado = String(record?.estado ?? "");
 
-  if (!record?.id || isClosedState(estado) || isProspectState(estado)) {
+  if (!record?.id || isClosedOportunidad(record.estado) || isProspectOportunidad(record.estado)) {
     return null;
   }
 
-  const canReservar = estado === "3-cotiza";
+  const canAgendar = canUseOportunidadAction(record.estado, "agendar");
+  const canCotizar = canUseOportunidadAction(record.estado, "cotizar");
+  const canReservar = canUseOportunidadAction(record.estado, "reservar");
+  const canCerrar = canUseOportunidadAction(record.estado, "cerrar");
   const goTo = (path: string) => {
-    navigate(path, { state: { returnTo } });
+    navigate(path, {
+      state: {
+        returnTo,
+        background: captureOportunidadModalBackground(),
+      },
+    });
   };
 
   return (
@@ -418,52 +502,58 @@ const OportunidadCambioEstadoMenu = () => {
         Cambiar estado
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-28 sm:w-36">
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.stopPropagation();
-            goTo(`/crm/oportunidades/${record.id}/accion_agendar`);
-          }}
-          onClick={(event) => event.stopPropagation()}
-          data-row-click="ignore"
-          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-        >
-          Agendar
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.stopPropagation();
-            goTo(`/crm/oportunidades/${record.id}/accion_cotizar`);
-          }}
-          onClick={(event) => event.stopPropagation()}
-          data-row-click="ignore"
-          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-        >
-          Cotizar
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.stopPropagation();
-            if (!canReservar) return;
-            goTo(`/crm/oportunidades/${record.id}/accion_reservar`);
-          }}
-          onClick={(event) => event.stopPropagation()}
-          data-row-click="ignore"
-          disabled={!canReservar}
-          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-        >
-          Reservar
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.stopPropagation();
-            goTo(`/crm/oportunidades/${record.id}/accion_cerrar`);
-          }}
-          onClick={(event) => event.stopPropagation()}
-          data-row-click="ignore"
-          className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-        >
-          Cerrar
-        </DropdownMenuItem>
+        {canAgendar ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              goTo(`/crm/oportunidades/${record.id}/accion_agendar`);
+            }}
+            onClick={(event) => event.stopPropagation()}
+            data-row-click="ignore"
+            className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            Agendar
+          </DropdownMenuItem>
+        ) : null}
+        {canCotizar ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              goTo(`/crm/oportunidades/${record.id}/accion_cotizar`);
+            }}
+            onClick={(event) => event.stopPropagation()}
+            data-row-click="ignore"
+            className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            Cotizar
+          </DropdownMenuItem>
+        ) : null}
+        {canReservar ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              goTo(`/crm/oportunidades/${record.id}/accion_reservar`);
+            }}
+            onClick={(event) => event.stopPropagation()}
+            data-row-click="ignore"
+            className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            Reservar
+          </DropdownMenuItem>
+        ) : null}
+        {canCerrar ? (
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.stopPropagation();
+              goTo(`/crm/oportunidades/${record.id}/accion_cerrar`);
+            }}
+            onClick={(event) => event.stopPropagation()}
+            data-row-click="ignore"
+            className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            Cerrar
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
@@ -565,6 +655,7 @@ export const CRMOportunidadPoList = () => (
     filterDefaultValues={listDefaultFilters}
     topContent={<CRMOportunidadesListDashboard />}
   >
+    <CRMOportunidadListDefaultsSync />
     <CRMOportunidadPoListBody />
   </List>
 );

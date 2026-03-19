@@ -50,7 +50,9 @@ export const Layout = (props: CoreLayoutProps) => {
           )}
         >
           <Suspense fallback={<Loading />}>
-            <div className="flex flex-1 flex-col px-4 ">{props.children}</div>
+            <div id="admin-content" className="flex flex-1 flex-col px-4 ">
+              {props.children}
+            </div>
           </Suspense>
         </ErrorBoundary>
       </main>

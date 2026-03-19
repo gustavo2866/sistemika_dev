@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useGetOne, useRecordContext, useRefresh } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
+import { captureOportunidadModalBackground } from "../crm-oportunidades/modal_background";
 import {
   ArrowDownLeft,
   ArrowLeft,
@@ -495,7 +496,10 @@ export const CRMMensajeList = () => {
     const linkedOpportunityId = getLinkedOpportunityId(mensaje);
     if (!linkedOpportunityId) return;
     navigate(`/crm/oportunidades/${linkedOpportunityId}/accion_descartar`, {
-      state: { returnTo: returnTo ?? "/crm/mensajes" },
+      state: {
+        returnTo: returnTo ?? "/crm/mensajes",
+        background: captureOportunidadModalBackground(),
+      },
     });
   };
 
@@ -503,7 +507,10 @@ export const CRMMensajeList = () => {
     const linkedOpportunityId = getLinkedOpportunityId(mensaje);
     if (!linkedOpportunityId) return;
     navigate(`/crm/oportunidades/${linkedOpportunityId}/accion_agendar`, {
-      state: { returnTo: returnTo ?? "/crm/mensajes" },
+      state: {
+        returnTo: returnTo ?? "/crm/mensajes",
+        background: captureOportunidadModalBackground(),
+      },
     });
   };
 

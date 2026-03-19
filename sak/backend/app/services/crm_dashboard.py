@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -9,8 +9,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
-from app.models.crm import CRMOportunidad
-from app.models.enums import EstadoOportunidad
+from app.models.crm import CRMEvento, CRMMensaje, CRMOportunidad
+from app.models.enums import EstadoEvento, EstadoMensaje, EstadoOportunidad, TipoMensaje
 from app.models.propiedad import Propiedad, PropiedadesStatus
 
 
@@ -27,17 +27,20 @@ class CalculatedOportunidad:
     oportunidad: CRMOportunidad
     fecha_creacion: date
     fecha_estado: date
-    fecha_abierta: Optional[date]
+    fecha_ingreso_pipeline: Optional[date]
     fecha_cierre: Optional[date]
     estado_al_corte: str
     estado_cierre: Optional[str]
     monto_estimado: Optional[Decimal]
     monto_propiedad: Optional[Decimal]
     es_pendiente: bool
+    es_pendiente_inicio: bool
     es_ganada_periodo: bool
     es_perdida_periodo: bool
+    es_cerrada_periodo: bool
     es_nueva_periodo: bool
     bucket_creacion: str
+    bucket_pipeline: Optional[str]
     bucket_estado: str
     bucket_cierre: Optional[str]
     dias_pipeline: int
@@ -121,13 +124,13 @@ def _month_end(value: date) -> date:
     return next_month - timedelta(days=1)
 
 
-def _fecha_abierta(oportunidad: CRMOportunidad) -> Optional[date]:
+def _fecha_ingreso_pipeline(oportunidad: CRMOportunidad) -> Optional[date]:
     """Devuelve la primera fecha en la que la oportunidad ingresó al estado ABIERTO."""
     logs = sorted(oportunidad.logs_estado or [], key=lambda log: log.fecha_registro or datetime.min)
     for log in logs:
-        if log.estado_nuevo == EstadoOportunidad.ABIERTA.value and log.fecha_registro:
+        if log.estado_nuevo != EstadoOportunidad.PROSPECT.value and log.fecha_registro:
             return log.fecha_registro.date()
-    if oportunidad.created_at:
+    if oportunidad.created_at and oportunidad.estado != EstadoOportunidad.PROSPECT.value:
         return oportunidad.created_at.date()
     return None
 
@@ -151,6 +154,115 @@ def _monto_estimado(oportunidad: CRMOportunidad) -> Tuple[Optional[Decimal], Opt
         base = _decimal(propiedad.costo_propiedad)
 
     return base, _decimal(propiedad.precio_venta_estimado) or _decimal(propiedad.valor_alquiler)
+
+
+def _apply_oportunidad_filters(
+    query,
+    tipo_operacion_ids: Optional[Sequence[int]] = None,
+    tipo_propiedad: Optional[Sequence[str]] = None,
+    responsable_ids: Optional[Sequence[int]] = None,
+    propietario: Optional[str] = None,
+    emprendimiento_ids: Optional[Sequence[int]] = None,
+):
+    join_propiedad = bool(tipo_propiedad or propietario or emprendimiento_ids)
+    if join_propiedad:
+        query = query.join(Propiedad, Propiedad.id == CRMOportunidad.propiedad_id)
+        query = query.where(Propiedad.deleted_at.is_(None))
+
+    if tipo_operacion_ids:
+        query = query.where(CRMOportunidad.tipo_operacion_id.in_(tipo_operacion_ids))
+    if responsable_ids:
+        query = query.where(CRMOportunidad.responsable_id.in_(responsable_ids))
+    if tipo_propiedad:
+        query = query.where(Propiedad.tipo.in_(tipo_propiedad))
+    if propietario:
+        query = query.where(func.lower(Propiedad.propietario).contains(propietario.lower()))
+    if emprendimiento_ids:
+        query = query.where(Propiedad.emprendimiento_id.in_(emprendimiento_ids))
+
+    return query
+
+
+def _build_dashboard_alerts(
+    items: List[CalculatedOportunidad],
+    session: Optional[Session],
+    tipo_operacion_ids: Optional[Sequence[int]] = None,
+    tipo_propiedad: Optional[Sequence[str]] = None,
+    responsable_ids: Optional[Sequence[int]] = None,
+    propietario: Optional[str] = None,
+    emprendimiento_ids: Optional[Sequence[int]] = None,
+) -> Dict[str, int]:
+    item_ids = [item.oportunidad.id for item in items if item.oportunidad.id is not None]
+    stale_cutoff = datetime.now(UTC) - timedelta(days=30)
+
+    if not session or not item_ids:
+        return {
+            "mensajesSinLeer": 0,
+            "prospectSinResolver": sum(
+                1
+                for item in items
+                if item.oportunidad.estado == EstadoOportunidad.PROSPECT.value and item.oportunidad.activo
+            ),
+            "tareasVencidas": 0,
+            "enProcesoSinMovimiento": sum(
+                1
+                for item in items
+                if item.oportunidad.activo
+                and item.oportunidad.estado
+                not in (
+                    EstadoOportunidad.PROSPECT.value,
+                    EstadoOportunidad.GANADA.value,
+                    EstadoOportunidad.PERDIDA.value,
+                )
+                and item.oportunidad.fecha_estado
+                and item.oportunidad.fecha_estado.replace(tzinfo=UTC)
+                < stale_cutoff
+            ),
+        }
+
+    today = datetime.now(UTC)
+
+    query_mensajes = (
+        select(func.count(func.distinct(CRMMensaje.oportunidad_id)))
+        .select_from(CRMMensaje)
+        .where(CRMMensaje.deleted_at.is_(None))
+        .where(CRMMensaje.oportunidad_id.in_(item_ids))
+        .where(CRMMensaje.tipo == TipoMensaje.ENTRADA.value)
+        .where(CRMMensaje.estado == EstadoMensaje.NUEVO.value)
+    )
+
+    query_eventos = (
+        select(func.count(func.distinct(CRMEvento.oportunidad_id)))
+        .select_from(CRMEvento)
+        .where(CRMEvento.deleted_at.is_(None))
+        .where(CRMEvento.oportunidad_id.in_(item_ids))
+        .where(CRMEvento.estado_evento == EstadoEvento.PENDIENTE.value)
+        .where(CRMEvento.fecha_evento.is_not(None))
+        .where(CRMEvento.fecha_evento < today)
+    )
+
+    return {
+        "mensajesSinLeer": int(session.exec(query_mensajes).one() or 0),
+        "prospectSinResolver": sum(
+            1
+            for item in items
+            if item.oportunidad.estado == EstadoOportunidad.PROSPECT.value and item.oportunidad.activo
+        ),
+        "tareasVencidas": int(session.exec(query_eventos).one() or 0),
+        "enProcesoSinMovimiento": sum(
+            1
+            for item in items
+            if item.oportunidad.activo
+            and item.oportunidad.estado
+            not in (
+                EstadoOportunidad.PROSPECT.value,
+                EstadoOportunidad.GANADA.value,
+                EstadoOportunidad.PERDIDA.value,
+            )
+            and item.oportunidad.fecha_estado
+            and item.oportunidad.fecha_estado.replace(tzinfo=UTC) < stale_cutoff
+        ),
+    }
 
 
 def fetch_oportunidades_for_dashboard(
@@ -210,9 +322,10 @@ def fetch_oportunidades_for_dashboard(
             continue
 
         fecha_estado = _parse_date(oportunidad.fecha_estado) or fecha_creacion
-        fecha_abierta = _fecha_abierta(oportunidad) or fecha_creacion
+        fecha_ingreso_pipeline = _fecha_ingreso_pipeline(oportunidad)
 
         estado_al_corte = _estado_al_corte(oportunidad, end)
+        estado_inicio = _estado_al_corte(oportunidad, start - timedelta(days=1))
         monto_estimado, monto_propiedad = _monto_estimado(oportunidad)
 
         include_closed = fecha_cierre is not None and start <= fecha_cierre <= end
@@ -221,6 +334,11 @@ def fetch_oportunidades_for_dashboard(
             continue
 
         es_pendiente = fecha_cierre is None or fecha_cierre > end
+        es_pendiente_inicio = (
+            fecha_creacion < start
+            and (fecha_cierre is None or fecha_cierre >= start)
+            and estado_inicio != EstadoOportunidad.PROSPECT.value
+        )
         es_ganada_periodo = (
             estado_cierre == EstadoOportunidad.GANADA.value
             and fecha_cierre is not None
@@ -231,9 +349,14 @@ def fetch_oportunidades_for_dashboard(
             and fecha_cierre is not None
             and start <= fecha_cierre <= end
         )
-        es_nueva_periodo = fecha_abierta is not None and start <= fecha_abierta <= end
+        es_cerrada_periodo = es_ganada_periodo or es_perdida_periodo
+        es_nueva_periodo = (
+            fecha_ingreso_pipeline is not None
+            and start <= fecha_ingreso_pipeline <= end
+        )
 
         bucket_creacion = _month_bucket(fecha_creacion) or "Sin-fecha"
+        bucket_pipeline = _month_bucket(fecha_ingreso_pipeline)
         bucket_estado = _month_bucket(fecha_estado) or "Sin-fecha"
         bucket_cierre = _month_bucket(fecha_cierre)
         fin_para_duracion = fecha_cierre if fecha_cierre and fecha_cierre <= end else end
@@ -244,17 +367,20 @@ def fetch_oportunidades_for_dashboard(
                 oportunidad=oportunidad,
                 fecha_creacion=fecha_creacion,
                 fecha_estado=fecha_estado,
-                fecha_abierta=fecha_abierta,
+                fecha_ingreso_pipeline=fecha_ingreso_pipeline,
                 fecha_cierre=fecha_cierre,
                 estado_al_corte=estado_al_corte,
                 estado_cierre=estado_cierre,
                 monto_estimado=monto_estimado,
                 monto_propiedad=monto_propiedad,
                 es_pendiente=es_pendiente,
+                es_pendiente_inicio=es_pendiente_inicio,
                 es_ganada_periodo=es_ganada_periodo,
                 es_perdida_periodo=es_perdida_periodo,
+                es_cerrada_periodo=es_cerrada_periodo,
                 es_nueva_periodo=es_nueva_periodo,
                 bucket_creacion=bucket_creacion,
+                bucket_pipeline=bucket_pipeline,
                 bucket_estado=bucket_estado,
                 bucket_cierre=bucket_cierre,
                 dias_pipeline=dias_pipeline,
@@ -279,6 +405,12 @@ def _conversion(part: int, total: int) -> float:
     return round((part / total) * 100, 1)
 
 
+def _variation(current: int, base: int) -> float:
+    if base == 0:
+        return 0.0
+    return round(((current - base) / base) * 100, 1)
+
+
 def build_crm_dashboard_payload(
     items: List[CalculatedOportunidad],
     start_date: str,
@@ -289,24 +421,35 @@ def build_crm_dashboard_payload(
 ) -> dict:
     end = _to_date(end_date)
 
-    totales = items
-    pendientes = [item for item in items if item.es_pendiente]
+    pendientes_anteriores = [item for item in items if item.es_pendiente_inicio]
+    en_proceso = [
+        item
+        for item in items
+        if item.es_pendiente and item.estado_al_corte != EstadoOportunidad.PROSPECT.value
+    ]
+    cerradas = [item for item in items if item.es_cerrada_periodo]
     ganadas = [item for item in items if item.es_ganada_periodo]
     perdidas = [item for item in items if item.es_perdida_periodo]
     nuevas = [item for item in items if item.es_nueva_periodo]
 
-    total_count = max(len(totales), 1)
+    total_count = max(len(pendientes_anteriores) + len(nuevas), 1)
 
     kpis = {
-        "totales": _kpi_summary(totales),
+        "pendientes": _kpi_summary(pendientes_anteriores),
         "nuevas": _kpi_summary(nuevas),
-        "ganadas": _kpi_summary(ganadas),
-        "pendientes": _kpi_summary(pendientes),
+        "cerradas": _kpi_summary(cerradas),
+        "en_proceso": _kpi_summary(en_proceso),
     }
-    kpis["totales"]["incremento"] = _conversion(len(ganadas), total_count)
     kpis["nuevas"]["incremento"] = _conversion(len(nuevas), total_count)
-    kpis["ganadas"]["conversion"] = _conversion(len(ganadas), total_count)
-    kpis["pendientes"]["incremento"] = _conversion(len(pendientes), total_count)
+    kpis["cerradas"]["ganadas"] = {
+        "count": len(ganadas),
+        "rate": _conversion(len(ganadas), total_count),
+    }
+    kpis["cerradas"]["perdidas"] = {
+        "count": len(perdidas),
+        "rate": _conversion(len(perdidas), total_count),
+    }
+    kpis["en_proceso"]["variacion"] = _variation(len(en_proceso), len(pendientes_anteriores))
 
     estados_pipeline = [
         (EstadoOportunidad.ABIERTA.value, "Abierta"),
@@ -318,9 +461,11 @@ def build_crm_dashboard_payload(
     ]
 
     funnel = []
-    total_items = len(totales)
+    total_items = len(en_proceso) + len(cerradas)
     anterior = None
     for estado_value, label in estados_pipeline:
+        if estado_value == EstadoOportunidad.PROSPECT.value:
+            continue
         en_estado = [item for item in items if item.estado_al_corte == estado_value]
         count = len(en_estado)
         conversion = _conversion(count, total_items)
@@ -352,7 +497,10 @@ def build_crm_dashboard_payload(
         months.append((month_start, month_end))
 
     def _belongs_new(item: CalculatedOportunidad, start_m: date, end_m: date) -> bool:
-        return item.fecha_abierta is not None and start_m <= item.fecha_abierta <= end_m
+        return (
+            item.fecha_ingreso_pipeline is not None
+            and start_m <= item.fecha_ingreso_pipeline <= end_m
+        )
 
     def _belongs_ganada(item: CalculatedOportunidad, start_m: date, end_m: date) -> bool:
         return (
@@ -369,10 +517,12 @@ def build_crm_dashboard_payload(
         )
 
     def _open_in_month(item: CalculatedOportunidad, start_m: date, end_m: date) -> bool:
-        fecha_abierta = item.fecha_abierta or item.fecha_creacion
-        if fecha_abierta and fecha_abierta > end_m:
+        fecha_ingreso_pipeline = item.fecha_ingreso_pipeline
+        if not fecha_ingreso_pipeline or fecha_ingreso_pipeline > end_m:
             return False
         if item.fecha_cierre and item.fecha_cierre < start_m:
+            return False
+        if _estado_al_corte(item.oportunidad, end_m) == EstadoOportunidad.PROSPECT.value:
             return False
         return True
 
@@ -380,7 +530,10 @@ def build_crm_dashboard_payload(
         return sum(
             1
             for item in items
-            if (item.fecha_abierta or item.fecha_creacion) < cut and not (item.fecha_cierre and item.fecha_cierre < cut)
+            if item.fecha_ingreso_pipeline is not None
+            and item.fecha_ingreso_pipeline < cut
+            and not (item.fecha_cierre and item.fecha_cierre < cut)
+            and _estado_al_corte(item.oportunidad, cut - timedelta(days=1)) != EstadoOportunidad.PROSPECT.value
         )
 
     evolucion: list[dict[str, object]] = []
@@ -403,7 +556,7 @@ def build_crm_dashboard_payload(
         )
         previous_open = total_count
 
-    def _ranking(data: List[CalculatedOportunidad]) -> List[dict]:
+    def _ranking(data: List[CalculatedOportunidad], bucket_attr: str = "bucket_creacion") -> List[dict]:
         sorted_items = sorted(
             data,
             key=lambda item: (
@@ -422,25 +575,25 @@ def build_crm_dashboard_payload(
                     "monto": float(item.monto_estimado) if item.monto_estimado else 0.0,
                     "moneda": item.oportunidad.moneda.codigo if item.oportunidad.moneda else None,
                     "dias_pipeline": item.dias_pipeline,
-                    "bucket": item.bucket_creacion,
-                    "kpiKey": "totales",
+                    "bucket": getattr(item, bucket_attr) or item.bucket_creacion,
+                    "kpiKey": "pendientes",
                 }
             )
         return ranking
 
     ranking = {
-        "totales": _ranking(totales),
+        "pendientes": _ranking(pendientes_anteriores),
         "nuevas": [
             {**entry, "kpiKey": "nuevas"}
-            for entry in _ranking(nuevas)
+            for entry in _ranking(nuevas, "bucket_pipeline")
         ],
-        "ganadas": [
-            {**entry, "kpiKey": "ganadas"}
-            for entry in _ranking(ganadas)
+        "cerradas": [
+            {**entry, "kpiKey": "cerradas"}
+            for entry in _ranking(cerradas)
         ],
-        "pendientes": [
-            {**entry, "kpiKey": "pendientes"}
-            for entry in _ranking(pendientes)
+        "en_proceso": [
+            {**entry, "kpiKey": "en_proceso"}
+            for entry in _ranking(en_proceso)
         ],
     }
 
@@ -448,6 +601,15 @@ def build_crm_dashboard_payload(
         "sinMonto": sum(1 for item in items if item.monto_estimado is None),
         "sinPropiedad": sum(1 for item in items if item.oportunidad.propiedad is None),
     }
+    alerts = _build_dashboard_alerts(
+        items=items,
+        session=session,
+        tipo_operacion_ids=(filters or {}).get("tipoOperacion"),
+        tipo_propiedad=(filters or {}).get("tipoPropiedad"),
+        responsable_ids=(filters or {}).get("responsable"),
+        propietario=(filters or {}).get("propietario"),
+        emprendimiento_ids=(filters or {}).get("emprendimiento"),
+    )
 
     # Ranking de propiedades disponibles
     propiedades_disponibles: Dict[int, dict] = {}
@@ -521,5 +683,6 @@ def build_crm_dashboard_payload(
         "evolucion": evolucion,
         "ranking": ranking,
         "stats": stats,
+        "alerts": alerts,
         "ranking_propiedades": ranking_propiedades,
     }

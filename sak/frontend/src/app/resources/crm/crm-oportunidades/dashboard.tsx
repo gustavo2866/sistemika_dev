@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { useDataProvider } from "ra-core";
 import {
   DashboardCard,
@@ -194,20 +195,25 @@ export const CRMOportunidadesDashboard = ({
   ];
 
   return (
-    <section className="space-y-3">
-      {loading ? (
-        <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-          Cargando dashboard...
-        </div>
-      ) : null}
-
+    <section className="space-y-3" aria-busy={loading}>
       {error ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
           {error}
         </div>
       ) : null}
 
-      <div className="grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))]">
+      <div className="relative">
+        {loading ? (
+          <>
+            <div className="pointer-events-none absolute inset-0 z-10 rounded-lg bg-background/55" />
+            <div className="pointer-events-none absolute right-2 top-2 z-20 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
+              <LoaderCircle className="h-3 w-3 animate-spin" />
+              Cargando dashboard...
+            </div>
+          </>
+        ) : null}
+
+        <div className="grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))]">
         <DashboardCard
           id="prospect"
           title="Prospect"
@@ -313,6 +319,7 @@ export const CRMOportunidadesDashboard = ({
           }
           bucketColumnsClassName="grid-cols-[1fr_auto]"
         />
+        </div>
       </div>
     </section>
   );

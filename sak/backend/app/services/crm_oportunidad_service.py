@@ -76,13 +76,10 @@ class CRMOportunidadService:
             EstadoOportunidad.VISITA.value,
             EstadoOportunidad.COTIZA.value,
             EstadoOportunidad.RESERVA.value,
-        ):
-            oportunidad.activo = True
-        elif nuevo_estado in (
             EstadoOportunidad.GANADA.value,
             EstadoOportunidad.PERDIDA.value,
         ):
-            oportunidad.activo = False
+            oportunidad.activo = True
 
         if monto is not None:
             oportunidad.monto = monto

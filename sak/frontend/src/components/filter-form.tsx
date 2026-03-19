@@ -121,6 +121,7 @@ export type FilterFormBaseProps = Omit<
   "children"
 > & {
   className?: string;
+  debounce?: number | false;
   resource?: string;
   filters?: React.ReactElement<FilterElementProps>[];
 };

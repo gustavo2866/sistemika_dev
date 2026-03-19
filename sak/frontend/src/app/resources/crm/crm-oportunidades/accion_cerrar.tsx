@@ -1,6 +1,6 @@
 "use client";
 
-import { Target } from "lucide-react";
+import { CheckCircle2, Target, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   required,
@@ -19,6 +19,7 @@ import {
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -29,12 +30,26 @@ import {
 } from "@/components/ui/dialog";
 import type { CRMOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
+import type { PanelChange } from "../crm-panel/model";
+import type { OportunidadModalBackground } from "./modal_background";
+import { renderOportunidadModalBackground } from "./modal_background";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
   const numeric = typeof value === "string" ? Number(value) : (value as number);
   return Number.isFinite(numeric) ? Number(numeric) : null;
+};
+
+const getResultadoChoices = (estado?: CRMOportunidad["estado"] | null) => {
+  if (estado === "3-cotiza" || estado === "4-reserva") {
+    return [
+      { id: "ganada", name: "Ganada" },
+      { id: "perdida", name: "Perdida" },
+    ];
+  }
+
+  return [{ id: "perdida", name: "Perdida" }];
 };
 
 export const CRMOportunidadAccionCerrar = () => {
@@ -46,21 +61,30 @@ export const CRMOportunidadAccionCerrar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { identity } = useGetIdentity();
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
+  const locationState = location.state as
+    | { returnTo?: string; panelChange?: PanelChange; background?: OportunidadModalBackground }
+    | null;
+  const returnTo = locationState?.returnTo ?? "/crm/oportunidades";
+  const panelChange = locationState?.panelChange;
+  const background = locationState?.background;
 
   const { data: oportunidad, isLoading } = useGetOne(
     "crm/oportunidades",
     { id: oportunidadId },
     { enabled: Number.isFinite(oportunidadId) },
   );
+  const resultadoChoices = useMemo(
+    () => getResultadoChoices(oportunidad?.estado),
+    [oportunidad?.estado],
+  );
 
   const defaultValues = useMemo(
     () => ({
-      resultado: "ganada",
+      resultado: resultadoChoices[0]?.id ?? "perdida",
       motivo_perdida_id: oportunidad?.motivo_perdida_id ?? "",
       descripcion_estado: oportunidad?.descripcion_estado ?? "",
     }),
-    [oportunidad],
+    [oportunidad, resultadoChoices],
   );
 
   if (!Number.isFinite(oportunidadId) || isLoading) {
@@ -73,6 +97,9 @@ export const CRMOportunidadAccionCerrar = () => {
       oportunidadId={oportunidadId}
       oportunidad={oportunidad ?? null}
       defaultValues={defaultValues}
+      resultadoChoices={resultadoChoices}
+      panelChange={panelChange}
+      background={background}
       dataProvider={dataProvider}
       notify={notify}
       refresh={refresh}
@@ -89,6 +116,9 @@ const AccionCerrarContent = ({
   oportunidadId,
   oportunidad,
   defaultValues,
+  resultadoChoices,
+  panelChange,
+  background,
   dataProvider,
   notify,
   refresh,
@@ -99,6 +129,9 @@ const AccionCerrarContent = ({
   oportunidadId: number;
   oportunidad: CRMOportunidad | null;
   defaultValues: Record<string, unknown>;
+  resultadoChoices: Array<{ id: string; name: string }>;
+  panelChange?: PanelChange;
+  background?: OportunidadModalBackground;
   dataProvider: ReturnType<typeof useDataProvider>;
   notify: ReturnType<typeof useNotify>;
   refresh: ReturnType<typeof useRefresh>;
@@ -113,6 +146,8 @@ const AccionCerrarContent = ({
     const motivoPerdidaId = normalizeId(values.motivo_perdida_id);
     const resultado = String(values.resultado ?? "perdida");
     const nuevoEstado = resultado === "ganada" ? "5-ganada" : "6-perdida";
+    const canCloseAsGanada =
+      oportunidad?.estado === "3-cotiza" || oportunidad?.estado === "4-reserva";
     if (!descripcion) {
       notify("La descripcion es obligatoria", { type: "warning" });
       return;
@@ -121,14 +156,43 @@ const AccionCerrarContent = ({
       notify("El motivo de perdida es obligatorio", { type: "warning" });
       return;
     }
+    if (nuevoEstado === "5-ganada" && !canCloseAsGanada) {
+      notify(
+        "Solo oportunidades en Cotiza o Reserva pueden cerrarse como ganadas.",
+        { type: "warning" },
+      );
+      return;
+    }
     try {
       setSaving(true);
+      const monto = oportunidad?.monto ?? null;
+      const monedaId = normalizeId(oportunidad?.moneda_id);
+      const condicionPagoId = normalizeId(oportunidad?.condicion_pago_id);
+
+      if (
+        nuevoEstado === "5-ganada" &&
+        (monto == null || !monedaId || !condicionPagoId)
+      ) {
+        notify(
+          "Para cerrar como ganada la oportunidad debe tener monto, moneda y condicion de pago.",
+          { type: "warning" },
+        );
+        return;
+      }
+
       await dataProvider.create(`crm/oportunidades/${oportunidadId}/cambiar-estado`, {
         data: {
           nuevo_estado: nuevoEstado,
           descripcion,
           usuario_id: usuarioId,
           fecha_estado: new Date().toISOString(),
+          ...(nuevoEstado === "5-ganada"
+            ? {
+                monto,
+                moneda_id: monedaId,
+                condicion_pago_id: condicionPagoId,
+              }
+            : {}),
           ...(nuevoEstado === "6-perdida" ? { motivo_perdida_id: motivoPerdidaId } : {}),
         },
       });
@@ -139,7 +203,10 @@ const AccionCerrarContent = ({
         { type: "success" },
       );
       refresh();
-      navigate(returnTo);
+      navigate(returnTo, {
+        replace: true,
+        state: panelChange ? { panelChange } : undefined,
+      });
     } catch (error) {
       console.error(error);
       notify("No se pudo cerrar la oportunidad", { type: "error" });
@@ -149,11 +216,13 @@ const AccionCerrarContent = ({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
-      <DialogContent
-        className="sm:max-w-sm"
-        overlayClassName="!bg-transparent !backdrop-blur-0"
-      >
+    <div className="relative min-h-full">
+      {renderOportunidadModalBackground(background)}
+      <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
+        <DialogContent
+          className="sm:max-w-sm"
+          overlayClassName="hidden"
+        >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Target className="h-4 w-4" />
@@ -175,36 +244,73 @@ const AccionCerrarContent = ({
             <SectionBaseTemplate
               title="Cierre"
               defaultOpen
-              main={<AccionCerrarFields />}
+              main={<AccionCerrarFields resultadoChoices={resultadoChoices} />}
             />
           </div>
-          <DialogFooter className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(returnTo)}
-              disabled={saving}
-              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              variant="destructive"
-              disabled={saving}
-              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
-            >
-              {saving ? "Cerrando..." : "Cerrar"}
-            </Button>
-          </DialogFooter>
+          <AccionCerrarFooter
+            saving={saving}
+            returnTo={returnTo}
+            navigate={navigate}
+          />
         </SimpleForm>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 
-const AccionCerrarFields = () => {
+const AccionCerrarFooter = ({
+  saving,
+  returnTo,
+  navigate,
+}: {
+  saving: boolean;
+  returnTo: string;
+  navigate: ReturnType<typeof useNavigate>;
+}) => {
   const resultadoValue = useWatch({ name: "resultado" }) as string | undefined;
+  const isGanada = resultadoValue === "ganada";
+  const actionIcon = isGanada ? (
+    <CheckCircle2 className="h-3.5 w-3.5" />
+  ) : (
+    <XCircle className="h-3.5 w-3.5" />
+  );
+
+  return (
+    <DialogFooter className="mt-4 gap-2 sm:justify-end">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => navigate(returnTo)}
+        disabled={saving}
+        className="h-8 min-w-[96px] px-3 text-[11px] sm:h-8 sm:text-[11px]"
+      >
+        Cancelar
+      </Button>
+      <Button
+        type="submit"
+        disabled={saving}
+        className={cn(
+          "h-8 min-w-[96px] px-3 text-[11px] text-white sm:h-8 sm:text-[11px]",
+          isGanada
+            ? "bg-emerald-600 hover:bg-emerald-700"
+            : "bg-rose-600 hover:bg-rose-700",
+        )}
+      >
+        {actionIcon}
+        {saving ? "Cerrando..." : "Cerrar"}
+      </Button>
+    </DialogFooter>
+  );
+};
+
+const AccionCerrarFields = ({
+  resultadoChoices,
+}: {
+  resultadoChoices: Array<{ id: string; name: string }>;
+}) => {
+  const resultadoValue = useWatch({ name: "resultado" }) as string | undefined;
+  const isGanada = resultadoValue === "ganada";
   const isPerdida = (resultadoValue ?? "perdida") === "perdida";
 
   return (
@@ -214,12 +320,17 @@ const AccionCerrarFields = () => {
         label="Resultado"
         optionText="name"
         optionValue="id"
-        choices={[
-          { id: "ganada", name: "Ganada" },
-          { id: "perdida", name: "Perdida" },
-        ]}
+        choices={resultadoChoices}
         validate={required()}
         widthClass="w-full md:col-span-6"
+        triggerProps={{
+          className: cn(
+            "transition-colors [&_[data-slot=select-value]]:font-medium",
+            isGanada
+              ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:border-emerald-500 focus-visible:ring-emerald-200 [&_[data-slot=select-value]]:text-emerald-700 [&_svg]:text-emerald-600"
+              : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:border-rose-500 focus-visible:ring-rose-200 [&_[data-slot=select-value]]:text-rose-700 [&_svg]:text-rose-600",
+          ),
+        }}
       />
       {isPerdida ? (
         <FormReferenceAutocomplete

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useFormState } from "react-hook-form";
+import { ValidationError } from "ra-core";
 import { cn } from "@/lib/utils";
 
 export type FormErrorSummaryProps = {
@@ -44,14 +45,15 @@ export const FormErrorSummary = ({ className }: FormErrorSummaryProps) => {
 
   if (!firstError) return null;
 
-  const pathLabel = firstError.path.length
-    ? `${firstError.path.join(".")}: `
-    : "";
-
   return (
-    <div className={cn("text-[10px] text-destructive", className)}>
-      {pathLabel}
-      {firstError.message}
+    <div
+      role="alert"
+      className={cn(
+        "rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-[11px] text-destructive",
+        className,
+      )}
+    >
+      <ValidationError error={firstError.message} />
     </div>
   );
 };

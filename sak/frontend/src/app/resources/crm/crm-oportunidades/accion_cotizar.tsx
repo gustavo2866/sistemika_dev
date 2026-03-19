@@ -14,7 +14,6 @@ import {
 import { useFormContext, useWatch } from "react-hook-form";
 import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import { ReferenceInput } from "@/components/reference-input";
-import { SelectInput } from "@/components/select-input";
 import {
   FormNumber,
   FormReferenceAutocomplete,
@@ -33,6 +32,9 @@ import {
 } from "@/components/ui/dialog";
 import type { CRMOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
+import type { PanelChange } from "../crm-panel/model";
+import type { OportunidadModalBackground } from "./modal_background";
+import { renderOportunidadModalBackground } from "./modal_background";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 const normalizeId = (value: unknown) => {
@@ -75,7 +77,12 @@ export const CRMOportunidadAccionCotizar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { identity } = useGetIdentity();
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
+  const locationState = location.state as
+    | { returnTo?: string; panelChange?: PanelChange; background?: OportunidadModalBackground }
+    | null;
+  const returnTo = locationState?.returnTo ?? "/crm/oportunidades";
+  const panelChange = locationState?.panelChange;
+  const background = locationState?.background;
 
   const { data: oportunidad, isLoading } = useGetOne(
     "crm/oportunidades",
@@ -117,6 +124,8 @@ export const CRMOportunidadAccionCotizar = () => {
       oportunidad={oportunidad ?? null}
       defaultValues={defaultValues}
       arsId={arsId}
+      panelChange={panelChange}
+      background={background}
       dataProvider={dataProvider}
       notify={notify}
       refresh={refresh}
@@ -134,6 +143,8 @@ const AccionCotizarContent = ({
   oportunidad,
   defaultValues,
   arsId,
+  panelChange,
+  background,
   dataProvider,
   notify,
   refresh,
@@ -145,6 +156,8 @@ const AccionCotizarContent = ({
   oportunidad: CRMOportunidad | null;
   defaultValues: Record<string, unknown>;
   arsId?: number;
+  panelChange?: PanelChange;
+  background?: OportunidadModalBackground;
   dataProvider: ReturnType<typeof useDataProvider>;
   notify: ReturnType<typeof useNotify>;
   refresh: ReturnType<typeof useRefresh>;
@@ -192,7 +205,10 @@ const AccionCotizarContent = ({
 
       notify("Cotizacion registrada exitosamente", { type: "success" });
       refresh();
-      navigate(returnTo, { replace: true });
+      navigate(returnTo, {
+        replace: true,
+        state: panelChange ? { panelChange } : undefined,
+      });
     } catch (error) {
       console.error(error);
       notify("No se pudo registrar la cotizacion", { type: "error" });
@@ -202,11 +218,13 @@ const AccionCotizarContent = ({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo, { replace: true }) : null)}>
-      <DialogContent
-        className="sm:max-w-sm"
-        overlayClassName="!bg-transparent !backdrop-blur-0"
-      >
+    <div className="relative min-h-full">
+      {renderOportunidadModalBackground(background)}
+      <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo, { replace: true }) : null)}>
+        <DialogContent
+          className="sm:max-w-sm"
+          overlayClassName="hidden"
+        >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Target className="h-4 w-4" />
@@ -324,8 +342,9 @@ const AccionCotizarContent = ({
             </Button>
           </DialogFooter>
         </SimpleForm>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

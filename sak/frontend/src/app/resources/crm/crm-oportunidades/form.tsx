@@ -36,14 +36,14 @@ import {
 import { CheckCircle2, Plus, Trash2, Workflow } from "lucide-react";
 
 import {
+  canUseOportunidadAction,
   CRM_OPORTUNIDAD_ESTADOS,
+  isClosedOportunidad,
+  isProspectOportunidad,
 } from "./model";
+import { captureOportunidadModalBackground } from "./modal_background";
 
 type CRMOportunidadFormValues = Record<string, unknown>;
-
-const isProspectState = (estado: string) => estado === "0-prospect";
-const isClosedState = (estado: string) =>
-  estado === "5-ganada" || estado === "6-perdida";
 
 const parseNumericParam = (value: string | null) => {
   if (!value) return undefined;
@@ -195,7 +195,7 @@ export const CRMOportunidadPoForm = () => {
       <EventosSection />
       <OrdenesSection />
       <SectionBaseTemplate
-        title="Seguimiento"
+        title="Cotizacion"
         main={<SeguimientoFields />}
         defaultOpen={false}
       />
@@ -205,10 +205,9 @@ export const CRMOportunidadPoForm = () => {
 
 const CabeceraSection = () => {
   const record = useRecordContext<any>();
-  const estado = String(record?.estado ?? "");
   const hasActions =
     Boolean(record?.id) &&
-    (isProspectState(estado) || !isClosedState(estado));
+    (isProspectOportunidad(record?.estado) || !isClosedOportunidad(record?.estado));
 
   return (
     <SectionBaseTemplate
@@ -231,7 +230,6 @@ const CabeceraActionsMenu = () => {
     (location.pathname.includes("/crm/crm-oportunidades")
       ? "/crm/crm-oportunidades"
       : "/crm/oportunidades");
-  const estado = String(record?.estado ?? "");
 
   if (!record?.id) return null;
 
@@ -240,14 +238,23 @@ const CabeceraActionsMenu = () => {
     state?: Record<string, unknown>,
     nextReturnTo = returnTo,
   ) => {
-    navigate(path, { state: { returnTo: nextReturnTo, ...state } });
+    navigate(path, {
+      state: {
+        returnTo: nextReturnTo,
+        background: captureOportunidadModalBackground(),
+        ...state,
+      },
+    });
   };
 
-  const canReservar = estado === "3-cotiza";
+  const canAgendar = canUseOportunidadAction(record.estado, "agendar");
+  const canCotizar = canUseOportunidadAction(record.estado, "cotizar");
+  const canReservar = canUseOportunidadAction(record.estado, "reservar");
+  const canCerrar = canUseOportunidadAction(record.estado, "cerrar");
 
   return (
     <>
-      {isProspectState(estado) ? (
+      {isProspectOportunidad(record.estado) ? (
         <>
           <DropdownMenuItem
             onSelect={(event) => {
@@ -273,61 +280,69 @@ const CabeceraActionsMenu = () => {
           <DropdownMenuItem
             onSelect={(event) => {
               event.stopPropagation();
-              goTo(`/crm/oportunidades/${record.id}/accion_aceptar`);
+              goTo(`/crm/oportunidades/${record.id}/accion_aceptar`, {
+                background: captureOportunidadModalBackground(),
+              });
             }}
             className="px-1.5 py-1 text-[8px] sm:text-[10px]"
           >
             <CheckCircle2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-            Aceptar
+            Confirmar
           </DropdownMenuItem>
         </>
       ) : null}
 
-      {!isProspectState(estado) && !isClosedState(estado) ? (
+      {!isProspectOportunidad(record.estado) && !isClosedOportunidad(record.estado) ? (
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]">
             <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
             Cambiar estado
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-28 sm:w-36">
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.stopPropagation();
-                goTo(`/crm/oportunidades/${record.id}/accion_agendar`);
-              }}
-              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-            >
-              Agendar
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.stopPropagation();
-                goTo(`/crm/oportunidades/${record.id}/accion_cotizar`);
-              }}
-              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-            >
-              Cotizar
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.stopPropagation();
-                if (!canReservar) return;
-                goTo(`/crm/oportunidades/${record.id}/accion_reservar`);
-              }}
-              disabled={!canReservar}
-              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-            >
-              Reservar
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.stopPropagation();
-                goTo(`/crm/oportunidades/${record.id}/accion_cerrar`);
-              }}
-              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-            >
-              Cerrar
-            </DropdownMenuItem>
+            {canAgendar ? (
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.stopPropagation();
+                  goTo(`/crm/oportunidades/${record.id}/accion_agendar`);
+                }}
+                className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+              >
+                Agendar
+              </DropdownMenuItem>
+            ) : null}
+            {canCotizar ? (
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.stopPropagation();
+                  goTo(`/crm/oportunidades/${record.id}/accion_cotizar`);
+                }}
+                className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+              >
+                Cotizar
+              </DropdownMenuItem>
+            ) : null}
+            {canReservar ? (
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.stopPropagation();
+                  goTo(`/crm/oportunidades/${record.id}/accion_reservar`);
+                }}
+                className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+              >
+                Reservar
+              </DropdownMenuItem>
+            ) : null}
+            {canCerrar ? (
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.stopPropagation();
+                  goTo(`/crm/oportunidades/${record.id}/accion_cerrar`);
+                }}
+                className="px-1.5 py-1 text-[8px] sm:text-[10px]"
+              >
+                Cerrar
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
       ) : null}
@@ -477,12 +492,6 @@ const CabeceraOpcionales = () => {
         />
       </div>
     </div>
-    <div className="mt-2 rounded-md border border-muted/60 bg-muted/30 p-2">
-      <div className="mb-2 text-[10px] font-semibold text-muted-foreground">
-        Cotizacion
-      </div>
-      <CotizacionFields />
-    </div>
     </div>
   );
 };
@@ -548,30 +557,38 @@ const CotizacionFields = () => (
 );
 
 const SeguimientoFields = () => (
-  <div className="grid gap-2 md:grid-cols-4">
-    <FormNumber
-      source="probabilidad"
-      label="Probabilidad (%)"
-      min={0}
-      max={100}
-      widthClass="w-full"
-    />
-    <FormDate
-      source="fecha_cierre_estimada"
-      label="Cierre estimado"
-      widthClass="w-full"
-    />
-    <FormReferenceAutocomplete
-      referenceProps={{
-        source: "motivo_perdida_id",
-        reference: "crm/catalogos/motivos-perdida",
-      }}
-      inputProps={{
-        optionText: "nombre",
-        label: "Motivo perdida",
-      }}
-      widthClass="w-full md:col-span-2"
-    />
+  <div className="space-y-2">
+    <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+      <div className="mb-2 text-[10px] font-semibold text-muted-foreground">
+        Cotizacion
+      </div>
+      <CotizacionFields />
+    </div>
+    <div className="grid gap-2 md:grid-cols-4">
+      <FormNumber
+        source="probabilidad"
+        label="Probabilidad (%)"
+        min={0}
+        max={100}
+        widthClass="w-full"
+      />
+      <FormDate
+        source="fecha_cierre_estimada"
+        label="Cierre estimado"
+        widthClass="w-full"
+      />
+      <FormReferenceAutocomplete
+        referenceProps={{
+          source: "motivo_perdida_id",
+          reference: "crm/catalogos/motivos-perdida",
+        }}
+        inputProps={{
+          optionText: "nombre",
+          label: "Motivo perdida",
+        }}
+        widthClass="w-full md:col-span-2"
+      />
+    </div>
   </div>
 );
 

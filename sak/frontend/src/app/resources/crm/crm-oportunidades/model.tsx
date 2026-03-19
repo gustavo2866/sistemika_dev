@@ -31,6 +31,14 @@ export type CRMOportunidadEstado = (typeof CRM_OPORTUNIDAD_ESTADOS)[number];
 // Tipos de bucket basados en estados.
 export type BucketKey = CRMOportunidadEstado;
 
+export type CRMOportunidadAction =
+  | "aceptar"
+  | "agendar"
+  | "cotizar"
+  | "reservar"
+  | "cerrar"
+  | "descartar";
+
 // Lista canonica de estados permitidos para oportunidades.
 export const CRM_OPORTUNIDAD_ESTADOS = [
   "0-prospect",
@@ -42,6 +50,19 @@ export const CRM_OPORTUNIDAD_ESTADOS = [
   "6-perdida",
 ] as const;
 
+const CRM_OPORTUNIDAD_ACTIONS_BY_ESTADO: Record<
+  CRMOportunidadEstado,
+  CRMOportunidadAction[]
+> = {
+  "0-prospect": ["aceptar", "descartar"],
+  "1-abierta": ["agendar", "cotizar", "cerrar"],
+  "2-visita": ["cotizar", "cerrar"],
+  "3-cotiza": ["reservar", "cerrar"],
+  "4-reserva": ["cerrar"],
+  "5-ganada": [],
+  "6-perdida": [],
+};
+
 // Opciones de estado listas para selects.
 export const CRM_OPORTUNIDAD_ESTADO_CHOICES = CRM_OPORTUNIDAD_ESTADOS.map(
   (estado) => ({
@@ -49,6 +70,26 @@ export const CRM_OPORTUNIDAD_ESTADO_CHOICES = CRM_OPORTUNIDAD_ESTADOS.map(
     name: estado.replace("-", " "),
   }),
 );
+
+export const isProspectOportunidad = (
+  estado?: CRMOportunidadEstado | null,
+) => estado === "0-prospect";
+
+export const isClosedOportunidad = (
+  estado?: CRMOportunidadEstado | null,
+) => estado === "5-ganada" || estado === "6-perdida";
+
+export const getAvailableOportunidadActions = (
+  estado?: CRMOportunidadEstado | null,
+): CRMOportunidadAction[] => {
+  if (!estado) return [];
+  return CRM_OPORTUNIDAD_ACTIONS_BY_ESTADO[estado] ?? [];
+};
+
+export const canUseOportunidadAction = (
+  estado: CRMOportunidadEstado | null | undefined,
+  action: CRMOportunidadAction,
+) => getAvailableOportunidadActions(estado).includes(action);
 
 // Colores de badge por estado para uso consistente en UI.
 export const CRM_OPORTUNIDAD_ESTADO_BADGES: Record<CRMOportunidadEstado, string> =

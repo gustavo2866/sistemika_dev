@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { DateField } from "@/components/date-field";
 import { cn } from "@/lib/utils";
 import { CRMOportunidadPoForm } from "./form";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   formatEstadoOportunidad,
@@ -38,10 +39,26 @@ const OportunidadEditTitle = () => {
   );
 };
 
-export const CRMOportunidadPoEdit = () => (
-  <Edit redirect="list" title={<OportunidadEditTitle />} actions={false}>
-    <CRMOportunidadPoForm />
-  </Edit>
-);
+export const CRMOportunidadPoEdit = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const locationState = location.state as { returnTo?: string } | null;
+  const returnTo = locationState?.returnTo;
+
+  return (
+    <Edit
+      redirect={false}
+      title={<OportunidadEditTitle />}
+      actions={false}
+      mutationOptions={{
+        onSuccess: () => {
+          navigate(returnTo ?? "/crm/oportunidades", { replace: true });
+        },
+      }}
+    >
+      <CRMOportunidadPoForm />
+    </Edit>
+  );
+};
 
 export default CRMOportunidadPoEdit;

@@ -320,6 +320,13 @@ export function AppSidebar() {
                   isOpen={crmOpen}
                   onToggle={() => setCrmOpen((open) => !open)}
                 >
+                  {crmResources.includes("dashboard-crm") ? (
+                    <ResourceSubMenuItem
+                      key="dashboard-crm"
+                      name="dashboard-crm"
+                      onClick={handleItemClick}
+                    />
+                  ) : null}
                   <SidebarCustomMenuItem
                     key="/crm/chat"
                     label="CRM Chat"
@@ -342,7 +349,7 @@ export function AppSidebar() {
                     onClick={handleItemClick}
                   />
                   {crmResources
-                    .filter((name) => name !== "crm/oportunidades")
+                    .filter((name) => name !== "crm/oportunidades" && name !== "dashboard-crm")
                     .map((name) => (
                       <ResourceSubMenuItem key={name} name={name} onClick={handleItemClick} />
                     ))}

@@ -167,7 +167,7 @@ import {
 } from "@/app/resources/tipos-solicitud";
 import RecepcionesList from "@/app/resources/recepciones/list";
 import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
-import DashboardCrmList from "@/app/resources/crm/dashboard-crm/list";
+import DashboardCrmList from "@/app/resources/crm/crm-dashboard/list";
 import TarjasList from "@/app/resources/tarjas/list";
 import {
   NominaList,

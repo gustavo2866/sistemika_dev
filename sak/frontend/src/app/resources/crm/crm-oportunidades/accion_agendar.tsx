@@ -28,6 +28,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AccionOportunidadHeader } from "./accion_header";
+import type { PanelChange } from "../crm-panel/model";
+import type { OportunidadModalBackground } from "./modal_background";
+import { renderOportunidadModalBackground } from "./modal_background";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
@@ -44,7 +47,12 @@ export const CRMOportunidadAccionAgendar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { identity } = useGetIdentity();
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
+  const locationState = location.state as
+    | { returnTo?: string; panelChange?: PanelChange; background?: OportunidadModalBackground }
+    | null;
+  const returnTo = locationState?.returnTo ?? "/crm/oportunidades";
+  const panelChange = locationState?.panelChange;
+  const background = locationState?.background;
   const [saving, setSaving] = useState(false);
 
   const { data: oportunidad, isLoading } = useGetOne(
@@ -98,7 +106,10 @@ export const CRMOportunidadAccionAgendar = () => {
 
       notify("Visita agendada exitosamente", { type: "success" });
       refresh();
-      navigate(returnTo);
+      navigate(returnTo, {
+        replace: true,
+        state: panelChange ? { panelChange } : undefined,
+      });
     } catch (error: any) {
       notify(error.message || "Error al agendar la visita", { type: "error" });
     } finally {
@@ -107,11 +118,13 @@ export const CRMOportunidadAccionAgendar = () => {
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
-      <DialogContent
-        className="sm:max-w-sm"
-        overlayClassName="!bg-transparent !backdrop-blur-0"
-      >
+    <div className="relative min-h-full">
+      {renderOportunidadModalBackground(background)}
+      <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
+        <DialogContent
+          className="sm:max-w-sm"
+          overlayClassName="hidden"
+        >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Calendar className="h-4 w-4" />
@@ -194,8 +207,9 @@ export const CRMOportunidadAccionAgendar = () => {
             </Button>
           </DialogFooter>
         </SimpleForm>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

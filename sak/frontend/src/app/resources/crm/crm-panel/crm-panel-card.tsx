@@ -3,13 +3,13 @@
 import {
   Calendar,
   Check,
-  X,
   FileText,
   ChevronRight,
   Building2,
   Home,
   Pencil,
   MoreHorizontal,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -25,10 +25,10 @@ import {
   KanbanCardWithCollapse,
   KanbanMeta,
   KanbanMetaRow,
-  KanbanAvatar,
   type KanbanCardAction,
-} from "@/components/kanban/card";
+} from "@/components/forms/form_order";
 import {
+  canUseOportunidadAction,
   formatOportunidadTitulo,
   getCardStyle,
   getContactoName,
@@ -39,7 +39,6 @@ import {
   formatEstadoLabel,
   formatCreatedDate,
   getEstadoBadgeClass,
-  getResponsableAvatarInfo,
   type BucketKey,
 } from "../crm-oportunidades/model";
 
@@ -58,6 +57,7 @@ interface CardHandlers {
   onAceptar?: (oportunidad: CRMOportunidad) => void;
   onAgendar?: (oportunidad: CRMOportunidad) => void;
   onCotizar?: (oportunidad: CRMOportunidad) => void;
+  onReservar?: (oportunidad: CRMOportunidad) => void;
   onCerrar?: (oportunidad: CRMOportunidad) => void;
   onDescartar?: (oportunidad: CRMOportunidad) => void;
 }
@@ -98,25 +98,34 @@ const getTipoOperacionBadgeClasses = (value: string | null | undefined) => {
   return "bg-slate-100 text-slate-600";
 };
 
-const createResponsableBlock = (oportunidad: CRMOportunidad, actionsMenu?: React.ReactNode) => {
-  const { name: responsableName } = getResponsableAvatarInfo(oportunidad);
+const createResponsableBlock = (
+  oportunidad: CRMOportunidad,
+  estado: CRMOportunidadEstado,
+  actionsMenu?: React.ReactNode,
+) => {
   const contactoName = getContactoName(oportunidad);
   const truncatedContacto = contactoName;
   const oportunidadNumber = `#${String(oportunidad.id).padStart(6, "0")}`;
   const tipoOperacionLabel = getTipoOperacionName(oportunidad);
+  const estadoBadge = createEstadoBadge(estado);
   
   return (
     <div className="flex w-full flex-col items-start gap-0.5">
       <div className="flex w-full items-start justify-between gap-1 flex-nowrap">
-        {tipoOperacionLabel ? (
-          <span
-            className={cn(
-              "inline-flex min-w-0 max-w-[90px] items-center truncate rounded-full px-1 py-0.5 text-[5px] font-semibold uppercase tracking-wide",
-              getTipoOperacionBadgeClasses(tipoOperacionLabel)
-            )}
-          >
-            {tipoOperacionLabel}
-          </span>
+        {tipoOperacionLabel || estadoBadge ? (
+          <div className="flex min-w-0 max-w-[110px] flex-wrap items-center gap-1">
+            {tipoOperacionLabel ? (
+              <span
+                className={cn(
+                  "inline-flex min-w-0 max-w-[90px] items-center truncate rounded-full px-1 py-0.5 text-[5px] font-semibold uppercase tracking-wide",
+                  getTipoOperacionBadgeClasses(tipoOperacionLabel)
+                )}
+              >
+                {tipoOperacionLabel}
+              </span>
+            ) : null}
+            {estadoBadge}
+          </div>
         ) : (
           <span className="text-[6px] text-slate-400">Sin tipo</span>
         )}
@@ -228,13 +237,24 @@ const createCerrarAction = (
   disabled: updating,
 });
 
+const createReservarAction = (
+  oportunidad: CRMOportunidad,
+  onReservar: (oportunidad: CRMOportunidad) => void,
+  updating: boolean
+): CardMenuAction => ({
+  label: "Reservar",
+  icon: <FileText className="h-3 w-3 text-violet-600" />,
+  onClick: () => onReservar(oportunidad),
+  disabled: updating,
+});
+
 const createDescartarAction = (
   oportunidad: CRMOportunidad,
   onDescartar: (oportunidad: CRMOportunidad) => void,
   updating: boolean
 ): CardMenuAction => ({
-  label: "Descartar",
-  icon: <X className="h-3 w-3 text-rose-500" />,
+  label: "Eliminar",
+  icon: <Trash2 className="h-3 w-3 text-rose-500" />,
   onClick: () => onDescartar(oportunidad),
   disabled: updating,
 });
@@ -248,11 +268,32 @@ const getCardConfig = (
 ): CardConfig => {
 
   // Elementos base
-  const responsableBlock = createResponsableBlock(oportunidad);
+  const responsableBlock = createResponsableBlock(oportunidad, estado);
   const checkIcon = createCheckIcon();
   const lostIcon = createLostIcon();
   const estadoBadge = createEstadoBadge(estado);
   const onEdit = handlers.onEdit ? () => handlers.onEdit!(oportunidad) : undefined;
+  const menuActions = [
+    canUseOportunidadAction(estado, "descartar") && handlers.onDescartar
+      ? createDescartarAction(oportunidad, handlers.onDescartar, updating)
+      : null,
+    canUseOportunidadAction(estado, "aceptar") && handlers.onAceptar
+      ? createConfirmarAction(oportunidad, handlers.onAceptar, updating)
+      : null,
+    canUseOportunidadAction(estado, "agendar") && handlers.onAgendar
+      ? createAgendarAction(oportunidad, handlers.onAgendar, updating)
+      : null,
+    canUseOportunidadAction(estado, "cotizar") && handlers.onCotizar
+      ? createCotizarAction(oportunidad, handlers.onCotizar, updating)
+      : null,
+    canUseOportunidadAction(estado, "reservar") && handlers.onReservar
+      ? createReservarAction(oportunidad, handlers.onReservar, updating)
+      : null,
+    canUseOportunidadAction(estado, "cerrar") && handlers.onCerrar
+      ? createCerrarAction(oportunidad, handlers.onCerrar, updating)
+      : null,
+  ].filter(Boolean) as CardMenuAction[];
+  const actionsMenu = createActionsMenu(onEdit, menuActions);
 
   // Mapeo estado → configuración visual
   const stateConfigs: Record<string, CardConfig> = {
@@ -269,13 +310,8 @@ const getCardConfig = (
     "0-prospect": {
       headerLeft: createResponsableBlock(
         oportunidad,
-        createActionsMenu(
-          onEdit,
-          [
-            handlers.onAceptar && createConfirmarAction(oportunidad, handlers.onAceptar, updating),
-            handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-          ].filter(Boolean) as CardMenuAction[]
-        )
+        estado,
+        actionsMenu
       ),
       headerRight: null,
       actions: [],
@@ -283,13 +319,8 @@ const getCardConfig = (
     "1-abierta": {
       headerLeft: createResponsableBlock(
         oportunidad,
-        createActionsMenu(
-          onEdit,
-          [
-            handlers.onAgendar && createAgendarAction(oportunidad, handlers.onAgendar, updating),
-            handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-          ].filter(Boolean) as CardMenuAction[]
-        )
+        estado,
+        actionsMenu
       ),
       headerRight: null,
       actions: [],
@@ -297,13 +328,8 @@ const getCardConfig = (
     "2-visita": {
       headerLeft: createResponsableBlock(
         oportunidad,
-        createActionsMenu(
-          onEdit,
-          [
-            handlers.onCotizar && createCotizarAction(oportunidad, handlers.onCotizar, updating),
-            handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-          ].filter(Boolean) as CardMenuAction[]
-        )
+        estado,
+        actionsMenu
       ),
       headerRight: null,
       actions: [],
@@ -311,13 +337,8 @@ const getCardConfig = (
     "3-cotiza": {
       headerLeft: createResponsableBlock(
         oportunidad,
-        createActionsMenu(
-          onEdit,
-          [
-            handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating),
-            handlers.onDescartar && createDescartarAction(oportunidad, handlers.onDescartar, updating),
-          ].filter(Boolean) as CardMenuAction[]
-        )
+        estado,
+        actionsMenu
       ),
       headerRight: null,
       actions: [],
@@ -325,12 +346,8 @@ const getCardConfig = (
     "4-reserva": {
       headerLeft: createResponsableBlock(
         oportunidad,
-        createActionsMenu(
-          onEdit,
-          [handlers.onCerrar && createCerrarAction(oportunidad, handlers.onCerrar, updating)].filter(
-            Boolean
-          ) as CardMenuAction[]
-        )
+        estado,
+        actionsMenu
       ),
       headerRight: null,
       actions: [],
@@ -367,6 +384,7 @@ export interface CRMOportunidadKanbanCardProps {
   onAceptar?: (oportunidad: CRMOportunidad) => void;
   onAgendar?: (oportunidad: CRMOportunidad) => void;
   onCotizar?: (oportunidad: CRMOportunidad) => void;
+  onReservar?: (oportunidad: CRMOportunidad) => void;
   onCerrar?: (oportunidad: CRMOportunidad) => void;
   onDescartar?: (oportunidad: CRMOportunidad) => void;
 }
@@ -381,16 +399,21 @@ export const CRMOportunidadKanbanCard = ({
   onAceptar,
   onAgendar,
   onCotizar,
+  onReservar,
   onCerrar,
   onDescartar,
 }: CRMOportunidadKanbanCardProps) => {
   const estado = normalizeEstado(oportunidad.estado);
+  const descripcionTexto = oportunidad.descripcion_estado?.trim() ?? "";
+  const descripcionPreview = descripcionTexto
+    ? `${descripcionTexto.slice(0, 30)}${descripcionTexto.length > 30 ? "..." : ""}`
+    : null;
   
   // Obtener configuración declarativa basada en el estado
   const config = getCardConfig(
     oportunidad,
     estado,
-    { onEdit, onAceptar, onAgendar, onCotizar, onCerrar, onDescartar },
+    { onEdit, onAceptar, onAgendar, onCotizar, onReservar, onCerrar, onDescartar },
     updating
   );
 
@@ -408,6 +431,11 @@ export const CRMOportunidadKanbanCard = ({
           <span className="text-[7px] font-semibold text-slate-700">{formatMonto(oportunidad)}</span>
         </KanbanMetaRow>
       )}
+      {descripcionPreview ? (
+        <p className="px-0.5 text-[7px] leading-tight text-slate-500">
+          {descripcionPreview}
+        </p>
+      ) : null}
     </KanbanMeta>
   );
 
@@ -419,6 +447,7 @@ export const CRMOportunidadKanbanCard = ({
       id={oportunidad.id}
       collapsed={collapsed}
       onToggleCollapse={onToggleCollapse}
+      onClick={onEdit ? () => onEdit(oportunidad) : undefined}
       header={{
         left: config.headerLeft,
         right: config.headerRight,
@@ -438,3 +467,7 @@ export const CRMOportunidadKanbanCard = ({
     />
   );
 };
+
+
+
+

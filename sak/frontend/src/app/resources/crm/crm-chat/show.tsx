@@ -46,6 +46,7 @@ import {
   buildOportunidadFilter,
   getReturnToFromLocation,
 } from "@/lib/oportunidad-context";
+import { captureOportunidadModalBackground } from "../crm-oportunidades/modal_background";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const POLL_MS = 5000;
@@ -413,7 +414,10 @@ export const CRMChatShow = ({
   const handleOpenAccion = (accion: "accion_descartar" | "accion_aceptar" | "accion_agendar" | "accion_cerrar") => {
     if (!resolveOportunidadId) return;
     navigate(`/crm/oportunidades/${resolveOportunidadId}/${accion}`, {
-      state: { returnTo: chatReturnTo },
+      state: {
+        returnTo: chatReturnTo,
+        background: captureOportunidadModalBackground(),
+      },
     });
   };
 
@@ -435,20 +439,14 @@ export const CRMChatShow = ({
 
   return (
     <div
-      className={
-        embedded
-          ? "flex h-[540px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8]"
-          : "mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]"
-      }
-    >
-      <header
         className={
           embedded
-            ? "sticky top-0 z-10 flex items-center gap-2.5 border-b border-slate-200/70 bg-white/80 px-2.5 py-1.5 backdrop-blur"
-            : "sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200/70 bg-white/80 px-3 py-2 backdrop-blur"
+          ? "flex h-[300px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8]"
+          : "mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]"
         }
       >
-        {!embedded ? (
+      {!embedded ? (
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200/70 bg-white/80 px-3 py-2 backdrop-blur">
           <Button
             variant="ghost"
             size="icon"
@@ -457,69 +455,69 @@ export const CRMChatShow = ({
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-        ) : null}
-        <Avatar className="size-9 border border-slate-200">
-          <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
-            {displayName
-              .split(/\s+/)
-              .filter(Boolean)
-              .map((part: string) => part[0])
-              .slice(0, 2)
-              .join("")
-              .toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1">
-            <p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[13px]">
-              {displayName}
-            </p>
-            {tipoOperacionLabel ? (
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide ${getTipoOperacionBadgeClasses(
-                  tipoOperacionLabel
-                )}`}
-              >
-                {tipoOperacionLabel}
-              </span>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-1 text-[9px] text-slate-500 sm:text-[10px]">
-            {resolveOportunidadId ? (
-              <>
-                <span className="truncate">
-                  {resolveOportunidadId} - {oportunidadTitle ?? "Sin titulo"}
+          <Avatar className="size-9 border border-slate-200">
+            <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
+              {displayName
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((part: string) => part[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1">
+              <p className="truncate text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+                {displayName}
+              </p>
+              {tipoOperacionLabel ? (
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide ${getTipoOperacionBadgeClasses(
+                    tipoOperacionLabel
+                  )}`}
+                >
+                  {tipoOperacionLabel}
                 </span>
-                {oportunidadEstado ? (
-                  <span className="text-slate-400">- {oportunidadEstado}</span>
-                ) : null}
-              </>
-            ) : (
-              <span>Sin oportunidad</span>
-            )}
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1 text-[9px] text-slate-500 sm:text-[10px]">
+              {resolveOportunidadId ? (
+                <>
+                  <span className="truncate">
+                    {resolveOportunidadId} - {oportunidadTitle ?? "Sin titulo"}
+                  </span>
+                  {oportunidadEstado ? (
+                    <span className="text-slate-400">- {oportunidadEstado}</span>
+                  ) : null}
+                </>
+              ) : (
+                <span>Sin oportunidad</span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5 text-slate-400">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
-            onClick={handleOpenOportunidad}
-            disabled={!resolveOportunidadId}
-          >
-            <House className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
-            onClick={handleOpenEventos}
-            disabled={!resolveOportunidadId}
-          >
-            <Calendar className="h-4 w-4" />
-          </Button>
-        </div>
-      </header>
+          <div className="ml-auto flex items-center gap-1.5 text-slate-400">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
+              onClick={handleOpenOportunidad}
+              disabled={!resolveOportunidadId}
+            >
+              <House className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-400 sm:h-8 sm:w-8"
+              onClick={handleOpenEventos}
+              disabled={!resolveOportunidadId}
+            >
+              <Calendar className="h-4 w-4" />
+            </Button>
+          </div>
+        </header>
+      ) : null}
 
       <Dialog open={respuestasOpen} onOpenChange={setRespuestasOpen}>
         <DialogContent className="sm:max-w-xl">

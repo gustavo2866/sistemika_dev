@@ -60,6 +60,7 @@ export {
 } from "./form/header_menu_actions";
 export type { FormOrderHeaderMenuActionsProps } from "./form/header_menu_actions";
 export * from "./dashboard";
+export * from "./kanban";
 export { DetailFooterButtons } from "./form/detail_footer_buttons";
 export { CalculatedImporte } from "./form/calculated_importe";
 export { TotalCompute } from "./form/total_compute";
@@ -95,6 +96,13 @@ export {
   FormValue,
 } from "./form/field_wrappers";
 export type { FormReferenceAutocompleteProps } from "./form/field_wrappers";
+export { PeriodRangeNavigator } from "./dashboard/period_range_navigator";
+export type {
+  PeriodRange,
+  PeriodRangeNavigatorProps,
+  PeriodType,
+} from "./dashboard/period_range_navigator";
+export { PeriodRangeNavigator as FormOrderPeriodRangeNavigator } from "./dashboard/period_range_navigator";
 export {
   FORM_FIELD_DEFAULT_WIDTH_CLASS,
   FORM_FIELD_LABEL_CLASS,

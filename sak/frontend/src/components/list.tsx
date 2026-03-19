@@ -69,6 +69,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     title,
     children,
     actions,
+    filterDebounce,
     topContent,
     showBreadcrumb = true,
     showHeader = true,
@@ -90,6 +91,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
           name: resourceLabel,
         });
   const { hasCreate } = useResourceDefinition({ resource });
+  const shouldRenderPagination = pagination !== false && pagination != null;
 
   return (
     <div className={cn("w-full max-w-3xl", containerClassName)}>
@@ -129,10 +131,15 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
           </div>
         ) : null}
         <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full max-w-3xl">
-          <FilterForm className="list-filters pointer-events-auto flex w-full flex-wrap items-center gap-3" />
+          <FilterForm
+            className="list-filters pointer-events-auto flex w-full flex-wrap items-center gap-3"
+            debounce={filterDebounce}
+          />
         </div>
         <div className={cn(props.className, "w-full max-w-3xl")}>{children}</div>
-        <div className="w-full max-w-3xl">{pagination}</div>
+        {shouldRenderPagination ? (
+          <div className="w-full max-w-3xl">{pagination}</div>
+        ) : null}
       </FilterContext.Provider>
     </div>
   );
@@ -146,9 +153,10 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   actions?: ReactElement | false;
   filters?: ReactElement<FilterElementProps>[];
   topContent?: ReactNode;
-  pagination?: ReactNode;
+  pagination?: ReactNode | false;
   title?: ReactNode | string | false;
   className?: string;
+  filterDebounce?: number | false;
   showBreadcrumb?: boolean;
   showHeader?: boolean;
   containerClassName?: string;

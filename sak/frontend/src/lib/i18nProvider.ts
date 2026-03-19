@@ -1,5 +1,6 @@
 import defaultMessages from "ra-language-english";
 import polyglotI18nProvider from "ra-i18n-polyglot";
+import merge from "lodash/merge";
 
 const spanishOverrides = {
 	ra: {
@@ -27,11 +28,14 @@ const spanishOverrides = {
 			created: "Creado correctamente",
 			deleted: "Eliminado correctamente",
 		},
+		validation: {
+			required: "Campo obligatorio",
+		},
 	},
 };
 
 export const i18nProvider = polyglotI18nProvider(
-	() => ({ ...defaultMessages, ...spanishOverrides } as any),
+	() => merge({}, defaultMessages, spanishOverrides),
 	"en",
 	[{ name: "en", value: "English" }],
 	{ allowMissing: true }

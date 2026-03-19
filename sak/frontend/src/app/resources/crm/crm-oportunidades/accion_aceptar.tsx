@@ -32,7 +32,9 @@ import { ReferenceInput } from "@/components/reference-input";
 import { SelectInput } from "@/components/select-input";
 import type { CRMOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
+import type { PanelChange } from "../crm-panel/model";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import type { OportunidadModalBackground } from "./modal_background";
 
 const normalizeId = (value: unknown) => {
   if (value == null || value === "") return null;
@@ -68,7 +70,11 @@ export const CRMOportunidadAccionAceptar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { identity } = useGetIdentity();
-  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? "/crm/oportunidades";
+  const locationState = location.state as
+    | { returnTo?: string; panelChange?: PanelChange }
+    | null;
+  const returnTo = locationState?.returnTo ?? "/crm/oportunidades";
+  const panelChange = locationState?.panelChange;
 
   const { data: oportunidad, isLoading } = useGetOne(
     "crm/oportunidades",
@@ -117,6 +123,7 @@ export const CRMOportunidadAccionAceptar = () => {
       oportunidad={oportunidad ?? null}
       defaultValues={defaultValues}
       mantenimientoIds={mantenimientoIds}
+      panelChange={panelChange}
       dataProvider={dataProvider}
       notify={notify}
       refresh={refresh}
@@ -134,6 +141,7 @@ const AccionAceptarContent = ({
   oportunidad,
   defaultValues,
   mantenimientoIds,
+  panelChange,
   dataProvider,
   notify,
   refresh,
@@ -145,6 +153,7 @@ const AccionAceptarContent = ({
   oportunidad: CRMOportunidad | null;
   defaultValues: Record<string, unknown>;
   mantenimientoIds: Set<number>;
+  panelChange?: PanelChange;
   dataProvider: ReturnType<typeof useDataProvider>;
   notify: ReturnType<typeof useNotify>;
   refresh: ReturnType<typeof useRefresh>;
@@ -152,6 +161,9 @@ const AccionAceptarContent = ({
   usuarioId: number;
 }) => {
   const [saving, setSaving] = useState(false);
+  const background = (useLocation().state as {
+    background?: OportunidadModalBackground;
+  } | null)?.background;
 
   const handleSubmit = async (values: Record<string, unknown>) => {
     if (!oportunidadId) return;
@@ -185,7 +197,10 @@ const AccionAceptarContent = ({
 
       notify("Oportunidad confirmada y movida a Abierta", { type: "success" });
       refresh();
-      navigate(returnTo);
+      navigate(returnTo, {
+        replace: true,
+        state: panelChange ? { panelChange } : undefined,
+      });
     } catch (error) {
       console.error(error);
       notify("No se pudo confirmar la oportunidad", { type: "error" });
@@ -195,60 +210,74 @@ const AccionAceptarContent = ({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
-      <DialogContent
-        className="sm:max-w-sm"
-        overlayClassName="!bg-transparent !backdrop-blur-0"
-      >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Target className="h-4 w-4" />
-            Confirmar oportunidad
-          </DialogTitle>
-          <DialogDescription className="text-[11px] sm:text-xs">
-            Ajusta los datos principales antes de confirmar.
-          </DialogDescription>
-        </DialogHeader>
-        <SimpleForm
-          className="w-full"
-          defaultValues={defaultValues}
-          key={oportunidadId}
-          onSubmit={handleSubmit}
-          toolbar={null}
+    <div className="relative min-h-full">
+      {background?.html ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-100 mix-blend-normal [filter:none]"
+          aria-hidden="true"
         >
-          <div className="space-y-3">
-            <AccionOportunidadHeader oportunidad={oportunidad} compact />
-            <SectionBaseTemplate
-              title="Confirmacion"
-              defaultOpen
-              main={
-                <div className="text-[11px] sm:text-xs">
-                  <AccionAceptarFields mantenimientoIds={mantenimientoIds} />
-                </div>
-              }
-            />
-          </div>
-          <DialogFooter className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(returnTo)}
-              disabled={saving}
-              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={saving}
-              className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
-            >
-              {saving ? "Confirmando..." : "Confirmar"}
-            </Button>
-          </DialogFooter>
-        </SimpleForm>
-      </DialogContent>
-    </Dialog>
+          <div
+            className="opacity-100 mix-blend-normal [filter:none]"
+            style={{ transform: `translateY(-${background.scrollY ?? 0}px)` }}
+            dangerouslySetInnerHTML={{ __html: background.html }}
+          />
+        </div>
+      ) : null}
+      <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
+        <DialogContent
+          className="sm:max-w-sm"
+          overlayClassName="hidden"
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Target className="h-4 w-4" />
+              Confirmar oportunidad
+            </DialogTitle>
+            <DialogDescription className="text-[11px] sm:text-xs">
+              Ajusta los datos principales antes de confirmar.
+            </DialogDescription>
+          </DialogHeader>
+          <SimpleForm
+            className="w-full"
+            defaultValues={defaultValues}
+            key={oportunidadId}
+            onSubmit={handleSubmit}
+            toolbar={null}
+          >
+            <div className="space-y-3">
+              <AccionOportunidadHeader oportunidad={oportunidad} compact />
+              <SectionBaseTemplate
+                title="Confirmacion"
+                defaultOpen
+                main={
+                  <div className="text-[11px] sm:text-xs">
+                    <AccionAceptarFields mantenimientoIds={mantenimientoIds} />
+                  </div>
+                }
+              />
+            </div>
+            <DialogFooter className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate(returnTo)}
+                disabled={saving}
+                className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={saving}
+                className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
+              >
+                {saving ? "Confirmando..." : "Confirmar"}
+              </Button>
+            </DialogFooter>
+          </SimpleForm>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

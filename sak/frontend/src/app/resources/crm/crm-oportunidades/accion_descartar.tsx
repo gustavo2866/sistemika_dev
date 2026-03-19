@@ -17,6 +17,9 @@ import {
 } from "@/components/ui/dialog";
 import { AccionOportunidadHeader } from "./accion_header";
 import type { CRMOportunidad } from "./model";
+import type { PanelChange } from "../crm-panel/model";
+import type { OportunidadModalBackground } from "./modal_background";
+import { renderOportunidadModalBackground } from "./modal_background";
 
 export const CRMOportunidadAccionDescartar = () => {
   const notify = useNotify();
@@ -24,11 +27,18 @@ export const CRMOportunidadAccionDescartar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { id } = useParams();
-  const stateRecord = (location.state as { record?: CRMOportunidad } | null)?.record ?? null;
+  const locationState = location.state as
+    | {
+        record?: CRMOportunidad;
+        returnTo?: string;
+        panelChange?: PanelChange;
+        background?: OportunidadModalBackground;
+      }
+    | null;
+  const stateRecord = locationState?.record ?? null;
   const oportunidadId = Number(id ?? stateRecord?.id);
-  const returnTo =
-    (location.state as { returnTo?: string } | null)?.returnTo ??
-    "/crm/oportunidades";
+  const returnTo = locationState?.returnTo ?? "/crm/oportunidades";
+  const panelChange = locationState?.panelChange;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const shouldFetch = Number.isFinite(oportunidadId) && !stateRecord;
@@ -49,6 +59,7 @@ export const CRMOportunidadAccionDescartar = () => {
       returnTo={returnTo}
       isSubmitting={isSubmitting}
       record={record}
+      background={locationState?.background}
       onConfirm={async (oportunidadId) => {
         if (!oportunidadId) {
           notify("Oportunidad no válida.", { type: "warning" });
@@ -77,7 +88,10 @@ export const CRMOportunidadAccionDescartar = () => {
           }
           notify("Oportunidad descartada exitosamente", { type: "success" });
           refresh();
-          navigate(returnTo, { replace: true });
+          navigate(returnTo, {
+            replace: true,
+            state: panelChange ? { panelChange } : undefined,
+          });
         } catch (error: any) {
           notify(
             error?.message ?? "No se pudo descartar la oportunidad.",
@@ -97,26 +111,30 @@ const AccionDescartarContent = ({
   returnTo,
   isSubmitting,
   record,
+  background,
   onConfirm,
 }: {
   returnTo: string;
   isSubmitting: boolean;
   record: CRMOportunidad | null;
+  background?: OportunidadModalBackground;
   onConfirm: (oportunidadId?: number) => void;
 }) => {
   const navigate = useNavigate();
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) =>
-        !open ? navigate(returnTo, { replace: true }) : null
-      }
-    >
-      <DialogContent
-        className="sm:max-w-sm"
-        overlayClassName="!bg-transparent !backdrop-blur-0"
+    <div className="relative min-h-full">
+      {renderOportunidadModalBackground(background)}
+      <Dialog
+        open
+        onOpenChange={(open) =>
+          !open ? navigate(returnTo, { replace: true }) : null
+        }
       >
+        <DialogContent
+          className="sm:max-w-sm"
+          overlayClassName="hidden"
+        >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Target className="h-4 w-4" />
@@ -156,7 +174,8 @@ const AccionDescartarContent = ({
             </Button>
           </DialogFooter>
         </SimpleForm>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
