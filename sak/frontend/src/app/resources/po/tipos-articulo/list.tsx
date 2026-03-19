@@ -22,7 +22,7 @@ const filters = buildListFilters(
       props: {
         source: "q",
         label: "Buscar",
-        placeholder: "Buscar tipos de solicitud",
+        placeholder: "Buscar tipos de articulo",
         alwaysOn: true,
         className: "w-[120px] sm:w-[160px]",
       },
@@ -34,14 +34,48 @@ const filters = buildListFilters(
         label: "Nombre",
       },
     },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "adm_concepto_id",
+        reference: "api/v1/adm/conceptos",
+        label: "Concepto",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "activo",
+        label: "Activo",
+        choices: [
+          { id: "true", name: "Si" },
+          { id: "false", name: "No" },
+        ],
+        emptyText: "Todos",
+      },
+    },
   ],
-  { keyPrefix: "tipos-solicitud" },
+  { keyPrefix: "tipos-articulo" },
 );
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listMobileConfig = {
+  primaryField: "nombre",
+  secondaryFields: ["adm_concepto_id", "descripcion", "activo"],
+};
 
-const ListActions = () => (
-  <div className="flex items-center gap-2">
+type TipoArticuloListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+};
+
+const ListActions = ({ embedded = false }: { embedded?: boolean }) => (
+  <div className="flex items-center gap-2 flex-wrap">
     <FilterButton
       filters={filters}
       size="sm"
@@ -52,47 +86,42 @@ const ListActions = () => (
   </div>
 );
 
-export const TipoSolicitudList = () => (
+export const TipoArticuloList = ({
+  embedded = false,
+  rowClick = "edit",
+  perPage = 25,
+}: TipoArticuloListProps = {}) => (
   <List
-    title="Tipos de solicitud"
+    title="Tipos de articulo"
     filters={filters}
-    actions={<ListActions />}
+    actions={<ListActions embedded={embedded} />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName="max-w-[720px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
-      mobileConfig={{
-        primaryField: "nombre",
-        secondaryFields: [
-          "descripcion",
-          "tipo_articulo_filter",
-          "departamento_default_id",
-          "activo",
-        ],
-      }}
+      rowClick={rowClick}
+      mobileConfig={listMobileConfig}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <TextListColumn source="nombre" label="Nombre">
         <ListText source="nombre" />
       </TextListColumn>
-      <TextListColumn source="descripcion" label="Descripcion">
-        <ListText source="descripcion" />
-      </TextListColumn>
-      <TextListColumn source="tipo_articulo_filter" label="Filtro Articulo">
-        <ListText source="tipo_articulo_filter" />
-      </TextListColumn>
-      <TextListColumn source="departamento_default_id" label="Depto. Default">
-        <ReferenceField source="departamento_default_id" reference="departamentos">
+      <TextListColumn source="adm_concepto_id" label="Concepto">
+        <ReferenceField source="adm_concepto_id" reference="api/v1/adm/conceptos">
           <ListText source="nombre" />
         </ReferenceField>
       </TextListColumn>
+      <TextListColumn source="descripcion" label="Descripcion">
+        <ListText source="descripcion" />
+      </TextListColumn>
       <BooleanListColumn source="activo" label="Estado" />
       <TextListColumn label="Acciones">
-        <FormOrderListRowActions />
+        <FormOrderListRowActions showShow={!embedded} />
       </TextListColumn>
     </ResponsiveDataTable>
   </List>

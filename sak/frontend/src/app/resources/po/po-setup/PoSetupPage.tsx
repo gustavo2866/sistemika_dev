@@ -1,75 +1,237 @@
 "use client";
 
-import { Link } from "react-router-dom";
-import { useCreatePath } from "ra-core";
+import { Link, useLocation } from "react-router";
+import type { ComponentType } from "react";
+import { ResourceContextProvider, useCreatePath } from "ra-core";
 
-const setupLinks = [
-  {
-    label: "Articulos",
-    description: "Gestion de articulos para compras.",
-    resource: "articulos",
-  },
-  {
-    label: "Tipos de articulo",
-    description: "Configurar tipos de articulo para compras.",
-    resource: "tipos-articulo",
-  },
-  {
-    label: "Tipos de solicitud",
-    description: "Configurar tipos de solicitud de compras.",
-    resource: "tipos-solicitud",
-  },
-  {
-    label: "Estados de orden",
-    description: "Configurar estados de orden de compra.",
-    resource: "po-order-status",
-  },
-  {
-    label: "Estados de factura",
-    description: "Configurar estados de factura de compra.",
-    resource: "po-invoice-status",
-  },
-  {
-    label: "Estados financieros factura",
-    description: "Configurar estados financieros de factura de compra.",
-    resource: "po-invoice-status-fin",
-  },
-  {
-    label: "Departamentos",
-    description: "Administrar departamentos para imputacion.",
-    resource: "departamentos",
-  },
-];
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
+import {
+  SetupContentHeader,
+  SetupContentPanel,
+  SetupEmptyState,
+  SetupLayout,
+  SetupMobileNav,
+  SetupSidebar,
+  SetupViewSwitcher,
+  type SetupItem,
+  type SetupView,
+} from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
 
-export const PoSetupPage = () => {
-  const createPath = useCreatePath();
+import { getPOSetupItem, PO_SETUP_ITEMS } from "./poSetupRegistry";
+
+const setupBasePath = "/po/setup";
+
+const getSetupItemPath = (item: SetupItem) => `${setupBasePath}/${item.key}`;
+
+const getSetupViewPath = (
+  item: SetupItem,
+  view: SetupView,
+  recordId?: string | number | null,
+) => {
+  if (view === "create") return `${getSetupItemPath(item)}/create`;
+  if (view === "edit" && recordId != null) {
+    return `${getSetupItemPath(item)}/edit/${recordId}`;
+  }
+  return getSetupItemPath(item);
+};
+
+const getSetupRouteState = (pathname: string) => {
+  const relativePath = pathname.startsWith(setupBasePath)
+    ? pathname.slice(setupBasePath.length)
+    : "";
+  const segments = relativePath.split("/").filter(Boolean);
+  const selectedKey = segments[0] ?? null;
+  const currentView: SetupView =
+    segments[1] === "create" ? "create" : segments[1] === "edit" ? "edit" : "list";
+  const recordId = currentView === "edit" ? segments[2] ?? null : null;
+  return { selectedKey, currentView, recordId };
+};
+
+const POSetupHome = () => (
+  <SetupEmptyState
+    title="Configuracion Compras"
+    description="Selecciona una opcion del menu para administrar catalogos y parametros del modulo."
+  />
+);
+
+const POSetupExternalResource = ({
+  label,
+  description,
+  to,
+}: {
+  label: string;
+  description?: string;
+  to: string;
+}) => (
+  <SetupEmptyState
+    title={label}
+    description={
+      description ??
+      "Este parametro se administra fuera del setup de compras, pero se mantiene accesible desde aqui."
+    }
+    action={
+      <Button asChild variant="secondary" size="sm">
+        <Link to={to}>Abrir modulo</Link>
+      </Button>
+    }
+  />
+);
+
+const POSetupEmbeddedContent = ({
+  item,
+  view,
+  recordId,
+}: {
+  item: SetupItem;
+  view: SetupView;
+  recordId?: string | null;
+}) => {
+  if (!item.resource) return null;
+
+  const listPath = getSetupViewPath(item, "list");
+
+  if (view === "list") {
+    const ListComponent = item.listComponent as ComponentType<{
+      embedded?: boolean;
+      rowClick?: any;
+      perPage?: number;
+    }> | undefined;
+    if (!ListComponent) return null;
+
+    return (
+      <ResourceContextProvider value={item.resource}>
+        <ListComponent
+          embedded
+          perPage={5}
+          rowClick={(id: string | number) => getSetupViewPath(item, "edit", id)}
+        />
+      </ResourceContextProvider>
+    );
+  }
+
+  if (view === "create") {
+    const CreateComponent = item.createComponent;
+    if (!CreateComponent) return null;
+
+    return (
+      <ResourceContextProvider value={item.resource}>
+        <CreateComponent embedded redirect={listPath} />
+      </ResourceContextProvider>
+    );
+  }
+
+  const EditComponent = item.editComponent;
+  if (!EditComponent || !recordId) return null;
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Setup Compras</h1>
-        <p className="text-muted-foreground">
-          Accesos directos para configurar entidades de compras.
-        </p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {setupLinks.map((link) => {
-          const to = createPath({
-            resource: link.resource,
-            type: "list",
-          });
-          return (
-            <Link
-              key={link.resource}
-              to={to}
-              className="rounded-lg border border-border bg-card p-4 shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <h2 className="text-lg font-medium">{link.label}</h2>
-              <p className="text-sm text-muted-foreground">{link.description}</p>
-            </Link>
-          );
-        })}
-      </div>
+    <ResourceContextProvider value={item.resource}>
+      <EditComponent embedded id={recordId} redirect={listPath} />
+    </ResourceContextProvider>
+  );
+};
+
+export const PoSetupPage = () => {
+  const location = useLocation();
+  const createPath = useCreatePath();
+  const { selectedKey, currentView, recordId } = getSetupRouteState(location.pathname);
+  const selectedItem = getPOSetupItem(selectedKey);
+
+  const externalResourcePath = selectedItem?.externalResource
+    ? createPath({
+        resource: selectedItem.externalResource,
+        type: "list",
+      })
+    : null;
+
+  const breadcrumbItems = selectedItem
+    ? [
+        { label: "Compras" },
+        { label: "Configuracion", to: setupBasePath },
+        {
+          label: selectedItem.label,
+          to: getSetupItemPath(selectedItem),
+          current: currentView === "list",
+        },
+        ...(currentView === "create"
+          ? [{ label: "Crear", current: true }]
+          : currentView === "edit"
+            ? [{ label: `Editar${recordId ? ` #${recordId}` : ""}`, current: true }]
+            : []),
+      ]
+    : [
+        { label: "Compras" },
+        { label: "Configuracion", current: true },
+      ];
+
+  return (
+    <div className="max-w-5xl space-y-4 p-4 sm:p-6">
+      <AppBreadcrumb items={breadcrumbItems} />
+
+      <SetupLayout
+        sidebar={
+          <SetupSidebar
+            items={PO_SETUP_ITEMS}
+            currentKey={selectedItem?.key ?? null}
+            getItemHref={getSetupItemPath}
+            title="Compras Setup"
+            description="Configuracion operativa y catalogos del modulo."
+            showItemDescriptions={false}
+          />
+        }
+        mobileNav={
+          <SetupMobileNav
+            title="Compras Setup"
+            description="Selecciona el catalogo o parametro que queres administrar."
+          >
+            <SetupSidebar
+              items={PO_SETUP_ITEMS}
+              currentKey={selectedItem?.key ?? null}
+              getItemHref={getSetupItemPath}
+              title="Compras Setup"
+              description="Selecciona el item a administrar."
+            />
+          </SetupMobileNav>
+        }
+        header={
+          <SetupContentHeader
+            title={selectedItem?.label ?? "Configuracion Compras"}
+            description={
+              selectedItem?.description ??
+              "Accede a los catalogos y parametros operativos del modulo desde un unico lugar."
+            }
+            actions={
+              selectedItem?.resource ? (
+                <SetupViewSwitcher
+                  currentView={currentView}
+                  listTo={getSetupViewPath(selectedItem, "list")}
+                  createTo={getSetupViewPath(selectedItem, "create")}
+                  canCreate={Boolean(selectedItem.createComponent)}
+                />
+              ) : undefined
+            }
+          />
+        }
+        content={
+          <SetupContentPanel>
+            {!selectedItem ? (
+              <POSetupHome />
+            ) : selectedItem.externalResource && externalResourcePath ? (
+              <POSetupExternalResource
+                label={selectedItem.label}
+                description={selectedItem.description}
+                to={externalResourcePath}
+              />
+            ) : (
+              <POSetupEmbeddedContent
+                item={selectedItem}
+                view={currentView}
+                recordId={recordId}
+              />
+            )}
+          </SetupContentPanel>
+        }
+      />
     </div>
   );
 };

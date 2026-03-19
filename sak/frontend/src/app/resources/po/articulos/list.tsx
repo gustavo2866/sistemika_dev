@@ -77,6 +77,22 @@ const filters = buildListFilters(
 );
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listMobileConfig = {
+  primaryField: "nombre",
+  secondaryFields: [
+    "tipo_articulo_id",
+    "unidad_medida",
+    "precio",
+    "proveedor_id",
+    "activo",
+  ],
+};
+
+type ArticuloListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+};
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
@@ -90,29 +106,26 @@ const ListActions = () => (
   </div>
 );
 
-export const ArticuloList = () => (
+export const ArticuloList = ({
+  embedded = false,
+  rowClick = "edit",
+  perPage = 10,
+}: ArticuloListProps = {}) => (
   <List
     title="Articulos"
     filters={filters}
     actions={<ListActions />}
-    perPage={10}
+    perPage={perPage}
     filterDefaultValues={{ activo: true }}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName="max-w-[900px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
-      mobileConfig={{
-        primaryField: "nombre",
-        secondaryFields: [
-          "tipo_articulo_id",
-          "unidad_medida",
-          "precio",
-          "proveedor_id",
-          "activo",
-        ],
-      }}
+      rowClick={rowClick}
+      mobileConfig={listMobileConfig}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <NumberListColumn source="id" label="ID" className="text-center" />
@@ -124,9 +137,6 @@ export const ArticuloList = () => (
           <ListText source="nombre" />
         </ReferenceField>
       </TextListColumn>
-      <TextListColumn source="unidad_medida" label="Unidad">
-        <ListText source="unidad_medida" />
-      </TextListColumn>
       <TextListColumn source="proveedor_id" label="Proveedor">
         <ReferenceField source="proveedor_id" reference="proveedores">
           <ListText source="nombre" />
@@ -134,7 +144,7 @@ export const ArticuloList = () => (
       </TextListColumn>
       <BooleanListColumn source="activo" label="Activo" />
       <TextListColumn label="Acciones">
-        <FormOrderListRowActions />
+        <FormOrderListRowActions showShow={!embedded} />
       </TextListColumn>
     </ResponsiveDataTable>
   </List>

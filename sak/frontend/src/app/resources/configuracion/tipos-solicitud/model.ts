@@ -9,7 +9,7 @@ import { z } from "zod";
 import {
   TIPO_ARTICULO_CHOICES,
   type TipoArticuloValue,
-} from "../articulos/model";
+} from "../../po/articulos/model";
 
 // ============================================
 // 1. CONFIGURACIÓN

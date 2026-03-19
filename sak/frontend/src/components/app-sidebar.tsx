@@ -61,7 +61,7 @@ const CONSTRUCTORA_RESOURCES = [
   "tarjas",
   "parte-diario",
 ] as const;
-const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores", "po-setup"] as const;
+const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores"] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
   "propiedades",
@@ -77,6 +77,7 @@ const ADMIN_RESOURCES = [
 ] as const;
 const CONFIG_RESOURCES = [
   "users",
+  "monedas",
   "tipos-operacion",
   "metodos-pago",
   "tipos-comprobante",
@@ -109,10 +110,10 @@ const CRM_CATALOG_RESOURCES = [
   "crm/catalogos/condiciones-pago",
   "crm/catalogos/tipos-evento",
   "crm/catalogos/motivos-evento",
-  "monedas",
   "crm/catalogos/monedas",
 ] as const;
 const HIDDEN_RESOURCES = [
+  "po-setup",
   "crm/catalogos/respuestas",
   "crm/chat",
   "crm/celulares",
@@ -241,29 +242,12 @@ export function AppSidebar() {
 
               {constructoraResources.length > 0 ? (
                 <GroupMenuItem
-                  label="Proyectos"
+                  label="Constructora"
                   icon={Building2}
                   isOpen={constructoraOpen}
                   onToggle={() => setConstructoraOpen((open) => !open)}
                 >
                   {constructoraResources.map((name) => (
-                    <ResourceSubMenuItem
-                      key={name}
-                      name={name}
-                      onClick={handleItemClick}
-                    />
-                  ))}
-                </GroupMenuItem>
-              ) : null}
-
-              {comprasResources.length > 0 ? (
-                <GroupMenuItem
-                  label="Compras"
-                  icon={ShoppingCart}
-                  isOpen={comprasOpen}
-                  onToggle={() => setComprasOpen((open) => !open)}
-                >
-                  {comprasResources.map((name) => (
                     <ResourceSubMenuItem
                       key={name}
                       name={name}
@@ -368,6 +352,28 @@ export function AppSidebar() {
                       onClick={handleItemClick}
                     />
                   ))}
+                </GroupMenuItem>
+              ) : null}
+              {comprasResources.length > 0 ? (
+                <GroupMenuItem
+                  label="Compras"
+                  icon={ShoppingCart}
+                  isOpen={comprasOpen}
+                  onToggle={() => setComprasOpen((open) => !open)}
+                >
+                  {comprasResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                  <SidebarCustomMenuItem
+                    label="Setup"
+                    to="/po/setup"
+                    icon={Settings}
+                    onClick={handleItemClick}
+                  />
                 </GroupMenuItem>
               ) : null}
               {adminResources.length > 0 ? (

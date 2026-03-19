@@ -1,5 +1,6 @@
 "use client";
 
+import type { ComponentType } from "react";
 import { Link, useLocation } from "react-router";
 import { ResourceContextProvider, useCreatePath } from "ra-core";
 
@@ -103,13 +104,18 @@ const CRMSetupEmbeddedContent = ({
   const listPath = getSetupViewPath(item, "list");
 
   if (view === "list") {
-    const ListComponent = item.listComponent;
+    const ListComponent = item.listComponent as ComponentType<{
+      embedded?: boolean;
+      rowClick?: any;
+      perPage?: number;
+    }> | undefined;
     if (!ListComponent) return null;
 
     return (
       <ResourceContextProvider value={item.resource}>
         <ListComponent
           embedded
+          perPage={5}
           rowClick={(id: string | number) => getSetupViewPath(item, "edit", id)}
         />
       </ResourceContextProvider>
@@ -174,7 +180,7 @@ export const CRMSetupPage = () => {
       ];
 
   return (
-    <div className="space-y-4 p-4 sm:p-6">
+    <div className="max-w-5xl space-y-4 p-4 sm:p-6">
       <AppBreadcrumb items={breadcrumbItems} />
 
       <SetupLayout

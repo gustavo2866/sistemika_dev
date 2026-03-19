@@ -4,27 +4,27 @@ import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
 import { FormOrderDeleteButton } from "@/components/forms";
 import { Badge } from "@/components/ui/badge";
 import { useEditContext } from "ra-core";
-import { PoInvoiceStatusForm } from "./form";
+import { DepartamentoForm } from "./form";
 import type { Identifier } from "ra-core";
 
-type PoInvoiceStatusRecord = {
+type DepartamentoRecord = {
   id: Identifier;
   activo?: boolean;
 };
 
-type PoInvoiceStatusEditProps = {
+type DepartamentoEditProps = {
   embedded?: boolean;
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
 };
 
-const PoInvoiceStatusEditTitle = () => {
-  const { record } = useEditContext<PoInvoiceStatusRecord>();
-  if (!record) return "Editar estado de factura";
+const DepartamentoEditTitle = () => {
+  const { record } = useEditContext<DepartamentoRecord>();
+  if (!record) return "Editar departamento";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>Editar estado de factura</span>
+      <span>Editar departamento</span>
       <Badge variant="outline" className="text-[11px]">
         #{String(record.id ?? "").padStart(6, "0")}
       </Badge>
@@ -35,26 +35,26 @@ const PoInvoiceStatusEditTitle = () => {
   );
 };
 
-const PoInvoiceStatusEditActions = () => (
+const DepartamentoEditActions = () => (
   <div className="flex justify-end">
     <FormOrderDeleteButton />
   </div>
 );
 
-export const PoInvoiceStatusEdit = ({
+export const DepartamentoEdit = ({
   embedded = false,
   id,
   redirect,
-}: PoInvoiceStatusEditProps) => (
+}: DepartamentoEditProps) => (
   <Edit
     id={id}
     redirect={redirect ?? (embedded ? false : "list")}
-    title={<PoInvoiceStatusEditTitle />}
+    title={<DepartamentoEditTitle />}
     className="max-w-2xl w-full"
-    actions={<PoInvoiceStatusEditActions />}
+    actions={<DepartamentoEditActions />}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
-    <PoInvoiceStatusForm />
+    <DepartamentoForm />
   </Edit>
 );

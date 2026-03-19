@@ -10,7 +10,7 @@ import type {
 } from "react-hook-form";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { getArticuloFilterByTipo } from "./po-utils";
-import type { TipoSolicitud } from "../../tipos-solicitud/model";
+import type { TipoSolicitud } from "../../configuracion/tipos-solicitud/model";
 import { useReferenceFieldWatcher } from "@/components/generic";
 
 const TIPOS_SOLICITUD_REFERENCE = {

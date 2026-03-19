@@ -4,27 +4,22 @@ import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
 import { FormOrderDeleteButton } from "@/components/forms";
 import { Badge } from "@/components/ui/badge";
 import { useEditContext } from "ra-core";
-import { PoInvoiceStatusForm } from "./form";
-import type { Identifier } from "ra-core";
+import { TipoSolicitudForm } from "./form";
+import type { TipoSolicitud } from "./model";
 
-type PoInvoiceStatusRecord = {
-  id: Identifier;
-  activo?: boolean;
-};
-
-type PoInvoiceStatusEditProps = {
+type TipoSolicitudEditProps = {
   embedded?: boolean;
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
 };
 
-const PoInvoiceStatusEditTitle = () => {
-  const { record } = useEditContext<PoInvoiceStatusRecord>();
-  if (!record) return "Editar estado de factura";
+const TipoSolicitudEditTitle = () => {
+  const { record } = useEditContext<TipoSolicitud>();
+  if (!record) return "Editar tipo de solicitud";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>Editar estado de factura</span>
+      <span>Editar tipo de solicitud</span>
       <Badge variant="outline" className="text-[11px]">
         #{String(record.id ?? "").padStart(6, "0")}
       </Badge>
@@ -35,26 +30,26 @@ const PoInvoiceStatusEditTitle = () => {
   );
 };
 
-const PoInvoiceStatusEditActions = () => (
+const TipoSolicitudEditActions = () => (
   <div className="flex justify-end">
     <FormOrderDeleteButton />
   </div>
 );
 
-export const PoInvoiceStatusEdit = ({
+export const TipoSolicitudEdit = ({
   embedded = false,
   id,
   redirect,
-}: PoInvoiceStatusEditProps) => (
+}: TipoSolicitudEditProps) => (
   <Edit
     id={id}
     redirect={redirect ?? (embedded ? false : "list")}
-    title={<PoInvoiceStatusEditTitle />}
+    title={<TipoSolicitudEditTitle />}
     className="max-w-2xl w-full"
-    actions={<PoInvoiceStatusEditActions />}
+    actions={<TipoSolicitudEditActions />}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
-    <PoInvoiceStatusForm />
+    <TipoSolicitudForm />
   </Edit>
 );

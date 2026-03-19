@@ -2,33 +2,33 @@
 
 import { Create, type CreateProps as BaseCreateProps } from "@/components/create";
 import { Badge } from "@/components/ui/badge";
-import { PoInvoiceStatusFinForm } from "./form";
+import { ProveedorForm } from "./form";
 
-type PoInvoiceStatusFinCreateProps = {
+type ProveedorCreateProps = {
   embedded?: boolean;
   redirect?: BaseCreateProps["redirect"];
 };
 
-const PoInvoiceStatusFinCreateTitle = () => (
+const ProveedorCreateTitle = () => (
   <div className="flex flex-wrap items-center gap-2">
-    <span>Crear estado financiero de factura</span>
+    <span>Crear proveedor</span>
     <Badge variant="secondary" className="text-[11px]">
       Activo
     </Badge>
   </div>
 );
 
-export const PoInvoiceStatusFinCreate = ({
+export const ProveedorCreate = ({
   embedded = false,
   redirect,
-}: PoInvoiceStatusFinCreateProps) => (
+}: ProveedorCreateProps) => (
   <Create
     redirect={redirect ?? (embedded ? false : "list")}
-    title={<PoInvoiceStatusFinCreateTitle />}
+    title={<ProveedorCreateTitle />}
     className="max-w-2xl w-full"
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
-    <PoInvoiceStatusFinForm />
+    <ProveedorForm />
   </Create>
 );

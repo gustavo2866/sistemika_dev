@@ -72,9 +72,7 @@ const CRMCelularListActions = ({ embedded = false }: { embedded?: boolean }) => 
       size="sm"
       buttonClassName={listActionButtonClass}
     />
-    {!embedded ? (
-      <CreateButton className={listActionButtonClass} label="Crear" />
-    ) : null}
+    <CreateButton className={listActionButtonClass} label="Crear" />
     <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );

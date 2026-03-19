@@ -22,7 +22,7 @@ const filters = buildListFilters(
       props: {
         source: "q",
         label: "Buscar",
-        placeholder: "Buscar tipos de articulo",
+        placeholder: "Buscar tipos de solicitud",
         alwaysOn: true,
         className: "w-[120px] sm:w-[160px]",
       },
@@ -34,38 +34,29 @@ const filters = buildListFilters(
         label: "Nombre",
       },
     },
-    {
-      type: "reference",
-      referenceProps: {
-        source: "adm_concepto_id",
-        reference: "api/v1/adm/conceptos",
-        label: "Concepto",
-      },
-      selectProps: {
-        optionText: "nombre",
-        emptyText: "Todos",
-      },
-    },
-    {
-      type: "select",
-      props: {
-        source: "activo",
-        label: "Activo",
-        choices: [
-          { id: "true", name: "Si" },
-          { id: "false", name: "No" },
-        ],
-        emptyText: "Todos",
-      },
-    },
   ],
-  { keyPrefix: "tipos-articulo" },
+  { keyPrefix: "tipos-solicitud" },
 );
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listMobileConfig = {
+  primaryField: "nombre",
+  secondaryFields: [
+    "descripcion",
+    "tipo_articulo_filter",
+    "departamento_default_id",
+    "activo",
+  ],
+};
+
+type TipoSolicitudListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+};
 
 const ListActions = () => (
-  <div className="flex items-center gap-2 flex-wrap">
+  <div className="flex items-center gap-2">
     <FilterButton
       filters={filters}
       size="sm"
@@ -76,39 +67,45 @@ const ListActions = () => (
   </div>
 );
 
-export const TipoArticuloList = () => (
+export const TipoSolicitudList = ({
+  embedded = false,
+  rowClick = "edit",
+  perPage = 25,
+}: TipoSolicitudListProps = {}) => (
   <List
-    title="Tipos de articulo"
+    title="Tipos de solicitud"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName="max-w-[720px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
-      mobileConfig={{
-        primaryField: "nombre",
-        secondaryFields: ["adm_concepto_id", "descripcion", "activo"],
-      }}
+      rowClick={rowClick}
+      mobileConfig={listMobileConfig}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <TextListColumn source="nombre" label="Nombre">
         <ListText source="nombre" />
       </TextListColumn>
-      <TextListColumn source="adm_concepto_id" label="Concepto">
-        <ReferenceField source="adm_concepto_id" reference="api/v1/adm/conceptos">
-          <ListText source="nombre" />
-        </ReferenceField>
-      </TextListColumn>
       <TextListColumn source="descripcion" label="Descripcion">
         <ListText source="descripcion" />
       </TextListColumn>
+      <TextListColumn source="tipo_articulo_filter" label="Filtro Articulo">
+        <ListText source="tipo_articulo_filter" />
+      </TextListColumn>
+      <TextListColumn source="departamento_default_id" label="Depto. Default">
+        <ReferenceField source="departamento_default_id" reference="departamentos">
+          <ListText source="nombre" />
+        </ReferenceField>
+      </TextListColumn>
       <BooleanListColumn source="activo" label="Estado" />
       <TextListColumn label="Acciones">
-        <FormOrderListRowActions />
+        <FormOrderListRowActions showShow={!embedded} />
       </TextListColumn>
     </ResponsiveDataTable>
   </List>

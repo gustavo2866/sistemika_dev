@@ -115,12 +115,10 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
                     className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
                   />
                 ) : null}
-                {
-                  <ExportButton
-                    size="sm"
-                    className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
-                  />
-                }
+                <ExportButton
+                  size="sm"
+                  className="h-7 px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
+                />
               </div>
             )}
           </div>
@@ -131,10 +129,17 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
           </div>
         ) : null}
         <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full max-w-3xl">
-          <FilterForm
-            className="list-filters pointer-events-auto flex w-full flex-wrap items-center gap-3"
-            debounce={filterDebounce}
-          />
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <FilterForm
+              className="list-filters pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-3"
+              debounce={filterDebounce}
+            />
+            {!showHeader && actions ? (
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                {actions}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className={cn(props.className, "w-full max-w-3xl")}>{children}</div>
         {shouldRenderPagination ? (

@@ -41,27 +41,27 @@ import {
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
-import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/users";
-import { TipoComprobanteList, TipoComprobanteCreate, TipoComprobanteEdit, TipoComprobanteShow } from "@/app/resources/tipos-comprobante";
-import { MetodoPagoList, MetodoPagoCreate, MetodoPagoEdit, MetodoPagoShow } from "@/app/resources/metodos-pago";
-import { ArticuloList, ArticuloCreate, ArticuloEdit, ArticuloShow } from "@/app/resources/articulos";
+import { UserList, UserCreate, UserEdit, UserShow } from "@/app/resources/configuracion/users";
+import { TipoComprobanteList, TipoComprobanteCreate, TipoComprobanteEdit, TipoComprobanteShow } from "@/app/resources/po/tipos-comprobante";
+import { MetodoPagoList, MetodoPagoCreate, MetodoPagoEdit, MetodoPagoShow } from "@/app/resources/configuracion/metodos-pago";
+import { ArticuloList, ArticuloCreate, ArticuloEdit, ArticuloShow } from "@/app/resources/po/articulos";
 import {
   TipoArticuloList,
   TipoArticuloCreate,
   TipoArticuloEdit,
-} from "@/app/resources/tipos-articulo";
+} from "@/app/resources/po/tipos-articulo";
 import {
   AdmConceptoList,
   AdmConceptoCreate,
   AdmConceptoEdit,
   AdmConceptoShow,
-} from "@/app/resources/adm-conceptos";
+} from "@/app/resources/administracion/adm-conceptos";
 import {
   TaxProfileList,
   TaxProfileCreate,
   TaxProfileEdit,
   TaxProfileShow,
-} from "@/app/resources/tax-profiles";
+} from "@/app/resources/configuracion/tax-profiles";
 import {
   PropiedadesStatusList,
   PropiedadesStatusCreate,
@@ -91,31 +91,31 @@ import {
   TipoPropiedadCreate,
   TipoPropiedadEdit,
   TipoPropiedadShow,
-} from "@/app/resources/tipos-propiedad";
+} from "@/app/resources/inmobiliaria/tipos-propiedad";
 import {
   FacturaList,
   FacturaCreate,
   FacturaEdit,
   FacturaShow,
-} from "@/app/resources/facturas";
+} from "@/app/resources/administracion/facturas";
 import {
   ProveedorList,
   ProveedorCreate,
   ProveedorEdit,
   ProveedorShow,
-} from "@/app/resources/proveedores";
+} from "@/app/resources/po/proveedores";
 import {
   TipoOperacionList,
   TipoOperacionCreate,
   TipoOperacionEdit,
   TipoOperacionShow,
-} from "@/app/resources/tipos-operacion";
+} from "@/app/resources/configuracion/tipos-operacion";
 import {
   ProyectoList,
   ProyectoCreate,
   ProyectoEdit,
   ProyectoShow,
-} from "@/app/resources/proyectos";
+} from "@/app/resources/constructora/proyectos";
 import {
   ProyFaseList,
   ProyFaseCreate,
@@ -153,34 +153,34 @@ import {
   DepartamentoList,
   DepartamentoCreate,
   DepartamentoEdit,
-} from "@/app/resources/departamentos";
+} from "@/app/resources/po/departamentos";
 import {
   CentroCostoList,
   CentroCostoCreate,
   CentroCostoEdit,
   CentroCostoShow,
-} from "@/app/resources/centros-costo";
+} from "@/app/resources/administracion/centros-costo";
 import {
   TipoSolicitudList,
   TipoSolicitudCreate,
   TipoSolicitudEdit,
-} from "@/app/resources/tipos-solicitud";
-import RecepcionesList from "@/app/resources/recepciones/list";
-import DashboardProyectosList from "@/app/resources/dashboard-proyectos/list";
+} from "@/app/resources/configuracion/tipos-solicitud";
+import RecepcionesList from "@/app/resources/constructora/recepciones/list";
+import DashboardProyectosList from "@/app/resources/constructora/dashboard-proyectos/list";
 import DashboardCrmList from "@/app/resources/crm/crm-dashboard/list";
-import TarjasList from "@/app/resources/tarjas/list";
+import TarjasList from "@/app/resources/constructora/tarjas/list";
 import {
   NominaList,
   NominaCreate,
   NominaEdit,
   NominaShow,
-} from "@/app/resources/nomina";
+} from "@/app/resources/administracion/nomina";
 import {
   ParteDiarioList,
   ParteDiarioCreate,
   ParteDiarioEdit,
   ParteDiarioShow,
-} from "@/app/resources/parte-diario";
+} from "@/app/resources/constructora/parte-diario";
 import {
   CRMTipoOperacionList,
   CRMTipoOperacionCreate,
@@ -217,14 +217,14 @@ import {
   CRMCatalogoRespuestaEdit,
   CRMCatalogoRespuestaShow,
 } from "@/app/resources/crm/crm-catalogos/crm-catalogos-respuestas";
-import { CalculadoraFinanciera } from "@/app/resources/calculadora-financiera";
+import { CalculadoraFinanciera } from "@/app/resources/inmobiliaria/calculadora-financiera";
 import HomeDashboard from "@/app/resources/home/HomeDashboard";
 import {
   MonedaList,
   MonedaCreate,
   MonedaEdit,
   MonedaShow,
-} from "@/app/resources/monedas";
+} from "@/app/resources/configuracion/monedas";
 import {
   CRMContactoList,
   CRMContactoCreate,
@@ -276,7 +276,7 @@ import {
   EmprendimientoCreate,
   EmprendimientoEdit,
   EmprendimientoShow,
-} from "@/app/resources/emprendimientos";
+} from "@/app/resources/inmobiliaria/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm/crm-setup/CRMSetupPage";
 import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
 import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
@@ -760,6 +760,7 @@ const AdminApp = () => {
         options={{ label: "Emprendimientos" }}
       />
       <CustomRoutes>
+        <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />

@@ -4,27 +4,27 @@ import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
 import { FormOrderDeleteButton } from "@/components/forms";
 import { Badge } from "@/components/ui/badge";
 import { useEditContext } from "ra-core";
-import { PoInvoiceStatusForm } from "./form";
+import { TipoArticuloForm } from "./form";
 import type { Identifier } from "ra-core";
 
-type PoInvoiceStatusRecord = {
+type TipoArticuloRecord = {
   id: Identifier;
   activo?: boolean;
 };
 
-type PoInvoiceStatusEditProps = {
+type TipoArticuloEditProps = {
   embedded?: boolean;
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
 };
 
-const PoInvoiceStatusEditTitle = () => {
-  const { record } = useEditContext<PoInvoiceStatusRecord>();
-  if (!record) return "Editar estado de factura";
+const TipoArticuloEditTitle = () => {
+  const { record } = useEditContext<TipoArticuloRecord>();
+  if (!record) return "Editar tipo de articulo";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>Editar estado de factura</span>
+      <span>Editar tipo de articulo</span>
       <Badge variant="outline" className="text-[11px]">
         #{String(record.id ?? "").padStart(6, "0")}
       </Badge>
@@ -35,26 +35,26 @@ const PoInvoiceStatusEditTitle = () => {
   );
 };
 
-const PoInvoiceStatusEditActions = () => (
+const TipoArticuloEditActions = () => (
   <div className="flex justify-end">
     <FormOrderDeleteButton />
   </div>
 );
 
-export const PoInvoiceStatusEdit = ({
+export const TipoArticuloEdit = ({
   embedded = false,
   id,
   redirect,
-}: PoInvoiceStatusEditProps) => (
+}: TipoArticuloEditProps) => (
   <Edit
     id={id}
     redirect={redirect ?? (embedded ? false : "list")}
-    title={<PoInvoiceStatusEditTitle />}
+    title={<TipoArticuloEditTitle />}
     className="max-w-2xl w-full"
-    actions={<PoInvoiceStatusEditActions />}
+    actions={<TipoArticuloEditActions />}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
-    <PoInvoiceStatusForm />
+    <TipoArticuloForm />
   </Edit>
 );

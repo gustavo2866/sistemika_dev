@@ -1,30 +1,30 @@
-"use client";
+﻿"use client";
 
 import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
 import { FormOrderDeleteButton } from "@/components/forms";
 import { Badge } from "@/components/ui/badge";
 import { useEditContext } from "ra-core";
-import { PoInvoiceStatusForm } from "./form";
+import { ArticuloForm } from "./form";
 import type { Identifier } from "ra-core";
 
-type PoInvoiceStatusRecord = {
+type ArticuloRecord = {
   id: Identifier;
   activo?: boolean;
 };
 
-type PoInvoiceStatusEditProps = {
+type ArticuloEditProps = {
   embedded?: boolean;
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
 };
 
-const PoInvoiceStatusEditTitle = () => {
-  const { record } = useEditContext<PoInvoiceStatusRecord>();
-  if (!record) return "Editar estado de factura";
+const ArticuloEditTitle = () => {
+  const { record } = useEditContext<ArticuloRecord>();
+  if (!record) return "Editar articulo";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>Editar estado de factura</span>
+      <span>Editar articulo</span>
       <Badge variant="outline" className="text-[11px]">
         #{String(record.id ?? "").padStart(6, "0")}
       </Badge>
@@ -35,26 +35,26 @@ const PoInvoiceStatusEditTitle = () => {
   );
 };
 
-const PoInvoiceStatusEditActions = () => (
+const ArticuloEditActions = () => (
   <div className="flex justify-end">
     <FormOrderDeleteButton />
   </div>
 );
 
-export const PoInvoiceStatusEdit = ({
+export const ArticuloEdit = ({
   embedded = false,
   id,
   redirect,
-}: PoInvoiceStatusEditProps) => (
+}: ArticuloEditProps) => (
   <Edit
     id={id}
     redirect={redirect ?? (embedded ? false : "list")}
-    title={<PoInvoiceStatusEditTitle />}
+    title={<ArticuloEditTitle />}
     className="max-w-2xl w-full"
-    actions={<PoInvoiceStatusEditActions />}
+    actions={<ArticuloEditActions />}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
-    <PoInvoiceStatusForm />
+    <ArticuloForm />
   </Edit>
 );
