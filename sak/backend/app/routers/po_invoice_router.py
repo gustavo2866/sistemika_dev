@@ -1,14 +1,19 @@
+import json
 import logging
 from datetime import UTC, datetime
-from typing import Dict, Iterable, Set
+from decimal import Decimal
+from typing import Any, Dict, Iterable, Set
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from sqlmodel import Session, select
-from sqlalchemy import case, func
+from sqlalchemy import String, case, func, or_
+from sqlalchemy.orm import selectinload
 
 from app.models.compras import (
     PoInvoice,
     PoInvoiceDetail,
+    PoInvoiceStatus,
+    PoInvoiceStatusFin,
     PoInvoiceTax,
     PoOrder,
     PoOrderDetail,
@@ -19,7 +24,9 @@ from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
 from app.db import get_session
 from app.core.responses import ErrorCodes
-from app.models.base import current_utc_time, filtrar_respuesta
+from app.models.base import current_utc_time, filtrar_respuesta, serialize_datetime
+from app.models.proveedor import Proveedor
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +259,272 @@ po_invoice_router = create_generic_router(
     prefix="/po-invoices",
     tags=["po-invoices"],
 )
+
+
+def _parse_list_pagination(
+    sort: str | None,
+    range_value: str | None,
+    page: int,
+    per_page: int,
+    sort_by: str,
+    sort_dir: str,
+) -> tuple[int, int, str, str]:
+    if range_value:
+        try:
+            range_parsed = json.loads(range_value)
+            start, end = int(range_parsed[0]), int(range_parsed[1])
+            size = end - start + 1
+            if size > 0:
+                page = (start // size) + 1
+                per_page = size
+        except (ValueError, TypeError, json.JSONDecodeError, IndexError):
+            pass
+
+    if sort:
+        try:
+            sort_parsed = json.loads(sort)
+            if len(sort_parsed) > 0:
+                sort_by = str(sort_parsed[0] or sort_by)
+            if len(sort_parsed) > 1:
+                parsed_dir = str(sort_parsed[1] or sort_dir).lower()
+                if parsed_dir in {"asc", "desc"}:
+                    sort_dir = parsed_dir
+        except (TypeError, json.JSONDecodeError, IndexError):
+            pass
+
+    return page, per_page, sort_by, sort_dir
+
+
+def _extract_search_value(
+    request: Request,
+    q: str | None,
+    filter_value: str | None,
+) -> str | None:
+    if q and q.strip():
+        return q.strip()
+
+    if filter_value:
+        try:
+            parsed_filter = json.loads(filter_value)
+            if isinstance(parsed_filter, dict):
+                raw_q = parsed_filter.get("q")
+                if isinstance(raw_q, str) and raw_q.strip():
+                    return raw_q.strip()
+        except json.JSONDecodeError:
+            pass
+
+    raw_query = request.query_params.get("q")
+    if raw_query and raw_query.strip():
+        return raw_query.strip()
+
+    return None
+
+
+def _serialize_po_invoice_approval_item(invoice: PoInvoice) -> dict[str, Any]:
+    total = invoice.total
+    if isinstance(total, Decimal):
+        total_value: float | int = float(total)
+    else:
+        total_value = total if total is not None else 0
+
+    return {
+        "id": invoice.id,
+        "numero": invoice.numero,
+        "titulo": invoice.titulo,
+        "total": total_value,
+        "created_at": serialize_datetime(invoice.created_at),
+        "fecha_emision": invoice.fecha_emision,
+        "fecha_vencimiento": invoice.fecha_vencimiento,
+        "proveedor_id": invoice.proveedor_id,
+        "usuario_responsable_id": invoice.usuario_responsable_id,
+        "invoice_status_id": invoice.invoice_status_id,
+        "invoice_status_fin_id": invoice.invoice_status_fin_id,
+        "proveedor": {
+            "id": invoice.proveedor.id,
+            "nombre": invoice.proveedor.nombre,
+        }
+        if invoice.proveedor
+        else None,
+        "usuario_responsable": {
+            "id": invoice.usuario_responsable.id,
+            "nombre": invoice.usuario_responsable.nombre,
+        }
+        if invoice.usuario_responsable
+        else None,
+        "invoice_status": {
+            "id": invoice.invoice_status.id,
+            "nombre": invoice.invoice_status.nombre,
+            "orden": invoice.invoice_status.orden,
+        }
+        if invoice.invoice_status
+        else None,
+        "invoice_status_fin": {
+            "id": invoice.invoice_status_fin.id,
+            "nombre": invoice.invoice_status_fin.nombre,
+            "orden": invoice.invoice_status_fin.orden,
+        }
+        if invoice.invoice_status_fin
+        else None,
+    }
+
+
+@po_invoice_router.get("/approval-feed")
+def approval_feed(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    sort: str | None = Query(None, description="Sort array ra-data-simple-rest: [field,order]"),
+    range: str | None = Query(None, description="Range array ra-data-simple-rest: [start,end]"),
+    filter: str | None = Query(None, description="Filter object ra-data-simple-rest"),
+    q: str | None = Query(None, description="Busqueda libre"),
+    page: int = Query(1, ge=1),
+    perPage: int = Query(10, ge=1, le=50),
+    sortBy: str = Query("created_at"),
+    sortDir: str = Query("desc", pattern="^(asc|desc|ASC|DESC)$"),
+):
+    page, per_page, sort_by, sort_dir = _parse_list_pagination(
+        sort=sort,
+        range_value=range,
+        page=page,
+        per_page=perPage,
+        sort_by=sortBy,
+        sort_dir=sortDir.lower(),
+    )
+    search_value = _extract_search_value(request, q=q, filter_value=filter)
+
+    base_stmt = (
+        select(PoInvoice)
+        .join(PoInvoiceStatus, PoInvoice.invoice_status_id == PoInvoiceStatus.id)
+        .where(func.lower(PoInvoiceStatus.nombre) == "confirmada")
+        .where(PoInvoice.deleted_at.is_(None))
+    )
+
+    if search_value:
+        search_term = f"%{search_value}%"
+        base_stmt = (
+            base_stmt
+            .outerjoin(Proveedor, PoInvoice.proveedor_id == Proveedor.id)
+            .outerjoin(User, PoInvoice.usuario_responsable_id == User.id)
+            .where(
+                or_(
+                    PoInvoice.titulo.ilike(search_term),
+                    PoInvoice.numero.ilike(search_term),
+                    Proveedor.nombre.ilike(search_term),
+                    User.nombre.ilike(search_term),
+                )
+            )
+        )
+
+    total = session.exec(
+        select(func.count()).select_from(base_stmt.order_by(None).subquery())
+    ).one()
+
+    sort_column = getattr(PoInvoice, sort_by, None)
+    if sort_column is None:
+        sort_column = PoInvoice.created_at
+
+    if str(sort_dir).lower() == "asc":
+        ordered_stmt = base_stmt.order_by(sort_column.asc())
+    else:
+        ordered_stmt = base_stmt.order_by(sort_column.desc())
+
+    offset = (page - 1) * per_page
+    items = session.exec(
+        ordered_stmt.options(
+            selectinload(PoInvoice.proveedor),
+            selectinload(PoInvoice.usuario_responsable),
+            selectinload(PoInvoice.invoice_status),
+            selectinload(PoInvoice.invoice_status_fin),
+        )
+        .offset(offset)
+        .limit(per_page)
+    ).all()
+
+    start = offset
+    end = min(offset + per_page - 1, total - 1) if total > 0 else 0
+    if end < start and total > 0:
+        end = start
+    response.headers["Content-Range"] = f"items {start}-{end}/{total}"
+
+    return [_serialize_po_invoice_approval_item(item) for item in items]
+
+
+@po_invoice_router.get("/payment-feed")
+def payment_feed(
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    sort: str | None = Query(None, description="Sort array ra-data-simple-rest: [field,order]"),
+    range: str | None = Query(None, description="Range array ra-data-simple-rest: [start,end]"),
+    filter: str | None = Query(None, description="Filter object ra-data-simple-rest"),
+    q: str | None = Query(None, description="Busqueda libre"),
+    page: int = Query(1, ge=1),
+    perPage: int = Query(10, ge=1, le=50),
+    sortBy: str = Query("fecha_vencimiento"),
+    sortDir: str = Query("asc", pattern="^(asc|desc|ASC|DESC)$"),
+):
+    page, per_page, sort_by, sort_dir = _parse_list_pagination(
+        sort=sort,
+        range_value=range,
+        page=page,
+        per_page=perPage,
+        sort_by=sortBy,
+        sort_dir=sortDir.lower(),
+    )
+    search_value = _extract_search_value(request, q=q, filter_value=filter)
+
+    base_stmt = (
+        select(PoInvoice)
+        .join(PoInvoiceStatusFin, PoInvoice.invoice_status_fin_id == PoInvoiceStatusFin.id)
+        .where(func.lower(PoInvoiceStatusFin.nombre) == "agendada")
+        .where(PoInvoice.deleted_at.is_(None))
+    )
+
+    if search_value:
+        search_term = f"%{search_value}%"
+        base_stmt = (
+            base_stmt
+            .outerjoin(Proveedor, PoInvoice.proveedor_id == Proveedor.id)
+            .outerjoin(User, PoInvoice.usuario_responsable_id == User.id)
+            .where(
+                or_(
+                    PoInvoice.titulo.ilike(search_term),
+                    PoInvoice.numero.ilike(search_term),
+                    Proveedor.nombre.ilike(search_term),
+                    User.nombre.ilike(search_term),
+                )
+            )
+        )
+
+    total = session.exec(
+        select(func.count()).select_from(base_stmt.order_by(None).subquery())
+    ).one()
+
+    sort_column = getattr(PoInvoice, sort_by, None)
+    if sort_column is None:
+        sort_column = PoInvoice.fecha_vencimiento
+
+    if str(sort_dir).lower() == "asc":
+        ordered_stmt = base_stmt.order_by(sort_column.asc().nulls_last())
+    else:
+        ordered_stmt = base_stmt.order_by(sort_column.desc().nulls_last())
+
+    offset = (page - 1) * per_page
+    items = session.exec(
+        ordered_stmt.options(
+            selectinload(PoInvoice.proveedor),
+            selectinload(PoInvoice.usuario_responsable),
+            selectinload(PoInvoice.invoice_status),
+            selectinload(PoInvoice.invoice_status_fin),
+        )
+        .offset(offset)
+        .limit(per_page)
+    ).all()
+
+    start = offset
+    end = min(offset + per_page - 1, total - 1) if total > 0 else 0
+    if end < start and total > 0:
+        end = start
+    response.headers["Content-Range"] = f"items {start}-{end}/{total}"
+
+    return [_serialize_po_invoice_approval_item(item) for item in items]

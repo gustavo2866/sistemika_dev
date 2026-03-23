@@ -65,26 +65,35 @@ import {
 } from "@/components/bulk-actions-toolbar";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-type MobileConfig = {
-  primaryField: string;
-  secondaryFields?: string[];
-  badge?: {
-    source: string;
-    choices?: ReadonlyArray<{ readonly id: any; readonly name: string }>;
-  };
-  detailFields?: Array<{
-    source: string;
-    type?: string;
-    reference?: string;
-    referenceField?: string;
-    format?: (value: any) => string;
-  }>;
-  descriptionField?: {
-    source: string;
-    truncate?: number;
-  };
-  customCard?: (record: any) => ReactNode;
-};
+type MobileConfig =
+  | {
+      customCard: (record: any) => ReactNode;
+      primaryField?: never;
+      secondaryFields?: never;
+      badge?: never;
+      detailFields?: never;
+      descriptionField?: never;
+    }
+  | {
+      customCard?: never;
+      primaryField: string;
+      secondaryFields?: string[];
+      badge?: {
+        source: string;
+        choices?: ReadonlyArray<{ readonly id: any; readonly name: string }>;
+      };
+      detailFields?: Array<{
+        source: string;
+        type?: string;
+        reference?: string;
+        referenceField?: string;
+        format?: (value: any) => string;
+      }>;
+      descriptionField?: {
+        source: string;
+        truncate?: number;
+      };
+    };
 
 const defaultBulkActionButtons = <BulkActionsToolbarChildren />;
 
@@ -596,7 +605,16 @@ const DataTableRow = ({
   return (
     <TableRow
       key={record.id}
-      onClick={handleClick}
+      onClick={(event) => {
+        if (event.defaultPrevented) {
+          return;
+        }
+        const target = event.target as Element | null;
+        if (target?.closest?.('[data-row-click="ignore"]')) {
+          return;
+        }
+        void handleClick();
+      }}
       className={cn(rowClick !== false && "cursor-pointer", className)}
     >
       {hasBulkActions ? (

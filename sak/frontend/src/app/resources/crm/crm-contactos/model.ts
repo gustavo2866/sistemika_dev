@@ -40,6 +40,25 @@ export const CRM_CONTACTO_DEFAULTS: CRMContactoFormValues = {
   notas: "",
 };
 
+export const normalizeCRMContactoPayload = (data: Record<string, unknown>) => {
+  const rawTelefonos = data.telefonos;
+  let telefonoPrincipal: string | undefined;
+
+  if (Array.isArray(rawTelefonos)) {
+    telefonoPrincipal = rawTelefonos[0] as string | undefined;
+  } else if (rawTelefonos && typeof rawTelefonos === "object") {
+    const indexed = rawTelefonos as Record<string, unknown>;
+    telefonoPrincipal = indexed["0"] as string | undefined;
+  } else if (typeof rawTelefonos === "string") {
+    telefonoPrincipal = rawTelefonos;
+  }
+
+  return {
+    ...data,
+    telefonos: telefonoPrincipal ? [telefonoPrincipal] : [],
+  };
+};
+
 export const crmContactoSchema = createEntitySchema<
   CRMContactoFormValues,
   CRMContacto

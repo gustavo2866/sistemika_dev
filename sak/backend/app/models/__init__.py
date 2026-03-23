@@ -42,6 +42,7 @@ from .compras import (
     PoOrder,
     PoOrderDetail,
     PoOrderStatus,
+    PoOrderStatusLog,
     PoInvoice,
     PoInvoiceDetail,
     PoInvoiceTax,
@@ -56,6 +57,7 @@ from .tipo_solicitud import TipoSolicitud
 from .centro_costo import CentroCosto
 from .propietario import Propietario
 from .proyecto import Proyecto
+from .proyecto_avance import ProyectoAvance
 from .proy_fase import ProyFase
 from .nomina import Nomina, CategoriaNomina
 from .partediario import (
@@ -115,6 +117,7 @@ __all__ = [
     "PoOrder",
     "PoOrderDetail",
     "PoOrderStatus",
+    "PoOrderStatusLog",
     "PoInvoice",
     "PoInvoiceDetail",
     "PoInvoiceTax",
@@ -124,6 +127,7 @@ __all__ = [
     "CentroCosto",
     "Propietario",
     "Proyecto",
+    "ProyectoAvance",
     "Nomina",
     "CategoriaNomina",
     "ParteDiario",

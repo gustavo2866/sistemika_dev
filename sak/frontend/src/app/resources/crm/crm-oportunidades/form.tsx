@@ -164,7 +164,7 @@ const useMantenimientoRules = () => {
   return { isMantenimiento, validatePropiedad: propiedadValidators };
 };
 
-export const CRMOportunidadPoForm = () => {
+export const CRMOportunidadForm = () => {
   const record = useRecordContext<any>();
   const { identity } = useGetIdentity();
   const lockedPropiedadId = useLockedPropiedadId();
@@ -227,9 +227,7 @@ const CabeceraActionsMenu = () => {
   const returnTo = `${location.pathname}${location.search}`;
   const listReturnTo =
     (location.state as { returnTo?: string } | null)?.returnTo ??
-    (location.pathname.includes("/crm/crm-oportunidades")
-      ? "/crm/crm-oportunidades"
-      : "/crm/oportunidades");
+    "/crm/oportunidades";
 
   if (!record?.id) return null;
 
@@ -799,4 +797,4 @@ const OrdenesFooter = ({ listTo }: { listTo: string }) => {
   );
 };
 
-export default CRMOportunidadPoForm;
+export default CRMOportunidadForm;

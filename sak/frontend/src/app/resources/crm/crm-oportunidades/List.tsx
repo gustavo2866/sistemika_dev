@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   useDataProvider,
-  useGetIdentity,
-  useListContext,
   useNotify,
   useRecordContext,
   useRefresh,
@@ -16,9 +14,9 @@ import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
 import {
-  CompactSoloActivasToggleFilter,
   FormOrderBulkActionsToolbar,
   FormOrderListRowActions,
+  IdentityFilterSync,
   ListColumn,
   ListEstado,
   ListID,
@@ -27,6 +25,7 @@ import {
   ResponsiveDataTable,
   SectionBaseTemplate,
   buildListFilters,
+  useIdentityFilterDefaults,
 } from "@/components/forms/form_order";
 import { List } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
@@ -50,11 +49,10 @@ import {
   isProspectOportunidad,
 } from "./model";
 import { captureOportunidadModalBackground } from "./modal_background";
-import { CRMOportunidadesListDashboard } from "./list_dashboard";
 
 //#region Base CRUD: configuracion del listado
 
-const listFilters = buildListFilters(
+const LIST_FILTERS = buildListFilters(
   [
     {
       type: "text",
@@ -92,18 +90,6 @@ const listFilters = buildListFilters(
         className: "w-[80px]",
         alwaysOn: true,
       },
-    },
-    {
-      type: "custom",
-      element: (
-        <CompactSoloActivasToggleFilter
-          key="activo"
-          source="activo"
-          label="Activos"
-          alwaysOn
-          className="ml-auto"
-        />
-      ),
     },
     {
       type: "reference",
@@ -169,67 +155,12 @@ const listFilters = buildListFilters(
   { keyPrefix: "crm-oportunidades" },
 );
 
-const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
-const listContainerClassName = "max-w-[980px] w-full mr-auto";
-const listTableClassName = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
-const compactListTableClassName = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
-const listDefaultFilters = { activo: true };
-const FILTER_DEFAULTS_MARKER = "crm-oportunidades:filters-initialized";
-
-const isMeaningfulFilterValue = (value: unknown) => {
-  if (value === "" || value === null || value === undefined) return false;
-  if (Array.isArray(value)) return value.length > 0;
-  return true;
-};
+const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const LIST_CONTAINER_CLASS_NAME = "max-w-[980px] w-full mr-auto";
+const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
+const COMPACT_LIST_TABLE_CLASS_NAME = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
 
 //#endregion Base CRUD: configuracion del listado
-
-const CRMOportunidadListDefaultsSync = () => {
-  const { filterValues, setFilters } = useListContext<any>();
-  const { identity, isPending: isIdentityPending } = useGetIdentity();
-
-  useEffect(() => {
-    if (isIdentityPending) {
-      return;
-    }
-
-    const hasInitializedDefaults =
-      typeof window !== "undefined" &&
-      window.sessionStorage.getItem(FILTER_DEFAULTS_MARKER) === "1";
-
-    if (hasInitializedDefaults) {
-      return;
-    }
-
-    const nextFilters = {
-      ...(filterValues as Record<string, unknown>),
-    };
-    let hasChanges = false;
-
-    if (!isMeaningfulFilterValue(nextFilters.activo)) {
-      nextFilters.activo = true;
-      hasChanges = true;
-    }
-
-    if (
-      identity?.id &&
-      !isMeaningfulFilterValue(nextFilters.responsable_id)
-    ) {
-      nextFilters.responsable_id = identity.id;
-      hasChanges = true;
-    }
-
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(FILTER_DEFAULTS_MARKER, "1");
-    }
-
-    if (hasChanges) {
-      setFilters(nextFilters, {});
-    }
-  }, [filterValues, identity?.id, isIdentityPending, setFilters]);
-
-  return null;
-};
 
 //#region Fuera del patron: helpers de presentacion enriquecida
 
@@ -314,7 +245,7 @@ const DescripcionCell = () => {
 
     setSaving(true);
     try {
-      await dataProvider.update("crm/crm-oportunidades", {
+      await dataProvider.update("crm/oportunidades", {
         id: record.id,
         data: { descripcion_estado: value },
         previousData: record,
@@ -566,100 +497,113 @@ const OportunidadCambioEstadoMenu = () => {
 const CRMOportunidadListActions = () => (
   <div className="flex items-center gap-2">
     <FilterButton
-      filters={listFilters}
+      filters={LIST_FILTERS}
       size="sm"
-      buttonClassName={listActionButtonClass}
+      buttonClassName={ACTION_BUTTON_CLASS}
     />
-    <CreateButton className={listActionButtonClass} label="Crear" />
-    <ExportButton className={listActionButtonClass} label="Exportar" />
+    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
+    <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
 
-type CRMOportunidadPoListBodyProps = {
+type CRMOportunidadListBodyProps = {
+  identityId?: number | string;
   compact?: boolean;
   showBulkActions?: boolean;
   rowClick?: "edit" | "show" | "expand" | false | undefined;
   className?: string;
 };
 
-export const CRMOportunidadPoListBody = ({
+export const CRMOportunidadListBody = ({
+  identityId,
   compact = false,
   showBulkActions = true,
   rowClick = "edit",
   className,
-}: CRMOportunidadPoListBodyProps) => (
-  <ResponsiveDataTable
-    rowClick={rowClick}
-    bulkActionsToolbar={
-      showBulkActions ? <FormOrderBulkActionsToolbar /> : undefined
-    }
-    bulkActionButtons={showBulkActions ? undefined : false}
-    compact={compact}
-    rowClassName={oportunidadRowClass}
-    className={cn(
-      compact ? compactListTableClassName : listTableClassName,
-      className,
-    )}
-  >
-    <ListColumn source="id" label="ID" className="w-[40px] text-center">
-      <ListID source="id" widthClass="w-[40px]" />
-    </ListColumn>
-    <ListColumn source="contacto_id" label="Contacto" className="w-[100px]">
-      <ContactoTituloCell />
-    </ListColumn>
-    <ListColumn source="estado" label="Estado" className="w-[75px]">
-      <ListEstado source="estado" statusClasses={CRM_OPORTUNIDAD_ESTADO_BADGES} />
-    </ListColumn>
-    <ListColumn source="responsable_id" label="Resp" className="w-[60px]">
-      <ReferenceField source="responsable_id" reference="users" link={false}>
-        <ResponsableAvatar />
-      </ReferenceField>
-    </ListColumn>
-    <ListColumn
-      source="descripcion_estado"
-      label="Descripcion"
-      className="w-[140px]"
+}: CRMOportunidadListBodyProps) => (
+  <>
+    {identityId ? (
+      <IdentityFilterSync identityId={identityId} source="responsable_id" />
+    ) : null}
+    <ResponsiveDataTable
+      rowClick={rowClick}
+      bulkActionsToolbar={
+        showBulkActions ? <FormOrderBulkActionsToolbar /> : undefined
+      }
+      bulkActionButtons={showBulkActions ? undefined : false}
+      compact={compact}
+      rowClassName={oportunidadRowClass}
+      className={cn(
+        compact ? COMPACT_LIST_TABLE_CLASS_NAME : LIST_TABLE_CLASS_NAME,
+        className,
+      )}
     >
-      <DescripcionCell />
-    </ListColumn>
-    <ListColumn label="Acciones" className="w-[70px]">
-      <FormOrderListRowActions
-        showDelete={false}
-        extraMenuItems={
-          <>
-            <OportunidadEliminarMenuItem />
-            <OportunidadAceptarMenuItem />
-            <OportunidadCambioEstadoMenu />
-          </>
-        }
-      />
-    </ListColumn>
-  </ResponsiveDataTable>
+      <ListColumn source="id" label="ID" className="w-[40px] text-center">
+        <ListID source="id" widthClass="w-[40px]" />
+      </ListColumn>
+      <ListColumn source="contacto_id" label="Contacto" className="w-[100px]">
+        <ContactoTituloCell />
+      </ListColumn>
+      <ListColumn source="estado" label="Estado" className="w-[75px]">
+        <ListEstado source="estado" statusClasses={CRM_OPORTUNIDAD_ESTADO_BADGES} />
+      </ListColumn>
+      <ListColumn source="responsable_id" label="Resp" className="w-[60px]">
+        <ReferenceField source="responsable_id" reference="users" link={false}>
+          <ResponsableAvatar />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn
+        source="descripcion_estado"
+        label="Descripcion"
+        className="w-[140px]"
+      >
+        <DescripcionCell />
+      </ListColumn>
+      <ListColumn label="Acciones" className="w-[70px]">
+        <FormOrderListRowActions
+          showDelete={false}
+          extraMenuItems={
+            <>
+              <OportunidadEliminarMenuItem />
+              <OportunidadAceptarMenuItem />
+              <OportunidadCambioEstadoMenu />
+            </>
+          }
+        />
+      </ListColumn>
+    </ResponsiveDataTable>
+  </>
 );
 
-export const CRMOportunidadPoList = () => (
-  <List
-    title={
-      <span className="inline-flex items-center gap-2">
-        <Target className="h-4 w-4" />
-        CRM Oportunidades
-      </span>
-    }
-    filters={listFilters}
-    actions={<CRMOportunidadListActions />}
-    debounce={300}
-    perPage={10}
-    containerClassName={listContainerClassName}
-    pagination={<ListPaginator />}
-    sort={{ field: "created_at", order: "DESC" }}
-    filterDefaultValues={listDefaultFilters}
-    topContent={<CRMOportunidadesListDashboard />}
-  >
-    <CRMOportunidadListDefaultsSync />
-    <CRMOportunidadPoListBody />
-  </List>
-);
+export const CRMOportunidadList = () => <ListaOportunidades />;
 
-export default CRMOportunidadPoList;
+const ListaOportunidades = () => {
+  const { identityId, defaultFilters } = useIdentityFilterDefaults({
+    source: "responsable_id",
+  });
+
+  return (
+    <List
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Target className="h-4 w-4" />
+          CRM Oportunidades
+        </span>
+      }
+      filters={LIST_FILTERS}
+      actions={<CRMOportunidadListActions />}
+      debounce={300}
+      perPage={10}
+      containerClassName={LIST_CONTAINER_CLASS_NAME}
+      pagination={<ListPaginator />}
+      sort={{ field: "created_at", order: "DESC" }}
+      filterDefaultValues={defaultFilters}
+    >
+      <CRMOportunidadListBody identityId={identityId} />
+    </List>
+  );
+};
+
+export default CRMOportunidadList;
 
 //#endregion Base CRUD: componentes principales

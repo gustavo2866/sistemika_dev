@@ -30,6 +30,7 @@ class FilterOperator:
     LT = "lt"          # menor que
     IS = "is"          # para null checks
     LIKE = "like"      # texto (case insensitive)
+    STARTSWITH = "startswith"  # empieza con (case insensitive)
 
 class GenericCRUD(Generic[M]):
     def __init__(self, model: Type[M]):
@@ -456,6 +457,8 @@ class GenericCRUD(Generic[M]):
                 return stmt.where(column.is_not(None))
         elif operator == FilterOperator.LIKE:
             return stmt.where(column.ilike(f"%{value}%"))
+        elif operator == FilterOperator.STARTSWITH:
+            return stmt.where(column.ilike(f"{value}%"))
         else:
             # Fallback a igualdad
             return stmt.where(column == value)

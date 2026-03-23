@@ -18,6 +18,7 @@ import {
 import { AccionOportunidadHeader } from "./accion_header";
 import type { CRMOportunidad } from "./model";
 import type { PanelChange } from "../crm-panel/model";
+import { saveDashboardReturnMarker } from "../crm-dashboard/return-state";
 import type { OportunidadModalBackground } from "./modal_background";
 import { renderOportunidadModalBackground } from "./modal_background";
 
@@ -86,6 +87,11 @@ export const CRMOportunidadAccionDescartar = () => {
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
+          saveDashboardReturnMarker(returnTo, {
+            savedAt: Date.now(),
+            oportunidadId,
+            deleted: true,
+          });
           notify("Oportunidad descartada exitosamente", { type: "success" });
           refresh();
           navigate(returnTo, {
@@ -170,7 +176,7 @@ const AccionDescartarContent = ({
               className="h-8 px-3 text-[11px] sm:h-9 sm:text-sm"
               onClick={() => onConfirm(record?.id)}
             >
-              {isSubmitting ? "Descartando..." : "Descartar"}
+              {isSubmitting ? "Eliminando..." : "Eliminar"}
             </Button>
           </DialogFooter>
         </SimpleForm>

@@ -56,6 +56,7 @@ const PoInvoiceEditTitle = () => {
 export const PoInvoiceEdit = () => (
   <Edit
     redirect="list"
+    mutationMode="pessimistic"
     title={<PoInvoiceEditTitle />}
     actions={false}
     transform={(data: any) => normalizePoInvoicePayload(data)}

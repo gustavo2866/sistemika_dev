@@ -1,20 +1,23 @@
 "use client";
 
+import { useMemo } from "react";
+import { useRecordContext } from "ra-core";
 import { List } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { FormOrderListRowActions } from "@/components/forms/form_order";
 import {
+  DateListColumn,
+  FormOrderListRowActions,
+  ListDate,
   ListPaginator,
   ListText,
-  ListDate,
-  ListMoney,
   NumberListColumn,
-  TextListColumn,
   ResponsiveDataTable,
+  TextListColumn,
   buildListFilters,
 } from "@/components/forms/form_order";
+import { getProyectoUltimoAvance } from "./model";
 
 const filters = buildListFilters(
   [
@@ -25,7 +28,7 @@ const filters = buildListFilters(
         label: "Buscar",
         placeholder: "Buscar proyectos",
         alwaysOn: true,
-        className: "w-[120px] sm:w-[160px]",
+        className: "w-[120px] sm:w-[170px]",
       },
     },
     {
@@ -35,11 +38,24 @@ const filters = buildListFilters(
         label: "Estado",
       },
     },
+    {
+      type: "text",
+      props: {
+        source: "centro_costo",
+        label: "Centro de costo",
+      },
+    },
   ],
   { keyPrefix: "proyectos" },
 );
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+
+type ProyectoListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+};
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
@@ -49,19 +65,31 @@ const ListActions = () => (
   </div>
 );
 
-export const ProyectoList = () => (
+const UltimoAvanceField = () => {
+  const record = useRecordContext<{ avances?: Array<{ avance?: number; fecha_registracion?: string }> }>();
+  const value = useMemo(() => getProyectoUltimoAvance(record?.avances), [record?.avances]);
+  return <span>{value.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%</span>;
+};
+
+export const ProyectoList = ({
+  embedded = false,
+  rowClick = "edit",
+  perPage = 10,
+}: ProyectoListProps = {}) => (
   <List
     title="Proyectos"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
-    perPage={10}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[900px] w-full mr-auto"
+    containerClassName="max-w-[1100px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       mobileConfig={{
         primaryField: "nombre",
         secondaryFields: ["estado", "fecha_inicio", "fecha_final"],
@@ -69,26 +97,22 @@ export const ProyectoList = () => (
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
       <NumberListColumn source="id" label="ID" className="text-center" widthClass="w-[80px]" />
-      <TextListColumn source="nombre" label="Nombre" disableSort>
-        <ListText source="nombre" />
+      <TextListColumn source="nombre" label="Nombre" className="w-[170px]">
+        <ListText source="nombre" className="whitespace-normal break-words" />
       </TextListColumn>
-      <TextListColumn source="estado" label="Estado" widthClass="w-[70px]">
+      <TextListColumn source="estado" label="Estado" className="w-[90px]">
         <ListText source="estado" />
       </TextListColumn>
-      <TextListColumn source="fecha_inicio" label="Inicio" widthClass="w-[70px]">
+      <DateListColumn source="fecha_inicio" label="Inicio" className="w-[80px]">
         <ListDate source="fecha_inicio" />
-      </TextListColumn>
-      <TextListColumn source="fecha_final" label="Finalizacion" widthClass="w-[90px]">
-        <ListDate source="fecha_final" />
-      </TextListColumn>
-      <TextListColumn source="importe_mat" label="Importe MAT">
-        <ListMoney source="importe_mat" showCurrency={false} />
-      </TextListColumn>
-      <TextListColumn source="importe_mo" label="Importe MO">
-        <ListMoney source="importe_mo" showCurrency={false} />
-      </TextListColumn>
-      <TextListColumn label="Acciones">
-        <FormOrderListRowActions />
+      </DateListColumn>
+      <NumberListColumn source="centro_costo" label="CCosto" className="w-[75px] text-center" />
+      <NumberListColumn source="ingresos" label="Ingresos" className="w-[95px] text-right" />
+      <NumberListColumn label="Avance" className="w-[90px] text-center">
+        <UltimoAvanceField />
+      </NumberListColumn>
+      <TextListColumn label="Acciones" className="w-[80px]">
+        <FormOrderListRowActions showShow={!embedded} />
       </TextListColumn>
     </ResponsiveDataTable>
   </List>

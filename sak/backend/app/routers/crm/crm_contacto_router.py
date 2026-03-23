@@ -1,5 +1,6 @@
 from fastapi import Body, Depends, HTTPException
-from sqlmodel import Session
+from sqlalchemy import distinct, func
+from sqlmodel import Session, select
 
 from app.core.router import create_generic_router
 from app.db import get_session
@@ -15,6 +16,27 @@ crm_contacto_router = create_generic_router(
     prefix="/crm/contactos",
     tags=["crm-contactos"],
 )
+
+
+@crm_contacto_router.get("/letras")
+def get_letras_disponibles(
+    responsable_id: int | None = None,
+    q: str | None = None,
+    session: Session = Depends(get_session),
+):
+    """Retorna las letras iniciales de los contactos visibles con los filtros dados."""
+    letra_expr = func.upper(func.substr(CRMContacto.nombre_completo, 1, 1))
+    stmt = (
+        select(distinct(letra_expr))
+        .where(CRMContacto.deleted_at.is_(None))
+    )
+    if responsable_id:
+        stmt = stmt.where(CRMContacto.responsable_id == responsable_id)
+    if q:
+        stmt = stmt.where(CRMContacto.nombre_completo.ilike(f"%{q}%"))
+    stmt = stmt.order_by(letra_expr)
+    rows = session.exec(stmt).all()
+    return [r for r in rows if r]
 
 
 @crm_contacto_router.post("/buscar")

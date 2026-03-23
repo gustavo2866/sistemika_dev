@@ -95,6 +95,7 @@ export const DashboardKpiCard = ({
       onKeyDown={handleKeyDown}
       className={cn(
         "overflow-hidden border-muted bg-card/90 shadow-[0_2px_8px_rgba(0,0,0,0.05)] transition-all",
+        compact && "gap-0 py-1 sm:py-1.5",
         isClickable && "cursor-pointer hover:shadow-[0_6px_16px_rgba(0,0,0,0.08)] hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/30",
         selected && variantStyles.selected,
         disabled && "opacity-50 cursor-not-allowed",
@@ -102,15 +103,15 @@ export const DashboardKpiCard = ({
         className,
       )}
     >
-      <CardHeader className={cn(compact ? "px-3 pb-0.5 pt-1.5" : "pb-1")}>
-        <CardTitle className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600">
+      <CardHeader className={cn(compact ? "gap-0 px-1.5 pb-1.5 pt-0 sm:px-2" : "pb-1")}>
+        <CardTitle className="text-[8px] font-bold uppercase tracking-[0.07em] text-slate-600 sm:text-[9px] sm:tracking-[0.08em]">
           {title}
         </CardTitle>
       </CardHeader>
       
       <CardContent
         className={cn(
-          compact ? "space-y-1.5 px-3 pb-2.5 pt-0 text-sm" : "space-y-2 text-sm",
+          compact ? "space-y-0 px-1.5 pb-0.5 pt-0.5 sm:space-y-0.5 sm:px-2 sm:pb-1" : "space-y-2 text-sm",
         )}
       >
         {children}

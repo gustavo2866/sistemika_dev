@@ -5,13 +5,13 @@ import { useEditContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
 import { DateField } from "@/components/date-field";
 import { cn } from "@/lib/utils";
-import { CRMOportunidadPoForm } from "./form";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   formatEstadoOportunidad,
 } from "./model";
 import { Target } from "lucide-react";
+import { CRMOportunidadForm } from "./form";
 
 const OportunidadEditTitle = () => {
   const { record } = useEditContext();
@@ -39,7 +39,7 @@ const OportunidadEditTitle = () => {
   );
 };
 
-export const CRMOportunidadPoEdit = () => {
+export const CRMOportunidadEdit = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const locationState = location.state as { returnTo?: string } | null;
@@ -48,17 +48,20 @@ export const CRMOportunidadPoEdit = () => {
   return (
     <Edit
       redirect={false}
+      mutationMode="pessimistic"
       title={<OportunidadEditTitle />}
       actions={false}
       mutationOptions={{
         onSuccess: () => {
-          navigate(returnTo ?? "/crm/oportunidades", { replace: true });
+          navigate(returnTo ?? "/crm/oportunidades", {
+            replace: true,
+          });
         },
       }}
     >
-      <CRMOportunidadPoForm />
+      <CRMOportunidadForm />
     </Edit>
   );
 };
 
-export default CRMOportunidadPoEdit;
+export default CRMOportunidadEdit;

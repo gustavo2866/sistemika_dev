@@ -147,6 +147,10 @@ class PoOrder(Base, table=True):
         back_populates="order",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    status_logs: List["PoOrderStatusLog"] = Relationship(
+        back_populates="order",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class PoOrderDetail(Base, table=True):
@@ -219,6 +223,58 @@ class PoOrderDetail(Base, table=True):
     articulo: Optional["Articulo"] = Relationship()
     centro_costo: Optional["CentroCosto"] = Relationship()
     oportunidad: Optional["CRMOportunidad"] = Relationship()
+
+
+class PoOrderStatusLog(Base, table=True):
+    """Log de cambios de estado de órdenes de compra (modulo PO)."""
+
+    __tablename__ = "po_order_status_log"
+
+    __searchable_fields__ = ["comentario"]
+    __auto_include_relations__: ClassVar[List[str]] = [
+        "status_anterior",
+        "status_nuevo",
+        "usuario",
+    ]
+
+    order_id: int = Field(
+        foreign_key="po_orders.id",
+        index=True,
+        description="Orden de compra asociada",
+    )
+    status_anterior_id: Optional[int] = Field(
+        default=None,
+        foreign_key="po_order_status.id",
+        description="Estado anterior (null = creación inicial)",
+    )
+    status_nuevo_id: int = Field(
+        foreign_key="po_order_status.id",
+        description="Estado nuevo",
+    )
+    usuario_id: int = Field(
+        foreign_key="users.id",
+        description="Usuario que realizó el cambio",
+    )
+    comentario: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Observación o motivo del cambio",
+    )
+    fecha_registro: date = Field(
+        default_factory=lambda: __import__('datetime').date.today(),
+        description="Fecha del cambio de estado",
+    )
+
+    order: Optional["PoOrder"] = Relationship(back_populates="status_logs")
+    status_anterior: Optional["PoOrderStatus"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "PoOrderStatusLog.status_anterior_id", "lazy": "select"}
+    )
+    status_nuevo: Optional["PoOrderStatus"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "PoOrderStatusLog.status_nuevo_id", "lazy": "select"}
+    )
+    usuario: Optional["User"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "PoOrderStatusLog.usuario_id"}
+    )
 
 
 class EstadoPoInvoice(str, Enum):

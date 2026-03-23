@@ -1,88 +1,130 @@
 "use client";
 
 import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { DateField } from "@/components/date-field";
 import { SelectField } from "@/components/select-field";
 import { ReferenceField } from "@/components/reference-field";
-import { TextInput } from "@/components/text-input";
-import { SelectInput } from "@/components/select-input";
-import { ReferenceInput } from "@/components/reference-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
-import { ShowButton } from "@/components/show-button";
 import { useRecordContext } from "ra-core";
+import {
+  DateListColumn,
+  FormOrderListRowActions,
+  ListDate,
+  ListPaginator,
+  ListText,
+  NumberListColumn,
+  ResponsiveDataTable,
+  TextListColumn,
+  buildListFilters,
+} from "@/components/forms/form_order";
 import { estadoParteChoices } from "./constants";
 
-const filters = [
-  <TextInput
-    key="q"
-    source="q"
-    label={false}
-    placeholder="Buscar partes diarios"
-    alwaysOn
-  />,
-  <ReferenceInput
-    key="idproyecto"
-    source="idproyecto"
-    reference="proyectos"
-    label="Proyecto"
-  >
-    <SelectInput optionText="nombre" emptyText="Todos" />
-  </ReferenceInput>,
-  <SelectInput
-    key="estado"
-    source="estado"
-    label="Estado"
-    choices={estadoParteChoices}
-    emptyText="Todos"
-  />,
-];
+const filters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar partes diarios",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[170px]",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "idproyecto",
+        reference: "proyectos",
+        label: "Proyecto",
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "estado",
+        label: "Estado",
+        choices: estadoParteChoices,
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "parte-diario" },
+);
+
+const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listMobileConfig = {
+  primaryField: "fecha",
+  secondaryFields: ["idproyecto", "estado", "descripcion"],
+};
+
+type ParteDiarioListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+};
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
+    <CreateButton className={actionButtonClass} label="Crear" />
+    <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 const DetalleCountField = () => {
   const record = useRecordContext<{ detalles?: Array<unknown> }>();
-  const count = Array.isArray(record?.detalles) ? record!.detalles.length : 0;
+  const count = Array.isArray(record?.detalles) ? record.detalles.length : 0;
   return <span>{count}</span>;
 };
 
-export const ParteDiarioList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={25}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="fecha" label="Fecha">
-        <DateField source="fecha" />
-      </DataTable.Col>
-      <DataTable.Col label="Proyecto">
-        <ReferenceField source="idproyecto" reference="proyectos">
-          <TextField source="nombre" />
+export const ParteDiarioList = ({
+  embedded = false,
+  rowClick = "edit",
+  perPage = 25,
+}: ParteDiarioListProps = {}) => (
+  <List
+    title="Partes diarios"
+    filters={filters}
+    actions={<ListActions />}
+    perPage={perPage}
+    pagination={<ListPaginator />}
+    sort={{ field: "fecha", order: "DESC" }}
+    containerClassName="max-w-[980px] w-full mr-auto"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
+  >
+    <ResponsiveDataTable
+      rowClick={rowClick}
+      mobileConfig={listMobileConfig}
+      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+    >
+      <DateListColumn source="fecha" label="Fecha" className="w-[120px]">
+        <ListDate source="fecha" />
+      </DateListColumn>
+      <TextListColumn source="idproyecto" label="Proyecto" className="w-[180px]">
+        <ReferenceField source="idproyecto" reference="proyectos" link={false}>
+          <ListText source="nombre" className="whitespace-normal break-words" />
         </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col source="estado" label="Estado">
+      </TextListColumn>
+      <TextListColumn source="estado" label="Estado" className="w-[110px]">
         <SelectField source="estado" choices={estadoParteChoices} />
-      </DataTable.Col>
-      <DataTable.Col source="descripcion" label="Descripción">
-        <TextField source="descripcion" />
-      </DataTable.Col>
-      <DataTable.Col label="Registros">
+      </TextListColumn>
+      <TextListColumn source="descripcion" label="Descripcion" className="w-[220px]">
+        <ListText source="descripcion" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <NumberListColumn label="Registros" className="w-[80px] text-center">
         <DetalleCountField />
-      </DataTable.Col>
-      <DataTable.Col className="w-[130px]">
-        <div className="flex items-center gap-2">
-          <EditButton />
-          <ShowButton />
-        </div>
-      </DataTable.Col>
-    </DataTable>
+      </NumberListColumn>
+      <TextListColumn label="Acciones" className="w-[80px]">
+        <FormOrderListRowActions showShow={!embedded} />
+      </TextListColumn>
+    </ResponsiveDataTable>
   </List>
 );
 

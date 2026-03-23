@@ -43,6 +43,7 @@ export const PoOrderEdit = () => {
   return (
     <Edit
       redirect={false}
+      mutationMode="pessimistic"
       title={<PoOrderEditTitle />}
       actions={false}
       transform={(data: any) => normalizePoOrderPayload(data)}

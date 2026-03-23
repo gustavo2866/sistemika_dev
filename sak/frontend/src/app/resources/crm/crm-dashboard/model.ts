@@ -1,9 +1,40 @@
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, ArrowUpRight, Calendar, Check, CheckCheck, Clock3, Mail, User, Workflow, X } from "lucide-react";
+import { AlertTriangle, Calendar, CheckCheck, Mail, User, Workflow } from "lucide-react";
 import type { PeriodType } from "@/components/forms/period-range-navigator";
 export type { PeriodType } from "@/components/forms/period-range-navigator";
 
-export type CrmOportunidadLite = Record<string, any>;
+export type CrmContactoLite = {
+  id?: string | number;
+  nombre?: string | null;
+  nombre_completo?: string | null;
+};
+
+export type CrmMonedaLite = {
+  codigo?: string | null;
+};
+
+export type CrmResponsableLite = {
+  full_name?: string | null;
+};
+
+export type CrmPropiedadLite = {
+  nombre?: string | null;
+};
+
+export type CrmOportunidadLite = {
+  id?: string | number;
+  titulo?: string | null;
+  descripcion_estado?: string | null;
+  estado?: string | null;
+  fecha_estado?: string | null;
+  contacto_id?: string | number | null;
+  contacto?: CrmContactoLite | null;
+  moneda?: CrmMonedaLite | null;
+  responsable?: CrmResponsableLite | null;
+  propiedad?: CrmPropiedadLite | null;
+  monto?: number | null;
+  [key: string]: unknown;
+};
 
 export type CrmRankingEntry = {
   oportunidad: CrmOportunidadLite;
@@ -13,7 +44,7 @@ export type CrmRankingEntry = {
   moneda?: string | null;
   dias_pipeline: number;
   bucket: string;
-  kpiKey: "pendientes" | "nuevas" | "cerradas" | "en_proceso";
+  kpiKey: "prospect" | "proceso" | "reserva" | "cerrada";
 };
 
 export type PropiedadRankingEntry = {
@@ -25,8 +56,15 @@ export type PropiedadRankingEntry = {
 export type CrmDashboardResponse = {
   range: { startDate: string; endDate: string };
   filters: Record<string, unknown>;
+  selectors: Record<
+    "prospect" | "proceso" | "reserva" | "cerrada",
+    {
+      count: number;
+      amount: number;
+    }
+  >;
   kpis: Record<
-    "pendientes" | "nuevas" | "cerradas" | "en_proceso",
+    "prospect" | "proceso" | "reserva" | "cerrada",
     {
       count: number;
       amount: number;
@@ -37,6 +75,15 @@ export type CrmDashboardResponse = {
       perdidas?: { count: number; rate: number };
     }
   >;
+  period_summary: {
+    nuevas: number;
+    ganadas: number;
+    perdidas: number;
+    cerradas: number;
+    pendientes_inicio: number;
+    pendientes_fin: number;
+    total_periodo: number;
+  };
   funnel: Array<{
     estado: string;
     label: string;
@@ -54,10 +101,10 @@ export type CrmDashboardResponse = {
     pendientes: number;
   }>;
   ranking: {
-    pendientes: CrmRankingEntry[];
-    nuevas: CrmRankingEntry[];
-    cerradas: CrmRankingEntry[];
-    en_proceso: CrmRankingEntry[];
+    prospect: CrmRankingEntry[];
+    proceso: CrmRankingEntry[];
+    reserva: CrmRankingEntry[];
+    cerrada: CrmRankingEntry[];
   };
   ranking_propiedades: PropiedadRankingEntry[];
   alerts: {
@@ -99,18 +146,9 @@ export type CrmDashboardFilters = {
   propietario: string;
 };
 
-export type KpiKey = "pendientes" | "nuevas" | "cerradas" | "en_proceso";
+export type KpiKey = "prospect" | "proceso" | "reserva" | "cerrada";
 export type AlertKey = "mensajesSinLeer" | "prospectSinResolver" | "tareasVencidas" | "enProcesoSinMovimiento";
 export type SelectOption = { value: string; label: string };
-export type KpiTone = {
-  variant: "default" | "warning" | "danger" | "success";
-  cardClassName: string;
-  metricClassName: string;
-  amountClassName: string;
-  accentLabelClassName: string;
-  panelClassName: string;
-  chipClassName: string;
-};
 export type CrmDashboardAlertItem = {
   key: AlertKey;
   label: string;
@@ -122,49 +160,13 @@ export type CrmDashboardAlertItem = {
 export type CrmDashboardKpiCard = {
   key: KpiKey;
   title: string;
-  description: string;
   icon: LucideIcon;
-};
-export type CrmDashboardKpiBreakdownItem = {
-  key: string;
-  label: string;
-  value: string;
-  badge?: string;
-  icon?: LucideIcon;
-  className?: string;
-  labelClassName?: string;
-  valueClassName?: string;
-  badgeClassName?: string;
-  iconClassName?: string;
-};
-export type CrmDashboardKpiCardViewModel = {
-  key: KpiKey;
-  title: string;
-  icon: LucideIcon;
-  variant: "default" | "warning" | "danger" | "success";
-  cardClassName: string;
-  titleDotClassName: string;
-  metricClassName: string;
-  amountClassName: string;
-  accentLabelClassName: string;
-  panelClassName: string;
-  chipClassName: string;
-  count: string;
-  amount: string;
-  variationLabel: string;
-  variationValue?: string;
-  breakdown?: CrmDashboardKpiBreakdownItem[];
-};
-export type CrmDashboardEvolutionItem = {
-  bucket: string;
-  totales: number;
-  nuevas: number;
-  ganadas: number;
-  perdidas: number;
-  pendientes: number;
 };
 
 export const DEFAULT_CRM_PERIOD: PeriodType = "trimestre";
+export const CRM_DASHBOARD_DETAIL_PAGE_SIZE = 15;
+export const CRM_DASHBOARD_DETAIL_VISIBLE_ROWS = 5;
+export const CRM_DASHBOARD_DETAIL_VIEWPORT_HEIGHT = 196;
 
 const periodMap: Partial<Record<PeriodType, number>> = {
   mes: 1,
@@ -204,6 +206,29 @@ const percentFormatter = new Intl.NumberFormat("es-AR", { maximumFractionDigits:
 export const formatInteger = (value: number): string => integerFormatter.format(Math.round(value));
 export const formatCurrency = (value: number): string => currencyFormatter.format(Math.round(value || 0));
 export const formatPercent = (value?: number): string => percentFormatter.format(value ?? 0);
+export const formatSignedPercent = (value?: number): string => `${(value ?? 0) > 0 ? "+" : ""}${percentFormatter.format(value ?? 0)}%`;
+
+const parseIsoDate = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+};
+
+const formatIsoDate = (value: Date) => value.toISOString().split("T")[0];
+
+const shiftIsoDateByMonths = (value: string, months: number) => {
+  const source = parseIsoDate(value);
+  const year = source.getUTCFullYear();
+  const month = source.getUTCMonth() + months;
+  const day = source.getUTCDate();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return formatIsoDate(new Date(Date.UTC(year, month, Math.min(day, lastDay))));
+};
+
+const shiftIsoDateByDays = (value: string, days: number) => {
+  const source = parseIsoDate(value);
+  source.setUTCDate(source.getUTCDate() + days);
+  return formatIsoDate(source);
+};
 
 export const parseCsvValues = (value: string): string[] => {
   if (!value) return [];
@@ -222,43 +247,52 @@ export const serializeFiltersToParams = (filters: CrmDashboardFilters): URLSearc
   return params;
 };
 
-export const buildBucketOptions = (dashboardData: CrmDashboardResponse | null): string[] => {
-  if (!dashboardData?.evolucion) return ["todos"];
-  const buckets = Array.from(new Set(dashboardData.evolucion.map((item) => item.bucket).filter(Boolean)));
-  return ["todos", ...buckets];
+export const shiftDashboardFilters = (
+  filters: CrmDashboardFilters,
+  periodType: PeriodType,
+  steps: number,
+): CrmDashboardFilters => {
+  if (periodType === "personalizado") {
+    const start = parseIsoDate(filters.startDate);
+    const end = parseIsoDate(filters.endDate);
+    const diffDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+    const offset = diffDays * steps;
+    return {
+      ...filters,
+      startDate: shiftIsoDateByDays(filters.startDate, offset),
+      endDate: shiftIsoDateByDays(filters.endDate, offset),
+    };
+  }
+
+  const months = (periodMap[periodType] ?? 1) * steps;
+  return {
+    ...filters,
+    startDate: shiftIsoDateByMonths(filters.startDate, months),
+    endDate: shiftIsoDateByMonths(filters.endDate, months),
+  };
 };
 
-export const buildStageOptions = (dashboardData: CrmDashboardResponse | null): string[] => {
-  if (!dashboardData?.funnel) return ["todos"];
-  return ["todos", ...dashboardData.funnel.map((item) => item.estado)];
-};
+export const formatTrendLabel = (startDate: string, periodType: PeriodType): string => {
+  const date = parseIsoDate(startDate);
+  const yearShort = String(date.getUTCFullYear()).slice(-2);
+  const month = date.getUTCMonth();
 
-export const buildEvolutionData = (dashboardData: CrmDashboardResponse | null): CrmDashboardEvolutionItem[] => {
-  if (!dashboardData?.evolucion) return [];
-  return dashboardData.evolucion.map((bucket) => ({
-    bucket: bucket.bucket || "Sin datos",
-    totales: Number(bucket.totales) || 0,
-    nuevas: Number(bucket.nuevas) || 0,
-    ganadas: Number(bucket.ganadas) || 0,
-    perdidas: Number(bucket.perdidas) || 0,
-    pendientes: Number(bucket.pendientes) || 0,
-  }));
-};
-
-export const buildPropiedadRanking = (
-  dashboardData: CrmDashboardResponse | null,
-  sort: "perdidas" | "antiguedad",
-): PropiedadRankingEntry[] => {
-  const list = dashboardData?.ranking_propiedades ?? [];
-  const sorted = [...list].sort((a, b) => {
-    if (sort === "perdidas") {
-      return b.perdidas - a.perdidas || ((b.fecha_disponible ?? "") < (a.fecha_disponible ?? "") ? -1 : 1);
-    }
-    const aDate = a.fecha_disponible ? new Date(a.fecha_disponible).getTime() : Number.MAX_SAFE_INTEGER;
-    const bDate = b.fecha_disponible ? new Date(b.fecha_disponible).getTime() : Number.MAX_SAFE_INTEGER;
-    return aDate - bDate;
-  });
-  return sorted.slice(0, 10);
+  if (periodType === "mes") {
+    return `${String(month + 1).padStart(2, "0")}/${yearShort}`;
+  }
+  if (periodType === "trimestre") {
+    return `T${Math.floor(month / 3) + 1} ${yearShort}`;
+  }
+  if (periodType === "cuatrimestre") {
+    return `C${Math.floor(month / 4) + 1} ${yearShort}`;
+  }
+  if (periodType === "semestre") {
+    return `S${Math.floor(month / 6) + 1} ${yearShort}`;
+  }
+  if (periodType === "anio") {
+    return String(date.getUTCFullYear());
+  }
+  return startDate;
 };
 
 export const buildAlertItems = (dashboardData: CrmDashboardResponse | null): CrmDashboardAlertItem[] => [
@@ -271,14 +305,6 @@ export const buildAlertItems = (dashboardData: CrmDashboardResponse | null): Crm
     badgeClassName: "bg-sky-100 text-sky-700",
   },
   {
-    key: "prospectSinResolver",
-    label: "Prospect",
-    count: dashboardData?.alerts?.prospectSinResolver ?? 0,
-    icon: User,
-    className: "border-slate-200 bg-slate-50 text-slate-700",
-    badgeClassName: "bg-slate-200 text-slate-700",
-  },
-  {
     key: "tareasVencidas",
     label: "Vencidas",
     count: dashboardData?.alerts?.tareasVencidas ?? 0,
@@ -288,7 +314,7 @@ export const buildAlertItems = (dashboardData: CrmDashboardResponse | null): Crm
   },
   {
     key: "enProcesoSinMovimiento",
-    label: "Oportunidades sin movimiento +30 dias",
+    label: "Inactivo +30d",
     count: dashboardData?.alerts?.enProcesoSinMovimiento ?? 0,
     icon: AlertTriangle,
     className: "border-rose-200 bg-rose-50 text-rose-700",
@@ -303,57 +329,11 @@ export const findActiveAlert = (
   selectedAlertKey ? alertItems.find((item) => item.key === selectedAlertKey) ?? null : null;
 
 export const KPI_CARDS: CrmDashboardKpiCard[] = [
-  { key: "pendientes", title: "Pendientes", description: "Oportunidades pendientes arrastradas del periodo anterior", icon: Clock3 },
-  { key: "nuevas", title: "Nuevas", description: "Ingresaron al pipeline dentro del periodo", icon: ArrowUpRight },
-  { key: "cerradas", title: "Cerradas", description: "Total de oportunidades ganadas y perdidas en el periodo", icon: CheckCheck },
-  { key: "en_proceso", title: "En proceso", description: "Oportunidades activas al cierre del periodo", icon: Workflow },
+  { key: "prospect", title: "Prospect", icon: User },
+  { key: "proceso", title: "Proceso", icon: Workflow },
+  { key: "reserva", title: "Reserva", icon: Calendar },
+  { key: "cerrada", title: "Cerrada", icon: CheckCheck },
 ];
-
-export const KPI_TONES: Record<KpiKey, KpiTone> = {
-  pendientes: {
-    variant: "default",
-    cardClassName: "border-slate-200 bg-gradient-to-br from-slate-50 to-white",
-    metricClassName: "text-slate-900",
-    amountClassName: "text-slate-900",
-    accentLabelClassName: "text-slate-600",
-    panelClassName: "border-slate-200/80 bg-white/80",
-    chipClassName: "border-slate-200 bg-slate-100 text-slate-700",
-  },
-  nuevas: {
-    variant: "success",
-    cardClassName: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-lime-50",
-    metricClassName: "text-emerald-800",
-    amountClassName: "text-emerald-900",
-    accentLabelClassName: "text-emerald-700",
-    panelClassName: "border-emerald-200/80 bg-white/75",
-    chipClassName: "border-emerald-200 bg-emerald-100 text-emerald-700",
-  },
-  cerradas: {
-    variant: "warning",
-    cardClassName: "border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50",
-    metricClassName: "text-blue-800",
-    amountClassName: "text-blue-900",
-    accentLabelClassName: "text-blue-700",
-    panelClassName: "border-blue-200/80 bg-white/75",
-    chipClassName: "border-blue-200 bg-blue-100 text-blue-700",
-  },
-  en_proceso: {
-    variant: "danger",
-    cardClassName: "border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50",
-    metricClassName: "text-amber-800",
-    amountClassName: "text-amber-900",
-    accentLabelClassName: "text-amber-700",
-    panelClassName: "border-amber-200/80 bg-white/75",
-    chipClassName: "border-amber-200 bg-amber-100 text-amber-700",
-  },
-};
-
-export const getAdditionalFiltersActiveCount = (filters: CrmDashboardFilters): number =>
-  [
-    filters.propietario.trim() !== "",
-    filters.tipoPropiedad.trim() !== "",
-    filters.emprendimientoId !== "todos",
-  ].filter(Boolean).length;
 
 export const getKpiData = (dashboardData: CrmDashboardResponse | null) =>
   (dashboardData?.kpis ??
@@ -370,128 +350,12 @@ export const getKpiData = (dashboardData: CrmDashboardResponse | null) =>
     }
   >;
 
-type KpiSnapshot = {
-  count: number;
-  amount: number;
-  incremento?: number;
-  conversion?: number;
-  variacion?: number;
-  ganadas?: { count: number; rate: number };
-  perdidas?: { count: number; rate: number };
-};
-
-export const getClosedRates = (
-  kpiData: ReturnType<typeof getKpiData>,
-  kpi: KpiSnapshot,
-) => {
-  const closedBaseCount = (kpiData.pendientes?.count ?? 0) + (kpiData.nuevas?.count ?? 0);
-  return {
-    closedWonRate: closedBaseCount > 0 ? ((kpi.ganadas?.count ?? 0) / closedBaseCount) * 100 : 0,
-    closedLostRate: closedBaseCount > 0 ? ((kpi.perdidas?.count ?? 0) / closedBaseCount) * 100 : 0,
-  };
-};
-
-export const getKpiVariation = (
-  key: KpiKey,
-  kpi: KpiSnapshot,
-) => (key === "cerradas" ? undefined : key === "en_proceso" ? kpi.variacion : kpi.incremento);
-
-export const buildClosedBreakdown = (
-  kpi: KpiSnapshot,
-  rates: { closedWonRate: number; closedLostRate: number },
-): CrmDashboardKpiBreakdownItem[] => [
-  {
-    key: "ganada",
-    label: "Ganada",
-    value: formatInteger(kpi.ganadas?.count ?? 0),
-    badge: `${formatPercent(rates.closedWonRate)}%`,
-    icon: Check,
-    className: "border-emerald-200/80 bg-emerald-50/70",
-    labelClassName: "text-emerald-700",
-    valueClassName: "text-emerald-700",
-    badgeClassName: "border-emerald-200 bg-emerald-100 text-emerald-700",
-    iconClassName: "text-emerald-700",
-  },
-  {
-    key: "perdida",
-    label: "Perdida",
-    value: formatInteger(kpi.perdidas?.count ?? 0),
-    badge: `${formatPercent(rates.closedLostRate)}%`,
-    icon: X,
-    className: "border-rose-200/80 bg-rose-50/70",
-    labelClassName: "text-rose-700",
-    valueClassName: "text-rose-700",
-    badgeClassName: "border-rose-200 bg-rose-100 text-rose-700",
-    iconClassName: "text-rose-700",
-  },
-];
-
-export const buildKpiCardViewModels = (
-  kpiData: ReturnType<typeof getKpiData>,
-): CrmDashboardKpiCardViewModel[] =>
-  KPI_CARDS.map((card) => {
-    const kpi = kpiData[card.key] ?? { count: 0, amount: 0 };
-    const tone = KPI_TONES[card.key];
-    const rates = getClosedRates(kpiData, kpi);
-    const variation = getKpiVariation(card.key, kpi);
-    return {
-      key: card.key,
-      title: card.title,
-      icon: card.icon,
-      variant: tone.variant,
-      cardClassName: tone.cardClassName,
-      titleDotClassName: tone.amountClassName.replace("text-", "bg-"),
-      metricClassName: tone.metricClassName,
-      amountClassName: tone.amountClassName,
-      accentLabelClassName: tone.accentLabelClassName,
-      panelClassName: tone.panelClassName,
-      chipClassName: tone.chipClassName,
-      count: formatInteger(kpi.count ?? 0),
-      amount: formatCurrency(kpi.amount ?? 0),
-      variationLabel: card.key === "en_proceso" ? "Variacion" : "Incremento",
-      variationValue: variation !== undefined ? `${formatPercent(variation)}%` : undefined,
-      breakdown: card.key === "cerradas" ? buildClosedBreakdown(kpi, rates) : undefined,
-    };
-  });
-
-export const exportDetalleCsv = (items: CrmDashboardDetalleItem[]): void => {
-  if (!items.length) return;
-  const headers = [
-    "ID",
-    "Oportunidad",
-    "Estado",
-    "Responsable",
-    "Propiedad",
-    "Fecha Creacion",
-    "Fecha Cierre",
-    "Monto",
-    "Moneda",
-    "Dias Pipeline",
-  ];
-  const rows = items.map((item) => {
-    const oportunidad = item.oportunidad ?? {};
-    return [
-      oportunidad.id ?? "",
-      oportunidad.descripcion_estado ?? "",
-      item.estado_al_corte,
-      oportunidad.responsable?.full_name ?? "",
-      oportunidad.propiedad?.nombre ?? "",
-      item.fecha_creacion,
-      item.fecha_cierre ?? "",
-      item.monto,
-      item.moneda ?? "",
-      item.dias_pipeline,
-    ];
-  });
-  const csv = [headers, ...rows]
-    .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "crm_dashboard_detalle.csv";
-  link.click();
-  URL.revokeObjectURL(url);
-};
+export const getSelectorData = (dashboardData: CrmDashboardResponse | null) =>
+  (dashboardData?.selectors ??
+    {}) as Record<
+    KpiKey,
+    {
+      count: number;
+      amount: number;
+    }
+  >;

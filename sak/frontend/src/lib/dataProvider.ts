@@ -114,16 +114,38 @@ const isNotFoundError = (error: unknown) => {
   return err?.status === 404 || err?.response?.status === 404;
 };
 
-const resolveResource = (resource: string) => {
+type DataProviderOperation =
+  | "getList"
+  | "getOne"
+  | "getMany"
+  | "getManyReference"
+  | "create"
+  | "update"
+  | "updateMany"
+  | "delete"
+  | "deleteMany";
+
+const resolveResource = (
+  resource: string,
+  operation: DataProviderOperation,
+) => {
   if (resource === "crm/crm-eventos") return "crm/eventos";
-  if (resource === "crm/crm-oportunidades") return "crm/oportunidades";
+  if (resource === "po-orders-approval") {
+    return operation === "getList" ? "po-orders/approval-feed" : "po-orders";
+  }
+  if (resource === "po-invoices-approval") {
+    return operation === "getList" ? "po-invoices/approval-feed" : "po-invoices";
+  }
+  if (resource === "po-invoices-payments") {
+    return operation === "getList" ? "po-invoices/payment-feed" : "po-invoices";
+  }
   return resource;
 };
 
 export const dataProvider: DataProvider = {
   ...baseProvider,
   getList: withErrorHandling((resource, params) => {
-    const resolved = resolveResource(resource);
+    const resolved = resolveResource(resource, "getList");
     if (resolved === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
       const { default_scope, ...restFilter } = params.filter as Record<string, unknown>;
       return (async () => {
@@ -140,7 +162,7 @@ export const dataProvider: DataProvider = {
     return baseProvider.getList(resolved, params);
   }),
   getOne: withErrorHandling(async (resource, params) => {
-    const resolved = resolveResource(resource);
+    const resolved = resolveResource(resource, "getOne");
     const meta = params?.meta as { include?: string | string[]; embed?: unknown } | undefined;
     const include = meta?.include;
     const embed = meta?.embed;
@@ -159,12 +181,14 @@ export const dataProvider: DataProvider = {
     }
     return baseProvider.getOne(resolved, params);
   }),
-  getMany: withErrorHandling((resource, params) => baseProvider.getMany(resolveResource(resource), params)),
+  getMany: withErrorHandling((resource, params) =>
+    baseProvider.getMany(resolveResource(resource, "getMany"), params)
+  ),
   getManyReference: withErrorHandling((resource, params) =>
-    baseProvider.getManyReference(resolveResource(resource), params)
+    baseProvider.getManyReference(resolveResource(resource, "getManyReference"), params)
   ),
   create: withErrorHandling(async (resource, params) => {
-    const resolved = resolveResource(resource);
+    const resolved = resolveResource(resource, "create");
     if (typeof window !== "undefined") {
       console.log("[dataProvider] create", resolved, params);
     }
@@ -176,7 +200,7 @@ export const dataProvider: DataProvider = {
     return baseProvider.create(resolved, { ...params, data: sanitized as any });
   }),
   update: withErrorHandling(async (resource, params) => {
-    const resolved = resolveResource(resource);
+    const resolved = resolveResource(resource, "update");
     if (typeof window !== "undefined") {
       console.log("[dataProvider] update", resolved, params);
     }
@@ -188,13 +212,13 @@ export const dataProvider: DataProvider = {
     return response;
   }),
   updateMany: withErrorHandling((resource, params) =>
-    baseProvider.updateMany(resolveResource(resource), params)
+    baseProvider.updateMany(resolveResource(resource, "updateMany"), params)
   ),
   delete: withErrorHandling((resource, params) =>
-    baseProvider.delete(resolveResource(resource), params)
+    baseProvider.delete(resolveResource(resource, "delete"), params)
   ),
   deleteMany: async (resource, params) => {
-    const resolved = resolveResource(resource);
+    const resolved = resolveResource(resource, "deleteMany");
     const { ids } = params;
     try {
       const results = await Promise.allSettled(

@@ -18,6 +18,7 @@
     "jsx": "react-jsx",
     "incremental": true,
     "verbatimModuleSyntax": false,
+    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"

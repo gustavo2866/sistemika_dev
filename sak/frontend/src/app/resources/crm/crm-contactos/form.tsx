@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { SimpleForm } from "@/components/forms/form_order/simple_form";
-import { TextInput } from "@/components/text-input";
 import { ReferenceInput } from "@/components/reference-input";
 import {
   CompactFormGrid,
@@ -11,32 +10,11 @@ import {
   FormLayout,
 } from "@/components/forms";
 import { required } from "ra-core";
+import { CRM_CONTACTO_DEFAULTS } from "./model";
 
 export const CRMContactoForm = () => {
-  const handleTransformData = (data: any) => {
-    const rawTelefonos = (data as { telefonos?: unknown }).telefonos;
-    let telefonoPrincipal: string | undefined;
-
-    if (Array.isArray(rawTelefonos)) {
-      telefonoPrincipal = rawTelefonos[0] as string | undefined;
-    } else if (rawTelefonos && typeof rawTelefonos === "object") {
-      const indexed = rawTelefonos as Record<string, unknown>;
-      telefonoPrincipal = indexed["0"] as string | undefined;
-    } else if (typeof rawTelefonos === "string") {
-      telefonoPrincipal = rawTelefonos;
-    }
-
-    return {
-      ...data,
-      telefonos: telefonoPrincipal ? [telefonoPrincipal] : [],
-    };
-  };
-
   return (
-    <SimpleForm
-      className="w-full max-w-4xl"
-      onSubmit={handleTransformData}
-    >
+    <SimpleForm className="w-full max-w-4xl" defaultValues={CRM_CONTACTO_DEFAULTS}>
     <FormLayout
       sections={[
         {

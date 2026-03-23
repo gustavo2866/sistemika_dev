@@ -40,26 +40,35 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { DataTable, type DataTableColumnProps, type DataTableProps } from "@/components/data-table";
 
-type MobileConfig = {
-  primaryField: string;
-  secondaryFields?: string[];
-  badge?: {
-    source: string;
-    choices?: ReadonlyArray<{ readonly id: any; readonly name: string }>;
-  };
-  detailFields?: Array<{
-    source: string;
-    type?: string;
-    reference?: string;
-    referenceField?: string;
-    format?: (value: any) => string;
-  }>;
-  descriptionField?: {
-    source: string;
-    truncate?: number;
-  };
-  customCard?: (record: any) => ReactNode;
-};
+type MobileConfig =
+  | {
+      customCard: (record: any) => ReactNode;
+      primaryField?: never;
+      secondaryFields?: never;
+      badge?: never;
+      detailFields?: never;
+      descriptionField?: never;
+    }
+  | {
+      customCard?: never;
+      primaryField: string;
+      secondaryFields?: string[];
+      badge?: {
+        source: string;
+        choices?: ReadonlyArray<{ readonly id: any; readonly name: string }>;
+      };
+      detailFields?: Array<{
+        source: string;
+        type?: string;
+        reference?: string;
+        referenceField?: string;
+        format?: (value: any) => string;
+      }>;
+      descriptionField?: {
+        source: string;
+        truncate?: number;
+      };
+    };
 
 const defaultBulkActionButtons = <BulkActionsToolbarChildren />;
 

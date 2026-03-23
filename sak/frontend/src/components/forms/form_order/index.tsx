@@ -106,6 +106,7 @@ export { PeriodRangeNavigator as FormOrderPeriodRangeNavigator } from "./dashboa
 export {
   FORM_FIELD_DEFAULT_WIDTH_CLASS,
   FORM_FIELD_LABEL_CLASS,
+  FORM_SELECT_TRIGGER_CLASS,
   FORM_FIELD_READONLY_CLASS,
   FORM_VALUE_READONLY_CLASS,
 } from "./form/field_styles";

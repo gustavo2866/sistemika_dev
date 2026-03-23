@@ -22,11 +22,12 @@ type PoInvoiceDetalle = {
   importe?: number | null;
 };
 
-type PoInvoice = {
+export type PoInvoiceDisplayRecord = {
   id?: number | string;
   titulo?: string | null;
   numero?: string | null;
   proveedor_id?: number | null;
+  proveedor?: { id?: number | null; nombre?: string | null } | null;
   usuario_responsable_id?: number | null;
   id_tipocomprobante?: number | null;
   fecha_emision?: string | null;
@@ -37,7 +38,7 @@ type PoInvoice = {
   total?: number | null;
   observaciones?: string | null;
   detalles?: PoInvoiceDetalle[];
-  invoice_status?: { id?: number; nombre?: string } | null;
+  invoice_status?: { id?: number | null; nombre?: string | null; orden?: number | null } | null;
   taxes?: Array<{ id?: number | string; descripcion?: string | null; importe?: number | null }> | null;
 };
 
@@ -127,11 +128,11 @@ const PoInvoiceDetalleTable = ({ detalles }: { detalles: PoInvoiceDetalle[] }) =
   return (
     <div className="space-y-3">
       <div className="hidden overflow-x-auto rounded-xl border border-border/60 sm:block">
-        <table className="w-full min-w-[620px] table-fixed text-left text-xs">
+        <table className="w-full min-w-[560px] table-fixed text-left text-xs">
           <thead className="bg-muted/40 text-[10px] uppercase text-muted-foreground">
             <tr>
               <th className="w-[170px] px-2 py-1 sm:px-3 sm:py-2">Articulo</th>
-              <th className="w-[200px] px-2 py-1 sm:px-3 sm:py-2">Descripcion</th>
+              <th className="w-[130px] px-2 py-1 sm:px-3 sm:py-2">Descripcion</th>
               <th className="w-[52px] px-1 py-1 text-center text-[7px] sm:w-[60px] sm:px-1.5 sm:py-2 sm:text-[8px] whitespace-nowrap">
                 Cantidad
               </th>
@@ -157,7 +158,7 @@ const PoInvoiceDetalleTable = ({ detalles }: { detalles: PoInvoiceDetalle[] }) =
                     </div>
                   </td>
                   <td className="px-2 py-1 align-top sm:px-3 sm:py-2">
-                    <div className="text-[10px] leading-relaxed text-muted-foreground break-words">
+                    <div className="text-[9px] leading-snug text-muted-foreground break-words">
                       {detalle.descripcion || "-"}
                     </div>
                   </td>
@@ -188,7 +189,7 @@ const PoInvoiceDetalleTable = ({ detalles }: { detalles: PoInvoiceDetalle[] }) =
               <div className="text-[11px] font-semibold text-foreground">
                 {articuloLabel}
               </div>
-              <div className="mt-0.5 text-[10px] text-muted-foreground break-words">
+              <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground break-words">
                 {detalle.descripcion || "-"}
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] text-muted-foreground">
@@ -204,12 +205,12 @@ const PoInvoiceDetalleTable = ({ detalles }: { detalles: PoInvoiceDetalle[] }) =
                     {CURRENCY_FORMATTER.format(Number(detalle.importe ?? 0))}
                   </div>
                 </div>
-              </div>
-              <div className="mt-1 text-right text-[9px] text-muted-foreground">
-                Precio:{" "}
-                <span className="text-foreground">
-                  {CURRENCY_FORMATTER.format(Number(detalle.precio_unitario ?? 0))}
-                </span>
+                <div className="text-right">
+                  <div className="uppercase">Precio</div>
+                  <div className="text-[10px] text-foreground">
+                    {CURRENCY_FORMATTER.format(Number(detalle.precio_unitario ?? 0))}
+                  </div>
+                </div>
               </div>
             </div>
           );
@@ -219,8 +220,14 @@ const PoInvoiceDetalleTable = ({ detalles }: { detalles: PoInvoiceDetalle[] }) =
   );
 };
 
-const PoInvoiceShowContent = () => {
-  const record = useRecordContext<PoInvoice>();
+export const PoInvoiceShowContent = ({
+  showCancelButton = true,
+  compactHeader = false,
+}: {
+  showCancelButton?: boolean;
+  compactHeader?: boolean;
+} = {}) => {
+  const record = useRecordContext<PoInvoiceDisplayRecord>();
   if (!record) return null;
 
   const statusLabel = record.invoice_status?.nombre ?? "Borrador";
@@ -230,41 +237,49 @@ const PoInvoiceShowContent = () => {
   return (
     <div className="space-y-4">
       <Card className="p-3 sm:p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
-              Factura OC
-            </h4>
+        {!compactHeader ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
+                Factura OC
+              </h4>
+            </div>
+            <div className="flex flex-1 justify-center">
+              <span className="rounded-full bg-muted/70 px-2 py-1 text-[11px] font-semibold text-foreground sm:px-2.5 sm:text-sm">
+                Numero: {numero}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-muted/70 px-2 py-1 text-[11px] font-semibold text-foreground sm:px-2.5 sm:text-sm">
+                Emision:{" "}
+                <DateField source="fecha_emision" record={record} className="tabular-nums" />
+              </span>
+            </div>
           </div>
-          <div className="flex flex-1 justify-center">
-            <span className="rounded-full bg-muted/70 px-2 py-1 text-[11px] font-semibold text-foreground sm:px-2.5 sm:text-sm">
-              Numero: {numero}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-muted/70 px-2 py-1 text-[11px] font-semibold text-foreground sm:px-2.5 sm:text-sm">
-              Emision:{" "}
-              <DateField source="fecha_emision" record={record} className="tabular-nums" />
-            </span>
-          </div>
-        </div>
-        <div className="print-cabecera-grid grid gap-3 md:grid-cols-4">
-          <LabelValueCompact label="Titulo">
-            <TextField source="titulo" />
-          </LabelValueCompact>
-          <LabelValueCompact label="Proveedor">
-            <ReferenceField source="proveedor_id" reference="proveedores">
-              <TextField source="nombre" />
-            </ReferenceField>
-          </LabelValueCompact>
+        ) : null}
+        <div className="print-cabecera-grid grid grid-cols-2 gap-3 md:grid-cols-4">
+          {!compactHeader ? (
+            <LabelValueCompact label="Titulo">
+              <TextField source="titulo" />
+            </LabelValueCompact>
+          ) : null}
+          {!compactHeader ? (
+            <LabelValueCompact label="Proveedor">
+              <ReferenceField source="proveedor_id" reference="proveedores">
+                <TextField source="nombre" />
+              </ReferenceField>
+            </LabelValueCompact>
+          ) : null}
           <LabelValueCompact label="Responsable">
             <ReferenceField source="usuario_responsable_id" reference="users">
               <TextField source="nombre" />
             </ReferenceField>
           </LabelValueCompact>
-          <LabelValueCompact label="Estado">
-            <span className={getInvoiceStatusBadgeClass(statusLabel)}>{statusLabel}</span>
-          </LabelValueCompact>
+          {!compactHeader ? (
+            <LabelValueCompact label="Estado">
+              <span className={getInvoiceStatusBadgeClass(statusLabel)}>{statusLabel}</span>
+            </LabelValueCompact>
+          ) : null}
           <LabelValueCompact label="Tipo comprobante">
             <ReferenceField source="id_tipocomprobante" reference="tipos-comprobante">
               <TextField source="name" />
@@ -331,15 +346,17 @@ const PoInvoiceShowContent = () => {
         )}
       </Card>
 
-      <div className="flex justify-end gap-2 print-hide">
-        <FormOrderCancelButton />
-      </div>
+      {showCancelButton ? (
+        <div className="flex justify-end gap-2 print-hide">
+          <FormOrderCancelButton />
+        </div>
+      ) : null}
     </div>
   );
 };
 
 const PoInvoiceShowTitle = () => {
-  const record = useRecordContext<PoInvoice>();
+  const record = useRecordContext<PoInvoiceDisplayRecord>();
   if (!record) return "Facturas OC";
   const statusLabel = record.invoice_status?.nombre ?? "Borrador";
   const statusClass = getInvoiceStatusBadgeClass(statusLabel);

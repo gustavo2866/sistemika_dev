@@ -17,7 +17,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -61,7 +60,7 @@ const CONSTRUCTORA_RESOURCES = [
   "tarjas",
   "parte-diario",
 ] as const;
-const COMPRAS_RESOURCES = ["po-orders", "po-invoices", "proveedores"] as const;
+const COMPRAS_RESOURCES = ["po-dashboard", "po-orders-approval", "po-orders", "po-invoices", "proveedores"] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
   "propiedades",
@@ -87,9 +86,8 @@ const CONFIG_RESOURCES = [
 ] as const;
 const CRM_RESOURCES = [
   "crm/crm-eventos",
-  "dashboard-crm",
   "crm/contactos",
-  "crm/mensajes",
+  "dashboard-crm",
   "crm/oportunidades",
 ] as const;
 const CRM_SETUP_RESOURCES: readonly string[] = [];
@@ -102,7 +100,6 @@ const CRM_CUSTOM_LINKS: Array<{
   { label: "CRM Chat", to: "/crm/chat", icon: MessageCircle, position: "top" },
   { label: "CRM Panel", to: "/crm/panel", icon: LayoutGrid, position: "top" },
 ] as const;
-const CRM_TOP_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "top");
 const CRM_BOTTOM_CUSTOM_LINKS = CRM_CUSTOM_LINKS.filter((link) => link.position === "bottom");
 const CRM_CATALOG_RESOURCES = [
   "crm/catalogos/tipos-operacion",
@@ -117,7 +114,8 @@ const HIDDEN_RESOURCES = [
   "crm/catalogos/respuestas",
   "crm/chat",
   "crm/celulares",
-  "crm/crm-oportunidades",
+  "crm/contactos",
+  "crm/mensajes",
   "departamentos",
   "articulos",
   "tipos-solicitud",
@@ -192,7 +190,9 @@ export function AppSidebar() {
       ]),
     [
       constructoraResources,
+      comprasResources,
       operationsResources,
+      inmobiliariaResources,
       adminResources,
       configResources,
       crmResources,
@@ -341,6 +341,12 @@ export function AppSidebar() {
                     label="Setup"
                     to="/crm/setup"
                     icon={Settings}
+                    onClick={handleItemClick}
+                  />
+                  <SidebarCustomMenuItem
+                    label="Admin"
+                    to="/crm/admin"
+                    icon={Users}
                     onClick={handleItemClick}
                   />
                   {CRM_BOTTOM_CUSTOM_LINKS.filter((link) => link.to !== "/calculadora-financiera").map((link) => (

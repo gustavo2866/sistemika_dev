@@ -452,8 +452,18 @@ const CRMMensajeListActions = () => (
   </div>
 );
 
+type CRMMensajeListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+};
+
 // Renderiza el listado principal del recurso de mensajes CRM.
-export const CRMMensajeList = () => {
+export const CRMMensajeList = ({
+  embedded = false,
+  rowClick = "show",
+  perPage = 10,
+}: CRMMensajeListProps = {}) => {
   const [replyOpen, setReplyOpen] = useState(false);
   const [selectedMensaje, setSelectedMensaje] = useState<CRMMensaje | null>(null);
   const refresh = useRefresh();
@@ -537,15 +547,16 @@ export const CRMMensajeList = () => {
         filters={listFilters}
         actions={<CRMMensajeListActions />}
         filterDefaultValues={listDefaultFilters}
-        perPage={10}
+        perPage={perPage}
         sort={{ field: "fecha_mensaje", order: "DESC" }}
-        showBreadcrumb={false}
+        showBreadcrumb={!embedded}
+        showHeader={!embedded}
         containerClassName={listContainerClassName}
         pagination={<ListPaginator />}
-        topContent={<CRMMensajesListDashboard />}
+        topContent={embedded ? undefined : <CRMMensajesListDashboard />}
       >
         <ResponsiveDataTable
-          rowClick="show"
+          rowClick={rowClick}
           rowClassName={mensajeRowClass}
           className={listTableClassName}
         >

@@ -1,23 +1,43 @@
 "use client";
 
 import { Create } from "@/components/create";
-import { CRMOportunidadPoForm } from "./form";
 import { Target } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { saveDashboardReturnMarker } from "../crm-dashboard/return-state";
+import { CRMOportunidadForm } from "./form";
 
-export const CRMOportunidadPoCreate = () => {
+export const CRMOportunidadCreate = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const returnTo = params.get("returnTo");
+
   return (
     <Create
-      redirect="edit"
+      redirect={false}
       title={
         <span className="inline-flex items-center gap-2">
           <Target className="h-4 w-4" />
           Crear Oportunidad
         </span>
       }
+      mutationOptions={{
+        onSuccess: () => {
+          if (returnTo) {
+            saveDashboardReturnMarker(returnTo, {
+              savedAt: Date.now(),
+              refreshAll: true,
+            });
+            navigate(returnTo);
+            return;
+          }
+          navigate("/crm/oportunidades");
+        },
+      }}
     >
-      <CRMOportunidadPoForm />
+      <CRMOportunidadForm />
     </Create>
   );
 };
 
-export default CRMOportunidadPoCreate;
+export default CRMOportunidadCreate;

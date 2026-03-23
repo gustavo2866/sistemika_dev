@@ -22,7 +22,6 @@ import {
   FileStack,
   Building,
   Coins,
-  BarChart2,
   GitBranch,
   AlertTriangle,
   CalendarDays,
@@ -127,6 +126,8 @@ import {
   PoOrderEdit,
   PoOrderShow,
 } from "@/app/resources/po/po-orders";
+import { PoDashboardList } from "@/app/resources/po/po-dashboard";
+import { PoOrdersApprovalList } from "@/app/resources/po/po-orders-approval";
 import {
   PoInvoiceList,
   PoInvoiceAgendaList,
@@ -227,6 +228,7 @@ import {
 } from "@/app/resources/configuracion/monedas";
 import {
   CRMContactoList,
+  CRMContactoListAgenda,
   CRMContactoCreate,
   CRMContactoEdit,
   CRMContactoShow,
@@ -237,12 +239,6 @@ import {
   CRMOportunidadEdit,
   CRMOportunidadShow,
 } from "@/app/resources/crm/crm-oportunidades";
-import {
-  CRMOportunidadPoList,
-  CRMOportunidadPoCreate,
-  CRMOportunidadPoEdit,
-  CRMOportunidadPoShow,
-} from "@/app/resources/crm/crm-oportunidades";
 import { CRMOportunidadPanelPage } from "@/app/resources/crm/crm-panel/list-panel";
 import { CRMOportunidadAccionCotizar } from "@/app/resources/crm/crm-oportunidades/accion_cotizar";
 import { CRMOportunidadAccionReservar } from "@/app/resources/crm/crm-oportunidades/accion_reservar";
@@ -250,7 +246,6 @@ import { CRMOportunidadAccionAgendar } from "@/app/resources/crm/crm-oportunidad
 import { CRMOportunidadAccionCerrar } from "@/app/resources/crm/crm-oportunidades/accion_cerrar";
 import { CRMOportunidadAccionDescartar } from "@/app/resources/crm/crm-oportunidades/accion_descartar";
 import { CRMOportunidadAccionAceptar } from "@/app/resources/crm/crm-oportunidades/accion_aceptar";
-import { CRMOportunidadesDashboardPage } from "@/app/resources/crm/crm-oportunidades/dashboard-page";
 import {
   CRMEventoList,
   CRMEventoCreate,
@@ -271,6 +266,7 @@ import {
   CRMMensajeShow,
 } from "@/app/resources/crm/crm-mensajes";
 import { CRMMensajeReply } from "@/app/resources/crm/crm-mensajes/form_responder";
+import { CRMAdminPage } from "@/app/resources/crm/crm-admin/CRMAdminPage";
 import {
   EmprendimientoList,
   EmprendimientoCreate,
@@ -523,6 +519,20 @@ const AdminApp = () => {
         options={{ label: "Estados Financieros Factura OC" }}
       />
       <Resource
+        name="po-dashboard"
+        list={PoDashboardList}
+        recordRepresentation="id"
+        icon={ShoppingCart}
+        options={{ label: "Dashboard OC" }}
+      />
+      <Resource
+        name="po-orders-approval"
+        list={PoOrdersApprovalList}
+        recordRepresentation="titulo"
+        icon={ClipboardCheck}
+        options={{ label: "Aprobacion OC" }}
+      />
+      <Resource
         name="po-orders"
         list={PoOrderList}
         create={PoOrderCreate}
@@ -683,7 +693,7 @@ const AdminApp = () => {
       />
       <Resource
         name="crm/contactos"
-        list={CRMContactoList}
+        list={CRMContactoListAgenda}
         create={CRMContactoCreate}
         edit={CRMContactoEdit}
         show={CRMContactoShow}
@@ -712,16 +722,6 @@ const AdminApp = () => {
         options={{ label: "CRM · Oportunidades" }}
       />
       <Resource
-        name="crm/crm-oportunidades"
-        list={CRMOportunidadPoList}
-        create={CRMOportunidadPoCreate}
-        edit={CRMOportunidadPoEdit}
-        show={CRMOportunidadPoShow}
-        recordRepresentation="id"
-        icon={Target}
-        options={{ label: "CRM ? Oportunidades (PO)", menu: false }}
-      />
-      <Resource
         name="crm/crm-eventos"
         list={CRMEventoList}
         create={CRMEventoCreate}
@@ -731,6 +731,7 @@ const AdminApp = () => {
         icon={CalendarCheck}
         options={{ label: "CRM · Eventos" }}
       />
+
       <Resource
         name="crm/chat"
         list={CRMChatList}
@@ -762,6 +763,7 @@ const AdminApp = () => {
       <CustomRoutes>
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
+        <Route path="/crm/admin/*" element={<CRMAdminPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />

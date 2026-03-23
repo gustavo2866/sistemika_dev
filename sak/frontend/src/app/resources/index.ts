@@ -10,6 +10,8 @@ export * from "./constructora/parte-diario";
 export * from "./po/departamentos";
 export * from "./configuracion/tipos-solicitud";
 export * from "./po/po-orders";
+export * from "./po/po-dashboard";
+export * from "./po/po-orders-approval";
 export * from "./po/articulos";
 export * from "./po/po-order-status";
 export * from "./po/po-invoice-status";

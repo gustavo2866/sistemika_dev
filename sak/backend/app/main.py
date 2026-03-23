@@ -47,6 +47,7 @@ from app.routers.tipo_actualizacion_router import tipo_actualizacion_router
 from app.routers.centro_costo_router import centro_costo_router
 from app.routers.propietario_router import propietario_router
 from app.routers.proyecto_router import proyecto_router
+from app.routers.proyecto_avance_router import proyecto_avance_router
 from app.routers.proy_fase_router import proy_fase_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
@@ -61,6 +62,9 @@ from app.routers.po_invoice_status_fin_router import po_invoice_status_fin_route
 from app.routers.po_order_router import po_order_router
 from app.routers.po_order_detail_router import po_order_detail_router
 from app.routers.po_order_status_router import po_order_status_router
+from app.routers.po_order_status_log_router import po_order_status_log_router
+from app.routers.po_bandeja_router import router as po_bandeja_router
+from app.routers.po_dashboard_router import router as po_dashboard_router
 from app.routers.tax_profile_router import tax_profile_router
 from app.routers.crm import (
     crm_tipo_operacion_router,
@@ -203,8 +207,12 @@ app.include_router(po_invoice_status_fin_router)
 app.include_router(po_order_router)
 app.include_router(po_order_detail_router)
 app.include_router(po_order_status_router)
+app.include_router(po_order_status_log_router)
+app.include_router(po_bandeja_router)
+app.include_router(po_dashboard_router)
 app.include_router(tax_profile_router)
 app.include_router(proyecto_router)
+app.include_router(proyecto_avance_router)
 app.include_router(proy_fase_router)
 app.include_router(nomina_router)
 app.include_router(parte_diario_router)
