@@ -29,6 +29,11 @@ class ProyectoAvance(Base, table=True):
         sa_column=Column(DECIMAL(5, 2), nullable=False),
         description="Porcentaje de avance (0.00 a 100.00)",
     )
+    importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(14, 2), nullable=False, server_default="0"),
+        description="Importe asociado al avance",
+    )
     comentario: Optional[str] = Field(
         default=None,
         max_length=1000,

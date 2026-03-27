@@ -10,12 +10,15 @@ from typing import Any, Iterable, Optional, Sequence
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
-from app.models.compras import PoOrder, PoOrderStatus
+from app.models.compras import PoOrder, PoOrderStatus, PoOrderStatusLog
 
 OPEN_STATUS_KEYS = {"solicitada", "emitida", "aprobada", "aprobado", "en_proceso"}
 IN_PROCESS_STATUS_KEYS = {"aprobada", "aprobado", "en_proceso"}
 REJECTED_STATUS_KEYS = {"rechazada", "rechazado"}
+ANULADA_STATUS_KEYS = {"anulada", "anulado"}
+NEGATIVE_FINAL_STATUS_KEYS = REJECTED_STATUS_KEYS | ANULADA_STATUS_KEYS
 FACTURADA_STATUS_KEYS = {"facturada"}
+EMITIDA_STATUS_KEYS = {"emitida"}
 
 
 @dataclass
@@ -26,8 +29,10 @@ class CalculatedPoOrder:
     estado: str
     monto_total: Decimal
     bucket_creacion: str
+    bucket_emitida: str | None
     dias_abierta: int
     is_period_item: bool
+    is_compra_periodo: bool
     is_pending_carryover: bool
     is_solicitada: bool
     is_emitida: bool
@@ -105,6 +110,22 @@ def _build_kpi_summary(items: Sequence[CalculatedPoOrder]) -> dict[str, float | 
     }
 
 
+def _find_status_log_date_in_period(
+    order: PoOrder,
+    start: date,
+    end: date,
+    status_keys: set[str],
+) -> Optional[date]:
+    for status_log in order.status_logs or []:
+        log_date = _parse_date(status_log.fecha_registro)
+        status_nuevo = _normalize_status(
+            status_log.status_nuevo.nombre if status_log.status_nuevo else None
+        )
+        if log_date and start <= log_date <= end and status_nuevo in status_keys:
+            return log_date
+    return None
+
+
 def fetch_po_orders_for_dashboard(
     session: Session,
     start_date: str,
@@ -112,6 +133,8 @@ def fetch_po_orders_for_dashboard(
     solicitante_ids: Optional[Sequence[int]] = None,
     proveedor_ids: Optional[Sequence[int]] = None,
     tipo_solicitud_ids: Optional[Sequence[int]] = None,
+    departamento_ids: Optional[Sequence[int]] = None,
+    tipo_compra_values: Optional[Sequence[str]] = None,
 ) -> list[CalculatedPoOrder]:
     start = _to_date(start_date)
     end = _to_date(end_date)
@@ -124,6 +147,7 @@ def fetch_po_orders_for_dashboard(
             selectinload(PoOrder.solicitante),
             selectinload(PoOrder.tipo_solicitud),
             selectinload(PoOrder.order_status),
+            selectinload(PoOrder.status_logs).selectinload(PoOrderStatusLog.status_nuevo),
         )
     )
 
@@ -133,6 +157,10 @@ def fetch_po_orders_for_dashboard(
         query = query.where(PoOrder.proveedor_id.in_(proveedor_ids))
     if tipo_solicitud_ids:
         query = query.where(PoOrder.tipo_solicitud_id.in_(tipo_solicitud_ids))
+    if departamento_ids:
+        query = query.where(PoOrder.departamento_id.in_(departamento_ids))
+    if tipo_compra_values:
+        query = query.where(PoOrder.tipo_compra.in_(tipo_compra_values))
 
     orders = session.exec(query).all()
 
@@ -146,6 +174,8 @@ def fetch_po_orders_for_dashboard(
         estado = _normalize_status(order.order_status.nombre if order.order_status else None)
         dias_abierta = max(0, (end - fecha_creacion).days)
         is_period_item = start <= fecha_creacion <= end
+        fecha_emitida_periodo = _find_status_log_date_in_period(order, start, end, EMITIDA_STATUS_KEYS)
+        is_compra_periodo = fecha_emitida_periodo is not None and estado not in NEGATIVE_FINAL_STATUS_KEYS
         is_solicitada = estado == "solicitada"
         is_emitida = estado == "emitida"
         is_en_proceso = estado in IN_PROCESS_STATUS_KEYS
@@ -160,8 +190,10 @@ def fetch_po_orders_for_dashboard(
                 estado=estado,
                 monto_total=_decimal(order.total),
                 bucket_creacion=_month_bucket(fecha_creacion),
+                bucket_emitida=_month_bucket(fecha_emitida_periodo) if fecha_emitida_periodo else None,
                 dias_abierta=dias_abierta,
                 is_period_item=is_period_item,
+                is_compra_periodo=is_compra_periodo,
                 is_pending_carryover=fecha_creacion < start and estado in OPEN_STATUS_KEYS,
                 is_solicitada=is_solicitada,
                 is_emitida=is_emitida,
@@ -186,7 +218,7 @@ def build_po_dashboard_payload(
     start = _to_date(start_date)
     end = _to_date(end_date)
     period_items = [item for item in items if item.is_period_item]
-    compras_periodo = [item for item in period_items if item.is_emitida]
+    compras_periodo = [item for item in items if item.is_compra_periodo]
 
     pendientes = [item for item in items if item.is_pending_carryover]
     solicitadas = [item for item in items if item.is_solicitada]
@@ -217,7 +249,9 @@ def build_po_dashboard_payload(
         for bucket in _build_month_buckets(start, end)
     }
     for item in compras_periodo:
-        row = evolucion_map.get(item.bucket_creacion)
+        if item.bucket_emitida is None:
+            continue
+        row = evolucion_map.get(item.bucket_emitida)
         if row is None:
             continue
         row["total"] += 1
@@ -324,10 +358,25 @@ def check_po_alert(
     start_date: str,
     end_date: str,
     session: Session,
+    solicitante_ids: Optional[Sequence[int]] = None,
+    proveedor_ids: Optional[Sequence[int]] = None,
+    tipo_solicitud_ids: Optional[Sequence[int]] = None,
+    departamento_ids: Optional[Sequence[int]] = None,
+    tipo_compra_values: Optional[Sequence[str]] = None,
 ) -> bool:
     """Devuelve True si la orden sigue teniendo la alerta indicada."""
     order = session.get(PoOrder, order_id)
     if order is None or order.deleted_at is not None:
+        return False
+    if solicitante_ids and order.solicitante_id not in solicitante_ids:
+        return False
+    if proveedor_ids and order.proveedor_id not in proveedor_ids:
+        return False
+    if tipo_solicitud_ids and order.tipo_solicitud_id not in tipo_solicitud_ids:
+        return False
+    if departamento_ids and order.departamento_id not in departamento_ids:
+        return False
+    if tipo_compra_values and str(order.tipo_compra) not in tipo_compra_values:
         return False
 
     start = _to_date(start_date)
@@ -358,6 +407,8 @@ def _query_raw_po_orders_for_dashboard(
     solicitante_ids: Optional[Sequence[int]] = None,
     proveedor_ids: Optional[Sequence[int]] = None,
     tipo_solicitud_ids: Optional[Sequence[int]] = None,
+    departamento_ids: Optional[Sequence[int]] = None,
+    tipo_compra_values: Optional[Sequence[str]] = None,
 ) -> list[PoOrder]:
     """SQL-only query without date filtering — date range applied per period in Python."""
     query = (
@@ -368,6 +419,7 @@ def _query_raw_po_orders_for_dashboard(
             selectinload(PoOrder.solicitante),
             selectinload(PoOrder.tipo_solicitud),
             selectinload(PoOrder.order_status),
+            selectinload(PoOrder.status_logs).selectinload(PoOrderStatusLog.status_nuevo),
         )
     )
     if solicitante_ids:
@@ -376,6 +428,10 @@ def _query_raw_po_orders_for_dashboard(
         query = query.where(PoOrder.proveedor_id.in_(proveedor_ids))
     if tipo_solicitud_ids:
         query = query.where(PoOrder.tipo_solicitud_id.in_(tipo_solicitud_ids))
+    if departamento_ids:
+        query = query.where(PoOrder.departamento_id.in_(departamento_ids))
+    if tipo_compra_values:
+        query = query.where(PoOrder.tipo_compra.in_(tipo_compra_values))
     return list(session.exec(query).all())
 
 
@@ -394,6 +450,8 @@ def _calculate_po_for_period(
         estado = _normalize_status(order.order_status.nombre if order.order_status else None)
         dias_abierta = max(0, (end - fecha_creacion).days)
         is_period_item = start <= fecha_creacion <= end
+        fecha_emitida_periodo = _find_status_log_date_in_period(order, start, end, EMITIDA_STATUS_KEYS)
+        is_compra_periodo = fecha_emitida_periodo is not None and estado not in NEGATIVE_FINAL_STATUS_KEYS
         is_solicitada = estado == "solicitada"
         is_emitida = estado == "emitida"
         is_en_proceso = estado in IN_PROCESS_STATUS_KEYS
@@ -407,8 +465,10 @@ def _calculate_po_for_period(
                 estado=estado,
                 monto_total=_decimal(order.total),
                 bucket_creacion=_month_bucket(fecha_creacion),
+                bucket_emitida=_month_bucket(fecha_emitida_periodo) if fecha_emitida_periodo else None,
                 dias_abierta=dias_abierta,
                 is_period_item=is_period_item,
+                is_compra_periodo=is_compra_periodo,
                 is_pending_carryover=fecha_creacion < start and estado in OPEN_STATUS_KEYS,
                 is_solicitada=is_solicitada,
                 is_emitida=is_emitida,
@@ -475,6 +535,8 @@ def fetch_po_selector_summary_fast(
     solicitante_ids: Optional[Sequence[int]] = None,
     proveedor_ids: Optional[Sequence[int]] = None,
     tipo_solicitud_ids: Optional[Sequence[int]] = None,
+    departamento_ids: Optional[Sequence[int]] = None,
+    tipo_compra_values: Optional[Sequence[str]] = None,
 ) -> dict[str, dict[str, float | int]]:
     """Aggregate selector counts via SQL — no Python loops."""
     from sqlalchemy import and_, case, func
@@ -518,6 +580,10 @@ def fetch_po_selector_summary_fast(
         query = query.where(PoOrder.proveedor_id.in_(proveedor_ids))
     if tipo_solicitud_ids:
         query = query.where(PoOrder.tipo_solicitud_id.in_(tipo_solicitud_ids))
+    if departamento_ids:
+        query = query.where(PoOrder.departamento_id.in_(departamento_ids))
+    if tipo_compra_values:
+        query = query.where(PoOrder.tipo_compra.in_(tipo_compra_values))
 
     row = session.exec(query).one()
     return {
@@ -539,6 +605,8 @@ def build_po_dashboard_bundle(
     solicitante_ids: Optional[Sequence[int]] = None,
     proveedor_ids: Optional[Sequence[int]] = None,
     tipo_solicitud_ids: Optional[Sequence[int]] = None,
+    departamento_ids: Optional[Sequence[int]] = None,
+    tipo_compra_values: Optional[Sequence[str]] = None,
     limit_top: int = 8,
     filters_ctx: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
@@ -548,6 +616,8 @@ def build_po_dashboard_bundle(
         solicitante_ids=solicitante_ids,
         proveedor_ids=proveedor_ids,
         tipo_solicitud_ids=tipo_solicitud_ids,
+        departamento_ids=departamento_ids,
+        tipo_compra_values=tipo_compra_values,
     )
 
     def _build_period(s: str, e: str) -> dict:
@@ -569,8 +639,7 @@ def build_po_dashboard_bundle(
     for step in trend_steps:
         t_start, t_end = _shift_dates(start_date, end_date, period_type, step)
         t_items = _calculate_po_for_period(raw, _to_date(t_start), _to_date(t_end))
-        t_period_items = [item for item in t_items if item.is_period_item]
-        t_compras = [item for item in t_period_items if item.is_emitida]
+        t_compras = [item for item in t_items if item.is_compra_periodo]
         kpi = _build_kpi_summary(t_compras)
         trend.append({
             "label": _format_trend_label(t_start, period_type),

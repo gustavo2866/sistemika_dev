@@ -442,7 +442,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
         </DataTableMobileView>
       ) : (
         <div className={cn("w-full rounded-md border", className)}>
-          <Table className="table-fixed w-full">
+          <Table className="min-w-full w-max table-fixed">
             <DataTableRenderContext.Provider value="header">
               <DataTableHead compact={compact}>{columns}</DataTableHead>
             </DataTableRenderContext.Provider>

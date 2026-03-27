@@ -233,21 +233,21 @@ const PoOrderDetalleTable = ({ detalles }: { detalles: PoOrderDetalle[] }) => {
                 {detalle.descripcion || "-"}
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] text-muted-foreground">
-                <div>
-                  <div className="uppercase">Cantidad</div>
-                  <div className="text-[10px] text-foreground">
+                <div className="flex flex-col gap-0 leading-none">
+                  <div className="uppercase leading-none">Cantidad</div>
+                  <div className="text-[10px] leading-none text-foreground">
                     {detalle.cantidad ?? "-"}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="uppercase">Importe</div>
-                  <div className="text-[10px] font-semibold text-foreground">
+                <div className="flex flex-col gap-0 text-right leading-none">
+                  <div className="uppercase leading-none">Importe</div>
+                  <div className="text-[10px] font-semibold leading-none text-foreground">
                     {formatPoOrderCurrency(detalle.importe)}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="uppercase">Precio</div>
-                  <div className="text-[10px] text-foreground">
+                <div className="flex flex-col gap-0 text-right leading-none">
+                  <div className="uppercase leading-none">Precio</div>
+                  <div className="text-[10px] leading-none text-foreground">
                     {formatPoOrderCurrency(detalle.precio)}
                   </div>
                 </div>

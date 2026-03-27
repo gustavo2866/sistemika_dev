@@ -351,7 +351,7 @@ export const PeriodRangeNavigator = ({
             <SelectTrigger
               className={cn(
                 FORM_SELECT_TRIGGER_CLASS,
-                "h-5 w-[78px] min-w-[78px] shrink-0 border-0 bg-slate-100/80 px-1 text-[8px] shadow-none ring-0 hover:bg-slate-100 focus:ring-0 focus:ring-offset-0 sm:h-6 sm:w-[94px] sm:min-w-[94px] sm:px-1.5",
+                "h-5 w-[78px] min-w-[78px] shrink-0 border-0 bg-slate-100/80 px-1 text-[8px] shadow-none ring-0 transition-colors hover:bg-slate-100 hover:text-primary focus:ring-0 focus:ring-offset-0 sm:h-6 sm:w-[94px] sm:min-w-[94px] sm:px-1.5",
               )}
             >
               <span className="inline-flex items-center gap-1 capitalize text-foreground">
@@ -377,7 +377,7 @@ export const PeriodRangeNavigator = ({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-5 w-5 shrink-0 text-black sm:h-6 sm:w-6"
+            className="h-5 w-5 shrink-0 rounded-md text-black transition-colors hover:bg-slate-100/80 hover:text-primary sm:h-6 sm:w-6"
             onClick={() => handleNavigate(-1)}
           >
             {"<"}
@@ -387,7 +387,7 @@ export const PeriodRangeNavigator = ({
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="h-5 min-w-0 flex-1 justify-center border-0 bg-slate-100/80 px-1 text-center text-[7px] shadow-none hover:bg-slate-100 sm:h-6 sm:min-w-[106px] sm:flex-none sm:px-1 sm:text-[8px]"
+                className="h-5 min-w-0 flex-1 justify-center border-0 bg-slate-100/80 px-1 text-center text-[7px] shadow-none transition-colors hover:bg-slate-100 hover:text-primary sm:h-6 sm:min-w-[106px] sm:flex-none sm:px-1 sm:text-[8px]"
               >
                 <span className="truncate">{rangeLabel}</span>
               </Button>
@@ -534,7 +534,7 @@ export const PeriodRangeNavigator = ({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-5 w-5 shrink-0 text-black sm:h-6 sm:w-6"
+            className="h-5 w-5 shrink-0 rounded-md text-black transition-colors hover:bg-slate-100/80 hover:text-primary sm:h-6 sm:w-6"
             onClick={() => handleNavigate(1)}
           >
             {">"}

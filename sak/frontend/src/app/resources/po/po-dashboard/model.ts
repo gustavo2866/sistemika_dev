@@ -1,5 +1,3 @@
-"use client";
-
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
@@ -10,7 +8,43 @@ import {
   Send,
 } from "lucide-react";
 import type { PeriodType } from "@/components/forms/period-range-navigator";
+
 export type { PeriodType } from "@/components/forms/period-range-navigator";
+
+export type PoProveedorLite = {
+  id?: string | number | null;
+  nombre?: string | null;
+};
+
+export type PoSolicitanteLite = {
+  id?: string | number | null;
+  nombre?: string | null;
+};
+
+export type PoOrderStatusLite = {
+  nombre?: string | null;
+};
+
+export type PoTipoSolicitudLite = {
+  id?: string | number | null;
+  nombre?: string | null;
+};
+
+export type PoOrderLite = {
+  id?: string | number;
+  titulo?: string | null;
+  proveedor_id?: string | number | null;
+  proveedor?: PoProveedorLite | null;
+  solicitante_id?: string | number | null;
+  solicitante?: PoSolicitanteLite | null;
+  tipo_solicitud_id?: string | number | null;
+  tipo_solicitud?: PoTipoSolicitudLite | null;
+  order_status?: PoOrderStatusLite | null;
+  total?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  [key: string]: unknown;
+};
 
 export type PoDashboardFilters = {
   startDate: string;
@@ -18,6 +52,8 @@ export type PoDashboardFilters = {
   solicitanteId: string;
   proveedorId: string;
   tipoSolicitudId: string;
+  departamentoId: string;
+  tipoCompra: string;
 };
 
 export type PoDashboardKpiKey =
@@ -75,8 +111,8 @@ export type PoDashboardResponse = {
   };
 };
 
-export type PoDashboardDetailItem = {
-  order: Record<string, any>;
+export type PoDashboardDetalleItem = {
+  order: PoOrderLite;
   fecha_creacion: string;
   fecha_estado: string;
   dias_abierta: number;
@@ -85,17 +121,11 @@ export type PoDashboardDetailItem = {
   estado: string;
 };
 
-export type PoDashboardDetailResponse = {
-  data: PoDashboardDetailItem[];
+export type PoDashboardDetalleResponse = {
+  data: PoDashboardDetalleItem[];
   total: number;
   page: number;
   perPage: number;
-};
-
-export type PoDashboardKpiCard = {
-  key: PoDashboardKpiKey;
-  title: string;
-  icon: LucideIcon;
 };
 
 export type PoDashboardAlertItem = {
@@ -107,7 +137,16 @@ export type PoDashboardAlertItem = {
   count: number;
 };
 
+export type PoDashboardKpiCard = {
+  key: PoDashboardKpiKey;
+  title: string;
+  icon: LucideIcon;
+};
+
 export const DEFAULT_PO_PERIOD: PeriodType = "mes";
+export const PO_DASHBOARD_DETAIL_PAGE_SIZE = 15;
+export const PO_DASHBOARD_DETAIL_VISIBLE_ROWS = 5;
+export const PO_DASHBOARD_DETAIL_VIEWPORT_HEIGHT = 196;
 
 const periodMap: Partial<Record<PeriodType, number>> = {
   mes: 1,
@@ -126,10 +165,12 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   currency: "ARS",
   maximumFractionDigits: 0,
 });
+
 const currencyMillionsFormatter = new Intl.NumberFormat("es-AR", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
 const percentFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 1,
@@ -182,6 +223,8 @@ export const buildDefaultFilters = (
     solicitanteId: "todos",
     proveedorId: "todos",
     tipoSolicitudId: "todos",
+    departamentoId: "todos",
+    tipoCompra: "todos",
   };
 };
 
@@ -275,20 +318,14 @@ export const serializeFiltersToParams = (
   if (filters.tipoSolicitudId && filters.tipoSolicitudId !== "todos") {
     params.set("tipoSolicitud", filters.tipoSolicitudId);
   }
+  if (filters.departamentoId && filters.departamentoId !== "todos") {
+    params.set("departamento", filters.departamentoId);
+  }
+  if (filters.tipoCompra && filters.tipoCompra !== "todos") {
+    params.set("tipoCompra", filters.tipoCompra);
+  }
   return params;
 };
-
-export const buildBucketOptions = (dashboardData: PoDashboardResponse | null) => {
-  if (!dashboardData?.evolucion?.length) return ["todos"];
-  return ["todos", ...dashboardData.evolucion.map((item) => item.bucket)];
-};
-
-export const PO_DASHBOARD_KPI_CARDS: PoDashboardKpiCard[] = [
-  { key: "solicitadas", title: "Solicitadas", icon: ClipboardList },
-  { key: "emitidas", title: "Emitidas", icon: Send },
-  { key: "en_proceso", title: "En proceso", icon: Receipt },
-  { key: "facturadas", title: "Facturadas", icon: CheckCheck },
-];
 
 export const buildAlertItems = (
   dashboardData: PoDashboardResponse | null,
@@ -303,7 +340,7 @@ export const buildAlertItems = (
   },
   {
     key: "solicitudes_vencidas",
-    label: "Solicitudes > 10 dias",
+    label: "Solicitadas +10d",
     icon: Clock3,
     className: "border-amber-200 bg-amber-50 text-amber-700",
     badgeClassName: "bg-amber-100 text-amber-700",
@@ -311,10 +348,34 @@ export const buildAlertItems = (
   },
   {
     key: "emitidas_vencidas",
-    label: "Emitidas > 10 dias",
+    label: "Emitidas +10d",
     icon: Receipt,
     className: "border-sky-200 bg-sky-50 text-sky-700",
     badgeClassName: "bg-sky-100 text-sky-700",
     count: dashboardData?.alerts?.emitidas_vencidas ?? 0,
   },
 ];
+
+export const findActiveAlert = (
+  alertItems: PoDashboardAlertItem[],
+  selectedAlertKey: PoDashboardAlertKey | null,
+): PoDashboardAlertItem | null =>
+  selectedAlertKey
+    ? alertItems.find((item) => item.key === selectedAlertKey) ?? null
+    : null;
+
+export const PO_DASHBOARD_KPI_CARDS: PoDashboardKpiCard[] = [
+  { key: "solicitadas", title: "Solicitadas", icon: ClipboardList },
+  { key: "emitidas", title: "Emitidas", icon: Send },
+  { key: "en_proceso", title: "En proceso", icon: Receipt },
+  { key: "facturadas", title: "Facturadas", icon: CheckCheck },
+];
+
+export const getKpiData = (dashboardData: PoDashboardResponse | null) =>
+  (dashboardData?.kpis ?? {}) as Record<
+    PoDashboardKpiKey,
+    {
+      count: number;
+      amount: number;
+    }
+  >;

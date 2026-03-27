@@ -14,7 +14,7 @@ import {
   ResponsiveDataTable,
   buildListFilters,
 } from "@/components/forms/form_order";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -72,7 +72,7 @@ export const TipoPropiedadList = () => (
     actions={<ListActions />}
     debounce={300}
     perPage={25}
-    containerClassName="max-w-[980px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_WIDE}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
   >

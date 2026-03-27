@@ -22,7 +22,7 @@ export const Layout = (props: CoreLayoutProps) => {
       <AppSidebar />
       <main
         className={cn(
-          "ml-auto w-full max-w-full",
+          "ml-auto w-full min-w-0 max-w-full",
           "peer-data-[state=collapsed]:w-[calc(100%-var(--sidebar-width-icon)-1rem)]",
           "peer-data-[state=expanded]:w-[calc(100%-var(--sidebar-width))]",
           "sm:transition-[width] sm:duration-200 sm:ease-linear",
@@ -30,8 +30,8 @@ export const Layout = (props: CoreLayoutProps) => {
           "group-data-[scroll-locked=1]/body:h-full",
           "has-[main.fixed-main]:group-data-[scroll-locked=1]/body:h-svh",
         )}
-      >
-        <header className="flex h-16 md:h-12 shrink-0 items-center gap-2 px-4">
+        >
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4 md:h-12">
           <SidebarTrigger className="scale-125 sm:scale-100" />
           <div className="flex-1 flex items-center" id="breadcrumb" />
           <LocalesMenuButton />
@@ -50,7 +50,10 @@ export const Layout = (props: CoreLayoutProps) => {
           )}
         >
           <Suspense fallback={<Loading />}>
-            <div id="admin-content" className="flex min-h-0 flex-1 flex-col px-4">
+            <div
+              id="admin-content"
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4"
+            >
               {props.children}
             </div>
           </Suspense>

@@ -106,21 +106,23 @@ const DashboardAlertsSection = ({
               type="button"
               onClick={alert.onSelect}
               className={cn(
-                "flex min-w-0 flex-col items-center justify-center rounded-md border border-transparent px-1 py-1 text-center transition-colors",
+                "group flex min-w-0 flex-col items-center justify-center rounded-md border border-transparent px-1 py-1 text-center transition-colors hover:border-border/60 hover:bg-muted/10",
                 alert.selected && "border-border/80 bg-muted/20",
               )}
             >
               <div className="flex items-center gap-0.5 sm:gap-1">
                 <Icon
                   className={cn(
-                    "h-4 w-4 shrink-0 sm:h-4.5 sm:w-4.5",
+                    "h-4 w-4 shrink-0 transition-colors sm:h-4.5 sm:w-4.5",
                     getAlertTextClass(alert.className),
+                    !alert.selected && "group-hover:text-primary/80",
                   )}
                 />
                 <span
                   className={cn(
-                    "text-[8px] font-semibold leading-none sm:text-[9px]",
+                    "text-[8px] font-semibold leading-none transition-colors sm:text-[9px]",
                     alert.selected ? "text-primary" : "text-muted-foreground",
+                    !alert.selected && "group-hover:text-primary/80",
                   )}
                 >
                   {formatInteger(alert.count)}
@@ -128,8 +130,9 @@ const DashboardAlertsSection = ({
               </div>
               <span
                 className={cn(
-                  "mt-1 w-full truncate text-[8px] leading-none sm:text-[9px]",
+                  "mt-1 w-full truncate text-[8px] leading-none transition-colors sm:text-[9px]",
                   alert.selected ? "font-semibold text-primary" : "font-medium text-foreground",
+                  !alert.selected && "group-hover:text-primary/80",
                 )}
               >
                 {getCompactAlertLabel(alert.label)}

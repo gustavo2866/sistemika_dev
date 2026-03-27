@@ -9,6 +9,8 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .proyecto_avance import ProyectoAvance
+    from .crm import CRMOportunidad
+    from .user import User
 
 
 class Proyecto(Base, table=True):
@@ -76,11 +78,23 @@ class Proyecto(Base, table=True):
         max_length=1000,
         description="Comentarios adicionales sobre el proyecto",
     )
+    oportunidad_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_oportunidades.id",
+        description="ID de la oportunidad CRM asociada (opcional)"
+    )
+    responsable_id: int = Field(
+        foreign_key="users.id",
+        description="Usuario responsable del proyecto"
+    )
 
+    # Relaciones
     avances: List["ProyectoAvance"] = Relationship(
         back_populates="proyecto",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    oportunidad: Optional["CRMOportunidad"] = Relationship()
+    responsable: Optional["User"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Proyecto(id={self.id}, nombre='{self.nombre}')"

@@ -2,7 +2,7 @@
 
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_STANDARD } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -122,7 +122,7 @@ const ListaContactos = ({
       perPage={perPage}
       pagination={<ListPaginator />}
       sort={{ field: "nombre_completo", order: "ASC" }}
-      containerClassName="max-w-[900px] w-full mr-auto"
+      containerClassName={LIST_CONTAINER_STANDARD}
       filterDefaultValues={defaultFilters}
       showBreadcrumb={!embedded}
       showHeader={!embedded}

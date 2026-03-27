@@ -1,6 +1,6 @@
 "use client";
 
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_MD } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -68,7 +68,7 @@ export const TaxProfileList = () => (
     perPage={25}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[760px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_MD}
   >
     <ResponsiveDataTable
       rowClick="edit"

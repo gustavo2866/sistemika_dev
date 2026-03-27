@@ -38,7 +38,8 @@ export const PoOrderEdit = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
-  const returnTo = params.get("returnTo");
+  const locationState = location.state as { returnTo?: string } | null;
+  const returnTo = locationState?.returnTo ?? params.get("returnTo");
 
   return (
     <Edit
@@ -50,10 +51,10 @@ export const PoOrderEdit = () => {
       mutationOptions={{
         onSuccess: () => {
           if (returnTo) {
-            navigate(returnTo);
+            navigate(returnTo, { replace: true });
             return;
           }
-          navigate("/po-orders");
+          navigate("/po-orders", { replace: true });
         },
       }}
     >

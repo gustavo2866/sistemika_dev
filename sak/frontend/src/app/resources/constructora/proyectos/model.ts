@@ -71,6 +71,7 @@ export type ProyectoAvance = {
   proyecto_id?: number | null;
   horas?: number | null;
   avance?: number | null;
+  importe?: number | null;
   comentario?: string | null;
   fecha_registracion?: string | null;
 };
@@ -78,6 +79,8 @@ export type ProyectoAvance = {
 export type Proyecto = {
   id?: number | string;
   nombre?: string | null;
+  oportunidad_id?: number | null;
+  responsable_id?: number | null;
   fecha_inicio?: string | null;
   fecha_final?: string | null;
   estado?: string | null;
@@ -106,6 +109,7 @@ export const proyectoAvanceSchema = z.object({
     normalizeNumberInput,
     z.number().min(0).max(PROYECTO_VALIDATIONS.AVANCE_MAX),
   ),
+  importe: nonNegativeNumberSchema,
   comentario: optionalStringSchema.pipe(
     z.string().max(PROYECTO_VALIDATIONS.AVANCE_COMENTARIO_MAX).optional(),
   ),
@@ -114,6 +118,8 @@ export const proyectoAvanceSchema = z.object({
 
 export const proyectoSchema = z.object({
   nombre: z.string().min(1).max(PROYECTO_VALIDATIONS.NOMBRE_MAX),
+  oportunidad_id: optionalPositiveIdSchema,
+  responsable_id: optionalPositiveIdSchema,
   estado: optionalStringSchema.pipe(
     z.string().max(PROYECTO_VALIDATIONS.ESTADO_MAX).optional(),
   ),
@@ -140,6 +146,8 @@ export type ProyectoAvanceFormValues = z.infer<typeof proyectoAvanceSchema>;
 
 export const PROYECTO_DEFAULTS: ProyectoFormValues = {
   nombre: "",
+  oportunidad_id: undefined,
+  responsable_id: undefined,
   estado: "",
   fecha_inicio: "",
   fecha_final: "",
@@ -160,6 +168,7 @@ export const getProyectoAvanceDefaults = (): ProyectoAvanceFormValues => ({
   proyecto_id: undefined,
   horas: 0,
   avance: 0,
+  importe: 0,
   comentario: "",
   fecha_registracion: getTodayDate(),
 });
@@ -174,13 +183,25 @@ export const getProyectoEstadoLabel = (value?: string | null) => {
 
 export const getProyectoEstadoBadgeClass = (value?: string | null) => {
   const normalizedValue = normalizeEstadoKey(value);
+  if (normalizedValue.startsWith("01-plan")) {
+    return "border border-amber-200 bg-amber-100 text-amber-700";
+  }
+  if (normalizedValue.startsWith("02-ejeucion") || normalizedValue.startsWith("02-ejecucion")) {
+    return "border border-sky-200 bg-sky-100 text-sky-700";
+  }
+  if (normalizedValue.startsWith("03-conclusion")) {
+    return "border border-violet-200 bg-violet-100 text-violet-700";
+  }
+  if (normalizedValue.startsWith("04-terminados")) {
+    return "border border-emerald-200 bg-emerald-100 text-emerald-700";
+  }
   if (["finalizado", "finalizada", "cerrado", "cerrada", "completado", "completada"].includes(normalizedValue)) {
     return "border border-emerald-200 bg-emerald-100 text-emerald-700";
   }
-  if (["en_proceso", "en proceso", "iniciado", "activa", "activo"].includes(normalizedValue)) {
+  if (["en_proceso", "en proceso", "iniciado", "activa", "activo", "en_ejecucion", "ejecutando"].includes(normalizedValue)) {
     return "border border-sky-200 bg-sky-100 text-sky-700";
   }
-  if (["pendiente", "planificado", "planificada", "borrador"].includes(normalizedValue)) {
+  if (["pendiente", "planificado", "planificada", "borrador", "planificacion"].includes(normalizedValue)) {
     return "border border-amber-200 bg-amber-100 text-amber-700";
   }
   if (["cancelado", "cancelada", "pausado", "pausada"].includes(normalizedValue)) {
@@ -216,6 +237,8 @@ export const normalizeProyectoPayload = (
   data: Partial<ProyectoFormValues>,
 ): ProyectoFormValues => ({
   nombre: trimRequiredText(data.nombre),
+  oportunidad_id: resolveNumericId(data.oportunidad_id),
+  responsable_id: resolveNumericId(data.responsable_id),
   estado: trimOptionalText(data.estado),
   fecha_inicio: trimOptionalText(data.fecha_inicio),
   fecha_final: trimOptionalText(data.fecha_final),
@@ -235,6 +258,7 @@ export const normalizeProyectoPayload = (
     proyecto_id: resolveNumericId(avance.proyecto_id),
     horas: Number(avance.horas ?? 0),
     avance: Number(avance.avance ?? 0),
+    importe: Number(avance.importe ?? 0),
     comentario: trimOptionalText(avance.comentario),
     fecha_registracion: trimRequiredText(avance.fecha_registracion),
   })),

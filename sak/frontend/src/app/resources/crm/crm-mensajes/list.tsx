@@ -16,7 +16,7 @@ import {
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_2XL } from "@/components/list";
 import {
   FormOrderListRowActions,
   ListPaginator,
@@ -119,7 +119,7 @@ const listFilters = buildListFilters(
 );
 
 const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
-const listContainerClassName = "max-w-[1120px] w-full mr-auto";
+const listContainerClassName = LIST_CONTAINER_2XL;
 const listTableClassName = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
 const listDefaultFilters = {
   tipo: ["entrada"],

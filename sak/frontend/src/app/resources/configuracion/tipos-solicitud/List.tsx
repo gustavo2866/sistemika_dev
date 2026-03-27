@@ -1,6 +1,6 @@
 "use client";
 
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_SM } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
@@ -80,7 +80,7 @@ export const TipoSolicitudList = ({
     perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[720px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_SM}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >

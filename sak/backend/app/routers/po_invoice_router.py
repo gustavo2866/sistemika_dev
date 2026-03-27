@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, date
 from decimal import Decimal
 from typing import Any, Dict, Iterable, Set
 
@@ -18,7 +18,9 @@ from app.models.compras import (
     PoOrder,
     PoOrderDetail,
     PoOrderStatus,
+    PoOrderStatusLog,
 )
+from app.models.enums import TipoCompra
 from app.core.generic_crud import GenericCRUD
 from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
@@ -259,6 +261,147 @@ po_invoice_router = create_generic_router(
     prefix="/po-invoices",
     tags=["po-invoices"],
 )
+
+
+@po_invoice_router.post("/{invoice_id}/confirmar")
+def confirmar_factura_con_auto_oc(
+    invoice_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(lambda: None),  # TODO: implementar auth
+):
+    """
+    Confirma una factura y genera automáticamente una OC 
+    para todos los ítems que no están vinculados a una OC.
+    
+    Registra el flujo completo de estados: emitida → facturada
+    """
+    # 1. Obtener la factura
+    invoice = session.get(PoInvoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    
+    # 2. Verificar que no esté ya confirmada
+    current_status = session.exec(
+        select(PoInvoiceStatus).where(PoInvoiceStatus.id == invoice.invoice_status_id)
+    ).first()
+    
+    if current_status and current_status.nombre.lower() == "confirmada":
+        raise HTTPException(status_code=400, detail="La factura ya está confirmada")
+    
+    # 3. Cambiar estado factura a "confirmada"
+    confirmed_status = session.exec(
+        select(PoInvoiceStatus).where(func.lower(PoInvoiceStatus.nombre) == "confirmada")
+    ).first()
+    
+    if not confirmed_status:
+        raise HTTPException(status_code=500, detail="Estado 'confirmada' no encontrado")
+    
+    invoice.invoice_status_id = confirmed_status.id
+    invoice.fecha_estado = current_utc_time()
+    session.add(invoice)
+    
+    # 4. Identificar detalles sin OC vinculada (huérfanos)
+    huerfanos = session.exec(
+        select(PoInvoiceDetail)
+        .where(PoInvoiceDetail.invoice_id == invoice_id)
+        .where(PoInvoiceDetail.poOrderDetail_id.is_(None))
+    ).all()
+    
+    if not huerfanos:
+        session.commit()
+        return {"message": "Factura confirmada. No hay ítems sin OC vinculada."}
+    
+    # 5. Obtener estados de OC necesarios
+    status_emitida = session.exec(
+        select(PoOrderStatus).where(func.lower(PoOrderStatus.nombre) == "emitida")
+    ).first()
+    
+    status_facturada = session.exec(
+        select(PoOrderStatus).where(func.lower(PoOrderStatus.nombre) == "facturada")
+    ).first()
+    
+    if not status_emitida or not status_facturada:
+        raise HTTPException(status_code=500, detail="Estados de OC 'emitida' o 'facturada' no encontrados")
+    
+    # 6. Crear nueva OC
+    nueva_oc = PoOrder(
+        titulo=f"OC Auto - {invoice.titulo}",
+        proveedor_id=invoice.proveedor_id,
+        solicitante_id=invoice.usuario_responsable_id,
+        metodo_pago_id=invoice.metodo_pago_id or 1,
+        centro_costo_id=invoice.centro_costo_id,
+        oportunidad_id=invoice.oportunidad_id,
+        tipo_solicitud_id=invoice.tipo_solicitud_id or 1,  # Valor por defecto
+        tipo_compra=TipoCompra.DIRECTA,
+        order_status_id=status_emitida.id,  # Inicialmente "emitida"
+        total=sum(h.importe for h in huerfanos),
+        fecha_necesidad=invoice.fecha_emision,
+        comentario=f"OC generada automáticamente desde factura {invoice.numero}",
+    )
+    session.add(nueva_oc)
+    session.flush()  # Para obtener el ID de la nueva OC
+    
+    # 7. Crear detalles de la nueva OC y vincular con factura
+    nuevos_detalles = []
+    for huerfano in huerfanos:
+        detalle_oc = PoOrderDetail(
+            order_id=nueva_oc.id,
+            articulo_id=huerfano.articulo_id,
+            descripcion=huerfano.descripcion,
+            cantidad=huerfano.cantidad,
+            precio=huerfano.precio_unitario,
+            importe=huerfano.importe,
+            centro_costo_id=huerfano.centro_costo_id,
+            oportunidad_id=huerfano.oportunidad_id,
+            cantidad_facturada=huerfano.cantidad,  # Ya está facturada
+        )
+        session.add(detalle_oc)
+        nuevos_detalles.append(detalle_oc)
+    
+    session.flush()  # Para obtener IDs de los detalles
+    
+    # 8. Vincular detalles de factura con detalles de OC
+    for huerfano, detalle_oc in zip(huerfanos, nuevos_detalles):
+        huerfano.poOrderDetail_id = detalle_oc.id
+        session.add(huerfano)
+    
+    # 9. Registrar flujo de estados: emitida (inicial) → facturada
+    # Primer log: estado inicial "emitida" (sin estado anterior)
+    log_emitida = PoOrderStatusLog(
+        order_id=nueva_oc.id,
+        status_anterior_id=None,  # Estado inicial, sin anterior
+        status_nuevo_id=status_emitida.id,
+        usuario_id=current_user.id if current_user else invoice.usuario_responsable_id,
+        comentario="OC creada automáticamente desde factura",
+        fecha_registro=date.today(),
+    )
+    session.add(log_emitida)
+    
+    # Cambiar estado de la OC a "facturada"
+    nueva_oc.order_status_id = status_facturada.id
+    session.add(nueva_oc)
+    
+    # Segundo log: cambio de "emitida" → "facturada"
+    log_facturada = PoOrderStatusLog(
+        order_id=nueva_oc.id,
+        status_anterior_id=status_emitida.id,
+        status_nuevo_id=status_facturada.id,
+        usuario_id=current_user.id if current_user else invoice.usuario_responsable_id,
+        comentario=f"Vinculada automáticamente con factura {invoice.numero}",
+        fecha_registro=date.today(),
+    )
+    session.add(log_facturada)
+    
+    # 10. Confirmar transacción
+    session.commit()
+    
+    return {
+        "message": "Factura confirmada y OC generada automáticamente",
+        "factura_id": invoice.id,
+        "nueva_oc_id": nueva_oc.id,
+        "items_procesados": len(huerfanos),
+        "total_oc": float(nueva_oc.total),
+    }
 
 
 def _parse_list_pagination(

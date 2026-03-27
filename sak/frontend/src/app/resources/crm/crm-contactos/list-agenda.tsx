@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_XS_CENTER } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import {
@@ -348,7 +348,7 @@ export const CRMContactoListAgenda = ({
       debounce={300}
       perPage={100}
       sort={{ field: "nombre_completo", order: "ASC" }}
-      containerClassName="max-w-[480px] w-full mx-auto"
+      containerClassName={LIST_CONTAINER_XS_CENTER}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
       pagination={<ListPaginator />}

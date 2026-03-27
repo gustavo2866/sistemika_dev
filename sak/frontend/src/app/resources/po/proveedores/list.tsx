@@ -1,6 +1,6 @@
 "use client";
 
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_STANDARD } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -94,7 +94,7 @@ export const ProveedorList = ({
     filterDefaultValues={{ activo: true }}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[900px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_STANDARD}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >

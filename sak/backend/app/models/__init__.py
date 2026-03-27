@@ -59,6 +59,7 @@ from .propietario import Propietario
 from .proyecto import Proyecto
 from .proyecto_avance import ProyectoAvance
 from .proy_fase import ProyFase
+from .proy_presupuesto import ProyPresupuesto
 from .nomina import Nomina, CategoriaNomina
 from .partediario import (
     ParteDiario,
@@ -128,6 +129,7 @@ __all__ = [
     "Propietario",
     "Proyecto",
     "ProyectoAvance",
+    "ProyPresupuesto",
     "Nomina",
     "CategoriaNomina",
     "ParteDiario",

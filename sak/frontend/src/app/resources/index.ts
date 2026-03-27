@@ -38,4 +38,3 @@ export * from "./inmobiliaria/calculadora-financiera";
 export * from "./administracion/adm-conceptos";
 export * from "./configuracion/tax-profiles";
 // Los dashboards no necesitan ser exportados aquí
-// export * from "./dashboard-proyectos";

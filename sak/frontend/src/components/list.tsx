@@ -17,6 +17,15 @@ import { ExportButton } from "@/components/export-button";
 import { ListPagination } from "@/components/list-pagination";
 import { FilterForm } from "@/components/filter-form";
 
+export const LIST_CONTAINER_XS_CENTER = "max-w-[480px] w-full mx-auto";
+export const LIST_CONTAINER_SM = "max-w-[720px] w-full mr-auto";
+export const LIST_CONTAINER_MD = "max-w-[760px] w-full mr-auto";
+export const LIST_CONTAINER_STANDARD = "max-w-[900px] w-full mr-auto";
+export const LIST_CONTAINER_STANDARD_PLUS = "max-w-[920px] w-full mr-auto";
+export const LIST_CONTAINER_WIDE = "max-w-[980px] w-full mr-auto";
+export const LIST_CONTAINER_XL = "max-w-[1100px] w-full mr-auto";
+export const LIST_CONTAINER_2XL = "max-w-[1120px] w-full mr-auto";
+
 export const List = <RecordType extends RaRecord = RaRecord>(
   props: ListProps<RecordType>,
 ) => {
@@ -94,7 +103,12 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
   const shouldRenderPagination = pagination !== false && pagination != null;
 
   return (
-    <div className={cn("w-full max-w-3xl", containerClassName)}>
+    <div
+      className={cn(
+        "w-full min-w-0 max-w-[1080px] overflow-x-hidden mr-auto",
+        containerClassName,
+      )}
+    >
       {showBreadcrumb ? (
         <AppBreadcrumb
           items={[{ label: resourceLabel, current: true }]}
@@ -103,7 +117,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
 
       <FilterContext.Provider value={filters}>
         {showHeader ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 my-2 sm:my-3 w-full max-w-3xl">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 my-2 sm:my-3">
             <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
               {finalTitle}
             </h2>
@@ -124,11 +138,11 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
           </div>
         ) : null}
         {topContent ? (
-          <div className="mb-2 w-full max-w-3xl">
+          <div className="mb-2 w-full">
             {topContent}
           </div>
         ) : null}
-        <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full max-w-3xl">
+        <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <FilterForm
               className="list-filters pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-3"
@@ -141,9 +155,9 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             ) : null}
           </div>
         </div>
-        <div className={cn(props.className, "w-full max-w-3xl")}>{children}</div>
+        <div className={cn(props.className, "w-full min-w-0")}>{children}</div>
         {shouldRenderPagination ? (
-          <div className="w-full max-w-3xl">{pagination}</div>
+          <div className="w-full min-w-0">{pagination}</div>
         ) : null}
       </FilterContext.Provider>
     </div>

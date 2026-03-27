@@ -39,7 +39,6 @@ import {
   ClipboardList,
   Kanban,
   Truck,
-  BarChart3,
   ShoppingCart,
   ClipboardCheck,
   Wallet,
@@ -52,11 +51,13 @@ import {
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = [
+  "proy-dashboard",
   "proyectos",
   "proy-fases",
+  "proy-presupuestos",
+  "proyecto-avance",
   "solicitudes",
   "recepciones",
-  "dashboard-proyectos",
   "tarjas",
   "parte-diario",
 ] as const;
@@ -454,13 +455,13 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   proveedores: Building2,
   "tipos-propiedad": Building,
   "tipos-operacion": Workflow,
+  "proy-dashboard": LayoutGrid,
   "metodos-pago": FileText,
   proyectos: Kanban,
   articulos: Package,
   facturas: FileText,
   solicitudes: ClipboardList,
   recepciones: Truck,
-  "dashboard-proyectos": BarChart3,
   "orden-compra": ShoppingCart,
   tarjas: ClipboardCheck,
   "parte-diario": NotebookPen,

@@ -3,6 +3,7 @@
 import { Create } from "@/components/create";
 import { ClipboardList } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { saveDashboardReturnMarker } from "../po-dashboard/return-state";
 import { PoOrderForm } from "./form";
 import { normalizePoOrderPayload } from "./model";
 
@@ -25,6 +26,10 @@ export const PoOrderCreate = () => {
       mutationOptions={{
         onSuccess: () => {
           if (returnTo) {
+            saveDashboardReturnMarker(returnTo, {
+              savedAt: Date.now(),
+              refreshAll: true,
+            });
             navigate(returnTo);
             return;
           }

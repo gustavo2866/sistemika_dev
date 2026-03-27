@@ -1,6 +1,6 @@
 "use client";
 
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { SelectField } from "@/components/select-field";
 import { ReferenceField } from "@/components/reference-field";
 import { FilterButton } from "@/components/filter-form";
@@ -95,7 +95,7 @@ export const ParteDiarioList = ({
     perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "fecha", order: "DESC" }}
-    containerClassName="max-w-[980px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_WIDE}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >

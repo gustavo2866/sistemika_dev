@@ -37,6 +37,17 @@ def _parse_int_list(value: Optional[str]) -> Optional[List[int]]:
     return result or None
 
 
+def _parse_str_list(value: Optional[str]) -> Optional[List[str]]:
+    if not value:
+        return None
+    result: List[str] = []
+    for chunk in value.split(","):
+        chunk = chunk.strip()
+        if chunk:
+            result.append(chunk)
+    return result or None
+
+
 def _serialize_item(item) -> dict:
     return {
         "order": filtrar_respuesta(item.order),
@@ -56,6 +67,8 @@ def get_po_dashboard(
     solicitante: Optional[str] = Query(None, description="IDs de solicitante separados por coma"),
     proveedor: Optional[str] = Query(None, description="IDs de proveedor separados por coma"),
     tipoSolicitud: Optional[str] = Query(None, description="IDs de tipo de solicitud separados por coma"),
+    departamento: Optional[str] = Query(None, description="IDs de departamento separados por coma"),
+    tipoCompra: Optional[str] = Query(None, description="Tipos de orden separados por coma"),
     limitTop: int = Query(8, ge=1, le=20),
     session: Session = Depends(get_session),
 ):
@@ -67,6 +80,8 @@ def get_po_dashboard(
             solicitante_ids=_parse_int_list(solicitante),
             proveedor_ids=_parse_int_list(proveedor),
             tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
+            departamento_ids=_parse_int_list(departamento),
+            tipo_compra_values=_parse_str_list(tipoCompra),
         )
         return build_po_dashboard_payload(
             items,
@@ -77,6 +92,8 @@ def get_po_dashboard(
                 "solicitante": _parse_int_list(solicitante),
                 "proveedor": _parse_int_list(proveedor),
                 "tipoSolicitud": _parse_int_list(tipoSolicitud),
+                "departamento": _parse_int_list(departamento),
+                "tipoCompra": _parse_str_list(tipoCompra),
             },
         )
     except ValueError as exc:
@@ -92,6 +109,8 @@ def get_po_dashboard_detalle_alerta(
     solicitante: Optional[str] = Query(None),
     proveedor: Optional[str] = Query(None),
     tipoSolicitud: Optional[str] = Query(None),
+    departamento: Optional[str] = Query(None),
+    tipoCompra: Optional[str] = Query(None),
     alertKey: str = Query(
         ...,
         pattern="^(rechazadas|solicitudes_vencidas|emitidas_vencidas)$",
@@ -109,6 +128,8 @@ def get_po_dashboard_detalle_alerta(
         solicitante_ids=_parse_int_list(solicitante),
         proveedor_ids=_parse_int_list(proveedor),
         tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
+        departamento_ids=_parse_int_list(departamento),
+        tipo_compra_values=_parse_str_list(tipoCompra),
     )
 
     filtered = filter_po_dashboard_items_by_alert(items, alertKey)
@@ -143,6 +164,8 @@ def get_po_dashboard_detalle(
     solicitante: Optional[str] = Query(None),
     proveedor: Optional[str] = Query(None),
     tipoSolicitud: Optional[str] = Query(None),
+    departamento: Optional[str] = Query(None),
+    tipoCompra: Optional[str] = Query(None),
     kpiKey: str = Query(
         "pendientes",
         pattern="^(pendientes|solicitadas|emitidas|en_proceso|facturadas)$",
@@ -165,6 +188,8 @@ def get_po_dashboard_detalle(
         solicitante_ids=_parse_int_list(solicitante),
         proveedor_ids=_parse_int_list(proveedor),
         tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
+        departamento_ids=_parse_int_list(departamento),
+        tipo_compra_values=_parse_str_list(tipoCompra),
     )
 
     filtered = (
@@ -206,6 +231,8 @@ def get_po_dashboard_selectors(
     solicitante: Optional[str] = Query(None),
     proveedor: Optional[str] = Query(None),
     tipoSolicitud: Optional[str] = Query(None),
+    departamento: Optional[str] = Query(None),
+    tipoCompra: Optional[str] = Query(None),
     session: Session = Depends(get_session),
 ):
     """Conteo rápido por estado sin cargar relaciones."""
@@ -217,6 +244,8 @@ def get_po_dashboard_selectors(
             solicitante_ids=_parse_int_list(solicitante),
             proveedor_ids=_parse_int_list(proveedor),
             tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
+            departamento_ids=_parse_int_list(departamento),
+            tipo_compra_values=_parse_str_list(tipoCompra),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -231,6 +260,8 @@ def get_po_dashboard_bundle(
     solicitante: Optional[str] = Query(None),
     proveedor: Optional[str] = Query(None),
     tipoSolicitud: Optional[str] = Query(None),
+    departamento: Optional[str] = Query(None),
+    tipoCompra: Optional[str] = Query(None),
     limitTop: int = Query(8, ge=1, le=20),
     periodType: str = Query("mes"),
     trendSteps: str = Query("-3,-2,-1,0", description="Pasos de trend separados por coma"),
@@ -259,11 +290,15 @@ def get_po_dashboard_bundle(
             solicitante_ids=_parse_int_list(solicitante),
             proveedor_ids=_parse_int_list(proveedor),
             tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
+            departamento_ids=_parse_int_list(departamento),
+            tipo_compra_values=_parse_str_list(tipoCompra),
             limit_top=limitTop,
             filters_ctx={
                 "solicitante": _parse_int_list(solicitante),
                 "proveedor": _parse_int_list(proveedor),
                 "tipoSolicitud": _parse_int_list(tipoSolicitud),
+                "departamento": _parse_int_list(departamento),
+                "tipoCompra": _parse_str_list(tipoCompra),
             },
         )
     except ValueError as exc:
@@ -281,6 +316,11 @@ def get_po_dashboard_alerta_item(
     ),
     startDate: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
     endDate: str = Query(..., description="Fecha fin YYYY-MM-DD"),
+    solicitante: Optional[str] = Query(None),
+    proveedor: Optional[str] = Query(None),
+    tipoSolicitud: Optional[str] = Query(None),
+    departamento: Optional[str] = Query(None),
+    tipoCompra: Optional[str] = Query(None),
     session: Session = Depends(get_session),
 ):
     """Indica si una orden concreta sigue teniendo activa la alerta indicada."""
@@ -291,6 +331,11 @@ def get_po_dashboard_alerta_item(
             start_date=startDate,
             end_date=endDate,
             session=session,
+            solicitante_ids=_parse_int_list(solicitante),
+            proveedor_ids=_parse_int_list(proveedor),
+            tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
+            departamento_ids=_parse_int_list(departamento),
+            tipo_compra_values=_parse_str_list(tipoCompra),
         )
         return {"id": id, "alertKey": alertKey, "hasAlert": tiene_alerta}
     except Exception as exc:  # pragma: no cover

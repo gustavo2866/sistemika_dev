@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RecordContextProvider, useDataProvider, useGetOne, useNotify } from "ra-core";
-import { CheckCircle2, CheckSquare2, Search, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CheckSquare2, Search, XCircle } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Confirm } from "@/components/confirm";
 import {
@@ -50,6 +51,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { cn } from "@/lib/utils";
 
 type ApprovalTab = "orders" | "invoices" | "payments";
@@ -810,6 +812,9 @@ const PoOrderApprovalDetailSheet = ({
 );
 
 export const PoOrdersApprovalList = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = getReturnToFromLocation(location);
   const [activeTab, setActiveTab] = useState<ApprovalTab>("orders");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -817,6 +822,7 @@ export const PoOrdersApprovalList = () => {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [selectedPaymentId, setSelectedPaymentId] = useState<number | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const listViewportRef = useRef<HTMLDivElement | null>(null);
 
   const orderFeed = useApprovalFeed<PoOrderApprovalListItem>({
     resource: "po-orders-approval",
@@ -891,7 +897,8 @@ export const PoOrdersApprovalList = () => {
 
   useEffect(() => {
     const node = sentinelRef.current;
-    if (!node || !activeHasMore || activeLoading || activeLoadingMore) return;
+    const root = listViewportRef.current;
+    if (!node || !root || !activeHasMore || activeLoading || activeLoadingMore) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -899,7 +906,7 @@ export const PoOrdersApprovalList = () => {
         if (!entry?.isIntersecting) return;
         activeFetchNext();
       },
-      { rootMargin: "320px 0px" },
+      { root, rootMargin: "320px 0px" },
     );
 
     observer.observe(node);
@@ -943,12 +950,53 @@ export const PoOrdersApprovalList = () => {
         ? invoiceFeed.items
         : paymentFeed.items;
 
+  const handleBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/po-dashboard");
+  };
+
   return (
-    <div className="min-h-full bg-[#f8f9fb]">
-      <div className="sticky top-0 z-20 bg-[#f8f9fb]/95 backdrop-blur">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f8f9fb]">
+      <div className="shrink-0 bg-[#f8f9fb]/95 backdrop-blur">
         <div className="mx-auto w-full max-w-xl px-1 pt-3 pb-1.5 sm:px-4 lg:ml-0 lg:mr-auto lg:max-w-[50%]">
           <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-[0_2px_10px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center justify-start gap-2">
+            <div className="sm:hidden">
+              <div className="flex items-center justify-start">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-7 px-1.5 text-[11px] font-medium text-primary"
+                  onClick={handleBack}
+                >
+                  <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                  Volver
+                </Button>
+              </div>
+              <div className="-mt-0.5 flex items-center justify-start gap-2">
+                <CheckSquare2 className="h-4.5 w-4.5 shrink-0 text-emerald-600" />
+                <h1 className="text-[17px] font-bold tracking-tight text-slate-900">
+                  Aprobar Compras
+                </h1>
+              </div>
+            </div>
+
+            <div className="hidden items-center justify-start gap-2 sm:flex">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 px-2 text-sm font-medium text-primary"
+                onClick={handleBack}
+              >
+                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                Volver
+              </Button>
               <CheckSquare2 className="h-4.5 w-4.5 shrink-0 text-emerald-600" />
               <h1 className="text-[17px] font-bold tracking-tight text-slate-900">
                 Aprobar Compras
@@ -1021,77 +1069,82 @@ export const PoOrdersApprovalList = () => {
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-2.5 px-1 pb-4 pt-1 sm:px-4 lg:ml-0 lg:mr-auto lg:max-w-[50%]">
-        {activeLoading && activeItems.length === 0 ? (
-          <>
-            <ApprovalCardSkeleton />
-            <ApprovalCardSkeleton />
-            <ApprovalCardSkeleton />
-          </>
-        ) : activeItems.length === 0 ? (
-          <div className="rounded-[22px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm">
-            <p className="text-lg font-semibold text-slate-900">
-              {activeTab === "orders"
-                ? "No hay OCs emitidas para aprobar"
-                : activeTab === "invoices"
-                  ? "No hay facturas confirmadas para aprobar"
-                  : "No hay pagos agendados para aprobar"}
-            </p>
-            <p className="mt-2 text-sm text-slate-500">
-              {search
-                ? "No encontramos resultados con ese criterio."
-                : activeTab === "orders"
-                  ? "Cuando aparezcan ordenes emitidas, las vas a ver aca."
+      <div
+        ref={listViewportRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain"
+      >
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-2.5 px-1 pb-4 pt-1 sm:px-4 lg:ml-0 lg:mr-auto lg:max-w-[50%]">
+          {activeLoading && activeItems.length === 0 ? (
+            <>
+              <ApprovalCardSkeleton />
+              <ApprovalCardSkeleton />
+              <ApprovalCardSkeleton />
+            </>
+          ) : activeItems.length === 0 ? (
+            <div className="rounded-[22px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm">
+              <p className="text-lg font-semibold text-slate-900">
+                {activeTab === "orders"
+                  ? "No hay OCs emitidas para aprobar"
                   : activeTab === "invoices"
-                    ? "Cuando aparezcan facturas confirmadas, las vas a ver aca."
-                    : "Cuando aparezcan pagos agendados, los vas a ver aca."}
-            </p>
-          </div>
-        ) : (
-          <>
-            {activeTab === "orders"
-              ? orderFeed.items.map((record) => (
-                  <PoOrderApprovalCard
-                    key={record.id}
-                    record={record}
-                    onOpen={setSelectedOrderId}
-                    onResolved={handleOrderResolved}
-                  />
-                ))
-              : activeTab === "invoices"
-                ? invoiceFeed.items.map((record) => (
-                    <PoInvoiceApprovalCard
+                    ? "No hay facturas confirmadas para aprobar"
+                    : "No hay pagos agendados para aprobar"}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                {search
+                  ? "No encontramos resultados con ese criterio."
+                  : activeTab === "orders"
+                    ? "Cuando aparezcan ordenes emitidas, las vas a ver aca."
+                    : activeTab === "invoices"
+                      ? "Cuando aparezcan facturas confirmadas, las vas a ver aca."
+                      : "Cuando aparezcan pagos agendados, los vas a ver aca."}
+              </p>
+            </div>
+          ) : (
+            <>
+              {activeTab === "orders"
+                ? orderFeed.items.map((record) => (
+                    <PoOrderApprovalCard
                       key={record.id}
                       record={record}
-                      onOpen={setSelectedInvoiceId}
-                      onResolved={handleInvoiceResolved}
+                      onOpen={setSelectedOrderId}
+                      onResolved={handleOrderResolved}
                     />
                   ))
-                : paymentFeed.items.map((record) => (
-                    <PoInvoicePaymentCard
-                      key={record.id}
-                      record={record}
-                      onOpen={setSelectedPaymentId}
-                      onResolved={handlePaymentResolved}
-                    />
-                  ))}
+                : activeTab === "invoices"
+                  ? invoiceFeed.items.map((record) => (
+                      <PoInvoiceApprovalCard
+                        key={record.id}
+                        record={record}
+                        onOpen={setSelectedInvoiceId}
+                        onResolved={handleInvoiceResolved}
+                      />
+                    ))
+                  : paymentFeed.items.map((record) => (
+                      <PoInvoicePaymentCard
+                        key={record.id}
+                        record={record}
+                        onOpen={setSelectedPaymentId}
+                        onResolved={handlePaymentResolved}
+                      />
+                    ))}
 
-            {activeLoadingMore ? (
-              <>
-                <ApprovalCardSkeleton />
-                <ApprovalCardSkeleton />
-              </>
-            ) : null}
+              {activeLoadingMore ? (
+                <>
+                  <ApprovalCardSkeleton />
+                  <ApprovalCardSkeleton />
+                </>
+              ) : null}
 
-            {activeHasMore ? (
-              <div ref={sentinelRef} className="h-8" aria-hidden="true" />
-            ) : (
-              <div className="py-4 text-center text-xs uppercase tracking-[0.22em] text-slate-400">
-                Fin del feed
-              </div>
-            )}
-          </>
-        )}
+              {activeHasMore ? (
+                <div ref={sentinelRef} className="h-8" aria-hidden="true" />
+              ) : (
+                <div className="py-4 text-center text-xs uppercase tracking-[0.22em] text-slate-400">
+                  Fin del feed
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <PoOrderApprovalDetailSheet

@@ -49,11 +49,13 @@ from app.routers.propietario_router import propietario_router
 from app.routers.proyecto_router import proyecto_router
 from app.routers.proyecto_avance_router import proyecto_avance_router
 from app.routers.proy_fase_router import proy_fase_router
+from app.routers.proy_presupuesto_router import proy_presupuesto_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
 
 from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
+from app.routers.proyectos_dashboard_router import router as proyectos_dashboard_router
 from app.routers.propiedades_dashboard_router import router as propiedades_dashboard_router
 # Routers módulo de compras (PO)
 from app.routers.po_invoice_router import po_invoice_router
@@ -182,6 +184,7 @@ app.include_router(propietario_router)
 app.include_router(adm_concepto_router)
 app.include_router(propiedades_dashboard_router)
 app.include_router(crm_dashboard_router)
+app.include_router(proyectos_dashboard_router)
 app.include_router(crm_tipo_operacion_router)
 app.include_router(crm_motivo_perdida_router)
 app.include_router(crm_condicion_pago_router)
@@ -214,6 +217,7 @@ app.include_router(tax_profile_router)
 app.include_router(proyecto_router)
 app.include_router(proyecto_avance_router)
 app.include_router(proy_fase_router)
+app.include_router(proy_presupuesto_router)
 app.include_router(nomina_router)
 app.include_router(parte_diario_router)
 

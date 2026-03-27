@@ -64,6 +64,7 @@ export const SelectInput = (props: SelectInputProps) => {
     name,
     onBlur,
     onChange,
+    onSelectionChange,
     parse,
     validate,
     readOnly,
@@ -181,7 +182,6 @@ export const SelectInput = (props: SelectInputProps) => {
     return result;
   }, [allChoices, choicesFilter, selectedChoice, disableValue, getChoiceValue]);
 
-  const handleSelectionChange = props.onSelectionChange;
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const pendingFocusRef = useRef(false);
   
@@ -207,7 +207,7 @@ export const SelectInput = (props: SelectInputProps) => {
         );
         field.onChange(choice ? getChoiceValue(choice) : value);
       }
-      handleSelectionChange?.(value);
+      onSelectionChange?.(value);
       // Temporalmente deshabilitado para diagnosticar problema de foco
       // if (autoFocusNext) {
       //   pendingFocusRef.current = true;
@@ -218,7 +218,7 @@ export const SelectInput = (props: SelectInputProps) => {
       getChoiceValue,
       emptyValue,
       allChoices,
-      handleSelectionChange,
+      onSelectionChange,
       autoFocusNext,
     ],
   );
@@ -273,8 +273,10 @@ export const SelectInput = (props: SelectInputProps) => {
 
   // Handle reset functionality
   const handleReset = (e: MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
     e.stopPropagation();
     field.onChange(emptyValue);
+    onSelectionChange?.(String(emptyValue));
   };
 
   return (

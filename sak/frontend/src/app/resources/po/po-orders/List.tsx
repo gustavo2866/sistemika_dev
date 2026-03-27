@@ -16,7 +16,7 @@ import {
   buildListFilters,
   useIdentityFilterDefaults,
 } from "@/components/forms/form_order";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_STANDARD } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { Button } from "@/components/ui/button";
 
@@ -108,23 +108,40 @@ const LIST_FILTERS = buildListFilters(
 // === Acciones ===
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-// Acciones de toolbar del listado de ordenes.
-const AccionesListaOrdenes = ({ returnTo }: { returnTo?: string | null }) => {
-  const navigate = useNavigate();
+const OrderListTitle = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <div className="sm:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-7 px-1.5 text-[11px] font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <div className="-mt-0.5 flex items-center justify-center">
+        <span>Ordenes</span>
+      </div>
+    </div>
+    <span className="hidden items-center gap-3 sm:inline-flex">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-2 text-sm font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <span>Ordenes</span>
+    </span>
+  </>
+);
 
-  return (
-    <div className="flex items-center gap-2">
-      {returnTo ? (
-        <Button
-          type="button"
-          variant="ghost"
-          className={ACTION_BUTTON_CLASS}
-          onClick={() => navigate(returnTo)}
-        >
-          <ArrowLeft className="h-3 w-3" />
-          Volver
-        </Button>
-      ) : null}
+// Acciones de toolbar del listado de ordenes.
+const AccionesListaOrdenes = () => (
+  <div className="flex items-center gap-2">
     <FilterButton
       filters={LIST_FILTERS}
       size="sm"
@@ -133,8 +150,7 @@ const AccionesListaOrdenes = ({ returnTo }: { returnTo?: string | null }) => {
     <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
-  );
-};
+);
 
 // === Listado ===
 // Listado principal de ordenes de compra.
@@ -145,17 +161,30 @@ const ListaOrdenes = () => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "solicitante_id",
   });
+  const navigate = useNavigate();
   const location = useLocation();
   const returnTo = getReturnToFromLocation(location);
 
+  const handleBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/po-orders");
+  };
+
   return (
     <List
-      title="Ordenes"
+      title={<OrderListTitle onBack={handleBack} />}
       filters={LIST_FILTERS}
-      actions={<AccionesListaOrdenes returnTo={returnTo} />}
+      actions={<AccionesListaOrdenes />}
       debounce={300}
       perPage={10}
-      containerClassName="max-w-[900px] w-full mr-auto"
+      containerClassName={LIST_CONTAINER_STANDARD}
       pagination={<ListPaginator />}
       sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={defaultFilters}

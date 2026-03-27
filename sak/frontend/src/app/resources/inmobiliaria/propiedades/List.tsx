@@ -26,7 +26,7 @@ import {
   SectionBaseTemplate,
   useRowActionDialog,
 } from "@/components/forms/form_order";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { Button } from "@/components/ui/button";
 import {
@@ -141,7 +141,7 @@ const ListaPropiedades = () => (
     actions={<AccionesLista />}
     debounce={300}
     perPage={10}
-    containerClassName="max-w-[980px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_WIDE}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
   >

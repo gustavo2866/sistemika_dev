@@ -8,7 +8,14 @@ import {
   useRefresh,
 } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CheckCircle2, Pencil, Target, Trash2, Workflow } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Pencil,
+  Target,
+  Trash2,
+  Workflow,
+} from "lucide-react";
 
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
@@ -27,7 +34,7 @@ import {
   buildListFilters,
   useIdentityFilterDefaults,
 } from "@/components/forms/form_order";
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -156,9 +163,44 @@ const LIST_FILTERS = buildListFilters(
 );
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
-const LIST_CONTAINER_CLASS_NAME = "max-w-[980px] w-full mr-auto";
+const LIST_CONTAINER_CLASS_NAME = LIST_CONTAINER_WIDE;
 const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
 const COMPACT_LIST_TABLE_CLASS_NAME = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
+
+const OportunidadListTitle = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <div className="sm:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-7 px-1.5 text-[11px] font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <div className="-mt-0.5 flex items-center justify-center gap-2">
+        <Target className="h-4 w-4" />
+        <span>CRM Oportunidades</span>
+      </div>
+    </div>
+    <span className="hidden items-center gap-3 sm:inline-flex">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-2 text-sm font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <span className="inline-flex items-center gap-2">
+        <Target className="h-4 w-4" />
+        CRM Oportunidades
+      </span>
+    </span>
+  </>
+);
 
 //#endregion Base CRUD: configuracion del listado
 
@@ -581,15 +623,26 @@ const ListaOportunidades = () => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "responsable_id",
   });
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleBack = () => {
+    const stateReturnTo =
+      (location.state as { returnTo?: string | null } | null)?.returnTo ?? undefined;
+    if (stateReturnTo) {
+      navigate(stateReturnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/crm");
+  };
 
   return (
     <List
-      title={
-        <span className="inline-flex items-center gap-2">
-          <Target className="h-4 w-4" />
-          CRM Oportunidades
-        </span>
-      }
+      title={<OportunidadListTitle onBack={handleBack} />}
       filters={LIST_FILTERS}
       actions={<CRMOportunidadListActions />}
       debounce={300}

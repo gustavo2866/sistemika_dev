@@ -14,7 +14,6 @@ import {
   Package,
   Kanban,
   Truck,
-  BarChart3,
   ShoppingCart,
   ClipboardCheck,
   Wallet,
@@ -121,6 +120,19 @@ import {
   ProyFaseEdit,
 } from "@/app/resources/constructora/proy-fases";
 import {
+  ProyPresupuestoList,
+  ProyPresupuestoCreate,
+  ProyPresupuestoEdit,
+  ProyPresupuestoShow,
+} from "@/app/resources/constructora/proy-presupuesto";
+import {
+  ProyectoAvanceList,
+  ProyectoAvanceCreate,
+  ProyectoAvanceEdit,
+  ProyectoAvanceShow,
+} from "@/app/resources/constructora/proyecto-avance";
+import { ProyDashboardList } from "@/app/resources/constructora/proy-dashboard";
+import {
   PoOrderList,
   PoOrderCreate,
   PoOrderEdit,
@@ -167,7 +179,6 @@ import {
   TipoSolicitudEdit,
 } from "@/app/resources/configuracion/tipos-solicitud";
 import RecepcionesList from "@/app/resources/constructora/recepciones/list";
-import DashboardProyectosList from "@/app/resources/constructora/dashboard-proyectos/list";
 import DashboardCrmList from "@/app/resources/crm/crm-dashboard/list";
 import TarjasList from "@/app/resources/constructora/tarjas/list";
 import {
@@ -362,6 +373,13 @@ const AdminApp = () => {
         options={{ label: "Perfiles de Impuestos" }}
       />
       <Resource
+        name="proy-dashboard"
+        list={ProyDashboardList}
+        recordRepresentation="id"
+        icon={LineChart}
+        options={{ label: "Dashboard Proyectos" }}
+      />
+      <Resource
         name="proyectos"
         list={ProyectoList}
         create={ProyectoCreate}
@@ -379,6 +397,26 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={ListChecks}
         options={{ label: "Fases de Proyecto" }}
+      />
+      <Resource
+        name="proy-presupuestos"
+        list={ProyPresupuestoList}
+        create={ProyPresupuestoCreate}
+        edit={ProyPresupuestoEdit}
+        show={ProyPresupuestoShow}
+        recordRepresentation="fecha"
+        icon={Wallet}
+        options={{ label: "Presupuestos" }}
+      />
+      <Resource
+        name="proyecto-avance"
+        list={ProyectoAvanceList}
+        create={ProyectoAvanceCreate}
+        edit={ProyectoAvanceEdit}
+        show={ProyectoAvanceShow}
+        recordRepresentation="fecha_registracion"
+        icon={CalendarCheck}
+        options={{ label: "Certificados" }}
       />
       <Resource
         name="articulos"
@@ -579,13 +617,6 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={Truck}
         options={{ label: "Recepciones" }}
-      />
-      <Resource
-        name="dashboard-proyectos"
-        list={DashboardProyectosList}
-        recordRepresentation="id"
-        icon={BarChart3}
-        options={{ label: "Dashboard" }}
       />
       <Resource
         name="dashboard-crm"

@@ -1,6 +1,6 @@
 "use client";
 
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { ExportButton } from "@/components/export-button";
 import { ReferenceField } from "@/components/reference-field";
@@ -84,7 +84,7 @@ export const PropiedadesLogStatusList = () => (
     perPage={25}
     pagination={<ListPaginator />}
     sort={{ field: "fecha_cambio", order: "DESC" }}
-    containerClassName="max-w-[980px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_WIDE}
   >
     <ResponsiveDataTable
       rowClick={false}

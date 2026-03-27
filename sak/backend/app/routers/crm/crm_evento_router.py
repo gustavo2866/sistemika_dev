@@ -14,6 +14,19 @@ from app.models import CRMEvento
 from app.models.base import filtrar_respuesta
 from app.models.enums import EstadoEvento
 
+PENDING_EVENT_STATES = [
+    EstadoEvento.PENDIENTE.value,
+    "pendiente",
+]
+
+DONE_EVENT_STATES = [
+    EstadoEvento.REALIZADO.value,
+    EstadoEvento.CANCELADO.value,
+    "realizado",
+    "cancelado",
+    "hecho",
+]
+
 # Router genérico simple - validaciones en frontend
 crm_evento_router = create_generic_router(
     model=CRMEvento,
@@ -164,10 +177,8 @@ def eventos_default_list(
         last_day = calendar.monthrange(now.year, now.month)[1]
         month_end = datetime(now.year, now.month, last_day, 23, 59, 59, 999999)
 
-        pending = CRMEvento.estado_evento == EstadoEvento.PENDIENTE.value
-        done = CRMEvento.estado_evento.in_(
-            [EstadoEvento.REALIZADO.value, EstadoEvento.CANCELADO.value]
-        )
+        pending = CRMEvento.estado_evento.in_(PENDING_EVENT_STATES)
+        done = CRMEvento.estado_evento.in_(DONE_EVENT_STATES)
         month_condition = and_(
             CRMEvento.fecha_evento >= month_start,
             CRMEvento.fecha_evento <= month_end,

@@ -1,6 +1,6 @@
 "use client";
 
-import { List } from "@/components/list";
+import { List, LIST_CONTAINER_STANDARD_PLUS } from "@/components/list";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
@@ -90,7 +90,7 @@ export const CRMCelularList = ({
     perPage={25}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName="max-w-[920px] w-full mr-auto"
+    containerClassName={LIST_CONTAINER_STANDARD_PLUS}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >

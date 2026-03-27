@@ -47,6 +47,7 @@ import {
   getPoOrderDetalleDefaults,
   isPoOrderLocked,
   poOrderSchema,
+  TIPO_COMPRA_CHOICES,
 } from "./model";
 import type { PoOrderFormValues } from "./model";
 import {
@@ -363,9 +364,15 @@ const CabeceraCamposOpcionales = () => {
     usePoOrderExternalLock();
   const oportunidadValue = useWatch({ name: "oportunidad_id" }) as unknown;
   const centroValue = useWatch({ name: "centro_costo_id" }) as unknown;
+  const departamentoValue = useWatch({ name: "departamento_id" }) as unknown;
+  const tipoCompraValue = useWatch({ name: "tipo_compra" }) as
+    | "normal"
+    | "directa"
+    | undefined;
 
   const resolvedOportunidadId = resolveNumericId(oportunidadValue) ?? lockedOportunidadId;
   const resolvedCentroId = resolveNumericId(centroValue) ?? lockedCentroId;
+  const resolvedDepartamentoId = resolveNumericId(departamentoValue);
 
   const { data: oportunidadLocked } = useGetOne(
     "crm/oportunidades",
@@ -377,6 +384,11 @@ const CabeceraCamposOpcionales = () => {
     { id: resolvedCentroId ?? 0 },
     { enabled: lockCentro && Boolean(resolvedCentroId) },
   );
+  const { data: departamentoData } = useGetOne(
+    "departamentos",
+    { id: resolvedDepartamentoId ?? 0 },
+    { enabled: Boolean(resolvedDepartamentoId) },
+  );
 
   const oportunidadLabel =
     (oportunidadLocked as any)?.titulo ??
@@ -385,11 +397,22 @@ const CabeceraCamposOpcionales = () => {
   const centroLabel =
     (centroLocked as any)?.nombre ??
     (resolvedCentroId ? `#${resolvedCentroId}` : "Sin centro de costo");
+  const departamentoLabel =
+    (departamentoData as any)?.nombre ??
+    (resolvedDepartamentoId ? `#${resolvedDepartamentoId}` : "-");
+  const tipoCompraLabel =
+    TIPO_COMPRA_CHOICES.find((choice) => choice.id === tipoCompraValue)?.name ?? "-";
 
   return (
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
         <div className="grid gap-2 md:grid-cols-4">
+          <FormValue label="Departamento" widthClass="w-full">
+            {departamentoLabel}
+          </FormValue>
+          <FormValue label="Tipo orden" widthClass="w-full">
+            {tipoCompraLabel}
+          </FormValue>
           {lockCentro ? (
             <FormValue label="Centro de costo" widthClass="w-full">
               {centroLabel}
@@ -465,7 +488,7 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
 
   const columns: SectionDetailColumn[] = [
     { label: "Articulo", width: "220px", mobileSpan: "full" },
-    { label: "Descripcion", width: "150px" },
+    { label: "Descripcion", width: "150px", mobileSpan: "full" },
     { label: "Cantidad", width: "64px", className: "-ml-[15px]" },
     { label: "Precio", width: "84px", className: "ml-[0px]" },
     { label: "Importe", width: "84px", className: "ml-[30px]" },
@@ -512,7 +535,7 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
               className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
             />
           </DetailFieldCell>
-          <DetailFieldCell label="Cant.">
+          <DetailFieldCell label="Cant." className="gap-0">
             <FormNumber
               source="cantidad"
               label={false}
@@ -521,10 +544,13 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
               widthClass="w-full"
               validate={required()}
               readOnly={!isActive}
-              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+              className={cn(
+                "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
+                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+              )}
             />
           </DetailFieldCell>
-          <DetailFieldCell label="Precio">
+          <DetailFieldCell label="Precio" className="gap-0">
             <FormNumber
               source="precio"
               label={false}
@@ -532,17 +558,22 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
               step="0.01"
               widthClass="w-full"
               readOnly={!isActive}
-              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+              className={cn(
+                "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
+                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+              )}
             />
           </DetailFieldCell>
-          <DetailFieldCell label="Importe">
+          <DetailFieldCell label="Importe" className="gap-0">
             <CalculatedImporte
               computeImporte={computeDetalleImporte}
+              className="gap-0"
               widthClass="w-full"
               valueClassName={
-                !isActive
-                  ? FORM_VALUE_READONLY_CLASS
-                  : undefined
+                cn(
+                  "px-1 sm:px-2",
+                  !isActive ? FORM_VALUE_READONLY_CLASS : undefined,
+                )
               }
             />
             <HiddenInput source="importe" />
