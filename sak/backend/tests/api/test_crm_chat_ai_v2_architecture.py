@@ -671,6 +671,51 @@ def test_chat_ai_v2_manual_endpoint_rejects_invalid_delivery_mode(client, db_ses
     assert "delivery_mode invalido" in response.json()["detail"]
 
 
+def test_chat_ai_v2_diagnostic_endpoint_returns_execution_details(client, db_session, monkeypatch, tmp_path):
+    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
+
+    oportunidad_id, message_id = _seed_context(db_session, latest_message="Hola")
+    monkeypatch.setattr(
+        agent._llm_client,
+        "interpret_normal_turn",
+        lambda context, prompt_families: NormalTurnDecision(decision_type="smalltalk", reply_to_user="Hola."),
+    )
+
+    process_response = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
+    assert process_response.status_code == 200
+
+    diagnostic_response = client.get(f"/crm/mensajes/acciones/chat/{oportunidad_id}/diagnostico-v2")
+    assert diagnostic_response.status_code == 200
+    body = diagnostic_response.json()
+    assert body["message_id"] == message_id
+    assert body["context"]["is_project_opportunity"] is True
+    assert body["process_resolution"]["activation"]["process_name"] == "solicitud_materiales"
+    assert body["turn_execution"]["response_payload"]["type"] == "chat_reply"
+    assert body["summary"]["has_execution_record"] is True
+
+
+def test_chat_ai_v2_diagnostic_endpoint_reports_no_process_for_non_project(client, db_session, monkeypatch, tmp_path):
+    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
+
+    oportunidad_id, _ = _seed_non_project_context(db_session, latest_message="Necesito 10 bolsas de cemento")
+
+    process_response = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
+    assert process_response.status_code == 200
+
+    diagnostic_response = client.get(f"/crm/mensajes/acciones/chat/{oportunidad_id}/diagnostico-v2")
+    assert diagnostic_response.status_code == 200
+    body = diagnostic_response.json()
+    assert body["context"]["is_project_opportunity"] is False
+    assert body["process_resolution"]["activation"] is None
+    assert "No hay procesos disponibles" in body["process_resolution"]["error"]
+    assert body["turn_execution"]["response_payload"]["type"] == "no_process"
+    assert body["summary"]["has_execution_record"] is True
+
+
 def test_chat_ai_v2_audit_includes_actions_and_prompts(client, db_session, monkeypatch, tmp_path):
     context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)

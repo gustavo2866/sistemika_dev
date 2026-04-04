@@ -9,7 +9,9 @@ from sqlmodel import Session, select
 import httpx
 
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
-from agente.v2.core.models import DeliveryMode, MaterialRequestState, ProcessTurnCommand, TurnTrigger
+from agente.v2.core.process_registry import ProcessRegistry
+from agente.v2.core.runtime import resolve_chat_agent_mode
+from agente.v2.core.models import DeliveryMode, MaterialRequestState, ProcessTurnCommand, TurnRuntime, TurnTrigger
 from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
 from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text, build_v2_dependencies
 from app.core.router import create_generic_router, flatten_nested_filters
@@ -103,6 +105,88 @@ def _build_v2_request_payload(request_state: MaterialRequestState) -> dict[str, 
         "modelo": "agente-v2",
         "warnings": [],
         "workflow": _build_v2_request_workflow(request_state),
+    }
+
+
+def _build_v2_debug_payload(
+    *,
+    session: Session,
+    oportunidad: CRMOportunidad,
+    message_id: int,
+) -> dict[str, Any]:
+    resolved_mode, mode_source = resolve_chat_agent_mode(session)
+    runtime = TurnRuntime(
+        trigger=TurnTrigger.WEBHOOK,
+        agent_mode=resolved_mode.value,
+        delivery_mode=DeliveryMode.AUTO_SEND,
+    )
+    state_repository = getattr(V2_CONTEXT_LOADER, "_state_repository")
+    agent_state = state_repository.load(oportunidad.id, agent_mode=resolved_mode.value)
+    context = V2_CONTEXT_LOADER.load_for_message(
+        session,
+        message_id,
+        agent_state=agent_state,
+        runtime=runtime,
+    )
+    registry = ProcessRegistry([V2_AGENT])
+
+    activation = None
+    resolution_error = None
+    try:
+        _, activation_decision = registry.resolve(context)
+        activation = activation_decision.to_dict()
+    except ValueError as exc:
+        resolution_error = str(exc)
+
+    latest_inbound_message = session.get(CRMMensaje, message_id)
+    latest_outbound_message = None
+    if agent_state.last_outbound_message_id:
+        latest_outbound_message = session.get(CRMMensaje, agent_state.last_outbound_message_id)
+
+    execution_record = state_repository.get_turn_execution(oportunidad.id, message_id)
+    request_state = V2_CONTEXT_LOADER.load_request_state(oportunidad.id)
+    message_agent_meta = (
+        dict((latest_inbound_message.metadata_json or {}).get("agent_v2") or {})
+        if latest_inbound_message is not None
+        else None
+    )
+
+    return {
+        "oportunidad_id": oportunidad.id,
+        "message_id": message_id,
+        "agent_mode": resolved_mode.value,
+        "agent_mode_source": mode_source,
+        "context": {
+            "opportunity_kind": context.definitions.get("opportunity_kind"),
+            "is_project_opportunity": context.conversation.is_project_opportunity,
+            "recent_messages": [message.to_prompt_dict() for message in context.recent_messages],
+            "active_process_state": context.active_process_state,
+        },
+        "process_resolution": {
+            "activation": activation,
+            "error": resolution_error,
+        },
+        "conversation_state": agent_state.to_state_dict(),
+        "request_state": request_state.to_state_dict() if request_state else None,
+        "turn_execution": execution_record,
+        "message_agent_metadata": message_agent_meta,
+        "latest_inbound_message": filtrar_respuesta(latest_inbound_message) if latest_inbound_message else None,
+        "latest_outbound_message": filtrar_respuesta(latest_outbound_message) if latest_outbound_message else None,
+        "summary": {
+            "last_result_type": (
+                execution_record.get("response_payload", {}).get("type")
+                if isinstance(execution_record, dict)
+                else None
+            ),
+            "delivery_status": (
+                execution_record.get("delivery", {}).get("status")
+                if isinstance(execution_record, dict)
+                else None
+            ),
+            "has_execution_record": execution_record is not None,
+            "has_request_state": request_state is not None,
+            "has_outbound_message": latest_outbound_message is not None,
+        },
     }
 
 
@@ -333,6 +417,24 @@ def obtener_solicitud_chat_ia_v2(
         raise HTTPException(status_code=404, detail="No hay solicitud v2 para la oportunidad")
 
     return _build_v2_request_payload(request_state)
+
+
+@router.get("/acciones/chat/{oportunidad_id}/diagnostico-v2")
+def obtener_diagnostico_chat_ia_v2(
+    oportunidad_id: int,
+    message_id: int | None = None,
+    session: Session = Depends(get_session),
+):
+    oportunidad = session.get(CRMOportunidad, oportunidad_id)
+    if not oportunidad:
+        raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
+
+    resolved_message_id = int(message_id) if message_id else V2_CONTEXT_LOADER.resolve_latest_message_id(session, oportunidad_id)
+    return _build_v2_debug_payload(
+        session=session,
+        oportunidad=oportunidad,
+        message_id=resolved_message_id,
+    )
 
 
 @router.get("/acciones/chat/ia-familias/{family_key}")
