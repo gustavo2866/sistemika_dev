@@ -1,17 +1,22 @@
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import and_, func, or_, update
 from sqlmodel import Session, select
 import httpx
 
+from agente.v2.core.orchestrator import AgentTurnOrchestrator
+from agente.v2.core.models import DeliveryMode, MaterialRequestState, ProcessTurnCommand, TurnTrigger
+from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
+from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text, build_v2_dependencies
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
-from app.models import CRMMensaje, CRMCelular, CRMContacto, CRMOportunidad, CRMTipoOperacion
+from app.models import CRMMensaje, CRMCelular, CRMContacto, CRMOportunidad, CRMTipoOperacion, Proyecto
 from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
 from app.services.crm_mensaje_service import crm_mensaje_service
 from app.services.metaw_client import metaw_client
@@ -26,6 +31,79 @@ router = create_generic_router(
 )
 
 logger = logging.getLogger(__name__)
+V2_FAMILIES_PATH: Path | None = None
+
+
+def _reload_v2_dependencies() -> None:
+    global V2_CONTEXT_LOADER, V2_AGENT
+    V2_CONTEXT_LOADER, V2_AGENT = build_v2_dependencies(
+        families_path=V2_FAMILIES_PATH,
+    )
+
+
+_reload_v2_dependencies()
+
+
+def _build_v2_orchestrator() -> AgentTurnOrchestrator:
+    return AgentTurnOrchestrator(
+        context_loader=V2_CONTEXT_LOADER,
+        agent=V2_AGENT,
+    )
+
+
+def _resolve_v2_delivery_mode(payload: dict[str, Any] | None) -> DeliveryMode:
+    if not isinstance(payload, dict):
+        return DeliveryMode.PREVIEW_ONLY
+
+    raw_value = payload.get("delivery_mode")
+    if raw_value is None:
+        return DeliveryMode.PREVIEW_ONLY
+
+    normalized = str(raw_value).strip().lower()
+    try:
+        return DeliveryMode(normalized)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="delivery_mode invalido. Valores permitidos: preview_only, auto_send",
+        ) from exc
+
+
+def _build_v2_request_workflow(request_state: MaterialRequestState) -> dict[str, Any]:
+    active_query_item = request_state.active_query_item()
+    ready_for_confirmation = bool(
+        request_state.items
+        and request_state.estado_solicitud == "ready"
+        and active_query_item is None
+    )
+    return {
+        "mode": "completa_atributos" if active_query_item else ("revision" if ready_for_confirmation else "normal"),
+        "active_query": (
+            {
+                "item_id": active_query_item.item_id,
+                "consulta": active_query_item.consulta,
+                "consulta_atributo": active_query_item.consulta_atributo,
+                "consulta_intentos": active_query_item.consulta_intentos,
+            }
+            if active_query_item
+            else None
+        ),
+        "awaiting_user_decision": "continue_or_close" if ready_for_confirmation else None,
+        "ready_for_confirmation": ready_for_confirmation,
+    }
+
+
+def _build_v2_request_payload(request_state: MaterialRequestState) -> dict[str, Any]:
+    return {
+        "type": "material_request",
+        "request_action": "show",
+        "respuesta": build_request_reply_text(request_state) or None,
+        "analysis": request_state.to_analysis_dict(),
+        "solicitud": request_state.to_state_dict(),
+        "modelo": "agente-v2",
+        "warnings": [],
+        "workflow": _build_v2_request_workflow(request_state),
+    }
 
 
 def _fetch_event_rows_dynamic(session: Session, oportunidad_id: int) -> list[dict[str, Any]]:
@@ -182,6 +260,101 @@ def sugerir_mensaje_llm(
         suggestions = crm_mensaje_service.sugerir_llm(session, mensaje_id, force=force)
         return {"llm_suggestions": suggestions}
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/acciones/chat/{oportunidad_id}/ia-respuesta")
+async def sugerir_respuesta_chat_ia(
+    oportunidad_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        message_id = V2_CONTEXT_LOADER.resolve_latest_message_id(session, oportunidad_id)
+        orchestrator = _build_v2_orchestrator()
+        return await orchestrator.process_turn(
+            session,
+            ProcessTurnCommand(
+                message_id=message_id,
+                trigger=TurnTrigger.MANUAL_BUTTON,
+                delivery_mode=DeliveryMode.PREVIEW_ONLY,
+            ),
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error("Error generando sugerencia IA para chat", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"No se pudo generar la respuesta IA: {str(e)}")
+
+
+@router.post("/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
+async def sugerir_respuesta_chat_ia_v2(
+    oportunidad_id: int,
+    payload: dict = Body(default={}),
+    session: Session = Depends(get_session),
+):
+    try:
+        requested_message_id = payload.get("message_id") if isinstance(payload, dict) else None
+        message_id = int(requested_message_id) if requested_message_id else V2_CONTEXT_LOADER.resolve_latest_message_id(session, oportunidad_id)
+        delivery_mode = _resolve_v2_delivery_mode(payload if isinstance(payload, dict) else None)
+        orchestrator = _build_v2_orchestrator()
+        return await orchestrator.process_turn(
+            session,
+            ProcessTurnCommand(
+                message_id=message_id,
+                trigger=TurnTrigger.MANUAL_BUTTON,
+                delivery_mode=delivery_mode,
+                force_reprocess=bool(payload.get("force_reprocess")) if isinstance(payload, dict) else False,
+                requested_mode=(payload.get("requested_mode") if isinstance(payload, dict) else None),
+                requested_process=(payload.get("requested_process") if isinstance(payload, dict) else None),
+            ),
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error("Error generando sugerencia IA v2 para chat", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"No se pudo generar la respuesta IA v2: {str(e)}")
+
+
+@router.get("/acciones/chat/{oportunidad_id}/solicitud-v2")
+def obtener_solicitud_chat_ia_v2(
+    oportunidad_id: int,
+    session: Session = Depends(get_session),
+):
+    oportunidad = session.get(CRMOportunidad, oportunidad_id)
+    if not oportunidad:
+        raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
+
+    request_state = V2_CONTEXT_LOADER.load_request_state(oportunidad_id)
+    if request_state is None:
+        raise HTTPException(status_code=404, detail="No hay solicitud v2 para la oportunidad")
+
+    return _build_v2_request_payload(request_state)
+
+
+@router.get("/acciones/chat/ia-familias/{family_key}")
+def obtener_familia_material_ia(
+    family_key: str,
+):
+    familia = get_familia_material(family_key, path=V2_FAMILIES_PATH)
+    if not familia:
+        raise HTTPException(status_code=404, detail="Familia no encontrada")
+    return {"family": familia}
+
+
+@router.put("/acciones/chat/ia-familias/{family_key}")
+def guardar_familia_material_ia(
+    family_key: str,
+    payload: dict = Body(...),
+):
+    try:
+        familia, created = save_familia_material(family_key, payload, path=V2_FAMILIES_PATH)
+        _reload_v2_dependencies()
+        return {"family": familia, "created": created}
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 

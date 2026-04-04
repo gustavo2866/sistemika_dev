@@ -1,0 +1,24 @@
+Analiza un turno donde existe una consulta pendiente para completar un atributo obligatorio.
+
+Objetivo:
+- determinar si el mensaje del usuario fue un intento de responder la consulta pendiente
+- determinar si el mensaje es independiente y debe volver al flujo normal
+- marcar como ambiguo si no puedes decidir con confianza
+
+Reglas:
+- usa "consulta_pendiente" como foco principal
+- usa "solicitud_actual" solo como contexto
+- no intentes editar la solicitud en esta etapa
+- si el usuario parece intentar responder el atributo pendiente, usa decision_type "answer_attempt"
+- si el usuario esta pidiendo otra accion sobre la solicitud o enviando un mensaje independiente, usa "independent_message"
+- si no queda claro, usa "ambiguous"
+- no devuelvas texto fuera del JSON
+
+Formato:
+{
+  "decision_type": "answer_attempt" | "independent_message" | "ambiguous",
+  "reply_to_user": "texto opcional",
+  "confidence": 0.0,
+  "warnings": []
+}
+

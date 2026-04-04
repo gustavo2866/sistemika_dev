@@ -19,7 +19,7 @@ Pillow
 pdf2image
 
 # AI/LLM
-openai
+openai>=2.30.0
 
 # Cloud Storage
 google-cloud-storage

@@ -36,6 +36,7 @@ import {
   CRMTipoOperacionEdit,
   CRMTipoOperacionList,
 } from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-operacion";
+import { CRMChatAgentSettingsPanel } from "./CRMChatAgentSettingsPanel";
 
 // Define las opciones disponibles del workspace de configuracion CRM.
 export const CRM_SETUP_ITEMS: SetupItem[] = [
@@ -101,6 +102,12 @@ export const CRM_SETUP_ITEMS: SetupItem[] = [
     listComponent: CRMCelularList,
     createComponent: CRMCelularCreate,
     editComponent: CRMCelularEdit,
+  },
+  {
+    key: "agente-chat",
+    label: "Agente de chat",
+    description: "Configura la modalidad global del agente que procesa mensajes entrantes.",
+    customComponent: CRMChatAgentSettingsPanel,
   },
   {
     key: "monedas",

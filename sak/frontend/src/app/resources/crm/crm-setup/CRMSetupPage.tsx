@@ -99,6 +99,11 @@ const CRMSetupEmbeddedContent = ({
   view: SetupView;
   recordId?: string | null;
 }) => {
+  if (item.customComponent) {
+    const CustomComponent = item.customComponent;
+    return <CustomComponent embedded />;
+  }
+
   if (!item.resource) return null;
 
   const listPath = getSetupViewPath(item, "list");

@@ -35,6 +35,7 @@ from app.routers.propiedad_router import propiedad_router
 from app.routers.propiedades_status_router import propiedades_status_router
 from app.routers.propiedades_log_status_router import propiedades_log_status_router
 from app.routers.setting_router import setting_router
+from app.routers.crm_chat_agent_router import router as crm_chat_agent_router
 from app.routers.articulo_router import articulo_router
 from app.routers.tipo_articulo_router import tipo_articulo_router
 from app.routers.factura_router import factura_router
@@ -168,6 +169,7 @@ app.include_router(propiedad_router)
 app.include_router(propiedades_status_router)
 app.include_router(propiedades_log_status_router)
 app.include_router(setting_router)
+app.include_router(crm_chat_agent_router)
 app.include_router(articulo_router)
 app.include_router(tipo_articulo_router)
 app.include_router(factura_router)

@@ -34,11 +34,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  MaterialAnalysisDialog,
+  useChatAI,
+} from "./agent";
 import type { CRMMensaje } from "../crm-mensajes/model";
 import {
+  compareMensajesChronologically,
   formatMensajeTime,
   getConversationDisplayName,
-  getMensajeTimestamp,
   type CRMChatConversation,
 } from "./model";
 import {
@@ -121,7 +125,7 @@ const mergeMessages = (current: CRMMensaje[], incoming: CRMMensaje[]) => {
   incoming.forEach((item) => {
     if (item.id != null) map.set(Number(item.id), item);
   });
-  return Array.from(map.values()).sort((a, b) => getMensajeTimestamp(a) - getMensajeTimestamp(b));
+  return Array.from(map.values()).sort(compareMensajesChronologically);
 };
 
 type CRMChatShowProps = {
@@ -180,6 +184,14 @@ export const CRMChatShow = ({
     const found = [...messages].reverse().find((msg) => msg.oportunidad_id);
     return found?.oportunidad_id ?? null;
   }, [messages, target.oportunidad_id]);
+
+  const resolveLatestInboundMessageId = useMemo(() => {
+    const latestInbound = [...messages]
+      .reverse()
+      .find((msg) => msg.tipo === "entrada" && msg.id != null);
+    const id = latestInbound?.id;
+    return id != null ? Number(id) : null;
+  }, [messages]);
 
   const { data: oportunidad } = useGetOne(
     "crm/oportunidades",
@@ -242,6 +254,39 @@ export const CRMChatShow = ({
     (oportunidad as any)?.tipo_operacion?.codigo ??
     null;
 
+  const appendSuggestedText = useCallback((suggestedReply: string) => {
+    setDraft((prev) => {
+      const current = prev.trim();
+      return current ? `${prev}\n\n${suggestedReply}` : suggestedReply;
+    });
+
+    requestAnimationFrame(() => {
+      draftRef.current?.focus();
+    });
+  }, []);
+
+  const {
+    iaLoading,
+    iaAction,
+    analysisOpen: iaAnalysisOpen,
+    analysisResult: iaAnalysisResult,
+    generateReply: handleGenerateAIReply,
+    autoReply: handleAutoAIReply,
+    openRequestView: handleOpenRequestView,
+    closeAnalysis: handleAnalysisOpenChange,
+  } = useChatAI({
+    apiUrl: API_URL,
+    oportunidadId: resolveOportunidadId,
+    messageId: resolveLatestInboundMessageId,
+    getAuthHeaders,
+    onTextReply: appendSuggestedText,
+    onAutoReplySent: () => {
+      notify("La IA respondio el mensaje automaticamente.", { type: "success" });
+      void refreshLatest();
+    },
+    onError: (message) => notify(message, { type: "warning" }),
+  });
+
   const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
@@ -250,7 +295,7 @@ export const CRMChatShow = ({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       const data = Array.isArray(payload.data) ? payload.data : [];
-      const normalized = [...data].sort((a, b) => getMensajeTimestamp(a) - getMensajeTimestamp(b));
+      const normalized = [...data].sort(compareMensajesChronologically);
       setMessages(normalized);
       setNextCursor(payload.next_cursor ?? null);
       initialLoadedRef.current = true;
@@ -293,7 +338,7 @@ export const CRMChatShow = ({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       const data = Array.isArray(payload.data) ? payload.data : [];
-      const normalized = [...data].sort((a, b) => getMensajeTimestamp(a) - getMensajeTimestamp(b));
+      const normalized = [...data].sort(compareMensajesChronologically);
       setMessages((prev) => mergeMessages(normalized, prev));
       setNextCursor(payload.next_cursor ?? null);
     } catch (error: any) {
@@ -441,7 +486,7 @@ export const CRMChatShow = ({
     <div
         className={
           embedded
-          ? "flex h-[300px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8]"
+          ? "flex h-[392px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8]"
           : "mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]"
         }
       >
@@ -548,6 +593,19 @@ export const CRMChatShow = ({
         </DialogContent>
       </Dialog>
 
+      <MaterialAnalysisDialog
+        apiUrl={API_URL}
+        getAuthHeaders={getAuthHeaders}
+        open={iaAnalysisOpen}
+        onOpenChange={handleAnalysisOpenChange}
+        onRefresh={() => {
+          void handleOpenRequestView();
+        }}
+        onReply={appendSuggestedText}
+        refreshing={iaLoading}
+        result={iaAnalysisResult}
+      />
+
       <div
         ref={listRef}
         className={embedded ? "flex-1 overflow-y-auto px-2.5 pb-16 pt-3" : "flex-1 overflow-y-auto px-3 pb-28 pt-4"}
@@ -627,6 +685,47 @@ export const CRMChatShow = ({
                 <ImageIcon className={embedded ? "h-3 w-3" : "h-3.5 w-3.5"} />
               </Button>
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => handleGenerateAIReply()}
+              disabled={!resolveOportunidadId || iaLoading}
+              className={
+                embedded
+                  ? "h-5 rounded-full border border-slate-200 px-2 text-[9px] font-medium text-slate-600"
+                  : "h-6 rounded-full border border-slate-200 px-2.5 text-[10px] font-medium text-slate-600 sm:h-7 sm:text-[11px]"
+              }
+            >
+              <Sparkles className={embedded ? "mr-1 h-3 w-3" : "mr-1.5 h-3.5 w-3.5"} />
+              {iaAction === "preview" ? "Generando..." : "IA Respuesta"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void handleOpenRequestView()}
+              disabled={!resolveOportunidadId || iaLoading}
+              className={
+                embedded
+                  ? "h-5 rounded-full border border-slate-200 px-2 text-[9px] font-medium text-slate-600"
+                  : "h-6 rounded-full border border-slate-200 px-2.5 text-[10px] font-medium text-slate-600 sm:h-7 sm:text-[11px]"
+              }
+            >
+              {iaAction === "request" ? "Abriendo..." : "Solicitud"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void handleAutoAIReply()}
+              disabled={!resolveOportunidadId || iaLoading}
+              className={
+                embedded
+                  ? "h-5 rounded-full border border-slate-200 px-2 text-[9px] font-medium text-slate-600"
+                  : "h-6 rounded-full border border-slate-200 px-2.5 text-[10px] font-medium text-slate-600 sm:h-7 sm:text-[11px]"
+              }
+            >
+              <Send className={embedded ? "mr-1 h-3 w-3" : "mr-1.5 h-3.5 w-3.5"} />
+              {iaAction === "auto" ? "Enviando..." : embedded ? "Auto" : "Auto responder"}
+            </Button>
           </div>
           <div className={embedded ? "flex items-end gap-1.5" : "flex items-end gap-2"}>
             <DropdownMenu>
@@ -652,9 +751,9 @@ export const CRMChatShow = ({
                   onSelect={() => setRespuestasOpen(true)}
                   disabled={!canSend}
                   className="flex items-center gap-2"
-                >
+               >
                   <Sparkles className="h-3.5 w-3.5" />
-                  Respueta Aut
+                  Respuestas
                 </DropdownMenuItem>
                 {isOportunidadProspect ? (
                   <DropdownMenuItem
@@ -703,7 +802,7 @@ export const CRMChatShow = ({
                   ? "min-h-[30px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] leading-tight shadow-sm placeholder:text-[11px]"
                   : "min-h-[34px] flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base shadow-sm sm:min-h-[38px] sm:text-xs"
               }
-              disabled={!canSend || sending}
+              disabled={!canSend || sending || iaLoading}
             />
             <Button
               type="button"
@@ -714,7 +813,7 @@ export const CRMChatShow = ({
                   : "h-8 w-8 rounded-full bg-[#e3a78c] text-white shadow-sm hover:bg-[#d99677] sm:h-9 sm:w-9"
               }
               onClick={handleSend}
-              disabled={!canSend || !draft.trim() || sending}
+              disabled={!canSend || !draft.trim() || sending || iaLoading}
             >
               <Send className={embedded ? "h-3.5 w-3.5" : "h-4 w-4"} />
             </Button>

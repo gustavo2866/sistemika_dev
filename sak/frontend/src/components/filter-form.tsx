@@ -46,11 +46,11 @@ import {
 } from "@/components/saved-queries";
 
 export const FilterForm = (inProps: FilterFormProps) => {
-  const { filters: filtersProps, ...rest } = inProps;
+  const { filters: filtersProps, formComponent = StyledForm, ...rest } = inProps;
   const filters = useFilterContext() || filtersProps;
 
   return (
-    <FilterLiveForm formComponent={StyledForm} {...sanitizeRestProps(rest)}>
+    <FilterLiveForm formComponent={formComponent} {...sanitizeRestProps(rest)}>
       <FilterFormBase filters={filters} />
     </FilterLiveForm>
   );
@@ -124,22 +124,29 @@ export type FilterFormBaseProps = Omit<
   debounce?: number | false;
   resource?: string;
   filters?: React.ReactElement<FilterElementProps>[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  formComponent?: React.ComponentType<any>;
 };
+
+const FILTER_FORM_CLASSES =
+  "flex flex-row justify-start items-center gap-x-2 gap-y-2 pointer-events-none flex-wrap sm:gap-x-3 sm:gap-y-3 " +
+  "[&_input]:h-7 [&_input]:px-2 [&_input]:text-[11px] sm:[&_input]:h-9 sm:[&_input]:px-3 sm:[&_input]:text-sm " +
+  "[&_button]:h-7 [&_button]:px-2 [&_button]:text-[11px] sm:[&_button]:h-9 sm:[&_button]:px-3 sm:[&_button]:text-sm " +
+  "[&_[data-slot=form-label]]:text-[11px] sm:[&_[data-slot=form-label]]:text-sm " +
+  "[&_[data-slot=select-trigger]]:h-7 [&_[data-slot=select-trigger]]:px-2 [&_[data-slot=select-trigger]]:text-[11px] sm:[&_[data-slot=select-trigger]]:h-9 sm:[&_[data-slot=select-trigger]]:px-3 sm:[&_[data-slot=select-trigger]]:text-sm " +
+  "[&_[data-slot=select-value]]:text-[11px] sm:[&_[data-slot=select-value]]:text-sm " +
+  "[&_.form-helper-text]:hidden";
+
+/** Versión div para uso embebido dentro de otro <form> */
+export const StyledFilterDiv = (props: React.HTMLAttributes<HTMLDivElement>) => (
+  <div {...props} className={cn(FILTER_FORM_CLASSES, props.className)} />
+);
 
 const StyledForm = (props: React.FormHTMLAttributes<HTMLFormElement>) => {
   return (
     <form
       {...props}
-      className={cn(
-        "flex flex-row justify-start items-center gap-x-2 gap-y-2 pointer-events-none flex-wrap sm:gap-x-3 sm:gap-y-3",
-        "[&_input]:h-7 [&_input]:px-2 [&_input]:text-[11px] sm:[&_input]:h-9 sm:[&_input]:px-3 sm:[&_input]:text-sm",
-        "[&_button]:h-7 [&_button]:px-2 [&_button]:text-[11px] sm:[&_button]:h-9 sm:[&_button]:px-3 sm:[&_button]:text-sm",
-        "[&_[data-slot=form-label]]:text-[11px] sm:[&_[data-slot=form-label]]:text-sm",
-        "[&_[data-slot=select-trigger]]:h-7 [&_[data-slot=select-trigger]]:px-2 [&_[data-slot=select-trigger]]:text-[11px] sm:[&_[data-slot=select-trigger]]:h-9 sm:[&_[data-slot=select-trigger]]:px-3 sm:[&_[data-slot=select-trigger]]:text-sm",
-        "[&_[data-slot=select-value]]:text-[11px] sm:[&_[data-slot=select-value]]:text-sm",
-        "[&_.form-helper-text]:hidden",
-        props.className,
-      )}
+      className={cn(FILTER_FORM_CLASSES, props.className)}
     />
   );
 };

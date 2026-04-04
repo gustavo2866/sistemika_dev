@@ -128,9 +128,11 @@ export type {
   SetupListComponent,
   SetupCreateComponent,
   SetupEditComponent,
+  SetupCustomComponent,
   SetupListComponentProps,
   SetupCreateComponentProps,
   SetupEditComponentProps,
+  SetupCustomComponentProps,
 } from "./setup/types";
 
 const baseButtonClasses =

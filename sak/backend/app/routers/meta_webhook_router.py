@@ -72,7 +72,7 @@ async def receive_webhook(
     
     try:
         service = MetaWebhookService(session)
-        result = service.process_webhook(payload)
+        result = await service.process_webhook(payload)
         return WebhookResponse(status="ok", message=result.get("message"))
     
     except HTTPException:

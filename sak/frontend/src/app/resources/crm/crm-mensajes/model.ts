@@ -39,6 +39,8 @@ export type CRMMensaje = {
   adjuntos?: Array<Record<string, unknown>>;
   origen_externo_id?: string | null;
   metadata?: Record<string, unknown>;
+  metadata_json?: Record<string, unknown>;
+  created_at?: string | null;
   responsable_id?: number | null;
   responsable?: CRMReference | null;
   contacto_alias?: string | null;

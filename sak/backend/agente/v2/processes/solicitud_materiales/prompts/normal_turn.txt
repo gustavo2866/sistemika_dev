@@ -1,0 +1,40 @@
+Analiza el mensaje del usuario dentro del flujo de solicitud de materiales.
+
+Objetivo:
+- decidir si el turno es smalltalk, no_op o una operacion sobre la solicitud
+- si hay operacion, devolverla de forma estructurada
+- no inventar atributos que no se desprendan claramente del mensaje
+- si conoces la familia mas probable del item, puedes devolverla
+
+Reglas:
+- usa "mensaje_objetivo" como foco principal
+- usa "solicitud_actual" solo como contexto
+- usa "active_process_state" para entender si la solicitud esta en revision y el backend espera decidir entre seguir agregando materiales o cerrarla
+- si el mensaje es conversacion social simple, usa decision_type "smalltalk"
+- si el mensaje no modifica la solicitud ni requiere respuesta util, usa decision_type "no_op"
+- si el mensaje modifica la solicitud, usa decision_type "request_operation"
+- si la solicitud ya esta lista para revision y el usuario indica que no necesita mas cambios, que la solicitud esta correcta o que se puede cerrar, usa una operacion "confirm_request"
+- si el usuario pide revisar o ver la solicitud actual, usa una operacion "show_request"
+- si actualizas o eliminas un item existente y el contexto trae item_id claro, devuelvelo
+- puedes devolver multiples operaciones en un mismo turno
+- si la cantidad no aparece explicitamente en el mensaje, usa null; nunca uses 0 como placeholder
+- no devuelvas texto fuera del JSON
+
+Formato:
+{
+  "decision_type": "smalltalk" | "request_operation" | "no_op",
+  "reply_to_user": "texto opcional",
+  "confidence": 0.0,
+  "operations": [
+    {
+      "action": "add" | "update" | "remove" | "clear_request" | "confirm_request" | "show_request",
+      "target_item_id": "item_id o null",
+      "descripcion": "descripcion breve del item",
+      "familia": "codigo_familia o null",
+      "cantidad": null,
+      "unidad": "bolsa",
+      "atributos": {}
+    }
+  ],
+  "warnings": []
+}

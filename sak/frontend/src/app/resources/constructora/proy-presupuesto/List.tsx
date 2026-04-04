@@ -1,22 +1,39 @@
 "use client";
 
+import { useRecordContext } from "ra-core";
+
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { FilterButton } from "@/components/filter-form";
+import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import {
   DateListColumn,
   FormOrderListRowActions,
   ListColumn,
-  ListMoney,
   ListPaginator,
   ListText,
   ResponsiveDataTable,
   buildListFilters,
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_XL } from "@/components/list";
+import { NumberField } from "@/components/number-field";
 import { ReferenceField } from "@/components/reference-field";
 
-const filters = buildListFilters(
+const PresupuestoMillionsField = ({ source }: { source: string }) => {
+  const record = useRecordContext<Record<string, unknown>>();
+  const rawValue = Number(record?.[source] ?? 0);
+  const valueInMillions = Number.isFinite(rawValue) ? rawValue / 1_000_000 : 0;
+
+  return (
+    <NumberField
+      source={source}
+      record={{ [source]: valueInMillions }}
+      options={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
+      className="whitespace-nowrap text-right tabular-nums"
+    />
+  );
+};
+
+export const PROY_PRESUPUESTO_LIST_FILTERS = buildListFilters(
   [
     {
       type: "text",
@@ -54,12 +71,28 @@ const filters = buildListFilters(
   { keyPrefix: "proy-presupuestos" },
 );
 
+export const PROY_PRESUPUESTO_EMBEDDED_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar",
+        alwaysOn: true,
+        className: "w-[140px] sm:w-[180px]",
+      },
+    },
+  ],
+  { keyPrefix: "proy-presupuestos-embedded" },
+);
+
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
     <FilterButton
-      filters={filters}
+      filters={PROY_PRESUPUESTO_LIST_FILTERS}
       size="sm"
       buttonClassName={actionButtonClass}
     />
@@ -68,27 +101,68 @@ const ListActions = () => (
   </div>
 );
 
-export const ProyPresupuestoList = () => (
-  <List
-    title="Presupuestos de proyecto"
-    filters={filters}
-    actions={<ListActions />}
-    debounce={300}
-    perPage={25}
-    pagination={<ListPaginator />}
-    sort={{ field: "fecha", order: "DESC" }}
-    containerClassName={LIST_CONTAINER_XL}
-  >
-    <ProyPresupuestoListBody />
-  </List>
-);
+type ProyPresupuestoListProps = {
+  embedded?: boolean;
+  filterDefaultValues?: Record<string, unknown>;
+  createTo?: string;
+  storeKey?: string;
+};
+
+export const ProyPresupuestoList = ({
+  embedded = false,
+  filterDefaultValues,
+  createTo,
+  storeKey,
+}: ProyPresupuestoListProps = {}) => {
+  const isEmbedded = embedded;
+
+  const embeddedActions = isEmbedded ? (
+    <div className="flex items-center gap-2">
+      <FilterButton
+        filters={PROY_PRESUPUESTO_EMBEDDED_FILTERS}
+        size="sm"
+        buttonClassName={actionButtonClass}
+      />
+      <CreateButton
+        to={createTo}
+        className={actionButtonClass}
+        label="Agregar"
+      />
+      <ExportButton className={actionButtonClass} label="Exportar" />
+    </div>
+  ) : undefined;
+
+  return (
+    <List
+      resource="proy-presupuestos"
+      title={isEmbedded ? undefined : "Presupuestos de proyecto"}
+      filters={isEmbedded ? PROY_PRESUPUESTO_EMBEDDED_FILTERS : PROY_PRESUPUESTO_LIST_FILTERS}
+      actions={isEmbedded ? embeddedActions : <ListActions />}
+      debounce={300}
+      perPage={25}
+      pagination={<ListPaginator />}
+      sort={{ field: "fecha", order: "DESC" }}
+      containerClassName={isEmbedded ? "w-full min-w-0" : LIST_CONTAINER_XL}
+      filterDefaultValues={filterDefaultValues}
+      disableSyncWithLocation={isEmbedded}
+      storeKey={storeKey}
+      showBreadcrumb={!isEmbedded}
+      showHeader={!isEmbedded}
+      filterFormComponent={isEmbedded ? StyledFilterDiv : undefined}
+    >
+      <ProyPresupuestoListBody showProjectColumn={!isEmbedded} />
+    </List>
+  );
+};
 
 type ProyPresupuestoListBodyProps = {
   compact?: boolean;
+  showProjectColumn?: boolean;
 };
 
 export const ProyPresupuestoListBody = ({
   compact = false,
+  showProjectColumn = true,
 }: ProyPresupuestoListBodyProps) => (
   <ResponsiveDataTable
     rowClick="edit"
@@ -98,30 +172,32 @@ export const ProyPresupuestoListBody = ({
       primaryField: "fecha",
       secondaryFields: ["proyecto_id", "importe", "materiales", "horas"],
     }}
-    className="text-[10px] [&_th]:text-[10px] [&_td]:text-[10px] xl:text-[11px] xl:[&_th]:text-[11px] xl:[&_td]:text-[11px]"
+    className="text-[9px] [&_th]:text-[9px] [&_td]:text-[9px] xl:text-[10px] xl:[&_th]:text-[10px] xl:[&_td]:text-[10px]"
   >
-    <ListColumn source="proyecto_id" label="Proyecto" className="w-[160px] xl:w-[180px]">
-      <ReferenceField source="proyecto_id" reference="proyectos" link={false}>
-        <ListText source="nombre" className="whitespace-normal break-words max-w-[150px] xl:max-w-[180px]" />
-      </ReferenceField>
+    {showProjectColumn ? (
+      <ListColumn source="proyecto_id" label="Proyecto" className="w-[160px] xl:w-[180px]">
+        <ReferenceField source="proyecto_id" reference="proyectos" link={false}>
+          <ListText source="nombre" className="whitespace-normal break-words max-w-[150px] xl:max-w-[180px]" />
+        </ReferenceField>
+      </ListColumn>
+    ) : null}
+    <DateListColumn source="fecha" label="Fecha" className="w-[68px] xl:w-[76px]" />
+    <ListColumn source="importe" label="Ingresos" className="w-[64px] xl:w-[70px] text-right">
+      <PresupuestoMillionsField source="importe" />
     </ListColumn>
-    <DateListColumn source="fecha" label="Fecha" className="w-[92px] xl:w-[110px]" />
-    <ListColumn source="mo_propia" label="MO prop." className="w-[102px] xl:w-[110px] text-right">
-      <ListMoney source="mo_propia" showCurrency={false} className="whitespace-nowrap" />
+    <ListColumn source="mo_propia" label="MO prop." className="w-[64px] xl:w-[70px] text-right">
+      <PresupuestoMillionsField source="mo_propia" />
     </ListColumn>
-    <ListColumn source="mo_terceros" label="MO terc." className="w-[102px] xl:w-[110px] text-right">
-      <ListMoney source="mo_terceros" showCurrency={false} className="whitespace-nowrap" />
+    <ListColumn source="mo_terceros" label="MO terc." className="w-[64px] xl:w-[70px] text-right">
+      <PresupuestoMillionsField source="mo_terceros" />
     </ListColumn>
-    <ListColumn source="materiales" label="Materiales" className="w-[102px] xl:w-[110px] text-right">
-      <ListMoney source="materiales" showCurrency={false} className="whitespace-nowrap" />
+    <ListColumn source="materiales" label="Materiales" className="w-[64px] xl:w-[70px] text-right">
+      <PresupuestoMillionsField source="materiales" />
     </ListColumn>
-    <ListColumn source="importe" label="Importe" className="w-[102px] xl:w-[110px] text-right">
-      <ListMoney source="importe" showCurrency={false} className="whitespace-nowrap" />
-    </ListColumn>
-    <ListColumn source="horas" label="Horas" className="w-[76px] xl:w-[90px] text-right">
+    <ListColumn source="horas" label="Horas" className="w-[58px] xl:w-[66px] text-right">
       <ListText source="horas" className="whitespace-nowrap text-right tabular-nums" />
     </ListColumn>
-    <ListColumn source="metros" label="Metros" className="w-[76px] xl:w-[90px] text-right">
+    <ListColumn source="metros" label="Metros" className="w-[58px] xl:w-[66px] text-right">
       <ListText source="metros" className="whitespace-nowrap text-right tabular-nums" />
     </ListColumn>
     <ListColumn label="Acciones" className="w-[48px] xl:w-[60px]">

@@ -1,7 +1,9 @@
 "use client";
+import { useRecordContext } from "ra-core";
 import { CreateButton } from "@/components/create-button";
+import { DateField } from "@/components/date-field";
 import { ExportButton } from "@/components/export-button";
-import { FilterButton } from "@/components/filter-form";
+import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import {
   FormOrderBulkActionsToolbar,
   FormOrderListRowActions,
@@ -18,6 +20,7 @@ import {
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_STANDARD } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
 import { FormConfirmar } from "./form_confirmar";
@@ -25,6 +28,46 @@ import { ORDER_STATUS_BADGES } from "./model";
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getReturnToFromLocation } from "@/lib/oportunidad-context";
+
+const getUserInitials = (name?: string | null) =>
+  String(name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
+
+const OrderStatusWithDate = () => (
+  <div className="flex flex-col items-start gap-0 leading-none">
+    <ListEstado source="order_status.nombre" statusClasses={ORDER_STATUS_BADGES} />
+    <DateField
+      source="created_at"
+      className="hidden text-[7px] leading-none text-muted-foreground sm:block xl:text-[8px]"
+    />
+  </div>
+);
+
+const SolicitanteCell = () => {
+  const record = useRecordContext<{
+    nombre?: string | null;
+    avatar?: string | null;
+    url_foto?: string | null;
+  }>();
+  const name = record?.nombre ?? "";
+  const avatarUrl = record?.avatar ?? record?.url_foto ?? "";
+
+  return (
+    <div className="flex items-center justify-center">
+      <Avatar className="size-4 border border-slate-200">
+        {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
+        <AvatarFallback className="bg-slate-100 text-[7px] font-semibold text-slate-600">
+          {getUserInitials(name)}
+        </AvatarFallback>
+      </Avatar>
+    </div>
+  );
+};
 
 // === Filtros ===
 const LIST_FILTERS = buildListFilters(
@@ -139,6 +182,82 @@ const OrderListTitle = ({ onBack }: { onBack: () => void }) => (
   </>
 );
 
+const EMBEDDED_LIST_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[160px]",
+      },
+    },
+    {
+      type: "text",
+      props: {
+        source: "titulo",
+        label: "Titulo",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "solicitante_id",
+        reference: "users",
+        label: "Solicitante",
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "tipo_solicitud_id",
+        reference: "tipos-solicitud",
+        label: "Tipo solicitud",
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "proveedor_id",
+        reference: "proveedores",
+        label: "Proveedor",
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "order_status_id",
+        reference: "po-order-status",
+        label: "Estado",
+        sort: { field: "orden", order: "ASC" },
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "po-orders-embedded" },
+);
+
 // Acciones de toolbar del listado de ordenes.
 const AccionesListaOrdenes = () => (
   <div className="flex items-center gap-2">
@@ -152,12 +271,21 @@ const AccionesListaOrdenes = () => (
   </div>
 );
 
+type PoOrderListProps = {
+  embedded?: boolean;
+  filterDefaultValues?: Record<string, unknown>;
+  createTo?: string;
+  storeKey?: string;
+};
+
 // === Listado ===
 // Listado principal de ordenes de compra.
-export const PoOrderList = () => <ListaOrdenes />;
-
-// Contenedor con defaults y configuracion del listado.
-const ListaOrdenes = () => {
+export const PoOrderList = ({
+  embedded = false,
+  filterDefaultValues,
+  createTo,
+  storeKey,
+}: PoOrderListProps = {}) => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "solicitante_id",
   });
@@ -177,19 +305,47 @@ const ListaOrdenes = () => {
     navigate("/po-orders");
   };
 
+  const resolvedFilterDefaults = embedded ? filterDefaultValues : defaultFilters;
+  const resolvedStoreKey = embedded ? storeKey : undefined;
+  const embeddedActions = embedded ? (
+    <div className="flex items-center gap-2">
+      <FilterButton
+        filters={EMBEDDED_LIST_FILTERS}
+        size="sm"
+        buttonClassName={ACTION_BUTTON_CLASS}
+      />
+      <CreateButton
+        to={createTo}
+        className={ACTION_BUTTON_CLASS}
+        label="Agregar"
+      />
+      <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
+    </div>
+  ) : undefined;
+
   return (
     <List
-      title={<OrderListTitle onBack={handleBack} />}
-      filters={LIST_FILTERS}
-      actions={<AccionesListaOrdenes />}
+      resource="po-orders"
+      title={embedded ? undefined : <OrderListTitle onBack={handleBack} />}
+      filters={embedded ? EMBEDDED_LIST_FILTERS : LIST_FILTERS}
+      actions={embedded ? embeddedActions : <AccionesListaOrdenes />}
       debounce={300}
       perPage={10}
-      containerClassName={LIST_CONTAINER_STANDARD}
+      containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_STANDARD}
       pagination={<ListPaginator />}
       sort={{ field: "id", order: "DESC" }}
-      filterDefaultValues={defaultFilters}
+      filterDefaultValues={resolvedFilterDefaults}
+      disableSyncWithLocation={embedded}
+      storeKey={resolvedStoreKey}
+      showBreadcrumb={!embedded}
+      showHeader={!embedded}
+      filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
-      <PoOrderListBody identityId={identityId} />
+      <PoOrderListBody
+        identityId={embedded ? undefined : identityId}
+        compact={embedded}
+        showBulkActions={!embedded}
+      />
     </List>
   );
 };
@@ -224,18 +380,13 @@ export const PoOrderListBody = ({
         ],
         detailFields: [],
       }}
-      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+      className="text-[9px] [&_th]:text-[9px] [&_td]:text-[9px] xl:text-[10px] xl:[&_th]:text-[10px] xl:[&_td]:text-[10px]"
     >
       <ListColumn source="id" label="ID" className="w-[45px] text-center">
         <ListID source="id" widthClass="w-[45px]" className="whitespace-normal break-words" />
       </ListColumn>
       <ListColumn source="titulo" label="Titulo" className="w-[120px]">
         <ListText source="titulo" className="whitespace-normal break-words" />
-      </ListColumn>
-      <ListColumn source="solicitante_id" label="Solicitante" className="w-[90px]">
-        <ReferenceField source="solicitante_id" reference="users" link={false}>
-          <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
-        </ReferenceField>
       </ListColumn>
       <ListColumn source="tipo_solicitud_id" label="Tipo solicitud" className="w-[90px]">
         <ReferenceField source="tipo_solicitud_id" reference="tipos-solicitud" link={false}>
@@ -247,13 +398,18 @@ export const PoOrderListBody = ({
           <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
-      <ListColumn source="order_status_id" label="Estado" className="w-[75px]">
-        <ListEstado source="order_status.nombre" statusClasses={ORDER_STATUS_BADGES} />
+      <ListColumn source="order_status_id" label="Estado" className="w-[44px]">
+        <OrderStatusWithDate />
       </ListColumn>
       <ListColumn source="total" label="Importe" className="w-[90px] text-right">
         <ListMoney source="total" showCurrency={false} className="whitespace-nowrap" />
       </ListColumn>
-      <ListColumn label="Acciones" className="w-[60px]">
+      <ListColumn source="solicitante_id" label="Solic" className="w-[36px] text-center">
+        <ReferenceField source="solicitante_id" reference="users" link={false}>
+          <SolicitanteCell />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn label="" className="w-[30px]">
         <FormOrderListRowActions
           className={compact ? "h-4 w-4 sm:h-4 sm:w-4" : undefined}
           extraMenuItems={

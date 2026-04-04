@@ -38,8 +38,6 @@ export const getConversationDisplayName = (mensaje: CRMMensaje) =>
   mensaje.contacto_referencia ??
   `Mensaje #${mensaje.id}`;
 
-const DEFAULT_TIMEZONE_OFFSET = "-03:00";
-
 const parseMensajeDate = (
   value?: string | number | Date | null,
   options?: { assumeUtc?: boolean; assumeOffset?: string }
@@ -125,6 +123,48 @@ const resolveMensajeDate = (mensaje: CRMMensaje) => {
 export const getMensajeTimestamp = (mensaje: CRMMensaje) => {
   const date = resolveMensajeDate(mensaje);
   return date ? date.getTime() : 0;
+};
+
+const getMensajeNumericId = (mensaje: CRMMensaje) => {
+  const rawId = mensaje.id;
+  if (typeof rawId === "number" && Number.isFinite(rawId)) return rawId;
+  const parsed = Number(rawId);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getMensajeMetadata = (mensaje: CRMMensaje): Record<string, unknown> => {
+  const directMetadata = mensaje.metadata;
+  if (directMetadata && typeof directMetadata === "object" && !Array.isArray(directMetadata)) {
+    return directMetadata;
+  }
+
+  const metadataJson = (mensaje as { metadata_json?: unknown }).metadata_json;
+  if (metadataJson && typeof metadataJson === "object" && !Array.isArray(metadataJson)) {
+    return metadataJson as Record<string, unknown>;
+  }
+
+  return {};
+};
+
+const getSourceMessageId = (mensaje: CRMMensaje) => {
+  const rawValue = getMensajeMetadata(mensaje).source_message_id;
+  if (typeof rawValue === "number" && Number.isFinite(rawValue)) return rawValue;
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const compareMensajesChronologically = (a: CRMMensaje, b: CRMMensaje) => {
+  const aSourceMessageId = getSourceMessageId(a);
+  const bSourceMessageId = getSourceMessageId(b);
+  const aId = getMensajeNumericId(a);
+  const bId = getMensajeNumericId(b);
+
+  if (aSourceMessageId === bId) return 1;
+  if (bSourceMessageId === aId) return -1;
+
+  const timeDiff = getMensajeTimestamp(a) - getMensajeTimestamp(b);
+  if (timeDiff !== 0) return timeDiff;
+  return aId - bId;
 };
 
 export const formatMensajeTime = (mensaje: CRMMensaje) => {

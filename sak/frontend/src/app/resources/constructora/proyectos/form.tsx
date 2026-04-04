@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ListBase,
@@ -15,17 +15,17 @@ import { Plus } from "lucide-react";
 
 import { CRMChatShow } from "@/app/resources/crm/crm-chat";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
-import { ProyPresupuestoListBody } from "@/app/resources/constructora/proy-presupuesto/List";
-import { PoOrderListBody } from "@/app/resources/po/po-orders/List";
+import { ProyectoAvanceList } from "@/app/resources/constructora/proyecto-avance";
+import { ProyPresupuestoList } from "@/app/resources/constructora/proy-presupuesto/List";
+import { PoOrderList } from "@/app/resources/po/po-orders/List";
+import { CreateButton } from "@/components/create-button";
 import { appendFilterParam, buildOportunidadFilter } from "@/lib/oportunidad-context";
 import { cn } from "@/lib/utils";
 import { SimpleForm } from "@/components/simple-form";
 import { NumberField } from "@/components/number-field";
 import {
-  DetailFieldCell,
   FormDate,
   FormErrorSummary,
-  FORM_FIELD_READONLY_CLASS,
   FormOrderToolbar,
   FormNumber,
   FormSelect,
@@ -33,17 +33,14 @@ import {
   FormTextarea,
   FormValue,
   SectionBaseTemplate,
-  SectionDetailColumn,
-  SectionDetailFieldsProps,
-  SectionDetailTemplate2,
 } from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   PROYECTO_DEFAULTS,
   PROYECTO_VALIDATIONS,
   computeProyectoPresupuestoTotal,
-  getProyectoAvanceDefaults,
   getProyectoHorasTotales,
   getProyectoUltimoAvance,
   proyectoSchema,
@@ -63,6 +60,158 @@ const resolveNumericId = (value: unknown) => {
     ? normalizedValue
     : undefined;
 };
+
+const DESKTOP_LAYOUT_BREAKPOINT = 1024;
+
+type ProyectoDesktopSectionId =
+  | "presupuesto"
+  | "certificados"
+  | "ordenes"
+  | "chat"
+  | "eventos";
+
+type ProyectoSectionVariant = "stacked" | "panel";
+
+const PROYECTO_DESKTOP_SECTIONS: Array<{
+  id: ProyectoDesktopSectionId;
+  label: string;
+}> = [
+  { id: "presupuesto", label: "Presupuesto" },
+  { id: "certificados", label: "Certificados" },
+  { id: "ordenes", label: "Ordenes" },
+  { id: "chat", label: "Chat" },
+  { id: "eventos", label: "Eventos" },
+];
+
+const useProyectoDesktopLayout = () => {
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth >= DESKTOP_LAYOUT_BREAKPOINT;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const query = `(min-width: ${DESKTOP_LAYOUT_BREAKPOINT}px)`;
+    const mediaQuery = window.matchMedia(query);
+    const updateLayout = () => setIsDesktop(mediaQuery.matches);
+
+    updateLayout();
+    mediaQuery.addEventListener("change", updateLayout);
+    return () => mediaQuery.removeEventListener("change", updateLayout);
+  }, []);
+
+  return isDesktop;
+};
+
+const ProyectoDesktopPanel = ({
+  title,
+  description,
+  actions,
+  toolbar,
+  children,
+}: {
+  title?: string;
+  description?: string;
+  actions?: ReactNode;
+  toolbar?: ReactNode;
+  children: ReactNode;
+}) => (
+  <section className="flex min-h-[28rem] flex-col">
+    {title || description || actions || toolbar ? (
+      <div className="border-b border-border/50 px-4 py-3 xl:px-5">
+        {title || description || actions ? (
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0">
+              {title ? (
+                <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
+              ) : null}
+              {description ? (
+                <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">{description}</p>
+              ) : null}
+            </div>
+            {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          </div>
+        ) : null}
+        {toolbar ? <div className={cn("flex min-w-0", (title || description || actions) && "mt-2")}>{toolbar}</div> : null}
+      </div>
+    ) : null}
+    <div className="min-w-0 overflow-x-auto px-4 py-4 xl:px-6 xl:py-5">{children}</div>
+  </section>
+);
+
+const ProyectoDesktopEmptyState = ({ message }: { message: string }) => (
+  <div className="rounded-2xl border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
+    {message}
+  </div>
+);
+
+const ProyectoDesktopPager = ({
+  listTo,
+  showListLink = true,
+}: {
+  listTo: string;
+  showListLink?: boolean;
+}) => {
+  const { page, perPage, total, setPage } = useListContext();
+  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
+  const totalPages =
+    resolvedTotal != null && perPage > 0 ? Math.max(1, Math.ceil(resolvedTotal / perPage)) : 1;
+  const canPrev = page > 1;
+  const canNext = resolvedTotal != null ? page < totalPages : false;
+
+  return (
+    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="px-1 hover:text-foreground disabled:opacity-40"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (canPrev) setPage(page - 1);
+          }}
+          disabled={!canPrev}
+          aria-label="Pagina anterior"
+        >
+          &lt;&lt;
+        </button>
+        <span>
+          pag {page}/{totalPages}
+        </span>
+        <button
+          type="button"
+          className="px-1 hover:text-foreground disabled:opacity-40"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (canNext) setPage(page + 1);
+          }}
+          disabled={!canNext}
+          aria-label="Pagina siguiente"
+        >
+          &gt;&gt;
+        </button>
+      </div>
+      {showListLink ? (
+        <Link
+          to={listTo}
+          className="font-medium text-primary hover:underline"
+          onClick={(event) => event.stopPropagation()}
+        >
+          Abrir listado
+        </Link>
+      ) : null}
+    </div>
+  );
+};
+
+const ProyectoPresupuestoFooter = ({
+  listTo,
+  showListLink = true,
+}: {
+  listTo: string;
+  showListLink?: boolean;
+}) => (
+  <ProyectoDesktopPager listTo={listTo} showListLink={showListLink} />
+);
 
 const ProyectoOportunidadField = () => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
@@ -86,29 +235,39 @@ const ProyectoOportunidadField = () => {
   );
 };
 
-const ProyectoChatSection = () => {
+const ProyectoChatSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
   const oportunidadId = resolveNumericId(record?.oportunidad_id);
+
+  const content = oportunidadId ? (
+    <CRMChatShow forcedId={`op-${oportunidadId}`} embedded />
+  ) : (
+    <ProyectoDesktopEmptyState message="El chat estara disponible despues de guardar el proyecto y generar la oportunidad." />
+  );
+
+  if (variant === "panel") {
+    return <ProyectoDesktopPanel>{content}</ProyectoDesktopPanel>;
+  }
 
   return (
     <SectionBaseTemplate
       title="Chat"
       defaultOpen={false}
       persistKey={`constructora-proyectos-chat-${record?.id ?? "nuevo"}`}
-      main={
-        oportunidadId ? (
-          <CRMChatShow forcedId={`op-${oportunidadId}`} embedded />
-        ) : (
-          <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-            El chat estara disponible despues de guardar el proyecto y generar la oportunidad.
-          </div>
-        )
-      }
+      main={content}
     />
   );
 };
 
-const ProyectoEventosSection = () => {
+const ProyectoEventosSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
   const oportunidadId = resolveNumericId(record?.oportunidad_id);
   const location = useLocation();
@@ -150,7 +309,19 @@ const ProyectoEventosSection = () => {
     return `${basePath}?${params.toString()}`;
   }, [oportunidadData, oportunidadId, returnTo]);
 
-  if (!oportunidadId) return null;
+  if (!oportunidadId) {
+    if (variant === "panel") {
+      return (
+        <ProyectoDesktopPanel
+          title="Eventos"
+          description="Agenda comercial y operativa asociada a la oportunidad del proyecto."
+        >
+          <ProyectoDesktopEmptyState message="Los eventos estaran disponibles despues de guardar el proyecto y generar la oportunidad." />
+        </ProyectoDesktopPanel>
+      );
+    }
+    return null;
+  }
 
   return (
     <ListBase
@@ -161,45 +332,71 @@ const ProyectoEventosSection = () => {
       disableSyncWithLocation
       storeKey={`crm-eventos-proyecto-${oportunidadId}`}
     >
-      <SectionBaseTemplate
-        title="Eventos"
-        defaultOpen={false}
-        persistKey={`constructora-proyectos-eventos-${oportunidadId}`}
-        headerSummary={(isOpen) =>
-          isOpen ? <MinimalActivosToggleFilter source="solo_pendientes" /> : null
-        }
-        headerSummaryClassName="flex items-center"
-        actions={
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.stopPropagation();
-              navigate(createTo);
-            }}
-            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-          >
-            <Plus className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-            Agregar evento
-          </DropdownMenuItem>
-        }
-        main={
-          <CRMEventoListBody
-            fromChat={false}
-            fromOportunidad
-            oportunidadIdFilter={oportunidadId}
-            showContextHeader={false}
-            compact
-          />
-        }
-      />
+      {variant === "panel" ? (
+        <ProyectoDesktopPanel
+          title="Eventos"
+          description="Agenda comercial y operativa asociada a la oportunidad del proyecto."
+          actions={
+            <CreateButton to={createTo} label="Agregar evento" />
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-start">
+              <MinimalActivosToggleFilter source="solo_pendientes" />
+            </div>
+            <CRMEventoListBody
+              fromChat={false}
+              fromOportunidad
+              oportunidadIdFilter={oportunidadId}
+              showContextHeader={false}
+              compact
+            />
+          </div>
+        </ProyectoDesktopPanel>
+      ) : (
+        <SectionBaseTemplate
+          title="Eventos"
+          defaultOpen={false}
+          persistKey={`constructora-proyectos-eventos-${oportunidadId}`}
+          headerSummary={(isOpen) =>
+            isOpen ? <MinimalActivosToggleFilter source="solo_pendientes" /> : null
+          }
+          headerSummaryClassName="flex items-center"
+          actions={
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.stopPropagation();
+                navigate(createTo);
+              }}
+              className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+            >
+              <Plus className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              Agregar evento
+            </DropdownMenuItem>
+          }
+          main={
+            <CRMEventoListBody
+              fromChat={false}
+              fromOportunidad
+              oportunidadIdFilter={oportunidadId}
+              showContextHeader={false}
+              compact
+            />
+          }
+        />
+      )}
     </ListBase>
   );
 };
 
-const ProyectoOrdenesSection = () => {
+const ProyectoOrdenesSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
   const oportunidadId = resolveNumericId(record?.oportunidad_id);
   const location = useLocation();
-  const navigate = useNavigate();
 
   const createTo = useMemo(() => {
     if (!oportunidadId) return "";
@@ -212,115 +409,118 @@ const ProyectoOrdenesSection = () => {
     return `${basePath}?${params.toString()}`;
   }, [location.pathname, location.search, oportunidadId]);
 
-  const listTo = useMemo(() => {
-    if (!oportunidadId) return "";
-    const basePath = "/po-orders";
-    const params = new URLSearchParams();
-    appendFilterParam(params, buildOportunidadFilter(oportunidadId));
-    params.set("returnTo", `${location.pathname}${location.search}`);
-    return `${basePath}?${params.toString()}`;
-  }, [location.pathname, location.search, oportunidadId]);
-
   const defaultFilters = useMemo(
     () => ({ oportunidad_id: oportunidadId }),
     [oportunidadId],
   );
 
-  if (!oportunidadId) return null;
+  if (!oportunidadId) {
+    if (variant === "panel") {
+      return (
+        <ProyectoDesktopPanel
+          title="Ordenes"
+          description="Ordenes de compra y seguimiento de abastecimiento ligadas al proyecto."
+        >
+          <ProyectoDesktopEmptyState message="Las ordenes estaran disponibles despues de guardar el proyecto y generar la oportunidad." />
+        </ProyectoDesktopPanel>
+      );
+    }
+    return null;
+  }
+
+  const list = (
+    <PoOrderList
+      embedded
+      filterDefaultValues={defaultFilters}
+      createTo={createTo}
+      storeKey={`po-orders-proyecto-${oportunidadId}`}
+    />
+  );
+
+  if (variant === "panel") {
+    return (
+      <ProyectoDesktopPanel>
+        {list}
+      </ProyectoDesktopPanel>
+    );
+  }
 
   return (
-    <ListBase
-      resource="po-orders"
-      perPage={5}
-      sort={{ field: "id", order: "DESC" }}
-      filterDefaultValues={defaultFilters}
-      disableSyncWithLocation
-      storeKey={`po-orders-proyecto-${oportunidadId}`}
-    >
-      <SectionBaseTemplate
-        title="Ordenes"
-        defaultOpen={false}
-        persistKey={`constructora-proyectos-ordenes-${oportunidadId}`}
-        headerSummary={(isOpen) => (isOpen ? <ProyectoOrdenesHeaderSummary /> : null)}
-        headerSummaryClassName="text-[9px] text-muted-foreground"
-        actions={
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.stopPropagation();
-              navigate(createTo);
-            }}
-            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-          >
-            <Plus className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-            Agregar orden
-          </DropdownMenuItem>
-        }
-        main={
-          <div className="flex flex-col gap-2">
-            <PoOrderListBody compact showBulkActions={false} />
-            <ProyectoOrdenesFooter listTo={listTo} />
-          </div>
-        }
-      />
-    </ListBase>
+    <SectionBaseTemplate
+      title="Ordenes"
+      defaultOpen={false}
+      persistKey={`constructora-proyectos-ordenes-${oportunidadId}`}
+      main={list}
+    />
   );
 };
 
-const ProyectoOrdenesHeaderSummary = () => {
-  const { total, isLoading, isFetching } = useListContext();
-  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
-  const label = isLoading || isFetching ? "..." : resolvedTotal ?? "-";
+const ProyectoCertificadosSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
+  const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
+  const proyectoId = resolveNumericId(record?.id);
+  const location = useLocation();
 
-  return <span>Ordenes: {label}</span>;
-};
+  const createTo = useMemo(() => {
+    if (!proyectoId) return "";
+    const params = new URLSearchParams();
+    params.set("proyecto_id", String(proyectoId));
+    params.set("returnTo", `${location.pathname}${location.search}`);
+    return `/proyecto-avance/create?${params.toString()}`;
+  }, [location.pathname, location.search, proyectoId]);
 
-const ProyectoOrdenesFooter = ({ listTo }: { listTo: string }) => {
-  const { page, perPage, total, setPage } = useListContext();
-  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
-  const totalPages =
-    resolvedTotal != null && perPage > 0 ? Math.max(1, Math.ceil(resolvedTotal / perPage)) : 1;
-  const canPrev = page > 1;
-  const canNext = resolvedTotal != null ? page < totalPages : false;
+  if (!proyectoId) {
+    const placeholder = (
+      <ProyectoDesktopEmptyState message="Los certificados estaran disponibles despues de guardar el proyecto." />
+    );
+
+    if (variant === "panel") {
+      return (
+        <ProyectoDesktopPanel
+          title="Certificados"
+          description="Registro historico de avances, horas e importes certificados del proyecto."
+        >
+          {placeholder}
+        </ProyectoDesktopPanel>
+      );
+    }
+
+    return (
+      <SectionBaseTemplate
+        title="Certificados"
+        defaultOpen={false}
+        main={placeholder}
+      />
+    );
+  }
+
+  const list = (
+    <ProyectoAvanceList
+      embedded
+      filterDefaultValues={{ proyecto_id: proyectoId }}
+      createTo={createTo}
+      storeKey={`proyecto-avance-proyecto-${proyectoId}`}
+    />
+  );
+
+  if (variant === "panel") {
+    return (
+      <ProyectoDesktopPanel>
+        {list}
+      </ProyectoDesktopPanel>
+    );
+  }
 
   return (
-    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="px-1 hover:text-foreground disabled:opacity-40"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canPrev) setPage(page - 1);
-          }}
-          disabled={!canPrev}
-          aria-label="Pagina anterior"
-        >
-          &lt;&lt;
-        </button>
-        <span>
-          pag {page}/{totalPages}
-        </span>
-        <button
-          type="button"
-          className="px-1 hover:text-foreground disabled:opacity-40"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canNext) setPage(page + 1);
-          }}
-          disabled={!canNext}
-          aria-label="Pagina siguiente"
-        >
-          &gt;&gt;
-        </button>
-      </div>
-      <Link
-        to={listTo}
-        className="font-medium text-primary hover:underline"
-        onClick={(event) => event.stopPropagation()}
-      >
-        Mostrar todas
-      </Link>
-    </div>
+    <SectionBaseTemplate
+      title="Certificados"
+      defaultOpen={false}
+      persistKey={`constructora-proyectos-certificados-${proyectoId}`}
+      main={list}
+    />
   );
 };
 
@@ -332,61 +532,14 @@ const ProyectoPresupuestoHeaderSummary = () => {
   return <span>Presupuestos: {label}</span>;
 };
 
-const ProyectoPresupuestoFooter = ({ listTo }: { listTo: string }) => {
-  const { page, perPage, total, setPage } = useListContext();
-  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
-  const totalPages =
-    resolvedTotal != null && perPage > 0 ? Math.max(1, Math.ceil(resolvedTotal / perPage)) : 1;
-  const canPrev = page > 1;
-  const canNext = resolvedTotal != null ? page < totalPages : false;
-
-  return (
-    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="px-1 hover:text-foreground disabled:opacity-40"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canPrev) setPage(page - 1);
-          }}
-          disabled={!canPrev}
-          aria-label="Pagina anterior"
-        >
-          &lt;&lt;
-        </button>
-        <span>
-          pag {page}/{totalPages}
-        </span>
-        <button
-          type="button"
-          className="px-1 hover:text-foreground disabled:opacity-40"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canNext) setPage(page + 1);
-          }}
-          disabled={!canNext}
-          aria-label="Pagina siguiente"
-        >
-          &gt;&gt;
-        </button>
-      </div>
-      <Link
-        to={listTo}
-        className="font-medium text-primary hover:underline"
-        onClick={(event) => event.stopPropagation()}
-      >
-        Mostrar todas
-      </Link>
-    </div>
-  );
-};
-
-const ProyectoPresupuestoSection = () => {
+const ProyectoPresupuestoSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
   const proyectoId = resolveNumericId(record?.id);
   const location = useLocation();
-  const navigate = useNavigate();
 
   const createTo = useMemo(() => {
     if (!proyectoId) return "";
@@ -396,63 +549,55 @@ const ProyectoPresupuestoSection = () => {
     return `/proy-presupuestos/create?${params.toString()}`;
   }, [location.pathname, location.search, proyectoId]);
 
-  const listTo = useMemo(() => {
-    if (!proyectoId) return "";
-    const params = new URLSearchParams();
-    appendFilterParam(params, { proyecto_id: proyectoId });
-    params.set("returnTo", `${location.pathname}${location.search}`);
-    return `/proy-presupuestos?${params.toString()}`;
-  }, [location.pathname, location.search, proyectoId]);
-
   if (!proyectoId) {
+    const placeholder = (
+      <ProyectoDesktopEmptyState message="El presupuesto estara disponible despues de guardar el proyecto." />
+    );
+
+    if (variant === "panel") {
+      return (
+        <ProyectoDesktopPanel
+          title="Presupuesto"
+          description="Consulta la evolucion economica y los presupuestos cargados para este proyecto."
+        >
+          {placeholder}
+        </ProyectoDesktopPanel>
+      );
+    }
+
     return (
       <SectionBaseTemplate
         title="Presupuesto"
         defaultOpen={false}
-        main={
-          <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-            El presupuesto estara disponible despues de guardar el proyecto.
-          </div>
-        }
+        main={placeholder}
       />
     );
   }
 
-  return (
-    <ListBase
-      resource="proy-presupuestos"
-      perPage={5}
-      sort={{ field: "fecha", order: "DESC" }}
+  const list = (
+    <ProyPresupuestoList
+      embedded
       filterDefaultValues={{ proyecto_id: proyectoId }}
-      disableSyncWithLocation
+      createTo={createTo}
       storeKey={`proy-presupuestos-proyecto-${proyectoId}`}
-    >
-      <SectionBaseTemplate
-        title="Presupuesto"
-        defaultOpen={false}
-        persistKey={`constructora-proyectos-presupuesto-${proyectoId}`}
-        headerSummary={(isOpen) => (isOpen ? <ProyectoPresupuestoHeaderSummary /> : null)}
-        headerSummaryClassName="text-[9px] text-muted-foreground"
-        actions={
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.stopPropagation();
-              navigate(createTo);
-            }}
-            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-          >
-            <Plus className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-            Agregar presupuesto
-          </DropdownMenuItem>
-        }
-        main={
-          <div className="flex flex-col gap-2">
-            <ProyPresupuestoListBody compact />
-            <ProyectoPresupuestoFooter listTo={listTo} />
-          </div>
-        }
-      />
-    </ListBase>
+    />
+  );
+
+  if (variant === "panel") {
+    return (
+      <ProyectoDesktopPanel>
+        {list}
+      </ProyectoDesktopPanel>
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title="Presupuesto"
+      defaultOpen={false}
+      persistKey={`constructora-proyectos-presupuesto-${proyectoId}`}
+      main={list}
+    />
   );
 };
 
@@ -552,66 +697,6 @@ const ProyectoCabeceraOptionalFields = () => (
   </div>
 );
 
-const ProyectoDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) => (
-  <>
-    <DetailFieldCell label="Fecha" data-focus-field="true">
-      <FormDate
-        source="fecha_registracion"
-        label={false}
-        widthClass="w-full"
-        readOnly={!isActive}
-        className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-      />
-    </DetailFieldCell>
-    <DetailFieldCell label="Horas">
-      <FormNumber
-        source="horas"
-        label={false}
-        widthClass="w-full"
-        step="1"
-        min={0}
-        validate={required()}
-        readOnly={!isActive}
-        className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-      />
-    </DetailFieldCell>
-    <DetailFieldCell label="% Avance">
-      <FormNumber
-        source="avance"
-        label={false}
-        widthClass="w-full"
-        step="0.01"
-        min={0}
-        max={100}
-        validate={required()}
-        readOnly={!isActive}
-        className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-      />
-    </DetailFieldCell>
-    <DetailFieldCell label="Importe">
-      <FormNumber
-        source="importe"
-        label={false}
-        widthClass="w-full"
-        step="0.01"
-        min={0}
-        validate={required()}
-        readOnly={!isActive}
-        className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-      />
-    </DetailFieldCell>
-    <DetailFieldCell label="Comentario">
-      <FormText
-        source="comentario"
-        label={false}
-        widthClass="w-full"
-        readOnly={!isActive}
-        className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-      />
-    </DetailFieldCell>
-  </>
-);
-
 const ResumenProyecto = ({ className }: { className?: string }) => {
   const importes = useWatch({
     name: ["importe_mat", "importe_mo", "terceros", "herramientas", "ingresos", "avances"],
@@ -676,8 +761,8 @@ const ResumenProyecto = ({ className }: { className?: string }) => {
 };
 
 const ProyectoStickyFooter = () => (
-  <div className="sticky bottom-0 z-20 mt-2 border-t border-border/60 bg-background/95 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3">
+  <div className="sticky -bottom-6 z-20 mt-2 border-t border-border/60 bg-background/95 px-1 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+    <div className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-2.5">
       <ResumenProyecto className="min-w-0 sm:flex-nowrap" />
       <FormOrderToolbar
         className="shrink-0 justify-end flex-nowrap"
@@ -687,25 +772,82 @@ const ProyectoStickyFooter = () => (
   </div>
 );
 
+const ProyectoDesktopSectionsLayout = ({
+  activeSection,
+  onSectionChange,
+}: {
+  activeSection: ProyectoDesktopSectionId;
+  onSectionChange: (sectionId: ProyectoDesktopSectionId) => void;
+}) => {
+  const activeConfig =
+    PROYECTO_DESKTOP_SECTIONS.find((section) => section.id === activeSection) ??
+    PROYECTO_DESKTOP_SECTIONS[0];
+
+  const renderActiveSection = () => {
+    switch (activeSection) {
+      case "presupuesto":
+        return <ProyectoPresupuestoSection variant="panel" />;
+      case "certificados":
+        return <ProyectoCertificadosSection variant="panel" />;
+      case "ordenes":
+        return <ProyectoOrdenesSection variant="panel" />;
+      case "chat":
+        return <ProyectoChatSection variant="panel" />;
+      case "eventos":
+        return <ProyectoEventosSection variant="panel" />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="hidden rounded-[28px] border border-border/60 bg-card/90 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)] lg:grid lg:grid-cols-[98px_minmax(0,1fr)]">
+      <aside className="border-r border-border/50 bg-[linear-gradient(180deg,rgba(248,250,252,0.98)_0%,rgba(241,245,249,0.96)_100%)] p-2">
+        <div className="flex flex-col gap-1">
+          {PROYECTO_DESKTOP_SECTIONS.map((section) => {
+            const isActive = section.id === activeSection;
+
+            return (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => onSectionChange(section.id)}
+                className={cn(
+                  "group mr-[-10px] flex min-h-[34px] items-center justify-center rounded-l-lg rounded-r-none border border-r-0 px-2 py-1 text-center transition-all",
+                  isActive
+                    ? "-translate-x-2 border-border/80 bg-background text-foreground shadow-[10px_12px_30px_-24px_rgba(15,23,42,0.45)]"
+                    : "border-transparent bg-muted/50 text-slate-500 hover:bg-muted/80 hover:text-slate-700",
+                )}
+                aria-pressed={isActive}
+              >
+                <span className="whitespace-normal break-words text-[10px] font-semibold leading-[1.05]">
+                  {section.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+      <div className="min-w-0 overflow-x-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(249,250,251,0.96)_100%)]">
+        <div className="sr-only">{activeConfig.label}</div>
+        {renderActiveSection()}
+      </div>
+    </div>
+  );
+};
+
 export const ProyectoForm = () => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
+  const isDesktopLayout = useProyectoDesktopLayout();
+  const [activeSection, setActiveSection] = useState<ProyectoDesktopSectionId>("presupuesto");
   const defaultValues = useMemo(
     () => (record?.id ? undefined : PROYECTO_DEFAULTS),
     [record?.id],
   );
 
-  const detailColumns: SectionDetailColumn[] = [
-    { label: "Fecha", width: "130px", mobileSpan: 1 },
-    { label: "Horas", width: "72px", mobileSpan: 1, className: "text-center" },
-    { label: "% Avance", width: "82px", mobileSpan: 1, className: "text-center" },
-    { label: "Importe", width: "110px", mobileSpan: 1, className: "text-center" },
-    { label: "Comentario", width: "minmax(220px,1fr)", mobileSpan: "full" },
-    { label: "", width: "28px" },
-  ];
-
   return (
     <SimpleForm<ProyectoFormValues>
-      className="w-full max-w-5xl max-h-[calc(100svh-10rem)] overflow-y-auto overscroll-y-contain pr-1 pb-4 sm:max-h-[calc(100svh-9rem)]"
+      className="w-full max-w-6xl max-h-[calc(100svh-10rem)] overflow-y-auto overscroll-y-contain pr-1 pb-4 sm:max-h-[calc(100svh-9rem)]"
       resolver={zodResolver(proyectoSchema) as any}
       toolbar={<ProyectoStickyFooter />}
       defaultValues={defaultValues}
@@ -717,19 +859,20 @@ export const ProyectoForm = () => {
         optional={<ProyectoCabeceraOptionalFields />}
         defaultOpen
       />
-      <ProyectoPresupuestoSection />
-      <SectionDetailTemplate2
-        title="Certificados"
-        detailsSource="avances"
-        mainColumns={detailColumns}
-        mainFields={ProyectoDetalleMainFields}
-        defaults={getProyectoAvanceDefaults}
-        maxHeightClassName="md:max-h-56"
-        defaultOpen={false}
-      />
-      <ProyectoOrdenesSection />
-      <ProyectoChatSection />
-      <ProyectoEventosSection />
+      {isDesktopLayout ? (
+        <ProyectoDesktopSectionsLayout
+          activeSection={activeSection}
+          onSectionChange={setActiveSection}
+        />
+      ) : (
+        <>
+          <ProyectoPresupuestoSection />
+          <ProyectoCertificadosSection />
+          <ProyectoOrdenesSection />
+          <ProyectoChatSection />
+          <ProyectoEventosSection />
+        </>
+      )}
     </SimpleForm>
   );
 };

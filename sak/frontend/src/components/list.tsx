@@ -9,7 +9,7 @@ import {
   useResourceDefinition,
   useTranslate,
 } from "ra-core";
-import { ReactElement, ReactNode } from "react";
+import React, { ReactElement, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FilterContext, FilterElementProps } from "@/hooks/filter-context";
 import { CreateButton } from "@/components/create-button";
@@ -83,6 +83,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     showBreadcrumb = true,
     showHeader = true,
     containerClassName,
+    filterFormComponent,
   } = props;
   const translate = useTranslate();
   const resource = useResourceContext();
@@ -147,6 +148,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             <FilterForm
               className="list-filters pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-3"
               debounce={filterDebounce}
+              formComponent={filterFormComponent}
             />
             {!showHeader && actions ? (
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -179,6 +181,8 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   showBreadcrumb?: boolean;
   showHeader?: boolean;
   containerClassName?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filterFormComponent?: React.ComponentType<any>;
 }
 
 export type FiltersType =

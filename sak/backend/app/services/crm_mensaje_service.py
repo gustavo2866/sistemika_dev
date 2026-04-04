@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, Optional
 import os
 import json
@@ -583,6 +583,20 @@ class CRMMensajeService:
             asunto = oportunidad.descripcion_estado or f"Oportunidad #{oportunidad_id}"
 
         canal = payload.get("canal") or CanalMensaje.WHATSAPP.value
+        metadata_payload = payload.get("metadata")
+        metadata_json = dict(metadata_payload) if isinstance(metadata_payload, dict) else {}
+        fecha_mensaje = datetime.now(UTC)
+        source_message_id = metadata_json.get("source_message_id")
+        if source_message_id is not None:
+            try:
+                source_message = session.get(CRMMensaje, int(source_message_id))
+            except (TypeError, ValueError):
+                source_message = None
+            source_message_time = getattr(source_message, "fecha_mensaje", None)
+            if source_message_time is not None and source_message_time.tzinfo is None:
+                source_message_time = source_message_time.replace(tzinfo=UTC)
+            if source_message_time is not None and source_message_time >= fecha_mensaje:
+                fecha_mensaje = source_message_time + timedelta(milliseconds=1)
 
         mensaje_payload = {
             "tipo": TipoMensaje.SALIDA.value,
@@ -592,11 +606,12 @@ class CRMMensajeService:
             "asunto": asunto,
             "contenido": contenido.strip(),
             "estado": EstadoMensaje.PENDIENTE_ENVIO.value,
-            "fecha_mensaje": datetime.now(UTC),  # Pasar datetime, no string
+            "fecha_mensaje": fecha_mensaje,
             "responsable_id": responsable_id,
             "contacto_referencia": contacto_referencia,
             "celular_id": celular.id,
             "estado_meta": "pending",
+            "metadata_json": metadata_json,
         }
         mensaje = crm_mensaje_crud.create(session, mensaje_payload)
 

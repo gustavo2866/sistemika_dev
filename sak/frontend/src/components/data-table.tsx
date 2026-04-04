@@ -750,6 +750,7 @@ function DataTableHeadCell<
               <Button
                 variant="ghost"
                 size="sm"
+                type="button"
                 className={sortButtonClass}
                 data-field={source}
                 onClick={handleSort}

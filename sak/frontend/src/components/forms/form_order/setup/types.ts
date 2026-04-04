@@ -18,9 +18,14 @@ export type SetupEditComponentProps = {
   redirect?: string | false;
 };
 
+export type SetupCustomComponentProps = {
+  embedded?: boolean;
+};
+
 export type SetupListComponent = ComponentType<SetupListComponentProps>;
 export type SetupCreateComponent = ComponentType<SetupCreateComponentProps>;
 export type SetupEditComponent = ComponentType<SetupEditComponentProps>;
+export type SetupCustomComponent = ComponentType<SetupCustomComponentProps>;
 
 export type SetupItem = {
   key: string;
@@ -30,5 +35,6 @@ export type SetupItem = {
   listComponent?: SetupListComponent;
   createComponent?: SetupCreateComponent;
   editComponent?: SetupEditComponent;
+  customComponent?: SetupCustomComponent;
   externalResource?: string;
 };
