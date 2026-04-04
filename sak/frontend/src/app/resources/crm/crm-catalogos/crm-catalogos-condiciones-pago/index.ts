@@ -1,4 +1,4 @@
-export { CRMCondicionPagoList } from "./List";
+export { CRMCondicionPagoList } from "./list";
 export { CRMCondicionPagoForm } from "./form";
 export { CRMCondicionPagoCreate } from "./create";
 export { CRMCondicionPagoEdit } from "./edit";
