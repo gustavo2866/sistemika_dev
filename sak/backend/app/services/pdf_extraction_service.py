@@ -99,7 +99,8 @@ class PDFExtractionService:
     """Servicio para extraer datos de facturas desde PDFs"""
     
     def __init__(self, openai_api_key: Optional[str] = None):
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        raw_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        self.openai_api_key = raw_api_key.strip() if raw_api_key else None
         
         logger.info(f"Inicializando PDFExtractionService...")
         logger.info(f"OpenAI disponible: {OPENAI_AVAILABLE}")

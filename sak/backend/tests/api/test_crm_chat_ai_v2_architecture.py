@@ -3,6 +3,9 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import openai
+import pytest
+from httpx import Request
 from sqlmodel import select
 
 import app.routers.crm_mensaje_router as crm_mensaje_router_module
@@ -19,6 +22,7 @@ from agente.v2.core.models import (
 )
 from agente.v2.infrastructure.channels.crm_channel_adapter import CRMOutboundChannelAdapter
 from agente.v2.processes.solicitud_materiales.handler import build_v2_dependencies
+from agente.v2.processes.solicitud_materiales.llm_client import OpenAIConversationAgentClientV2
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Proyecto, Setting, User
 from app.models.enums import EstadoOportunidad
 from app.services.meta_webhook_service import MetaWebhookService
@@ -125,6 +129,33 @@ def _persist_ready_request(agent, oportunidad_id: int, ultimo_mensaje_id: int | 
     )
     request_state = agent._request_validator.refresh(request_state)
     return agent._request_store.save(request_state, ultimo_mensaje_id)
+
+
+def test_openai_conversation_agent_client_strips_api_key_from_env(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key\r\n")
+
+    client = OpenAIConversationAgentClientV2()
+
+    assert client.api_key == "sk-test-key"
+
+
+def test_openai_conversation_agent_client_maps_connection_errors(monkeypatch, tmp_path):
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text("Responde en JSON", encoding="utf-8")
+
+    class FakeResponses:
+        @staticmethod
+        def create(**kwargs):
+            raise openai.APIConnectionError(request=Request("POST", "https://api.openai.com/v1/responses"))
+
+    class FakeClient:
+        responses = FakeResponses()
+
+    client = OpenAIConversationAgentClientV2(api_key="sk-test-key")
+    client._client = FakeClient()
+
+    with pytest.raises(ValueError, match="No se pudo conectar a OpenAI"):
+        client._run_json_prompt(prompt_path, {"ping": True})
 
 
 def test_chat_ai_v2_preview_idempotence_returns_cached_result(client, db_session, monkeypatch, tmp_path):

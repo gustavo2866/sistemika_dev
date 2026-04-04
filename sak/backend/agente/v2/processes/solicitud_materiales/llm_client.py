@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import openai
-from openai import APIStatusError, AuthenticationError
+from openai import APIConnectionError, APIStatusError, AuthenticationError
 
 from agente.v2.shared.text_normalization import normalize_text
 from agente.v2.core.models import (
@@ -27,11 +27,18 @@ def _compact_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _sanitize_env_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    sanitized = value.strip()
+    return sanitized or None
+
+
 class OpenAIConversationAgentClientV2:
     """Cliente OpenAI para el agente conversacional v2."""
 
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = _sanitize_env_value(api_key or os.getenv("OPENAI_API_KEY"))
         self.model = model or os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
         self._client: openai.OpenAI | None = None
 
@@ -106,6 +113,8 @@ class OpenAIConversationAgentClientV2:
                 text={"format": {"type": "json_object"}},
                 max_output_tokens=500,
             )
+        except APIConnectionError as exc:
+            raise ValueError("No se pudo conectar a OpenAI") from exc
         except AuthenticationError as exc:
             raise ValueError("OPENAI_API_KEY invalida o vencida") from exc
         except APIStatusError as exc:

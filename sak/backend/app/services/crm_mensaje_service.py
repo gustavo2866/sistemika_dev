@@ -34,7 +34,8 @@ from app.models import (
 class CRMMensajeService:
     """Orquesta las acciones compuestas del flujo de mensajes."""
     def __init__(self):
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        raw_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_api_key = raw_api_key.strip() if raw_api_key else None
 
     def _crear_contacto_si_necesario(
         self, session: Session, data: Dict[str, Any]
