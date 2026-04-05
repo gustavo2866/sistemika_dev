@@ -75,7 +75,7 @@ def guardar_configuracion_chat_agent(
     if mode is None:
         raise HTTPException(
             status_code=400,
-            detail="agent_mode invalido. Valores permitidos: manual, automatic, hybrid",
+            detail="agent_mode invalido. Valores permitidos: manual, automatic",
         )
 
     save_chat_agent_mode(session, mode)

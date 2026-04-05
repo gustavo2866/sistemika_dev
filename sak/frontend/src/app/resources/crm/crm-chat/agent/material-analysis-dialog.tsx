@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, RefreshCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,9 +26,7 @@ type MaterialAnalysisDialogProps = {
   getAuthHeaders: () => HeadersInit;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onRefresh: () => void;
   onReply: (message: string) => void;
-  refreshing?: boolean;
   result: AIReplyResult | null;
 };
 
@@ -38,9 +35,7 @@ export const MaterialAnalysisDialog = ({
   getAuthHeaders,
   open,
   onOpenChange,
-  onRefresh,
   onReply,
-  refreshing = false,
   result,
 }: MaterialAnalysisDialogProps) => {
   const [showJson, setShowJson] = useState(false);
@@ -211,17 +206,6 @@ export const MaterialAnalysisDialog = ({
                 disabled={items.length === 0}
               >
                 Responder
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-6 gap-1 px-2 text-[10px]"
-                onClick={onRefresh}
-                disabled={refreshing}
-              >
-                {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCcw className="h-3 w-3" />}
-                Refresh
               </Button>
               <Button
                 type="button"

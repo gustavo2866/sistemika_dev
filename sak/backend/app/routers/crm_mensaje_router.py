@@ -484,7 +484,6 @@ async def responder_mensaje_whatsapp(
     if not mensaje_original.oportunidad_id and mensaje_original.contacto_id:
         from app.models import CRMOportunidad
         from app.crud.crm_oportunidad_crud import crm_oportunidad_crud
-        from datetime import datetime, UTC
         
         # Obtener responsable del contacto o del mensaje
         responsable_id = None
@@ -539,6 +538,13 @@ async def responder_mensaje_whatsapp(
             detail="No hay celular (canal WhatsApp) activo configurado"
         )
     
+    fecha_salida = datetime.now(UTC)
+    fecha_origen = mensaje_original.fecha_mensaje
+    if fecha_origen is not None and fecha_origen.tzinfo is None:
+        fecha_origen = fecha_origen.replace(tzinfo=UTC)
+    if fecha_origen is not None and fecha_origen >= fecha_salida:
+        fecha_salida = fecha_origen + timedelta(milliseconds=1)
+
     # 6. Crear mensaje de salida en crm_mensajes
     mensaje_salida = CRMMensaje(
         tipo=TipoMensaje.SALIDA.value,
@@ -548,8 +554,10 @@ async def responder_mensaje_whatsapp(
         oportunidad_id=mensaje_original.oportunidad_id,
         estado=EstadoMensaje.PENDIENTE_ENVIO.value,
         contenido=request.texto,
+        fecha_mensaje=fecha_salida,
         celular_id=celular.id,
-        estado_meta="pending"
+        estado_meta="pending",
+        metadata_json={"source_message_id": mensaje_original.id},
     )
     session.add(mensaje_salida)
     session.commit()
@@ -617,8 +625,9 @@ async def responder_mensaje_whatsapp(
         mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
         mensaje_salida.estado_meta = "failed"
         mensaje_salida.metadata_json = {
+            **(mensaje_salida.metadata_json or {}),
             "error": error_msg,
-            "error_code": e.response.status_code
+            "error_code": e.response.status_code,
         }
         session.commit()
         
@@ -635,7 +644,10 @@ async def responder_mensaje_whatsapp(
         
         mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
         mensaje_salida.estado_meta = "failed"
-        mensaje_salida.metadata_json = {"error": error_msg}
+        mensaje_salida.metadata_json = {
+            **(mensaje_salida.metadata_json or {}),
+            "error": error_msg,
+        }
         session.commit()
         
         return ResponderMensajeResponse(

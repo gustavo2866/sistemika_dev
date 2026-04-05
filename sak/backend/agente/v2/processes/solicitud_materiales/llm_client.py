@@ -9,10 +9,10 @@ import openai
 from openai import APIConnectionError, APIStatusError, AuthenticationError
 
 from agente.v2.shared.text_normalization import normalize_text
-from agente.v2.core.models import (
-    ChatTurnContext,
+from agente.v2.processes.solicitud_materiales.models import (
     ItemOperation,
     MaterialItem,
+    MaterialRequestTurnContext,
     NormalTurnDecision,
     PendingTurnDecision,
 )
@@ -21,6 +21,7 @@ from agente.v2.core.models import (
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 NORMAL_TURN_PROMPT_PATH = PROMPTS_DIR / "normal_turn.txt"
 PENDING_ATTRIBUTE_PROMPT_PATH = PROMPTS_DIR / "pending_attribute_turn.txt"
+INDEPENDENT_DURING_PENDING_PROMPT_PATH = PROMPTS_DIR / "independent_during_pending.txt"
 
 
 def _compact_json(value: Any) -> str:
@@ -44,7 +45,7 @@ class OpenAIConversationAgentClientV2:
 
     def interpret_normal_turn(
         self,
-        context: ChatTurnContext,
+        context: MaterialRequestTurnContext,
         prompt_families: list[dict[str, Any]],
     ) -> NormalTurnDecision:
         payload = self._run_json_prompt(
@@ -56,15 +57,43 @@ class OpenAIConversationAgentClientV2:
                 "agent_state": context.agent_state.to_state_dict(),
                 "active_process_state": context.active_process_state,
                 "runtime": context.runtime.to_dict(),
-                "solicitud_actual": context.solicitud_actual.to_analysis_dict() if context.solicitud_actual else None,
+                "solicitud_actual": context.request_state.to_analysis_dict() if context.request_state else None,
                 "familias": prompt_families,
             },
         )
         return self._parse_normal_turn(payload)
 
+    def reply_independent_during_pending(
+        self,
+        context: MaterialRequestTurnContext,
+        pending_item: MaterialItem,
+        pending_attribute: dict[str, Any],
+    ) -> str:
+        """Genera una respuesta para un mensaje fuera de contexto durante una consulta pendiente.
+
+        Responde al mensaje del usuario y retoma la repregunta del atributo pendiente.
+        """
+        payload = self._run_json_prompt(
+            INDEPENDENT_DURING_PENDING_PROMPT_PATH,
+            {
+                "mensaje_objetivo": context.mensaje_objetivo.to_prompt_dict(),
+                "recent_messages": [m.to_prompt_dict() for m in context.recent_messages],
+                "consulta_pendiente": {
+                    "item_id": pending_item.item_id,
+                    "descripcion": pending_item.descripcion,
+                    "familia": pending_item.familia,
+                    "consulta": pending_item.consulta,
+                    "consulta_atributo": pending_item.consulta_atributo,
+                    "atributo": pending_attribute,
+                },
+            },
+        )
+        reply = self._to_optional_str(payload.get("reply_to_user"))
+        return reply or (pending_item.consulta or "")
+
     def classify_pending_turn(
         self,
-        context: ChatTurnContext,
+        context: MaterialRequestTurnContext,
         pending_item: MaterialItem,
         pending_attribute: dict[str, Any],
     ) -> PendingTurnDecision:
@@ -77,7 +106,7 @@ class OpenAIConversationAgentClientV2:
                 "agent_state": context.agent_state.to_state_dict(),
                 "active_process_state": context.active_process_state,
                 "runtime": context.runtime.to_dict(),
-                "solicitud_actual": context.solicitud_actual.to_analysis_dict() if context.solicitud_actual else None,
+                "solicitud_actual": context.request_state.to_analysis_dict() if context.request_state else None,
                 "consulta_pendiente": {
                     "item_id": pending_item.item_id,
                     "descripcion": pending_item.descripcion,

@@ -5,7 +5,7 @@ import pytest
 from sqlmodel import select
 
 import app.routers.crm_mensaje_router as crm_mensaje_router_module
-from agente.v2.core.models import (
+from agente.v2.processes.solicitud_materiales.models import (
     ItemOperation,
     MaterialItem,
     MaterialRequestState,

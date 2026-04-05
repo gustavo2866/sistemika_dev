@@ -17,6 +17,7 @@ from agente.v2.processes.solicitud_materiales.models import (
     MaterialItem,
     MaterialRequestState,
     NormalTurnDecision,
+    PendingTurnDecision,
 )
 from agente.v2.infrastructure.channels.crm_channel_adapter import CRMOutboundChannelAdapter
 from agente.v2.processes.solicitud_materiales.handler import build_v2_dependencies
@@ -696,3 +697,61 @@ def test_chat_ai_v2_channel_adapter_forwards_source_message_id(monkeypatch):
     assert captured_payload["metadata"] == {"source_message_id": 99}
     assert result.outbound_message_id == 321
     assert result.meta_message_id == "wamid.agent.v2.test"
+
+
+def test_independent_message_during_pending_query_does_not_crash(db_session, monkeypatch, tmp_path):
+    """Regression: ProcessHandoff(target=) causaba crash; campo correcto es target_process."""
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    oportunidad_id, message_id = _seed_context(db_session, latest_message="hola como estas?")
+
+    # Solicitud con consulta pendiente (cemento sin tipo)
+    request_state = MaterialRequestState(
+        oportunidad_id=oportunidad_id,
+        items=[
+            MaterialItem(
+                descripcion="cemento",
+                cantidad=10,
+                unidad="bolsa",
+                familia="cementicios",
+                consulta="Que tipo necesitas? 1: portland, 2: albanileria",
+                consulta_atributo="tipo",
+            )
+        ],
+    )
+    agent._request_store.save(request_state, message_id)
+
+    # Estado de conversacion con proceso activo
+    conv_state = state_store.load(oportunidad_id)
+    conv_state.active_process = "solicitud_materiales"
+    state_store.save(conv_state)
+
+    # LLM: el mensaje es independiente de la consulta pendiente (smalltalk)
+    monkeypatch.setattr(
+        agent._llm_client,
+        "classify_pending_turn",
+        lambda context, pending_item, pending_attribute: PendingTurnDecision(
+            decision_type="independent_message",
+        ),
+    )
+    monkeypatch.setattr(
+        agent._llm_client,
+        "interpret_normal_turn",
+        lambda context, prompt_families: NormalTurnDecision(
+            decision_type="smalltalk",
+            reply_to_user="Hola! Todo bien.",
+        ),
+    )
+    monkeypatch.setattr(
+        agent._llm_client,
+        "reply_independent_during_pending",
+        lambda context, pending_item, pending_attribute: "Hola! Todo bien. Dicho esto, necesito que me confirmes: Que tipo necesitas? 1: portland, 2: albanileria",
+    )
+
+    orchestrator = AgentTurnOrchestrator(processes=[agent], state_store=state_store)
+    result = asyncio.run(orchestrator.process_turn(db_session, message_id, "manual_button"))
+
+    assert result["type"] == "material_request"
+    assert result["cached"] is False
+    assert result["process_name"] == "solicitud_materiales"
+    assert "Hola" in result["respuesta"]
+    assert "portland" in result["respuesta"]

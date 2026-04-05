@@ -3,7 +3,7 @@ import json
 import pytest
 
 import app.routers.crm_mensaje_router as crm_mensaje_router_module
-from agente.v2.core.models import (
+from agente.v2.processes.solicitud_materiales.models import (
     ItemOperation,
     MaterialItem,
     MaterialRequestState,
@@ -235,6 +235,66 @@ def test_chat_ai_v2_requires_quantity_for_each_line_even_if_family_is_complete(c
     assert item["consulta_atributo"] == "cantidad"
     assert "Que cantidad necesitas para arena fina?" in body["respuesta"]
     assert body["workflow"]["mode"] == "completa_atributos"
+
+
+def test_request_validator_infers_cement_family_even_with_numeric_description(isolated_v2):
+    agent, _ = isolated_v2
+    request_state = MaterialRequestState(
+        oportunidad_id=1,
+        items=[
+            MaterialItem(
+                descripcion="10 bolsas de cemento",
+                cantidad=10,
+                unidad="bolsa",
+            )
+        ],
+    )
+
+    request_state = agent._request_validator.refresh(request_state)
+    item = request_state.items[0]
+    assert item.familia == "cementicios"
+    assert item.faltantes == ["tipo"]
+    assert item.consulta_atributo == "tipo"
+
+
+def test_chat_ai_v2_canonicalizes_family_aliases_and_keeps_pending_attributes(client, db_session, isolated_v2, monkeypatch):
+    agent, _ = isolated_v2
+    oportunidad_id = _seed_context(db_session, latest_message="necesito 4 barras de hierro del 12 y 10 bolsas de cemento")
+
+    monkeypatch.setattr(
+        agent._llm_client,
+        "interpret_normal_turn",
+        lambda context, prompt_families: NormalTurnDecision(
+            decision_type="request_operation",
+            operations=[
+                ItemOperation(
+                    action="add",
+                    descripcion="4 barras de hierro del 12",
+                    familia="hierro",
+                    cantidad=4,
+                    unidad="barra",
+                    atributos={"calibre": 12},
+                ),
+                ItemOperation(
+                    action="add",
+                    descripcion="10 bolsas de cemento",
+                    familia="cemento",
+                    cantidad=10,
+                    unidad="bolsa",
+                ),
+            ],
+        ),
+    )
+
+    response = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["workflow"]["mode"] == "completa_atributos"
+    assert body["solicitud"]["items"][0]["familia"] == "acero_refuerzo"
+    assert body["solicitud"]["items"][0]["consulta_atributo"] == "diametro_mm"
+    assert body["solicitud"]["items"][1]["familia"] == "cementicios"
+    assert "tipo" in body["solicitud"]["items"][1]["faltantes"]
+    assert "Que diametro en mm necesitas para 4 barras de hierro del 12?" in body["respuesta"]
 
 
 def test_chat_ai_v2_maps_pending_enum_response_by_index(client, db_session, isolated_v2, monkeypatch):
@@ -496,7 +556,7 @@ def test_chat_ai_legacy_endpoint_delegates_to_v2_preview(client, db_session, iso
     body = response.json()
     assert body["type"] == "chat_reply"
     assert body["respuesta"] == "Hola desde v2."
-    assert body["delivery"]["status"] == "preview"
+    assert body["cached"] is False
 
 
 def test_chat_ai_v2_family_endpoint_reads_catalog_from_v2(client, isolated_v2_catalog):

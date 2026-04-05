@@ -5,10 +5,26 @@ from pathlib import Path
 from typing import Any
 
 from agente.v2.shared.text_normalization import normalize_text, normalize_text_without_accents, tokenize_text
-from agente.v2.core.models import FamilyAttributeDefinition, FamilyDefinition
+from agente.v2.processes.solicitud_materiales.models import FamilyAttributeDefinition, FamilyDefinition
 
 
 DEFAULT_FAMILIES_PATH = Path(__file__).resolve().parent / "knowledge" / "familias_materiales.json"
+_NON_DISTINCTIVE_TOKENS = {
+    "de",
+    "del",
+    "la",
+    "las",
+    "el",
+    "los",
+    "un",
+    "una",
+    "unos",
+    "unas",
+    "para",
+    "por",
+    "con",
+    "sin",
+}
 
 
 def _normalize_string_list(value: Any) -> list[str]:
@@ -46,6 +62,15 @@ def _infer_required(attribute_name: str, attribute_type: str | None, default_val
         return bool(explicit_required)
     normalized_name = normalize_text(attribute_name)
     return default_value is None and (attribute_type in {"numero", "enum"} or normalized_name == "unidad")
+
+
+def _distinctive_tokens(value: Any) -> set[str]:
+    tokens = tokenize_text(value)
+    return {
+        token
+        for token in tokens
+        if token not in _NON_DISTINCTIVE_TOKENS and not token.isdigit()
+    }
 
 
 def load_familias_payload(path: Path | None = None) -> dict[str, Any]:
@@ -206,6 +231,7 @@ class FamilyCatalog:
         self._families_path = families_path or DEFAULT_FAMILIES_PATH
         self._families = self._load_families()
         self._family_index = self._build_family_index(self._families)
+        self._family_alias_index = self._build_family_alias_index(self._families)
 
     def _load_payload(self) -> dict[str, Any]:
         if not self._families_path.exists():
@@ -276,17 +302,35 @@ class FamilyCatalog:
                     index[key] = family
         return index
 
+    @staticmethod
+    def _build_family_alias_index(families: list[FamilyDefinition]) -> dict[str, FamilyDefinition]:
+        aliases_by_key: dict[str, list[FamilyDefinition]] = {}
+        for family in families:
+            for raw_tag in family.tags:
+                key = normalize_text_without_accents(raw_tag)
+                if not key:
+                    continue
+                aliases_by_key.setdefault(key, []).append(family)
+
+        alias_index: dict[str, FamilyDefinition] = {}
+        for key, matches in aliases_by_key.items():
+            unique_matches = {match.codigo: match for match in matches}
+            if len(unique_matches) == 1:
+                alias_index[key] = next(iter(unique_matches.values()))
+        return alias_index
+
     def get_family(self, family_key: str | None) -> FamilyDefinition | None:
         key = normalize_text_without_accents(family_key)
         if not key:
             return None
-        return self._family_index.get(key)
+        return self._family_index.get(key) or self._family_alias_index.get(key)
 
     def list_prompt_families(self) -> list[dict[str, Any]]:
         return [family.prompt_dict() for family in self._families if family.estado in {"", "confirmada", "sugerida"}]
 
     def infer_family_from_description(self, description: str | None) -> FamilyDefinition | None:
-        description_tokens = tokenize_text(description)
+        normalized_description = normalize_text_without_accents(description)
+        description_tokens = _distinctive_tokens(description)
         if not description_tokens:
             return None
 
@@ -294,11 +338,18 @@ class FamilyCatalog:
         best_score = 0
         is_tie = False
         for family in self._families:
-            family_tokens = tokenize_text(family.codigo) | tokenize_text(family.nombre)
+            family_tokens = _distinctive_tokens(family.codigo) | _distinctive_tokens(family.nombre)
+            phrase_score = 0
+            for raw_key in (family.codigo, family.nombre, *family.tags):
+                normalized_key = normalize_text_without_accents(raw_key)
+                if not normalized_key:
+                    continue
+                if normalized_key in normalized_description:
+                    phrase_score += 1
             for tag in family.tags:
-                family_tokens |= tokenize_text(tag)
+                family_tokens |= _distinctive_tokens(tag)
 
-            score = len(description_tokens & family_tokens)
+            score = len(description_tokens & family_tokens) + phrase_score
             if score > best_score:
                 best_family = family
                 best_score = score

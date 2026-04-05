@@ -24,7 +24,7 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type AgentMode = "manual" | "automatic" | "hybrid";
+type AgentMode = "manual" | "automatic";
 
 type AgentModeConfigResponse = {
   agent_mode: AgentMode;
@@ -55,11 +55,6 @@ const AGENT_MODE_OPTIONS: Array<{
     value: "automatic",
     label: "Automatico",
     description: "El webhook procesa y envia automaticamente la respuesta del agente.",
-  },
-  {
-    value: "hybrid",
-    label: "Hybrid",
-    description: "El webhook responde automaticamente y la interfaz manual sigue disponible.",
   },
 ];
 
@@ -194,7 +189,7 @@ export const CRMChatAgentSettingsPanel = ({
             </Select>
             <p className="text-sm text-muted-foreground">
               {selectedOption?.description ??
-                "Elige la modalidad global que usara el orquestador del agente."}
+                "Elige si el webhook debe disparar automaticamente el agente."}
             </p>
           </div>
 

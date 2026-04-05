@@ -365,17 +365,34 @@ class ConversationAgentV2:
                 context,
                 context.prompt_families,
             )
-            result = self._process_normal_decision(
+            if normal_decision.decision_type == "request_operation":
+                # Operacion sobre la solicitud (agregar item, cambiar cantidad, etc.)
+                # Se procesa normalmente; el validador retomara las preguntas pendientes.
+                return self._process_normal_decision(
+                    context,
+                    normal_decision,
+                    process_state=process_state,
+                    prompts_used=["pending_attribute_turn", "normal_turn"],
+                )
+            # Smalltalk o no_op: responder el mensaje y retomar la repregunta pendiente
+            reply_to_user = self._llm_client.reply_independent_during_pending(
                 context,
-                normal_decision,
-                process_state=process_state,
-                prompts_used=["pending_attribute_turn", "normal_turn"],
-                handoff=ProcessHandoff(
-                    target="general_dispatch",
-                    reason="mensaje independiente respecto de consulta pendiente",
-                ),
+                active_query_item,
+                pending_attribute=(attribute.prompt_dict() if attribute else {}),
             )
-            return result
+            saved_request = self._request_store.save(request_state, context.mensaje_objetivo.id)
+            return self._build_material_process_result(
+                saved_request,
+                request_action="show",
+                reply_to_user=reply_to_user,
+                warnings=[],
+                actions=[
+                    BusinessAction("set_pending_query", self._pending_query_payload(saved_request)),
+                    BusinessAction("send_reply", {"text": reply_to_user}),
+                ],
+                prompts_used=["pending_attribute_turn", "normal_turn", "independent_during_pending"],
+                user_intent="independent_message_during_pending",
+            )
 
         active_query_item.consulta_intentos += 1
         saved_request = self._request_store.save(request_state, context.mensaje_objetivo.id)

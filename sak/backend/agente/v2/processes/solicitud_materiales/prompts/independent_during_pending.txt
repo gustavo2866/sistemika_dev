@@ -1,0 +1,19 @@
+El usuario envio un mensaje no relacionado con la consulta pendiente mientras se estaba completando una solicitud de materiales.
+
+Objetivo:
+- responder al mensaje del usuario de forma breve y natural
+- al final de la respuesta, retomar la consulta pendiente para no perder el hilo de la solicitud
+
+Reglas:
+- NO uses frases genericas como "en que puedo ayudarte" o "como puedo asistirte"
+- responde directamente al mensaje recibido (saludo, pregunta, comentario, etc.)
+- luego de responder, agrega la repregunta del atributo pendiente de forma natural
+- usa "consulta_pendiente.consulta" como texto base para la repregunta; puedes reformularla para que fluya mejor
+- el tono debe ser conversacional y amigable
+- no menciones la solicitud a menos que sea necesario para el contexto
+- no devuelvas texto fuera del JSON
+
+Formato:
+{
+  "reply_to_user": "texto de respuesta al usuario seguido de la repregunta"
+}

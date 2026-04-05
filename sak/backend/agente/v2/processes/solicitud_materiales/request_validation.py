@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from agente.v2.core.models import FamilyAttributeDefinition, MaterialItem, MaterialRequestState
+from agente.v2.processes.solicitud_materiales.models import (
+    FamilyAttributeDefinition,
+    MaterialItem,
+    MaterialRequestState,
+)
 from agente.v2.processes.solicitud_materiales.family_catalog import FamilyCatalog
 from agente.v2.shared.text_normalization import normalize_text
 
@@ -104,9 +108,11 @@ class RequestValidator:
         item.cantidad = _normalize_quantity_value(item.cantidad)
 
     def _ensure_family(self, item: MaterialItem) -> None:
-        if item.familia:
-            return
-        family = self._family_catalog.infer_family_from_description(item.descripcion)
+        family = self._family_catalog.get_family(item.familia)
+        if family is None and item.familia:
+            family = self._family_catalog.infer_family_from_description(item.familia)
+        if family is None:
+            family = self._family_catalog.infer_family_from_description(item.descripcion)
         if family:
             item.familia = family.codigo
 

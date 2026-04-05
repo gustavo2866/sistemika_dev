@@ -271,7 +271,6 @@ export const CRMChatShow = ({
     analysisOpen: iaAnalysisOpen,
     analysisResult: iaAnalysisResult,
     generateReply: handleGenerateAIReply,
-    autoReply: handleAutoAIReply,
     openRequestView: handleOpenRequestView,
     closeAnalysis: handleAnalysisOpenChange,
   } = useChatAI({
@@ -280,10 +279,6 @@ export const CRMChatShow = ({
     messageId: resolveLatestInboundMessageId,
     getAuthHeaders,
     onTextReply: appendSuggestedText,
-    onAutoReplySent: () => {
-      notify("La IA respondio el mensaje automaticamente.", { type: "success" });
-      void refreshLatest();
-    },
     onError: (message) => notify(message, { type: "warning" }),
   });
 
@@ -389,11 +384,11 @@ export const CRMChatShow = ({
     }
     setSending(true);
     try {
-      const lastMessageId = messages.length ? messages[messages.length - 1].id : null;
-      const endpoint = lastMessageId
-        ? `${API_URL}/crm/mensajes/${lastMessageId}/responder`
+      const replyToMessageId = resolveLatestInboundMessageId;
+      const endpoint = replyToMessageId
+        ? `${API_URL}/crm/mensajes/${replyToMessageId}/responder`
         : `${API_URL}/crm/mensajes/acciones/enviar`;
-      const payload = lastMessageId
+      const payload = replyToMessageId
         ? { texto: trimmed }
         : {
             contenido: trimmed,
@@ -598,11 +593,7 @@ export const CRMChatShow = ({
         getAuthHeaders={getAuthHeaders}
         open={iaAnalysisOpen}
         onOpenChange={handleAnalysisOpenChange}
-        onRefresh={() => {
-          void handleOpenRequestView();
-        }}
         onReply={appendSuggestedText}
-        refreshing={iaLoading}
         result={iaAnalysisResult}
       />
 
@@ -711,20 +702,6 @@ export const CRMChatShow = ({
               }
             >
               {iaAction === "request" ? "Abriendo..." : "Solicitud"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => void handleAutoAIReply()}
-              disabled={!resolveOportunidadId || iaLoading}
-              className={
-                embedded
-                  ? "h-5 rounded-full border border-slate-200 px-2 text-[9px] font-medium text-slate-600"
-                  : "h-6 rounded-full border border-slate-200 px-2.5 text-[10px] font-medium text-slate-600 sm:h-7 sm:text-[11px]"
-              }
-            >
-              <Send className={embedded ? "mr-1 h-3 w-3" : "mr-1.5 h-3.5 w-3.5"} />
-              {iaAction === "auto" ? "Enviando..." : embedded ? "Auto" : "Auto responder"}
             </Button>
           </div>
           <div className={embedded ? "flex items-end gap-1.5" : "flex items-end gap-2"}>

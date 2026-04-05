@@ -2,14 +2,10 @@
 
 import { useCallback, useState } from "react";
 
-import {
-  requestChatAIReply,
-  requestCurrentSolicitud,
-  type AIDeliveryMode,
-} from "./api";
+import { requestChatAIReply, requestCurrentSolicitud } from "./api";
 import type { AIReplyResult } from "./types";
 
-type IAAction = "preview" | "auto" | "request" | null;
+type IAAction = "preview" | "request" | null;
 
 type UseChatAIParams = {
   apiUrl: string;
@@ -17,7 +13,6 @@ type UseChatAIParams = {
   messageId?: number | null;
   getAuthHeaders: () => HeadersInit;
   onTextReply: (reply: string) => void;
-  onAutoReplySent: (result: AIReplyResult) => void;
   onError: (message: string) => void;
 };
 
@@ -27,7 +22,6 @@ export const useChatAI = ({
   messageId,
   getAuthHeaders,
   onTextReply,
-  onAutoReplySent,
   onError,
 }: UseChatAIParams) => {
   const [iaLoading, setIaLoading] = useState(false);
@@ -42,21 +36,13 @@ export const useChatAI = ({
     }
   }, []);
 
-  const requestReply = useCallback(async ({
-    forceReprocess = false,
-    deliveryMode,
-  }: {
-    forceReprocess?: boolean;
-    deliveryMode: AIDeliveryMode;
-  }) => {
+  const requestReply = useCallback(async () => {
     if (!oportunidadId) return null;
     return requestChatAIReply({
       apiUrl,
       oportunidadId,
       messageId,
       authHeaders: getAuthHeaders(),
-      forceReprocess,
-      deliveryMode,
     });
   }, [apiUrl, getAuthHeaders, messageId, oportunidadId]);
 
@@ -70,22 +56,13 @@ export const useChatAI = ({
     ).trim();
   }, []);
 
-  const generateReply = useCallback(async (options?: { forceReprocess?: boolean }) => {
+  const generateReply = useCallback(async () => {
     if (!oportunidadId || iaLoading) return;
 
     setIaLoading(true);
     setIaAction("preview");
     try {
-      const result = await requestReply({
-        forceReprocess: Boolean(options?.forceReprocess),
-        deliveryMode: "preview_only",
-      });
-
-      if (result?.type === "material_request") {
-        setAnalysisResult(result);
-        setAnalysisOpen(true);
-        return;
-      }
+      const result = await requestReply();
 
       const suggestedReply = extractReplyText(result);
       if (!suggestedReply) {
@@ -100,55 +77,6 @@ export const useChatAI = ({
       setIaAction(null);
     }
   }, [extractReplyText, iaLoading, onError, onTextReply, oportunidadId, requestReply]);
-
-  const autoReply = useCallback(async (options?: { forceReprocess?: boolean }) => {
-    if (!oportunidadId || iaLoading) return;
-
-    setIaLoading(true);
-    setIaAction("auto");
-    try {
-      const result = await requestReply({
-        forceReprocess: Boolean(options?.forceReprocess),
-        deliveryMode: "auto_send",
-      });
-
-      if (result?.delivery?.sent) {
-        onAutoReplySent(result);
-        return;
-      }
-
-      const reason = String(result?.reason ?? "").trim();
-      const deliveryError = String(result?.delivery?.error_message ?? "").trim();
-      const deliveryStatus = String(result?.delivery?.status ?? "").trim();
-      const fallbackReply = extractReplyText(result);
-
-      if (reason) {
-        throw new Error(reason);
-      }
-      if (deliveryError) {
-        throw new Error(deliveryError);
-      }
-      if (deliveryStatus === "deferred") {
-        throw new Error("El turno quedo diferido segun la modalidad actual.");
-      }
-      if (deliveryStatus === "skipped") {
-        throw new Error("El agente no encontro un proceso aplicable para este mensaje.");
-      }
-      if (deliveryStatus === "no_reply") {
-        throw new Error("La IA no devolvio un texto para enviar.");
-      }
-      if (fallbackReply) {
-        throw new Error("La IA genero una respuesta, pero no se pudo enviar.");
-      }
-
-      throw new Error("La IA no pudo auto-responder el mensaje.");
-    } catch (error: any) {
-      onError(error?.message ?? "No se pudo auto-responder el mensaje.");
-    } finally {
-      setIaLoading(false);
-      setIaAction(null);
-    }
-  }, [extractReplyText, iaLoading, onAutoReplySent, onError, oportunidadId, requestReply]);
 
   const openRequestView = useCallback(async () => {
     if (!oportunidadId || iaLoading) return;
@@ -177,7 +105,6 @@ export const useChatAI = ({
     analysisOpen,
     analysisResult,
     generateReply,
-    autoReply,
     openRequestView,
     closeAnalysis,
   };

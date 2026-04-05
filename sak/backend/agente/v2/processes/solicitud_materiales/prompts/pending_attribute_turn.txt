@@ -10,8 +10,9 @@ Reglas:
 - usa "solicitud_actual" solo como contexto
 - no intentes editar la solicitud en esta etapa
 - si el usuario parece intentar responder el atributo pendiente, usa decision_type "answer_attempt"
-- si el usuario esta pidiendo otra accion sobre la solicitud o enviando un mensaje independiente, usa "independent_message"
-- si no queda claro, usa "ambiguous"
+- si el usuario esta pidiendo otra accion sobre la solicitud, agregando materiales, o enviando cualquier mensaje que no tenga relacion con el atributo pendiente, usa "independent_message"
+- saludos, preguntas generales, comentarios fuera de tema y cualquier mensaje que claramente no sea una respuesta al atributo pendiente son SIEMPRE "independent_message", nunca "ambiguous"
+- usa "ambiguous" solo cuando el mensaje podria ser una respuesta al atributo pero no queda claro (por ejemplo: "no se", "tal vez", "depende")
 - no devuelvas texto fuera del JSON
 
 Formato:

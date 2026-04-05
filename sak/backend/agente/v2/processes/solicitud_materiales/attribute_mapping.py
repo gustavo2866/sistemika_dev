@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from agente.v2.shared.text_normalization import normalize_text, normalize_text_without_accents
-from agente.v2.core.models import DirectAttributeMatch, FamilyAttributeDefinition
+from agente.v2.processes.solicitud_materiales.models import DirectAttributeMatch, FamilyAttributeDefinition
 
 
 _COMMAND_PREFIXES = (

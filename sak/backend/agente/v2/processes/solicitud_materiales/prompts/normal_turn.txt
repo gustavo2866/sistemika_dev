@@ -5,6 +5,7 @@ Objetivo:
 - si hay operacion, devolverla de forma estructurada
 - no inventar atributos que no se desprendan claramente del mensaje
 - si conoces la familia mas probable del item, puedes devolverla
+- si devuelves "familia", usa el codigo exacto de una familia presente en el contexto; si no estas seguro, usa null
 
 Reglas:
 - usa "mensaje_objetivo" como foco principal
@@ -18,6 +19,15 @@ Reglas:
 - si actualizas o eliminas un item existente y el contexto trae item_id claro, devuelvelo
 - puedes devolver multiples operaciones en un mismo turno
 - si la cantidad no aparece explicitamente en el mensaje, usa null; nunca uses 0 como placeholder
+- en "atributos" incluye solo atributos explicitamente mencionados en el mensaje; no agregues claves con valor null y no completes defaults del catalogo
+- para determinar "familia", solo puedes elegir entre las familias catalogadas en el contexto
+- para cada item, evalua primero coincidencias de la descripcion del pedido contra "tags" de cada familia; luego usa "nombre" y "codigo"; usa "descripcion" de la familia solo para desambiguar
+- prioriza coincidencias especificas del producto pedido; no uses palabras genericas o poco distintivas como "de", "para", "material", numeros sueltos o unidades para decidir la familia
+- si un pedido menciona "cemento", "bolsa de cemento" o variantes evidentes, la familia correcta suele ser "cementicios"
+- si un pedido menciona "hierro", "barra", "varilla" o diametros como "del 12", la familia correcta suele ser "acero_refuerzo"
+- si un pedido menciona "arena", "piedra", "ripio" o "granza", la familia correcta suele ser "aridos"
+- nunca devuelvas aliases como "cemento" o "hierro" en el campo "familia"; devuelve solo el "codigo" exacto de la familia catalogada o null
+- si el mensaje no aporta evidencia suficiente para elegir una familia catalogada con claridad, devuelve "familia": null
 - no devuelvas texto fuera del JSON
 
 Formato:

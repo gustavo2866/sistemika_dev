@@ -2,15 +2,11 @@
 
 import type { AIReplyResult, MaterialFamily } from "./types";
 
-export type AIDeliveryMode = "preview_only" | "auto_send";
-
 type RequestChatAIReplyParams = {
   apiUrl: string;
   oportunidadId: number;
   messageId?: number | null;
   authHeaders: HeadersInit;
-  forceReprocess?: boolean;
-  deliveryMode?: AIDeliveryMode;
 };
 
 export const requestChatAIReply = async ({
@@ -18,8 +14,6 @@ export const requestChatAIReply = async ({
   oportunidadId,
   messageId,
   authHeaders,
-  forceReprocess = false,
-  deliveryMode = "preview_only",
 }: RequestChatAIReplyParams): Promise<AIReplyResult> => {
   const response = await fetch(
     `${apiUrl}/crm/mensajes/acciones/chat/${oportunidadId}/ia-respuesta-v2`,
@@ -28,8 +22,6 @@ export const requestChatAIReply = async ({
       headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({
         message_id: messageId ?? undefined,
-        force_reprocess: forceReprocess || undefined,
-        delivery_mode: deliveryMode !== "preview_only" ? deliveryMode : undefined,
       }),
     },
   );

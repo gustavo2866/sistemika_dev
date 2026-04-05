@@ -105,12 +105,27 @@ siempre resuelve el valor final en backend.
 - `backend/agente/v2/core/process_registry.py`
 - `backend/agente/v2/core/state_repository.py`
 - `backend/agente/v2/core/models.py`
+- `backend/agente/v2/core/turn_models.py`
+- `backend/agente/v2/core/state_models.py`
+- `backend/agente/v2/core/process_models.py`
+- `backend/agente/v2/core/delivery_models.py`
 - `backend/agente/v2/core/contracts.py`
 - `backend/agente/v2/core/runtime.py`
+- `backend/agente/v2/core/turn_cache.py`
+- `backend/agente/v2/core/turn_delivery.py`
+- `backend/agente/v2/core/turn_persistence.py`
+
+Nota de organizacion actual:
+
+- `core/models.py` queda como fachada publica de compatibilidad
+- las definiciones reales del `core` se reparten por responsabilidad en
+  `turn_models.py`, `state_models.py`, `process_models.py` y
+  `delivery_models.py`
 
 ### Proceso actual
 
 - `backend/agente/v2/processes/solicitud_materiales/handler.py`
+- `backend/agente/v2/processes/solicitud_materiales/models.py`
 - `backend/agente/v2/processes/solicitud_materiales/llm_client.py`
 - `backend/agente/v2/processes/solicitud_materiales/request_validation.py`
 - `backend/agente/v2/processes/solicitud_materiales/operation_execution.py`
@@ -149,25 +164,69 @@ Responsabilidad:
 - cargar estado del agente
 - cargar estado del proceso activo
 - cargar historial breve
-- cargar catalogos o definiciones auxiliares
+- construir solo el contexto base comun
 
 Artefacto actual:
 
 - `backend/agente/v2/core/context_loader.py`
 
-### 3. Process Registry
+Nota de diseño actual:
+
+- el loader expone `state_store` como dependencia publica
+- el orquestador ya no lee atributos privados del loader para obtener el store
+- el loader ya no adjunta contexto especifico de un proceso antes del despacho
+
+### 3. Turn Cache
+
+Responsabilidad:
+
+- resolver idempotencia por `message_id`
+- reutilizar previews y auditorias ya persistidas
+
+Artefacto actual:
+
+- `backend/agente/v2/core/turn_cache.py`
+
+### 4. Turn Delivery
+
+Responsabilidad:
+
+- extraer texto saliente del resultado del proceso
+- enviar respuesta cuando corresponda
+- marcar el inbound como procesado luego del envio
+
+Artefacto actual:
+
+- `backend/agente/v2/core/turn_delivery.py`
+
+### 5. Turn Persistence
+
+Responsabilidad:
+
+- persistir el estado global actualizado
+- persistir auditoria de ejecucion por turno
+- persistir metadata `agent_v2` en `crm_mensaje`
+- construir la respuesta API final
+- unificar la finalizacion del turno para flujos fresh, cached y skipped
+
+Artefacto actual:
+
+- `backend/agente/v2/core/turn_persistence.py`
+
+### 6. Process Registry
 
 Responsabilidad:
 
 - registrar procesos disponibles
 - resolver prioridades
-- entregar el handler correspondiente
+- devolver una resolucion explicita con handler y activacion
+- devolver motivo de `no_match` cuando ningun proceso aplica
 
 Artefacto actual:
 
 - `backend/agente/v2/core/process_registry.py`
 
-### 4. Process Handler
+### 7. Process Handler
 
 Responsabilidad:
 
@@ -179,7 +238,7 @@ Artefacto actual de `solicitud_materiales`:
 
 - `backend/agente/v2/processes/solicitud_materiales/handler.py`
 
-### 5. Agent State Repository
+### 8. Agent State Repository
 
 Responsabilidad:
 
@@ -187,12 +246,18 @@ Responsabilidad:
 - cargar y actualizar estado del proceso activo
 - registrar referencias del ultimo turno procesado
 - persistir bitacora de ejecuciones por turno
+- exponer una interfaz de store consumida por el `core`
 
 Artefacto actual:
 
 - `backend/agente/v2/core/state_repository.py`
 
-### 6. Channel Adapter
+Implementacion actual:
+
+- `ConversationStateStore` como contrato
+- `JsonConversationStateStore` como implementacion local actual
+
+### 9. Channel Adapter
 
 Responsabilidad:
 
@@ -203,7 +268,7 @@ Artefacto actual:
 
 - `backend/agente/v2/infrastructure/channels/crm_channel_adapter.py`
 
-### 7. LLM Client
+### 10. LLM Client
 
 Responsabilidad:
 
@@ -400,9 +465,8 @@ El `Context Loader` construye un objeto de este tipo:
 Implementacion actual adicional:
 
 - `conversation.is_project_opportunity` se calcula en backend
-- `definitions.familias` expone el catalogo resumido de familias
 - `definitions.opportunity_kind` expone `project` o `generic`
-- `solicitud_actual` se adjunta al contexto si existe
+- el contexto especifico de `solicitud_materiales` se carga dentro del propio proceso una vez resuelto el despacho
 
 ## Contrato del orquestador
 
@@ -425,6 +489,14 @@ class AgentTurnOrchestrator:
 7. persistir nuevo estado
 8. enviar respuesta saliente o devolver preview segun corresponda
 9. registrar auditoria del turno
+
+Implementacion actual:
+
+- `orchestrator.py` coordina el pipeline
+- `turn_cache.py` encapsula el reuso de resultados previos
+- `turn_delivery.py` encapsula la entrega
+- `turn_persistence.py` encapsula la persistencia del turno
+- la auditoria y la respuesta final del turno se modelan con tipos propios del `core`
 
 ## Contrato comun de procesos
 
@@ -572,18 +644,21 @@ El backend decide que prompt usar segun:
 
 ## Puertos del LLM
 
-Interfaz actual:
+Contrato actual en `solicitud_materiales`:
 
 ```python
-class LLMGateway(Protocol):
-    def interpret_normal_turn(self, context: ChatTurnContext, prompt_families: list[dict]) -> NormalTurnDecision:
+class OpenAIConversationAgentClientV2:
+    def interpret_normal_turn(self, context: MaterialRequestTurnContext, prompt_families: list[dict]) -> NormalTurnDecision:
         ...
 
-    def classify_pending_turn(self, context: ChatTurnContext, pending_item: MaterialItem, pending_attribute: dict) -> PendingTurnDecision:
+    def classify_pending_turn(self, context: MaterialRequestTurnContext, pending_item: MaterialItem, pending_attribute: dict) -> PendingTurnDecision:
         ...
 ```
 
 ### Regla
+
+El contrato del LLM ya no vive en `core` porque hoy describe solo al proceso
+`solicitud_materiales`.
 
 El proceso nunca trabaja con texto crudo del modelo sin parseo y validacion.
 
@@ -646,6 +721,8 @@ Ubicacion local:
 Implementacion actual:
 
 - control de version optimista sobre estado persistido
+- store conversacional abstraido por interfaz con implementacion JSON local
+- escritura atomica `temp + replace` para estado y bitacora JSON
 
 No existe hoy:
 
@@ -745,6 +822,9 @@ backend/agente/v2/
     runtime.py
     contracts.py
     models.py
+    turn_cache.py
+    turn_delivery.py
+    turn_persistence.py
     state/
       conversation_state/
       material_requests/
@@ -752,6 +832,7 @@ backend/agente/v2/
   processes/
     solicitud_materiales/
       handler.py
+      models.py
       llm_client.py
       operation_execution.py
       request_validation.py
