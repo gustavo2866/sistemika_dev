@@ -1,0 +1,554 @@
+{
+  "version": "2026-03-29",
+  "origen": "Derivado del seed DEFAULT_ARTICULOS y de los tipos de articulo del maestro actual.",
+  "familias": [
+    {
+      "codigo": "aridos",
+      "nombre": "Aridos",
+      "estado": "confirmada",
+      "descripcion": "Materiales granulares de obra como arena, grava y piedra partida.",
+      "tags": [
+        "arena",
+        "grava",
+        "granza",
+        "arido",
+        "piedra",
+        "piedra partida",
+        "ripio"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad de medida habitual para la familia.",
+          "default": "m3",
+          "valores_posibles": []
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de arido solicitado.",
+          "default": null,
+          "valores_posibles": [
+            "arena fina",
+            "arena gruesa",
+            "piedra partida",
+            "granza",
+            "ripio"
+          ]
+        }
+      ]
+    },
+    {
+      "codigo": "cementicios",
+      "nombre": "Cementicios",
+      "descripcion": "Cementos y aglomerantes embolsados de uso estructural o general.",
+      "tags": [
+        "cemento",
+        "cemento portland",
+        "cemento 50kg",
+        "bolsa de cemento"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Presentacion de compra habitual.",
+          "default": "bolsa"
+        },
+        {
+          "nombre": "peso_kg",
+          "descripcion": "Peso por bolsa o presentacion.",
+          "default": 50,
+          "tipo_dato": "numero"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Variante o tipo de cemento.",
+          "default": null,
+          "valores_posibles": [
+            "portland",
+            "albanileria",
+            "mamposteria"
+          ]
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "mamposteria",
+      "nombre": "Mamposteria",
+      "estado": "confirmada",
+      "descripcion": "Piezas para muros y cerramientos como ladrillos y blocks.",
+      "tags": [
+        "ladrillo",
+        "ladrillo comun",
+        "ladrillo hueco",
+        "block",
+        "bloque",
+        "bloque de hormigon"
+      ],
+      "atributos": [
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de pieza de mamposteria.",
+          "default": null,
+          "valores_posibles": [
+            "ladrillo comun",
+            "ladrillo hueco",
+            "bloque de hormigon"
+          ]
+        }
+      ]
+    },
+    {
+      "codigo": "acero_refuerzo",
+      "nombre": "Acero de refuerzo",
+      "descripcion": "Hierros corrugados y barras para estructura.",
+      "tags": [
+        "hierro",
+        "varilla",
+        "barra",
+        "hierro 8",
+        "hierro 10",
+        "hierro 12",
+        "acindar"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "barra"
+        },
+        {
+          "nombre": "diametro_mm",
+          "descripcion": "Diametro nominal del hierro.",
+          "default": null,
+          "tipo_dato": "numero"
+        },
+        {
+          "nombre": "largo_m",
+          "descripcion": "Largo de la barra.",
+          "default": null,
+          "tipo_dato": "numero"
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "mallas_refuerzo",
+      "nombre": "Mallas de refuerzo",
+      "descripcion": "Mallas electrosoldadas o similares para armaduras.",
+      "tags": [
+        "malla",
+        "malla sima",
+        "sima",
+        "malla electrosoldada",
+        "malla 15x15"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Presentacion habitual.",
+          "default": "rollo"
+        },
+        {
+          "nombre": "trama",
+          "descripcion": "Paso o cuadricula de la malla.",
+          "default": null,
+          "tipo_dato": "numero"
+        },
+        {
+          "nombre": "diametro_mm",
+          "descripcion": "Diametro del alambre o varilla de la malla.",
+          "default": null,
+          "tipo_dato": "numero"
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "yesos_masillas",
+      "nombre": "Yesos y masillas",
+      "descripcion": "Productos de preparacion, tomado de juntas y terminacion base.",
+      "tags": [
+        "yeso",
+        "yeso proyectable",
+        "masilla",
+        "junta placa",
+        "enduido"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad de compra habitual.",
+          "default": "bolsa"
+        },
+        {
+          "nombre": "presentacion",
+          "descripcion": "Tipo de envase o presentacion.",
+          "default": null
+        },
+        {
+          "nombre": "peso_kg",
+          "descripcion": "Peso cuando la presentacion sea en bolsa o balde.",
+          "default": null,
+          "tipo_dato": "numero"
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "placas_secas",
+      "nombre": "Placas para construccion seca",
+      "estado": "confirmada",
+      "descripcion": "Placas de yeso y derivados para sistemas secos.",
+      "tags": [
+        "placa",
+        "durlock",
+        "placa yeso",
+        "placa 9.5",
+        "placa 12.5"
+      ],
+      "atributos": [
+        {
+          "nombre": "espesor_mm",
+          "descripcion": "Espesor principal de la placa.",
+          "default": null,
+          "valores_posibles": [],
+          "tipo_dato": "numero"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de placa si aplica.",
+          "default": null,
+          "valores_posibles": []
+        }
+      ]
+    },
+    {
+      "codigo": "perfileria",
+      "nombre": "Perfileria",
+      "descripcion": "Perfiles metalicos para sistemas secos y estructuras livianas.",
+      "tags": [
+        "perfil",
+        "omega",
+        "canal",
+        "montante",
+        "perfil omega",
+        "perfil canal"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "unidad"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de perfil.",
+          "default": null
+        },
+        {
+          "nombre": "medida_mm",
+          "descripcion": "Medida nominal del perfil.",
+          "default": null,
+          "tipo_dato": "numero"
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "fijaciones",
+      "nombre": "Fijaciones",
+      "descripcion": "Clavos, tornillos y fijaciones de uso general.",
+      "tags": [
+        "clavo",
+        "clavos",
+        "tornillo",
+        "tirafondo",
+        "tarugo",
+        "bulon",
+        "fijacion"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad o empaque habitual de compra.",
+          "default": "caja"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de fijacion.",
+          "default": null
+        },
+        {
+          "nombre": "medida",
+          "descripcion": "Largo, diametro o medida comercial.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "pinturas",
+      "nombre": "Pinturas",
+      "descripcion": "Pinturas y recubrimientos de terminacion.",
+      "tags": [
+        "pintura",
+        "latex",
+        "esmalte",
+        "laca",
+        "pintura blanca",
+        "balde pintura"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "balde"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de pintura o recubrimiento.",
+          "default": null,
+          "valores_posibles": [
+            "latex",
+            "esmalte",
+            "laca"
+          ]
+        },
+        {
+          "nombre": "presentacion_l",
+          "descripcion": "Capacidad del envase en litros.",
+          "default": null,
+          "tipo_dato": "numero"
+        },
+        {
+          "nombre": "color",
+          "descripcion": "Color solicitado.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "herramientas_aplicacion",
+      "nombre": "Herramientas de aplicacion",
+      "descripcion": "Herramientas manuales simples asociadas a pintura y terminacion.",
+      "tags": [
+        "rodillo",
+        "brocha",
+        "pinceleta",
+        "espatula",
+        "herramienta"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "unidad"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de herramienta.",
+          "default": null
+        },
+        {
+          "nombre": "medida",
+          "descripcion": "Ancho o medida comercial.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "selladores",
+      "nombre": "Selladores",
+      "descripcion": "Siliconas y selladores para juntas y uniones.",
+      "tags": [
+        "silicona",
+        "sellador",
+        "poliuretano",
+        "sellador poliuretano",
+        "cartucho"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Presentacion habitual de compra.",
+          "default": "cartucho"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de sellador.",
+          "default": null
+        },
+        {
+          "nombre": "color",
+          "descripcion": "Color del sellador si aplica.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "impermeabilizacion",
+      "nombre": "Impermeabilizacion",
+      "descripcion": "Productos para aislacion hidrica como membranas y sistemas afines.",
+      "tags": [
+        "membrana",
+        "membrana asfaltica",
+        "impermeabilizante",
+        "membrana 4mm",
+        "membrana 5mm"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "rollo"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de sistema impermeabilizante.",
+          "default": null
+        },
+        {
+          "nombre": "espesor_mm",
+          "descripcion": "Espesor nominal del producto.",
+          "default": null,
+          "tipo_dato": "numero"
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "aislacion",
+      "nombre": "Aislacion",
+      "descripcion": "Materiales para aislacion termica o acustica.",
+      "tags": [
+        "aislante",
+        "aislacion",
+        "lana de vidrio",
+        "poliestireno",
+        "aislante termico"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "rollo"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de aislacion.",
+          "default": null
+        },
+        {
+          "nombre": "espesor_mm",
+          "descripcion": "Espesor nominal del material.",
+          "default": null,
+          "tipo_dato": "numero"
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "cubiertas",
+      "nombre": "Cubiertas",
+      "descripcion": "Piezas para techos y cubiertas livianas.",
+      "tags": [
+        "teja",
+        "cubierta",
+        "teja colonial",
+        "teja americana"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "unidad"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de cubierta o teja.",
+          "default": null
+        },
+        {
+          "nombre": "color",
+          "descripcion": "Color o terminacion del material.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "sanitarios",
+      "nombre": "Sanitarios",
+      "descripcion": "Artefactos sanitarios como inodoros, bidets y lavatorios.",
+      "tags": [
+        "lavatorio",
+        "inodoro",
+        "bidet",
+        "sanitario",
+        "artefacto sanitario"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "unidad"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de artefacto sanitario.",
+          "default": null
+        },
+        {
+          "nombre": "modelo",
+          "descripcion": "Modelo o linea comercial si aplica.",
+          "default": null
+        },
+        {
+          "nombre": "color",
+          "descripcion": "Color del artefacto si aplica.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    },
+    {
+      "codigo": "griferia",
+      "nombre": "Griferia",
+      "descripcion": "Griferias y accesorios de agua para cocina y bano.",
+      "tags": [
+        "griferia",
+        "grifo",
+        "canilla",
+        "monocomando",
+        "mezcladora"
+      ],
+      "atributos": [
+        {
+          "nombre": "unidad",
+          "descripcion": "Unidad habitual de compra.",
+          "default": "unidad"
+        },
+        {
+          "nombre": "tipo",
+          "descripcion": "Tipo de griferia.",
+          "default": null
+        },
+        {
+          "nombre": "ambiente",
+          "descripcion": "Ambiente o uso principal.",
+          "default": null
+        },
+        {
+          "nombre": "acabado",
+          "descripcion": "Terminacion superficial o acabado.",
+          "default": null
+        }
+      ],
+      "estado": "confirmada"
+    }
+  ]
+}

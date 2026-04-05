@@ -36,3 +36,6 @@ README.md
 !app/
 !alembic/
 !alembic.ini
+!agente/
+!agente/**
+!agente/v2/processes/solicitud_materiales/knowledge/familias_materiales.json
