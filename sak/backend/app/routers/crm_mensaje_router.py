@@ -9,11 +9,10 @@ from sqlmodel import Session, select
 import httpx
 
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
-from agente.v2.core.process_registry import ProcessRegistry
 from agente.v2.core.runtime import resolve_chat_agent_mode
-from agente.v2.core.models import DeliveryMode, MaterialRequestState, ProcessTurnCommand, TurnRuntime, TurnTrigger
+from agente.v2.processes.solicitud_materiales.models import MaterialRequestState
 from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
-from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text, build_v2_dependencies
+from agente.v2.processes.solicitud_materiales.handler import ConversationAgentV2, build_request_reply_text, build_v2_dependencies
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -37,8 +36,8 @@ V2_FAMILIES_PATH: Path | None = None
 
 
 def _reload_v2_dependencies() -> None:
-    global V2_CONTEXT_LOADER, V2_AGENT
-    V2_CONTEXT_LOADER, V2_AGENT = build_v2_dependencies(
+    global V2_STATE_STORE, V2_AGENT
+    V2_STATE_STORE, V2_AGENT = build_v2_dependencies(
         families_path=V2_FAMILIES_PATH,
     )
 
@@ -48,27 +47,15 @@ _reload_v2_dependencies()
 
 def _build_v2_orchestrator() -> AgentTurnOrchestrator:
     return AgentTurnOrchestrator(
-        context_loader=V2_CONTEXT_LOADER,
-        agent=V2_AGENT,
+        processes=[V2_AGENT],
+        state_store=V2_STATE_STORE,
     )
 
 
-def _resolve_v2_delivery_mode(payload: dict[str, Any] | None) -> DeliveryMode:
-    if not isinstance(payload, dict):
-        return DeliveryMode.PREVIEW_ONLY
-
-    raw_value = payload.get("delivery_mode")
-    if raw_value is None:
-        return DeliveryMode.PREVIEW_ONLY
-
-    normalized = str(raw_value).strip().lower()
-    try:
-        return DeliveryMode(normalized)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="delivery_mode invalido. Valores permitidos: preview_only, auto_send",
-        ) from exc
+def _get_v2_material_agent() -> ConversationAgentV2:
+    if not isinstance(V2_AGENT, ConversationAgentV2):
+        raise HTTPException(status_code=500, detail="Agente v2 de solicitud_materiales no configurado")
+    return V2_AGENT
 
 
 def _build_v2_request_workflow(request_state: MaterialRequestState) -> dict[str, Any]:
@@ -115,41 +102,36 @@ def _build_v2_debug_payload(
     message_id: int,
 ) -> dict[str, Any]:
     resolved_mode, mode_source = resolve_chat_agent_mode(session)
-    runtime = TurnRuntime(
-        trigger=TurnTrigger.WEBHOOK,
-        agent_mode=resolved_mode.value,
-        delivery_mode=DeliveryMode.AUTO_SEND,
-    )
-    state_repository = getattr(V2_CONTEXT_LOADER, "_state_repository")
-    agent_state = state_repository.load(oportunidad.id, agent_mode=resolved_mode.value)
-    context = V2_CONTEXT_LOADER.load_for_message(
-        session,
-        message_id,
-        agent_state=agent_state,
-        runtime=runtime,
-    )
-    registry = ProcessRegistry([V2_AGENT])
+    orchestrator = _build_v2_orchestrator()
 
-    activation = None
-    resolution_error = None
-    try:
-        _, activation_decision = registry.resolve(context)
-        activation = activation_decision.to_dict()
-    except ValueError as exc:
-        resolution_error = str(exc)
+    state = orchestrator.state_store.load(oportunidad.id)
+    ctx = orchestrator.build_context(session, message_id, trigger="webhook", state=state)
+
+    process = orchestrator.registry.resolve(ctx)
+    process_info = None
+    if process:
+        score = process.priority(ctx)
+        if ctx.active_process == process.name and score is not None:
+            score += 1000
+        process_info = {"process_name": process.name, "priority": score}
 
     latest_inbound_message = session.get(CRMMensaje, message_id)
-    latest_outbound_message = None
-    if agent_state.last_outbound_message_id:
-        latest_outbound_message = session.get(CRMMensaje, agent_state.last_outbound_message_id)
-
-    execution_record = state_repository.get_turn_execution(oportunidad.id, message_id)
-    request_state = V2_CONTEXT_LOADER.load_request_state(oportunidad.id)
     message_agent_meta = (
         dict((latest_inbound_message.metadata_json or {}).get("agent_v2") or {})
         if latest_inbound_message is not None
         else None
     )
+
+    outbound_message_id = (message_agent_meta or {}).get("outbound_message_id")
+    if outbound_message_id is None:
+        delivery_meta = (message_agent_meta or {}).get("delivery")
+        if isinstance(delivery_meta, dict):
+            outbound_message_id = delivery_meta.get("outbound_message_id")
+    if outbound_message_id is None:
+        outbound_message_id = state.last_outbound_message_id
+    latest_outbound_message = session.get(CRMMensaje, int(outbound_message_id)) if outbound_message_id else None
+
+    request_state = _get_v2_material_agent().load_request_state(oportunidad.id)
 
     return {
         "oportunidad_id": oportunidad.id,
@@ -157,33 +139,32 @@ def _build_v2_debug_payload(
         "agent_mode": resolved_mode.value,
         "agent_mode_source": mode_source,
         "context": {
-            "opportunity_kind": context.definitions.get("opportunity_kind"),
-            "is_project_opportunity": context.conversation.is_project_opportunity,
-            "recent_messages": [message.to_prompt_dict() for message in context.recent_messages],
-            "active_process_state": context.active_process_state,
+            "opportunity_kind": "project" if ctx.is_project else "generic",
+            "is_project_opportunity": ctx.is_project,
+            "recent_messages": [msg.to_prompt_dict() for msg in ctx.history],
+            "active_process_state": ctx.process_state,
         },
         "process_resolution": {
-            "activation": activation,
-            "error": resolution_error,
+            "activation": process_info,
+            "error": None if process else "No hay procesos disponibles para resolver el turno",
         },
-        "conversation_state": agent_state.to_state_dict(),
+        "conversation_state": state.to_dict(),
         "request_state": request_state.to_state_dict() if request_state else None,
-        "turn_execution": execution_record,
+        "turn_execution": (
+            {
+                **message_agent_meta,
+                "response_payload": message_agent_meta.get("result"),
+            }
+            if message_agent_meta
+            else None
+        ),
         "message_agent_metadata": message_agent_meta,
         "latest_inbound_message": filtrar_respuesta(latest_inbound_message) if latest_inbound_message else None,
         "latest_outbound_message": filtrar_respuesta(latest_outbound_message) if latest_outbound_message else None,
         "summary": {
-            "last_result_type": (
-                execution_record.get("response_payload", {}).get("type")
-                if isinstance(execution_record, dict)
-                else None
-            ),
-            "delivery_status": (
-                execution_record.get("delivery", {}).get("status")
-                if isinstance(execution_record, dict)
-                else None
-            ),
-            "has_execution_record": execution_record is not None,
+            "last_result_type": (message_agent_meta or {}).get("type"),
+            "delivery_status": str(((message_agent_meta or {}).get("delivery") or {}).get("status") or "").strip() or None,
+            "has_execution_record": bool(message_agent_meta),
             "has_request_state": request_state is not None,
             "has_outbound_message": latest_outbound_message is not None,
         },
@@ -353,15 +334,12 @@ async def sugerir_respuesta_chat_ia(
     session: Session = Depends(get_session),
 ):
     try:
-        message_id = V2_CONTEXT_LOADER.resolve_latest_message_id(session, oportunidad_id)
+        message_id = AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
         orchestrator = _build_v2_orchestrator()
         return await orchestrator.process_turn(
             session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.MANUAL_BUTTON,
-                delivery_mode=DeliveryMode.PREVIEW_ONLY,
-            ),
+            message_id,
+            "manual_button",
         )
     except HTTPException:
         raise
@@ -380,19 +358,12 @@ async def sugerir_respuesta_chat_ia_v2(
 ):
     try:
         requested_message_id = payload.get("message_id") if isinstance(payload, dict) else None
-        message_id = int(requested_message_id) if requested_message_id else V2_CONTEXT_LOADER.resolve_latest_message_id(session, oportunidad_id)
-        delivery_mode = _resolve_v2_delivery_mode(payload if isinstance(payload, dict) else None)
+        message_id = int(requested_message_id) if requested_message_id else AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
         orchestrator = _build_v2_orchestrator()
         return await orchestrator.process_turn(
             session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.MANUAL_BUTTON,
-                delivery_mode=delivery_mode,
-                force_reprocess=bool(payload.get("force_reprocess")) if isinstance(payload, dict) else False,
-                requested_mode=(payload.get("requested_mode") if isinstance(payload, dict) else None),
-                requested_process=(payload.get("requested_process") if isinstance(payload, dict) else None),
-            ),
+            message_id,
+            "manual_button",
         )
     except HTTPException:
         raise
@@ -412,7 +383,7 @@ def obtener_solicitud_chat_ia_v2(
     if not oportunidad:
         raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
 
-    request_state = V2_CONTEXT_LOADER.load_request_state(oportunidad_id)
+    request_state = _get_v2_material_agent().load_request_state(oportunidad_id)
     if request_state is None:
         raise HTTPException(status_code=404, detail="No hay solicitud v2 para la oportunidad")
 
@@ -429,7 +400,7 @@ def obtener_diagnostico_chat_ia_v2(
     if not oportunidad:
         raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
 
-    resolved_message_id = int(message_id) if message_id else V2_CONTEXT_LOADER.resolve_latest_message_id(session, oportunidad_id)
+    resolved_message_id = int(message_id) if message_id else AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
     return _build_v2_debug_payload(
         session=session,
         oportunidad=oportunidad,

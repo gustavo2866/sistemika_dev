@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from sqlmodel import Session
 
-from agente.v2.core.models import SendResult, SendTextCommand
 from app.services.crm_mensaje_service import crm_mensaje_service
 
 
 class CRMOutboundChannelAdapter:
     """Adaptador de salida que reutiliza el servicio CRM existente."""
 
-    async def send_text(self, session: Session, command: SendTextCommand) -> SendResult:
+    async def send_text(self, session: Session, command) -> object:
         send_result = await crm_mensaje_service.enviar_mensaje(
             session,
             {
@@ -22,6 +21,8 @@ class CRMOutboundChannelAdapter:
                 "metadata": command.metadata,
             },
         )
+        # Import here to avoid circular dependency (delivery.py → crm_channel_adapter.py → delivery.py)
+        from agente.v2.core.delivery import SendResult
         sent_status = str(send_result.get("status") or "")
         sent_message = send_result.get("mensaje_salida")
         return SendResult(

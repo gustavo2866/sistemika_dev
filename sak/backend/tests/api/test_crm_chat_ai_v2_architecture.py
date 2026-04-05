@@ -10,15 +10,13 @@ from sqlmodel import select
 
 import app.routers.crm_mensaje_router as crm_mensaje_router_module
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
-from agente.v2.core.models import (
-    DeliveryMode,
+from agente.v2.core.process import ProcessRegistry
+from agente.v2.core.delivery import SendResult
+from agente.v2.processes.solicitud_materiales.models import (
     ItemOperation,
     MaterialItem,
     MaterialRequestState,
     NormalTurnDecision,
-    ProcessTurnCommand,
-    SendResult,
-    TurnTrigger,
 )
 from agente.v2.infrastructure.channels.crm_channel_adapter import CRMOutboundChannelAdapter
 from agente.v2.processes.solicitud_materiales.handler import build_v2_dependencies
@@ -159,8 +157,8 @@ def test_openai_conversation_agent_client_maps_connection_errors(monkeypatch, tm
 
 
 def test_chat_ai_v2_preview_idempotence_returns_cached_result(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, _ = _seed_context(db_session, latest_message="Hola")
@@ -182,98 +180,31 @@ def test_chat_ai_v2_preview_idempotence_returns_cached_result(client, db_session
     assert calls["count"] == 1
 
 
-def test_chat_ai_v2_auto_send_reuses_cached_preview_without_reprocessing(db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    oportunidad_id, message_id = _seed_context(db_session, latest_message="Hola")
+def test_chat_ai_v2_cached_result_reuses_previous_execution_without_reprocessing(db_session, monkeypatch, tmp_path):
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    _, message_id = _seed_context(db_session, latest_message="Hola")
     calls = {"count": 0}
-    sends = {"count": 0}
 
     def fake_normal_turn(context, prompt_families):
         calls["count"] += 1
         return NormalTurnDecision(decision_type="smalltalk", reply_to_user="Hola, en que te ayudo?")
 
-    class FakeChannelAdapter:
-        async def send_text(self, session, command):
-            sends["count"] += 1
-            return SendResult(sent=True, status="sent", outbound_message_id=999)
-
     monkeypatch.setattr(agent._llm_client, "interpret_normal_turn", fake_normal_turn)
     orchestrator = AgentTurnOrchestrator(
-        context_loader=context_loader,
-        agent=agent,
-        channel_adapter=FakeChannelAdapter(),
+        processes=[agent],
+        state_store=state_store,
     )
 
-    preview = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.MANUAL_BUTTON,
-                delivery_mode=DeliveryMode.PREVIEW_ONLY,
-            ),
-        )
+    first = asyncio.run(
+        orchestrator.process_turn(db_session, message_id, "manual_button")
     )
-    sent = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.RETRY,
-                delivery_mode=DeliveryMode.AUTO_SEND,
-            ),
-        )
+    second = asyncio.run(
+        orchestrator.process_turn(db_session, message_id, "manual_button")
     )
 
-    assert preview["cached"] is False
-    assert sent["cached"] is True
-    assert sent["delivery"]["sent"] is True
+    assert first["cached"] is False
+    assert second["cached"] is True
     assert calls["count"] == 1
-    assert sends["count"] == 1
-
-    stored_state = context_loader._state_repository.load(oportunidad_id)
-    assert stored_state.last_processed_message_id == message_id
-    assert stored_state.last_outbound_message_id == 999
-
-
-def test_chat_ai_v2_webhook_manual_mode_defers_processing(db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    oportunidad_id, message_id = _seed_context(db_session, latest_message="Hola")
-    calls = {"count": 0}
-
-    def fake_normal_turn(context, prompt_families):
-        calls["count"] += 1
-        return NormalTurnDecision(decision_type="smalltalk", reply_to_user="Hola, en que te ayudo?")
-
-    monkeypatch.setattr(agent._llm_client, "interpret_normal_turn", fake_normal_turn)
-    orchestrator = AgentTurnOrchestrator(
-        context_loader=context_loader,
-        agent=agent,
-    )
-
-    result = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.WEBHOOK,
-                delivery_mode=DeliveryMode.AUTO_SEND,
-                requested_mode="manual",
-            ),
-        )
-    )
-
-    assert result["type"] == "agent_deferred"
-    assert result["skipped"] is True
-    assert result["agent_mode"] == "manual"
-    assert result["delivery"]["sent"] is False
-    assert result["delivery"]["status"] == "deferred"
-    assert calls["count"] == 0
-
-    stored_state = context_loader._state_repository.load(oportunidad_id)
-    assert stored_state.agent_mode == "manual"
-    assert stored_state.last_inbound_message_id == message_id
-    assert stored_state.last_processed_message_id is None
 
 
 def test_chat_agent_config_endpoint_returns_default_mode_when_setting_is_missing(client, monkeypatch):
@@ -287,15 +218,13 @@ def test_chat_agent_config_endpoint_returns_default_mode_when_setting_is_missing
     assert body["setting"] is None
 
 
-def test_chat_agent_config_endpoint_persists_mode_and_orchestrator_uses_setting(
+def test_chat_agent_config_endpoint_persists_mode_and_webhook_uses_setting(
     client,
     db_session,
     monkeypatch,
     tmp_path,
 ):
     monkeypatch.setenv("CRM_CHAT_AGENT_MODE", "manual")
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-
     response = client.put("/crm/chat-agent/config", json={"agent_mode": "automatic"})
     assert response.status_code == 200
     body = response.json()
@@ -310,34 +239,6 @@ def test_chat_agent_config_endpoint_persists_mode_and_orchestrator_uses_setting(
     assert persisted_setting is not None
     assert persisted_setting.valor == "automatic"
 
-    _, message_id = _seed_context(db_session, latest_message="Hola")
-    calls = {"count": 0}
-
-    def fake_normal_turn(context, prompt_families):
-        calls["count"] += 1
-        return NormalTurnDecision(decision_type="smalltalk", reply_to_user="Hola, en que te ayudo?")
-
-    monkeypatch.setattr(agent._llm_client, "interpret_normal_turn", fake_normal_turn)
-    orchestrator = AgentTurnOrchestrator(
-        context_loader=context_loader,
-        agent=agent,
-    )
-
-    result = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.WEBHOOK,
-                delivery_mode=DeliveryMode.PREVIEW_ONLY,
-            ),
-        )
-    )
-
-    assert result["type"] == "chat_reply"
-    assert result["delivery"]["status"] == "preview"
-    assert calls["count"] == 1
-
 
 def test_chat_agent_config_endpoint_rejects_invalid_mode(client):
     response = client.put("/crm/chat-agent/config", json={"agent_mode": "otro"})
@@ -345,49 +246,32 @@ def test_chat_agent_config_endpoint_rejects_invalid_mode(client):
     assert "agent_mode invalido" in response.json()["detail"]
 
 
-def test_chat_ai_v2_webhook_automatic_mode_processes_turn(db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
+def test_chat_ai_v2_webhook_mode_processes_turn_when_orchestrator_is_called(db_session, monkeypatch, tmp_path):
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
     _, message_id = _seed_context(db_session, latest_message="Hola")
     calls = {"count": 0}
-    sends = {"count": 0}
 
     def fake_normal_turn(context, prompt_families):
         calls["count"] += 1
         return NormalTurnDecision(decision_type="smalltalk", reply_to_user="Hola, en que te ayudo?")
 
-    class FakeChannelAdapter:
-        async def send_text(self, session, command):
-            sends["count"] += 1
-            return SendResult(sent=True, status="sent", outbound_message_id=321)
-
     monkeypatch.setattr(agent._llm_client, "interpret_normal_turn", fake_normal_turn)
     orchestrator = AgentTurnOrchestrator(
-        context_loader=context_loader,
-        agent=agent,
-        channel_adapter=FakeChannelAdapter(),
+        processes=[agent],
+        state_store=state_store,
     )
 
     result = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.WEBHOOK,
-                delivery_mode=DeliveryMode.AUTO_SEND,
-                requested_mode="automatic",
-            ),
-        )
+        orchestrator.process_turn(db_session, message_id, "webhook")
     )
 
     assert result["type"] == "chat_reply"
-    assert result["delivery"]["sent"] is True
     assert calls["count"] == 1
-    assert sends["count"] == 1
 
 
-def test_chat_ai_v2_manual_button_processes_even_in_manual_mode(db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    oportunidad_id, message_id = _seed_context(db_session, latest_message="Hola")
+def test_chat_ai_v2_manual_button_processes_turn(db_session, monkeypatch, tmp_path):
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    _, message_id = _seed_context(db_session, latest_message="Hola")
     calls = {"count": 0}
 
     def fake_normal_turn(context, prompt_families):
@@ -396,32 +280,19 @@ def test_chat_ai_v2_manual_button_processes_even_in_manual_mode(db_session, monk
 
     monkeypatch.setattr(agent._llm_client, "interpret_normal_turn", fake_normal_turn)
     orchestrator = AgentTurnOrchestrator(
-        context_loader=context_loader,
-        agent=agent,
+        processes=[agent],
+        state_store=state_store,
     )
 
     result = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.MANUAL_BUTTON,
-                delivery_mode=DeliveryMode.PREVIEW_ONLY,
-                requested_mode="manual",
-            ),
-        )
+        orchestrator.process_turn(db_session, message_id, "manual_button")
     )
 
     assert result["type"] == "chat_reply"
-    assert result["delivery"]["status"] == "preview"
     assert calls["count"] == 1
 
-    stored_state = context_loader._state_repository.load(oportunidad_id)
-    assert stored_state.agent_mode == "manual"
-    assert stored_state.last_processed_message_id == message_id
 
-
-def test_meta_webhook_service_always_delegates_to_orchestrator(db_session):
+def test_meta_webhook_service_skips_orchestrator_when_webhook_processing_is_manual(db_session, monkeypatch):
     user = User(nombre="Tester Webhook Delegation", email="tester-webhook-delegation@example.com")
     db_session.add(user)
     db_session.flush()
@@ -468,21 +339,18 @@ def test_meta_webhook_service_always_delegates_to_orchestrator(db_session):
     db_session.refresh(celular)
     db_session.refresh(mensaje)
 
-    calls: dict[str, object] = {}
+    calls: dict[str, object] = {"count": 0}
 
     class FakeOrchestrator:
-        async def process_turn(self, session, command):
+        async def process_turn(self, session, message_id, trigger):
             calls["count"] = int(calls.get("count", 0)) + 1
-            calls["command"] = command
-            return {
-                "type": "agent_deferred",
-                "skipped": True,
-                "reason": "modalidad_manual_en_webhook",
-                "agent_mode": "manual",
-            }
+            calls["message_id"] = message_id
+            calls["trigger"] = trigger
+            return {"type": "chat_reply", "respuesta": "Hola"}
 
     service = MetaWebhookService(db_session, orchestrator=FakeOrchestrator())
     service._find_existing_inbound_message = lambda external_message_id: mensaje
+    monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: False)
 
     msg = SimpleNamespace(
         id=uuid4(),
@@ -504,16 +372,104 @@ def test_meta_webhook_service_always_delegates_to_orchestrator(db_session):
 
     result = asyncio.run(service._handle_inbound_message(msg, celular))
 
+    assert calls["count"] == 0
+    assert result["agent_result"] is None
+
+
+def test_meta_webhook_service_processes_and_sends_when_webhook_processing_is_automatic(db_session, monkeypatch):
+    user = User(nombre="Tester Webhook Automatico", email="tester-webhook-automatic@example.com")
+    db_session.add(user)
+    db_session.flush()
+
+    contacto = CRMContacto(
+        nombre_completo="Cliente Webhook Automatico",
+        telefonos=["+5491111111188"],
+        email="cliente-webhook-automatic@example.com",
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+
+    oportunidad = CRMOportunidad(
+        titulo="Oportunidad Webhook Automatico",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        estado=EstadoOportunidad.PROSPECT.value,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.flush()
+
+    mensaje = CRMMensaje(
+        tipo="entrada",
+        canal="whatsapp",
+        contacto_id=contacto.id,
+        oportunidad_id=oportunidad.id,
+        contenido="Hola",
+        estado="nuevo",
+        contacto_referencia="+5491111111188",
+        origen_externo_id="wamid.test.webhook.agent.auto",
+    )
+    db_session.add(mensaje)
+
+    celular = CRMCelular(
+        meta_celular_id=str(uuid4()),
+        numero_celular="+5491111000088",
+        alias="Linea webhook test auto",
+        activo=True,
+    )
+    db_session.add(celular)
+    db_session.commit()
+    db_session.refresh(celular)
+    db_session.refresh(mensaje)
+
+    calls: dict[str, object] = {"count": 0}
+
+    class FakeOrchestrator:
+        async def process_turn(self, session, message_id, trigger):
+            calls["count"] = int(calls.get("count", 0)) + 1
+            calls["message_id"] = message_id
+            calls["trigger"] = trigger
+            return {"type": "chat_reply", "respuesta": "Hola, en que te ayudo?"}
+
+    service = MetaWebhookService(db_session, orchestrator=FakeOrchestrator())
+    service._find_existing_inbound_message = lambda external_message_id: mensaje
+    monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: True)
+
+    async def fake_deliver_result(*, session, message, result):
+        assert result["respuesta"] == "Hola, en que te ayudo?"
+        return SendResult(sent=True, status="sent", outbound_message_id=321)
+
+    monkeypatch.setattr(service._delivery_service, "deliver_result", fake_deliver_result)
+
+    msg = SimpleNamespace(
+        id=uuid4(),
+        meta_message_id="wamid.test.webhook.agent.auto",
+        from_phone="+5491111111188",
+        from_name="Cliente Webhook Automatico",
+        to_phone="+5491111000088",
+        direccion="in",
+        tipo="text",
+        texto="Hola",
+        media_id=None,
+        caption=None,
+        filename=None,
+        mime_type=None,
+        status="received",
+        meta_timestamp=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+
+    result = asyncio.run(service._handle_inbound_message(msg, celular))
+
     assert calls["count"] == 1
-    command = calls["command"]
-    assert command.trigger == TurnTrigger.WEBHOOK
-    assert command.delivery_mode == DeliveryMode.AUTO_SEND
-    assert result["agent_result"]["type"] == "agent_deferred"
+    assert calls["trigger"] == "webhook"
+    assert result["agent_result"]["delivery"]["sent"] is True
 
 
 def test_chat_ai_v2_persists_active_process_and_process_state(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, message_id = _seed_context(db_session, latest_message="Necesito 10 bolsas de cemento")
@@ -538,19 +494,17 @@ def test_chat_ai_v2_persists_active_process_and_process_state(client, db_session
     response = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
     assert response.status_code == 200
 
-    stored_state = context_loader._state_repository.load(oportunidad_id)
+    stored_state = state_store.load(oportunidad_id)
     assert stored_state.active_process == "solicitud_materiales"
-    assert stored_state.active_substate == "completa_atributos"
-    assert stored_state.last_processed_message_id == message_id
-    assert "solicitud_materiales" in stored_state.process_states
-    process_state = stored_state.process_states["solicitud_materiales"]
+    assert stored_state.last_message_id == message_id
+    process_state = stored_state.process_state
     assert process_state["pending_query"]["attribute_name"] == "tipo"
     assert process_state["last_user_intent"] == "add"
 
 
 def test_chat_ai_v2_persists_revision_state_when_request_is_ready(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, _ = _seed_context(db_session, latest_message="mostrame la solicitud")
@@ -571,20 +525,19 @@ def test_chat_ai_v2_persists_revision_state_when_request_is_ready(client, db_ses
     assert body["workflow"]["mode"] == "revision"
     assert body["workflow"]["awaiting_user_decision"] == "continue_or_close"
 
-    stored_state = context_loader._state_repository.load(oportunidad_id)
-    assert stored_state.active_substate == "revision"
-    process_state = stored_state.process_states["solicitud_materiales"]
+    stored_state = state_store.load(oportunidad_id)
+    process_state = stored_state.process_state
     assert process_state["awaiting_user_decision"] == "continue_or_close"
     assert process_state["ready_for_confirmation"] is True
     assert process_state["last_request_action"] == "show"
 
 
-def test_chat_ai_v2_manual_endpoint_accepts_requested_process_and_mode(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+def test_chat_ai_v2_manual_endpoint_accepts_explicit_message_id(client, db_session, monkeypatch, tmp_path):
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
-    oportunidad_id, _ = _seed_context(db_session, latest_message="Hola")
+    oportunidad_id, message_id = _seed_context(db_session, latest_message="Hola")
     monkeypatch.setattr(
         agent._llm_client,
         "interpret_normal_turn",
@@ -594,117 +547,17 @@ def test_chat_ai_v2_manual_endpoint_accepts_requested_process_and_mode(client, d
     response = client.post(
         f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2",
         json={
-            "requested_process": "solicitud_materiales",
-            "requested_mode": "hybrid",
+            "message_id": message_id,
         },
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["execution"]["requested_process"] == "solicitud_materiales"
-    assert body["execution"]["requested_mode"] == "hybrid"
-
-
-def test_chat_ai_v2_manual_endpoint_accepts_auto_send(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
-
-    oportunidad_id, _ = _seed_context(db_session, latest_message="Hola")
-    sends = {"count": 0}
-
-    monkeypatch.setattr(
-        agent._llm_client,
-        "interpret_normal_turn",
-        lambda context, prompt_families: NormalTurnDecision(decision_type="smalltalk", reply_to_user="Hola."),
-    )
-
-    async def fake_send_text(self, session, command):
-        sends["count"] += 1
-        return SendResult(sent=True, status="sent", outbound_message_id=777)
-
-    monkeypatch.setattr(CRMOutboundChannelAdapter, "send_text", fake_send_text)
-
-    response = client.post(
-        f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2",
-        json={
-            "delivery_mode": "auto_send",
-        },
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["delivery_mode"] == "auto_send"
-    assert body["delivery"]["sent"] is True
-    assert sends["count"] == 1
-
-    stored_state = context_loader._state_repository.load(oportunidad_id)
-    assert stored_state.last_outbound_message_id == 777
-
-
-def test_chat_ai_v2_auto_send_show_request_sends_summary_for_ready_request(db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    _, message_id = _seed_context(db_session, latest_message="mostrar solicitud")
-    _persist_ready_request(agent, db_session.get(CRMMensaje, message_id).oportunidad_id, ultimo_mensaje_id=message_id)
-    sent_payload: dict[str, str] = {}
-
-    monkeypatch.setattr(
-        agent._llm_client,
-        "interpret_normal_turn",
-        lambda context, prompt_families: NormalTurnDecision(
-            decision_type="request_operation",
-            operations=[ItemOperation(action="show_request")],
-        ),
-    )
-
-    class FakeChannelAdapter:
-        async def send_text(self, session, command):
-            sent_payload["contenido"] = command.contenido
-            return SendResult(sent=True, status="sent", outbound_message_id=778)
-
-    orchestrator = AgentTurnOrchestrator(
-        context_loader=context_loader,
-        agent=agent,
-        channel_adapter=FakeChannelAdapter(),
-    )
-
-    result = asyncio.run(
-        orchestrator.process_turn(
-            db_session,
-            ProcessTurnCommand(
-                message_id=message_id,
-                trigger=TurnTrigger.MANUAL_BUTTON,
-                delivery_mode=DeliveryMode.AUTO_SEND,
-            ),
-        )
-    )
-
-    assert result["type"] == "material_request"
-    assert result["request_action"] == "show"
-    assert result["delivery"]["sent"] is True
-    assert sent_payload["contenido"].startswith("Te detallo la solicitud:")
-    assert "10 bolsa cemento" in sent_payload["contenido"]
-    assert "tipo: portland" in sent_payload["contenido"]
-
-
-def test_chat_ai_v2_manual_endpoint_rejects_invalid_delivery_mode(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
-
-    oportunidad_id, _ = _seed_context(db_session, latest_message="Hola")
-
-    response = client.post(
-        f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2",
-        json={
-            "delivery_mode": "invalid_mode",
-        },
-    )
-    assert response.status_code == 400
-    assert "delivery_mode invalido" in response.json()["detail"]
+    assert body["message_id"] == message_id
 
 
 def test_chat_ai_v2_diagnostic_endpoint_returns_execution_details(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, message_id = _seed_context(db_session, latest_message="Hola")
@@ -728,8 +581,8 @@ def test_chat_ai_v2_diagnostic_endpoint_returns_execution_details(client, db_ses
 
 
 def test_chat_ai_v2_diagnostic_endpoint_reports_no_process_for_non_project(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, _ = _seed_non_project_context(db_session, latest_message="Necesito 10 bolsas de cemento")
@@ -748,8 +601,8 @@ def test_chat_ai_v2_diagnostic_endpoint_reports_no_process_for_non_project(clien
 
 
 def test_chat_ai_v2_audit_includes_actions_and_prompts(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, message_id = _seed_context(db_session, latest_message="Necesito 10 bolsas de cemento")
@@ -773,10 +626,8 @@ def test_chat_ai_v2_audit_includes_actions_and_prompts(client, db_session, monke
     response = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
     assert response.status_code == 200
     body = response.json()
-    execution = body["execution"]
-    assert execution["process_name"] == "solicitud_materiales"
-    assert execution["audit"]["debug"]["prompts_used"] == ["normal_turn"]
-    assert any(action["type"] == "add_item" for action in execution["audit"]["actions"])
+    assert body["process_name"] == "solicitud_materiales"
+    assert body["cached"] is False
 
     mensaje = db_session.get(CRMMensaje, message_id)
     assert mensaje is not None
@@ -784,8 +635,8 @@ def test_chat_ai_v2_audit_includes_actions_and_prompts(client, db_session, monke
 
 
 def test_chat_ai_v2_skips_non_project_opportunity(client, db_session, monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     oportunidad_id, message_id = _seed_non_project_context(db_session, latest_message="Necesito 10 bolsas de cemento")
@@ -797,9 +648,20 @@ def test_chat_ai_v2_skips_non_project_opportunity(client, db_session, monkeypatc
     assert body["skipped"] is True
     assert "No hay procesos disponibles" in body["reason"]
 
-    stored_state = context_loader._state_repository.load(oportunidad_id)
-    assert stored_state.last_processed_message_id == message_id
+    stored_state = state_store.load(oportunidad_id)
+    assert stored_state.last_message_id == message_id
     assert stored_state.active_process is None
+
+
+def test_process_registry_returns_explicit_no_match_resolution(db_session, tmp_path):
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    oportunidad_id, message_id = _seed_non_project_context(db_session, latest_message="Necesito 10 bolsas de cemento")
+    orchestrator = AgentTurnOrchestrator(processes=[agent], state_store=state_store)
+    context = orchestrator.build_context(db_session, message_id, trigger="webhook")
+
+    resolved = orchestrator.registry.resolve(context)
+
+    assert resolved is None
 
 
 def test_chat_ai_v2_channel_adapter_forwards_source_message_id(monkeypatch):

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agente.v2.core.models import MaterialRequestState, utc_now_iso
+from agente.v2.core.state import utc_now_iso
+from agente.v2.processes.solicitud_materiales.models import MaterialRequestState
 
 
 DEFAULT_REQUESTS_DIR = Path(__file__).resolve().parents[2] / "core" / "state" / "material_requests"

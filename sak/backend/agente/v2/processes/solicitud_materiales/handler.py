@@ -5,23 +5,25 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from agente.v2.core.context_loader import ChatContextLoader
-from agente.v2.core.state_repository import AgentConversationStateRepository
-from agente.v2.core.models import (
+from agente.v2.core.context import TurnContext
+from agente.v2.core.process import TurnResult
+from agente.v2.core.processes import (
     BusinessAction,
-    ChatTurnContext,
-    MaterialItem,
-    MaterialRequestProcessState,
-    MaterialRequestState,
-    PendingTurnDecision,
     ProcessActivationDecision,
     ProcessHandoff,
     ProcessTurnResult,
     ProcessUserReply,
 )
+from agente.v2.core.state import JsonConversationStateStore
 from agente.v2.processes.solicitud_materiales.attribute_mapping import DirectAttributeMapper
 from agente.v2.processes.solicitud_materiales.family_catalog import FamilyCatalog
 from agente.v2.processes.solicitud_materiales.llm_client import OpenAIConversationAgentClientV2
+from agente.v2.processes.solicitud_materiales.models import (
+    MaterialItem,
+    MaterialRequestProcessState,
+    MaterialRequestState,
+    MaterialRequestTurnContext,
+)
 from agente.v2.processes.solicitud_materiales.operation_execution import RequestOperationExecutor
 from agente.v2.processes.solicitud_materiales.request_store import RequestStore
 from agente.v2.processes.solicitud_materiales.request_validation import RequestValidator
@@ -120,28 +122,95 @@ def build_request_reply_text(request_state: MaterialRequestState) -> str:
 
 
 class ConversationAgentV2:
-    """Proceso `solicitud_materiales` implementado sobre el contrato comun del agente v2."""
+    """Proceso `solicitud_materiales` implementado sobre el contrato del agente v2."""
 
-    process_name = "solicitud_materiales"
+    # Nombre usado por el core para identificar el proceso (AgentProcess.name)
+    name = "solicitud_materiales"
+    process_name = name  # alias de compatibilidad
 
     def __init__(
         self,
         family_catalog: FamilyCatalog,
         request_store: RequestStore,
         llm_client: OpenAIConversationAgentClientV2,
-        *,
-        state_repository: AgentConversationStateRepository | None = None,
     ) -> None:
         self._family_catalog = family_catalog
         self._request_store = request_store
         self._llm_client = llm_client
-        self._state_repository = state_repository
         self._request_validator = RequestValidator(family_catalog)
         self._direct_mapper = DirectAttributeMapper()
         self._operation_executor = RequestOperationExecutor()
 
-    def can_activate(self, context: ChatTurnContext) -> ProcessActivationDecision:
-        if not context.conversation.is_project_opportunity:
+    # ------------------------------------------------------------------
+    # Contrato AgentProcess (core v2 simplificado)
+    # ------------------------------------------------------------------
+
+    def priority(self, ctx: TurnContext) -> int | None:
+        """Prioridad para manejar este turno. None = no puede manejar."""
+        if not ctx.is_project:
+            return None
+
+        if ctx.active_process == self.name:
+            return 100  # proceso activo — registry suma +1000 adicional
+
+        if self.load_request_state(ctx.oportunidad_id, active_only=True) is not None:
+            return 90  # solicitud activa sin proceso marcado
+
+        if self._looks_like_material_request(ctx.message.contenido):
+            return 80  # detecta pedido de materiales
+
+        return 10  # fallback conversacional para proyectos
+
+    def handle(self, ctx: TurnContext) -> TurnResult:
+        """Ejecuta el turno y devuelve TurnResult para el orquestador."""
+        material_context = self._build_turn_context(ctx)
+        old_result = self.handle_turn(material_context)
+        return TurnResult(
+            payload=old_result.response_payload,
+            keep_active=old_result.keep_process_active,
+            process_state=old_result.updated_process_state or {},
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def load_request_state(
+        self,
+        oportunidad_id: int,
+        *,
+        active_only: bool = False,
+    ) -> MaterialRequestState | None:
+        request_state = self._request_store.load(oportunidad_id)
+        if request_state is None:
+            return None
+
+        snapshot = request_state.to_state_dict()
+        refreshed_state = self._request_validator.refresh(request_state)
+        if refreshed_state.to_state_dict() != snapshot:
+            refreshed_state = self._request_store.save(
+                refreshed_state,
+                refreshed_state.ultimo_mensaje_id,
+            )
+
+        if active_only and not refreshed_state.activa:
+            return None
+        return refreshed_state
+
+    def list_prompt_families(self) -> list[dict[str, Any]]:
+        return self._family_catalog.list_prompt_families()
+
+    def _build_turn_context(self, context: TurnContext) -> MaterialRequestTurnContext:
+        return MaterialRequestTurnContext(
+            base_context=context,
+            request_state=self.load_request_state(context.oportunidad_id, active_only=True),
+            prompt_families=self.list_prompt_families(),
+        )
+
+    def can_activate(self, context) -> ProcessActivationDecision:
+        """Compatibilidad con codigo anterior — internamante llama a priority()."""
+        ctx_is_project = getattr(getattr(context, "conversation", None), "is_project_opportunity", False)
+        if not ctx_is_project:
             return ProcessActivationDecision(
                 can_activate=False,
                 priority=0,
@@ -157,7 +226,7 @@ class ConversationAgentV2:
                 process_name=self.process_name,
             )
 
-        if context.solicitud_actual is not None:
+        if self.load_request_state(context.oportunidad_id, active_only=True) is not None:
             return ProcessActivationDecision(
                 can_activate=True,
                 priority=90,
@@ -180,24 +249,25 @@ class ConversationAgentV2:
             process_name=self.process_name,
         )
 
-    def process_turn(self, context: ChatTurnContext) -> dict[str, Any]:
-        return self.handle_turn(context).response_payload
+    def process_turn(self, context: TurnContext) -> dict[str, Any]:
+        return self.handle(context).payload
 
-    def handle_turn(self, context: ChatTurnContext) -> ProcessTurnResult:
-        request_state = context.solicitud_actual
-        process_state = self._load_process_state(context, request_state)
+    def handle_turn(self, context: MaterialRequestTurnContext) -> ProcessTurnResult:
+        material_context = context
+        request_state = material_context.request_state
+        process_state = self._load_process_state(material_context, request_state)
         active_query_item = request_state.active_query_item() if request_state else None
         if request_state and active_query_item:
-            response = self._process_pending_query_turn(context, request_state, process_state)
+            response = self._process_pending_query_turn(material_context, request_state, process_state)
             if response is not None:
                 return response
 
         normal_decision = self._llm_client.interpret_normal_turn(
-            context,
-            prompt_families=self._family_catalog.list_prompt_families(),
+            material_context,
+            material_context.prompt_families,
         )
         return self._process_normal_decision(
-            context,
+            material_context,
             normal_decision,
             process_state=process_state,
             prompts_used=["normal_turn"],
@@ -205,7 +275,7 @@ class ConversationAgentV2:
 
     def _load_process_state(
         self,
-        context: ChatTurnContext,
+        context: MaterialRequestTurnContext,
         request_state: MaterialRequestState | None,
     ) -> MaterialRequestProcessState:
         raw_payload = context.active_process_state if isinstance(context.active_process_state, dict) else None
@@ -222,7 +292,7 @@ class ConversationAgentV2:
 
     def _process_pending_query_turn(
         self,
-        context: ChatTurnContext,
+        context: MaterialRequestTurnContext,
         request_state: MaterialRequestState,
         process_state: MaterialRequestProcessState,
     ) -> ProcessTurnResult | None:
@@ -293,7 +363,7 @@ class ConversationAgentV2:
         if pending_decision.decision_type == "independent_message":
             normal_decision = self._llm_client.interpret_normal_turn(
                 context,
-                prompt_families=self._family_catalog.list_prompt_families(),
+                context.prompt_families,
             )
             result = self._process_normal_decision(
                 context,
@@ -331,7 +401,7 @@ class ConversationAgentV2:
 
     def _process_normal_decision(
         self,
-        context: ChatTurnContext,
+        context: MaterialRequestTurnContext,
         normal_decision: Any,
         *,
         process_state: MaterialRequestProcessState,
@@ -340,14 +410,14 @@ class ConversationAgentV2:
     ) -> ProcessTurnResult:
         if normal_decision.decision_type == "smalltalk":
             reply_to_user = self._build_contextual_chat_reply(
-                request_state=context.solicitud_actual,
+                request_state=context.request_state,
                 process_state=process_state,
                 base_reply=normal_decision.reply_to_user or "Entendido.",
             )
             return self._build_chat_process_result(
                 reply_to_user=reply_to_user,
                 warnings=normal_decision.warnings,
-                request_state=context.solicitud_actual,
+                request_state=context.request_state,
                 actions=[
                     BusinessAction(
                         "send_reply",
@@ -363,14 +433,14 @@ class ConversationAgentV2:
 
         if normal_decision.decision_type == "no_op":
             reply_to_user = self._build_contextual_chat_reply(
-                request_state=context.solicitud_actual,
+                request_state=context.request_state,
                 process_state=process_state,
                 base_reply=normal_decision.reply_to_user or "Entendido.",
             )
             return self._build_chat_process_result(
                 reply_to_user=reply_to_user,
                 warnings=normal_decision.warnings,
-                request_state=context.solicitud_actual,
+                request_state=context.request_state,
                 actions=[
                     BusinessAction(
                         "send_reply",
@@ -384,7 +454,7 @@ class ConversationAgentV2:
                 user_intent="no_op",
             )
 
-        previous_request = context.solicitud_actual
+        previous_request = context.request_state
         request_state = previous_request or MaterialRequestState.empty(
             context.oportunidad_id,
             ultimo_mensaje_id=context.mensaje_objetivo.id,
@@ -829,31 +899,24 @@ def build_v2_dependencies(
     families_path: Path | None = None,
     requests_root: Path | None = None,
     state_root: Path | None = None,
-    executions_root: Path | None = None,
-) -> tuple[ChatContextLoader, ConversationAgentV2]:
+    executions_dir: Path | None = None,
+) -> tuple[JsonConversationStateStore, ConversationAgentV2]:
+    from agente.v2.core.state import DEFAULT_STATE_DIR
+
     family_catalog = FamilyCatalog(families_path)
     request_store = RequestStore(requests_root)
 
     resolved_state_root = state_root
-    resolved_executions_root = executions_root
     if requests_root is not None:
         resolved_state_root = resolved_state_root or requests_root / "conversation_state"
-        resolved_executions_root = resolved_executions_root or requests_root / "turn_executions"
 
-    state_repository = AgentConversationStateRepository(
+    state_store = JsonConversationStateStore(
         root_dir=resolved_state_root,
-        executions_dir=resolved_executions_root,
     )
     llm_client = OpenAIConversationAgentClientV2()
     agent = ConversationAgentV2(
         family_catalog=family_catalog,
         request_store=request_store,
         llm_client=llm_client,
-        state_repository=state_repository,
     )
-    context_loader = ChatContextLoader(
-        request_store,
-        family_catalog,
-        state_repository,
-    )
-    return context_loader, agent
+    return state_store, agent

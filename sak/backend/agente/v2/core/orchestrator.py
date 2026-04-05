@@ -1,602 +1,248 @@
+"""
+Pipeline principal del agente v2.
+
+Flujo de un turno:
+
+    process_turn(session, message_id, trigger)
+        │
+        ├─ 1. Valida mensaje y oportunidad asociada
+        ├─ 2. Deduplicacion: si ya fue procesado devuelve el resultado cacheado
+        ├─ 3. Carga estado conversacional + construye TurnContext
+        ├─ 4. Resuelve que proceso tiene mayor prioridad para el mensaje
+        │
+        ├─ ¿Proceso encontrado?
+        │       └─ NO → registra "sin proceso" y retorna
+        │
+        └─ SÍ
+                ├─ 5. Ejecuta el proceso (LLM, operaciones, etc.)
+                ├─ 6. Persiste estado conversacional actualizado
+                └─ 7. Marca el mensaje como procesado y retorna payload
+"""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlmodel import Session
+from fastapi import HTTPException
+from sqlalchemy import func
+from sqlmodel import Session, select
 
-from agente.v2.core.context_loader import ChatContextLoader
-from agente.v2.core.process_registry import ProcessRegistry
-from agente.v2.core.runtime import ChatAgentMode, get_chat_agent_mode
-from agente.v2.core.state_repository import AgentConversationStateRepository
-from agente.v2.core.models import (
-    AgentConversationState,
-    DeliveryMode,
-    ProcessTurnCommand,
-    ProcessTurnResult,
-    SendResult,
-    SendTextCommand,
-    TurnTrigger,
-    TurnRuntime,
-)
-from agente.v2.infrastructure.channels.crm_channel_adapter import CRMOutboundChannelAdapter
-from app.models import CRMMensaje
-from app.models.enums import EstadoMensaje, TipoMensaje
+from agente.v2.core.context import MessageInfo, TurnContext
+from agente.v2.core.process import AgentProcess, ProcessRegistry
+from agente.v2.core.state import ConversationState, JsonConversationStateStore
+from app.models import CRMContacto, CRMMensaje, CRMOportunidad, Proyecto
+from app.models.base import serialize_datetime
+from app.models.crm.catalogos import CRMTipoOperacion
 
 
 class AgentTurnOrchestrator:
-    """Coordina el procesamiento de un turno y su politica de entrega."""
+    """Orquestador del pipeline de un turno del agente."""
 
     def __init__(
         self,
         *,
-        context_loader: ChatContextLoader,
-        agent: Any,
-        registry: ProcessRegistry | None = None,
-        state_repository: AgentConversationStateRepository | None = None,
-        channel_adapter: CRMOutboundChannelAdapter | None = None,
+        processes: list[AgentProcess],
+        state_store: JsonConversationStateStore,
+        history_limit: int = 6,
     ) -> None:
-        self._context_loader = context_loader
-        self._agent = agent
-        self._registry = registry or ProcessRegistry([agent])
-        self._state_repository = state_repository or getattr(context_loader, "_state_repository", None)
-        if self._state_repository is None:
-            raise ValueError("El orquestador requiere un repositorio de estado conversacional")
-        self._channel_adapter = channel_adapter or CRMOutboundChannelAdapter()
+        self._registry = ProcessRegistry(processes)
+        self._state_store = state_store
+        self._history_limit = history_limit
+
+    @property
+    def state_store(self) -> JsonConversationStateStore:
+        return self._state_store
+
+    @property
+    def registry(self) -> ProcessRegistry:
+        return self._registry
+
+    # ------------------------------------------------------------------
+    # Punto de entrada principal
+    # ------------------------------------------------------------------
 
     async def process_turn(
         self,
         session: Session,
-        command: ProcessTurnCommand,
+        message_id: int,
+        trigger: str,
     ) -> dict[str, Any]:
-        message = session.get(CRMMensaje, command.message_id)
+        """
+        Procesa un turno completo para el mensaje dado.
+
+        Si el mensaje ya fue procesado anteriormente devuelve el resultado
+        cacheado sin llamar al LLM. Cualquier excepcion no controlada
+        se propaga hacia el caller para ser logueada y devuelta como 500.
+        """
+        message = session.get(CRMMensaje, message_id)
         if not message:
             raise ValueError("Mensaje no encontrado")
         if not message.oportunidad_id:
             raise ValueError("Mensaje sin oportunidad asociada")
 
-        effective_mode = self._resolve_agent_mode(session=session, command=command)
-        state = self._state_repository.load(message.oportunidad_id, agent_mode=effective_mode.value)
-        runtime = TurnRuntime(
-            trigger=command.trigger,
-            agent_mode=effective_mode.value,
-            delivery_mode=command.delivery_mode,
-        )
+        # Deduplicacion: evita reprocesar el mismo mensaje (webhook doble, retry, etc.)
+        cached = (message.metadata_json or {}).get("agent_v2", {}).get("result")
+        if isinstance(cached, dict):
+            return {**cached, "message_id": message_id, "cached": True}
 
-        try:
-            if self._should_defer_webhook_turn(command=command, effective_mode=effective_mode):
-                deferred_response, execution_record = self._handle_deferred_webhook_turn(
-                    message=message,
-                    state=state,
-                    command=command,
-                    effective_mode=effective_mode,
-                    runtime=runtime,
-                )
-                return self._build_response(
-                    result=deferred_response,
-                    command=command,
-                    delivery={"sent": False, "status": "deferred"},
-                    cached=False,
-                    process_name=None,
-                    execution_audit=execution_record,
-                )
+        state = self._state_store.load(message.oportunidad_id)
+        ctx = self.build_context(session, message_id, trigger=trigger, state=state)
 
-            cached = self._load_cached_turn(
-                message=message,
-                scope_id=message.oportunidad_id,
-                command=command,
-            )
-            if cached is not None:
-                if command.delivery_mode == DeliveryMode.PREVIEW_ONLY or cached["delivery"].get("sent"):
-                    return self._build_response(
-                        result=cached["result"],
-                        command=command,
-                        delivery=cached["delivery"],
-                        cached=True,
-                        process_name=cached.get("process_name"),
-                        execution_audit=cached.get("execution"),
-                    )
+        process = self._registry.resolve(ctx)
+        if not process:
+            result: dict[str, Any] = {"type": "no_process", "skipped": True, "reason": "No hay procesos disponibles"}
+            state.last_message_id = message.id
+            self._state_store.save(state)
+            self._mark_done(session, message, result=result, process_name=None, trigger=trigger)
+            return {**result, "message_id": message_id, "cached": False}
 
-                delivery = await self._deliver_result(
-                    session=session,
-                    message=message,
-                    result=cached["result"],
-                )
-                persisted_state = self._persist_delivery_state(
-                    state=state,
-                    message=message,
-                    effective_mode=effective_mode,
-                    delivery=delivery,
-                )
-                self._mark_inbound_as_processed(session, message)
-                execution_record = self._merge_execution_record(
-                    cached.get("execution"),
-                    delivery=delivery.to_dict(),
-                    state=persisted_state,
-                )
-                self._state_repository.save_turn_execution(message.oportunidad_id, message.id, execution_record)
-                self._save_turn_result(
-                    session=session,
-                    message=message,
-                    result=cached["result"],
-                    command=command,
-                    delivery=delivery.to_dict(),
-                    execution_record=execution_record,
-                    process_name=cached.get("process_name"),
-                )
-                return self._build_response(
-                    result=cached["result"],
-                    command=command,
-                    delivery=delivery.to_dict(),
-                    cached=True,
-                    process_name=cached.get("process_name"),
-                    execution_audit=execution_record,
-                )
+        turn_result = process.handle(ctx)
 
-            context = self._context_loader.load_for_message(
-                session,
-                command.message_id,
-                agent_state=state,
-                runtime=runtime,
-            )
-            try:
-                handler, activation = self._registry.resolve(
-                    context,
-                    requested_process=command.requested_process,
-                )
-            except ValueError as exc:
-                no_process_response, persisted_state, execution_record = self._handle_no_process_match(
-                    message=message,
-                    state=state,
-                    command=command,
-                    effective_mode=effective_mode,
-                    reason=str(exc),
-                )
-                self._save_turn_result(
-                    session=session,
-                    message=message,
-                    result=no_process_response,
-                    command=command,
-                    delivery={"sent": False, "status": "skipped"},
-                    execution_record=execution_record,
-                    process_name=None,
-                )
-                return self._build_response(
-                    result=no_process_response,
-                    command=command,
-                    delivery={"sent": False, "status": "skipped"},
-                    cached=False,
-                    process_name=None,
-                    execution_audit=execution_record,
-                )
-            process_result = handler.handle_turn(context)
+        state.active_process = process.name if turn_result.keep_active else None
+        state.process_state = turn_result.process_state if turn_result.keep_active else {}
+        state.last_message_id = message.id
+        self._state_store.save(state)
 
-            persisted_state = self._persist_process_state(
-                state=state,
-                message=message,
-                process_result=process_result,
-                effective_mode=effective_mode,
-                activation=activation.to_dict(),
-                runtime=runtime.to_dict(),
-            )
-
-            delivery = SendResult(sent=False, status="preview")
-            if command.delivery_mode == DeliveryMode.AUTO_SEND:
-                delivery = await self._deliver_result(
-                    session=session,
-                    message=message,
-                    result=process_result.response_payload,
-                )
-                persisted_state = self._persist_delivery_state(
-                    state=persisted_state,
-                    message=message,
-                    effective_mode=effective_mode,
-                    delivery=delivery,
-                )
-                self._mark_inbound_as_processed(session, message)
-
-            execution_record = self._build_execution_record(
-                command=command,
-                process_result=process_result,
-                state=persisted_state,
-                activation=activation.to_dict(),
-                runtime=runtime.to_dict(),
-                delivery=delivery.to_dict(),
-            )
-            self._state_repository.save_turn_execution(message.oportunidad_id, message.id, execution_record)
-            self._save_turn_result(
-                session=session,
-                message=message,
-                result=process_result.response_payload,
-                command=command,
-                delivery=delivery.to_dict(),
-                execution_record=execution_record,
-                process_name=process_result.process_name,
-            )
-
-            return self._build_response(
-                result=process_result.response_payload,
-                command=command,
-                delivery=delivery.to_dict(),
-                cached=False,
-                process_name=process_result.process_name,
-                execution_audit=execution_record,
-            )
-        except Exception as exc:
-            self._state_repository.save_turn_execution(
-                message.oportunidad_id,
-                message.id,
-                {
-                    "status": "failed",
-                    "process_name": state.active_process or command.requested_process,
-                    "error": str(exc),
-                    "trigger": command.trigger.value,
-                    "delivery_mode": command.delivery_mode.value,
-                    "finished_at": datetime.now(UTC).isoformat(),
-                },
-            )
-            raise
-
-    @staticmethod
-    def _should_defer_webhook_turn(
-        *,
-        command: ProcessTurnCommand,
-        effective_mode: ChatAgentMode,
-    ) -> bool:
-        return command.trigger == TurnTrigger.WEBHOOK and effective_mode == ChatAgentMode.MANUAL
-
-    def _handle_deferred_webhook_turn(
-        self,
-        *,
-        message: CRMMensaje,
-        state: AgentConversationState,
-        command: ProcessTurnCommand,
-        effective_mode: ChatAgentMode,
-        runtime: TurnRuntime,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        persisted_state = state.clone()
-        persisted_state.agent_mode = effective_mode.value
-        if message.tipo == TipoMensaje.ENTRADA.value:
-            persisted_state.last_inbound_message_id = message.id
-        persisted_state.metadata["last_deferred_turn"] = {
-            "message_id": message.id,
-            "reason": "modalidad_manual_en_webhook",
-            "trigger": command.trigger.value,
-            "delivery_mode": command.delivery_mode.value,
-            "runtime": runtime.to_dict(),
-            "deferred_at": datetime.now(UTC).isoformat(),
-        }
-        persisted_state = self._state_repository.save(
-            persisted_state,
-            expected_version=state.version,
-        )
-
-        response_payload = {
-            "type": "agent_deferred",
-            "skipped": True,
-            "reason": "modalidad_manual_en_webhook",
-            "agent_mode": effective_mode.value,
-        }
-        execution_record = {
-            "status": "deferred",
-            "process_name": None,
-            "trigger": command.trigger.value,
-            "delivery_mode": command.delivery_mode.value,
-            "requested_mode": command.requested_mode,
-            "requested_process": command.requested_process,
-            "runtime": runtime.to_dict(),
-            "audit": {
-                "reason": "modalidad_manual_en_webhook",
-            },
-            "response_payload": response_payload,
-            "delivery": {"sent": False, "status": "deferred"},
-            "state": persisted_state.to_state_dict(),
-            "finished_at": datetime.now(UTC).isoformat(),
-        }
-        return response_payload, execution_record
-
-    def _handle_no_process_match(
-        self,
-        *,
-        message: CRMMensaje,
-        state: AgentConversationState,
-        command: ProcessTurnCommand,
-        effective_mode: ChatAgentMode,
-        reason: str,
-    ) -> tuple[dict[str, Any], AgentConversationState, dict[str, Any]]:
-        persisted_state = state.clone()
-        persisted_state.agent_mode = effective_mode.value
-        persisted_state.last_processed_message_id = message.id
-        if message.tipo == TipoMensaje.ENTRADA.value:
-            persisted_state.last_inbound_message_id = message.id
-        persisted_state.metadata["last_no_process_reason"] = reason
-        persisted_state = self._state_repository.save(
-            persisted_state,
-            expected_version=state.version,
-        )
-
-        response_payload = {
-            "type": "no_process",
-            "skipped": True,
-            "reason": reason,
-        }
-        execution_record = {
-            "status": "skipped",
-            "process_name": None,
-            "trigger": command.trigger.value,
-            "delivery_mode": command.delivery_mode.value,
-            "requested_mode": command.requested_mode,
-            "requested_process": command.requested_process,
-            "audit": {
-                "reason": reason,
-            },
-            "response_payload": response_payload,
-            "delivery": {"sent": False, "status": "skipped"},
-            "state": persisted_state.to_state_dict(),
-            "finished_at": datetime.now(UTC).isoformat(),
-        }
-        self._state_repository.save_turn_execution(message.oportunidad_id, message.id, execution_record)
-        return response_payload, persisted_state, execution_record
-
-    def _load_cached_turn(
-        self,
-        *,
-        message: CRMMensaje,
-        scope_id: int,
-        command: ProcessTurnCommand,
-    ) -> dict[str, Any] | None:
-        if command.force_reprocess:
-            return None
-
-        execution_record = self._state_repository.get_turn_execution(scope_id, message.id)
-        if execution_record is not None:
-            result = execution_record.get("response_payload")
-            if isinstance(result, dict):
-                delivery = execution_record.get("delivery")
-                if not isinstance(delivery, dict):
-                    delivery = {"sent": False, "status": "preview"}
-                return {
-                    "result": result,
-                    "delivery": delivery,
-                    "execution": execution_record,
-                    "process_name": execution_record.get("process_name"),
-                }
-
-        metadata = message.metadata_json or {}
-        agent_meta = metadata.get("agent_v2")
-        if not isinstance(agent_meta, dict):
-            return None
-
-        stored_result = agent_meta.get("turn_result")
-        if not isinstance(stored_result, dict):
-            return None
-
-        stored_delivery = agent_meta.get("delivery")
-        if not isinstance(stored_delivery, dict):
-            stored_delivery = {"sent": False, "status": "preview"}
+        self._mark_done(session, message, result=turn_result.payload, process_name=process.name, trigger=trigger)
 
         return {
-            "result": stored_result,
-            "delivery": stored_delivery,
-            "execution": agent_meta.get("execution"),
-            "process_name": agent_meta.get("process_name"),
+            **turn_result.payload,
+            "message_id": message_id,
+            "cached": False,
+            "process_name": process.name,
         }
 
-    async def _deliver_result(
-        self,
-        *,
-        session: Session,
-        message: CRMMensaje,
-        result: dict[str, Any],
-    ) -> SendResult:
-        reply_text = self._extract_reply_text(result)
-        if not reply_text:
-            return SendResult(sent=False, status="no_reply")
+    # ------------------------------------------------------------------
+    # Construccion de contexto
+    # ------------------------------------------------------------------
 
-        if not message.contacto_id:
-            return SendResult(sent=False, status="missing_contact")
+    def build_context(
+        self,
+        session: Session,
+        message_id: int,
+        *,
+        trigger: str = "webhook",
+        state: ConversationState | None = None,
+    ) -> TurnContext:
+        """Carga y construye el contexto completo para un turno."""
+        message = session.get(CRMMensaje, message_id)
+        if not message or message.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="Mensaje no encontrado")
         if not message.oportunidad_id:
-            return SendResult(sent=False, status="missing_oportunidad")
+            raise HTTPException(status_code=400, detail="Mensaje sin oportunidad asociada")
 
-        return await self._channel_adapter.send_text(
-            session,
-            SendTextCommand(
-                contenido=reply_text,
-                contacto_id=message.contacto_id,
-                oportunidad_id=message.oportunidad_id,
-                responsable_id=message.responsable_id or (message.oportunidad.responsable_id if message.oportunidad else None),
-                contacto_referencia=message.contacto_referencia,
-                canal=message.canal,
-                metadata={"source_message_id": message.id},
-            ),
+        oportunidad = session.get(CRMOportunidad, message.oportunidad_id)
+        if not oportunidad:
+            raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
+
+        resolved_state = state or self._state_store.load(message.oportunidad_id)
+        contacto = session.get(CRMContacto, message.contacto_id) if message.contacto_id else None
+
+        return TurnContext(
+            oportunidad_id=message.oportunidad_id,
+            contacto_id=contacto.id if contacto else None,
+            canal=message.canal,
+            trigger=trigger,
+            message=self._to_message_info(message),
+            history=self._load_history(session, message.oportunidad_id),
+            conversation_state=resolved_state,
+            is_project=self._is_project(session, oportunidad),
+        )
+
+    # ------------------------------------------------------------------
+    # Helper: resolver ultimo mensaje de una oportunidad
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def resolve_latest_message_id(session: Session, oportunidad_id: int) -> int:
+        oportunidad = session.get(CRMOportunidad, oportunidad_id)
+        if not oportunidad:
+            raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
+
+        fecha_ref = func.coalesce(CRMMensaje.fecha_mensaje, CRMMensaje.created_at)
+        latest = session.exec(
+            select(CRMMensaje.id)
+            .where(CRMMensaje.deleted_at.is_(None))
+            .where(CRMMensaje.oportunidad_id == oportunidad_id)
+            .where(CRMMensaje.tipo == "entrada")
+            .order_by(fecha_ref.desc(), CRMMensaje.id.desc())
+            .limit(1)
+        ).first()
+        if latest:
+            return int(latest)
+
+        latest = session.exec(
+            select(CRMMensaje.id)
+            .where(CRMMensaje.deleted_at.is_(None))
+            .where(CRMMensaje.oportunidad_id == oportunidad_id)
+            .order_by(fecha_ref.desc(), CRMMensaje.id.desc())
+            .limit(1)
+        ).first()
+        if not latest:
+            raise HTTPException(status_code=404, detail="No hay mensajes para la oportunidad")
+        return int(latest)
+
+    # ------------------------------------------------------------------
+    # Helpers internos
+    # ------------------------------------------------------------------
+
+    def _load_history(self, session: Session, oportunidad_id: int) -> list[MessageInfo]:
+        fecha_ref = func.coalesce(CRMMensaje.fecha_mensaje, CRMMensaje.created_at)
+        rows = session.exec(
+            select(CRMMensaje)
+            .where(CRMMensaje.deleted_at.is_(None))
+            .where(CRMMensaje.oportunidad_id == oportunidad_id)
+            .order_by(fecha_ref.desc(), CRMMensaje.id.desc())
+            .limit(self._history_limit)
+        ).all()
+        return [self._to_message_info(m) for m in reversed(rows)]
+
+    @staticmethod
+    def _to_message_info(message: CRMMensaje) -> MessageInfo:
+        return MessageInfo(
+            id=message.id,
+            contenido=message.contenido or "",
+            tipo=message.tipo,
+            canal=message.canal,
+            estado=message.estado,
+            fecha=serialize_datetime(message.fecha_mensaje or message.created_at),
         )
 
     @staticmethod
-    def _extract_reply_text(result: dict[str, Any]) -> str:
-        raw_value = result.get("respuesta")
-        if raw_value is None:
-            raw_value = result.get("reply")
-        if raw_value is None:
-            raw_value = result.get("mensaje")
-        if raw_value is None:
-            raw_value = result.get("texto")
-        return str(raw_value or "").strip()
+    def _is_project(session: Session, oportunidad: CRMOportunidad) -> bool:
+        linked = session.exec(
+            select(Proyecto.id).where(Proyecto.oportunidad_id == oportunidad.id).limit(1)
+        ).first()
+        if linked:
+            return True
+        if oportunidad.tipo_operacion_id:
+            tipo = session.get(CRMTipoOperacion, oportunidad.tipo_operacion_id)
+            if tipo:
+                codigo = str(tipo.codigo or "").strip().lower()
+                nombre = str(tipo.nombre or "").strip().lower()
+                if codigo == "proyecto" or nombre == "proyecto":
+                    return True
+        return False
 
     @staticmethod
-    def _mark_inbound_as_processed(session: Session, message: CRMMensaje) -> None:
-        if message.tipo != TipoMensaje.ENTRADA.value:
-            return
-        if message.estado == EstadoMensaje.NUEVO.value:
-            message.estado = EstadoMensaje.RECIBIDO.value
-            message.fecha_estado = datetime.now(UTC)
-            session.add(message)
-            session.commit()
-            session.refresh(message)
-
-    def _persist_process_state(
-        self,
-        *,
-        state: AgentConversationState,
-        message: CRMMensaje,
-        process_result: ProcessTurnResult,
-        effective_mode: ChatAgentMode,
-        activation: dict[str, Any],
-        runtime: dict[str, Any],
-    ) -> AgentConversationState:
-        new_state = state.clone()
-        new_state.agent_mode = effective_mode.value
-        new_state.last_processed_message_id = message.id
-        if message.tipo == TipoMensaje.ENTRADA.value:
-            new_state.last_inbound_message_id = message.id
-
-        if process_result.updated_process_state is not None:
-            new_state.process_states[process_result.process_name] = dict(process_result.updated_process_state)
-
-        if process_result.keep_process_active:
-            new_state.active_process = process_result.process_name
-            new_state.active_substate = process_result.next_substate
-        elif new_state.active_process == process_result.process_name or new_state.active_process is None:
-            new_state.active_process = None
-            new_state.active_substate = None
-
-        new_state.metadata.update(
-            {
-                "last_activation": activation,
-                "last_runtime": runtime,
-                "last_process_result": process_result.to_audit_dict(),
-            }
-        )
-        return self._state_repository.save(
-            new_state,
-            expected_version=state.version,
-        )
-
-    def _persist_delivery_state(
-        self,
-        *,
-        state: AgentConversationState,
-        message: CRMMensaje,
-        effective_mode: ChatAgentMode,
-        delivery: SendResult,
-    ) -> AgentConversationState:
-        new_state = state.clone()
-        new_state.agent_mode = effective_mode.value
-        new_state.last_processed_message_id = message.id
-        if message.tipo == TipoMensaje.ENTRADA.value:
-            new_state.last_inbound_message_id = message.id
-        if delivery.outbound_message_id is not None:
-            new_state.last_outbound_message_id = delivery.outbound_message_id
-        new_state.metadata["last_delivery"] = delivery.to_dict()
-        return self._state_repository.save(
-            new_state,
-            expected_version=state.version,
-        )
-
-    def _build_execution_record(
-        self,
-        *,
-        command: ProcessTurnCommand,
-        process_result: ProcessTurnResult,
-        state: AgentConversationState,
-        activation: dict[str, Any],
-        runtime: dict[str, Any],
-        delivery: dict[str, Any],
-    ) -> dict[str, Any]:
-        return {
-            "status": "completed",
-            "process_name": process_result.process_name,
-            "trigger": command.trigger.value,
-            "delivery_mode": command.delivery_mode.value,
-            "requested_mode": command.requested_mode,
-            "requested_process": command.requested_process,
-            "activation": activation,
-            "runtime": runtime,
-            "audit": process_result.to_audit_dict(),
-            "response_payload": process_result.response_payload,
-            "delivery": delivery,
-            "state": state.to_state_dict(),
-            "finished_at": datetime.now(UTC).isoformat(),
-        }
-
-    def _merge_execution_record(
-        self,
-        execution_record: dict[str, Any] | None,
-        *,
-        delivery: dict[str, Any],
-        state: AgentConversationState,
-    ) -> dict[str, Any]:
-        merged = dict(execution_record or {})
-        merged["status"] = "completed"
-        merged["delivery"] = delivery
-        merged["state"] = state.to_state_dict()
-        merged["finished_at"] = datetime.now(UTC).isoformat()
-        return merged
-
-    def _save_turn_result(
-        self,
+    def _mark_done(
         session: Session,
         message: CRMMensaje,
         *,
         result: dict[str, Any],
-        command: ProcessTurnCommand,
-        delivery: dict[str, Any] | None = None,
-        execution_record: dict[str, Any] | None = None,
-        process_name: str | None = None,
+        process_name: str | None,
+        trigger: str,
     ) -> None:
         metadata = dict(message.metadata_json or {})
-        agent_meta = dict(metadata.get("agent_v2") or {})
-        agent_meta.update(
-            {
-                "turn_result": result,
-                "message_id": message.id,
-                "trigger": command.trigger.value,
-                "delivery_mode": command.delivery_mode.value,
-                "requested_mode": command.requested_mode,
-                "requested_process": command.requested_process,
-                "processed_at": datetime.now(UTC).isoformat(),
-                "process_name": process_name,
-            }
-        )
-        if delivery is not None:
-            agent_meta["delivery"] = delivery
-        if execution_record is not None:
-            agent_meta["execution"] = execution_record
-        metadata["agent_v2"] = agent_meta
+        metadata["agent_v2"] = {
+            "result": result,
+            "process_name": process_name,
+            "trigger": trigger,
+            "processed_at": datetime.now(UTC).isoformat(),
+        }
         message.metadata_json = metadata
         session.add(message)
         session.commit()
         session.refresh(message)
 
-    @staticmethod
-    def _build_response(
-        *,
-        result: dict[str, Any],
-        command: ProcessTurnCommand,
-        delivery: dict[str, Any],
-        cached: bool,
-        process_name: str | None,
-        execution_audit: dict[str, Any] | None,
-    ) -> dict[str, Any]:
-        payload = {
-            **result,
-            "message_id": command.message_id,
-            "trigger": command.trigger.value,
-            "delivery_mode": command.delivery_mode.value,
-            "delivery": delivery,
-            "cached": cached,
-        }
-        if process_name:
-            payload["process_name"] = process_name
-        if execution_audit is not None:
-            payload["execution"] = execution_audit
-        return payload
-
-    @staticmethod
-    def _resolve_agent_mode(*, session: Session, command: ProcessTurnCommand) -> ChatAgentMode:
-        if command.requested_mode:
-            normalized = str(command.requested_mode).strip().lower()
-            try:
-                return ChatAgentMode(normalized)
-            except ValueError as exc:
-                raise ValueError(f"Modo de agente no valido: {command.requested_mode}") from exc
-        return get_chat_agent_mode(session)

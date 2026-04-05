@@ -10,7 +10,8 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
-from agente.v2.core.models import DeliveryMode, ProcessTurnCommand, TurnTrigger
+from agente.v2.core.delivery import TurnDeliveryService
+from agente.v2.core.runtime import should_auto_process
 from agente.v2.processes.solicitud_materiales.handler import build_v2_dependencies
 from app.crud.crm_contacto_crud import crm_contacto_crud
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -33,12 +34,13 @@ class MetaWebhookService:
     ) -> None:
         self.session = session
         if orchestrator is None:
-            context_loader, agent = build_v2_dependencies()
+            state_store, agent = build_v2_dependencies()
             orchestrator = AgentTurnOrchestrator(
-                context_loader=context_loader,
-                agent=agent,
+                processes=[agent],
+                state_store=state_store,
             )
         self._orchestrator = orchestrator
+        self._delivery_service = TurnDeliveryService()
 
     def _determinar_tipo_operacion_contacto(self, contacto_id: int) -> Optional[int]:
         """
@@ -274,14 +276,33 @@ class MetaWebhookService:
                 oportunidad.id,
             )
 
-        auto_process_result = await self._orchestrator.process_turn(
-            self.session,
-            ProcessTurnCommand(
-                message_id=crm_mensaje.id,
-                trigger=TurnTrigger.WEBHOOK,
-                delivery_mode=DeliveryMode.AUTO_SEND,
-            ),
-        )
+        auto_process_result = None
+        if should_auto_process(session=self.session):
+            auto_process_result = await self._orchestrator.process_turn(
+                self.session,
+                crm_mensaje.id,
+                "webhook",
+            )
+            delivery = await self._delivery_service.deliver_result(
+                session=self.session,
+                message=crm_mensaje,
+                result=auto_process_result,
+            )
+            self._delivery_service.mark_inbound_as_processed(self.session, crm_mensaje)
+            auto_process_result = {
+                **auto_process_result,
+                "delivery": delivery.to_dict(),
+            }
+            metadata = dict(crm_mensaje.metadata_json or {})
+            agent_meta = dict(metadata.get("agent_v2") or {})
+            agent_meta["delivery"] = delivery.to_dict()
+            if delivery.outbound_message_id is not None:
+                agent_meta["outbound_message_id"] = delivery.outbound_message_id
+            metadata["agent_v2"] = agent_meta
+            crm_mensaje.metadata_json = metadata
+            self.session.add(crm_mensaje)
+            self.session.commit()
+            self.session.refresh(crm_mensaje)
 
         payload = {
             "status": "ok",
