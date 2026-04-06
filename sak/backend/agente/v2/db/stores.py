@@ -51,7 +51,7 @@ class DbConversationStateStore:
             .where(AgentConversationState.oportunidad_id == oportunidad_id)
             .with_for_update()
         )
-        row = self._session.exec(stmt).first()
+        row = self._session.execute(stmt).scalar_one_or_none()
         if row is None:
             return ConversationState.empty(oportunidad_id)
         return ConversationState(
@@ -113,7 +113,7 @@ class DbProcessRequestStore:
                 AgentProcessRequest.proceso == self.PROCESO,
             )
         )
-        return self._session.exec(stmt).first()
+        return self._session.execute(stmt).scalar_one_or_none()
 
     def load(self, oportunidad_id: int) -> MaterialRequestState | None:
         row = self._get_row(oportunidad_id)
