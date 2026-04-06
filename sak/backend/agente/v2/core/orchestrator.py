@@ -86,7 +86,11 @@ class AgentTurnOrchestrator:
         if isinstance(cached, dict):
             return {**cached, "message_id": message_id, "cached": True}
 
-        state = self._state_store.load(message.oportunidad_id)
+        # load_for_update serializa turnos concurrentes del mismo contacto (SELECT FOR UPDATE)
+        if hasattr(self._state_store, "load_for_update"):
+            state = self._state_store.load_for_update(message.oportunidad_id)
+        else:
+            state = self._state_store.load(message.oportunidad_id)
         ctx = self.build_context(session, message_id, trigger=trigger, state=state)
 
         process = self._registry.resolve(ctx)

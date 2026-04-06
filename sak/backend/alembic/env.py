@@ -23,7 +23,10 @@ import os
 # Agregar el directorio backend al sys.path para imports correctos
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app.models import Base
-target_metadata = Base.metadata
+# Importar modelos del agente v2 para que Alembic detecte sus tablas
+import agente.v2.db.models  # noqa: F401
+from sqlmodel import SQLModel
+target_metadata = [Base.metadata, SQLModel.metadata]
 
 # --- (4) Leer DATABASE_URL del entorno y setearla en Alembic ---
 db_url = os.getenv("DATABASE_URL")

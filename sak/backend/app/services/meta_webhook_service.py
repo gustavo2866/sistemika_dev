@@ -34,7 +34,7 @@ class MetaWebhookService:
     ) -> None:
         self.session = session
         if orchestrator is None:
-            state_store, agent = build_v2_dependencies()
+            state_store, agent = build_v2_dependencies(session=session)
             orchestrator = AgentTurnOrchestrator(
                 processes=[agent],
                 state_store=state_store,

@@ -913,23 +913,31 @@ class ConversationAgentV2:
 
 def build_v2_dependencies(
     *,
+    session=None,
     families_path: Path | None = None,
     requests_root: Path | None = None,
     state_root: Path | None = None,
     executions_dir: Path | None = None,
-) -> tuple[JsonConversationStateStore, ConversationAgentV2]:
-    from agente.v2.core.state import DEFAULT_STATE_DIR
+):
+    """Construye las dependencias del agente v2.
 
+    Si se pasa `session` (SQLModel Session) usa stores en DB con SELECT FOR UPDATE.
+    En caso contrario usa stores JSON en disco (compatibilidad hacia atras / tests).
+    """
     family_catalog = FamilyCatalog(families_path)
-    request_store = RequestStore(requests_root)
 
-    resolved_state_root = state_root
-    if requests_root is not None:
-        resolved_state_root = resolved_state_root or requests_root / "conversation_state"
+    if session is not None:
+        from agente.v2.db.stores import DbConversationStateStore, DbProcessRequestStore
+        request_store = DbProcessRequestStore(session)
+        state_store = DbConversationStateStore(session)
+    else:
+        from agente.v2.core.state import DEFAULT_STATE_DIR
+        request_store = RequestStore(requests_root)
+        resolved_state_root = state_root
+        if requests_root is not None:
+            resolved_state_root = resolved_state_root or requests_root / "conversation_state"
+        state_store = JsonConversationStateStore(root_dir=resolved_state_root)
 
-    state_store = JsonConversationStateStore(
-        root_dir=resolved_state_root,
-    )
     llm_client = OpenAIConversationAgentClientV2()
     agent = ConversationAgentV2(
         family_catalog=family_catalog,
