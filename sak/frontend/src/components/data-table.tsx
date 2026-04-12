@@ -102,11 +102,13 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   rowClassName,
   mobileConfig,
   compact = false,
+  emptyMessage,
 }: {
   children: ReactNode;
   mobileConfig?: MobileConfig;
   rowClassName?: (record: RecordType) => string | undefined;
   compact?: boolean;
+  emptyMessage?: ReactNode;
 }) => {
   const data = useDataTableDataContext();
   const { rowClick, handleToggleItem } = useDataTableCallbacksContext();
@@ -160,7 +162,7 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
   );
 
   if (!data || data.length === 0) {
-    return <DataTableEmpty />;
+    return <DataTableEmpty message={emptyMessage} />;
   }
 
   const checkboxClassName = compact
@@ -414,6 +416,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
     bulkActionButtons = defaultBulkActionButtons,
     bulkActionsToolbar,
     mobileConfig,
+    emptyMessage,
     ...rest
   } = props;
   const isMobile = useIsMobile();
@@ -429,7 +432,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
     <DataTableBase<RecordType>
       hasBulkActions={hasBulkActions}
       loading={null}
-      empty={<DataTableEmpty />}
+      empty={<DataTableEmpty message={emptyMessage} />}
       {...rest}
     >
       {isMobile ? (
@@ -437,6 +440,7 @@ export function DataTable<RecordType extends RaRecord = RaRecord>(
           mobileConfig={mobileConfig}
           rowClassName={rowClassName}
           compact={compact}
+          emptyMessage={emptyMessage}
         >
           {columns}
         </DataTableMobileView>
@@ -640,10 +644,10 @@ const isPromise = (value: unknown): value is Promise<unknown> =>
   "then" in value &&
   typeof (value as Promise<unknown>).then === "function";
 
-const DataTableEmpty = () => {
+const DataTableEmpty = ({ message = "No results found." }: { message?: ReactNode }) => {
   return (
     <Alert>
-      <AlertDescription>No results found.</AlertDescription>
+      <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
 };
@@ -657,6 +661,7 @@ export interface DataTableProps<RecordType extends RaRecord = RaRecord>
   bulkActionButtons?: ReactNode;
   bulkActionsToolbar?: ReactNode;
   mobileConfig?: MobileConfig;
+  emptyMessage?: ReactNode;
 }
 
 export function DataTableColumn<

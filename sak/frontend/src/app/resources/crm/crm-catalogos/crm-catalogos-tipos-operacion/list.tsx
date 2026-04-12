@@ -68,6 +68,7 @@ const listMobileConfig = {
 type CRMTipoOperacionListProps = {
   embedded?: boolean;
   rowClick?: any;
+  perPage?: number;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
@@ -87,13 +88,14 @@ const CRMTipoOperacionListActions = ({ embedded = false }: { embedded?: boolean 
 export const CRMTipoOperacionList = ({
   embedded = false,
   rowClick = "edit",
+  perPage = 25,
 }: CRMTipoOperacionListProps) => (
   <List
     title="CRM - Tipos de Operacion"
     filters={listFilters}
     actions={<CRMTipoOperacionListActions embedded={embedded} />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD_PLUS}

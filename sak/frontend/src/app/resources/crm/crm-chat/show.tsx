@@ -51,6 +51,7 @@ import {
   getReturnToFromLocation,
 } from "@/lib/oportunidad-context";
 import { captureOportunidadModalBackground } from "../crm-oportunidades/modal_background";
+import { canUseOportunidadActionForRecord } from "../crm-oportunidades/model";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const POLL_MS = 5000;
@@ -246,13 +247,40 @@ export const CRMChatShow = ({
   const oportunidadEstado =
     (oportunidad as any)?.estado ??
     resolveOportunidadEstado;
-  const isOportunidadProspect =
-    typeof oportunidadEstado === "string" &&
-    oportunidadEstado.toLowerCase() === "0-prospect";
   const tipoOperacionLabel =
     (oportunidad as any)?.tipo_operacion?.nombre ??
     (oportunidad as any)?.tipo_operacion?.codigo ??
     null;
+  const oportunidadActionRecord = useMemo(
+    () =>
+      (oportunidad as any) ??
+      (resolveOportunidadId || oportunidadEstado || tipoOperacionLabel
+        ? {
+            id: resolveOportunidadId ?? undefined,
+            estado: oportunidadEstado ?? undefined,
+            tipo_operacion: tipoOperacionLabel
+              ? { nombre: tipoOperacionLabel }
+              : undefined,
+          }
+        : null),
+    [oportunidad, oportunidadEstado, resolveOportunidadId, tipoOperacionLabel],
+  );
+  const canDescartar = canUseOportunidadActionForRecord(
+    oportunidadActionRecord,
+    "descartar",
+  );
+  const canAceptar = canUseOportunidadActionForRecord(
+    oportunidadActionRecord,
+    "aceptar",
+  );
+  const canAgendar = canUseOportunidadActionForRecord(
+    oportunidadActionRecord,
+    "agendar",
+  );
+  const canCerrar = canUseOportunidadActionForRecord(
+    oportunidadActionRecord,
+    "cerrar",
+  );
 
   const appendSuggestedText = useCallback((suggestedReply: string) => {
     setDraft((prev) => {
@@ -732,7 +760,7 @@ export const CRMChatShow = ({
                   <Sparkles className="h-3.5 w-3.5" />
                   Respuestas
                 </DropdownMenuItem>
-                {isOportunidadProspect ? (
+                {canDescartar ? (
                   <DropdownMenuItem
                     onSelect={() => handleOpenAccion("accion_descartar")}
                     disabled={!resolveOportunidadId}
@@ -742,30 +770,36 @@ export const CRMChatShow = ({
                     Descartar
                   </DropdownMenuItem>
                 ) : null}
-                <DropdownMenuItem
-                  onSelect={() => handleOpenAccion("accion_aceptar")}
-                  disabled={!resolveOportunidadId}
-                  className="flex items-center gap-2"
-                >
-                  <ArrowRightCircle className="h-3.5 w-3.5" />
-                  Confirmar
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleOpenAccion("accion_agendar")}
-                  disabled={!resolveOportunidadId}
-                  className="flex items-center gap-2"
-                >
-                  <CalendarPlus className="h-3.5 w-3.5" />
-                  Agendar
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleOpenAccion("accion_cerrar")}
-                  disabled={!resolveOportunidadId}
-                  className="flex items-center gap-2"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Cerrar
-                </DropdownMenuItem>
+                {canAceptar ? (
+                  <DropdownMenuItem
+                    onSelect={() => handleOpenAccion("accion_aceptar")}
+                    disabled={!resolveOportunidadId}
+                    className="flex items-center gap-2"
+                  >
+                    <ArrowRightCircle className="h-3.5 w-3.5" />
+                    Confirmar
+                  </DropdownMenuItem>
+                ) : null}
+                {canAgendar ? (
+                  <DropdownMenuItem
+                    onSelect={() => handleOpenAccion("accion_agendar")}
+                    disabled={!resolveOportunidadId}
+                    className="flex items-center gap-2"
+                  >
+                    <CalendarPlus className="h-3.5 w-3.5" />
+                    Agendar
+                  </DropdownMenuItem>
+                ) : null}
+                {canCerrar ? (
+                  <DropdownMenuItem
+                    onSelect={() => handleOpenAccion("accion_cerrar")}
+                    disabled={!resolveOportunidadId}
+                    className="flex items-center gap-2"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Cerrar
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
             <Textarea

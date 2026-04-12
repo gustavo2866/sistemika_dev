@@ -68,6 +68,7 @@ const listMobileConfig = {
 type CRMMotivoPerdidaListProps = {
   embedded?: boolean;
   rowClick?: any;
+  perPage?: number;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
@@ -87,13 +88,14 @@ const CRMMotivoPerdidaListActions = ({ embedded = false }: { embedded?: boolean 
 export const CRMMotivoPerdidaList = ({
   embedded = false,
   rowClick = "edit",
+  perPage = 25,
 }: CRMMotivoPerdidaListProps) => (
   <List
     title="CRM - Motivos de Perdida"
     filters={listFilters}
     actions={<CRMMotivoPerdidaListActions embedded={embedded} />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD_PLUS}

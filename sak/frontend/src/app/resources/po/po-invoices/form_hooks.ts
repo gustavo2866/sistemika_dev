@@ -56,12 +56,12 @@ const normalizeStatusName = (value?: string | null) =>
 
 export const usePoInvoiceReadOnly = () => {
   const record = useRecordContext<PoInvoiceRecord>();
-  const isCreate = !record?.id;
-  if (isCreate) return false;
   const { control } = useFormContext<PoInvoiceFormValues>();
   const formStatusId = useWatch({ name: "invoice_status_id", control }) as
     | number
     | undefined;
+  const isCreate = !record?.id;
+  if (isCreate) return false;
   const orden =
     record?.invoice_status?.orden ??
     record?.invoice_status?.id ??

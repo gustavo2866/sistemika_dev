@@ -181,7 +181,7 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   showBreadcrumb?: boolean;
   showHeader?: boolean;
   containerClassName?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   filterFormComponent?: React.ComponentType<any>;
 }
 

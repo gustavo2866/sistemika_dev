@@ -6,7 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { DateField } from "@/components/date-field";
 import { cn } from "@/lib/utils";
 import { PoOrderForm } from "./form";
-import { getOrderStatusBadgeClass, normalizePoOrderPayload } from "./model";
+import {
+  getOrderStatusBadgeClass,
+  normalizePoOrderPayload,
+  TIPO_COMPRA_CHOICES,
+} from "./model";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ClipboardList } from "lucide-react";
 
@@ -34,6 +38,19 @@ const PoOrderEditTitle = () => {
   );
 };
 
+const PoOrderEditTipoCompraHeader = () => {
+  const { record } = useEditContext();
+  const tipoCompra = String(record?.tipo_compra ?? "normal");
+  const tipoCompraLabel =
+    TIPO_COMPRA_CHOICES.find((choice) => choice.id === tipoCompra)?.name ?? "Normal";
+
+  return (
+    <Badge variant="outline" className="text-[11px]">
+      {tipoCompraLabel}
+    </Badge>
+  );
+};
+
 export const PoOrderEdit = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -46,7 +63,7 @@ export const PoOrderEdit = () => {
       redirect={false}
       mutationMode="pessimistic"
       title={<PoOrderEditTitle />}
-      actions={false}
+      actions={<PoOrderEditTipoCompraHeader />}
       transform={(data: any) => normalizePoOrderPayload(data)}
       mutationOptions={{
         onSuccess: () => {

@@ -68,16 +68,27 @@ export const usePoDashboard = () => {
     () => loadDashboardSnapshot(returnTo, hasPendingReturn, DASHBOARD_SNAPSHOT_TTL_MS),
     [returnTo, hasPendingReturn],
   );
+  const initialPeriodType =
+    pendingReturnMarker?.periodType ?? initialSnapshot?.periodType ?? DEFAULT_PO_PERIOD;
+  const initialFilters =
+    pendingReturnMarker?.filters ??
+    initialSnapshot?.filters ??
+    buildDefaultFilters(initialPeriodType);
+  const initialShowAdditionalFilters =
+    pendingReturnMarker?.showAdditionalFilters ??
+    initialSnapshot?.showAdditionalFilters ??
+    false;
   const hasHydratedSnapshot = Boolean(initialSnapshot);
+  const hasHydratedReturnContext = hasHydratedSnapshot || Boolean(pendingReturnMarker?.filters);
   const initialDashboardRequestKey = hasHydratedSnapshot
     ? getDashboardRequestKey(
-        initialSnapshot?.periodType ?? DEFAULT_PO_PERIOD,
-        initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_PO_PERIOD),
+        initialPeriodType,
+        initialFilters,
       )
     : null;
   const initialDetailRequestKey = hasHydratedSnapshot
     ? getDetailRequestKey({
-        filters: initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_PO_PERIOD),
+        filters: initialFilters,
         detailKpi: normalizeVisibleDetailKpi(initialSnapshot?.detailKpi),
         detailPage: initialSnapshot?.detailPage ?? 1,
         selectedAlertKey: initialSnapshot?.selectedAlertKey ?? null,
@@ -89,10 +100,10 @@ export const usePoDashboard = () => {
   const initialDetailRequestKeyRef = useRef(initialDetailRequestKey);
 
   const [periodType, setPeriodType] = useState<PeriodType>(
-    initialSnapshot?.periodType ?? DEFAULT_PO_PERIOD,
+    initialPeriodType,
   );
   const [filters, setFilters] = useState<PoDashboardFilters>(
-    () => initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_PO_PERIOD),
+    () => initialFilters,
   );
   const [dashboardData, setDashboardData] = useState<PoDashboardResponse | null>(
     initialSnapshot?.dashboardData ?? null,
@@ -125,7 +136,7 @@ export const usePoDashboard = () => {
     Array<{ label: string; amount: number; count: number }>
   >(initialSnapshot?.periodTrendData ?? []);
   const [showAdditionalFilters, setShowAdditionalFilters] = useState(
-    initialSnapshot?.showAdditionalFilters ?? false,
+    initialShowAdditionalFilters,
   );
 
   const [solicitanteOptions, setSolicitanteOptions] = useState<SelectOption[]>(
@@ -522,17 +533,11 @@ export const usePoDashboard = () => {
     if (processingReturnMarkerRef.current === markerKey) return;
     processingReturnMarkerRef.current = markerKey;
 
-    if (!hasHydratedSnapshot) {
-      processingReturnMarkerRef.current = null;
-      clearDashboardReturnMarker(returnTo);
-      return;
-    }
-
     let cancelled = false;
 
     const syncDashboardFromReturn = async () => {
       try {
-        if (pendingReturnMarker.refreshAll || pendingReturnMarker.deleted) {
+        if (pendingReturnMarker.refreshAll || pendingReturnMarker.deleted || !hasHydratedSnapshot) {
           setDashboardLoading(true);
           setDetailLoading(true);
           setDetailPage(1);

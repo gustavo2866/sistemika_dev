@@ -68,6 +68,7 @@ const listMobileConfig = {
 type CRMMotivoEventoListProps = {
   embedded?: boolean;
   rowClick?: any;
+  perPage?: number;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
@@ -87,13 +88,14 @@ const CRMMotivoEventoListActions = ({ embedded = false }: { embedded?: boolean }
 export const CRMMotivoEventoList = ({
   embedded = false,
   rowClick = "edit",
+  perPage = 25,
 }: CRMMotivoEventoListProps) => (
   <List
     title="CRM - Motivos de Evento"
     filters={listFilters}
     actions={<CRMMotivoEventoListActions embedded={embedded} />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD_PLUS}

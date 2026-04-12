@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   CalendarPlus,
+  CheckCircle2,
   MessageCircle,
   Trash2,
 } from "lucide-react";
@@ -45,6 +46,10 @@ import {
   getMensajePrioridadBadgeClass,
   getMensajeTipoBadgeClass,
 } from "./model";
+import {
+  canUseOportunidadActionForRecord,
+  isMantenimientoOportunidad,
+} from "../crm-oportunidades/model";
 
 //#region Base CRUD: configuracion del listado
 
@@ -318,6 +323,7 @@ type MenuActionProps = {
   onReplyClick: (mensaje: CRMMensaje) => void;
   onDiscardClick: (mensaje: CRMMensaje) => void;
   onScheduleClick: (mensaje: CRMMensaje) => void;
+  onCloseClick: (mensaje: CRMMensaje) => void;
 };
 
 // Agrega la opcion para responder el mensaje desde el menu contextual.
@@ -350,7 +356,12 @@ const MensajeAgendarMenuItem = ({
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
 
-  if (!getLinkedOpportunityId(record)) return null;
+  if (
+    !getLinkedOpportunityId(record) ||
+    !canUseOportunidadActionForRecord(record.oportunidad ?? null, "agendar")
+  ) {
+    return null;
+  }
 
   return (
     <DropdownMenuItem
@@ -375,7 +386,12 @@ const MensajeDescartarMenuItem = ({
   const record = useRecordContext<CRMMensaje>();
   if (!record) return null;
 
-  if (!getLinkedOpportunityId(record)) return null;
+  if (
+    !getLinkedOpportunityId(record) ||
+    !canUseOportunidadActionForRecord(record.oportunidad ?? null, "descartar")
+  ) {
+    return null;
+  }
 
   return (
     <DropdownMenuItem
@@ -390,6 +406,38 @@ const MensajeDescartarMenuItem = ({
     >
       <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
       Descartar
+    </DropdownMenuItem>
+  );
+};
+
+const MensajeCerrarMenuItem = ({
+  onCloseClick,
+}: Pick<MenuActionProps, "onCloseClick">) => {
+  const record = useRecordContext<CRMMensaje>();
+  if (!record) return null;
+
+  const linkedOpportunity = record.oportunidad ?? null;
+  if (
+    !getLinkedOpportunityId(record) ||
+    !linkedOpportunity ||
+    !isMantenimientoOportunidad(linkedOpportunity) ||
+    !canUseOportunidadActionForRecord(linkedOpportunity, "cerrar")
+  ) {
+    return null;
+  }
+
+  return (
+    <DropdownMenuItem
+      onSelect={(event) => {
+        event.stopPropagation();
+        onCloseClick(record);
+      }}
+      onClick={(event) => event.stopPropagation()}
+      data-row-click="ignore"
+      className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+    >
+      <CheckCircle2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+      Cerrar
     </DropdownMenuItem>
   );
 };
@@ -524,6 +572,17 @@ export const CRMMensajeList = ({
     });
   };
 
+  const handleCloseClick = (mensaje: CRMMensaje) => {
+    const linkedOpportunityId = getLinkedOpportunityId(mensaje);
+    if (!linkedOpportunityId) return;
+    navigate(`/crm/oportunidades/${linkedOpportunityId}/accion_cerrar`, {
+      state: {
+        returnTo: returnTo ?? "/crm/mensajes",
+        background: captureOportunidadModalBackground(),
+      },
+    });
+  };
+
   const handleReplySuccess = () => {
     refresh();
     setReplyOpen(false);
@@ -582,6 +641,7 @@ export const CRMMensajeList = ({
                 <>
                   <MensajeResponderMenuItem onReplyClick={handleReplyClick} />
                   <MensajeAgendarMenuItem onScheduleClick={handleScheduleClick} />
+                  <MensajeCerrarMenuItem onCloseClick={handleCloseClick} />
                   <MensajeDescartarMenuItem onDiscardClick={handleDiscardClick} />
                 </>
               }

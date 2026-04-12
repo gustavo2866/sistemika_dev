@@ -46,6 +46,7 @@ import {
   computePoOrderTotal,
   getPoOrderDetalleDefaults,
   isPoOrderLocked,
+  normalizeStatusName,
   poOrderSchema,
   TIPO_COMPRA_CHOICES,
 } from "./model";
@@ -111,6 +112,12 @@ const parseNumericParam = (value: string | null) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
+type PoOrderTipoCompra = (typeof TIPO_COMPRA_CHOICES)[number]["id"];
+
+type PoOrderFormProps = {
+  initialTipoCompra?: PoOrderTipoCompra;
+};
+
 const PoOrderExternalLockSync = () => {
   const { lockCentro, lockOportunidad, lockedOportunidadId, lockedCentroId } =
     usePoOrderExternalLock();
@@ -135,9 +142,79 @@ const PoOrderExternalLockSync = () => {
   return null;
 };
 
+const PoOrderTipoCompraSync = ({
+  initialTipoCompra,
+}: {
+  initialTipoCompra?: PoOrderTipoCompra;
+}) => {
+  const record = useRecordContext<PoOrderRecord>();
+  const isCreate = !record?.id;
+  const { setValue } = useFormContext<PoOrderFormValues>();
+  const tipoCompraValue = useWatch({ name: "tipo_compra" }) as
+    | PoOrderTipoCompra
+    | undefined;
+
+  useEffect(() => {
+    if (!isCreate || !initialTipoCompra) return;
+    if (tipoCompraValue === initialTipoCompra) return;
+    setValue("tipo_compra", initialTipoCompra, { shouldDirty: false });
+  }, [initialTipoCompra, isCreate, setValue, tipoCompraValue]);
+
+  return null;
+};
+
+const usePoOrderCommercialFieldsMode = () => {
+  const record = useRecordContext<PoOrderRecord>();
+  const isCreate = !record?.id;
+  const tipoCompraValue = useWatch({ name: "tipo_compra" }) as
+    | PoOrderTipoCompra
+    | undefined;
+  const isDraft = isCreate || normalizeStatusName(record?.order_status?.nombre) === "borrador";
+
+  return {
+    isCreate,
+    tipoCompraValue,
+    hideCommercialFields: tipoCompraValue === "normal" && isDraft,
+  };
+};
+
+const PoOrderNormalDraftSync = () => {
+  const { getValues, setValue } = useFormContext<PoOrderFormValues>();
+  const { hideCommercialFields } = usePoOrderCommercialFieldsMode();
+
+  useEffect(() => {
+    if (!hideCommercialFields) return;
+
+    const proveedorId = getValues("proveedor_id");
+    if (resolveNumericId(proveedorId)) {
+      setValue("proveedor_id", undefined, { shouldDirty: true, shouldValidate: true });
+    }
+
+    const detalles = (getValues("detalles") ?? []) as PoOrderFormValues["detalles"];
+    const hasPricingData = detalles.some((detalle) => {
+      const precio = Number(detalle?.precio ?? 0);
+      const importe = Number(detalle?.importe ?? 0);
+      return precio !== 0 || importe !== 0;
+    });
+    if (!hasPricingData) return;
+
+    setValue(
+      "detalles",
+      detalles.map((detalle) => ({
+        ...detalle,
+        precio: 0,
+        importe: 0,
+      })),
+      { shouldDirty: true, shouldValidate: true },
+    );
+  }, [getValues, hideCommercialFields, setValue]);
+
+  return null;
+};
+
 // === Formulario principal ===
 // Renderiza el formulario principal de Orden de compra.
-export const PoOrderForm = () => {
+export const PoOrderForm = ({ initialTipoCompra = "normal" }: PoOrderFormProps) => {
   const record = useRecordContext<PoOrderRecord>();
   const { defaultValues, isLoadingDefaults } = usePoOrderFormDefaults();
   const [isEditing, setIsEditing] = useState(false);
@@ -162,8 +239,9 @@ export const PoOrderForm = () => {
       ...(defaultValues ?? {}),
       ...(lockedOportunidadId ? { oportunidad_id: lockedOportunidadId } : {}),
       ...(lockedCentroId ? { centro_costo_id: lockedCentroId } : {}),
+      tipo_compra: initialTipoCompra,
     };
-  }, [defaultValues, isCreate, lockedCentroId, lockedOportunidadId]);
+  }, [defaultValues, initialTipoCompra, isCreate, lockedCentroId, lockedOportunidadId]);
 
   const lockState = useMemo(
     () => ({
@@ -190,7 +268,9 @@ export const PoOrderForm = () => {
             defaultValues={mergedDefaultValues}
           >
             <PoOrderExternalLockSync />
-            <OrdenCompraContenido />
+            <PoOrderTipoCompraSync initialTipoCompra={initialTipoCompra} />
+            <PoOrderNormalDraftSync />
+            <OrdenCompraContenido initialTipoCompra={initialTipoCompra} />
           </SimpleForm>
         </PoOrderExternalLockContext.Provider>
       </PoOrderDetailEditContext.Provider>
@@ -215,8 +295,12 @@ const OrdenCompraToolbar = () => {
 };
 
 // Contenido principal del formulario (cabecera, detalle y totales).
-const OrdenCompraContenido = () => {
-  usePoOrderDefaults();
+const OrdenCompraContenido = ({
+  initialTipoCompra,
+}: {
+  initialTipoCompra?: PoOrderTipoCompra;
+}) => {
+  usePoOrderDefaults(initialTipoCompra);
   useCentroCostoOportunidadExclusion();
   useDetalleCentroCostoOportunidadExclusion();
   const { articuloFilter, confirmOpen, confirmChange, cancelChange } =
@@ -307,6 +391,8 @@ const CabeceraCamposPrincipales = () => {
   const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
   const isCreate = !record?.id;
   const { handleSolicitanteChange } = useSolicitanteCentroCostoSync();
+  const { hideCommercialFields } = usePoOrderCommercialFieldsMode();
+
   return (
     <div className="flex flex-col gap-0">
       <div className="flex flex-col gap-2 md:flex-row md:items-end">
@@ -327,19 +413,22 @@ const CabeceraCamposPrincipales = () => {
           }}
           widthClass="w-full md:w-[200px]"
         />
-        <div className="relative w-full md:w-[200px]">
-          <FormReferenceAutocomplete
-            referenceProps={{
-              source: "proveedor_id",
-              reference: "proveedores",
-            }}
-            inputProps={{
-              optionText: "nombre",
-              label: "Proveedor",
-            }}
-            widthClass="w-full"
-          />
-        </div>
+        {hideCommercialFields ? <HiddenInput source="proveedor_id" /> : null}
+        {!hideCommercialFields ? (
+          <div className="relative w-full md:w-[200px]">
+            <FormReferenceAutocomplete
+              referenceProps={{
+                source: "proveedor_id",
+                reference: "proveedores",
+              }}
+              inputProps={{
+                optionText: "nombre",
+                label: "Proveedor",
+              }}
+              widthClass="w-full"
+            />
+          </div>
+        ) : null}
         <div className="w-full md:w-[200px]">
           <ReferenceInput
             source="tipo_solicitud_id"
@@ -365,10 +454,6 @@ const CabeceraCamposOpcionales = () => {
   const oportunidadValue = useWatch({ name: "oportunidad_id" }) as unknown;
   const centroValue = useWatch({ name: "centro_costo_id" }) as unknown;
   const departamentoValue = useWatch({ name: "departamento_id" }) as unknown;
-  const tipoCompraValue = useWatch({ name: "tipo_compra" }) as
-    | "normal"
-    | "directa"
-    | undefined;
 
   const resolvedOportunidadId = resolveNumericId(oportunidadValue) ?? lockedOportunidadId;
   const resolvedCentroId = resolveNumericId(centroValue) ?? lockedCentroId;
@@ -400,18 +485,17 @@ const CabeceraCamposOpcionales = () => {
   const departamentoLabel =
     (departamentoData as any)?.nombre ??
     (resolvedDepartamentoId ? `#${resolvedDepartamentoId}` : "-");
-  const tipoCompraLabel =
-    TIPO_COMPRA_CHOICES.find((choice) => choice.id === tipoCompraValue)?.name ?? "-";
 
   return (
     <div className="mt-1 space-y-0">
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
         <div className="grid gap-2 md:grid-cols-4">
-          <FormValue label="Departamento" widthClass="w-full">
+          <FormValue
+            label="Departamento"
+            widthClass="w-full"
+            valueClassName="justify-start text-left"
+          >
             {departamentoLabel}
-          </FormValue>
-          <FormValue label="Tipo orden" widthClass="w-full">
-            {tipoCompraLabel}
           </FormValue>
           {lockCentro ? (
             <FormValue label="Centro de costo" widthClass="w-full">
@@ -478,6 +562,7 @@ const CabeceraCamposOpcionales = () => {
 // Seccion de detalle con lineas y campos opcionales.
 const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string, unknown> }) => {
   const editContext = usePoOrderDetailEdit();
+  const { hideCommercialFields } = usePoOrderCommercialFieldsMode();
   const handleActiveRowChange = useMemo(
     () => (index: number | null) => {
       editContext?.setIsEditing(index != null);
@@ -490,14 +575,17 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
     { label: "Articulo", width: "220px", mobileSpan: "full" },
     { label: "Descripcion", width: "150px", mobileSpan: "full" },
     { label: "Cantidad", width: "64px", className: "-ml-[15px]" },
-    { label: "Precio", width: "84px", className: "ml-[0px]" },
-    { label: "Importe", width: "84px", className: "ml-[30px]" },
+    ...(!hideCommercialFields
+      ? [
+          { label: "Precio", width: "84px", className: "ml-[0px]" },
+          { label: "Importe", width: "84px", className: "ml-[30px]" },
+        ]
+      : []),
     { label: "", width: "28px" },
   ];
 
   // Campos principales del detalle.
-  const DetalleCamposPrincipales = useCallback(
-    ({ isActive }: SectionDetailFieldsProps) => {
+  const DetalleCamposPrincipales = ({ isActive }: SectionDetailFieldsProps) => {
       const descripcionSource = useWrappedSource("descripcion");
       const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
       const hasDescripcion = Boolean(descripcion?.trim());
@@ -550,39 +638,44 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
               )}
             />
           </DetailFieldCell>
-          <DetailFieldCell label="Precio" className="gap-0">
-            <FormNumber
-              source="precio"
-              label={false}
-              inputMode="decimal"
-              step="0.01"
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={cn(
-                "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
-                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
-              )}
-            />
-          </DetailFieldCell>
-          <DetailFieldCell label="Importe" className="gap-0">
-            <CalculatedImporte
-              computeImporte={computeDetalleImporte}
-              className="gap-0"
-              widthClass="w-full"
-              valueClassName={
-                cn(
-                  "px-1 sm:px-2",
-                  !isActive ? FORM_VALUE_READONLY_CLASS : undefined,
-                )
-              }
-            />
+          {hideCommercialFields ? <HiddenInput source="precio" /> : null}
+          {!hideCommercialFields ? (
+            <>
+              <DetailFieldCell label="Precio" className="gap-0">
+                <FormNumber
+                  source="precio"
+                  label={false}
+                  inputMode="decimal"
+                  step="0.01"
+                  widthClass="w-full"
+                  readOnly={!isActive}
+                  className={cn(
+                    "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
+                    !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+                  )}
+                />
+              </DetailFieldCell>
+              <DetailFieldCell label="Importe" className="gap-0">
+                <CalculatedImporte
+                  computeImporte={computeDetalleImporte}
+                  className="gap-0"
+                  widthClass="w-full"
+                  valueClassName={
+                    cn(
+                      "px-1 sm:px-2",
+                      !isActive ? FORM_VALUE_READONLY_CLASS : undefined,
+                    )
+                  }
+                />
+                <HiddenInput source="importe" />
+              </DetailFieldCell>
+            </>
+          ) : (
             <HiddenInput source="importe" />
-          </DetailFieldCell>
+          )}
         </>
       );
-    },
-    [articuloFilter],
-  );
+  };
 
   // Campos opcionales del detalle.
   const DetalleCamposOpcionales = useCallback(

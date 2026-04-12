@@ -43,7 +43,9 @@ export type DashboardQuickActionItem = {
   key: string;
   label: string;
   icon: LucideIcon;
-  onClick: () => void;
+  onClick?: () => void;
+  createTo?: string;
+  onNavigate?: (path: string) => void;
 };
 
 export type DashboardMainPanelViewModel = {
@@ -135,7 +137,8 @@ export const useDashboardMainPanel = ({
       key: "crear-orden",
       label: "Crear Orden",
       icon: FilePlus2,
-      onClick: () => onNavigate(createOrderPath),
+      createTo: createOrderPath,
+      onNavigate,
     },
     {
       key: "crear-factura",

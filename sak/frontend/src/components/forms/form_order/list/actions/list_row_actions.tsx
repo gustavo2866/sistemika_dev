@@ -60,6 +60,31 @@ export const FormOrderListRowActions = ({
   const [dialogConfig, setDialogConfig] = useState<RowActionDialogConfig | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
 
+  const openDialog = useCallback((config: RowActionDialogConfig) => {
+    setDialogConfig(config);
+  }, []);
+
+  const handleDialogClose = useCallback(() => {
+    if (dialogLoading) return;
+    setDialogConfig(null);
+  }, [dialogLoading]);
+
+  const handleDialogConfirm = useCallback(async () => {
+    if (!dialogConfig?.onConfirm) {
+      setDialogConfig(null);
+      return;
+    }
+    setDialogLoading(true);
+    try {
+      await dialogConfig.onConfirm();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDialogLoading(false);
+      setDialogConfig(null);
+    }
+  }, [dialogConfig]);
+
   if (!record || !resource) {
     return null;
   }
@@ -99,31 +124,6 @@ export const FormOrderListRowActions = ({
       setBusy(false);
     }
   };
-
-  const openDialog = useCallback((config: RowActionDialogConfig) => {
-    setDialogConfig(config);
-  }, []);
-
-  const handleDialogClose = useCallback(() => {
-    if (dialogLoading) return;
-    setDialogConfig(null);
-  }, [dialogLoading]);
-
-  const handleDialogConfirm = useCallback(async () => {
-    if (!dialogConfig?.onConfirm) {
-      setDialogConfig(null);
-      return;
-    }
-    setDialogLoading(true);
-    try {
-      await dialogConfig.onConfirm();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setDialogLoading(false);
-      setDialogConfig(null);
-    }
-  }, [dialogConfig]);
 
   return (
     <>

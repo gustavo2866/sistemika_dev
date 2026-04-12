@@ -53,13 +53,19 @@ const ListActions = () => (
   </div>
 );
 
-export const PropiedadesStatusList = () => (
+type PropiedadesStatusListProps = {
+  perPage?: number;
+};
+
+export const PropiedadesStatusList = ({
+  perPage = 25,
+}: PropiedadesStatusListProps = {}) => (
   <List
     title="Estados de Propiedad"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "orden", order: "ASC" }}
     containerClassName={LIST_CONTAINER_SM}

@@ -35,6 +35,26 @@ export default function PoDashboardList() {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = `${location.pathname}${location.search}`;
+  const appendReturnToParam = (path: string) => {
+    const [pathWithQuery, hash = ""] = path.split("#");
+    const [pathname, queryString = ""] = pathWithQuery.split("?");
+    const params = new URLSearchParams(queryString);
+    params.set("returnTo", returnTo);
+    const nextQuery = params.toString();
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ""}${hash ? `#${hash}` : ""}`;
+  };
+
+  const saveDashboardContext = (extra?: Record<string, unknown>) => {
+    saveDashboardReturnMarker(returnTo, {
+      savedAt: Date.now(),
+      filters,
+      periodType,
+      showAdditionalFilters,
+      ...(extra ?? {}),
+    });
+  };
+
+  const createOrderPath = appendReturnToParam("/po-orders/create");
 
   const handleMobileBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -113,10 +133,7 @@ export default function PoDashboardList() {
 
   const handleOpenOrder = (item: PoDashboardDetalleItem) => {
     if (!item.order?.id) return;
-    saveDashboardReturnMarker(returnTo, {
-      savedAt: Date.now(),
-      orderId: item.order.id,
-    });
+    saveDashboardContext({ orderId: item.order.id });
     navigate(`/po-orders/${item.order.id}`, {
       state: { returnTo },
     });
@@ -135,15 +152,13 @@ export default function PoDashboardList() {
     onSelectStatusCard: selectDetailKpi,
     onOpenOrder: handleOpenOrder,
     onNavigate: (path) => {
-      const createOrderPath = `/po-orders/create?returnTo=${encodeURIComponent(returnTo)}`;
-      if (path === createOrderPath) {
-        saveDashboardReturnMarker(returnTo, {
-          savedAt: Date.now(),
-        });
+      if (path.startsWith("/po-")) {
+        saveDashboardContext();
       }
-      navigate(path);
+      const nextPath = path.startsWith("/po-") ? appendReturnToParam(path) : path;
+      navigate(nextPath);
     },
-    createOrderPath: `/po-orders/create?returnTo=${encodeURIComponent(returnTo)}`,
+    createOrderPath,
   });
 
   const kpiToggleLabel = showKpis ? "Ocultar KPIs" : "Mostrar KPIs";

@@ -2,8 +2,21 @@ import { z } from "zod";
 
 export const PROPIETARIO_VALIDATIONS = {
   NOMBRE_MAX: 200,
+  DNI_MAX: 20,
+  CUIT_MAX: 20,
+  TIPO_PERSONA_MAX: 20,
+  DOMICILIO_MAX: 500,
+  LOCALIDAD_MAX: 200,
+  PROVINCIA_MAX: 100,
+  EMAIL_MAX: 200,
+  TELEFONO_MAX: 50,
   COMENTARIO_MAX: 1000,
 } as const;
+
+export const TIPO_PERSONA_OPTIONS = [
+  { id: "fisica", nombre: "Fisica" },
+  { id: "juridica", nombre: "Juridica" },
+] as const;
 
 export const CONCEPTOS_REFERENCE = {
   resource: "api/v1/adm/conceptos",
@@ -22,6 +35,14 @@ export const CENTROS_COSTO_REFERENCE = {
 export type Propietario = {
   id: number;
   nombre: string;
+  dni?: string | null;
+  cuit?: string | null;
+  tipo_persona?: string | null;
+  domicilio?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
+  email?: string | null;
+  telefono?: string | null;
   adm_concepto_id?: number | null;
   centro_costo_id?: number | null;
   comentario?: string | null;
@@ -50,6 +71,24 @@ const booleanFromInput = z.preprocess((value) => {
 
 export const propietarioSchema = z.object({
   nombre: z.string().min(1).max(PROPIETARIO_VALIDATIONS.NOMBRE_MAX),
+  dni: optionalString.pipe(z.string().max(PROPIETARIO_VALIDATIONS.DNI_MAX).optional()),
+  cuit: optionalString.pipe(z.string().max(PROPIETARIO_VALIDATIONS.CUIT_MAX).optional()),
+  tipo_persona: optionalString.pipe(
+    z.string().max(PROPIETARIO_VALIDATIONS.TIPO_PERSONA_MAX).optional(),
+  ),
+  domicilio: optionalString.pipe(
+    z.string().max(PROPIETARIO_VALIDATIONS.DOMICILIO_MAX).optional(),
+  ),
+  localidad: optionalString.pipe(
+    z.string().max(PROPIETARIO_VALIDATIONS.LOCALIDAD_MAX).optional(),
+  ),
+  provincia: optionalString.pipe(
+    z.string().max(PROPIETARIO_VALIDATIONS.PROVINCIA_MAX).optional(),
+  ),
+  email: optionalString.pipe(z.string().max(PROPIETARIO_VALIDATIONS.EMAIL_MAX).optional()),
+  telefono: optionalString.pipe(
+    z.string().max(PROPIETARIO_VALIDATIONS.TELEFONO_MAX).optional(),
+  ),
   adm_concepto_id: optionalId,
   centro_costo_id: optionalId,
   comentario: optionalString.pipe(
@@ -62,6 +101,14 @@ export type PropietarioFormValues = z.infer<typeof propietarioSchema>;
 
 export const PROPIETARIO_DEFAULT: Partial<PropietarioFormValues> = {
   nombre: "",
+  dni: "",
+  cuit: "",
+  tipo_persona: undefined,
+  domicilio: "",
+  localidad: "",
+  provincia: "",
+  email: "",
+  telefono: "",
   adm_concepto_id: undefined,
   centro_costo_id: undefined,
   comentario: "",

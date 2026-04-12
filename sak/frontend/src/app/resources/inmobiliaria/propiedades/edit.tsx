@@ -4,15 +4,47 @@ import { Edit } from "@/components/edit";
 import { useRecordContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
 import { Home } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  loadDashboardReturnMarker,
+  saveDashboardReturnMarker,
+} from "../propiedades-dashboard/return-state";
 
 import { PropiedadForm } from "./form";
 import { getPropiedadStatusBadgeClass, type Propiedad } from "./model";
 
-export const PropiedadEdit = () => (
-  <Edit title={<PropiedadEditTitle />} actions={false}>
-    <PropiedadForm />
-  </Edit>
-);
+export const PropiedadEdit = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const returnTo = params.get("returnTo");
+
+  return (
+    <Edit
+      title={<PropiedadEditTitle />}
+      actions={false}
+      redirect={false}
+      mutationOptions={{
+        onSuccess: (data) => {
+          if (returnTo) {
+            const existingReturnMarker = loadDashboardReturnMarker(returnTo);
+            saveDashboardReturnMarker(returnTo, {
+              ...existingReturnMarker,
+              savedAt: Date.now(),
+              propiedadId: data?.id ?? existingReturnMarker?.propiedadId,
+              refreshAll: true,
+            });
+            navigate(returnTo, { replace: true });
+            return;
+          }
+          navigate("/propiedades", { replace: true });
+        },
+      }}
+    >
+      <PropiedadForm />
+    </Edit>
+  );
+};
 
 const PropiedadEditTitle = () => {
   const record = useRecordContext<Propiedad>();

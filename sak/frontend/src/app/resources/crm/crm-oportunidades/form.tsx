@@ -36,9 +36,10 @@ import {
 import { CheckCircle2, Plus, Trash2, Workflow } from "lucide-react";
 
 import {
-  canUseOportunidadAction,
+  canUseOportunidadActionForRecord,
   CRM_OPORTUNIDAD_ESTADOS,
   isClosedOportunidad,
+  isMantenimientoOportunidad,
   isProspectOportunidad,
 } from "./model";
 import { captureOportunidadModalBackground } from "./modal_background";
@@ -78,6 +79,14 @@ const useLockedPropiedadId = () => {
   }, [location.search]);
 };
 
+const useDefaultTipoOperacionId = () => {
+  const location = useLocation();
+  return useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return parseNumericParam(params.get("tipo_operacion_id"));
+  }, [location.search]);
+};
+
 const LockedPropiedadSync = ({ lockedPropiedadId }: { lockedPropiedadId?: number }) => {
   const { setValue } = useFormContext<CRMOportunidadFormValues>();
   const propiedadValue = useWatch({ name: "propiedad_id" }) as unknown;
@@ -92,10 +101,11 @@ const LockedPropiedadSync = ({ lockedPropiedadId }: { lockedPropiedadId?: number
   return null;
 };
 
-const TipoOperacionAlquilerDefault = () => {
+const TipoOperacionDefault = () => {
   const record = useRecordContext<any>();
   const { setValue } = useFormContext<CRMOportunidadFormValues>();
   const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
+  const defaultTipoOperacionId = useDefaultTipoOperacionId();
   const { data: tiposOperacion = [] } = useGetList("crm/catalogos/tipos-operacion", {
     pagination: { page: 1, perPage: 500 },
     sort: { field: "nombre", order: "ASC" },
@@ -112,11 +122,78 @@ const TipoOperacionAlquilerDefault = () => {
 
   useEffect(() => {
     if (record?.id) return;
-    if (!alquilerId) return;
+    const fallbackTipoOperacionId = defaultTipoOperacionId ?? alquilerId;
+    if (!fallbackTipoOperacionId) return;
     const current = resolveNumericId(tipoOperacionValue);
     if (current) return;
-    setValue("tipo_operacion_id", alquilerId, { shouldDirty: false });
-  }, [alquilerId, record?.id, setValue, tipoOperacionValue]);
+    setValue("tipo_operacion_id", fallbackTipoOperacionId, { shouldDirty: false });
+  }, [alquilerId, defaultTipoOperacionId, record?.id, setValue, tipoOperacionValue]);
+
+  return null;
+};
+
+const TipoPropiedadFromPropiedadSync = () => {
+  const record = useRecordContext<any>();
+  const { setValue } = useFormContext<CRMOportunidadFormValues>();
+  const lockedPropiedadId = useLockedPropiedadId();
+  const { isMantenimiento } = useMantenimientoRules();
+  const propiedadValue = useWatch({ name: "propiedad_id" }) as unknown;
+  const tipoPropiedadValue = useWatch({ name: "tipo_propiedad_id" }) as unknown;
+
+  const propiedadId = lockedPropiedadId ?? resolveNumericId(propiedadValue);
+  const currentTipoPropiedadId = resolveNumericId(tipoPropiedadValue);
+  const { data: propiedad } = useGetOne(
+    "propiedades",
+    { id: propiedadId ?? 0 },
+    { enabled: Boolean(propiedadId) },
+  );
+  const propiedadTipoPropiedadId = resolveNumericId((propiedad as any)?.tipo_propiedad_id);
+
+  useEffect(() => {
+    if (record?.id || !isMantenimiento) return;
+
+    if (!propiedadId) {
+      if (currentTipoPropiedadId == null) return;
+      setValue("tipo_propiedad_id", undefined, { shouldDirty: false });
+      return;
+    }
+
+    if (!propiedadTipoPropiedadId) return;
+    if (currentTipoPropiedadId === propiedadTipoPropiedadId) return;
+
+    setValue("tipo_propiedad_id", propiedadTipoPropiedadId, { shouldDirty: false });
+  }, [
+    currentTipoPropiedadId,
+    isMantenimiento,
+    propiedadId,
+    propiedadTipoPropiedadId,
+    record?.id,
+    setValue,
+  ]);
+
+  return null;
+};
+
+const MantenimientoCreateStateSync = () => {
+  const record = useRecordContext<any>();
+  const { setValue } = useFormContext<CRMOportunidadFormValues>();
+  const { isMantenimiento } = useMantenimientoRules();
+  const estadoValue = useWatch({ name: "estado" }) as unknown;
+  const activoValue = useWatch({ name: "activo" }) as unknown;
+
+  useEffect(() => {
+    if (record?.id) return;
+
+    const desiredEstado = isMantenimiento ? "1-abierta" : CRM_OPORTUNIDAD_ESTADOS[0];
+    const desiredActivo = isMantenimiento;
+
+    if (estadoValue !== desiredEstado) {
+      setValue("estado", desiredEstado, { shouldDirty: false });
+    }
+    if (Boolean(activoValue) !== desiredActivo) {
+      setValue("activo", desiredActivo, { shouldDirty: false });
+    }
+  }, [activoValue, estadoValue, isMantenimiento, record?.id, setValue]);
 
   return null;
 };
@@ -189,7 +266,9 @@ export const CRMOportunidadForm = () => {
       <FormErrorSummary />
       {lockedPropiedadId ? <HiddenInput source="propiedad_id" /> : null}
       <LockedPropiedadSync lockedPropiedadId={lockedPropiedadId} />
-      <TipoOperacionAlquilerDefault />
+      <TipoOperacionDefault />
+      <MantenimientoCreateStateSync />
+      <TipoPropiedadFromPropiedadSync />
       <CabeceraSection />
       <ChatSection />
       <EventosSection />
@@ -245,14 +324,15 @@ const CabeceraActionsMenu = () => {
     });
   };
 
-  const canAgendar = canUseOportunidadAction(record.estado, "agendar");
-  const canCotizar = canUseOportunidadAction(record.estado, "cotizar");
-  const canReservar = canUseOportunidadAction(record.estado, "reservar");
-  const canCerrar = canUseOportunidadAction(record.estado, "cerrar");
+  const canAgendar = canUseOportunidadActionForRecord(record, "agendar");
+  const canCotizar = canUseOportunidadActionForRecord(record, "cotizar");
+  const canReservar = canUseOportunidadActionForRecord(record, "reservar");
+  const canCerrar = canUseOportunidadActionForRecord(record, "cerrar");
+  const hasStateActions = canAgendar || canCotizar || canReservar || canCerrar;
 
   return (
     <>
-      {isProspectOportunidad(record.estado) ? (
+      {isProspectOportunidad(record.estado) && !isMantenimientoOportunidad(record) ? (
         <>
           <DropdownMenuItem
             onSelect={(event) => {
@@ -290,7 +370,7 @@ const CabeceraActionsMenu = () => {
         </>
       ) : null}
 
-      {!isProspectOportunidad(record.estado) && !isClosedOportunidad(record.estado) ? (
+      {!isClosedOportunidad(record.estado) && hasStateActions ? (
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]">
             <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
@@ -387,8 +467,8 @@ const CabeceraFields = () => {
         <FormSelectFijo
           optionText="nombre"
           label="Tipo operacion"
-          widthClass="w-full md:col-span-2"
-          fixedWidth="110px"
+          widthClass="w-full min-w-0 md:col-span-2"
+          fixedWidth="96px"
         />
       </ReferenceInput>
       <FormReferenceAutocomplete
@@ -398,7 +478,7 @@ const CabeceraFields = () => {
           label: "Responsable",
           validate: required(),
         }}
-        widthClass="w-full md:col-span-2"
+        widthClass="w-full min-w-0 md:col-span-4"
       />
       {isMantenimiento ? (
         lockedPropiedadId ? (

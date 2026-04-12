@@ -1,6 +1,5 @@
 "use client";
 import { useRecordContext } from "ra-core";
-import { CreateButton } from "@/components/create-button";
 import { DateField } from "@/components/date-field";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
@@ -28,6 +27,7 @@ import { ORDER_STATUS_BADGES } from "./model";
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getReturnToFromLocation } from "@/lib/oportunidad-context";
+import { PoOrderCreateMenuButton } from "./create-menu-button";
 
 const getUserInitials = (name?: string | null) =>
   String(name ?? "")
@@ -266,7 +266,7 @@ const AccionesListaOrdenes = () => (
       size="sm"
       buttonClassName={ACTION_BUTTON_CLASS}
     />
-    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
+    <PoOrderCreateMenuButton className={ACTION_BUTTON_CLASS} label="Crear" />
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
@@ -314,8 +314,8 @@ export const PoOrderList = ({
         size="sm"
         buttonClassName={ACTION_BUTTON_CLASS}
       />
-      <CreateButton
-        to={createTo}
+      <PoOrderCreateMenuButton
+        createTo={createTo}
         className={ACTION_BUTTON_CLASS}
         label="Agregar"
       />

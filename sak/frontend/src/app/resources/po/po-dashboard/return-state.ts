@@ -1,5 +1,7 @@
 "use client";
 
+import type { PoDashboardFilters, PeriodType } from "./model";
+
 const DASHBOARD_RETURN_MARKER_PREFIX = "po-dashboard:return:";
 
 export const DASHBOARD_RETURN_TTL_MS = 5 * 60 * 1000;
@@ -9,6 +11,9 @@ export type PoDashboardReturnMarker = {
   orderId?: string | number | null;
   refreshAll?: boolean;
   deleted?: boolean;
+  filters?: PoDashboardFilters;
+  periodType?: PeriodType;
+  showAdditionalFilters?: boolean;
 };
 
 const getDashboardReturnMarkerStorageKey = (returnTo: string) =>

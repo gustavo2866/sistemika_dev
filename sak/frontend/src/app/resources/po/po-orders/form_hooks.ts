@@ -105,12 +105,12 @@ export const isPoOrderEditableByOrden = (orden?: number | null) => {
 
 export const usePoOrderReadOnly = () => {
   const record = useRecordContext<PoOrderRecord>();
-  const isCreate = !record?.id;
-  if (isCreate) return false;
   const { control } = useFormContext<PoOrderFormValues>();
   const formStatusId = useWatch({ name: "order_status_id", control }) as
     | number
     | undefined;
+  const isCreate = !record?.id;
+  if (isCreate) return false;
   const orden =
     record?.order_status?.orden ??
     record?.order_status?.id ??
@@ -236,13 +236,16 @@ export const useAccionesCabeceraOrden = () => {
 
 // === Defaults y dependencias de cabecera ===
 // Aplica defaults y dependencias basadas en solicitante, proveedor y estado.
-export const usePoOrderDefaults = () => {
+export const usePoOrderDefaults = (
+  initialCreateTipoCompra?: "normal" | "directa",
+) => {
   const dataProvider = useDataProvider();
   const record = useRecordContext<
-    PoOrderFormValues & { order_status?: { id?: number; nombre?: string; orden?: number } }
+    PoOrderFormValues & { id?: number; order_status?: { id?: number; nombre?: string; orden?: number } }
   >();
   const { setValue, getValues, control } = useFormContext();
   const { dirtyFields } = useFormState({ control });
+  const isCreate = !record?.id;
 
   const solicitanteId = useWatch({ name: "solicitante_id" }) as number | undefined;
   const proveedorId = useWatch({ name: "proveedor_id" }) as number | undefined;
@@ -428,8 +431,12 @@ export const usePoOrderDefaults = () => {
 
   useEffect(() => {
     if (tipoCompraActual || dirtyFields?.tipo_compra) return;
-    setValue("tipo_compra", "normal", { shouldDirty: false });
-  }, [tipoCompraActual, dirtyFields?.tipo_compra, setValue]);
+    setValue(
+      "tipo_compra",
+      isCreate ? (initialCreateTipoCompra ?? "normal") : "normal",
+      { shouldDirty: false },
+    );
+  }, [tipoCompraActual, dirtyFields?.tipo_compra, initialCreateTipoCompra, isCreate, setValue]);
 
   useEffect(() => {
     if (!estadoOrdenId || estadoOrdenNombre) return;

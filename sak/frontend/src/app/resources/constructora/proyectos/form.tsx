@@ -250,7 +250,14 @@ const ProyectoChatSection = ({
   );
 
   if (variant === "panel") {
-    return <ProyectoDesktopPanel>{content}</ProyectoDesktopPanel>;
+    return (
+      <ProyectoDesktopPanel
+        title="Chat"
+        description="Conversacion y seguimiento contextual vinculado a la oportunidad del proyecto."
+      >
+        {content}
+      </ProyectoDesktopPanel>
+    );
   }
 
   return (
@@ -439,7 +446,10 @@ const ProyectoOrdenesSection = ({
 
   if (variant === "panel") {
     return (
-      <ProyectoDesktopPanel>
+      <ProyectoDesktopPanel
+        title="Ordenes"
+        description="Ordenes de compra y seguimiento de abastecimiento ligadas al proyecto."
+      >
         {list}
       </ProyectoDesktopPanel>
     );
@@ -508,7 +518,10 @@ const ProyectoCertificadosSection = ({
 
   if (variant === "panel") {
     return (
-      <ProyectoDesktopPanel>
+      <ProyectoDesktopPanel
+        title="Certificados"
+        description="Registro historico de avances, horas e importes certificados del proyecto."
+      >
         {list}
       </ProyectoDesktopPanel>
     );
@@ -585,7 +598,10 @@ const ProyectoPresupuestoSection = ({
 
   if (variant === "panel") {
     return (
-      <ProyectoDesktopPanel>
+      <ProyectoDesktopPanel
+        title="Presupuesto"
+        description="Consulta la evolucion economica y los presupuestos cargados para este proyecto."
+      >
         {list}
       </ProyectoDesktopPanel>
     );

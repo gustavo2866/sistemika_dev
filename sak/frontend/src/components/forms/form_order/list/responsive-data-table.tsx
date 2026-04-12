@@ -26,12 +26,10 @@ import get from "lodash/get";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
   ColumnsSelector,
-  ColumnsSelectorItem,
 } from "@/components/columns-button";
 import {
   BulkActionsToolbar,
@@ -634,6 +632,7 @@ const DataTableMobileView = <RecordType extends RaRecord = RaRecord>({
 export interface ResponsiveDataTableProps<RecordType extends RaRecord = RaRecord>
   extends DataTableProps<RecordType> {
   mobileConfig?: MobileConfig;
+  emptyMessage?: ReactNode;
 }
 
 export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
@@ -646,6 +645,7 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
     bulkActionButtons = defaultBulkActionButtons,
     bulkActionsToolbar,
     mobileConfig,
+    emptyMessage,
     ...rest
   } = props;
   const isMobile = useIsMobile();
@@ -663,6 +663,7 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
         compact={compact}
         bulkActionButtons={bulkActionButtons}
         bulkActionsToolbar={bulkActionsToolbar}
+        emptyMessage={emptyMessage}
       >
         {columns}
       </DataTable>
@@ -673,7 +674,7 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
     <DataTableBase<RecordType>
       hasBulkActions={hasBulkActions}
       loading={null}
-      empty={<DataTableEmpty />}
+      empty={<DataTableEmpty message={emptyMessage} />}
       {...rest}
     >
       <DataTableMobileView<RecordType>
@@ -701,10 +702,10 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
 ResponsiveDataTable.Col = DataTable.Col;
 ResponsiveDataTable.NumberCol = DataTable.NumberCol;
 
-const DataTableEmpty = () => {
+const DataTableEmpty = ({ message = "No results found." }: { message?: ReactNode }) => {
   return (
     <Alert>
-      <AlertDescription>No results found.</AlertDescription>
+      <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
 };

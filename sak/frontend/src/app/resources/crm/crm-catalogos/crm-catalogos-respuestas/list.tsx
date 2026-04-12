@@ -68,6 +68,7 @@ const listMobileConfig = {
 type CRMCatalogoRespuestaListProps = {
   embedded?: boolean;
   rowClick?: any;
+  perPage?: number;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
@@ -87,13 +88,14 @@ const CRMCatalogoRespuestaListActions = ({ embedded = false }: { embedded?: bool
 export const CRMCatalogoRespuestaList = ({
   embedded = false,
   rowClick = "edit",
+  perPage = 25,
 }: CRMCatalogoRespuestaListProps) => (
   <List
     title="CRM - Respuestas"
     filters={listFilters}
     actions={<CRMCatalogoRespuestaListActions embedded={embedded} />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD_PLUS}

@@ -27,6 +27,7 @@ import {
   type PanelChange,
   sortPanelBucketItems,
 } from "./model";
+import { isMantenimientoOportunidad } from "../crm-oportunidades/model";
 
 const isMeaningfulFilterValue = (value: unknown) => {
   if (value === "" || value === null || value === undefined) return false;
@@ -333,9 +334,28 @@ export const useListPanel = () => {
     async (oportunidad: CRMOportunidad, targetBucket: PanelBucketKey) => {
       const currentEstado = oportunidad.estado;
       const currentBucket = getPanelBucketKey(currentEstado);
+      const isMantenimiento = isMantenimientoOportunidad(oportunidad);
 
       if (currentBucket === targetBucket) {
         return { __skipUpdate: true };
+      }
+
+      if (isMantenimiento) {
+        if (targetBucket !== "cerradas") {
+          notify("Las oportunidades de mantenimiento solo pueden cerrarse.", {
+            type: "warning",
+          });
+          return undefined;
+        }
+
+        navigate(`/crm/oportunidades/${oportunidad.id}/accion_cerrar`, {
+          state: {
+            returnTo,
+            background: captureOportunidadModalBackground(),
+            panelChange: buildPanelChange(oportunidad, targetBucket),
+          },
+        });
+        return undefined;
       }
 
       if (targetBucket === "cerradas") {

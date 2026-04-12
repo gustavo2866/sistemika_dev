@@ -135,6 +135,33 @@ class Propiedad(Base, table=True):
         description="Referencia al catálogo de tipos de propiedad"
     )
     propietario: str = Field(max_length=255, description='Propietario o responsable')
+
+    # --- Ubicación del inmueble ---
+    domicilio: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Dirección completa del inmueble (calle, número, piso, depto)",
+    )
+    localidad: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Localidad / ciudad donde está el inmueble",
+    )
+    provincia: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Provincia donde está el inmueble",
+    )
+    codigo_postal: Optional[str] = Field(
+        default=None,
+        max_length=20,
+        description="Código postal del inmueble",
+    )
+    matricula_catastral: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Matrícula / partida catastral del inmueble",
+    )
     
     # FK a propietario (nueva relación sin eliminar el campo actual)
     propietario_id: Optional[int] = Field(

@@ -68,6 +68,7 @@ const listMobileConfig = {
 type CRMCondicionPagoListProps = {
   embedded?: boolean;
   rowClick?: any;
+  perPage?: number;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
@@ -87,13 +88,14 @@ const CRMCondicionPagoListActions = ({ embedded = false }: { embedded?: boolean 
 export const CRMCondicionPagoList = ({
   embedded = false,
   rowClick = "edit",
+  perPage = 25,
 }: CRMCondicionPagoListProps) => (
   <List
     title="CRM - Condiciones de Pago"
     filters={listFilters}
     actions={<CRMCondicionPagoListActions embedded={embedded} />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD_PLUS}

@@ -325,8 +325,7 @@ const DetalleFactura = () => {
   ];
 
   // Campos principales del detalle de factura.
-  const DetalleCamposPrincipales = useCallback(
-    ({ isActive }: SectionDetailFieldsProps) => {
+  const DetalleCamposPrincipales = ({ isActive }: SectionDetailFieldsProps) => {
       const descripcionSource = useWrappedSource("descripcion");
       const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
       const hasDescripcion = Boolean(descripcion?.trim());
@@ -395,9 +394,7 @@ const DetalleFactura = () => {
           </DetailFieldCell>
         </>
       );
-    },
-    [],
-  );
+  };
 
   // Campos opcionales del detalle de factura.
   const DetalleCamposOpcionales = useCallback(

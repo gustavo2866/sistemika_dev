@@ -57,16 +57,22 @@ export const useCrmDashboard = () => {
     () => loadDashboardSnapshot(returnTo, hasPendingReturn, DASHBOARD_SNAPSHOT_TTL_MS),
     [returnTo, hasPendingReturn],
   );
+  const initialPeriodType = pendingReturnMarker?.periodType ?? initialSnapshot?.periodType ?? DEFAULT_CRM_PERIOD;
+  const initialFilters =
+    pendingReturnMarker?.filters ??
+    initialSnapshot?.filters ??
+    buildDefaultFilters(initialPeriodType);
   const hasHydratedSnapshot = Boolean(initialSnapshot);
+  const hasHydratedReturnContext = hasHydratedSnapshot || Boolean(pendingReturnMarker?.filters);
   const initialDashboardRequestKey = hasHydratedSnapshot
     ? getDashboardRequestKey(
-        initialSnapshot?.periodType ?? DEFAULT_CRM_PERIOD,
-        initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_CRM_PERIOD),
+        initialPeriodType,
+        initialFilters,
       )
     : null;
   const initialDetailRequestKey = hasHydratedSnapshot
     ? getDetailRequestKey({
-        filters: initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_CRM_PERIOD),
+        filters: initialFilters,
         detailKpi: initialSnapshot?.detailKpi ?? "proceso",
         detailPage: initialSnapshot?.detailPage ?? 1,
         selectedAlertKey: initialSnapshot?.selectedAlertKey ?? null,
@@ -77,10 +83,10 @@ export const useCrmDashboard = () => {
   const initialDetailRequestKeyRef = useRef(initialDetailRequestKey);
 
   const [periodType, setPeriodType] = useState<PeriodType>(
-    initialSnapshot?.periodType ?? DEFAULT_CRM_PERIOD,
+    initialPeriodType,
   );
   const [filters, setFilters] = useState<CrmDashboardFilters>(
-    () => initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_CRM_PERIOD),
+    () => initialFilters,
   );
   const [dashboardData, setDashboardData] = useState<CrmDashboardResponse | null>(
     initialSnapshot?.dashboardData ?? null,
@@ -110,7 +116,7 @@ export const useCrmDashboard = () => {
   const [periodTrendData, setPeriodTrendData] = useState<
     Array<{ label: string; total: number; nuevas: number; ganadas: number }>
   >(initialSnapshot?.periodTrendData ?? []);
-  const [tipoOperacionInitialized, setTipoOperacionInitialized] = useState(hasHydratedSnapshot);
+  const [tipoOperacionInitialized, setTipoOperacionInitialized] = useState(hasHydratedReturnContext);
   const [tipoOperacionOptions, setTipoOperacionOptions] = useState<SelectOption[]>([{ value: "todos", label: "Todos" }]);
   const dashboardRequestKey = useMemo(
     () => getDashboardRequestKey(periodType, filters),
@@ -447,17 +453,11 @@ export const useCrmDashboard = () => {
     if (processingReturnMarkerRef.current === markerKey) return;
     processingReturnMarkerRef.current = markerKey;
 
-    if (!hasHydratedSnapshot) {
-      processingReturnMarkerRef.current = null;
-      clearDashboardReturnMarker(returnTo);
-      return;
-    }
-
     let cancelled = false;
 
     const syncDashboardFromReturn = async () => {
       try {
-        if (pendingReturnMarker.refreshAll || pendingReturnMarker.deleted) {
+        if (pendingReturnMarker.refreshAll || pendingReturnMarker.deleted || !hasHydratedSnapshot) {
           setDashboardLoading(true);
           setDetailLoading(true);
           setDetailPage(1);

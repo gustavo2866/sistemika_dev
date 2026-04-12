@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type HTMLAttributes } from "react";
+import isEqual from "lodash/isEqual";
 import {
   useDataProvider,
+  useListContext,
   useNotify,
   useRecordContext,
   useRefresh,
@@ -19,7 +21,7 @@ import {
 
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { FilterButton } from "@/components/filter-form";
+import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import {
   FormOrderBulkActionsToolbar,
   FormOrderListRowActions,
@@ -49,10 +51,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import {
-  canUseOportunidadAction,
+  canUseOportunidadActionForRecord,
   CRM_OPORTUNIDAD_ESTADO_BADGES,
   CRM_OPORTUNIDAD_ESTADO_CHOICES,
   isClosedOportunidad,
+  isMantenimientoOportunidad,
   isProspectOportunidad,
 } from "./model";
 import { captureOportunidadModalBackground } from "./modal_background";
@@ -166,6 +169,29 @@ const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 const LIST_CONTAINER_CLASS_NAME = LIST_CONTAINER_WIDE;
 const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
 const COMPACT_LIST_TABLE_CLASS_NAME = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
+const EMBEDDED_VISIBLE_FILTER_SOURCES = new Set(["q"]);
+
+const buildEmbeddedVisibleFilters = (hiddenSources: Set<string>) =>
+  LIST_FILTERS.filter((filterElement) => {
+    const source = String(filterElement.props.source ?? "");
+    return EMBEDDED_VISIBLE_FILTER_SOURCES.has(source) && !hiddenSources.has(source);
+  });
+
+const buildEmbeddedExpandableFilterSources = (hiddenSources: Set<string>) =>
+  LIST_FILTERS
+    .map((filterElement) => String(filterElement.props.source ?? ""))
+    .filter(
+      (source) =>
+        source &&
+        !EMBEDDED_VISIBLE_FILTER_SOURCES.has(source) &&
+        !hiddenSources.has(source),
+    );
+
+const buildEmbeddedExpandedFilters = (hiddenSources: Set<string>) =>
+  LIST_FILTERS.filter((filterElement) => {
+    const source = String(filterElement.props.source ?? "");
+    return !hiddenSources.has(source);
+  });
 
 const OportunidadListTitle = ({ onBack }: { onBack: () => void }) => (
   <>
@@ -380,7 +406,13 @@ const OportunidadEliminarMenuItem = () => {
   const location = useLocation();
   const returnTo = buildListReturnTo(location.pathname, location.search);
 
-  if (!record?.id || !isProspectOportunidad(record.estado)) return null;
+  if (
+    !record?.id ||
+    !isProspectOportunidad(record.estado) ||
+    isMantenimientoOportunidad(record)
+  ) {
+    return null;
+  }
 
   return (
     <DropdownMenuItem
@@ -419,7 +451,13 @@ const OportunidadAceptarMenuItem = () => {
   const location = useLocation();
   const returnTo = buildListReturnTo(location.pathname, location.search);
 
-  if (!record?.id || !isProspectOportunidad(record.estado)) return null;
+  if (
+    !record?.id ||
+    !isProspectOportunidad(record.estado) ||
+    isMantenimientoOportunidad(record)
+  ) {
+    return null;
+  }
 
   return (
     <DropdownMenuItem
@@ -448,14 +486,15 @@ const OportunidadCambioEstadoMenu = () => {
   const location = useLocation();
   const returnTo = buildListReturnTo(location.pathname, location.search);
 
-  if (!record?.id || isClosedOportunidad(record.estado) || isProspectOportunidad(record.estado)) {
+  const canAgendar = canUseOportunidadActionForRecord(record, "agendar");
+  const canCotizar = canUseOportunidadActionForRecord(record, "cotizar");
+  const canReservar = canUseOportunidadActionForRecord(record, "reservar");
+  const canCerrar = canUseOportunidadActionForRecord(record, "cerrar");
+  const hasStateActions = canAgendar || canCotizar || canReservar || canCerrar;
+
+  if (!record?.id || isClosedOportunidad(record.estado) || !hasStateActions) {
     return null;
   }
-
-  const canAgendar = canUseOportunidadAction(record.estado, "agendar");
-  const canCotizar = canUseOportunidadAction(record.estado, "cotizar");
-  const canReservar = canUseOportunidadAction(record.estado, "reservar");
-  const canCerrar = canUseOportunidadAction(record.estado, "cerrar");
   const goTo = (path: string) => {
     navigate(path, {
       state: {
@@ -548,12 +587,128 @@ const CRMOportunidadListActions = () => (
   </div>
 );
 
+const isMeaningfulFilterValue = (value: unknown): boolean => {
+  if (value === "" || value == null) return false;
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((nestedValue) =>
+      isMeaningfulFilterValue(nestedValue),
+    );
+  }
+  return true;
+};
+
+const EmbeddedDefaultFilterSync = ({
+  enabled,
+  filterDefaultValues,
+}: {
+  enabled: boolean;
+  filterDefaultValues?: Record<string, unknown>;
+}) => {
+  const { filterValues, setFilters } = useListContext();
+
+  useEffect(() => {
+    if (!enabled || !filterDefaultValues) return;
+
+    const nextFilters = {
+      ...(filterValues ?? {}),
+      ...filterDefaultValues,
+    };
+
+    if (isEqual(filterValues ?? {}, nextFilters)) return;
+    setFilters(nextFilters, undefined, false);
+  }, [enabled, filterDefaultValues, filterValues, setFilters]);
+
+  return null;
+};
+
+const EmbeddedOportunidadFilterDiv = ({
+  className,
+  ...props
+}: HTMLAttributes<HTMLDivElement>) => (
+  <StyledFilterDiv
+    {...props}
+    className={cn(
+      "!grid !min-w-0 !flex-1 !items-start !gap-3",
+      "grid-cols-1 sm:grid-cols-3",
+      "[&_[data-source=q]]:sm:col-span-full",
+      "[&_[data-source=q]]:sm:row-start-1",
+      "[&_[data-source]:not([data-source=q])]:sm:row-start-2",
+      className,
+    )}
+  />
+);
+
+const EmbeddedOportunidadListActions = ({
+  createTo,
+  showAdvancedFilters,
+  onToggleAdvancedFilters,
+  filterDefaultValues,
+  expandableFilterSources,
+}: {
+  createTo?: string;
+  showAdvancedFilters: boolean;
+  onToggleAdvancedFilters: () => void;
+  filterDefaultValues?: Record<string, unknown>;
+  expandableFilterSources: string[];
+}) => {
+  const { filterValues } = useListContext();
+  const activeAdvancedFiltersCount = expandableFilterSources.reduce(
+    (count, source) => {
+      const value = filterValues?.[source];
+      if (!isMeaningfulFilterValue(value)) return count;
+
+      const defaultValue = filterDefaultValues?.[source];
+      if (isEqual(value, defaultValue)) return count;
+
+      return count + 1;
+    },
+    0,
+  );
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant={showAdvancedFilters ? "secondary" : "outline"}
+        size="sm"
+        className={ACTION_BUTTON_CLASS}
+        onClick={onToggleAdvancedFilters}
+      >
+        {showAdvancedFilters
+          ? "Ocultar filtros"
+          : activeAdvancedFiltersCount > 0
+            ? `Mas filtros (${activeAdvancedFiltersCount})`
+            : "Mas filtros"}
+      </Button>
+      <CreateButton
+        to={createTo}
+        className={ACTION_BUTTON_CLASS}
+        label="Agregar"
+      />
+      <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
+    </div>
+  );
+};
+
+type CRMOportunidadListProps = {
+  embedded?: boolean;
+  filterDefaultValues?: Record<string, unknown>;
+  permanentFilter?: Record<string, unknown>;
+  createTo?: string;
+  storeKey?: string;
+  compact?: boolean;
+  showBulkActions?: boolean;
+  rowClick?: "edit" | "show" | "expand" | false | undefined;
+  emptyMessage?: string;
+};
+
 type CRMOportunidadListBodyProps = {
   identityId?: number | string;
   compact?: boolean;
   showBulkActions?: boolean;
   rowClick?: "edit" | "show" | "expand" | false | undefined;
   className?: string;
+  emptyMessage?: string;
 };
 
 export const CRMOportunidadListBody = ({
@@ -562,6 +717,7 @@ export const CRMOportunidadListBody = ({
   showBulkActions = true,
   rowClick = "edit",
   className,
+  emptyMessage,
 }: CRMOportunidadListBodyProps) => (
   <>
     {identityId ? (
@@ -575,6 +731,7 @@ export const CRMOportunidadListBody = ({
       bulkActionButtons={showBulkActions ? undefined : false}
       compact={compact}
       rowClassName={oportunidadRowClass}
+      emptyMessage={emptyMessage}
       className={cn(
         compact ? COMPACT_LIST_TABLE_CLASS_NAME : LIST_TABLE_CLASS_NAME,
         className,
@@ -617,14 +774,47 @@ export const CRMOportunidadListBody = ({
   </>
 );
 
-export const CRMOportunidadList = () => <ListaOportunidades />;
-
-const ListaOportunidades = () => {
+export const CRMOportunidadList = ({
+  embedded = false,
+  filterDefaultValues,
+  permanentFilter,
+  createTo,
+  storeKey,
+  compact,
+  showBulkActions = true,
+  rowClick = "edit",
+  emptyMessage,
+}: CRMOportunidadListProps = {}) => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "responsable_id",
   });
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const hiddenEmbeddedFilterSources = new Set(
+    Object.keys(permanentFilter ?? {}).filter((key) =>
+      isMeaningfulFilterValue(permanentFilter?.[key]),
+    ),
+  );
+  const resolvedFilterDefaults = embedded ? filterDefaultValues : defaultFilters;
+  const embeddedCollapsedFilters = buildEmbeddedVisibleFilters(hiddenEmbeddedFilterSources);
+  const embeddedExpandedFilters = buildEmbeddedExpandedFilters(hiddenEmbeddedFilterSources);
+  const embeddedExpandableFilterSources =
+    buildEmbeddedExpandableFilterSources(hiddenEmbeddedFilterSources);
+  const resolvedFilters = embedded
+    ? showAdvancedFilters
+      ? embeddedExpandedFilters
+      : embeddedCollapsedFilters
+    : LIST_FILTERS;
+  const embeddedActions = embedded ? (
+    <EmbeddedOportunidadListActions
+      createTo={createTo}
+      showAdvancedFilters={showAdvancedFilters}
+      onToggleAdvancedFilters={() => setShowAdvancedFilters((current) => !current)}
+      filterDefaultValues={resolvedFilterDefaults}
+      expandableFilterSources={embeddedExpandableFilterSources}
+    />
+  ) : undefined;
 
   const handleBack = () => {
     const stateReturnTo =
@@ -642,17 +832,34 @@ const ListaOportunidades = () => {
 
   return (
     <List
-      title={<OportunidadListTitle onBack={handleBack} />}
-      filters={LIST_FILTERS}
-      actions={<CRMOportunidadListActions />}
+      resource="crm/oportunidades"
+      title={embedded ? undefined : <OportunidadListTitle onBack={handleBack} />}
+      filters={resolvedFilters}
+      actions={embedded ? embeddedActions : <CRMOportunidadListActions />}
       debounce={300}
       perPage={10}
-      containerClassName={LIST_CONTAINER_CLASS_NAME}
+      filter={permanentFilter}
+      containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_CLASS_NAME}
       pagination={<ListPaginator />}
       sort={{ field: "created_at", order: "DESC" }}
-      filterDefaultValues={defaultFilters}
+      filterDefaultValues={resolvedFilterDefaults}
+      disableSyncWithLocation={embedded}
+      storeKey={embedded ? storeKey : undefined}
+      showBreadcrumb={!embedded}
+      showHeader={!embedded}
+      filterFormComponent={embedded ? EmbeddedOportunidadFilterDiv : undefined}
     >
-      <CRMOportunidadListBody identityId={identityId} />
+      <EmbeddedDefaultFilterSync
+        enabled={embedded}
+        filterDefaultValues={resolvedFilterDefaults}
+      />
+      <CRMOportunidadListBody
+        identityId={embedded ? undefined : identityId}
+        compact={compact ?? embedded}
+        showBulkActions={embedded ? false : showBulkActions}
+        rowClick={rowClick}
+        emptyMessage={emptyMessage}
+      />
     </List>
   );
 };

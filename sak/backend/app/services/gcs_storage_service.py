@@ -135,6 +135,21 @@ class GCSStorageService:
             # Sin credenciales, usar URL pública
             return blob.public_url
 
+    def delete_file(self, blob_name: str, *, bucket_name: Optional[str] = None) -> None:
+        """Elimina un archivo del bucket GCS por su blob_name."""
+        bucket = self._get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        if blob.exists():
+            blob.delete()
+
+    def blob_name_from_download_url(self, download_url: str, *, bucket_name: Optional[str] = None) -> str:
+        """Extrae el blob_name de una URL pública de GCS."""
+        name = bucket_name or self.default_bucket_name
+        prefix = f"https://storage.googleapis.com/{name}/"
+        if not download_url.startswith(prefix):
+            raise ValueError(f"URL no corresponde al bucket '{name}': {download_url}")
+        return download_url[len(prefix):]
+
     @staticmethod
     def blob_name_from_uri(storage_uri: str) -> str:
         if not storage_uri.startswith("gs://"):

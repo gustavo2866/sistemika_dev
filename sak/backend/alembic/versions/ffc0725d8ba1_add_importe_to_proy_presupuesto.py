@@ -36,10 +36,13 @@ def upgrade() -> None:
                type_=sa.DateTime(),
                existing_nullable=True)
     op.drop_index(op.f('ix_po_invoice_status_fin_nombre'), table_name='po_invoice_status_fin')
+    # Rellenar nulls antes de poner NOT NULL
+    op.execute("UPDATE po_invoice_taxes SET importe_base = 0 WHERE importe_base IS NULL")
     op.alter_column('po_invoice_taxes', 'importe_base',
                existing_type=sa.NUMERIC(precision=12, scale=2),
                type_=sa.DECIMAL(precision=15, scale=2),
                nullable=False)
+    op.execute("UPDATE po_invoice_taxes SET porcentaje = 0 WHERE porcentaje IS NULL")
     op.alter_column('po_invoice_taxes', 'porcentaje',
                existing_type=sa.NUMERIC(precision=5, scale=2),
                nullable=False)
@@ -59,7 +62,10 @@ def upgrade() -> None:
                existing_type=postgresql.TIMESTAMP(timezone=True),
                type_=sa.DateTime(),
                existing_nullable=True)
-    op.add_column('proy_presupuestos', sa.Column('importe', sa.DECIMAL(precision=14, scale=2), server_default='0', nullable=False))
+    op.execute("""
+        ALTER TABLE proy_presupuestos
+        ADD COLUMN IF NOT EXISTS importe DECIMAL(14, 2) DEFAULT 0 NOT NULL
+    """)
     op.alter_column('tax_profile_details', 'created_at',
                existing_type=postgresql.TIMESTAMP(timezone=True),
                type_=sa.DateTime(),

@@ -33,10 +33,11 @@ import {
 import { saveDashboardReturnMarker } from "../../return-state";
 import {
   CRM_OPORTUNIDAD_ESTADO_BADGES,
-  canUseOportunidadAction,
+  canUseOportunidadActionForRecord,
   formatDateValue,
   formatEstadoOportunidad,
   isClosedOportunidad,
+  isMantenimientoOportunidad,
   isProspectOportunidad,
 } from "../../../crm-oportunidades/model";
 import { captureOportunidadModalBackground } from "../../../crm-oportunidades/modal_background";
@@ -64,7 +65,13 @@ const OportunidadEliminarMenuItem = () => {
   const location = useLocation();
   const returnTo = buildDashboardReturnTo(location.pathname, location.search);
 
-  if (!record?.id || !isProspectOportunidad(record.estado)) return null;
+  if (
+    !record?.id ||
+    !isProspectOportunidad(record.estado) ||
+    isMantenimientoOportunidad(record)
+  ) {
+    return null;
+  }
 
   return (
     <DropdownMenuItem
@@ -107,7 +114,13 @@ const OportunidadAceptarMenuItem = () => {
   const location = useLocation();
   const returnTo = buildDashboardReturnTo(location.pathname, location.search);
 
-  if (!record?.id || !isProspectOportunidad(record.estado)) return null;
+  if (
+    !record?.id ||
+    !isProspectOportunidad(record.estado) ||
+    isMantenimientoOportunidad(record)
+  ) {
+    return null;
+  }
 
   return (
     <DropdownMenuItem
@@ -140,14 +153,15 @@ const OportunidadCambioEstadoMenu = () => {
   const location = useLocation();
   const returnTo = buildDashboardReturnTo(location.pathname, location.search);
 
-  if (!record?.id || isClosedOportunidad(record.estado) || isProspectOportunidad(record.estado)) {
+  const canAgendar = canUseOportunidadActionForRecord(record, "agendar");
+  const canCotizar = canUseOportunidadActionForRecord(record, "cotizar");
+  const canReservar = canUseOportunidadActionForRecord(record, "reservar");
+  const canCerrar = canUseOportunidadActionForRecord(record, "cerrar");
+  const hasStateActions = canAgendar || canCotizar || canReservar || canCerrar;
+
+  if (!record?.id || isClosedOportunidad(record.estado) || !hasStateActions) {
     return null;
   }
-
-  const canAgendar = canUseOportunidadAction(record.estado, "agendar");
-  const canCotizar = canUseOportunidadAction(record.estado, "cotizar");
-  const canReservar = canUseOportunidadAction(record.estado, "reservar");
-  const canCerrar = canUseOportunidadAction(record.estado, "cerrar");
 
   const goTo = (path: string) => {
     saveDashboardReturnMarker(returnTo, {
@@ -339,6 +353,12 @@ type DashboardListSectionProps = Pick<
 
 type DashboardDetailTableRecord = {
   id: string;
+  opportunityId: number;
+  fecha: string;
+  contacto: string;
+  oportunidad: string;
+  estado: string;
+  monto: number;
   dashboardItem: DashboardDetailItem;
 };
 
@@ -454,7 +474,7 @@ const DashboardDetailTable = ({
             },
           }}
         >
-          <ListColumn source="id" label="ID" className="w-[24px]">
+          <ListColumn source="opportunityId" label="ID" className="w-[24px]">
             <DashboardDetailIdCell />
           </ListColumn>
           <ListColumn source="fecha" label="Fecha" className="w-[58px]">
@@ -495,6 +515,12 @@ export const DashboardListSection = ({
   const isInitialDetailLoading = detailLoading && detailItems.length === 0;
   const records = detailItems.map((dashboardItem) => ({
     id: dashboardItem.key,
+    opportunityId: Number(dashboardItem.item.oportunidad?.id ?? 0),
+    fecha: String(dashboardItem.item.oportunidad?.fecha_estado ?? ""),
+    contacto: getDetalleContactoLabel(dashboardItem.item),
+    oportunidad: getDetalleOportunidadLabel(dashboardItem.item),
+    estado: String(dashboardItem.item.oportunidad?.estado ?? ""),
+    monto: Number(dashboardItem.item.monto ?? 0),
     dashboardItem,
   }));
 

@@ -5,15 +5,15 @@ import { AlertTriangle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatInteger } from "../../model";
+import { PoOrderCreateMenuButton } from "../../../po-orders/create-menu-button";
 import type {
   DashboardMainPanelViewModel,
   DashboardStatusCardItem,
 } from "./use-dashboard-main-panel";
 import { DashboardListSection } from "./dashboard-list-section";
 
-const getCompactAlertLabel = (label: string) => {
-  if (label === "Solicitadas +10d") return "Solicitadas";
-  if (label === "Emitidas +10d") return "Emitidas";
+const formatAlertLabel = (label: string) => {
+  if (label === "Solicitadas +10d") return "Solic +10d";
   return label;
 };
 
@@ -91,12 +91,12 @@ const DashboardAlertsSection = ({
   alerts,
 }: Pick<DashboardMainPanelViewModel, "alerts">) => (
   <section className="w-full rounded-xl border border-border/60 bg-card/80 p-1.5 shadow-sm sm:p-2">
-    <div className="flex items-start gap-2 sm:gap-3">
-      <div className="flex shrink-0 items-center gap-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         <AlertTriangle className="h-3 w-3 text-amber-600" />
         <span>Alarmas</span>
       </div>
-      <div className="grid flex-1 grid-cols-3 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
         {alerts.map((alert) => {
           const Icon = alert.icon;
           return (
@@ -136,7 +136,7 @@ const DashboardAlertsSection = ({
                   !alert.selected && "group-hover:text-primary/80",
                 )}
               >
-                {getCompactAlertLabel(alert.label)}
+                {formatAlertLabel(alert.label)}
               </span>
             </button>
           );
@@ -157,6 +157,19 @@ const DashboardQuickActionsSection = ({
     <div className="grid grid-cols-2 gap-1.5">
       {quickActions.map((action) => {
         const Icon = action.icon;
+        if (action.createTo) {
+          return (
+            <PoOrderCreateMenuButton
+              key={action.key}
+              createTo={action.createTo}
+              onNavigate={action.onNavigate}
+              icon={Icon}
+              label={action.label}
+              className="h-8 justify-start gap-1.5 px-2 text-[9px]"
+            />
+          );
+        }
+
         return (
           <Button
             key={action.key}

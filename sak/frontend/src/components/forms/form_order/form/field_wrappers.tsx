@@ -104,16 +104,16 @@ export const FormSelectFijo = ({
     triggerProps={{
       ...triggerProps,
       className: cn(
-        FORM_SELECT_TRIGGER_CLASS, 
-        `!w-[${fixedWidth}] !max-w-[${fixedWidth}] !min-w-[${fixedWidth}]`,
-        triggerProps?.className
+        FORM_SELECT_TRIGGER_CLASS,
+        "min-w-0 overflow-hidden [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:overflow-hidden [&_[data-slot=select-value]]:truncate",
+        triggerProps?.className,
       ),
       style: {
-        width: `${fixedWidth} !important`,
-        minWidth: `${fixedWidth} !important`, 
-        maxWidth: `${fixedWidth} !important`,
-        ...triggerProps?.style
-      }
+        width: fixedWidth,
+        minWidth: fixedWidth,
+        maxWidth: fixedWidth,
+        ...triggerProps?.style,
+      },
     }}
   />
 );

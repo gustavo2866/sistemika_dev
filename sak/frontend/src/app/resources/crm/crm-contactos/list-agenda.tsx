@@ -219,7 +219,7 @@ const ContactoAgendaBody = () => {
     const isActive = selectedLetter === letter;
     const newLetter = isActive ? null : letter;
     setSelectedLetter(newLetter);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { nombre_completo__startswith: _removed, ...rest } =
       filterValues as Record<string, unknown>;
     if (newLetter) {
@@ -235,7 +235,7 @@ const ContactoAgendaBody = () => {
   const handleClearLetter = () => {
     if (!selectedLetter) return;
     setSelectedLetter(null);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { nombre_completo__startswith: _removed, ...rest } =
       filterValues as Record<string, unknown>;
     setFilters(rest, displayedFilters);

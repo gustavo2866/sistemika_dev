@@ -28,7 +28,7 @@ import {
   type KanbanCardAction,
 } from "@/components/forms/form_order";
 import {
-  canUseOportunidadAction,
+  canUseOportunidadActionForRecord,
   formatOportunidadTitulo,
   getCardStyle,
   getContactoName,
@@ -274,22 +274,22 @@ const getCardConfig = (
   const estadoBadge = createEstadoBadge(estado);
   const onEdit = handlers.onEdit ? () => handlers.onEdit!(oportunidad) : undefined;
   const menuActions = [
-    canUseOportunidadAction(estado, "descartar") && handlers.onDescartar
+    canUseOportunidadActionForRecord(oportunidad, "descartar") && handlers.onDescartar
       ? createDescartarAction(oportunidad, handlers.onDescartar, updating)
       : null,
-    canUseOportunidadAction(estado, "aceptar") && handlers.onAceptar
+    canUseOportunidadActionForRecord(oportunidad, "aceptar") && handlers.onAceptar
       ? createConfirmarAction(oportunidad, handlers.onAceptar, updating)
       : null,
-    canUseOportunidadAction(estado, "agendar") && handlers.onAgendar
+    canUseOportunidadActionForRecord(oportunidad, "agendar") && handlers.onAgendar
       ? createAgendarAction(oportunidad, handlers.onAgendar, updating)
       : null,
-    canUseOportunidadAction(estado, "cotizar") && handlers.onCotizar
+    canUseOportunidadActionForRecord(oportunidad, "cotizar") && handlers.onCotizar
       ? createCotizarAction(oportunidad, handlers.onCotizar, updating)
       : null,
-    canUseOportunidadAction(estado, "reservar") && handlers.onReservar
+    canUseOportunidadActionForRecord(oportunidad, "reservar") && handlers.onReservar
       ? createReservarAction(oportunidad, handlers.onReservar, updating)
       : null,
-    canUseOportunidadAction(estado, "cerrar") && handlers.onCerrar
+    canUseOportunidadActionForRecord(oportunidad, "cerrar") && handlers.onCerrar
       ? createCerrarAction(oportunidad, handlers.onCerrar, updating)
       : null,
   ].filter(Boolean) as CardMenuAction[];

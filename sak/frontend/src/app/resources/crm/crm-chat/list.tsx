@@ -28,6 +28,7 @@ import {
   getMensajeTimestamp,
   type CRMChatConversation,
 } from "./model";
+import { isMantenimientoOportunidad } from "../crm-oportunidades/model";
 type ChatFilter = "todos" | "no_leidos" | "activas" | "prospect";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -331,11 +332,18 @@ export const CRMChatList = () => {
                   (mensaje?.oportunidad as any)?.tipo_operacion?.nombre ??
                   (mensaje?.oportunidad as any)?.tipo_operacion?.codigo ??
                   null;
+                const isMantenimiento = isMantenimientoOportunidad({
+                  estado: oportunidadEstado ?? undefined,
+                  tipo_operacion: tipoOperacionLabel
+                    ? { nombre: tipoOperacionLabel }
+                    : (mensaje?.oportunidad as any)?.tipo_operacion,
+                });
                 const oportunidadActiva =
                   conversation.oportunidad_activo ??
                   true;
                 const isOportunidadInactiva = oportunidadActiva === false;
-                const isProspect = conversation.oportunidad_estado === "0-prospect";
+                const isProspect =
+                  conversation.oportunidad_estado === "0-prospect" && !isMantenimiento;
                 const oportunidadMeta = oportunidadEstado
                   ? `${oportunidadId} - ${oportunidadEstado}`
                   : `${oportunidadId}`;

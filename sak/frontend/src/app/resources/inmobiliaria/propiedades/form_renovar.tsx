@@ -59,8 +59,6 @@ export const FormRenovar = ({ disabled }: { disabled?: boolean }) => {
     { enabled: Boolean(tipoActualizacionId) },
   );
 
-  if (!record?.id) return null;
-
   const baseDate = parseDate(record?.fecha_renovacion) ?? parseDate(record?.fecha_inicio_contrato);
   const cantidadMeses = Number(tipoActualizacion?.cantidad_meses ?? 0);
   const canCalculate = Boolean(baseDate && cantidadMeses > 0);
@@ -68,6 +66,8 @@ export const FormRenovar = ({ disabled }: { disabled?: boolean }) => {
     () => (canCalculate && baseDate ? addMonths(baseDate, cantidadMeses) : null),
     [baseDate, cantidadMeses, canCalculate],
   );
+
+  if (!record?.id) return null;
 
   const tipoActualizacionLabel =
     tipoActualizacion?.nombre ??

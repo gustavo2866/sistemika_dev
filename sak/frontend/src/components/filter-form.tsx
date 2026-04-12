@@ -124,7 +124,7 @@ export type FilterFormBaseProps = Omit<
   debounce?: number | false;
   resource?: string;
   filters?: React.ReactElement<FilterElementProps>[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   formComponent?: React.ComponentType<any>;
 };
 

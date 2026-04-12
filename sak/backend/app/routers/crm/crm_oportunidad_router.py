@@ -129,7 +129,9 @@ def descartar_oportunidad(
         )
         return {"deleted": True, "oportunidad_id": oportunidad_id}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        detail = str(exc)
+        status_code = 404 if "no encontrada" in detail.lower() else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
 def _coerce_value(column, value: str):

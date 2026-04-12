@@ -71,6 +71,7 @@ import {
   PropiedadShow,
   PropiedadesPanel,
 } from "@/app/resources/inmobiliaria/propiedades";
+import { PropiedadesDashboardList } from "@/app/resources/inmobiliaria/propiedades-dashboard";
 import {
   PropietarioList,
   PropietarioCreate,
@@ -83,6 +84,18 @@ import {
   TipoActualizacionEdit,
   TipoActualizacionShow,
 } from "@/app/resources/inmobiliaria/tipos-actualizacion";
+import {
+  ContratoList,
+  ContratoCreate,
+  ContratoEdit,
+  ContratoShow,
+} from "@/app/resources/inmobiliaria/contratos";
+import {
+  TipoContratoList,
+  TipoContratoCreate,
+  TipoContratoEdit,
+  TipoContratoShow,
+} from "@/app/resources/inmobiliaria/tipos-contrato";
 import { PropiedadesLogStatusList } from "@/app/resources/inmobiliaria/propiedades_log_status";
 import {
   TipoPropiedadList,
@@ -287,6 +300,7 @@ import {
 import { CRMSetupPage } from "@/app/resources/crm/crm-setup/CRMSetupPage";
 import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
 import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
+import { PropiedadesConfigPage } from "@/app/resources/inmobiliaria/propiedades-config/PropiedadesConfigPage";
 
 declare const window: Window | undefined;
 
@@ -446,6 +460,13 @@ const AdminApp = () => {
         options={{ label: "Estados de Propiedad" }}
       />
       <Resource
+        name="propiedades-dashboard"
+        list={PropiedadesDashboardList}
+        recordRepresentation="id"
+        icon={LineChart}
+        options={{ label: "Dashboard" }}
+      />
+      <Resource
         name="propiedades"
         list={PropiedadesPanel}
         create={PropiedadCreate}
@@ -453,7 +474,7 @@ const AdminApp = () => {
         show={PropiedadShow}
         recordRepresentation="nombre"
         icon={Home}
-        options={{ label: "Propiedades Panel" }}
+        options={{ label: "Propiedades" }}
       />
       <Resource
         name="propiedades-log-status"
@@ -481,6 +502,26 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={ListChecks}
         options={{ label: "Tipos de actualizacion" }}
+      />
+      <Resource
+        name="contratos"
+        list={ContratoList}
+        create={ContratoCreate}
+        edit={ContratoEdit}
+        show={ContratoShow}
+        recordRepresentation="id"
+        icon={FileText}
+        options={{ label: "Contratos" }}
+      />
+      <Resource
+        name="tipos-contrato"
+        list={TipoContratoList}
+        create={TipoContratoCreate}
+        edit={TipoContratoEdit}
+        show={TipoContratoShow}
+        recordRepresentation="nombre"
+        icon={FileText}
+        options={{ label: "Tipos de contrato" }}
       />
       <Resource
         name="tipos-propiedad"
@@ -610,6 +651,13 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={Settings}
         options={{ label: "Setup" }}
+      />
+      <Resource
+        name="propiedades-config"
+        list={PropiedadesConfigPage}
+        recordRepresentation="id"
+        icon={Users}
+        options={{ label: "Admin" }}
       />
       <Resource
         name="recepciones"
@@ -794,6 +842,7 @@ const AdminApp = () => {
       <CustomRoutes>
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
+        <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />

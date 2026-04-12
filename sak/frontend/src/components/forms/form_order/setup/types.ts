@@ -5,6 +5,7 @@ export type SetupView = "list" | "create" | "edit";
 export type SetupListComponentProps = {
   embedded?: boolean;
   rowClick?: any;
+  perPage?: number;
 };
 
 export type SetupCreateComponentProps = {
