@@ -3,7 +3,10 @@
 import { Create } from "@/components/create";
 import { Target } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { saveDashboardReturnMarker } from "../crm-dashboard/return-state";
+import {
+  loadDashboardReturnMarker,
+  saveDashboardReturnMarker,
+} from "../crm-dashboard/return-state";
 import { CRMOportunidadForm } from "./form";
 
 export const CRMOportunidadCreate = () => {
@@ -24,7 +27,9 @@ export const CRMOportunidadCreate = () => {
       mutationOptions={{
         onSuccess: () => {
           if (returnTo) {
+            const existingReturnMarker = loadDashboardReturnMarker(returnTo);
             saveDashboardReturnMarker(returnTo, {
+              ...existingReturnMarker,
               savedAt: Date.now(),
               refreshAll: true,
             });

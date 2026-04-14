@@ -52,6 +52,11 @@ type Moneda = {
 export type Propiedad = {
   id: number;
   nombre: string;
+  domicilio?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
+  codigo_postal?: string | null;
+  matricula_catastral?: string | null;
   tipo_propiedad_id?: number | null;
   tipo_propiedad?: TipoPropiedadRef | null;
   tipo_actualizacion_id?: number | null;
@@ -86,6 +91,11 @@ export type Propiedad = {
 
 export type PropiedadFormValues = {
   nombre: string;
+  domicilio?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
+  codigo_postal?: string | null;
+  matricula_catastral?: string | null;
   tipo_propiedad_id?: number | null;
   tipo_actualizacion_id?: number | null;
   fecha_renovacion?: string | null;
@@ -144,6 +154,11 @@ export const VACANCIA_STATE_STEPS = [
 export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad>({
   fields: {
     nombre: stringField({ required: true, maxLength: 255, defaultValue: "" }),
+    domicilio: stringField({ required: false, maxLength: 500 }),
+    localidad: stringField({ required: false, maxLength: 200 }),
+    provincia: stringField({ required: false, maxLength: 100 }),
+    codigo_postal: stringField({ required: false, maxLength: 20 }),
+    matricula_catastral: stringField({ required: false, maxLength: 200 }),
     tipo_propiedad_id: numberField({ required: false, min: 1 }),
     tipo_actualizacion_id: numberField({ required: false, min: 1 }),
     fecha_renovacion: stringField({ required: false }),
@@ -221,6 +236,24 @@ export const isTipoOperacionMantenimiento = (tipo?: {
   const nombre = String(tipo?.nombre ?? "").toLowerCase();
   const codigo = String(tipo?.codigo ?? "").toLowerCase();
   return nombre.includes("mantenimiento") || codigo.includes("mantenimiento");
+};
+
+export const isTipoOperacionVenta = (tipo?: {
+  nombre?: string | null;
+  codigo?: string | null;
+}) => {
+  const nombre = String(tipo?.nombre ?? "").toLowerCase();
+  const codigo = String(tipo?.codigo ?? "").toLowerCase();
+  return nombre.includes("venta") || codigo.includes("venta");
+};
+
+export const isTipoOperacionAlquiler = (tipo?: {
+  nombre?: string | null;
+  codigo?: string | null;
+}) => {
+  const nombre = String(tipo?.nombre ?? "").toLowerCase();
+  const codigo = String(tipo?.codigo ?? "").toLowerCase();
+  return nombre.includes("alquiler") || codigo.includes("alquiler");
 };
 
 export const excludeMantenimientoTipoOperacion = (tipo?: {

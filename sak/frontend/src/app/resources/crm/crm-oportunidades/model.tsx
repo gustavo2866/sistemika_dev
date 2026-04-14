@@ -91,6 +91,63 @@ export const canUseOportunidadAction = (
   action: CRMOportunidadAction,
 ) => getAvailableOportunidadActions(estado).includes(action);
 
+const containsMantenimientoToken = (value?: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .includes("mantenimiento");
+
+export const isMantenimientoOportunidad = (record?: unknown) => {
+  const source = (record as { oportunidad?: unknown } | undefined)?.oportunidad ?? record;
+  if (!source || typeof source !== "object") return false;
+
+  const opportunity = source as {
+    tipo_operacion?: { codigo?: string | null; nombre?: string | null } | string | null;
+    tipo_operacion_codigo?: string | null;
+    tipo_operacion_nombre?: string | null;
+    oportunidad_tipo_operacion_codigo?: string | null;
+    oportunidad_tipo_operacion_nombre?: string | null;
+  };
+
+  const tipoOperacion =
+    typeof opportunity.tipo_operacion === "object" && opportunity.tipo_operacion
+      ? opportunity.tipo_operacion
+      : null;
+
+  return [
+    tipoOperacion?.codigo,
+    tipoOperacion?.nombre,
+    typeof opportunity.tipo_operacion === "string" ? opportunity.tipo_operacion : null,
+    opportunity.tipo_operacion_codigo,
+    opportunity.tipo_operacion_nombre,
+    opportunity.oportunidad_tipo_operacion_codigo,
+    opportunity.oportunidad_tipo_operacion_nombre,
+  ].some(containsMantenimientoToken);
+};
+
+export const getAvailableOportunidadActionsForRecord = (
+  record?: unknown,
+): CRMOportunidadAction[] => {
+  const source = (record as { oportunidad?: unknown } | undefined)?.oportunidad ?? record;
+  if (!source || typeof source !== "object") return [];
+
+  const estado = (
+    source as { estado?: CRMOportunidadEstado | null; oportunidad_estado?: CRMOportunidadEstado | null }
+  ).estado ?? (
+    source as { oportunidad_estado?: CRMOportunidadEstado | null }
+  ).oportunidad_estado;
+
+  if (!estado) return [];
+  if (isMantenimientoOportunidad(source)) {
+    return isClosedOportunidad(estado) ? [] : ["cerrar"];
+  }
+  return getAvailableOportunidadActions(estado);
+};
+
+export const canUseOportunidadActionForRecord = (
+  record: unknown,
+  action: CRMOportunidadAction,
+) => getAvailableOportunidadActionsForRecord(record).includes(action);
+
 // Colores de badge por estado para uso consistente en UI.
 export const CRM_OPORTUNIDAD_ESTADO_BADGES: Record<CRMOportunidadEstado, string> =
   {

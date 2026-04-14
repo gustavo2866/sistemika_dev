@@ -38,6 +38,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { FormProvider, useForm } from "react-hook-form";
+import { useLocation } from "react-router-dom";
 
 import {
   PROPIEDAD_STATUS_BADGES,
@@ -415,12 +416,17 @@ const ComentarioCell = () => {
 };
 
 const AlquilerFilterLock = () => {
+  const location = useLocation();
   const { data: tiposOperacion = [] } = useGetList("crm/catalogos/tipos-operacion", {
     pagination: { page: 1, perPage: 500 },
     sort: { field: "nombre", order: "ASC" },
   });
   const { filterValues, setFilters } = useListContext();
   const appliedRef = useRef(false);
+  const requestedTipoOperacionId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("tipo_operacion_id") ?? undefined;
+  }, [location.search]);
   const alquilerId = useMemo(() => {
     const alquiler = tiposOperacion.find(
       (tipo: any) =>
@@ -429,9 +435,10 @@ const AlquilerFilterLock = () => {
     );
     return alquiler?.id ? String(alquiler.id) : undefined;
   }, [tiposOperacion]);
+  const defaultTipoOperacionId = requestedTipoOperacionId ?? alquilerId;
 
   useEffect(() => {
-    if (!alquilerId) {
+    if (!defaultTipoOperacionId) {
       return;
     }
     if (filterValues.tipo_operacion_id) {
@@ -441,9 +448,9 @@ const AlquilerFilterLock = () => {
     if (appliedRef.current) {
       return;
     }
-    setFilters({ ...filterValues, tipo_operacion_id: alquilerId }, {});
+    setFilters({ ...filterValues, tipo_operacion_id: defaultTipoOperacionId }, {});
     appliedRef.current = true;
-  }, [alquilerId, filterValues, setFilters]);
+  }, [defaultTipoOperacionId, filterValues, setFilters]);
 
   return null;
 };

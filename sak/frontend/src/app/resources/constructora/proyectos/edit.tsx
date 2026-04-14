@@ -4,6 +4,11 @@ import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
 import { FormOrderDeleteButton } from "@/components/forms/form_order";
 import { Badge } from "@/components/ui/badge";
 import { useEditContext } from "ra-core";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  loadDashboardReturnMarker,
+  saveDashboardReturnMarker,
+} from "../proy-dashboard/return-state";
 import { ProyectoForm } from "./form";
 import {
   getProyectoEstadoBadgeClass,
@@ -45,18 +50,46 @@ export const ProyectoEdit = ({
   embedded = false,
   id,
   redirect,
-}: ProyectoEditProps = {}) => (
-  <Edit
-    id={id}
-    redirect={redirect ?? (embedded ? false : "list")}
-    mutationMode="pessimistic"
-    title={<ProyectoEditTitle />}
-    className="max-w-5xl w-full"
-    actions={<ProyectoEditActions />}
-    transform={normalizeProyectoPayload}
-    showBreadcrumb={!embedded}
-    showHeader={!embedded}
-  >
-    <ProyectoForm />
-  </Edit>
-);
+}: ProyectoEditProps = {}) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const returnTo = params.get("returnTo");
+
+  return (
+    <Edit
+      id={id}
+      redirect={false}
+      mutationMode="pessimistic"
+      title={<ProyectoEditTitle />}
+      className="max-w-5xl w-full"
+      actions={<ProyectoEditActions />}
+      transform={normalizeProyectoPayload}
+      showBreadcrumb={!embedded}
+      showHeader={!embedded}
+      mutationOptions={{
+        onSuccess: () => {
+          if (returnTo) {
+            const existingReturnMarker = loadDashboardReturnMarker(returnTo);
+            saveDashboardReturnMarker(returnTo, {
+              ...existingReturnMarker,
+              savedAt: Date.now(),
+            });
+            navigate(returnTo, { replace: true });
+            return;
+          }
+          if (typeof redirect === "string") {
+            navigate(redirect, { replace: true });
+            return;
+          }
+          if (redirect === false || embedded) {
+            return;
+          }
+          navigate("/proyectos", { replace: true });
+        },
+      }}
+    >
+      <ProyectoForm />
+    </Edit>
+  );
+};

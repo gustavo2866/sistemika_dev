@@ -1,0 +1,196 @@
+Cargando datos de referencia desde DB...
+OK
+
+============================================================
+SECCIÓN 1: /selectors
+============================================================
+  [OK] selectors[Sin filtros].recibida.count
+  [OK] selectors[Sin filtros].en_reparacion.count
+  [OK] selectors[Sin filtros].disponible.count
+  [OK] selectors[Sin filtros].realizada.count
+  [OK] selectors[Sin filtros].retirada.count
+  [OK] selectors[Sin filtros].realizada.vencimiento_lt_60
+  [OK] selectors[Sin filtros].realizada.renovacion_lt_60
+  [OK] selectors[Sin filtros].retirada.lt_30
+  [OK] selectors[Sin filtros].retirada.gt_30
+  [OK] selectors[Alquiler id=1].recibida.count
+  [OK] selectors[Alquiler id=1].en_reparacion.count
+  [OK] selectors[Alquiler id=1].disponible.count
+  [OK] selectors[Alquiler id=1].realizada.count
+  [OK] selectors[Alquiler id=1].retirada.count
+  [OK] selectors[Alquiler id=1].realizada.vencimiento_lt_60
+  [OK] selectors[Alquiler id=1].realizada.renovacion_lt_60
+  [OK] selectors[Alquiler id=1].retirada.lt_30
+  [OK] selectors[Alquiler id=1].retirada.gt_30
+  [OK] selectors[Venta id=2].recibida.count
+  [OK] selectors[Venta id=2].en_reparacion.count
+  [OK] selectors[Venta id=2].disponible.count
+  [OK] selectors[Venta id=2].realizada.count
+  [OK] selectors[Venta id=2].retirada.count
+  [OK] selectors[Venta id=2].realizada.vencimiento_lt_60
+  [OK] selectors[Venta id=2].realizada.renovacion_lt_60
+  [OK] selectors[Venta id=2].retirada.lt_30
+  [OK] selectors[Venta id=2].retirada.gt_30
+  [OK] selectors[todos explícito].recibida.count
+  [OK] selectors[todos explícito].en_reparacion.count
+  [OK] selectors[todos explícito].disponible.count
+  [OK] selectors[todos explícito].realizada.count
+  [OK] selectors[todos explícito].retirada.count
+  [OK] selectors[todos explícito].realizada.vencimiento_lt_60
+  [OK] selectors[todos explícito].realizada.renovacion_lt_60
+  [OK] selectors[todos explícito].retirada.lt_30
+  [OK] selectors[todos explícito].retirada.gt_30
+  [OK] coherencia-suma[recibida]: alquiler+venta==total
+  [OK] coherencia-suma[en_reparacion]: alquiler+venta==total
+  [OK] coherencia-suma[disponible]: alquiler+venta==total
+  [OK] coherencia-suma[realizada]: alquiler+venta==total
+  [OK] coherencia-suma[retirada]: alquiler+venta==total
+
+============================================================
+SECCIÓN 2: /bundle — KPIs y period_summary
+============================================================
+
+  [Trim Ene-Mar 2026 / sin filtro]
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.kpis.vacantes_activas.count
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.kpis.dias_vacancia_periodo.total >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado.recibida >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado.en_reparacion >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado.disponible >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado suma == total
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.period_summary.activas_fin == vacantes_activas.count
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.alerts.vencimiento_lt_60
+  [OK] bundle/Trim Ene-Mar 2026 / sin filtro.alerts.renovacion_lt_60
+
+  [Trim Ene-Mar 2026 / Alquiler]
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.kpis.vacantes_activas.count
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.kpis.dias_vacancia_periodo.total >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado.recibida >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado.en_reparacion >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado.disponible >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado suma == total
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.period_summary.activas_fin == vacantes_activas.count
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.alerts.vencimiento_lt_60
+  [OK] bundle/Trim Ene-Mar 2026 / Alquiler.alerts.renovacion_lt_60
+
+  [Trim Ene-Mar 2026 / Venta]
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.kpis.vacantes_activas.count
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.kpis.dias_vacancia_periodo.total >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.kpis.dias_vacancia_periodo.por_estado.recibida >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.kpis.dias_vacancia_periodo.por_estado.en_reparacion >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.kpis.dias_vacancia_periodo.por_estado.disponible >= 0
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.kpis.dias_vacancia_periodo.por_estado suma == total
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.period_summary.activas_fin == vacantes_activas.count
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.alerts.vencimiento_lt_60
+  [OK] bundle/Trim Ene-Mar 2026 / Venta.alerts.renovacion_lt_60
+
+  [Mes Feb 2026 / sin filtro]
+  [OK] bundle/Mes Feb 2026 / sin filtro.kpis.vacantes_activas.count
+  [OK] bundle/Mes Feb 2026 / sin filtro.kpis.dias_vacancia_periodo.total >= 0
+  [OK] bundle/Mes Feb 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado.recibida >= 0
+  [OK] bundle/Mes Feb 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado.en_reparacion >= 0
+  [OK] bundle/Mes Feb 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado.disponible >= 0
+  [OK] bundle/Mes Feb 2026 / sin filtro.kpis.dias_vacancia_periodo.por_estado suma == total
+  [OK] bundle/Mes Feb 2026 / sin filtro.period_summary.activas_fin == vacantes_activas.count
+  [OK] bundle/Mes Feb 2026 / sin filtro.alerts.vencimiento_lt_60
+  [OK] bundle/Mes Feb 2026 / sin filtro.alerts.renovacion_lt_60
+
+  [Mes Ene 2026 / Alquiler]
+  [OK] bundle/Mes Ene 2026 / Alquiler.kpis.vacantes_activas.count
+  [OK] bundle/Mes Ene 2026 / Alquiler.kpis.dias_vacancia_periodo.total >= 0
+  [OK] bundle/Mes Ene 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado.recibida >= 0
+  [OK] bundle/Mes Ene 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado.en_reparacion >= 0
+  [OK] bundle/Mes Ene 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado.disponible >= 0
+  [OK] bundle/Mes Ene 2026 / Alquiler.kpis.dias_vacancia_periodo.por_estado suma == total
+  [OK] bundle/Mes Ene 2026 / Alquiler.period_summary.activas_fin == vacantes_activas.count
+  [OK] bundle/Mes Ene 2026 / Alquiler.alerts.vencimiento_lt_60
+  [OK] bundle/Mes Ene 2026 / Alquiler.alerts.renovacion_lt_60
+
+  [Semestre Jul-Dic 2025 / sin fil]
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.kpis.vacantes_activas.count
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.kpis.dias_vacancia_periodo.total >= 0
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.kpis.dias_vacancia_periodo.por_estado.recibida >= 0
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.kpis.dias_vacancia_periodo.por_estado.en_reparacion >= 0
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.kpis.dias_vacancia_periodo.por_estado.disponible >= 0
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.kpis.dias_vacancia_periodo.por_estado suma == total
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.period_summary.activas_fin == vacantes_activas.count
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.alerts.vencimiento_lt_60
+  [OK] bundle/Semestre Jul-Dic 2025 / sin fil.alerts.renovacion_lt_60
+
+============================================================
+SECCIÓN 3: /bundle — trend y previous range
+============================================================
+  [OK] bundle.trend.length == 4
+  [OK] bundle.trend[-1].bucket starts with T1
+  [OK] bundle.previous.range.startDate == 2025-10-01
+  [OK] bundle.previous.range.endDate == 2025-12-31
+  [OK] bundle.current.kpis.vacantes_activas.variacion_vs_anterior presente
+  [OK] bundle.current.kpis.dias_vacancia_periodo.variacion_vs_anterior presente
+  [OK] bundle.trend[0].bucket presente
+  [OK] bundle.trend[0].count_vacantes presente
+  [OK] bundle.trend[0].dias_total presente
+  [OK] bundle.trend[1].bucket presente
+  [OK] bundle.trend[1].count_vacantes presente
+  [OK] bundle.trend[1].dias_total presente
+  [OK] bundle.trend[2].bucket presente
+  [OK] bundle.trend[2].count_vacantes presente
+  [OK] bundle.trend[2].dias_total presente
+  [OK] bundle.trend[3].bucket presente
+  [OK] bundle.trend[3].count_vacantes presente
+  [OK] bundle.trend[3].dias_total presente
+
+============================================================
+SECCIÓN 4: /detalle
+============================================================
+  [OK] detalle[recibida].total == DB count
+  [OK] detalle[en_reparacion].total == DB count
+  [OK] detalle[disponible].total == DB count
+  [OK] detalle[realizada].total == DB count
+  [OK] detalle[retirada].total == DB count
+  [OK] detalle[realizada/vencimiento_lt_60].total == DB count
+  [OK] detalle[realizada/renovacion_lt_60].total == DB count
+  [OK] detalle[retirada/lt_30].total == DB count
+  [OK] detalle[retirada/gt_30].total == DB count
+  [OK] detalle.paginacion: data len <= pageSize
+  [OK] detalle.paginacion: page1.total == page2.total
+  [OK] detalle[disponible]: alquiler+venta == total
+  [OK] detalle[recibida]: dias_vacancia >= 0 en todos los items
+
+============================================================
+SECCIÓN 5: /detalle-alerta
+============================================================
+  [OK] detalle-alerta[vencimiento_lt_60].total == DB count
+  [OK] detalle-alerta[renovacion_lt_60].total == DB count
+  [OK] detalle-alerta[renovacion_lt_60].item.dias_para_renovacion presente y >=0
+  [OK] detalle-alerta[renovacion_lt_60].item.dias_para_renovacion presente y >=0
+  [OK] detalle-alerta[renovacion_lt_60].item.dias_para_renovacion presente y >=0
+  [OK] detalle-alerta.con pivotDate futuro: total >= total sin pivotDate
+  [OK] detalle-alerta: alquiler+venta == total (renovacion_lt_60)
+
+============================================================
+SECCIÓN 6: Coherencia cruzada entre endpoints
+============================================================
+  [OK] coherencia: selectors.recibida.count es entero válido
+  [OK] coherencia: selectors.en_reparacion.count es entero válido
+  [OK] coherencia: selectors.disponible.count es entero válido
+  [OK] coherencia: selectors.realizada.count es entero válido
+  [OK] coherencia: selectors.retirada.count es entero válido
+  [OK] coherencia: detalle[recibida].total == selectors.recibida.count
+  [OK] coherencia: detalle[en_reparacion].total == selectors.en_reparacion.count
+  [OK] coherencia: detalle[disponible].total == selectors.disponible.count
+  [OK] coherencia: detalle[realizada].total == selectors.realizada.count
+  [OK] coherencia: detalle[retirada].total == selectors.retirada.count
+  [OK] coherencia: kpis.vacantes_activas.count == activas_fin
+
+============================================================
+SECCIÓN 7: Edge cases
+============================================================
+  [OK] bundle.periodo_antiguo: dias_vacancia_periodo.total == 0
+  [OK] bundle.periodo_futuro: retorna sin error
+  [OK] detalle.selectorKey_invalido: total == 0
+  [OK] detalle-alerta.alertKey_invalido: total == 0
+  [OK] detalle.page_fuera_rango: data == [] sin error
+
+============================================================
+RESULTADO: 149/149 pasaron   (0 fallaron)
+============================================================
+Todos los tests pasaron [OK]

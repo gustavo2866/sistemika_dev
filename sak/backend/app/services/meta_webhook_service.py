@@ -216,7 +216,7 @@ class MetaWebhookService:
             "Oportunidad auto-creada: %s para contacto %s en estado %s con tipo_operacion_id=%s",
             oportunidad.id,
             contacto.id,
-            EstadoOportunidad.PROSPECT.value,
+            oportunidad.estado,
             tipo_operacion_id,
         )
         return oportunidad

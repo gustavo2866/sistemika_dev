@@ -2,7 +2,7 @@ from datetime import UTC, datetime, date
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, DECIMAL, Index
+from sqlalchemy import Column, DECIMAL, Index, event, insert, select
 from sqlmodel import Field, Relationship
 
 from ..base import Base
@@ -111,3 +111,72 @@ class CRMOportunidad(Base, table=True):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"CRMOportunidad(id={self.id}, estado='{self.estado}')"
+
+
+def _is_mantenimiento_tipo_operacion(connection, tipo_operacion_id: Optional[int]) -> bool:
+    if not tipo_operacion_id:
+        return False
+
+    from .catalogos import CRMTipoOperacion
+
+    row = connection.execute(
+        select(CRMTipoOperacion.codigo, CRMTipoOperacion.nombre).where(
+            CRMTipoOperacion.id == tipo_operacion_id
+        )
+    ).first()
+    if not row:
+        return False
+
+    tokens = " ".join(
+        filter(
+            None,
+            [
+                getattr(row, "codigo", None),
+                getattr(row, "nombre", None),
+            ],
+        )
+    ).lower()
+    return "mantenimiento" in tokens
+
+
+@event.listens_for(CRMOportunidad, "before_insert")
+def receive_before_insert(mapper, connection, target):
+    """Fuerza estado inicial operativo para oportunidades de mantenimiento."""
+    if _is_mantenimiento_tipo_operacion(connection, target.tipo_operacion_id):
+        target.estado = EstadoOportunidad.ABIERTA.value
+        target.activo = True
+    elif target.estado and target.estado != EstadoOportunidad.PROSPECT.value:
+        target.activo = True
+
+
+@event.listens_for(CRMOportunidad, "after_insert")
+def receive_after_insert(mapper, connection, target):
+    """Genera log inicial cuando la oportunidad nace fuera de prospect."""
+    if not target.id or not target.estado or target.estado == EstadoOportunidad.PROSPECT.value:
+        return
+
+    from .log_estado import CRMOportunidadLogEstado
+
+    has_log = connection.execute(
+        select(CRMOportunidadLogEstado.id).where(
+            CRMOportunidadLogEstado.oportunidad_id == target.id
+        )
+    ).first()
+    if has_log:
+        return
+
+    descripcion = f"Log inicial generado automaticamente para estado {target.estado}"
+    connection.execute(
+        insert(CRMOportunidadLogEstado).values(
+            oportunidad_id=target.id,
+            estado_anterior=EstadoOportunidad.PROSPECT.value,
+            estado_nuevo=target.estado,
+            descripcion=descripcion,
+            usuario_id=target.responsable_id or 1,
+            fecha_registro=target.fecha_estado or datetime.now(UTC),
+            motivo_perdida_id=target.motivo_perdida_id,
+            monto=target.monto,
+            moneda_id=target.moneda_id,
+            condicion_pago_id=target.condicion_pago_id,
+        )
+    )

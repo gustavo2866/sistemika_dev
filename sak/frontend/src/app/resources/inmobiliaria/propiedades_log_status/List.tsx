@@ -75,13 +75,19 @@ const ListActions = () => (
   </div>
 );
 
-export const PropiedadesLogStatusList = () => (
+type PropiedadesLogStatusListProps = {
+  perPage?: number;
+};
+
+export const PropiedadesLogStatusList = ({
+  perPage = 25,
+}: PropiedadesLogStatusListProps = {}) => (
   <List
     title="Log de Estados de Propiedad"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
-    perPage={25}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "fecha_cambio", order: "DESC" }}
     containerClassName={LIST_CONTAINER_WIDE}

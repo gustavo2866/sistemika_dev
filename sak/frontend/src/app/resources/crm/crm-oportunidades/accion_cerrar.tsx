@@ -6,6 +6,7 @@ import {
   required,
   useDataProvider,
   useGetIdentity,
+  useGetList,
   useGetOne,
   useNotify,
   useRefresh,
@@ -16,6 +17,7 @@ import {
   FormReferenceAutocomplete,
   FormSelect,
   FormTextarea,
+  HiddenInput,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { CRMOportunidad } from "./model";
+import { isMantenimientoOportunidad } from "./model";
 import { AccionOportunidadHeader } from "./accion_header";
 import type { PanelChange } from "../crm-panel/model";
 import type { OportunidadModalBackground } from "./modal_background";
@@ -52,6 +55,13 @@ const getResultadoChoices = (estado?: CRMOportunidad["estado"] | null) => {
   return [{ id: "perdida", name: "Perdida" }];
 };
 
+const resolveMotivoOtroId = (motivos: Array<{ id?: unknown; codigo?: string | null; nombre?: string | null }>) => {
+  const found = motivos.find((motivo) =>
+    `${motivo?.codigo ?? ""} ${motivo?.nombre ?? ""}`.toLowerCase().includes("otro"),
+  );
+  return normalizeId(found?.id) ?? "";
+};
+
 export const CRMOportunidadAccionCerrar = () => {
   const { id } = useParams();
   const oportunidadId = Number(id);
@@ -73,18 +83,37 @@ export const CRMOportunidadAccionCerrar = () => {
     { id: oportunidadId },
     { enabled: Number.isFinite(oportunidadId) },
   );
+  const isMantenimiento = isMantenimientoOportunidad(oportunidad);
+  const { data: motivosPerdida = [] } = useGetList(
+    "crm/catalogos/motivos-perdida",
+    {
+      pagination: { page: 1, perPage: 200 },
+      sort: { field: "nombre", order: "ASC" },
+      filter: { activo: true },
+    },
+    { enabled: isMantenimiento },
+  );
+  const motivoOtroId = useMemo(
+    () => resolveMotivoOtroId(motivosPerdida as Array<{ id?: unknown; codigo?: string | null; nombre?: string | null }>),
+    [motivosPerdida],
+  );
   const resultadoChoices = useMemo(
-    () => getResultadoChoices(oportunidad?.estado),
-    [oportunidad?.estado],
+    () =>
+      isMantenimiento
+        ? [{ id: "ganada", name: "Ganada" }]
+        : getResultadoChoices(oportunidad?.estado),
+    [isMantenimiento, oportunidad?.estado],
   );
 
   const defaultValues = useMemo(
     () => ({
-      resultado: resultadoChoices[0]?.id ?? "perdida",
-      motivo_perdida_id: oportunidad?.motivo_perdida_id ?? "",
+      resultado: isMantenimiento ? "ganada" : (resultadoChoices[0]?.id ?? "perdida"),
+      motivo_perdida_id: isMantenimiento
+        ? motivoOtroId
+        : (oportunidad?.motivo_perdida_id ?? ""),
       descripcion_estado: oportunidad?.descripcion_estado ?? "",
     }),
-    [oportunidad, resultadoChoices],
+    [isMantenimiento, motivoOtroId, oportunidad, resultadoChoices],
   );
 
   if (!Number.isFinite(oportunidadId) || isLoading) {
@@ -98,6 +127,7 @@ export const CRMOportunidadAccionCerrar = () => {
       oportunidad={oportunidad ?? null}
       defaultValues={defaultValues}
       resultadoChoices={resultadoChoices}
+      isMantenimiento={isMantenimiento}
       panelChange={panelChange}
       background={background}
       dataProvider={dataProvider}
@@ -117,6 +147,7 @@ const AccionCerrarContent = ({
   oportunidad,
   defaultValues,
   resultadoChoices,
+  isMantenimiento,
   panelChange,
   background,
   dataProvider,
@@ -130,6 +161,7 @@ const AccionCerrarContent = ({
   oportunidad: CRMOportunidad | null;
   defaultValues: Record<string, unknown>;
   resultadoChoices: Array<{ id: string; name: string }>;
+  isMantenimiento: boolean;
   panelChange?: PanelChange;
   background?: OportunidadModalBackground;
   dataProvider: ReturnType<typeof useDataProvider>;
@@ -144,10 +176,14 @@ const AccionCerrarContent = ({
     if (!oportunidadId) return;
     const descripcion = String(values.descripcion_estado ?? "").trim();
     const motivoPerdidaId = normalizeId(values.motivo_perdida_id);
-    const resultado = String(values.resultado ?? "perdida");
+    const resultado = isMantenimiento
+      ? "ganada"
+      : String(values.resultado ?? "perdida");
     const nuevoEstado = resultado === "ganada" ? "5-ganada" : "6-perdida";
     const canCloseAsGanada =
-      oportunidad?.estado === "3-cotiza" || oportunidad?.estado === "4-reserva";
+      isMantenimiento ||
+      oportunidad?.estado === "3-cotiza" ||
+      oportunidad?.estado === "4-reserva";
     if (!descripcion) {
       notify("La descripcion es obligatoria", { type: "warning" });
       return;
@@ -170,6 +206,7 @@ const AccionCerrarContent = ({
       const condicionPagoId = normalizeId(oportunidad?.condicion_pago_id);
 
       if (
+        !isMantenimiento &&
         nuevoEstado === "5-ganada" &&
         (monto == null || !monedaId || !condicionPagoId)
       ) {
@@ -186,7 +223,7 @@ const AccionCerrarContent = ({
           descripcion,
           usuario_id: usuarioId,
           fecha_estado: new Date().toISOString(),
-          ...(nuevoEstado === "5-ganada"
+          ...(nuevoEstado === "5-ganada" && !isMantenimiento
             ? {
                 monto,
                 moneda_id: monedaId,
@@ -229,12 +266,14 @@ const AccionCerrarContent = ({
             Cerrar oportunidad
           </DialogTitle>
           <DialogDescription className="text-[11px] sm:text-xs">
-            Completa el motivo y notas de cierre.
+            {isMantenimiento
+              ? "Ingresa el comentario de cierre."
+              : "Completa el motivo y notas de cierre."}
           </DialogDescription>
         </DialogHeader>
         <SimpleForm
           className="w-full"
-          key={oportunidadId}
+          key={`${oportunidadId}-${isMantenimiento ? `mantenimiento-${String(defaultValues.motivo_perdida_id ?? "")}` : "general"}`}
           defaultValues={defaultValues}
           onSubmit={handleSubmit}
           toolbar={null}
@@ -244,7 +283,12 @@ const AccionCerrarContent = ({
             <SectionBaseTemplate
               title="Cierre"
               defaultOpen
-              main={<AccionCerrarFields resultadoChoices={resultadoChoices} />}
+              main={
+                <AccionCerrarFields
+                  resultadoChoices={resultadoChoices}
+                  isMantenimiento={isMantenimiento}
+                />
+              }
             />
           </div>
           <AccionCerrarFooter
@@ -306,8 +350,10 @@ const AccionCerrarFooter = ({
 
 const AccionCerrarFields = ({
   resultadoChoices,
+  isMantenimiento,
 }: {
   resultadoChoices: Array<{ id: string; name: string }>;
+  isMantenimiento: boolean;
 }) => {
   const resultadoValue = useWatch({ name: "resultado" }) as string | undefined;
   const isGanada = resultadoValue === "ganada";
@@ -315,24 +361,32 @@ const AccionCerrarFields = ({
 
   return (
     <div className="grid gap-2 md:grid-cols-12">
-      <FormSelect
-        source="resultado"
-        label="Resultado"
-        optionText="name"
-        optionValue="id"
-        choices={resultadoChoices}
-        validate={required()}
-        widthClass="w-full md:col-span-6"
-        triggerProps={{
-          className: cn(
-            "transition-colors [&_[data-slot=select-value]]:font-medium",
-            isGanada
-              ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:border-emerald-500 focus-visible:ring-emerald-200 [&_[data-slot=select-value]]:text-emerald-700 [&_svg]:text-emerald-600"
-              : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:border-rose-500 focus-visible:ring-rose-200 [&_[data-slot=select-value]]:text-rose-700 [&_svg]:text-rose-600",
-          ),
-        }}
-      />
-      {isPerdida ? (
+      {isMantenimiento ? (
+        <>
+          <HiddenInput source="resultado" />
+          <HiddenInput source="motivo_perdida_id" />
+        </>
+      ) : null}
+      {!isMantenimiento ? (
+        <FormSelect
+          source="resultado"
+          label="Resultado"
+          optionText="name"
+          optionValue="id"
+          choices={resultadoChoices}
+          validate={required()}
+          widthClass="w-full md:col-span-6"
+          triggerProps={{
+            className: cn(
+              "transition-colors [&_[data-slot=select-value]]:font-medium",
+              isGanada
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:border-emerald-500 focus-visible:ring-emerald-200 [&_[data-slot=select-value]]:text-emerald-700 [&_svg]:text-emerald-600"
+                : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:border-rose-500 focus-visible:ring-rose-200 [&_[data-slot=select-value]]:text-rose-700 [&_svg]:text-rose-600",
+            ),
+          }}
+        />
+      ) : null}
+      {!isMantenimiento && isPerdida ? (
         <FormReferenceAutocomplete
           referenceProps={{
             source: "motivo_perdida_id",
@@ -348,7 +402,7 @@ const AccionCerrarFields = ({
       ) : null}
       <FormTextarea
         source="descripcion_estado"
-        label="Notas"
+        label={isMantenimiento ? "Comentario" : "Notas"}
         validate={required()}
         widthClass="w-full md:col-span-12"
         className="[&_textarea]:min-h-[64px]"

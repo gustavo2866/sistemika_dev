@@ -12,6 +12,7 @@ from app.models import (
     CRMContacto,
     CRMCondicionPago,
     CRMMotivoPerdida,
+    CRMTipoOperacion,
     Moneda,
     Propiedad,
     CRMMensaje,
@@ -26,6 +27,46 @@ from app.models.enums import (
 
 class CRMOportunidadService:
     """Reglas de negocio para oportunidades CRM."""
+
+    def _is_mantenimiento_oportunidad(
+        self,
+        session: Session,
+        oportunidad: CRMOportunidad,
+    ) -> bool:
+        tipo_operacion = oportunidad.tipo_operacion
+        if not tipo_operacion and oportunidad.tipo_operacion_id:
+            tipo_operacion = session.get(CRMTipoOperacion, oportunidad.tipo_operacion_id)
+        if not tipo_operacion:
+            return False
+
+        tokens = " ".join(
+            filter(
+                None,
+                [
+                    getattr(tipo_operacion, "codigo", None),
+                    getattr(tipo_operacion, "nombre", None),
+                ],
+            )
+        ).lower()
+        return "mantenimiento" in tokens
+
+    def _can_transition_to(
+        self,
+        session: Session,
+        oportunidad: CRMOportunidad,
+        nuevo_estado: str,
+    ) -> bool:
+        if self._is_mantenimiento_oportunidad(session, oportunidad):
+            return (
+                oportunidad.estado
+                not in (
+                    EstadoOportunidad.GANADA.value,
+                    EstadoOportunidad.PERDIDA.value,
+                )
+                and nuevo_estado == EstadoOportunidad.GANADA.value
+            )
+
+        return nuevo_estado in TRANSICIONES_ESTADO_OPORTUNIDAD.get(oportunidad.estado, [])
 
     def _parse_fecha(self, valor: Optional[str]) -> datetime:
         if not valor:
@@ -56,13 +97,18 @@ class CRMOportunidadService:
         if not oportunidad:
             raise ValueError("Oportunidad no encontrada")
 
-        if nuevo_estado not in TRANSICIONES_ESTADO_OPORTUNIDAD.get(oportunidad.estado, []):
+        is_mantenimiento = self._is_mantenimiento_oportunidad(session, oportunidad)
+
+        if not self._can_transition_to(session, oportunidad, nuevo_estado):
             raise ValueError("Transición de estado inválida")
 
         if nuevo_estado == EstadoOportunidad.PERDIDA.value and not motivo_perdida_id:
             raise ValueError("motivo_perdida_id es obligatorio al marcar Perdida")
 
-        if nuevo_estado in (EstadoOportunidad.GANADA.value, EstadoOportunidad.RESERVA.value):
+        if (
+            nuevo_estado in (EstadoOportunidad.GANADA.value, EstadoOportunidad.RESERVA.value)
+            and not (is_mantenimiento and nuevo_estado == EstadoOportunidad.GANADA.value)
+        ):
             if monto is None or moneda_id is None or condicion_pago_id is None:
                 raise ValueError("monto, moneda_id y condicion_pago_id son obligatorios para Reserva/Ganada")
 
@@ -87,7 +133,11 @@ class CRMOportunidadService:
             oportunidad.moneda_id = moneda_id
         if condicion_pago_id is not None:
             oportunidad.condicion_pago_id = condicion_pago_id
-        oportunidad.motivo_perdida_id = motivo_perdida_id
+        oportunidad.motivo_perdida_id = (
+            motivo_perdida_id
+            if nuevo_estado == EstadoOportunidad.PERDIDA.value
+            else None
+        )
 
         session.add(oportunidad)
         session.commit()
@@ -130,6 +180,8 @@ class CRMOportunidadService:
         if not oportunidad.propiedad_id:
             return
         if oportunidad.estado != EstadoOportunidad.GANADA.value:
+            return
+        if self._is_mantenimiento_oportunidad(session, oportunidad):
             return
 
         propiedad = session.get(Propiedad, oportunidad.propiedad_id)
@@ -185,6 +237,8 @@ class CRMOportunidadService:
         oportunidad = session.get(CRMOportunidad, oportunidad_id)
         if not oportunidad:
             raise ValueError("Oportunidad no encontrada")
+        if self._is_mantenimiento_oportunidad(session, oportunidad):
+            raise ValueError("Las oportunidades de mantenimiento solo pueden cerrarse")
         if oportunidad.estado != EstadoOportunidad.PROSPECT.value:
             raise ValueError("Solo se puede descartar una oportunidad en estado 0-prospect")
 

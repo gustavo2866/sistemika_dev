@@ -17,6 +17,7 @@ import {
   CONCEPTOS_REFERENCE,
   PROPIETARIO_DEFAULT,
   PROPIETARIO_VALIDATIONS,
+  TIPO_PERSONA_OPTIONS,
   propietarioSchema,
   type PropietarioFormValues,
 } from "./model";
@@ -70,6 +71,62 @@ const PropietarioMainFields = () => (
   </div>
 );
 
+const PropietarioContactoFields = () => (
+  <div className="grid gap-2 md:grid-cols-3">
+    <FormText
+      source="domicilio"
+      label="Domicilio legal"
+      widthClass="w-full md:col-span-3"
+      maxLength={PROPIETARIO_VALIDATIONS.DOMICILIO_MAX}
+    />
+    <FormText
+      source="localidad"
+      label="Localidad"
+      widthClass="w-full"
+      maxLength={PROPIETARIO_VALIDATIONS.LOCALIDAD_MAX}
+    />
+    <FormText
+      source="provincia"
+      label="Provincia"
+      widthClass="w-full"
+      maxLength={PROPIETARIO_VALIDATIONS.PROVINCIA_MAX}
+    />
+    <FormSelect
+      source="tipo_persona"
+      label="Tipo persona"
+      widthClass="w-full"
+      choices={TIPO_PERSONA_OPTIONS as any}
+      optionText="nombre"
+      optionValue="id"
+      emptyText="Sin asignar"
+    />
+    <FormText
+      source="dni"
+      label="DNI"
+      widthClass="w-full"
+      maxLength={PROPIETARIO_VALIDATIONS.DNI_MAX}
+    />
+    <FormText
+      source="cuit"
+      label="CUIT"
+      widthClass="w-full"
+      maxLength={PROPIETARIO_VALIDATIONS.CUIT_MAX}
+    />
+    <FormText
+      source="email"
+      label="Email"
+      widthClass="w-full"
+      maxLength={PROPIETARIO_VALIDATIONS.EMAIL_MAX}
+    />
+    <FormText
+      source="telefono"
+      label="Telefono"
+      widthClass="w-full"
+      maxLength={PROPIETARIO_VALIDATIONS.TELEFONO_MAX}
+    />
+  </div>
+);
+
 export const PropietarioForm = () => (
   <SimpleForm<PropietarioFormValues>
     className="w-full max-w-2xl"
@@ -81,6 +138,11 @@ export const PropietarioForm = () => (
       title="Datos del propietario"
       main={<PropietarioMainFields />}
       defaultOpen
+    />
+    <SectionBaseTemplate
+      title="Datos de contacto"
+      main={<PropietarioContactoFields />}
+      defaultOpen={false}
     />
   </SimpleForm>
 );

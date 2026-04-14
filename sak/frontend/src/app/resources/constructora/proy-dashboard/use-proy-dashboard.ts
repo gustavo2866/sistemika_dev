@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { apiUrl, dataProvider } from "@/lib/dataProvider";
 import {
   buildAlertItems,
@@ -16,6 +17,11 @@ import {
   PROY_DASHBOARD_DETAIL_PAGE_SIZE,
   serializeFiltersToParams,
 } from "./model";
+import {
+  clearDashboardReturnMarker,
+  DASHBOARD_RETURN_TTL_MS,
+  loadDashboardReturnMarker,
+} from "./return-state";
 
 const buildAuthenticatedHeaders = () => {
   const headers = new Headers();
@@ -55,15 +61,26 @@ const parseCatalogOptions = (
 ];
 
 export const useProyDashboard = () => {
-  const [periodType, setPeriodType] = useState<PeriodType>(DEFAULT_PROY_PERIOD);
-  const [filters, setFilters] = useState<ProyDashboardFilters>(() => buildDefaultFilters(DEFAULT_PROY_PERIOD));
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+  const pendingReturnMarker = useMemo(
+    () => loadDashboardReturnMarker(returnTo, DASHBOARD_RETURN_TTL_MS),
+    [returnTo],
+  );
+  const initialPeriodType = pendingReturnMarker?.periodType ?? DEFAULT_PROY_PERIOD;
+  const initialFilters =
+    pendingReturnMarker?.filters ?? buildDefaultFilters(initialPeriodType);
+  const initialShowKpis = pendingReturnMarker?.showKpis ?? false;
+
+  const [periodType, setPeriodType] = useState<PeriodType>(initialPeriodType);
+  const [filters, setFilters] = useState<ProyDashboardFilters>(() => initialFilters);
   const [dashboardData, setDashboardData] = useState<ProyDashboardResponse | null>(null);
   const [selectorData, setSelectorData] = useState<ProyDashboardSelectorsResponse | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [detailData, setDetailData] = useState<ProyDashboardDetalleResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailPage, setDetailPage] = useState(1);
-  const [showKpis, setShowKpis] = useState(false);
+  const [showKpis, setShowKpis] = useState(initialShowKpis);
   const [selectedAlertKey, setSelectedAlertKey] = useState<AlertKey | null>(null);
   const [proyectoOptions, setProyectoOptions] = useState<SelectOption[]>([
     { value: "todos", label: "Todos" },
@@ -129,6 +146,11 @@ export const useProyDashboard = () => {
     },
     [filters, periodType, selectedAlertKey],
   );
+
+  useEffect(() => {
+    if (!pendingReturnMarker?.savedAt) return;
+    clearDashboardReturnMarker(returnTo);
+  }, [pendingReturnMarker, returnTo]);
 
   useEffect(() => {
     let cancelled = false;

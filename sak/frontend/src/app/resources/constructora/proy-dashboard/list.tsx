@@ -1,9 +1,10 @@
 "use client";
 
 import { ChartNoAxesCombined, FolderKanban, RefreshCcw } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useProyDashboard } from "./use-proy-dashboard";
+import { saveDashboardReturnMarker } from "./return-state";
 import {
   DashboardHeader,
   DashboardKpiRow,
@@ -31,6 +32,17 @@ const SectionShell = ({
 
 export default function ProyDashboardList() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
+
+  const appendReturnToParam = (path: string) => {
+    const [pathWithQuery, hash = ""] = path.split("#");
+    const [pathname, queryString = ""] = pathWithQuery.split("?");
+    const params = new URLSearchParams(queryString);
+    params.set("returnTo", returnTo);
+    const nextQuery = params.toString();
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ""}${hash ? `#${hash}` : ""}`;
+  };
 
   const handleMobileBack = () => navigate("/proyectos");
 
@@ -60,6 +72,15 @@ export default function ProyDashboardList() {
     setShowKpis,
     selectAlert,
   } = useProyDashboard();
+
+  const saveDashboardContext = () => {
+    saveDashboardReturnMarker(returnTo, {
+      savedAt: Date.now(),
+      filters,
+      periodType,
+      showKpis,
+    });
+  };
 
   const headerModel = useDashboardHeader({
     dashboardLoading,
@@ -96,9 +117,14 @@ export default function ProyDashboardList() {
     onSelectAlert: selectAlert,
     onOpenProject: (item) => {
       if (!item.proyecto?.id) return;
-      navigate(`/proyectos/${item.proyecto.id}`);
+      saveDashboardContext();
+      navigate(appendReturnToParam(`/proyectos/${item.proyecto.id}`));
     },
-    onNavigate: (path) => navigate(path),
+    onNavigate: (path) => {
+      saveDashboardContext();
+      const nextPath = path.startsWith("/proyectos") ? appendReturnToParam(path) : path;
+      navigate(nextPath);
+    },
   });
 
   const kpiToggleLabel = showKpis ? "Ocultar KPIs" : "Mostrar KPIs";

@@ -27,6 +27,11 @@ type DashboardListSectionProps = Pick<
 
 type DashboardDetailTableRecord = {
   id: string;
+  projectId: number;
+  nombre: string;
+  estado: string;
+  ingresos: number;
+  costos: number;
   dashboardItem: DashboardDetailItem;
 };
 
@@ -156,7 +161,7 @@ const DashboardDetailTable = ({
             },
           }}
         >
-          <ListColumn source="id" label="ID" className="w-[44px]">
+          <ListColumn source="projectId" label="ID" className="w-[44px]">
             <DashboardDetailIdCell />
           </ListColumn>
           <ListColumn source="nombre" label="Nombre" className="w-[180px]">
@@ -190,6 +195,11 @@ export const DashboardListSection = ({
   const loadingMoreRef = useRef(false);
   const records = detailItems.map((dashboardItem) => ({
     id: dashboardItem.key,
+    projectId: Number(dashboardItem.item.proyecto?.id ?? 0),
+    nombre: String(dashboardItem.item.proyecto?.nombre ?? ""),
+    estado: String(dashboardItem.item.estado_al_corte ?? ""),
+    ingresos: Number(dashboardItem.item.importe_ejecutado ?? 0),
+    costos: Number(dashboardItem.item.costo_ejecutado ?? 0),
     dashboardItem,
   }));
   const isInitialDetailLoading = detailLoading && detailItems.length === 0;

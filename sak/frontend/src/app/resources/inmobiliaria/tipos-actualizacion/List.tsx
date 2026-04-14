@@ -63,13 +63,19 @@ const ListActions = () => (
   </div>
 );
 
-export const TipoActualizacionList = () => (
+type TipoActualizacionListProps = {
+  perPage?: number;
+};
+
+export const TipoActualizacionList = ({
+  perPage = 10,
+}: TipoActualizacionListProps = {}) => (
   <List
     title="Tipos de actualizacion"
     filters={filters}
     actions={<ListActions />}
     debounce={300}
-    perPage={10}
+    perPage={perPage}
     filterDefaultValues={{ activa: true }}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
