@@ -124,9 +124,14 @@ export type PropDashboardDetalleItem = {
   nombre: string;
   propietario: string | null;
   tipo_propiedad_id: number | null;
+  tipo_actualizacion_id?: number | null;
+  tipo_operacion_id?: number | null;
+  propiedad_status_id?: number | null;
   estado: string | null;
+  estado_fecha?: string | null;
   vacancia_fecha: string | null;
   dias_vacancia: number;
+  fecha_inicio_contrato?: string | null;
   vencimiento_contrato: string | null;
   fecha_renovacion: string | null;
   valor_alquiler: number | null;

@@ -35,13 +35,13 @@ const StatusCard = ({
     )}
   >
     <button type="button" onClick={onSelect} className="flex w-full flex-col text-left">
-      <div className="flex flex-1 flex-col gap-0 p-2 pb-1.5">
-        <div className="flex items-center gap-1">
-          <Icon className={cn("h-3 w-3 shrink-0", iconClassName)} />
-          <span className="truncate text-[10px] font-medium text-muted-foreground">{title}</span>
+      <div className="flex flex-1 flex-col gap-0 p-1 pb-0.5 sm:p-2.5 sm:pb-2 lg:p-1.5 lg:pb-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 lg:gap-0.5">
+          <Icon className={cn("h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3 lg:h-2.5 lg:w-2.5", iconClassName)} />
+          <span className="truncate text-[8px] font-medium text-muted-foreground sm:text-[11px] lg:text-[9px]">{title}</span>
         </div>
-        <div className="mt-1 flex items-end justify-between gap-2">
-          <span className="text-2xl font-bold leading-none tracking-tight">
+        <div className="mt-px flex items-end justify-between gap-1 sm:mt-1 sm:gap-2 lg:mt-0.5 lg:gap-1">
+          <span className="text-[13px] font-bold leading-none tracking-tight sm:text-2xl lg:text-[18px]">
             {formatInteger(count)}
           </span>
         </div>
@@ -54,14 +54,14 @@ const StatusCard = ({
       </div>
     </button>
     {buckets.length > 0 ? (
-      <div className="grid gap-1 border-t border-border/60 bg-slate-50/70 p-1.5">
+      <div className="grid gap-0.5 border-t border-border/60 bg-slate-50/70 p-1 sm:gap-1 sm:p-1.5">
         {buckets.map((bucket) => (
           <button
             key={bucket.key}
             type="button"
             onClick={bucket.onSelect}
             className={cn(
-              "flex items-center justify-between rounded-md border px-2 py-1 text-[9px] font-medium transition-colors",
+              "flex items-center justify-between rounded-md border px-1.5 py-0.5 text-[8px] font-medium transition-colors sm:px-2 sm:py-1 sm:text-[9px]",
               getBucketToneClasses(bucket.tone),
               bucket.selected && "ring-1 ring-primary/40",
             )}
@@ -82,7 +82,7 @@ const DashboardSelectorsSection = ({
   <section className="w-full rounded-xl border border-border/60 bg-card/80 p-1.5 shadow-sm sm:p-2">
     <div
       className={cn(
-        "grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2 xl:grid-cols-5",
+        "grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2 lg:grid-cols-5 lg:gap-1.5",
         detailLoading && "animate-pulse",
       )}
     >
@@ -96,13 +96,13 @@ const DashboardSelectorsSection = ({
 const DashboardAlertsSection = ({
   alerts,
 }: Pick<DashboardMainPanelViewModel, "alerts">) => (
-  <section className="w-full rounded-xl border border-border/60 bg-card/80 p-2 shadow-sm">
-    <div className="flex flex-col gap-2">
+  <section className="w-full rounded-xl border border-border/60 bg-card/80 p-1.5 shadow-sm sm:p-2">
+    <div className="flex flex-col gap-2 sm:gap-3">
       <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         <AlertTriangle className="h-3 w-3 text-amber-600" />
         <span>Alarmas</span>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-1 lg:grid-cols-1 xl:grid-cols-2 xl:gap-1.5">
         {alerts.map((alert) => {
           const Icon = alert.icon;
           return (
@@ -111,19 +111,24 @@ const DashboardAlertsSection = ({
               type="button"
               onClick={alert.onSelect}
               className={cn(
-                "group flex min-w-0 flex-col items-center justify-center rounded-md border border-transparent px-2 py-2 text-center transition-colors hover:border-border/60 hover:bg-muted/10",
+                "group flex min-w-0 items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border/60 hover:bg-muted/10 xl:flex-col xl:items-center xl:justify-center xl:py-1 xl:text-center",
                 alert.selected && "border-border/80 bg-muted/20",
               )}
             >
               <div className="flex items-center gap-1">
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="text-[10px] font-semibold leading-none">
-                  {formatInteger(alert.count)}
+                <Icon className="h-3.5 w-3.5 shrink-0 transition-colors xl:h-4 xl:w-4" />
+                <span className="text-[9px] font-medium leading-none text-muted-foreground xl:hidden">
+                  {alert.label}
                 </span>
               </div>
-              <span className="mt-1 w-full truncate text-[9px] font-medium leading-none">
-                {alert.label}
-              </span>
+              <div className="flex items-center gap-1 xl:mt-0.5 xl:flex-col xl:gap-0">
+                <span className="text-[10px] font-bold leading-none transition-colors">
+                  {formatInteger(alert.count)}
+                </span>
+                <span className="hidden truncate text-[8px] font-medium leading-none transition-colors xl:mt-0.5 xl:block xl:w-full xl:text-center xl:text-[8px]">
+                  {alert.label}
+                </span>
+              </div>
             </button>
           );
         })}
@@ -149,7 +154,7 @@ const DashboardQuickActionsSection = ({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 justify-start gap-1.5 px-2 text-[10px]"
+            className="h-7 justify-start gap-1 px-1.5 text-[9px] xl:h-8 xl:gap-1.5 xl:px-2 xl:text-[10px]"
             onClick={action.onClick}
           >
             <Icon className="h-3 w-3" />
@@ -184,15 +189,13 @@ export const DashboardMainPanel = ({
   }, [detailTitle]);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] lg:items-start">
+    <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,8fr)_minmax(0,2fr)] lg:items-start">
+      {/* Left column: selectors + list */}
+      <div className="flex flex-col gap-3">
         <DashboardSelectorsSection
           statusCards={statusCards}
           detailLoading={detailLoading}
         />
-        <DashboardAlertsSection alerts={alerts} />
-      </div>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] lg:items-start">
         <DashboardListSection
           detailItems={detailItems}
           detailLoading={detailLoading}
@@ -205,6 +208,10 @@ export const DashboardMainPanel = ({
           showContratoColumn={showContratoColumn}
           valueColumnLabel={valueColumnLabel}
         />
+      </div>
+      {/* Right column: alerts + quick actions */}
+      <div className="flex flex-col gap-3">
+        <DashboardAlertsSection alerts={alerts} />
         <DashboardQuickActionsSection quickActions={quickActions} />
       </div>
     </div>

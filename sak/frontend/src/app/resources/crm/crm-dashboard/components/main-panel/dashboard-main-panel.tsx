@@ -92,12 +92,12 @@ const DashboardAlertsSection = ({
   alerts,
 }: Pick<DashboardMainPanelViewModel, "alerts">) => (
   <section className="w-full rounded-xl border border-border/60 bg-card/80 p-1.5 shadow-sm sm:p-2">
-    <div className="flex items-start gap-2 sm:gap-3">
-      <div className="flex shrink-0 items-center gap-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="flex flex-col gap-2 sm:gap-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         <AlertTriangle className="h-3 w-3 text-amber-600" />
         <span>Alarmas</span>
       </div>
-      <div className="grid flex-1 grid-cols-3 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-1 gap-1 xl:grid-cols-3 xl:gap-1.5">
         {alerts.map((alert) => {
           const Icon = alert.icon;
           return (
@@ -106,37 +106,48 @@ const DashboardAlertsSection = ({
               type="button"
               onClick={alert.onSelect}
               className={cn(
-                "group flex min-w-0 flex-col items-center justify-center rounded-md border border-transparent px-1 py-1 text-center transition-colors hover:border-border/60 hover:bg-muted/10",
+                "group flex min-w-0 items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border/60 hover:bg-muted/10 xl:flex-col xl:items-center xl:justify-center xl:py-1 xl:text-center",
                 alert.selected && "border-border/80 bg-muted/20",
               )}
             >
-              <div className="flex items-center gap-0.5 sm:gap-1">
+              <div className="flex items-center gap-1">
                 <Icon
                   className={cn(
-                    "h-4 w-4 shrink-0 transition-colors sm:h-4.5 sm:w-4.5",
+                    "h-3.5 w-3.5 shrink-0 transition-colors xl:h-4 xl:w-4",
                     getAlertTextClass(alert.className),
                     !alert.selected && "group-hover:text-primary/80",
                   )}
                 />
                 <span
                   className={cn(
-                    "text-[8px] font-semibold leading-none transition-colors sm:text-[9px]",
+                    "text-[9px] font-medium leading-none transition-colors xl:hidden",
                     alert.selected ? "text-primary" : "text-muted-foreground",
+                    !alert.selected && "group-hover:text-primary/80",
+                  )}
+                >
+                  {getCompactAlertLabel(alert.label)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 xl:mt-0.5 xl:flex-col xl:gap-0">
+                <span
+                  className={cn(
+                    "text-[10px] font-bold leading-none transition-colors",
+                    alert.selected ? "text-primary" : "text-foreground",
                     !alert.selected && "group-hover:text-primary/80",
                   )}
                 >
                   {formatInteger(alert.count)}
                 </span>
+                <span
+                  className={cn(
+                    "hidden truncate text-[8px] leading-none transition-colors xl:mt-0.5 xl:block xl:w-full xl:text-center",
+                    alert.selected ? "font-semibold text-primary" : "font-medium text-foreground",
+                    !alert.selected && "group-hover:text-primary/80",
+                  )}
+                >
+                  {getCompactAlertLabel(alert.label)}
+                </span>
               </div>
-              <span
-                className={cn(
-                  "mt-1 w-full truncate text-[8px] leading-none transition-colors sm:text-[9px]",
-                  alert.selected ? "font-semibold text-primary" : "font-medium text-foreground",
-                  !alert.selected && "group-hover:text-primary/80",
-                )}
-              >
-                {getCompactAlertLabel(alert.label)}
-              </span>
             </button>
           );
         })}
@@ -153,7 +164,7 @@ const DashboardQuickActionsSection = ({
       <Zap className="h-3 w-3 text-sky-600" />
       <span>Acciones rapidas</span>
     </div>
-    <div className="grid grid-cols-2 gap-1.5">
+    <div className="grid gap-1.5">
       {quickActions.map((action) => {
         const Icon = action.icon;
         return (
@@ -162,7 +173,7 @@ const DashboardQuickActionsSection = ({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 justify-start gap-1.5 px-2 text-[9px]"
+            className="h-7 justify-start gap-1 px-1.5 text-[9px] xl:h-8 xl:gap-1.5 xl:px-2 xl:text-[10px]"
             onClick={action.onClick}
           >
             <Icon className="h-3 w-3" />
@@ -186,15 +197,13 @@ export const DashboardMainPanel = ({
   const [isListExpanded, setIsListExpanded] = useState(true);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] lg:items-start">
+    <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,8fr)_minmax(0,2fr)] lg:items-start">
+      {/* Left column: selectors + list */}
+      <div className="flex flex-col gap-3">
         <DashboardSelectorsSection
           statusCards={statusCards}
           detailLoading={detailLoading}
         />
-        <DashboardAlertsSection alerts={alerts} />
-      </div>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] lg:items-start">
         <DashboardListSection
           detailItems={detailItems}
           detailLoading={detailLoading}
@@ -203,6 +212,10 @@ export const DashboardMainPanel = ({
           expanded={isListExpanded}
           onToggleExpanded={() => setIsListExpanded((current) => !current)}
         />
+      </div>
+      {/* Right column: alerts + quick actions */}
+      <div className="flex flex-col gap-3">
+        <DashboardAlertsSection alerts={alerts} />
         <DashboardQuickActionsSection quickActions={quickActions} />
       </div>
     </div>

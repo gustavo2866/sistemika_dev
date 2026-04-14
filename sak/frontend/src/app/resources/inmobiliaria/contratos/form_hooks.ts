@@ -10,6 +10,41 @@ const getAuthHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+// ── Generar PDF ──────────────────────────────────────────────────────────────
+
+export const useContratoGenerarPdf = () => {
+  const notify = useNotify();
+  const [loading, setLoading] = useState(false);
+
+  const generarPdf = async (id: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/contratos/${id}/pdf`, {
+        method: "GET",
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify(data?.detail ?? "No se pudo generar el PDF", { type: "warning" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contrato_${id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      notify("Error al generar el PDF", { type: "warning" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { generarPdf, loading };
+};
+
 // ── Activar ──────────────────────────────────────────────────────────────────
 
 export const useContratoActivar = () => {

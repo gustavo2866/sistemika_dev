@@ -53,37 +53,45 @@ const LIST_FILTERS = buildListFilters(
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ListActions = () => (
+type TipoPropiedadListProps = {
+  embedded?: boolean;
+  perPage?: number;
+  rowClick?: "edit" | ((id: string | number) => string);
+  createTo?: string;
+};
+
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={LIST_FILTERS}
       size="sm"
       buttonClassName={ACTION_BUTTON_CLASS}
     />
-    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
+    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" to={createTo} />
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
 
-type TipoPropiedadListProps = {
-  perPage?: number;
-};
-
 export const TipoPropiedadList = ({
+  embedded = false,
   perPage = 25,
+  rowClick = "edit",
+  createTo,
 }: TipoPropiedadListProps = {}) => (
   <List
     title="Tipos de propiedad"
     filters={LIST_FILTERS}
-    actions={<ListActions />}
+    actions={<ListActions createTo={createTo} />}
     debounce={300}
     perPage={perPage}
     containerClassName={LIST_CONTAINER_WIDE}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
       mobileConfig={{
         primaryField: "nombre",

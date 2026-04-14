@@ -9,7 +9,7 @@ from sqlmodel import Session
 
 from agente.v2.infrastructure.channels.crm_channel_adapter import CRMOutboundChannelAdapter
 from app.models import CRMMensaje
-from app.models.enums import EstadoMensaje, TipoMensaje
+from app.models.enums import TipoMensaje
 
 
 # ---------------------------------------------------------------------------
@@ -111,11 +111,17 @@ class TurnDeliveryService:
     def mark_inbound_as_processed(session: Session, message: CRMMensaje) -> None:
         if message.tipo != TipoMensaje.ENTRADA.value:
             return
-        if message.estado == EstadoMensaje.NUEVO.value:
-            message.estado = EstadoMensaje.RECIBIDO.value
-            message.fecha_estado = datetime.now(UTC)
-            session.add(message)
-            session.commit()
-            session.refresh(message)
+
+        # "Procesado por agente" no equivale a "leido por usuario".
+        # El estado del inbox debe seguir en `nuevo` hasta que la UI
+        # llame explicitamente a /acciones/marcar-leidos.
+        metadata = dict(message.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        agent_meta["delivery_processed_at"] = datetime.now(UTC).isoformat()
+        metadata["agent_v2"] = agent_meta
+        message.metadata_json = metadata
+        session.add(message)
+        session.commit()
+        session.refresh(message)
 
 

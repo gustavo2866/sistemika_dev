@@ -119,6 +119,7 @@ export { SetupSidebar } from "./setup/SetupSidebar";
 export { SetupSidebarItem } from "./setup/SetupSidebarItem";
 export { SetupContentHeader } from "./setup/SetupContentHeader";
 export { SetupViewSwitcher } from "./setup/SetupViewSwitcher";
+export { SetupSectionNav } from "./setup/SetupSectionNav";
 export { SetupContentPanel } from "./setup/SetupContentPanel";
 export { SetupEmptyState } from "./setup/SetupEmptyState";
 export { SetupMobileNav } from "./setup/SetupMobileNav";

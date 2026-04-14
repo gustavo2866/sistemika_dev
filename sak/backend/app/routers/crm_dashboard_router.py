@@ -196,6 +196,10 @@ def get_crm_dashboard_detalle(
     perPage: int = Query(25, ge=1, le=200),
     session: Session = Depends(get_session),
 ):
+    tipo_operacion_ids = (
+        None if kpiKey == "prospect" else _parse_int_list(tipoOperacion)
+    )
+
     # When secondary filters (stage/bucket) or alertKey are active we must load
     # all matching rows to post-filter, then page in Python.  In the common case
     # (no secondary filters) we push everything to SQL.
@@ -204,7 +208,7 @@ def get_crm_dashboard_detalle(
             session=session,
             start_date=startDate,
             end_date=endDate,
-            tipo_operacion_ids=_parse_int_list(tipoOperacion),
+            tipo_operacion_ids=tipo_operacion_ids,
             tipo_propiedad=_parse_str_list(tipoPropiedad),
             responsable_ids=_parse_int_list(responsable),
             propietario=propietario,
@@ -272,7 +276,7 @@ def get_crm_dashboard_detalle(
         kpi_key=kpiKey,
         start_date=startDate,
         end_date=endDate,
-        tipo_operacion_ids=_parse_int_list(tipoOperacion),
+        tipo_operacion_ids=tipo_operacion_ids,
         tipo_propiedad=_parse_str_list(tipoPropiedad),
         responsable_ids=_parse_int_list(responsable),
         propietario=propietario,

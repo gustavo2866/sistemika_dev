@@ -9,13 +9,12 @@ import {
   useRecordContext,
   useRefresh,
 } from "ra-core";
-import { Pencil, Workflow } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
 import {
   FormOrderBulkActionsToolbar,
-  FormOrderListRowActions,
   ListColumn,
   ListDate,
   ListEstado,
@@ -24,31 +23,20 @@ import {
   buildListFilters,
   ListPaginator,
   SectionBaseTemplate,
-  useRowActionDialog,
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
-import { FormProvider, useForm } from "react-hook-form";
 import { useLocation } from "react-router-dom";
 
 import {
   PROPIEDAD_STATUS_BADGES,
-  type Propiedad,
   excludeMantenimientoTipoOperacion,
 } from "./model";
-import { FormStatus, FormStatusContent, type FormStatusValues } from "./form_status";
-import { getAllowedPropiedadStatusTargets } from "./status_transitions";
-import { usePropiedadStatusTransition } from "./form_hooks";
-import { FormRenovar } from "./form_renovar";
+import type { Propiedad } from "./model";
+import { PropiedadRowActions } from "./row-actions";
 
 
 // === Filtros ===
@@ -197,120 +185,11 @@ export const PropiedadesListContent = () => (
         <ComentarioCell />
       </ListColumn>
       <ListColumn label="Acciones" className="w-[60px]">
-        <FormOrderListRowActions
-          showShow={false}
-          showDelete
-          extraMenuItems={
-            <>
-              <PropiedadStatusMenu />
-              <FormRenovar />
-            </>
-          }
-        />
+        <PropiedadRowActions />
       </ListColumn>
     </ResponsiveDataTable>
   </>
 );
-
-const PropiedadStatusMenu = () => {
-  const record = useRecordContext<Propiedad>();
-  const dialog = useRowActionDialog();
-  const { cambiarEstado, loading } = usePropiedadStatusTransition();
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const form = useForm<FormStatusValues>({
-    defaultValues: { fecha_cambio: today, comentario: "" },
-    mode: "onChange",
-  });
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [nextStatusId, setNextStatusId] = useState<number | null>(null);
-
-  const allowedTargets = useMemo(
-    () => getAllowedPropiedadStatusTargets(record?.propiedad_status_id ?? null),
-    [record?.propiedad_status_id],
-  );
-
-  if (!record?.id || allowedTargets.length === 0) return null;
-
-  const handleOpenChange = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) setNextStatusId(null);
-  };
-
-  const handleDialogConfirm = (statusId: number) =>
-    form.handleSubmit(async (values) => {
-      if (loading) return;
-      await cambiarEstado({
-        record,
-        nextStatusId: statusId,
-        fechaCambio: values.fecha_cambio,
-        comentario: values.comentario,
-      });
-    })();
-
-  const openDialogWithForm = (statusId: number) => {
-    form.reset({ fecha_cambio: today, comentario: "" });
-    if (dialog) {
-      dialog.openDialog({
-        title: "Cambiar estado",
-        contentClassName: "sm:max-w-[420px]",
-        content: (
-          <FormProvider {...form}>
-            <FormStatusContent record={record} nextStatusId={statusId} />
-          </FormProvider>
-        ),
-        confirmLabel: "Confirmar",
-        confirmColor: "primary",
-        onConfirm: () => handleDialogConfirm(statusId),
-      });
-      return;
-    }
-    setNextStatusId(statusId);
-    setDialogOpen(true);
-  };
-
-  const handleOpenDialog = (
-    event: { stopPropagation: () => void },
-    statusId: number,
-  ) => {
-    event.stopPropagation();
-    openDialogWithForm(statusId);
-  };
-
-  return (
-    <>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger
-          onClick={(event) => event.stopPropagation()}
-          className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-        >
-          <Workflow className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-          Cambiar estado
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className="w-28 sm:w-36">
-          {allowedTargets.map((option) => (
-            <DropdownMenuItem
-              key={option.key}
-              onSelect={(event) => handleOpenDialog(event, option.id)}
-              onClick={(event) => event.stopPropagation()}
-              data-row-click="ignore"
-              className="px-1.5 py-1 text-[8px] sm:text-[10px]"
-            >
-              {option.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-      {nextStatusId != null ? (
-        <FormStatus
-          open={dialogOpen}
-          onOpenChange={handleOpenChange}
-          record={record}
-          nextStatusId={nextStatusId}
-        />
-      ) : null}
-    </>
-  );
-};
 
 const ComentarioCell = () => {
   const record = useRecordContext<Propiedad>();

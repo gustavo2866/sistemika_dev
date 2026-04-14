@@ -14,7 +14,6 @@ import {
   NumberListColumn,
   TextListColumn,
   ListText,
-  ListTextarea,
   ResponsiveDataTable,
   buildListFilters,
 } from "@/components/forms/form_order";
@@ -58,41 +57,49 @@ const filters = buildListFilters(
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ListActions = () => (
+type PropietarioListProps = {
+  embedded?: boolean;
+  perPage?: number;
+  rowClick?: "edit" | ((id: string | number) => string);
+  createTo?: string;
+};
+
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
-    <CreateButton className={actionButtonClass} label="Crear" />
+    <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
-type PropietarioListProps = {
-  perPage?: number;
-};
-
 export const PropietarioList = ({
+  embedded = false,
   perPage = 10,
+  rowClick = "edit",
+  createTo,
 }: PropietarioListProps = {}) => (
   <List
     title="Propietarios"
     filters={filters}
-    actions={<ListActions />}
+    actions={<ListActions createTo={createTo} />}
     debounce={300}
     perPage={perPage}
     filterDefaultValues={{ activo: true }}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       mobileConfig={{
         primaryField: "nombre",
-        secondaryFields: ["comentario", "adm_concepto_id", "centro_costo_id", "activo"],
+        secondaryFields: ["adm_concepto_id", "centro_costo_id", "activo"],
       }}
       className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
     >
-      <NumberListColumn source="id" label="ID" className="text-center" />
+      <NumberListColumn source="id" label="ID" className="w-[48px] text-center" />
       <TextListColumn source="nombre" label="Nombre">
         <ListText source="nombre" />
       </TextListColumn>
@@ -109,9 +116,6 @@ export const PropietarioList = ({
         >
           <ListText source={CENTROS_COSTO_REFERENCE.labelField} />
         </ReferenceField>
-      </TextListColumn>
-      <TextListColumn source="comentario" label="Comentario">
-        <ListTextarea source="comentario" maxLength={60} />
       </TextListColumn>
       <BooleanListColumn source="activo" label="Activo" />
       <TextListColumn label="Acciones">

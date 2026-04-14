@@ -9,6 +9,7 @@ import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { EditButton } from "@/components/edit-button";
+import type { SetupListComponentProps } from "@/components/forms/form_order";
 
 const filters = [
   <TextInput key="q" source="q" label={false} placeholder="Buscar monedas" className="w-full" />,
@@ -17,17 +18,29 @@ const filters = [
   <BooleanInput key="activo" source="activo" label="Solo activas" />,
 ];
 
-const ListActions = () => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} />
-    <CreateButton />
+    <CreateButton to={createTo} />
     <ExportButton />
   </div>
 );
 
-export const MonedaList = () => (
-  <List filters={filters} actions={<ListActions />} debounce={300} perPage={25} sort={{ field: "codigo", order: "ASC" }}>
-    <DataTable rowClick="edit">
+export const MonedaList = ({
+  embedded = false,
+  rowClick = "edit",
+  createTo,
+}: SetupListComponentProps) => (
+  <List
+    filters={filters}
+    actions={<ListActions createTo={createTo} />}
+    debounce={300}
+    perPage={25}
+    sort={{ field: "codigo", order: "ASC" }}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
+  >
+    <DataTable rowClick={rowClick}>
       <DataTable.Col source="id" label="ID">
         <TextField source="id" />
       </DataTable.Col>

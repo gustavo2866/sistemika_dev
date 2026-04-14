@@ -97,26 +97,31 @@ export const FormSelectFijo = ({
   triggerProps,
   fixedWidth = "110px",
   ...props
-}: SelectInputProps & FieldWrapperProps & { fixedWidth?: string }) => (
-  <SelectInput
-    {...props}
-    className={buildFieldClassName(widthClass, className)}
-    triggerProps={{
-      ...triggerProps,
-      className: cn(
-        FORM_SELECT_TRIGGER_CLASS, 
-        `!w-[${fixedWidth}] !max-w-[${fixedWidth}] !min-w-[${fixedWidth}]`,
-        triggerProps?.className
-      ),
-      style: {
-        width: `${fixedWidth} !important`,
-        minWidth: `${fixedWidth} !important`, 
-        maxWidth: `${fixedWidth} !important`,
-        ...triggerProps?.style
-      }
-    }}
-  />
-);
+}: SelectInputProps & FieldWrapperProps & { fixedWidth?: string }) => {
+  const fixedStyle: React.CSSProperties = {
+    width: fixedWidth,
+    minWidth: fixedWidth,
+    maxWidth: fixedWidth,
+    flex: "0 0 auto",
+    ...triggerProps?.style,
+  };
+
+  return (
+    <SelectInput
+      {...props}
+      className={buildFieldClassName(widthClass, className)}
+      triggerProps={{
+        ...triggerProps,
+        className: cn(
+          FORM_SELECT_TRIGGER_CLASS,
+          "shrink-0",
+          triggerProps?.className,
+        ),
+        style: fixedStyle,
+      }}
+    />
+  );
+};
 
 export const FormAutocomplete = ({
   widthClass,

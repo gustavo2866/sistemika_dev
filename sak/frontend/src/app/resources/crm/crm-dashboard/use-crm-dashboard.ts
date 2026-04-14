@@ -45,6 +45,15 @@ import {
 
 const DASHBOARD_SNAPSHOT_TTL_MS = DASHBOARD_RETURN_TTL_MS;
 
+const getEffectiveDetailFilters = (
+  filters: CrmDashboardFilters,
+  detailKpi: KpiKey,
+  selectedAlertKey: AlertKey | null,
+): CrmDashboardFilters =>
+  detailKpi === "prospect" && !selectedAlertKey
+    ? { ...filters, tipoOperacionId: "todos" }
+    : filters;
+
 export const useCrmDashboard = () => {
   const location = useLocation();
   const returnTo = `${location.pathname}${location.search}`;
@@ -57,16 +66,27 @@ export const useCrmDashboard = () => {
     () => loadDashboardSnapshot(returnTo, hasPendingReturn, DASHBOARD_SNAPSHOT_TTL_MS),
     [returnTo, hasPendingReturn],
   );
+  const initialPeriodType = pendingReturnMarker?.periodType ?? initialSnapshot?.periodType ?? DEFAULT_CRM_PERIOD;
+  const initialFilters =
+    pendingReturnMarker?.filters ??
+    initialSnapshot?.filters ??
+    buildDefaultFilters(initialPeriodType);
   const hasHydratedSnapshot = Boolean(initialSnapshot);
+  const hasHydratedReturnContext = hasHydratedSnapshot || Boolean(pendingReturnMarker?.filters);
+  const initialEffectiveDetailFilters = getEffectiveDetailFilters(
+    initialFilters,
+    initialSnapshot?.detailKpi ?? "proceso",
+    initialSnapshot?.selectedAlertKey ?? null,
+  );
   const initialDashboardRequestKey = hasHydratedSnapshot
     ? getDashboardRequestKey(
-        initialSnapshot?.periodType ?? DEFAULT_CRM_PERIOD,
-        initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_CRM_PERIOD),
+        initialPeriodType,
+        initialFilters,
       )
     : null;
   const initialDetailRequestKey = hasHydratedSnapshot
     ? getDetailRequestKey({
-        filters: initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_CRM_PERIOD),
+        filters: initialEffectiveDetailFilters,
         detailKpi: initialSnapshot?.detailKpi ?? "proceso",
         detailPage: initialSnapshot?.detailPage ?? 1,
         selectedAlertKey: initialSnapshot?.selectedAlertKey ?? null,
@@ -77,10 +97,10 @@ export const useCrmDashboard = () => {
   const initialDetailRequestKeyRef = useRef(initialDetailRequestKey);
 
   const [periodType, setPeriodType] = useState<PeriodType>(
-    initialSnapshot?.periodType ?? DEFAULT_CRM_PERIOD,
+    initialPeriodType,
   );
   const [filters, setFilters] = useState<CrmDashboardFilters>(
-    () => initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_CRM_PERIOD),
+    () => initialFilters,
   );
   const [dashboardData, setDashboardData] = useState<CrmDashboardResponse | null>(
     initialSnapshot?.dashboardData ?? null,
@@ -110,21 +130,25 @@ export const useCrmDashboard = () => {
   const [periodTrendData, setPeriodTrendData] = useState<
     Array<{ label: string; total: number; nuevas: number; ganadas: number }>
   >(initialSnapshot?.periodTrendData ?? []);
-  const [tipoOperacionInitialized, setTipoOperacionInitialized] = useState(hasHydratedSnapshot);
+  const [tipoOperacionInitialized, setTipoOperacionInitialized] = useState(hasHydratedReturnContext);
   const [tipoOperacionOptions, setTipoOperacionOptions] = useState<SelectOption[]>([{ value: "todos", label: "Todos" }]);
   const dashboardRequestKey = useMemo(
     () => getDashboardRequestKey(periodType, filters),
     [filters, periodType],
   );
+  const effectiveDetailFilters = useMemo(
+    () => getEffectiveDetailFilters(filters, detailKpi, selectedAlertKey),
+    [detailKpi, filters, selectedAlertKey],
+  );
   const detailRequestKey = useMemo(
     () =>
       getDetailRequestKey({
-        filters,
+        filters: effectiveDetailFilters,
         detailKpi,
         detailPage,
         selectedAlertKey,
       }),
-    [detailKpi, detailPage, filters, selectedAlertKey],
+    [detailKpi, detailPage, effectiveDetailFilters, selectedAlertKey],
   );
 
   const fetchSelectors = useCallback(async () => {
@@ -133,6 +157,21 @@ export const useCrmDashboard = () => {
       `${apiUrl}/api/dashboard/crm/selectors?${params.toString()}`,
     );
   }, [filters]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSelectors()
+      .then((data) => {
+        if (!cancelled) setFastSelectorData(data);
+      })
+      .catch(() => {
+        // non-critical; dashboard bundle/detail can still render
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchSelectors]);
 
   const fetchDashboardBundle = useCallback(async () => {
     const params = serializeFiltersToParams(filters);
@@ -150,7 +189,7 @@ export const useCrmDashboard = () => {
 
   const fetchDashboardDetailPage = useCallback(
     async (page: number) => {
-      const params = serializeFiltersToParams(filters);
+      const params = serializeFiltersToParams(effectiveDetailFilters);
       params.set("kpiKey", detailKpi);
       params.set("page", page.toString());
       params.set("perPage", CRM_DASHBOARD_DETAIL_PAGE_SIZE.toString());
@@ -160,7 +199,7 @@ export const useCrmDashboard = () => {
         `${apiUrl}/api/dashboard/crm/detalle?${params.toString()}`,
       );
     },
-    [detailKpi, filters],
+    [detailKpi, effectiveDetailFilters],
   );
 
   const fetchAlertDetailPage = useCallback(
@@ -298,11 +337,6 @@ export const useCrmDashboard = () => {
     initialDashboardRequestKeyRef.current = null;
     let cancelled = false;
 
-    // Fetch selector counts immediately (fast query, no logs)
-    fetchSelectors()
-      .then((data) => { if (!cancelled) setFastSelectorData(data); })
-      .catch(() => { /* non-critical, full bundle will populate selectors */ });
-
     setDashboardLoading(true);
     fetchDashboardBundle()
       .then(({ currentData, previousData, trendData }) => {
@@ -318,7 +352,7 @@ export const useCrmDashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [dashboardRequestKey, fetchDashboardBundle, fetchSelectors]);
+  }, [dashboardRequestKey, fetchDashboardBundle]);
 
   useEffect(() => {
     if (initialDetailRequestKeyRef.current === detailRequestKey) {
@@ -447,17 +481,11 @@ export const useCrmDashboard = () => {
     if (processingReturnMarkerRef.current === markerKey) return;
     processingReturnMarkerRef.current = markerKey;
 
-    if (!hasHydratedSnapshot) {
-      processingReturnMarkerRef.current = null;
-      clearDashboardReturnMarker(returnTo);
-      return;
-    }
-
     let cancelled = false;
 
     const syncDashboardFromReturn = async () => {
       try {
-        if (pendingReturnMarker.refreshAll || pendingReturnMarker.deleted) {
+        if (pendingReturnMarker.refreshAll || pendingReturnMarker.deleted || !hasHydratedSnapshot) {
           setDashboardLoading(true);
           setDetailLoading(true);
           setDetailPage(1);

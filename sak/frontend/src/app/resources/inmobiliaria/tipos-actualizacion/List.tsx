@@ -55,34 +55,42 @@ const filters = buildListFilters(
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ListActions = () => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
-    <CreateButton className={actionButtonClass} label="Crear" />
+    <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 type TipoActualizacionListProps = {
+  embedded?: boolean;
   perPage?: number;
+  rowClick?: "edit" | ((id: string | number) => string);
+  createTo?: string;
 };
 
 export const TipoActualizacionList = ({
+  embedded = false,
   perPage = 10,
+  rowClick = "edit",
+  createTo,
 }: TipoActualizacionListProps = {}) => (
   <List
     title="Tipos de actualizacion"
     filters={filters}
-    actions={<ListActions />}
+    actions={<ListActions createTo={createTo} />}
     debounce={300}
     perPage={perPage}
     filterDefaultValues={{ activa: true }}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={LIST_CONTAINER_STANDARD}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       mobileConfig={{
         primaryField: "nombre",
         secondaryFields: ["cantidad_meses", "activa"],

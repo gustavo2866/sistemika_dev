@@ -1,6 +1,7 @@
 "use client";
 
 import { Edit } from "@/components/edit";
+import type { SetupEditComponentProps } from "@/components/forms/form_order";
 import { useRecordContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
@@ -23,16 +24,27 @@ const ContratoEditTitle = () => {
   );
 };
 
-export const ContratoEdit = () => {
+export const ContratoEdit = ({
+  embedded = false,
+  id,
+  redirect,
+}: SetupEditComponentProps) => {
   const navigate = useNavigate();
   return (
     <Edit
+      id={id}
       title={<ContratoEditTitle />}
       actions={false}
-      redirect={false}
-      mutationOptions={{
-        onSuccess: () => navigate("/contratos", { replace: true }),
-      }}
+      redirect={redirect ?? false}
+      showBreadcrumb={!embedded}
+      showHeader={!embedded}
+      mutationOptions={
+        redirect
+          ? undefined
+          : {
+              onSuccess: () => navigate("/contratos", { replace: true }),
+            }
+      }
     >
       <ContratoForm />
     </Edit>

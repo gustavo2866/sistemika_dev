@@ -441,12 +441,18 @@ const CabeceraFields = () => {
     (lockedPropiedadId ? `Propiedad #${lockedPropiedadId}` : "Sin asignar");
 
   return (
-    <div className="grid gap-2 md:grid-cols-12">
+    <div
+      className={
+        isMantenimiento
+          ? "grid gap-2 md:items-end md:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_110px_minmax(0,1.45fr)_minmax(0,1.75fr)]"
+          : "grid gap-2 md:items-end md:grid-cols-[minmax(0,2.8fr)_minmax(0,2.1fr)_110px_minmax(0,1.6fr)]"
+      }
+    >
       <FormText
         source="titulo"
         label="Titulo"
         validate={required()}
-        widthClass="w-full md:col-span-3"
+        widthClass="w-full min-w-0 md:max-w-[190px]"
       />
       <FormReferenceAutocomplete
         referenceProps={{
@@ -458,7 +464,7 @@ const CabeceraFields = () => {
           label: "Contacto",
           validate: required(),
         }}
-        widthClass="w-full md:col-span-3"
+        widthClass="w-full min-w-0 md:max-w-[190px]"
       />
       <ReferenceInput
         source="tipo_operacion_id"
@@ -467,8 +473,8 @@ const CabeceraFields = () => {
         <FormSelectFijo
           optionText="nombre"
           label="Tipo operacion"
-          widthClass="w-full min-w-0 md:col-span-2"
-          fixedWidth="96px"
+          widthClass="w-full min-w-0"
+          fixedWidth="110px"
         />
       </ReferenceInput>
       <FormReferenceAutocomplete
@@ -478,11 +484,15 @@ const CabeceraFields = () => {
           label: "Responsable",
           validate: required(),
         }}
-        widthClass="w-full min-w-0 md:col-span-4"
+        widthClass="w-full min-w-0"
       />
       {isMantenimiento ? (
         lockedPropiedadId ? (
-          <FormValue label="Propiedad" widthClass="w-full md:col-span-4">
+          <FormValue
+            label="Propiedad"
+            widthClass="w-full min-w-0 md:max-w-[170px]"
+            valueClassName="justify-start text-left"
+          >
             {propiedadLabel}
           </FormValue>
         ) : (
@@ -496,7 +506,7 @@ const CabeceraFields = () => {
               label: "Propiedad",
               validate: validatePropiedad,
             }}
-            widthClass="w-full md:col-span-4"
+            widthClass="w-full min-w-0 md:max-w-[170px]"
           />
         )
       ) : null}
@@ -522,7 +532,11 @@ const CabeceraOpcionales = () => {
         <div className="grid gap-2 md:grid-cols-12">
           {!isMantenimiento ? (
             lockedPropiedadId ? (
-              <FormValue label="Propiedad" widthClass="w-full md:col-span-4">
+              <FormValue
+                label="Propiedad"
+                widthClass="w-full md:col-span-4 md:max-w-[190px]"
+                valueClassName="justify-start text-left"
+              >
                 {propiedadLabel}
               </FormValue>
             ) : (
@@ -536,7 +550,7 @@ const CabeceraOpcionales = () => {
                   label: "Propiedad",
                   validate: validatePropiedad,
                 }}
-                widthClass="w-full md:col-span-4"
+                widthClass="w-full md:col-span-4 md:max-w-[190px]"
               />
             )
           ) : null}

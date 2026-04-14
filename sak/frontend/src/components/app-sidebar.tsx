@@ -64,8 +64,9 @@ const CONSTRUCTORA_RESOURCES = [
 const COMPRAS_RESOURCES = ["po-dashboard", "po-orders-approval", "po-orders", "po-invoices", "proveedores"] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
+  "propiedades-dashboard",
   "propiedades",
-  "emprendimientos",
+  "propiedades-config",
   "inmobiliaria-setup",
 ] as const;
 const ADMIN_RESOURCES = [
@@ -112,6 +113,9 @@ const CRM_CATALOG_RESOURCES = [
 ] as const;
 const HIDDEN_RESOURCES = [
   "po-setup",
+  "contratos",
+  "tipos-contrato",
+  "emprendimientos",
   "crm/catalogos/respuestas",
   "crm/chat",
   "crm/celulares",
@@ -282,19 +286,40 @@ export function AppSidebar() {
                   isOpen={inmobiliariaOpen}
                   onToggle={() => setInmobiliariaOpen((open) => !open)}
                 >
-                  {inmobiliariaResources.map((name) => (
+                  {inmobiliariaResources.includes("propiedades-dashboard") ? (
                     <ResourceSubMenuItem
-                      key={name}
-                      name={name}
+                      key="propiedades-dashboard"
+                      name="propiedades-dashboard"
                       onClick={handleItemClick}
                     />
-                  ))}
+                  ) : null}
+                  {inmobiliariaResources.includes("propiedades") ? (
+                    <ResourceSubMenuItem
+                      key="propiedades"
+                      name="propiedades"
+                      onClick={handleItemClick}
+                    />
+                  ) : null}
                   <SidebarCustomMenuItem
-                    label="Calculadora Financiera"
+                    label="Calculadora"
                     to="/calculadora-financiera"
                     icon={Calculator}
                     onClick={handleItemClick}
                   />
+                  {inmobiliariaResources.includes("propiedades-config") ? (
+                    <ResourceSubMenuItem
+                      key="propiedades-config"
+                      name="propiedades-config"
+                      onClick={handleItemClick}
+                    />
+                  ) : null}
+                  {inmobiliariaResources.includes("inmobiliaria-setup") ? (
+                    <ResourceSubMenuItem
+                      key="inmobiliaria-setup"
+                      name="inmobiliaria-setup"
+                      onClick={handleItemClick}
+                    />
+                  ) : null}
                 </GroupMenuItem>
               ) : null}
 

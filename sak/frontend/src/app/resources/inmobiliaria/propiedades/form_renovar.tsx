@@ -7,6 +7,7 @@ import { CalendarPlus } from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Confirm } from "@/components/confirm";
 import { useRowActionDialog } from "@/components/forms/form_order";
+import { getPropiedadStatusLabel } from "./status_transitions";
 
 type TipoActualizacionData = {
   id: number;
@@ -43,7 +44,13 @@ const formatIsoDate = (value?: Date | null) => {
   return value.toISOString().slice(0, 10);
 };
 
-export const FormRenovar = ({ disabled }: { disabled?: boolean }) => {
+export const FormRenovar = ({
+  disabled,
+  refreshEventName,
+}: {
+  disabled?: boolean;
+  refreshEventName?: string;
+}) => {
   const record = useRecordContext<any>();
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -72,6 +79,19 @@ export const FormRenovar = ({ disabled }: { disabled?: boolean }) => {
   const tipoActualizacionLabel =
     tipoActualizacion?.nombre ??
     (tipoActualizacionId ? `#${tipoActualizacionId}` : "Sin tipo");
+  const tipoPropiedadLabel =
+    record?.tipo_propiedad?.nombre ??
+    (record?.tipo_propiedad_id ? `#${record.tipo_propiedad_id}` : "-");
+  const tipoOperacionLabel =
+    record?.tipo_operacion?.nombre ??
+    (record?.tipo_operacion_id ? `#${record.tipo_operacion_id}` : "-");
+  const estadoLabel =
+    record?.propiedad_status?.nombre ??
+    (record?.estado
+      ? String(record.estado)
+      : record?.propiedad_status_id
+        ? getPropiedadStatusLabel(record.propiedad_status_id)
+        : "-");
 
   const confirmContent = (
     <div className="space-y-2 text-sm text-muted-foreground">
@@ -83,15 +103,15 @@ export const FormRenovar = ({ disabled }: { disabled?: boolean }) => {
         </div>
         <div>
           <span className="font-semibold text-foreground">Tipo propiedad:</span>{" "}
-          {record?.tipo_propiedad?.nombre ?? "-"}
+          {tipoPropiedadLabel}
         </div>
         <div>
           <span className="font-semibold text-foreground">Tipo operacion:</span>{" "}
-          {record?.tipo_operacion?.nombre ?? "-"}
+          {tipoOperacionLabel}
         </div>
         <div>
           <span className="font-semibold text-foreground">Estado:</span>{" "}
-          {record?.propiedad_status?.nombre ?? "-"}
+          {estadoLabel}
         </div>
         <div>
           <span className="font-semibold text-foreground">Tipo actualizacion:</span>{" "}
@@ -129,6 +149,9 @@ export const FormRenovar = ({ disabled }: { disabled?: boolean }) => {
       });
       notify("Renovacion actualizada", { type: "info" });
       refresh();
+      if (refreshEventName && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(refreshEventName));
+      }
     } catch (error) {
       console.error(error);
       notify("No se pudo actualizar la renovacion", { type: "warning" });

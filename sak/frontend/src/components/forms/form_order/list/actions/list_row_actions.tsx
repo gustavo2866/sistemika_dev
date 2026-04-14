@@ -42,12 +42,14 @@ export const FormOrderListRowActions = ({
   extraMenuItems,
   showShow = true,
   showDelete = true,
+  refreshEventName,
 }: {
   contextSearch?: string;
   className?: string;
   extraMenuItems?: ReactNode;
   showShow?: boolean;
   showDelete?: boolean;
+  refreshEventName?: string;
 }) => {
   const record = useRecordContext();
   const dataProvider = useDataProvider();
@@ -60,10 +62,6 @@ export const FormOrderListRowActions = ({
   const [dialogConfig, setDialogConfig] = useState<RowActionDialogConfig | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
 
-  if (!record || !resource) {
-    return null;
-  }
-
   const statusKey = String((record as any)?.order_status?.nombre ?? "")
     .trim()
     .toLowerCase();
@@ -75,23 +73,27 @@ export const FormOrderListRowActions = ({
   };
 
   const buildPath = (type: "show") => {
+    if (!resource || !record?.id) return "";
     const base = createPath({ resource, type, id: record.id });
     return contextSearch ? `${base}${contextSearch}` : base;
   };
 
   const handleShow = (event: React.MouseEvent) => {
     stopRowClick(event);
-    if (busy) return;
+    if (busy || !resource || !record?.id) return;
     navigate(buildPath("show"));
   };
 
   const handleDelete = async () => {
-    if (!record?.id || busy) return;
+    if (!record?.id || busy || !resource) return;
     setBusy(true);
     try {
       await dataProvider.delete(resource, { id: record.id, previousData: record });
       notify("Registro eliminado", { type: "info" });
       refresh();
+      if (refreshEventName && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(refreshEventName));
+      }
     } catch (error) {
       console.error(error);
       notify("No se pudo eliminar", { type: "warning" });
@@ -124,6 +126,10 @@ export const FormOrderListRowActions = ({
       setDialogConfig(null);
     }
   }, [dialogConfig]);
+
+  if (!record || !resource) {
+    return null;
+  }
 
   return (
     <>

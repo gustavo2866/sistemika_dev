@@ -68,17 +68,24 @@ const listMobileConfig = {
 type CRMMotivoPerdidaListProps = {
   embedded?: boolean;
   rowClick?: any;
+  createTo?: string;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
-const CRMMotivoPerdidaListActions = ({ embedded = false }: { embedded?: boolean }) => (
+const CRMMotivoPerdidaListActions = ({
+  embedded: _embedded = false,
+  createTo,
+}: {
+  embedded?: boolean;
+  createTo?: string;
+}) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={listFilters}
       size="sm"
       buttonClassName={listActionButtonClass}
     />
-    <CreateButton className={listActionButtonClass} label="Crear" />
+    <CreateButton className={listActionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );
@@ -87,11 +94,14 @@ const CRMMotivoPerdidaListActions = ({ embedded = false }: { embedded?: boolean 
 export const CRMMotivoPerdidaList = ({
   embedded = false,
   rowClick = "edit",
+  createTo,
 }: CRMMotivoPerdidaListProps) => (
   <List
     title="CRM - Motivos de Perdida"
     filters={listFilters}
-    actions={<CRMMotivoPerdidaListActions embedded={embedded} />}
+    actions={
+      <CRMMotivoPerdidaListActions embedded={embedded} createTo={createTo} />
+    }
     debounce={300}
     perPage={25}
     pagination={<ListPaginator />}

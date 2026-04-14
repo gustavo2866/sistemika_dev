@@ -11,6 +11,7 @@ import { ChevronDown, ChevronUp, Home } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListColumn, ResponsiveDataTable } from "@/components/forms/form_order";
+import { PropiedadRowActions } from "@/app/resources/inmobiliaria/propiedades/row-actions";
 import { getPropiedadStatusBadgeClass } from "../../../propiedades/model";
 import {
   PROP_DASHBOARD_DETAIL_VIEWPORT_HEIGHT,
@@ -54,39 +55,39 @@ const DetailPropertyCard = ({
   showContratoColumn: boolean;
   valueColumnLabel: string;
 }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="w-full rounded-md border border-border/60 bg-card px-2.5 py-2 text-left transition-colors hover:bg-muted/40"
-  >
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold leading-tight text-foreground">
-          #{item.propiedad_id} {item.nombre}
+  <div className="w-full rounded-md border border-border/60 bg-card px-2.5 py-2 transition-colors hover:bg-muted/40">
+    <div className="flex items-start gap-2">
+      <button type="button" onClick={onClick} className="min-w-0 flex-1 text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-semibold leading-tight text-foreground">
+              #{item.propiedad_id} {item.nombre}
+            </div>
+            <div className="truncate text-[9px] leading-tight text-muted-foreground">
+              {item.propietario || "Sin propietario"}
+            </div>
+          </div>
+          <Badge className={`h-5 px-1.5 py-0 text-[8px] ${getPropiedadStatusBadgeClass(item.estado)}`}>
+            {item.estado || "Sin estado"}
+          </Badge>
         </div>
-        <div className="truncate text-[9px] leading-tight text-muted-foreground">
-          {item.propietario || "Sin propietario"}
-        </div>
-      </div>
-      <Badge className={`h-5 px-1.5 py-0 text-[8px] ${getPropiedadStatusBadgeClass(item.estado)}`}>
-        {item.estado || "Sin estado"}
-      </Badge>
-    </div>
     <div
-      className={`mt-2 grid gap-2 text-[9px] text-muted-foreground ${
-        showContratoColumn ? "grid-cols-2" : "grid-cols-3"
-      }`}
+      className="mt-2 grid grid-cols-2 gap-2 text-[9px] text-muted-foreground"
     >
       <span>Vacancia: {formatInteger(item.dias_vacancia)}</span>
-      <span>Inicio: {formatDateValue(item.vacancia_fecha)}</span>
       {showContratoColumn ? <span className="truncate">{getContratoLabel(item)}</span> : null}
       <span className="truncate text-foreground">
         {showContratoColumn
           ? formatCurrency(item.valor_alquiler ?? 0)
-          : `${valueColumnLabel}: ${formatCurrency(item.valor_alquiler ?? 0)}`}
-      </span>
+              : `${valueColumnLabel}: ${formatCurrency(item.valor_alquiler ?? 0)}`}
+          </span>
+        </div>
+      </button>
+      <div className="shrink-0" onClick={(event) => event.stopPropagation()}>
+        <PropiedadRowActions refreshEventName="propiedades-dashboard-refresh" />
+      </div>
     </div>
-  </button>
+  </div>
 );
 
 type DashboardListSectionProps = Pick<
@@ -102,15 +103,22 @@ type DashboardListSectionProps = Pick<
 };
 
 type DashboardDetailTableRecord = {
-  id: string;
+  id: number;
+  key: string;
   propertyId: number;
   nombre: string;
   propietario: string;
   estado: string;
   diasVacancia: number;
-  vacanciaFecha: string;
   contratoFecha: string;
   valorAlquiler: number;
+  tipo_propiedad_id?: number | null;
+  tipo_actualizacion_id?: number | null;
+  tipo_operacion_id?: number | null;
+  propiedad_status_id?: number | null;
+  estado_fecha?: string | null;
+  fecha_inicio_contrato?: string | null;
+  fecha_renovacion?: string | null;
   dashboardItem: DashboardDetailItem;
 };
 
@@ -176,15 +184,6 @@ const DashboardDetailDiasCell = () => {
   );
 };
 
-const DashboardDetailFechaCell = () => {
-  const dashboardItem = useDashboardDetailRecord();
-  return (
-    <span className="text-[8px] leading-tight text-muted-foreground">
-      {formatDateValue(dashboardItem?.item.vacancia_fecha)}
-    </span>
-  );
-};
-
 const DashboardDetailContratoCell = () => {
   const dashboardItem = useDashboardDetailRecord();
   return (
@@ -203,6 +202,10 @@ const DashboardDetailAlquilerCell = () => {
   );
 };
 
+const DashboardDetailActionsCell = () => (
+  <PropiedadRowActions refreshEventName="propiedades-dashboard-refresh" />
+);
+
 const DashboardDetailTable = ({
   records,
   showContratoColumn,
@@ -214,14 +217,15 @@ const DashboardDetailTable = ({
 }) => {
   const listContext = useList<DashboardDetailTableRecord>({
     data: records,
-    resource: "propiedades-dashboard-detail",
+    resource: "propiedades",
     perPage: records.length || 1,
   });
 
   return (
-    <ResourceContextProvider value="propiedades-dashboard-detail">
+    <ResourceContextProvider value="propiedades">
       <ListContextProvider value={listContext}>
         <ResponsiveDataTable
+          storeKey="propiedades-dashboard-detail.datatable"
           rowClick={(_id: string | number, _resource: string, record: DashboardDetailTableRecord) => {
             record.dashboardItem.onClick();
             return false;
@@ -258,9 +262,6 @@ const DashboardDetailTable = ({
           <ListColumn source="diasVacancia" label="Dias" className="w-[34px]">
             <DashboardDetailDiasCell />
           </ListColumn>
-          <ListColumn source="vacanciaFecha" label="Inicio" className="w-[54px]">
-            <DashboardDetailFechaCell />
-          </ListColumn>
           {showContratoColumn ? (
             <ListColumn source="contratoFecha" label="Contrato" className="w-[62px]">
               <DashboardDetailContratoCell />
@@ -268,6 +269,9 @@ const DashboardDetailTable = ({
           ) : null}
           <ListColumn source="valorAlquiler" label={valueColumnLabel} className="w-[48px]">
             <DashboardDetailAlquilerCell />
+          </ListColumn>
+          <ListColumn source="key" label="Acciones" disableSort className="w-[44px]">
+            <DashboardDetailActionsCell />
           </ListColumn>
         </ResponsiveDataTable>
       </ListContextProvider>
@@ -292,15 +296,22 @@ export const DashboardListSection = ({
   const loadingMoreRef = useRef(false);
   const isInitialDetailLoading = detailLoading && detailItems.length === 0;
   const records = detailItems.map((dashboardItem) => ({
-    id: dashboardItem.key,
+    id: Number(dashboardItem.item.propiedad_id ?? 0),
+    key: dashboardItem.key,
     propertyId: Number(dashboardItem.item.propiedad_id ?? 0),
     nombre: dashboardItem.item.nombre,
     propietario: dashboardItem.item.propietario || "",
     estado: String(dashboardItem.item.estado ?? ""),
     diasVacancia: Number(dashboardItem.item.dias_vacancia ?? 0),
-    vacanciaFecha: String(dashboardItem.item.vacancia_fecha ?? ""),
     contratoFecha: getContratoLabel(dashboardItem.item),
     valorAlquiler: Number(dashboardItem.item.valor_alquiler ?? 0),
+    tipo_propiedad_id: dashboardItem.item.tipo_propiedad_id ?? null,
+    tipo_actualizacion_id: dashboardItem.item.tipo_actualizacion_id ?? null,
+    tipo_operacion_id: dashboardItem.item.tipo_operacion_id ?? null,
+    propiedad_status_id: dashboardItem.item.propiedad_status_id ?? null,
+    estado_fecha: dashboardItem.item.estado_fecha ?? null,
+    fecha_inicio_contrato: dashboardItem.item.fecha_inicio_contrato ?? null,
+    fecha_renovacion: dashboardItem.item.fecha_renovacion ?? null,
     dashboardItem,
   }));
 

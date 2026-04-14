@@ -1,10 +1,26 @@
-﻿"use client";
+"use client";
 
-import { Edit } from "@/components/edit";
+import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
 import { MonedaForm } from "./form";
 
-export const MonedaEdit = () => (
-  <Edit title="Editar Moneda">
+type MonedaEditProps = {
+  embedded?: boolean;
+  id?: BaseEditProps["id"];
+  redirect?: BaseEditProps["redirect"];
+};
+
+export const MonedaEdit = ({
+  embedded = false,
+  id,
+  redirect,
+}: MonedaEditProps) => (
+  <Edit
+    id={id}
+    redirect={redirect ?? (embedded ? false : "list")}
+    title="Editar Moneda"
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
+  >
     <MonedaForm />
   </Edit>
 );

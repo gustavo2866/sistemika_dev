@@ -104,6 +104,21 @@ export default function DashboardCrmList() {
     });
   };
 
+  const createOpportunityParams = new URLSearchParams();
+  createOpportunityParams.set("returnTo", returnTo);
+  if (filters.tipoOperacionId && filters.tipoOperacionId !== "todos") {
+    createOpportunityParams.set("tipo_operacion_id", filters.tipoOperacionId);
+  }
+  const createOpportunityPath = `/crm/oportunidades/create?${createOpportunityParams.toString()}`;
+
+  const saveDashboardContext = () => {
+    saveDashboardReturnMarker(returnTo, {
+      savedAt: Date.now(),
+      filters,
+      periodType,
+    });
+  };
+
   const mainPanelModel = useDashboardMainPanel({
     selectorData,
     detailKpi,
@@ -117,15 +132,15 @@ export default function DashboardCrmList() {
     onSelectStatusCard: selectDetailKpi,
     onOpenOpportunity: handleOpenOpportunity,
     onNavigate: (path) => {
-      const createPath = `/crm/oportunidades/create?returnTo=${encodeURIComponent(returnTo)}`;
-      if (path === createPath) {
-        saveDashboardReturnMarker(returnTo, {
-          savedAt: Date.now(),
-        });
+      const isCrmDestination = path.startsWith("/crm/");
+
+      if (path === createOpportunityPath || isCrmDestination) {
+        saveDashboardContext();
       }
-      navigate(path);
+
+      navigate(path, isCrmDestination ? { state: { returnTo } } : undefined);
     },
-    createOpportunityPath: `/crm/oportunidades/create?returnTo=${encodeURIComponent(returnTo)}`,
+    createOpportunityPath,
   });
 
   const kpiToggleLabel = showKpis ? "Ocultar KPIs" : "Mostrar KPIs";

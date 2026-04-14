@@ -68,17 +68,24 @@ const listMobileConfig = {
 type CRMCondicionPagoListProps = {
   embedded?: boolean;
   rowClick?: any;
+  createTo?: string;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
-const CRMCondicionPagoListActions = ({ embedded = false }: { embedded?: boolean }) => (
+const CRMCondicionPagoListActions = ({
+  embedded: _embedded = false,
+  createTo,
+}: {
+  embedded?: boolean;
+  createTo?: string;
+}) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={listFilters}
       size="sm"
       buttonClassName={listActionButtonClass}
     />
-    <CreateButton className={listActionButtonClass} label="Crear" />
+    <CreateButton className={listActionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );
@@ -87,11 +94,14 @@ const CRMCondicionPagoListActions = ({ embedded = false }: { embedded?: boolean 
 export const CRMCondicionPagoList = ({
   embedded = false,
   rowClick = "edit",
+  createTo,
 }: CRMCondicionPagoListProps) => (
   <List
     title="CRM - Condiciones de Pago"
     filters={listFilters}
-    actions={<CRMCondicionPagoListActions embedded={embedded} />}
+    actions={
+      <CRMCondicionPagoListActions embedded={embedded} createTo={createTo} />
+    }
     debounce={300}
     perPage={25}
     pagination={<ListPaginator />}

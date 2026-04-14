@@ -64,10 +64,10 @@ const filters = buildListFilters(
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ListActions = () => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
-    <CreateButton className={actionButtonClass} label="Crear" />
+    <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
@@ -101,19 +101,34 @@ const EstadoCell = () => {
   const displayEstado = isContratoVencido(record) ? "vencido" : (record.estado ?? "");
   return <ListEstado source="estado" statusClasses={CONTRATO_ESTADO_BADGES} record={{ ...record, estado: displayEstado }} />;
 };
-export const ContratoList = () => (
+
+type ContratoListProps = {
+  embedded?: boolean;
+  perPage?: number;
+  rowClick?: "edit" | ((id: string | number) => string);
+  createTo?: string;
+};
+
+export const ContratoList = ({
+  embedded = false,
+  perPage = 10,
+  rowClick = "edit",
+  createTo,
+}: ContratoListProps = {}) => (
   <List
     title="Contratos"
     filters={filters}
-    actions={<ListActions />}
+    actions={<ListActions createTo={createTo} />}
     debounce={300}
-    perPage={10}
+    perPage={perPage}
     containerClassName={LIST_CONTAINER_WIDE}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       mobileConfig={{
         primaryField: "id",
         secondaryFields: ["estado", "inquilino_nombre"],

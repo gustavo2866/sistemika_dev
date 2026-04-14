@@ -41,37 +41,45 @@ const filters = buildListFilters(
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ListActions = () => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={filters}
       size="sm"
       buttonClassName={actionButtonClass}
     />
-    <CreateButton className={actionButtonClass} label="Crear" />
+    <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
 
 type PropiedadesStatusListProps = {
+  embedded?: boolean;
   perPage?: number;
+  rowClick?: "edit" | ((id: string | number) => string);
+  createTo?: string;
 };
 
 export const PropiedadesStatusList = ({
+  embedded = false,
   perPage = 25,
+  rowClick = "edit",
+  createTo,
 }: PropiedadesStatusListProps = {}) => (
   <List
     title="Estados de Propiedad"
     filters={filters}
-    actions={<ListActions />}
+    actions={<ListActions createTo={createTo} />}
     debounce={300}
     perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "orden", order: "ASC" }}
     containerClassName={LIST_CONTAINER_SM}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       mobileConfig={{
         primaryField: "nombre",
         secondaryFields: ["orden", "descripcion", "activo", "es_inicial", "es_final"],

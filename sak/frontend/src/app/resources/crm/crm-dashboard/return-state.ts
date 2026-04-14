@@ -1,5 +1,7 @@
 "use client";
 
+import type { CrmDashboardFilters, PeriodType } from "./model";
+
 const DASHBOARD_RETURN_MARKER_PREFIX = "crm-dashboard:return:";
 
 export const DASHBOARD_RETURN_TTL_MS = 5 * 60 * 1000;
@@ -9,6 +11,8 @@ export type CrmDashboardReturnMarker = {
   oportunidadId?: string | number | null;
   refreshAll?: boolean;
   deleted?: boolean;
+  filters?: CrmDashboardFilters;
+  periodType?: PeriodType;
 };
 
 const getDashboardReturnMarkerStorageKey = (returnTo: string) =>

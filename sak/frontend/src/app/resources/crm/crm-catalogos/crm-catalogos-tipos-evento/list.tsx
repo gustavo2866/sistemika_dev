@@ -68,17 +68,24 @@ const listMobileConfig = {
 type CRMTipoEventoListProps = {
   embedded?: boolean;
   rowClick?: any;
+  createTo?: string;
 };
 
 // Renderiza las acciones principales del encabezado del listado.
-const CRMTipoEventoListActions = ({ embedded = false }: { embedded?: boolean }) => (
+const CRMTipoEventoListActions = ({
+  embedded: _embedded = false,
+  createTo,
+}: {
+  embedded?: boolean;
+  createTo?: string;
+}) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={listFilters}
       size="sm"
       buttonClassName={listActionButtonClass}
     />
-    <CreateButton className={listActionButtonClass} label="Crear" />
+    <CreateButton className={listActionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );
@@ -87,11 +94,12 @@ const CRMTipoEventoListActions = ({ embedded = false }: { embedded?: boolean }) 
 export const CRMTipoEventoList = ({
   embedded = false,
   rowClick = "edit",
+  createTo,
 }: CRMTipoEventoListProps) => (
   <List
     title="CRM - Tipos de Evento"
     filters={listFilters}
-    actions={<CRMTipoEventoListActions embedded={embedded} />}
+    actions={<CRMTipoEventoListActions embedded={embedded} createTo={createTo} />}
     debounce={300}
     perPage={25}
     pagination={<ListPaginator />}

@@ -85,16 +85,16 @@ export const usePropDashboard = () => {
   );
   const defaultTipoOperacionAppliedRef = useRef(false);
   const initialDashboardRequestKey = shouldSkipInitialFetch
-    ? getDashboardRequestKey(initialPeriodType, initialFilters)
+    ? `0:${getDashboardRequestKey(initialPeriodType, initialFilters)}`
     : null;
   const initialDetailRequestKey = shouldSkipInitialFetch
-    ? getDetailRequestKey({
+    ? `0:${getDetailRequestKey({
         filters: initialFilters,
         activeSelectorKey: initialActiveSelectorKey,
         activeSubBucket: initialActiveSubBucket,
         detailPage: initialSnapshot?.detailPage ?? 1,
         activeAlertKey: initialActiveAlertKey,
-      })
+      })}`
     : null;
   const processingReturnMarkerRef = useRef<string | null>(null);
   const initialDashboardRequestKeyRef = useRef(initialDashboardRequestKey);
@@ -105,7 +105,7 @@ export const usePropDashboard = () => {
   const [dashboardData, setDashboardData] = useState<PropDashboardCurrentData | null>(
     initialSnapshot?.dashboardData ?? null,
   );
-  const [previousPeriodData, setPreviousPeriodData] = useState<PropDashboardResponse | null>(
+  const [previousPeriodData] = useState<PropDashboardResponse | null>(
     initialSnapshot?.previousPeriodData ?? null,
   );
   const [dashboardLoading, setDashboardLoading] = useState(false);
@@ -136,20 +136,21 @@ export const usePropDashboard = () => {
   const [emprendimientoOptions, setEmprendimientoOptions] = useState<SelectOption[]>([
     { value: "todos", label: "Todos" },
   ]);
+  const [refreshSeq, setRefreshSeq] = useState(0);
   const dashboardRequestKey = useMemo(
-    () => getDashboardRequestKey(periodType, filters),
-    [filters, periodType],
+    () => `${refreshSeq}:${getDashboardRequestKey(periodType, filters)}`,
+    [filters, periodType, refreshSeq],
   );
   const detailRequestKey = useMemo(
     () =>
-      getDetailRequestKey({
+      `${refreshSeq}:${getDetailRequestKey({
         filters,
         activeSelectorKey,
         activeSubBucket,
         detailPage,
         activeAlertKey: selectedAlertKey,
-      }),
-    [activeSelectorKey, activeSubBucket, detailPage, filters, selectedAlertKey],
+      })}`,
+    [activeSelectorKey, activeSubBucket, detailPage, filters, refreshSeq, selectedAlertKey],
   );
 
   const fetchSelectors = useCallback(async () => {
@@ -344,6 +345,20 @@ export const usePropDashboard = () => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(SHOW_KPIS_STORAGE_KEY, String(showKpis));
   }, [showKpis]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleDashboardRefresh = () => {
+      setDetailPage(1);
+      setRefreshSeq((current) => current + 1);
+    };
+
+    window.addEventListener("propiedades-dashboard-refresh", handleDashboardRefresh);
+    return () => {
+      window.removeEventListener("propiedades-dashboard-refresh", handleDashboardRefresh);
+    };
+  }, []);
 
   useEffect(() => {
     saveDashboardSnapshot(returnTo, {

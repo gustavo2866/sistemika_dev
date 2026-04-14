@@ -462,10 +462,13 @@ def test_meta_webhook_service_processes_and_sends_when_webhook_processing_is_aut
     )
 
     result = asyncio.run(service._handle_inbound_message(msg, celular))
+    db_session.refresh(mensaje)
 
     assert calls["count"] == 1
     assert calls["trigger"] == "webhook"
     assert result["agent_result"]["delivery"]["sent"] is True
+    assert mensaje.estado == "nuevo"
+    assert mensaje.metadata_json["agent_v2"]["delivery_processed_at"]
 
 
 def test_chat_ai_v2_persists_active_process_and_process_state(client, db_session, monkeypatch, tmp_path):

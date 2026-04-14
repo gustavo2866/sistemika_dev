@@ -36,6 +36,11 @@ import {
   CRMTipoOperacionEdit,
   CRMTipoOperacionList,
 } from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-operacion";
+import {
+  MonedaCreate,
+  MonedaEdit,
+  MonedaList,
+} from "@/app/resources/configuracion/monedas";
 import { CRMChatAgentSettingsPanel } from "./CRMChatAgentSettingsPanel";
 
 // Define las opciones disponibles del workspace de configuracion CRM.
@@ -112,8 +117,11 @@ export const CRM_SETUP_ITEMS: SetupItem[] = [
   {
     key: "monedas",
     label: "Monedas",
-    description: "Parametro general administrado fuera del modulo CRM.",
-    externalResource: "monedas",
+    description: "Monedas disponibles para cotizaciones y operaciones.",
+    resource: "monedas",
+    listComponent: MonedaList,
+    createComponent: MonedaCreate,
+    editComponent: MonedaEdit,
   },
 ];
 

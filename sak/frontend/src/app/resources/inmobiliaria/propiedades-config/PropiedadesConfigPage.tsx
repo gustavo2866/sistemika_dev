@@ -1,22 +1,29 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { ResourceContextProvider, useCreatePath } from "ra-core";
 
-import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import {
   SetupContentHeader,
   SetupContentPanel,
   SetupEmptyState,
   SetupLayout,
-  SetupMobileNav,
-  SetupSidebar,
-  SetupViewSwitcher,
+  SetupSectionNav,
+  type SetupCreateComponentProps,
+  type SetupEditComponentProps,
+  type SetupListComponentProps,
   type SetupItem,
   type SetupView,
 } from "@/components/forms/form_order";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 import {
   getPropiedadesConfigItem,
@@ -51,13 +58,6 @@ const getConfigRouteState = (pathname: string) => {
   return { selectedKey, currentView, recordId };
 };
 
-const PropiedadesConfigHome = () => (
-  <SetupEmptyState
-    title="Admin"
-    description="Selecciona una opcion del menu para administrar entidades vinculadas a propiedades."
-  />
-);
-
 const PropiedadesConfigExternalResource = ({
   label,
   description,
@@ -81,7 +81,45 @@ const PropiedadesConfigExternalResource = ({
   />
 );
 
-const PropiedadesConfigEmbeddedContent = ({
+const ConfigOptionsMenu = ({
+  items,
+  currentKey,
+}: {
+  items: SetupItem[];
+  currentKey?: string | null;
+}) => {
+  const navigate = useNavigate();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          Opciones
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        {items.map((item) => {
+          const isActive = item.key === currentKey;
+
+          return (
+            <DropdownMenuItem
+              key={item.key}
+              className={cn(
+                "py-2 text-sm",
+                isActive && "bg-accent font-medium text-accent-foreground",
+              )}
+              onSelect={() => navigate(getConfigItemPath(item))}
+            >
+              {item.label}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
+const PropiedadesConfigContent = ({
   item,
   view,
   recordId,
@@ -93,43 +131,39 @@ const PropiedadesConfigEmbeddedContent = ({
   if (!item.resource) return null;
 
   const listPath = getConfigViewPath(item, "list");
-
-  if (view === "list") {
-    const ListComponent = item.listComponent as ComponentType<{
-      embedded?: boolean;
-      rowClick?: any;
-      perPage?: number;
-    }> | undefined;
-    if (!ListComponent) return null;
-
-    return (
-      <ResourceContextProvider value={item.resource}>
-        <ListComponent
-          embedded
-          perPage={5}
-          rowClick={(id: string | number) => getConfigViewPath(item, "edit", id)}
-        />
-      </ResourceContextProvider>
-    );
-  }
+  const createPath = getConfigViewPath(item, "create");
+  const ListComponent = item.listComponent as ComponentType<SetupListComponentProps> | undefined;
+  const CreateComponent = item.createComponent as ComponentType<SetupCreateComponentProps> | undefined;
+  const EditComponent = item.editComponent as ComponentType<SetupEditComponentProps> | undefined;
 
   if (view === "create") {
-    const CreateComponent = item.createComponent;
     if (!CreateComponent) return null;
 
     return (
       <ResourceContextProvider value={item.resource}>
-        <CreateComponent embedded redirect={listPath} />
+        <CreateComponent redirect={listPath} />
       </ResourceContextProvider>
     );
   }
 
-  const EditComponent = item.editComponent;
-  if (!EditComponent || !recordId) return null;
+  if (view === "edit") {
+    if (!EditComponent || !recordId) return null;
+
+    return (
+      <ResourceContextProvider value={item.resource}>
+        <EditComponent id={recordId} redirect={listPath} />
+      </ResourceContextProvider>
+    );
+  }
+
+  if (!ListComponent) return null;
 
   return (
     <ResourceContextProvider value={item.resource}>
-      <EditComponent embedded id={recordId} redirect={listPath} />
+      <ListComponent
+        rowClick={(id: string | number) => getConfigViewPath(item, "edit", id)}
+        createTo={createPath}
+      />
     </ResourceContextProvider>
   );
 };
@@ -139,94 +173,69 @@ export const PropiedadesConfigPage = () => {
   const createPath = useCreatePath();
   const { selectedKey, currentView, recordId } = getConfigRouteState(location.pathname);
   const selectedItem = getPropiedadesConfigItem(selectedKey);
+  const defaultItem = PROPIEDADES_CONFIG_ITEMS[0] ?? null;
 
-  const externalResourcePath = selectedItem?.externalResource
+  if (!defaultItem) {
+    return (
+      <div className="max-w-5xl px-2 py-3 sm:p-6">
+        <SetupEmptyState
+          title="Admin"
+          description="No hay opciones configuradas para este espacio."
+        />
+      </div>
+    );
+  }
+
+  if (!selectedItem) {
+    return <Navigate to={getConfigItemPath(defaultItem)} replace />;
+  }
+
+  const externalResourcePath = selectedItem.externalResource
     ? createPath({
         resource: selectedItem.externalResource,
         type: "list",
       })
     : null;
 
-  const breadcrumbItems = selectedItem
-    ? [
-        { label: "Inmobiliaria" },
-        { label: "Admin", to: configBasePath },
-        {
-          label: selectedItem.label,
-          to: getConfigItemPath(selectedItem),
-          current: currentView === "list",
-        },
-        ...(currentView === "create"
-          ? [{ label: "Crear", current: true }]
-          : currentView === "edit"
-            ? [{ label: `Editar${recordId ? ` #${recordId}` : ""}`, current: true }]
-            : []),
-      ]
-    : [
-        { label: "Inmobiliaria" },
-        { label: "Admin", current: true },
-      ];
-
   return (
-    <div className="max-w-5xl space-y-4 p-4 sm:p-6">
-      <AppBreadcrumb items={breadcrumbItems} />
-
+    <div className="max-w-5xl px-2 py-3 sm:p-6">
       <SetupLayout
-        sidebar={
-          <SetupSidebar
-            items={PROPIEDADES_CONFIG_ITEMS}
-            currentKey={selectedItem?.key ?? null}
-            getItemHref={getConfigItemPath}
-            title="Admin"
-            description="Recursos operativos vinculados a propiedades."
-            showItemDescriptions={false}
-          />
-        }
-        mobileNav={
-          <SetupMobileNav
-            title="Admin"
-            description="Selecciona el recurso que queres administrar."
-          >
-            <SetupSidebar
-              items={PROPIEDADES_CONFIG_ITEMS}
-              currentKey={selectedItem?.key ?? null}
-              getItemHref={getConfigItemPath}
-              title="Admin"
-              description="Selecciona el item a administrar."
-            />
-          </SetupMobileNav>
-        }
         header={
           <SetupContentHeader
-            title={selectedItem?.label ?? "Admin"}
-            description={
-              selectedItem?.description ??
-              "Accede a propietarios, emprendimientos y auditoria de estados desde un unico lugar."
-            }
+            eyebrowLabel="Inmobiliaria / Admin"
+            title={false}
+            actionsPlacement="inline"
+            contentClassName="px-2.5 py-2.5 sm:px-4 sm:py-3"
+            actionsClassName="w-full px-2.5 pb-3 sm:px-4"
+            eyebrowClassName="text-[9px] tracking-[0.16em]"
             actions={
-              selectedItem?.resource ? (
-                <SetupViewSwitcher
-                  currentView={currentView}
-                  listTo={getConfigViewPath(selectedItem, "list")}
-                  createTo={getConfigViewPath(selectedItem, "create")}
-                  canCreate={Boolean(selectedItem.createComponent)}
+              <>
+                <div className="md:hidden">
+                  <ConfigOptionsMenu
+                    items={PROPIEDADES_CONFIG_ITEMS}
+                    currentKey={selectedItem.key}
+                  />
+                </div>
+                <SetupSectionNav
+                  className="hidden md:block"
+                  items={PROPIEDADES_CONFIG_ITEMS}
+                  currentKey={selectedItem.key}
+                  getItemHref={getConfigItemPath}
                 />
-              ) : undefined
+              </>
             }
           />
         }
         content={
-          <SetupContentPanel>
-            {!selectedItem ? (
-              <PropiedadesConfigHome />
-            ) : selectedItem.externalResource && externalResourcePath ? (
+          <SetupContentPanel className="px-2.5 py-4 sm:px-4 sm:py-5">
+            {selectedItem.externalResource && externalResourcePath ? (
               <PropiedadesConfigExternalResource
                 label={selectedItem.label}
                 description={selectedItem.description}
                 to={externalResourcePath}
               />
             ) : (
-              <PropiedadesConfigEmbeddedContent
+              <PropiedadesConfigContent
                 item={selectedItem}
                 view={currentView}
                 recordId={recordId}

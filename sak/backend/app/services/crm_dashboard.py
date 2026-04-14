@@ -710,6 +710,28 @@ def fetch_selector_summary_fast(
             result[bucket]["count"] = int(cnt or 0)
             result[bucket]["amount"] = float(amt or 0)
 
+    # Prospect siempre debe reflejar el universo completo del período/filtros
+    # base, sin depender del filtro por tipo de operación.
+    prospect_query = (
+        select(
+            func.count(CRMOportunidad.id).label("cnt"),
+            func.coalesce(func.sum(CRMOportunidad.monto), 0).label("amt"),
+        )
+        .where(CRMOportunidad.deleted_at.is_(None))
+        .where(CRMOportunidad.estado == EstadoOportunidad.PROSPECT.value)
+    )
+    prospect_query = _apply_oportunidad_filters(
+        prospect_query,
+        tipo_operacion_ids=None,
+        tipo_propiedad=tipo_propiedad,
+        responsable_ids=responsable_ids,
+        propietario=propietario,
+        emprendimiento_ids=emprendimiento_ids,
+    )
+    prospect_cnt, prospect_amt = session.exec(prospect_query).one()
+    result["prospect"]["count"] = int(prospect_cnt or 0)
+    result["prospect"]["amount"] = float(prospect_amt or 0)
+
     return result
 
 

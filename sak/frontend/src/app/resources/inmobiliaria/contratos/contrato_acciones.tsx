@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, CheckCircle, RotateCcw, XCircle } from "lucide-react";
+import { Ban, CheckCircle, FileDown, RotateCcw, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ import {
 import {
   useContratoActivar,
   useContratoFinalizar,
+  useContratoGenerarPdf,
   useContratoRenovar,
   useContratoRescindir,
 } from "./form_hooks";
@@ -53,6 +54,7 @@ export type ContratoAccionesState = {
   handleFinalizar: () => Promise<void>;
   handleRenovar: () => Promise<void>;
   handleRescindir: () => Promise<void>;
+  handleGenerarPdf: () => Promise<void>;
   loading: boolean;
 };
 
@@ -67,6 +69,7 @@ export const useContratoAccionesState = (
   const { finalizar, loading: lFinalizar } = useContratoFinalizar();
   const { renovar, loading: lRenovar } = useContratoRenovar();
   const { rescindir, loading: lRescindir } = useContratoRescindir();
+  const { generarPdf } = useContratoGenerarPdf();
 
   const loading = lActivar || lFinalizar || lRenovar || lRescindir;
 
@@ -101,6 +104,11 @@ export const useContratoAccionesState = (
     }
   };
 
+  const handleGenerarPdf = async () => {
+    if (!record?.id) return;
+    await generarPdf(record.id);
+  };
+
   return {
     record: record ?? null,
     isVencido: isContratoVencido(record ?? {}),
@@ -118,6 +126,7 @@ export const useContratoAccionesState = (
     handleFinalizar,
     handleRenovar,
     handleRescindir,
+    handleGenerarPdf,
     loading,
   };
 };
@@ -131,7 +140,7 @@ export const ContratoAccionesMenuItems = ({
 }: {
   acciones: ContratoAccionesState;
 }) => {
-  const { canActivar, canFinalizar, canRenovar, canRescindir, isVencido, setAccionActiva, record } =
+  const { canActivar, canFinalizar, canRenovar, canRescindir, isVencido, setAccionActiva, record, handleGenerarPdf } =
     acciones;
 
   if (!record?.id) return null;
@@ -139,6 +148,15 @@ export const ContratoAccionesMenuItems = ({
 
   return (
     <>
+      <DropdownMenuItem
+        className="gap-2 text-xs"
+        onSelect={() => handleGenerarPdf()}
+        data-row-click="ignore"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <FileDown className="h-3.5 w-3.5" />
+        Generar PDF
+      </DropdownMenuItem>
       {canActivar && (
         <DropdownMenuItem
           className="gap-2 text-xs"
