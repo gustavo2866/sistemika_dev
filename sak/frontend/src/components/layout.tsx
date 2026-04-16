@@ -1,4 +1,4 @@
-import { Suspense, useState, type ErrorInfo } from "react";
+import { Suspense, useState, type CSSProperties, type ErrorInfo } from "react";
 import { cn } from "@/lib/utils";
 import { CoreLayoutProps } from "ra-core";
 import { ErrorBoundary } from "react-error-boundary";
@@ -18,7 +18,14 @@ export const Layout = (props: CoreLayoutProps) => {
     setErrorInfo(info);
   };
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "clamp(12.5rem, 10.5rem + 3vw, 16rem)",
+          "--sidebar-width-icon": "clamp(2.75rem, 2.5rem + 0.35vw, 3rem)",
+        } as CSSProperties
+      }
+    >
       <AppSidebar />
       <main
         className={cn(

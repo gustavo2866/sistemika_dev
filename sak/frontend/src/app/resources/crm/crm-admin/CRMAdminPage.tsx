@@ -1,21 +1,29 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { useLocation } from "react-router";
-import { ResourceContextProvider } from "ra-core";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
+import { ResourceContextProvider, useCreatePath } from "ra-core";
 
-import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import {
   SetupContentHeader,
   SetupContentPanel,
   SetupEmptyState,
   SetupLayout,
-  SetupMobileNav,
-  SetupSidebar,
-  SetupViewSwitcher,
+  SetupSectionNav,
+  type SetupCreateComponentProps,
+  type SetupEditComponentProps,
+  type SetupListComponentProps,
   type SetupItem,
   type SetupView,
 } from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 import { CRM_ADMIN_ITEMS, getCRMAdminItem } from "./crmAdminRegistry";
 
@@ -47,14 +55,68 @@ const getAdminRouteState = (pathname: string) => {
   return { selectedKey, currentView, recordId };
 };
 
-const CRMAdminHome = () => (
+const CRMAdminExternalResource = ({
+  label,
+  description,
+  to,
+}: {
+  label: string;
+  description?: string;
+  to: string;
+}) => (
   <SetupEmptyState
-    title="Administracion CRM"
-    description="Selecciona una opcion del menu para administrar catalogos operativos del modulo."
+    title={label}
+    description={
+      description ??
+      "Este parametro se administra fuera de este espacio admin, pero se mantiene accesible desde aqui."
+    }
+    action={
+      <Button asChild variant="secondary" size="sm">
+        <Link to={to}>Abrir modulo</Link>
+      </Button>
+    }
   />
 );
 
-const CRMAdminEmbeddedContent = ({
+const AdminOptionsMenu = ({
+  items,
+  currentKey,
+}: {
+  items: SetupItem[];
+  currentKey?: string | null;
+}) => {
+  const navigate = useNavigate();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          Opciones
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        {items.map((item) => {
+          const isActive = item.key === currentKey;
+
+          return (
+            <DropdownMenuItem
+              key={item.key}
+              className={cn(
+                "py-2 text-sm",
+                isActive && "bg-accent font-medium text-accent-foreground",
+              )}
+              onSelect={() => navigate(getAdminItemPath(item))}
+            >
+              {item.label}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
+const CRMAdminContent = ({
   item,
   view,
   recordId,
@@ -66,132 +128,111 @@ const CRMAdminEmbeddedContent = ({
   if (!item.resource) return null;
 
   const listPath = getAdminViewPath(item, "list");
-
-  if (view === "list") {
-    const ListComponent = item.listComponent as
-      | ComponentType<{
-          embedded?: boolean;
-          rowClick?: any;
-          perPage?: number;
-        }>
-      | undefined;
-    if (!ListComponent) return null;
-
-    return (
-      <ResourceContextProvider value={item.resource}>
-        <ListComponent
-          embedded
-          perPage={5}
-          rowClick={(id: string | number) => getAdminViewPath(item, "edit", id)}
-        />
-      </ResourceContextProvider>
-    );
-  }
+  const createPath = getAdminViewPath(item, "create");
+  const ListComponent = item.listComponent as ComponentType<SetupListComponentProps> | undefined;
+  const CreateComponent = item.createComponent as ComponentType<SetupCreateComponentProps> | undefined;
+  const EditComponent = item.editComponent as ComponentType<SetupEditComponentProps> | undefined;
 
   if (view === "create") {
-    const CreateComponent = item.createComponent as
-      | ComponentType<{ embedded?: boolean; redirect?: string }>
-      | undefined;
     if (!CreateComponent) return null;
 
     return (
       <ResourceContextProvider value={item.resource}>
-        <CreateComponent embedded redirect={listPath} />
+        <CreateComponent redirect={listPath} />
       </ResourceContextProvider>
     );
   }
 
-  const EditComponent = item.editComponent as
-    | ComponentType<{ embedded?: boolean; id?: string | null; redirect?: string }>
-    | undefined;
-  if (!EditComponent || !recordId) return null;
+  if (view === "edit") {
+    if (!EditComponent || !recordId) return null;
+
+    return (
+      <ResourceContextProvider value={item.resource}>
+        <EditComponent id={recordId} redirect={listPath} />
+      </ResourceContextProvider>
+    );
+  }
+
+  if (!ListComponent) return null;
 
   return (
     <ResourceContextProvider value={item.resource}>
-      <EditComponent embedded id={recordId} redirect={listPath} />
+      <ListComponent
+        rowClick={(id: string | number) => getAdminViewPath(item, "edit", id)}
+        createTo={createPath}
+      />
     </ResourceContextProvider>
   );
 };
 
 export const CRMAdminPage = () => {
   const location = useLocation();
+  const createPath = useCreatePath();
   const { selectedKey, currentView, recordId } = getAdminRouteState(location.pathname);
   const selectedItem = getCRMAdminItem(selectedKey);
+  const defaultItem = CRM_ADMIN_ITEMS[0] ?? null;
 
-  const breadcrumbItems = selectedItem
-    ? [
-        { label: "CRM" },
-        { label: "Admin", to: adminBasePath },
-        {
-          label: selectedItem.label,
-          to: getAdminItemPath(selectedItem),
-          current: currentView === "list",
-        },
-        ...(currentView === "create"
-          ? [{ label: "Crear", current: true }]
-          : currentView === "edit"
-            ? [{ label: `Editar${recordId ? ` #${recordId}` : ""}`, current: true }]
-            : []),
-      ]
-    : [
-        { label: "CRM" },
-        { label: "Admin", current: true },
-      ];
+  if (!defaultItem) {
+    return (
+      <div className="max-w-5xl px-2 py-3 sm:p-6">
+        <SetupEmptyState
+          title="Admin"
+          description="No hay opciones configuradas para este espacio."
+        />
+      </div>
+    );
+  }
+
+  if (!selectedItem) {
+    return <Navigate to={getAdminItemPath(defaultItem)} replace />;
+  }
+
+  const externalResourcePath = selectedItem.externalResource
+    ? createPath({
+        resource: selectedItem.externalResource,
+        type: "list",
+      })
+    : null;
 
   return (
-    <div className="max-w-5xl space-y-4 p-4 sm:p-6">
-      <AppBreadcrumb items={breadcrumbItems} />
-
+    <div className="max-w-5xl px-2 py-3 sm:p-6">
       <SetupLayout
-        sidebar={
-          <SetupSidebar
-            items={CRM_ADMIN_ITEMS}
-            currentKey={selectedItem?.key ?? null}
-            getItemHref={getAdminItemPath}
-            title="CRM Admin"
-            description="Administracion operativa del modulo."
-            showItemDescriptions={false}
-          />
-        }
-        mobileNav={
-          <SetupMobileNav
-            title="CRM Admin"
-            description="Selecciona el recurso que queres administrar."
-          >
-            <SetupSidebar
-              items={CRM_ADMIN_ITEMS}
-              currentKey={selectedItem?.key ?? null}
-              getItemHref={getAdminItemPath}
-              title="CRM Admin"
-              description="Selecciona el item a administrar."
-            />
-          </SetupMobileNav>
-        }
         header={
           <SetupContentHeader
-            title={selectedItem?.label ?? "Administracion CRM"}
-            description={
-              selectedItem?.description ??
-              "Accede a los recursos operativos del modulo desde un unico workspace."
-            }
+            eyebrowLabel="CRM / Admin"
+            title={false}
+            actionsPlacement="inline"
+            contentClassName="px-2.5 py-2.5 sm:px-4 sm:py-3"
+            actionsClassName="w-full px-2.5 pb-3 sm:px-4"
+            eyebrowClassName="text-[9px] tracking-[0.16em]"
             actions={
-              selectedItem?.resource ? (
-                <SetupViewSwitcher
-                  currentView={currentView}
-                  listTo={getAdminViewPath(selectedItem, "list")}
-                  createTo={getAdminViewPath(selectedItem, "create")}
-                  canCreate={Boolean(selectedItem.createComponent)}
+              <>
+                <div className="md:hidden">
+                  <AdminOptionsMenu
+                    items={CRM_ADMIN_ITEMS}
+                    currentKey={selectedItem.key}
+                  />
+                </div>
+                <SetupSectionNav
+                  className="hidden md:block"
+                  items={CRM_ADMIN_ITEMS}
+                  currentKey={selectedItem.key}
+                  getItemHref={getAdminItemPath}
                 />
-              ) : undefined
+              </>
             }
           />
         }
         content={
-          <SetupContentPanel>
-            {!selectedItem ? (
-              <CRMAdminHome />
+          <SetupContentPanel className="px-2.5 py-4 sm:px-4 sm:py-5">
+            {selectedItem.externalResource && externalResourcePath ? (
+              <CRMAdminExternalResource
+                label={selectedItem.label}
+                description={selectedItem.description}
+                to={externalResourcePath}
+              />
             ) : (
-              <CRMAdminEmbeddedContent
+              <CRMAdminContent
                 item={selectedItem}
                 view={currentView}
                 recordId={recordId}

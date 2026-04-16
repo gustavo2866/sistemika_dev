@@ -104,6 +104,16 @@ import {
   TipoPropiedadShow,
 } from "@/app/resources/inmobiliaria/tipos-propiedad";
 import {
+  ServicioTipoList,
+  ServicioTipoCreate,
+  ServicioTipoEdit,
+} from "@/app/resources/inmobiliaria/servicios-tipo";
+import {
+  PropiedadServicioList,
+  PropiedadServicioCreate,
+  PropiedadServicioEdit,
+} from "@/app/resources/inmobiliaria/propiedades-servicios";
+import {
   FacturaList,
   FacturaCreate,
   FacturaEdit,
@@ -532,6 +542,21 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Building}
         options={{ label: "Tipos de Propiedad" }}
+      />
+      <Resource
+        name="servicios-tipo"
+        list={ServicioTipoList}
+        create={ServicioTipoCreate}
+        edit={ServicioTipoEdit}
+        recordRepresentation="nombre"
+        options={{ label: "Tipos de Servicio" }}
+      />
+      <Resource
+        name="propiedades-servicios"
+        list={PropiedadServicioList}
+        create={PropiedadServicioCreate}
+        edit={PropiedadServicioEdit}
+        options={{ label: "Servicios de Propiedad" }}
       />
       <Resource
         name="tipos-operacion"

@@ -1,35 +1,40 @@
 "use client";
 
-import { Create } from "@/components/create";
-import type { SetupCreateComponentProps } from "@/components/forms/form_order";
+import { Edit } from "@/components/edit";
+import type { SetupEditComponentProps } from "@/components/forms/form_order";
 import { ResourceTitle } from "@/components/resource-title";
-import { FileText } from "lucide-react";
+import { Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ContratoForm } from "./form";
 
-export const ContratoCreate = ({
+import { PropiedadServicioForm } from "./form";
+
+export const PropiedadServicioEdit = ({
   embedded = false,
+  id,
   redirect,
-}: SetupCreateComponentProps) => {
+}: SetupEditComponentProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
+
   return (
-    <Create
+    <Edit
+      id={id}
       redirect={redirect ?? false}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
-      title={<ResourceTitle icon={FileText} text="Crear contrato" />}
+      title={<ResourceTitle icon={Zap} text="Editar servicio de propiedad" />}
       mutationOptions={
         redirect
           ? undefined
           : {
-              onSuccess: () => navigate(returnTo ?? "/contratos"),
+              onSuccess: () =>
+                navigate(returnTo ?? "/propiedades-servicios", { replace: true }),
             }
       }
     >
-      <ContratoForm />
-    </Create>
+      <PropiedadServicioForm />
+    </Edit>
   );
 };

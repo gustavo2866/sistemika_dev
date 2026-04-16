@@ -37,6 +37,7 @@ import {
 } from "./model";
 import type { Propiedad } from "./model";
 import { PropiedadRowActions } from "./row-actions";
+import { PROPIEDAD_STATUS_IDS } from "./status_transitions";
 
 
 // === Filtros ===
@@ -141,6 +142,7 @@ const ListaPropiedades = () => (
 export const PropiedadesListContent = () => (
   <>
     <AlquilerFilterLock />
+    <RecibidaStatusFilterLock />
     <ResponsiveDataTable
       rowClick="edit"
       bulkActionsToolbar={<FormOrderBulkActionsToolbar />}
@@ -330,6 +332,35 @@ const AlquilerFilterLock = () => {
     setFilters({ ...filterValues, tipo_operacion_id: defaultTipoOperacionId }, {});
     appliedRef.current = true;
   }, [defaultTipoOperacionId, filterValues, setFilters]);
+
+  return null;
+};
+
+const RecibidaStatusFilterLock = () => {
+  const location = useLocation();
+  const { filterValues, setFilters } = useListContext();
+  const appliedRef = useRef(false);
+  const requestedStatusId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("propiedad_status_id") ?? undefined;
+  }, [location.search]);
+  const defaultStatusId =
+    requestedStatusId ?? String(PROPIEDAD_STATUS_IDS.recibida);
+
+  useEffect(() => {
+    if (!defaultStatusId) {
+      return;
+    }
+    if (filterValues.propiedad_status_id) {
+      appliedRef.current = true;
+      return;
+    }
+    if (appliedRef.current) {
+      return;
+    }
+    setFilters({ ...filterValues, propiedad_status_id: defaultStatusId }, {});
+    appliedRef.current = true;
+  }, [defaultStatusId, filterValues, setFilters]);
 
   return null;
 };

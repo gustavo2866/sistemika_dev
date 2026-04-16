@@ -5,6 +5,7 @@ import { PropiedadesStatusCreate, PropiedadesStatusEdit, PropiedadesStatusList }
 import { TipoActualizacionCreate, TipoActualizacionEdit, TipoActualizacionList } from "./tipos-actualizacion";
 import { TipoPropiedadCreate, TipoPropiedadEdit, TipoPropiedadList } from "./tipos-propiedad";
 import { TipoContratoCreate, TipoContratoEdit, TipoContratoList } from "./tipos-contrato";
+import { ServicioTipoCreate, ServicioTipoEdit, ServicioTipoList } from "./servicios-tipo";
 
 export const INMOBILIARIA_SETUP_ITEMS: SetupItem[] = [
   {
@@ -42,6 +43,15 @@ export const INMOBILIARIA_SETUP_ITEMS: SetupItem[] = [
     listComponent: TipoContratoList,
     createComponent: TipoContratoCreate,
     editComponent: TipoContratoEdit,
+  },
+  {
+    key: "servicios-tipo",
+    label: "Tipos de servicio",
+    description: "Configura los tipos de servicio disponibles en el modulo.",
+    resource: "servicios-tipo",
+    listComponent: ServicioTipoList,
+    createComponent: ServicioTipoCreate,
+    editComponent: ServicioTipoEdit,
   },
 ];
 

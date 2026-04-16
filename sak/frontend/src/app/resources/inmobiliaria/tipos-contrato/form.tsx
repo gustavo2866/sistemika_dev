@@ -57,7 +57,7 @@ const VARIABLES_GRUPOS = [
   },
   {
     label: "Inmueble",
-    vars: ["propiedad_nombre", "propiedad_domicilio", "propiedad_localidad", "propiedad_provincia", "propiedad_cp", "propiedad_matricula", "propiedad_metros", "propiedad_ambientes"],
+    vars: ["propiedad_nombre", "propiedad_domicilio", "propiedad_localidad", "propiedad_provincia", "propiedad_cp", "propiedad_matricula", "propiedad_padron", "propiedad_metros", "propiedad_ambientes"],
   },
   {
     label: "Económico",

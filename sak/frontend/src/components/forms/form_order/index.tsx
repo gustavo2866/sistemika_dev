@@ -59,6 +59,7 @@ export {
   FormOrderHeaderMenuActions,
 } from "./form/header_menu_actions";
 export type { FormOrderHeaderMenuActionsProps } from "./form/header_menu_actions";
+export { ArchivoViewerModal } from "./form/archivo_viewer_modal";
 export * from "./dashboard";
 export * from "./kanban";
 export { DetailFooterButtons } from "./form/detail_footer_buttons";

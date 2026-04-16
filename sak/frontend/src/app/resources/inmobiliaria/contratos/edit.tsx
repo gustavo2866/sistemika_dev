@@ -5,7 +5,7 @@ import type { SetupEditComponentProps } from "@/components/forms/form_order";
 import { useRecordContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
 import { FileText } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ResourceTitle } from "@/components/resource-title";
 import { ContratoForm } from "./form";
 import { CONTRATO_ESTADO_BADGES, getContratoEstadoLabel, type Contrato } from "./model";
@@ -29,20 +29,26 @@ export const ContratoEdit = ({
   id,
   redirect,
 }: SetupEditComponentProps) => {
+  const location = useLocation();
   const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
+  const locationState = location.state as { returnTo?: string } | null;
+  const returnTo = locationState?.returnTo ?? searchParams.get("returnTo");
   return (
     <Edit
       id={id}
       title={<ContratoEditTitle />}
       actions={false}
       redirect={redirect ?? false}
+      mutationMode="pessimistic"
       showBreadcrumb={!embedded}
       showHeader={!embedded}
       mutationOptions={
         redirect
           ? undefined
           : {
-              onSuccess: () => navigate("/contratos", { replace: true }),
+              onSuccess: () =>
+                navigate(returnTo ?? "/contratos", { replace: true }),
             }
       }
     >

@@ -62,6 +62,13 @@ const INMOBILIARIA_SETUP_GROUPS: InmobiliariaSetupGroup[] = [
       { key: "tipos-actualizacion", label: "Actualizacion" },
     ],
   },
+  {
+    key: "servicios",
+    label: "Servicios",
+    items: [
+      { key: "servicios-tipo", label: "Tipos" },
+    ],
+  },
 ];
 
 const getSetupItemPath = (item: SetupItem) => `${setupBasePath}/${item.key}`;

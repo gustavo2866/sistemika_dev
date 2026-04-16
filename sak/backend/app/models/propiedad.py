@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .tipo_propiedad import TipoPropiedad
     from .propietario import Propietario
     from .tipo_actualizacion import TipoActualizacion
+    from .propiedad_servicio import PropiedadServicio
 
 DEFAULT_PROPIEDADES = (
     (1, 'Casa Central', 'Departamento', 'Inversiones SA', 3, 85.5, 450000, 120000, '2020-03-15'),
@@ -162,6 +163,11 @@ class Propiedad(Base, table=True):
         max_length=200,
         description="Matrícula / partida catastral del inmueble",
     )
+    padron: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Padrón del inmueble",
+    )
     
     # FK a propietario (nueva relación sin eliminar el campo actual)
     propietario_id: Optional[int] = Field(
@@ -302,6 +308,7 @@ class Propiedad(Base, table=True):
         sa_relationship_kwargs={'cascade': 'all, delete-orphan'}
     )
     oportunidades: List['CRMOportunidad'] = Relationship(back_populates="propiedad")
+    servicios: List['PropiedadServicio'] = Relationship(back_populates="propiedad")
     
     __searchable_fields__ = ['nombre', 'propietario']
     __expanded_list_relations__ = []

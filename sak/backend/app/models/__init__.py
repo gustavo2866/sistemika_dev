@@ -9,6 +9,8 @@ from .tipo_operacion import TipoOperacion
 from .tipo_comprobante import TipoComprobante
 from .tipo_propiedad import TipoPropiedad
 from .tipo_actualizacion import TipoActualizacion
+from .servicio_tipo import ServicioTipo
+from .propiedad_servicio import PropiedadServicio
 from .metodo_pago import MetodoPago
 from .propiedad import Propiedad
 from .setting import Setting
@@ -48,6 +50,7 @@ from .compras import (
     PoInvoiceTax,
     PoInvoiceStatus,
 )
+from .po_order_archivo import PoOrderArchivo
 from .taxes import (
     TaxProfile,
     TaxProfileDetail,
@@ -90,6 +93,8 @@ __all__ = [
     "TipoComprobante",
     "TipoPropiedad",
     "TipoActualizacion",
+    "ServicioTipo",
+    "PropiedadServicio",
     "MetodoPago", 
     "Propiedad",
     "Setting",

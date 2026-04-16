@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   type Identifier,
   required,
@@ -36,10 +36,16 @@ import {
   SectionDetailFieldsProps,
   SectionDetailTemplate2,
   TotalCompute,
+  ArchivoViewerModal,
 } from "@/components/forms/form_order";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Confirm } from "@/components/confirm";
+import { FileText, Trash2, Upload } from "lucide-react";
+import { apiUrl } from "@/lib/dataProvider";
 
 import {
   computeDetalleImporte,
@@ -57,6 +63,8 @@ import {
   usePoOrderDefaults,
   useSolicitanteCentroCostoSync,
   usePoOrderReadOnly,
+  usePoOrderArchivoUpload,
+  usePoOrderArchivoDelete,
 } from "./form_hooks";
 import {
   useCentroCostoOportunidadExclusion,
@@ -221,6 +229,8 @@ const OrdenCompraContenido = () => {
   useDetalleCentroCostoOportunidadExclusion();
   const { articuloFilter, confirmOpen, confirmChange, cancelChange } =
     useTipoSolicitudChangeGuard();
+  const record = useRecordContext<PoOrderRecord>();
+  const isEdit = Boolean(record?.id);
 
   return (
     <>
@@ -231,6 +241,8 @@ const OrdenCompraContenido = () => {
       <DetalleOrdenCompra articuloFilter={articuloFilter} />
 
       <ResumenTotalesOrdenCompra />
+
+      {isEdit ? <ArchivosSection record={record} /> : null}
 
       <Confirm
         isOpen={confirmOpen}
@@ -650,5 +662,192 @@ const ResumenTotalesOrdenCompra = () => {
         />
       </span>
     </div>
+  );
+};
+
+// === Seccion archivos ===
+
+const ArchivosContent = ({
+  record,
+  pendingFile,
+  nombre,
+  uploading,
+  deleting,
+  onNombreChange,
+  onUpload,
+  onCancel,
+  onDelete,
+}: {
+  record: PoOrderRecord;
+  pendingFile: File | null;
+  nombre: string;
+  uploading: boolean;
+  deleting: boolean;
+  onNombreChange: (value: string) => void;
+  onUpload: () => void;
+  onCancel: () => void;
+  onDelete: (archivoId: number) => void;
+}) => {
+  const archivos = record.archivos ?? [];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {pendingFile ? (
+        <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Nombre del archivo</label>
+            <Input
+              value={nombre}
+              onChange={(e) => onNombreChange(e.target.value)}
+              placeholder="Nombre del archivo"
+              className="h-8 text-sm"
+              disabled={uploading}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground truncate">Archivo: {pendingFile.name}</p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 px-3 text-xs"
+              onClick={onUpload}
+              disabled={uploading}
+            >
+              {uploading ? "Subiendo..." : "Subir"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-3 text-xs"
+              onClick={onCancel}
+              disabled={uploading}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {archivos.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Sin archivos adjuntos.</p>
+      ) : (
+        <ul className="divide-y divide-border/60 text-sm">
+          {archivos.map((a) => {
+            let resolvedUrl = a.archivo_url ?? "";
+            if (resolvedUrl.startsWith("gs://")) {
+              resolvedUrl = resolvedUrl.replace(/^gs:\/\/([^/]+)\/(.+)$/, "https://storage.googleapis.com/$1/$2");
+            } else if (resolvedUrl.startsWith("/")) {
+              resolvedUrl = `${apiUrl}${resolvedUrl}`;
+            }
+            const displayNombre = a.nombre || resolvedUrl.split("/").pop() || "Archivo";
+            return (
+              <li key={a.id} className="flex items-center justify-between gap-2 py-2">
+                <div className="flex min-w-0 items-start gap-2">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="break-all text-sm font-medium text-foreground">{displayNombre}</p>
+                    {a.tipo ? (
+                      <p className="text-[10px] text-muted-foreground">{a.tipo}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <ArchivoViewerModal url={resolvedUrl} nombre={displayNombre} />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    disabled={deleting}
+                    onClick={() => onDelete(a.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+const ArchivosSection = ({ record }: { record: PoOrderRecord }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [nombre, setNombre] = useState("");
+  const { upload, loading: uploading } = usePoOrderArchivoUpload();
+  const { deleteArchivo, loading: deleting } = usePoOrderArchivoDelete();
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingFile(file);
+    setNombre(file.name);
+    e.target.value = "";
+  };
+
+  const handleOpenPicker = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleUpload = async () => {
+    if (!pendingFile || !record.id) return;
+    await upload(record.id as number, pendingFile, nombre.trim() || pendingFile.name);
+    setPendingFile(null);
+    setNombre("");
+  };
+
+  const handleCancel = () => {
+    setPendingFile(null);
+    setNombre("");
+  };
+
+  const handleDelete = (archivoId: number) => {
+    if (!record.id) return;
+    void deleteArchivo(record.id as number, archivoId);
+  };
+
+  return (
+    <SectionBaseTemplate
+      title="Archivos"
+      actions={
+        <DropdownMenuItem
+          onSelect={handleOpenPicker}
+          className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          disabled={uploading}
+        >
+          <Upload className="h-3 w-3" />
+          Subir archivo
+        </DropdownMenuItem>
+      }
+      main={
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.txt"
+            onChange={handleFileSelect}
+            disabled={uploading}
+          />
+          <ArchivosContent
+            record={record}
+            pendingFile={pendingFile}
+            nombre={nombre}
+            uploading={uploading}
+            deleting={deleting}
+            onNombreChange={setNombre}
+            onUpload={handleUpload}
+            onCancel={handleCancel}
+            onDelete={handleDelete}
+          />
+        </>
+      }
+      defaultOpen={false}
+    />
   );
 };

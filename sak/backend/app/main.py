@@ -30,6 +30,8 @@ from app.routers.proveedor_router import proveedor_router
 from app.routers.tipo_operacion_router import tipo_operacion_router
 from app.routers.tipo_comprobante_router import tipo_comprobante_router
 from app.routers.tipo_propiedad_router import router as tipo_propiedad_router
+from app.routers.servicio_tipo_router import router as servicio_tipo_router
+from app.routers.propiedad_servicio_router import router as propiedad_servicio_router
 from app.routers.metodo_pago_router import metodo_pago_router
 from app.routers.propiedad_router import propiedad_router
 from app.routers.propiedades_status_router import propiedades_status_router
@@ -166,6 +168,8 @@ app.include_router(proveedor_router)
 app.include_router(tipo_operacion_router)
 app.include_router(tipo_comprobante_router)
 app.include_router(tipo_propiedad_router)
+app.include_router(servicio_tipo_router)
+app.include_router(propiedad_servicio_router)
 app.include_router(metodo_pago_router)
 app.include_router(propiedad_router)
 app.include_router(propiedades_status_router)

@@ -23,6 +23,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
   House,
   List,
@@ -136,6 +137,14 @@ const HIDDEN_RESOURCES = [
 
 type ResourceName = string;
 
+const SIDEBAR_ROOT_CLASSNAME = "p-1.5 2xl:p-2";
+const SIDEBAR_MENU_CLASSNAME = "gap-0.5 2xl:gap-1";
+const SIDEBAR_MENU_BUTTON_CLASSNAME =
+  "h-7 gap-2 px-2 text-[12px] [&_svg]:size-3.5 2xl:h-8 2xl:px-2.5 2xl:text-sm 2xl:[&_svg]:size-4";
+const SIDEBAR_SUBMENU_CLASSNAME = "mx-2.5 px-2 py-0";
+const SIDEBAR_SUBMENU_BUTTON_CLASSNAME =
+  "h-6 gap-1.5 px-2 text-[11px] [&_svg]:size-3 2xl:h-7 2xl:gap-2 2xl:text-xs 2xl:[&_svg]:size-3.5";
+
 export function AppSidebar() {
   const hasDashboard = useHasDashboard();
   const resources = useResourceDefinitions();
@@ -221,26 +230,30 @@ export function AppSidebar() {
   const [configOpen, setConfigOpen] = useState(false);
 
   return (
-    <Sidebar variant="floating" collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
+    <Sidebar
+      variant="floating"
+      collapsible="icon"
+      className="p-1.5 2xl:p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(3))+2px)] 2xl:group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+    >
+      <SidebarHeader className={SIDEBAR_ROOT_CLASSNAME}>
+        <SidebarMenu className={SIDEBAR_MENU_CLASSNAME}>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
+              className="data-[slot=sidebar-menu-button]:!h-8 data-[slot=sidebar-menu-button]:!gap-2 data-[slot=sidebar-menu-button]:!px-2 data-[slot=sidebar-menu-button]:!py-1.5 2xl:data-[slot=sidebar-menu-button]:!h-9 2xl:data-[slot=sidebar-menu-button]:!px-2.5"
             >
               <Link to="/">
-                <Shell className="!size-5" />
-                <span className="text-base font-semibold">WCL</span>
+                <Shell className="!size-4 2xl:!size-5" />
+                <span className="text-sm font-semibold 2xl:text-base">WCL</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
+      <SidebarContent className="gap-1.5 2xl:gap-2">
+        <SidebarGroup className={SIDEBAR_ROOT_CLASSNAME}>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className={SIDEBAR_MENU_CLASSNAME}>
               {hasDashboard ? (
                 <DashboardMenuItem onClick={handleItemClick} />
               ) : null}
@@ -463,7 +476,11 @@ export const DashboardMenuItem = ({ onClick }: { onClick?: () => void }) => {
   const match = useMatch({ path: "/", end: true });
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={!!match}>
+      <SidebarMenuButton
+        asChild
+        isActive={!!match}
+        className={SIDEBAR_MENU_BUTTON_CLASSNAME}
+      >
         <Link to="/" onClick={onClick}>
           <House />
           {label}
@@ -523,7 +540,11 @@ export const ResourceMenuItem = ({
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={!!match}>
+      <SidebarMenuButton
+        asChild
+        isActive={!!match}
+        className={SIDEBAR_MENU_BUTTON_CLASSNAME}
+      >
         <Link to={to} state={{ _scrollToTop: true }} onClick={onClick}>
           {createElement(Icon)}
           {getResourceLabel(name, 2)}
@@ -550,7 +571,7 @@ const GroupMenuItem = ({
     <SidebarMenuButton
       type="button"
       onClick={onToggle}
-      className="justify-between"
+      className={cn(SIDEBAR_MENU_BUTTON_CLASSNAME, "justify-between")}
       isActive={isOpen}
     >
       <span className="flex items-center gap-2">
@@ -558,10 +579,13 @@ const GroupMenuItem = ({
         {label}
       </span>
       <ChevronDown
-        className={`size-4 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+        className={cn(
+          "size-3.5 transition-transform 2xl:size-4",
+          isOpen ? "" : "-rotate-90",
+        )}
       />
     </SidebarMenuButton>
-    {isOpen ? <SidebarMenuSub>{children}</SidebarMenuSub> : null}
+    {isOpen ? <SidebarMenuSub className={SIDEBAR_SUBMENU_CLASSNAME}>{children}</SidebarMenuSub> : null}
   </SidebarMenuItem>
 );
 
@@ -599,7 +623,12 @@ const ResourceSubMenuItem = ({
 
   return (
     <SidebarMenuSubItem>
-      <SidebarMenuSubButton asChild isActive={!!match} size="sm">
+      <SidebarMenuSubButton
+        asChild
+        isActive={!!match}
+        size="sm"
+        className={SIDEBAR_SUBMENU_BUTTON_CLASSNAME}
+      >
         <Link to={to} state={{ _scrollToTop: true }} onClick={onClick}>
           {createElement(Icon)}
           <span>{getResourceLabel(name, 2)}</span>
@@ -624,7 +653,12 @@ const SidebarCustomMenuItem = ({
   const IconComponent = icon ?? Settings;
   return (
     <SidebarMenuSubItem>
-      <SidebarMenuSubButton asChild isActive={!!match} size="sm">
+      <SidebarMenuSubButton
+        asChild
+        isActive={!!match}
+        size="sm"
+        className={SIDEBAR_SUBMENU_BUTTON_CLASSNAME}
+      >
         <Link to={to} state={{ _scrollToTop: true }} onClick={onClick}>
           {createElement(IconComponent)}
           <span>{label}</span>

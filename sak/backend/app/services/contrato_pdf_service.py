@@ -112,6 +112,7 @@ def build_context(contrato: Any) -> Dict[str, Any]:
         "propiedad_provincia": _safe(getattr(propiedad, "provincia", None)) if propiedad else "—",
         "propiedad_cp": _safe(getattr(propiedad, "codigo_postal", None)) if propiedad else "—",
         "propiedad_matricula": _safe(getattr(propiedad, "matricula_catastral", None)) if propiedad else "—",
+        "propiedad_padron": _safe(getattr(propiedad, "padron", None)) if propiedad else "—",
         "propiedad_metros": str(getattr(propiedad, "metros_cuadrados", None) or "—"),
         "propiedad_ambientes": str(getattr(propiedad, "ambientes", None) or "—"),
 

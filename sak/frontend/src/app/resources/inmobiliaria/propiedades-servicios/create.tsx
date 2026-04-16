@@ -3,11 +3,12 @@
 import { Create } from "@/components/create";
 import type { SetupCreateComponentProps } from "@/components/forms/form_order";
 import { ResourceTitle } from "@/components/resource-title";
-import { FileText } from "lucide-react";
+import { Zap } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ContratoForm } from "./form";
 
-export const ContratoCreate = ({
+import { PropiedadServicioForm } from "./form";
+
+export const PropiedadServicioCreate = ({
   embedded = false,
   redirect,
 }: SetupCreateComponentProps) => {
@@ -15,21 +16,22 @@ export const ContratoCreate = ({
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
+
   return (
     <Create
       redirect={redirect ?? false}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
-      title={<ResourceTitle icon={FileText} text="Crear contrato" />}
+      title={<ResourceTitle icon={Zap} text="Nuevo servicio de propiedad" />}
       mutationOptions={
         redirect
           ? undefined
           : {
-              onSuccess: () => navigate(returnTo ?? "/contratos"),
+              onSuccess: () => navigate(returnTo ?? "/propiedades-servicios"),
             }
       }
     >
-      <ContratoForm />
+      <PropiedadServicioForm />
     </Create>
   );
 };

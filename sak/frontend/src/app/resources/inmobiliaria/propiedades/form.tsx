@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ListBase, required, useDataProvider, useGetList, useRecordContext } from "ra-core";
+import { ListBase, required, useDataProvider, useGetList, useGetOne, useRecordContext } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
-  FormDate,
   FormErrorSummary,
   FormNumber,
   FormOrderToolbar,
   FormSelect,
   FormText,
   FormTextarea,
+  FormValue,
   ListColumn,
   ListDate,
   ListText,
@@ -25,7 +25,9 @@ import { CreateButton } from "@/components/create-button";
 import { CRMChatShow } from "@/app/resources/crm/crm-chat";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
 import { CRMOportunidadList } from "@/app/resources/crm/crm-oportunidades/List";
+import { ContratoList } from "@/app/resources/inmobiliaria/contratos/list";
 import { PoOrderList } from "@/app/resources/po/po-orders/List";
+import { PropiedadServicioList } from "@/app/resources/inmobiliaria/propiedades-servicios";
 import { ReferenceInput } from "@/components/reference-input";
 import { ReferenceField } from "@/components/reference-field";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -50,6 +52,7 @@ type PropiedadDesktopSectionId =
   | "estados"
   | "oportunidades"
   | "reparaciones"
+  | "servicios"
   | "ordenes"
   | "chat"
   | "eventos";
@@ -66,6 +69,7 @@ const PROPIEDAD_DESKTOP_SECTIONS: Array<{
   { id: "estados", label: "Estados" },
   { id: "oportunidades", label: "Oportunidades" },
   { id: "reparaciones", label: "Reparaciones" },
+  { id: "servicios", label: "Servicios" },
   { id: "ordenes", label: "Ordenes" },
   { id: "chat", label: "Chat" },
   { id: "eventos", label: "Eventos" },
@@ -289,6 +293,7 @@ const PropiedadFormSectionsContent = () => {
       <EstadosSection />
       <OportunidadesSection />
       <ReparacionesSection />
+      <ServiciosSection />
       {availableSections.some((section) => section.id === "ordenes") ? <PropiedadOrdenesSection /> : null}
       {availableSections.some((section) => section.id === "chat") ? <PropiedadChatSection /> : null}
       {availableSections.some((section) => section.id === "eventos") ? <PropiedadEventosSection /> : null}
@@ -296,32 +301,83 @@ const PropiedadFormSectionsContent = () => {
   );
 };
 
-const CabeceraFields = () => (
-  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_140px_minmax(0,1fr)]">
-    <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-full md:max-w-[260px]" />
-    <div className="md:w-[150px] md:min-w-[150px] md:max-w-[150px]">
-      <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo propiedad">
-        <FormSelect optionText="nombre" label="Tipo propiedad" widthClass="w-full" emptyText="Sin asignar" />
-      </ReferenceInput>
-    </div>
-    <div className="md:w-[140px] md:min-w-[140px] md:max-w-[140px]">
-      <ReferenceInput
-        source="tipo_operacion_id"
-        reference="crm/catalogos/tipos-operacion"
-        label="Tipo de operacion"
+const CabeceraContratoResumen = () => {
+  const record = useRecordContext<Propiedad>();
+  const tiposOperacion = useTiposOperacionCatalog();
+  const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
+  const tipoActualizacionValue = useWatch({ name: "tipo_actualizacion_id" }) as unknown;
+  const fechaRenovacionValue = useWatch({ name: "fecha_renovacion" }) as string | null | undefined;
+  const currentTipoOperacionId =
+    resolveNumericId(tipoOperacionValue) ?? resolveNumericId(record?.tipo_operacion_id);
+  const selectedTipoOperacion =
+    tiposOperacion.find((tipo) => resolveNumericId(tipo?.id) === currentTipoOperacionId) ??
+    record?.tipo_operacion;
+  const isAlquiler = isTipoOperacionAlquiler(selectedTipoOperacion);
+  const tipoActualizacionId =
+    resolveNumericId(tipoActualizacionValue) ?? resolveNumericId(record?.tipo_actualizacion_id);
+  const { data: tipoActualizacion } = useGetOne(
+    "tipos-actualizacion",
+    { id: tipoActualizacionId ?? 0 },
+    { enabled: Boolean(tipoActualizacionId) && isAlquiler },
+  );
+
+  if (!isAlquiler) return null;
+
+  const tipoActualizacionLabel =
+    (tipoActualizacion as { nombre?: string | null } | undefined)?.nombre ??
+    record?.tipo_actualizacion?.nombre ??
+    "Sin asignar";
+  const fechaRenovacion = fechaRenovacionValue ?? record?.fecha_renovacion ?? null;
+
+  return (
+    <div className="grid gap-2 md:grid-cols-[160px_minmax(0,220px)]">
+      <FormValue
+        label="Fecha renovacion"
+        widthClass="w-full"
+        valueClassName="justify-start text-left"
       >
-        <FormSelect
-          optionText="nombre"
+        {formatPropiedadDisplayDate(fechaRenovacion)}
+      </FormValue>
+      <FormValue
+        label="Tipo actualizacion"
+        widthClass="w-full"
+        valueClassName="justify-start text-left"
+      >
+        {tipoActualizacionLabel}
+      </FormValue>
+    </div>
+  );
+};
+
+const CabeceraFields = () => (
+  <div className="grid gap-2">
+    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_140px_minmax(0,1fr)]">
+      <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-full md:max-w-[260px]" />
+      <div className="md:w-[150px] md:min-w-[150px] md:max-w-[150px]">
+        <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo propiedad">
+          <FormSelect optionText="nombre" label="Tipo propiedad" widthClass="w-full" emptyText="Sin asignar" />
+        </ReferenceInput>
+      </div>
+      <div className="md:w-[140px] md:min-w-[140px] md:max-w-[140px]">
+        <ReferenceInput
+          source="tipo_operacion_id"
+          reference="crm/catalogos/tipos-operacion"
           label="Tipo de operacion"
-          widthClass="w-full"
-          emptyText="Sin asignar"
-          choicesFilter={excludeMantenimientoTipoOperacion}
-        />
+        >
+          <FormSelect
+            optionText="nombre"
+            label="Tipo de operacion"
+            widthClass="w-full"
+            emptyText="Sin asignar"
+            choicesFilter={excludeMantenimientoTipoOperacion}
+          />
+        </ReferenceInput>
+      </div>
+      <ReferenceInput source="propietario_id" reference="propietarios" label="Propietario">
+        <FormSelect optionText="nombre" label="Propietario" widthClass="w-full" emptyText="Sin asignar" />
       </ReferenceInput>
     </div>
-    <ReferenceInput source="propietario_id" reference="propietarios" label="Propietario">
-      <FormSelect optionText="nombre" label="Propietario" widthClass="w-full" emptyText="Sin asignar" />
-    </ReferenceInput>
+    <CabeceraContratoResumen />
   </div>
 );
 
@@ -439,6 +495,12 @@ const DireccionFields = () => (
       widthClass="w-full md:col-span-2"
       maxLength={200}
     />
+    <FormText
+      source="padron"
+      label="Padron"
+      widthClass="w-full md:col-span-2"
+      maxLength={200}
+    />
   </div>
 );
 
@@ -467,40 +529,122 @@ const DireccionSection = ({
   );
 };
 
-const DatosContratoFields = () => (
-  <div className="grid gap-2 md:grid-cols-2">
-    <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full" />
-    <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full" />
-    <FormDate source="fecha_inicio_contrato" label="Fecha inicio contrato" widthClass="w-full" />
-    <FormDate source="vencimiento_contrato" label="Vencimiento contrato" widthClass="w-full" />
-    <ReferenceInput source="tipo_actualizacion_id" reference="tipos-actualizacion" label="Tipo actualizacion">
-      <FormSelect optionText="nombre" label="Tipo actualizacion" widthClass="w-full" emptyText="Sin asignar" />
-    </ReferenceInput>
-    <FormDate source="fecha_renovacion" label="Fecha renovacion" widthClass="w-full" />
-  </div>
-);
+const formatPropiedadDisplayDate = (value?: string | null) => {
+  if (!value) return "Sin fecha";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("es-AR");
+};
 
-const DatosContratoSection = ({
-  variant = "stacked",
-}: {
+type ContratosListSectionProps = {
+  title: string;
+  propiedadId?: number;
+  persistKey: string;
+  storeKey: string;
   variant?: PropiedadSectionVariant;
-}) => {
+};
+
+const ContratosListSection = ({
+  title,
+  propiedadId,
+  persistKey,
+  storeKey,
+  variant = "stacked",
+}: ContratosListSectionProps) => {
+  const location = useLocation();
+  const resolvedPropiedadId = propiedadId ?? null;
+  const returnTo = `${location.pathname}${location.search}`;
+
+  const createTo = useMemo(() => {
+    const params = new URLSearchParams();
+    if (resolvedPropiedadId) {
+      params.set("propiedad_id", String(resolvedPropiedadId));
+    }
+    params.set("returnTo", returnTo);
+    return `/contratos/create?${params.toString()}`;
+  }, [resolvedPropiedadId, returnTo]);
+
+  const defaultFilters = useMemo(
+    () => ({ propiedad_id: resolvedPropiedadId }),
+    [resolvedPropiedadId],
+  );
+  const permanentFilter = useMemo(
+    () => ({ propiedad_id: resolvedPropiedadId }),
+    [resolvedPropiedadId],
+  );
+  const rowClick = useMemo(
+    () =>
+      (id: string | number) =>
+        `/contratos/${id}?returnTo=${encodeURIComponent(returnTo)}`,
+    [returnTo],
+  );
+
+  if (!resolvedPropiedadId) {
+    const placeholder = (
+      <PropiedadDesktopEmptyState message={`Los ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
+    );
+
+    if (variant === "panel") {
+      return (
+        <PropiedadDesktopPanel
+          title={title}
+          description={`Documentacion contractual e historico asociado a la propiedad para ${title.toLowerCase()}.`}
+        >
+          {placeholder}
+        </PropiedadDesktopPanel>
+      );
+    }
+
+    return null;
+  }
+
+  const list = (
+    <ContratoList
+      embedded
+      filterDefaultValues={defaultFilters}
+      permanentFilter={permanentFilter}
+      createTo={createTo}
+      rowClick={rowClick}
+      storeKey={storeKey}
+      emptyMessage={`No hay ${title.toLowerCase()} registrados para esta propiedad.`}
+    />
+  );
+
   if (variant === "panel") {
     return (
       <PropiedadDesktopPanel
-        title="Contrato"
-        description="Datos contractuales y condiciones vigentes de la propiedad."
+        title={title}
+        description={`Documentacion contractual e historico asociado a la propiedad para ${title.toLowerCase()}.`}
       >
-        <DatosContratoFields />
+        {list}
       </PropiedadDesktopPanel>
     );
   }
 
   return (
     <SectionBaseTemplate
-      title="Datos del contrato"
-      main={<DatosContratoFields />}
+      title={title}
       defaultOpen={false}
+      persistKey={persistKey}
+      main={list}
+    />
+  );
+};
+
+const DatosContratoSection = ({
+  variant = "stacked",
+}: {
+  variant?: PropiedadSectionVariant;
+}) => {
+  const record = useRecordContext<Propiedad>();
+  const propiedadId = record?.id;
+  return (
+    <ContratosListSection
+      title="Contratos"
+      propiedadId={propiedadId}
+      persistKey={`propiedades-contratos-${propiedadId ?? "sin-propiedad"}`}
+      storeKey={`contratos-propiedad-${propiedadId ?? "sin-propiedad"}`}
+      variant={variant}
     />
   );
 };
@@ -674,7 +818,7 @@ const useAvailablePropiedadSections = () => {
     [currentTipoOperacionId, tiposOperacion],
   );
   const isAlquiler = isTipoOperacionAlquiler(selectedTipoOperacion);
-  const { oportunidadId: activeMantenimientoOportunidadId } = useLatestMantenimientoOportunidad(propiedadId);
+  useLatestMantenimientoOportunidad(propiedadId);
 
   return useMemo(() => {
     const visibleIds: PropiedadDesktopSectionId[] = ["ficha", "direccion", "estados"];
@@ -683,14 +827,100 @@ const useAvailablePropiedadSections = () => {
       visibleIds.push("contrato");
     }
 
-    visibleIds.push("oportunidades", "reparaciones");
-
-    if (activeMantenimientoOportunidadId) {
-      visibleIds.push("ordenes", "chat", "eventos");
-    }
+    visibleIds.push("oportunidades", "reparaciones", "servicios");
 
     return PROPIEDAD_DESKTOP_SECTIONS.filter((section) => visibleIds.includes(section.id));
-  }, [activeMantenimientoOportunidadId, isAlquiler]);
+  }, [isAlquiler]);
+};
+
+const ServiciosSection = ({
+  variant = "stacked",
+}: {
+  variant?: PropiedadSectionVariant;
+}) => {
+  const record = useRecordContext<Propiedad>();
+  const propiedadId = record?.id;
+  const location = useLocation();
+  const resolvedPropiedadId = propiedadId ?? null;
+  const returnTo = `${location.pathname}${location.search}`;
+
+  const createTo = useMemo(() => {
+    const params = new URLSearchParams();
+    if (resolvedPropiedadId) {
+      params.set("propiedad_id", String(resolvedPropiedadId));
+      params.set("lock_propiedad", "1");
+    }
+    params.set("returnTo", returnTo);
+    return `/propiedades-servicios/create?${params.toString()}`;
+  }, [resolvedPropiedadId, returnTo]);
+
+  if (!resolvedPropiedadId) {
+    const placeholder = (
+      <PropiedadDesktopEmptyState message="Los servicios estaran disponibles despues de guardar la propiedad." />
+    );
+
+    if (variant === "panel") {
+      return (
+        <PropiedadDesktopPanel
+          title="Servicios"
+          description="Servicios vinculados a la propiedad."
+        >
+          {placeholder}
+        </PropiedadDesktopPanel>
+      );
+    }
+
+    return (
+      <SectionBaseTemplate
+        title="Servicios"
+        main={placeholder}
+        defaultOpen={false}
+        persistKey="propiedades-servicios-sin-propiedad"
+      />
+    );
+  }
+
+  const defaultFilters = { propiedad_id: resolvedPropiedadId };
+  const permanentFilter = { propiedad_id: resolvedPropiedadId };
+  const storeKey = `propiedades-servicios-propiedad-${resolvedPropiedadId}`;
+  const rowClick = useMemo(
+    () =>
+      (id: string | number) =>
+        `/propiedades-servicios/${id}?returnTo=${encodeURIComponent(returnTo)}`,
+    [returnTo],
+  );
+
+  const list = (
+    <PropiedadServicioList
+      key={storeKey}
+      embedded
+      filterDefaultValues={defaultFilters}
+      permanentFilter={permanentFilter}
+      createTo={createTo}
+      rowClick={rowClick}
+      storeKey={storeKey}
+    />
+  );
+
+  if (variant === "panel") {
+    return (
+      <PropiedadDesktopPanel
+        title="Servicios"
+        description="Servicios vinculados a la propiedad."
+      >
+        {list}
+      </PropiedadDesktopPanel>
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title="Servicios"
+      defaultOpen={false}
+      persistKey={`propiedades-servicios-${resolvedPropiedadId}`}
+      main={list}
+    />
+  );
 };
 
 const ReparacionesSection = ({
@@ -1133,6 +1363,8 @@ const PropiedadDesktopSectionsLayout = ({
         return <OportunidadesSection variant="panel" />;
       case "reparaciones":
         return <ReparacionesSection variant="panel" />;
+      case "servicios":
+        return <ServiciosSection variant="panel" />;
       case "ordenes":
         return <PropiedadOrdenesSection variant="panel" />;
       case "chat":

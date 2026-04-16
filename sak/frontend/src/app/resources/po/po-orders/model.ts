@@ -2,6 +2,17 @@
 
 import { z } from "zod";
 
+export type PoOrderArchivo = {
+  id: number;
+  order_id: number;
+  nombre: string;
+  tipo?: string | null;
+  archivo_url: string;
+  mime_type?: string | null;
+  tamanio_bytes?: number | null;
+  created_at?: string | null;
+};
+
 const requiredId = z.preprocess(
   (v) => (v === "" || v === null ? undefined : v),
   z.coerce.number().int().positive(),

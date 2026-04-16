@@ -5,7 +5,7 @@ import { useWatch } from "react-hook-form";
 import { useGetOne, useRecordContext } from "ra-core";
 import { useLocation } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FileText, Trash2, Upload } from "lucide-react";
+import { FileText, MoreHorizontal, Trash2, Upload } from "lucide-react";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
@@ -18,11 +18,18 @@ import {
   FormTextarea,
   FormValue,
   SectionBaseTemplate,
+  ArchivoViewerModal,
 } from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/dataProvider";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 import {
@@ -44,7 +51,6 @@ import {
 // ── Desktop layout ────────────────────────────────────────────────────────────
 
 const DESKTOP_LAYOUT_BREAKPOINT = 1024;
-const CONTRATO_ACTIVE_SECTION_KEY = "contratos-form-active-section";
 
 type ContratoSectionId =
   | "vigencia"
@@ -60,9 +66,6 @@ const CONTRATO_SECTIONS: Array<{ id: ContratoSectionId; label: string }> = [
   { id: "garante", label: "Garante" },
   { id: "archivos", label: "Archivos" },
 ];
-
-const isContratoSectionId = (value: unknown): value is ContratoSectionId =>
-  CONTRATO_SECTIONS.some((s) => s.id === value);
 
 const useContratoDesktopLayout = () => {
   const [isDesktop, setIsDesktop] = useState(() => {
@@ -87,20 +90,42 @@ const useContratoDesktopLayout = () => {
 const ContratoDesktopPanel = ({
   title,
   description,
+  actions,
   children,
 }: {
   title?: string;
   description?: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) => (
   <section className="flex min-h-[24rem] flex-col">
     {title || description ? (
-      <div className="border-b border-border/50 px-4 py-3 xl:px-5">
-        {title ? (
-          <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
-        ) : null}
-        {description ? (
-          <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">{description}</p>
+      <div className="flex items-start justify-between gap-3 border-b border-border/50 px-4 py-3 xl:px-5">
+        <div className="min-w-0">
+          {title ? (
+            <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
+          ) : null}
+          {description ? (
+            <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">{description}</p>
+          ) : null}
+        </div>
+        {actions ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 text-muted-foreground"
+                tabIndex={-1}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-32">
+              {actions}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
     ) : null}
@@ -168,12 +193,14 @@ const PropiedadTipoFields = () => {
 
 const VigenciaEconomiaFields = () => {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-foreground">Condiciones economicas</h3>
+    <div className="flex flex-col gap-2">
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+        <div className="mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Condiciones economicas
+          </h3>
         </div>
-        <div className="grid gap-2 md:grid-cols-4">
+        <div className="grid gap-2 md:grid-cols-5">
           <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full" />
           <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full" />
           <FormNumber source="deposito_garantia" label="Deposito garantia" step="any" min={0} widthClass="w-full" />
@@ -190,9 +217,11 @@ const VigenciaEconomiaFields = () => {
           </ReferenceInput>
         </div>
       </div>
-      <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-foreground">Vigencia</h3>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+        <div className="mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Vigencia
+          </h3>
         </div>
         <div className="grid gap-2 md:grid-cols-3">
           <FormDate source="fecha_inicio" label="Fecha de inicio" widthClass="w-full" />
@@ -206,15 +235,17 @@ const VigenciaEconomiaFields = () => {
           />
         </div>
       </div>
-      <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-        <div className="mb-3">
-          <h3 className="text-sm font-semibold text-foreground">Observaciones</h3>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+        <div className="mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Observaciones
+          </h3>
         </div>
         <FormTextarea
           source="observaciones"
           label="Observaciones"
           widthClass="w-full"
-          className="[&_textarea]:min-h-[140px]"
+          className="[&_textarea]:min-h-[96px]"
           maxLength={2000}
         />
       </div>
@@ -265,52 +296,38 @@ const GaranteFields = () => (
 
 // ── Archivos inline content ───────────────────────────────────────────────────
 
-const ArchivosContent = ({ contrato }: { contrato: Contrato }) => {
+const ArchivosContent = ({
+  contrato,
+  pendingFile,
+  nombre,
+  uploading,
+  deleting,
+  onNombreChange,
+  onUpload,
+  onCancel,
+  onDelete,
+}: {
+  contrato: Contrato;
+  pendingFile: File | null;
+  nombre: string;
+  uploading: boolean;
+  deleting: boolean;
+  onNombreChange: (value: string) => void;
+  onUpload: () => void;
+  onCancel: () => void;
+  onDelete: (archivoId: number) => void;
+}) => {
   const archivos = contrato.archivos ?? [];
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [nombre, setNombre] = useState("");
-  const { upload, loading: uploading } = useContratoArchivoUpload();
-  const { deleteArchivo, loading: deleting } = useContratoArchivoDelete();
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPendingFile(file);
-    setNombre(file.name);
-    e.target.value = "";
-  };
-
-  const handleUpload = async () => {
-    if (!pendingFile) return;
-    await upload(contrato.id, pendingFile, nombre.trim() || pendingFile.name);
-    setPendingFile(null);
-    setNombre("");
-  };
-
-  const handleCancel = () => {
-    setPendingFile(null);
-    setNombre("");
-  };
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Upload area */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.txt"
-        onChange={handleFileSelect}
-        disabled={uploading}
-      />
       {pendingFile ? (
         <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted-foreground">Nombre del archivo</label>
             <Input
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
+              onChange={(e) => onNombreChange(e.target.value)}
               placeholder="Nombre del archivo"
               className="h-8 text-sm"
               disabled={uploading}
@@ -322,7 +339,7 @@ const ArchivosContent = ({ contrato }: { contrato: Contrato }) => {
               type="button"
               size="sm"
               className="h-7 px-3 text-xs"
-              onClick={handleUpload}
+              onClick={onUpload}
               disabled={uploading}
             >
               {uploading ? "Subiendo..." : "Subir"}
@@ -332,25 +349,14 @@ const ArchivosContent = ({ contrato }: { contrato: Contrato }) => {
               size="sm"
               variant="ghost"
               className="h-7 px-3 text-xs"
-              onClick={handleCancel}
+              onClick={onCancel}
               disabled={uploading}
             >
               Cancelar
             </Button>
           </div>
         </div>
-      ) : (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 w-fit gap-1.5 px-3 text-xs"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-3.5 w-3.5" />
-          Subir archivo
-        </Button>
-      )}
+      ) : null}
 
       {/* File list */}
       {archivos.length === 0 ? (
@@ -380,21 +386,14 @@ const ArchivosContent = ({ contrato }: { contrato: Contrato }) => {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <a
-                  href={resolvedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Ver
-                </a>
+                <ArchivoViewerModal url={resolvedUrl} nombre={displayNombre} />
                 <Button
                   type="button"
                   size="icon"
                   variant="ghost"
                   className="h-6 w-6 text-muted-foreground hover:text-destructive"
                   disabled={deleting}
-                  onClick={() => deleteArchivo(contrato.id, a.id)}
+                  onClick={() => onDelete(a.id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -450,14 +449,90 @@ const ArchivosSection = ({
   variant?: ContratoSectionVariant;
   contrato: Contrato;
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [nombre, setNombre] = useState("");
+  const { upload, loading: uploading } = useContratoArchivoUpload();
+  const { deleteArchivo, loading: deleting } = useContratoArchivoDelete();
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingFile(file);
+    setNombre(file.name);
+    e.target.value = "";
+  };
+
+  const handleOpenPicker = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleUpload = async () => {
+    if (!pendingFile) return;
+    await upload(contrato.id, pendingFile, nombre.trim() || pendingFile.name);
+    setPendingFile(null);
+    setNombre("");
+  };
+
+  const handleCancel = () => {
+    setPendingFile(null);
+    setNombre("");
+  };
+
+  const handleDelete = (archivoId: number) => {
+    void deleteArchivo(contrato.id, archivoId);
+  };
+
+  const archivoActions = (
+    <DropdownMenuItem
+      onSelect={handleOpenPicker}
+      className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+      disabled={uploading}
+    >
+      <Upload className="h-3 w-3" />
+      Subir archivo
+    </DropdownMenuItem>
+  );
+
+  const archivosMain = (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.txt"
+        onChange={handleFileSelect}
+        disabled={uploading}
+      />
+      <ArchivosContent
+        contrato={contrato}
+        pendingFile={pendingFile}
+        nombre={nombre}
+        uploading={uploading}
+        deleting={deleting}
+        onNombreChange={setNombre}
+        onUpload={handleUpload}
+        onCancel={handleCancel}
+        onDelete={handleDelete}
+      />
+    </>
+  );
+
   if (variant === "panel") {
     return (
-      <ContratoDesktopPanel title="Archivos" description="Documentos adjuntos al contrato.">
-        <ArchivosContent contrato={contrato} />
+      <ContratoDesktopPanel
+        title="Archivos"
+        description="Documentos adjuntos al contrato."
+        actions={archivoActions}
+      >
+        {archivosMain}
       </ContratoDesktopPanel>
     );
   }
-  return <SectionBaseTemplate title="Archivos" main={<ArchivosContent contrato={contrato} />} />;
+  return (
+    <SectionBaseTemplate title="Archivos" main={archivosMain} actions={archivoActions} />
+  );
 };
 
 // ── Desktop sections layout ───────────────────────────────────────────────────
@@ -528,7 +603,6 @@ const ContratoDesktopSectionsLayout = ({
 // ── Sections content orchestrator ─────────────────────────────────────────────
 
 const ContratoFormSectionsContent = ({ contrato }: { contrato: Contrato | null }) => {
-  const location = useLocation();
   const isDesktop = useContratoDesktopLayout();
   const isEdit = Boolean(contrato?.id);
 
@@ -537,33 +611,12 @@ const ContratoFormSectionsContent = ({ contrato }: { contrato: Contrato | null }
     [isEdit],
   );
 
-  const storageKey = `${CONTRATO_ACTIVE_SECTION_KEY}:${location.pathname}`;
-
-  const [activeSection, setActiveSection] = useState<ContratoSectionId>(() => {
-    if (typeof window === "undefined") return "vigencia";
-    const saved = window.sessionStorage.getItem(storageKey);
-    return isContratoSectionId(saved) ? saved : "vigencia";
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.sessionStorage.getItem(storageKey);
-    if (isContratoSectionId(saved)) {
-      setActiveSection(saved);
-      return;
-    }
-    setActiveSection("vigencia");
-  }, [storageKey]);
+  const [activeSection, setActiveSection] = useState<ContratoSectionId>("vigencia");
 
   useEffect(() => {
     if (visibleSections.some((s) => s.id === activeSection)) return;
     setActiveSection(visibleSections[0]?.id ?? "vigencia");
   }, [activeSection, visibleSections]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.sessionStorage.setItem(storageKey, activeSection);
-  }, [activeSection, storageKey]);
 
   if (isDesktop) {
     return (
@@ -603,14 +656,26 @@ const ContratoStickyFooter = () => (
 
 export const ContratoForm = () => {
   const record = useRecordContext<Contrato>();
+  const location = useLocation();
   const acciones = useContratoAccionesState(record);
+  const defaultPropiedadId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return resolveNumericId(params.get("propiedad_id"));
+  }, [location.search]);
+  const defaultValues = useMemo(
+    () => ({
+      ...CONTRATO_DEFAULT,
+      ...(!record?.id && defaultPropiedadId ? { propiedad_id: defaultPropiedadId } : {}),
+    }),
+    [defaultPropiedadId, record?.id],
+  );
 
   return (
     <SimpleForm<ContratoFormValues>
       className="w-full max-w-5xl max-h-[calc(100svh-10rem)] overflow-y-auto overscroll-y-contain pr-1 pb-4 sm:max-h-[calc(100svh-9rem)]"
       resolver={zodResolver(contratoSchema) as any}
       toolbar={<ContratoStickyFooter />}
-      defaultValues={CONTRATO_DEFAULT}
+      defaultValues={defaultValues}
       warnWhenUnsavedChanges
     >
       <FormErrorSummary />

@@ -21,10 +21,12 @@ import {
 } from "ra-core";
 import { useNavigate } from "react-router-dom";
 import { useConfirmDelete, useIdentityId } from "@/components/forms/form_order";
+import { apiUrl } from "@/lib/dataProvider";
 import {
   capitalizeStatusName,
   isPoOrderLocked,
   normalizeStatusName,
+  type PoOrderArchivo,
   type PoOrderFormValues,
 } from "./model";
 
@@ -91,6 +93,7 @@ export const ensureCentroCostoIfMissing = async ({
 // === Tipos ===
 export type PoOrderRecord = PoOrderFormValues & {
   id?: Identifier;
+  archivos?: PoOrderArchivo[];
   order_status?: {
     id?: number | null;
     nombre?: string | null;
@@ -609,4 +612,82 @@ export const usePoOrderStatusTransition = () => {
     cambiarEstado,
     loading,
   };
+};
+
+// ── Archivo: upload ───────────────────────────────────────────────────────────
+
+const getAuthHeaders = (): Record<string, string> => {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+export const usePoOrderArchivoUpload = () => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  const upload = async (orderId: number, file: File, nombre?: string, tipo?: string) => {
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (nombre) formData.append("nombre", nombre);
+      if (tipo) formData.append("tipo", tipo);
+
+      const res = await fetch(`${apiUrl}/po-orders/${orderId}/archivos`, {
+        method: "POST",
+        headers: { ...getAuthHeaders() },
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify(data?.detail ?? "No se pudo subir el archivo", { type: "warning" });
+        return false;
+      }
+      refresh();
+      notify("Archivo subido", { type: "info" });
+      return true;
+    } catch {
+      notify("Error al subir el archivo", { type: "warning" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { upload, loading };
+};
+
+// ── Archivo: eliminar ─────────────────────────────────────────────────────────
+
+export const usePoOrderArchivoDelete = () => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  const deleteArchivo = async (orderId: number, archivoId: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/po-orders/${orderId}/archivos/${archivoId}`, {
+        method: "DELETE",
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify(data?.detail ?? "No se pudo eliminar el archivo", { type: "warning" });
+        return false;
+      }
+      refresh();
+      notify("Archivo eliminado", { type: "info" });
+      return true;
+    } catch {
+      notify("Error al eliminar el archivo", { type: "warning" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { deleteArchivo, loading };
 };

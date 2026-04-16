@@ -1,8 +1,12 @@
 import json
+import os
+import tempfile
+import uuid
 from decimal import Decimal
-from typing import Any
+from pathlib import Path
+from typing import Any, Optional
 
-from fastapi import Body, Depends, HTTPException, Query, Request, Response
+from fastapi import Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy import String, func, or_
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
@@ -13,10 +17,18 @@ from app.api.auth import get_current_user
 from app.db import get_session
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.models.compras import PoOrder, PoOrderDetail, PoOrderStatus, PoOrderStatusLog
+from app.models.po_order_archivo import PoOrderArchivo
 from app.models.proveedor import Proveedor
 from app.models.tipo_solicitud import TipoSolicitud
 from app.models.user import User
 from app.services.po_order_service import po_order_service
+from app.services.gcs_storage_service import storage_service
+
+_PO_ORDER_MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+_PO_ORDER_ALLOWED_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".txt",
+}
 
 # CRUD con relación anidada para detalles de órdenes
 po_order_crud = NestedCRUD(
@@ -264,3 +276,83 @@ def listar_logs(
         .order_by(PoOrderStatusLog.fecha_registro.asc(), PoOrderStatusLog.id.asc())
     ).all()
     return [log.model_dump() for log in logs]
+
+
+# --- Upload archivo: POST /po-orders/{id}/archivos ---
+
+@po_order_router.post("/{id}/archivos", tags=["po-orders"])
+async def upload_po_order_archivo(
+    id: int,
+    file: UploadFile = File(...),
+    nombre: Optional[str] = Form(default=None),
+    tipo: Optional[str] = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    order = session.get(PoOrder, id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden de compra no encontrada")
+
+    content = await file.read()
+
+    if len(content) > _PO_ORDER_MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 20 MB)")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in _PO_ORDER_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=415, detail=f"Tipo de archivo no permitido: {ext}")
+
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(tmp_fd, "wb") as tmp:
+            tmp.write(content)
+        gcs_result = storage_service.upload_file(
+            tmp_path,
+            safe_name,
+            folder=f"po-orders/{id}",
+            content_type=file.content_type,
+        )
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    archivo = PoOrderArchivo(
+        order_id=id,
+        nombre=nombre or file.filename,
+        tipo=tipo,
+        archivo_url=gcs_result["download_url"],
+        mime_type=file.content_type,
+        tamanio_bytes=len(content),
+    )
+    session.add(archivo)
+    session.commit()
+    session.refresh(archivo)
+    return archivo
+
+
+# --- Eliminar archivo: DELETE /po-orders/{id}/archivos/{archivo_id} ---
+
+@po_order_router.delete("/{id}/archivos/{archivo_id}", tags=["po-orders"])
+def delete_po_order_archivo(
+    id: int,
+    archivo_id: int,
+    session: Session = Depends(get_session),
+):
+    order = session.get(PoOrder, id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden de compra no encontrada")
+
+    archivo = session.get(PoOrderArchivo, archivo_id)
+    if not archivo or archivo.order_id != id:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    try:
+        blob_name = storage_service.blob_name_from_download_url(archivo.archivo_url)
+        storage_service.delete_file(blob_name)
+    except (ValueError, Exception):
+        pass  # Si falla la eliminación GCS no bloqueamos el registro
+
+    session.delete(archivo)
+    session.commit()
+    return {"ok": True}

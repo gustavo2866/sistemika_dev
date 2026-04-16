@@ -57,6 +57,7 @@ export type Propiedad = {
   provincia?: string | null;
   codigo_postal?: string | null;
   matricula_catastral?: string | null;
+  padron?: string | null;
   tipo_propiedad_id?: number | null;
   tipo_propiedad?: TipoPropiedadRef | null;
   tipo_actualizacion_id?: number | null;
@@ -96,6 +97,7 @@ export type PropiedadFormValues = {
   provincia?: string | null;
   codigo_postal?: string | null;
   matricula_catastral?: string | null;
+  padron?: string | null;
   tipo_propiedad_id?: number | null;
   tipo_actualizacion_id?: number | null;
   fecha_renovacion?: string | null;
@@ -159,6 +161,7 @@ export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad
     provincia: stringField({ required: false, maxLength: 100 }),
     codigo_postal: stringField({ required: false, maxLength: 20 }),
     matricula_catastral: stringField({ required: false, maxLength: 200 }),
+    padron: stringField({ required: false, maxLength: 200 }),
     tipo_propiedad_id: numberField({ required: false, min: 1 }),
     tipo_actualizacion_id: numberField({ required: false, min: 1 }),
     fecha_renovacion: stringField({ required: false }),

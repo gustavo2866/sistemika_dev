@@ -2,7 +2,7 @@
 
 import { useRecordContext } from "ra-core";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
-import { FilterButton } from "@/components/filter-form";
+import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import {
@@ -63,8 +63,26 @@ const filters = buildListFilters(
 );
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
+const EMBEDDED_LIST_TABLE_CLASS_NAME = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
 
-const ListActions = ({ createTo }: { createTo?: string }) => (
+const isMeaningfulFilterValue = (value: unknown): boolean => {
+  if (value === "" || value == null) return false;
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((nestedValue) =>
+      isMeaningfulFilterValue(nestedValue),
+    );
+  }
+  return true;
+};
+
+const ListActions = ({
+  createTo,
+  filters,
+}: {
+  createTo?: string;
+  filters: ReturnType<typeof buildListFilters>;
+}) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
     <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
@@ -107,6 +125,10 @@ type ContratoListProps = {
   perPage?: number;
   rowClick?: "edit" | ((id: string | number) => string);
   createTo?: string;
+  filterDefaultValues?: Record<string, unknown>;
+  permanentFilter?: Record<string, unknown>;
+  storeKey?: string;
+  emptyMessage?: string;
 };
 
 export const ContratoList = ({
@@ -114,59 +136,76 @@ export const ContratoList = ({
   perPage = 10,
   rowClick = "edit",
   createTo,
-}: ContratoListProps = {}) => (
-  <List
-    title="Contratos"
-    filters={filters}
-    actions={<ListActions createTo={createTo} />}
-    debounce={300}
-    perPage={perPage}
-    containerClassName={LIST_CONTAINER_WIDE}
-    pagination={<ListPaginator />}
-    sort={{ field: "id", order: "DESC" }}
-    showBreadcrumb={!embedded}
-    showHeader={!embedded}
-  >
-    <ResponsiveDataTable
-      rowClick={rowClick}
-      mobileConfig={{
-        primaryField: "id",
-        secondaryFields: ["estado", "inquilino_nombre"],
-        detailFields: [],
-      }}
-      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+  filterDefaultValues,
+  permanentFilter,
+  storeKey,
+  emptyMessage,
+}: ContratoListProps = {}) => {
+  const hiddenEmbeddedFilterSources = new Set(
+    Object.keys(permanentFilter ?? {}).filter((key) =>
+      isMeaningfulFilterValue(permanentFilter?.[key]),
+    ),
+  );
+  const resolvedFilters = embedded
+    ? filters.filter((filterElement) => {
+        const source = String(filterElement.props.source ?? "");
+        return !hiddenEmbeddedFilterSources.has(source);
+      })
+    : filters;
+
+  return (
+    <List
+      resource="contratos"
+      title="Contratos"
+      filters={resolvedFilters}
+      actions={<ListActions createTo={createTo} filters={resolvedFilters} />}
+      debounce={300}
+      perPage={perPage}
+      filter={permanentFilter}
+      filterDefaultValues={filterDefaultValues}
+      containerClassName={LIST_CONTAINER_WIDE}
+      pagination={<ListPaginator />}
+      sort={{ field: "id", order: "DESC" }}
+      disableSyncWithLocation={embedded}
+      storeKey={embedded ? storeKey : undefined}
+      showBreadcrumb={!embedded}
+      showHeader={!embedded}
+      filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
-      <ListColumn source="id" label="ID" className="w-[60px]">
-        <ListText source="id" />
-      </ListColumn>
-      <ListColumn source="propiedad_id" label="Propiedad" className="w-[160px]">
-        <ReferenceField source="propiedad_id" reference="propiedades" link="show">
-          <ListText source="nombre" />
-        </ReferenceField>
-      </ListColumn>
-      <ListColumn source="tipo_contrato_id" label="Tipo" className="w-[100px]">
-        <ReferenceField source="tipo_contrato_id" reference="tipos-contrato" link={false}>
-          <ListText source="nombre" />
-        </ReferenceField>
-      </ListColumn>
-      <ListColumn source="inquilino_nombre" label="Inquilino" className="w-[120px]">
-        <InquilinoCell />
-      </ListColumn>
-      <ListColumn source="estado" label="Estado" className="w-[80px]">
-        <EstadoCell />
-      </ListColumn>
-      <ListColumn source="fecha_inicio" label="Inicio" className="w-[90px]">
-        <ListDate source="fecha_inicio" />
-      </ListColumn>
-      <ListColumn source="fecha_vencimiento" label="Vencimiento" className="w-[100px]">
-        <ListDate source="fecha_vencimiento" />
-      </ListColumn>
-      <ListColumn source="valor_alquiler" label="Alquiler" className="w-[100px]">
-        <ListText source="valor_alquiler" />
-      </ListColumn>
-      <ListColumn label="Acciones" className="w-[60px]">
-        <ContratoAccionesCell />
-      </ListColumn>
-    </ResponsiveDataTable>
-  </List>
-);
+      <ResponsiveDataTable
+        rowClick={rowClick}
+        mobileConfig={{
+          primaryField: "id",
+          secondaryFields: ["estado", "inquilino_nombre"],
+          detailFields: [],
+        }}
+        emptyMessage={emptyMessage}
+        className={embedded ? EMBEDDED_LIST_TABLE_CLASS_NAME : LIST_TABLE_CLASS_NAME}
+      >
+        <ListColumn source="id" label="ID" className="w-[48px]">
+          <ListText source="id" />
+        </ListColumn>
+        <ListColumn source="propiedad_id" label="Propiedad" className="w-[120px]">
+          <ReferenceField source="propiedad_id" reference="propiedades" link="show">
+            <ListText source="nombre" />
+          </ReferenceField>
+        </ListColumn>
+        <ListColumn source="inquilino_nombre" label="Inquilino" className="w-[100px]">
+          <InquilinoCell />
+        </ListColumn>
+        <ListColumn source="estado" label="Estado" className="w-[72px]">
+          <EstadoCell />
+        </ListColumn>
+        <ListColumn source="fecha_inicio" label="Inicio" className="w-[72px]">
+          <ListDate source="fecha_inicio" />
+        </ListColumn>
+        <ListColumn source="fecha_vencimiento" label="Vencimiento" className="w-[76px]">
+          <ListDate source="fecha_vencimiento" />
+        </ListColumn>
+        <ListColumn label={embedded ? "" : "Acciones"} className="w-[60px]">
+          <ContratoAccionesCell />
+        </ListColumn>
+      </ResponsiveDataTable>
+    </List>
+  );
+};

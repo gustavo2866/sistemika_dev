@@ -24,6 +24,7 @@ export const PropiedadEdit = () => {
       title={<PropiedadEditTitle />}
       actions={false}
       redirect={false}
+      mutationMode="pessimistic"
       mutationOptions={{
         onSuccess: (data) => {
           if (returnTo) {

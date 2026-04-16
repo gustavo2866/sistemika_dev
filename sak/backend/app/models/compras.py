@@ -12,6 +12,7 @@ from .enums import TipoCompra
 if TYPE_CHECKING:
     from .articulo import Articulo
     from .adm import AdmConcepto
+    from .po_order_archivo import PoOrderArchivo
     from .centro_costo import CentroCosto
     from .comprobante import Comprobante
     from .crm.oportunidad import CRMOportunidad
@@ -69,8 +70,8 @@ class PoOrder(Base, table=True):
     __tablename__ = "po_orders"
 
     __searchable_fields__: ClassVar[List[str]] = ["titulo", "comentario"]
-    __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
-    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "tipo_solicitud", "order_status", "detalles"]
+    __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "archivos"}
+    __auto_include_relations__: ClassVar[List[str]] = ["proveedor", "solicitante", "tipo_solicitud", "order_status", "detalles", "archivos"]
 
     titulo: str = Field(
         max_length=200,
@@ -148,6 +149,10 @@ class PoOrder(Base, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     status_logs: List["PoOrderStatusLog"] = Relationship(
+        back_populates="order",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    archivos: List["PoOrderArchivo"] = Relationship(
         back_populates="order",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
