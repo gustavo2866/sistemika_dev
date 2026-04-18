@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, type HTMLAttributes } from "react";
+import { cloneElement, useEffect, useState } from "react";
 import isEqual from "lodash/isEqual";
-import { Pencil } from "lucide-react";
+import { ExternalLink, Pencil } from "lucide-react";
 import {
   useDataProvider,
   useListContext,
@@ -18,7 +18,6 @@ import {
   FormOrderListRowActions,
   ListBoolean,
   ListColumn,
-  ListDate,
   ListID,
   ListPaginator,
   ListText,
@@ -54,7 +53,7 @@ const LIST_FILTERS = buildListFilters(
           { id: true, name: "Si" },
           { id: false, name: "No" },
         ],
-        className: "w-full",
+        className: "compact-filter w-[88px]",
       },
     },
   ],
@@ -63,33 +62,67 @@ const LIST_FILTERS = buildListFilters(
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
-const EMBEDDED_VISIBLE_FILTER_SOURCES = new Set(["q"]);
-
-const buildEmbeddedVisibleFilters = (hiddenSources: Set<string>) =>
-  LIST_FILTERS.filter((filterElement) => {
-    const source = String(filterElement.props.source ?? "");
-    return EMBEDDED_VISIBLE_FILTER_SOURCES.has(source) && !hiddenSources.has(source);
-  });
-
-const buildEmbeddedExpandableFilterSources = (hiddenSources: Set<string>) =>
+const buildEmbeddedFilters = (hiddenSources: Set<string>) =>
   LIST_FILTERS
-    .map((filterElement) => String(filterElement.props.source ?? ""))
-    .filter(
-      (source) =>
-        source &&
-        !EMBEDDED_VISIBLE_FILTER_SOURCES.has(source) &&
-        !hiddenSources.has(source),
-    );
-
-const buildEmbeddedExpandedFilters = (hiddenSources: Set<string>) =>
-  LIST_FILTERS.filter((filterElement) => {
-    const source = String(filterElement.props.source ?? "");
-    return !hiddenSources.has(source);
-  });
+    .filter((filterElement) => {
+      const source = String(filterElement.props.source ?? "");
+      return source && !hiddenSources.has(source);
+    })
+    .map((filterElement) => {
+      const source = String(filterElement.props.source ?? "");
+      return cloneElement(filterElement, {
+        ...filterElement.props,
+        alwaysOn: source === "q",
+      });
+    });
 
 type PropiedadServicioRecord = {
   id?: number;
   comentario?: string | null;
+  servicio_tipo?: {
+    url?: string | null;
+  } | null;
+};
+
+const normalizeServicioUrl = (value?: string | null) => {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  return `https://${normalized}`;
+};
+
+const ServicioUrlButton = () => {
+  const record = useRecordContext<PropiedadServicioRecord>();
+  const servicioUrl = normalizeServicioUrl(record?.servicio_tipo?.url);
+
+  if (!servicioUrl) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  const handleOpen = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const popup = window.open(
+      servicioUrl,
+      `servicio-relacionado-${record?.id ?? "popup"}`,
+      "popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes",
+    );
+    popup?.focus();
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      className="h-5 w-5 p-0"
+      onClick={handleOpen}
+      data-row-click="ignore"
+      title="Abrir servicio"
+      aria-label="Abrir servicio"
+    >
+      <ExternalLink className="h-2 w-2" />
+    </Button>
+  );
 };
 
 type PropiedadServicioListProps = {
@@ -101,6 +134,9 @@ type PropiedadServicioListProps = {
   permanentFilter?: Record<string, unknown>;
   storeKey?: string;
   emptyMessage?: string;
+  showEmbeddedHeader?: boolean;
+  embeddedTitle?: ReactNode | string | false;
+  embeddedExtraActions?: ReactNode;
 };
 
 const ListActions = ({ createTo }: { createTo?: string }) => (
@@ -110,7 +146,7 @@ const ListActions = ({ createTo }: { createTo?: string }) => (
       size="sm"
       buttonClassName={ACTION_BUTTON_CLASS}
     />
-    <CreateButton className={ACTION_BUTTON_CLASS} label="Agregar" to={createTo} />
+    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" to={createTo} />
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
@@ -149,67 +185,25 @@ const EmbeddedDefaultFilterSync = ({
   return null;
 };
 
-const EmbeddedServicioFilterDiv = ({
-  className,
-  ...props
-}: HTMLAttributes<HTMLDivElement>) => (
-  <StyledFilterDiv
-    {...props}
-    className={cn(
-      "!grid !min-w-0 !flex-1 !items-start !gap-3",
-      "grid-cols-1 sm:grid-cols-2",
-      "[&_[data-source=q]]:sm:col-span-full",
-      "[&_[data-source=q]]:sm:row-start-1",
-      "[&_[data-source]:not([data-source=q])]:sm:row-start-2",
-      className,
-    )}
-  />
-);
-
 const EmbeddedServicioListActions = ({
+  filters,
   createTo,
-  showAdvancedFilters,
-  onToggleAdvancedFilters,
-  filterDefaultValues,
-  expandableFilterSources,
+  extraActions,
 }: {
+  filters: ReturnType<typeof buildListFilters>;
   createTo?: string;
-  showAdvancedFilters: boolean;
-  onToggleAdvancedFilters: () => void;
-  filterDefaultValues?: Record<string, unknown>;
-  expandableFilterSources: string[];
+  extraActions?: ReactNode;
 }) => {
-  const { filterValues } = useListContext();
-  const activeAdvancedFiltersCount = expandableFilterSources.reduce(
-    (count, source) => {
-      const value = filterValues?.[source];
-      if (!isMeaningfulFilterValue(value)) return count;
-
-      const defaultValue = filterDefaultValues?.[source];
-      if (isEqual(value, defaultValue)) return count;
-
-      return count + 1;
-    },
-    0,
-  );
-
   return (
     <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant={showAdvancedFilters ? "secondary" : "outline"}
+      <FilterButton
+        filters={filters}
         size="sm"
-        className={ACTION_BUTTON_CLASS}
-        onClick={onToggleAdvancedFilters}
-      >
-        {showAdvancedFilters
-          ? "Ocultar filtros"
-          : activeAdvancedFiltersCount > 0
-            ? `Mas filtros (${activeAdvancedFiltersCount})`
-            : "Mas filtros"}
-      </Button>
-      <CreateButton className={ACTION_BUTTON_CLASS} label="Agregar" to={createTo} />
+        buttonClassName={ACTION_BUTTON_CLASS}
+      />
+      <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" to={createTo} />
       <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
+      {extraActions}
     </div>
   );
 };
@@ -339,7 +333,7 @@ const PropiedadServicioListBody = ({
     emptyMessage={emptyMessage}
     mobileConfig={{
       primaryField: "servicio_tipo_id",
-      secondaryFields: ["ref_cliente", "fecha", "activo"],
+      secondaryFields: ["ref_cliente", "activo"],
       detailFields: [],
     }}
     className={cn(LIST_TABLE_CLASS_NAME, className)}
@@ -347,7 +341,7 @@ const PropiedadServicioListBody = ({
     <ListColumn source="id" label="ID" className="w-[50px] text-center">
       <ListID source="id" widthClass="w-[50px]" />
     </ListColumn>
-    <ListColumn source="servicio_tipo_id" label="Tipo servicio" className="w-[120px]">
+    <ListColumn source="servicio_tipo_id" label="Tipo servicio" className="w-[90px]">
       <ReferenceField source="servicio_tipo_id" reference="servicios-tipo" link={false}>
         <ListText source="nombre" className="whitespace-normal break-words" />
       </ReferenceField>
@@ -355,16 +349,16 @@ const PropiedadServicioListBody = ({
     <ListColumn source="ref_cliente" label="Ref cliente" className="w-[100px]">
       <ListText source="ref_cliente" className="whitespace-normal break-words" />
     </ListColumn>
+    <ListColumn label="Abrir" className="w-[40px] text-center">
+      <ServicioUrlButton />
+    </ListColumn>
     <ListColumn source="comentario" label="Comentario" className="w-[200px]">
       <ComentarioCell />
     </ListColumn>
-    <ListColumn source="fecha" label="Fecha" className="w-[90px]">
-      <ListDate source="fecha" />
-    </ListColumn>
-    <ListColumn source="activo" label="Activo" className="w-[60px]">
+    <ListColumn source="activo" label="Activo" className="w-[36px]">
       <ListBoolean source="activo" />
     </ListColumn>
-    <ListColumn label="Acciones" className="w-[60px]">
+    <ListColumn className="w-[60px]">
       <FormOrderListRowActions />
     </ListColumn>
   </ResponsiveDataTable>
@@ -372,13 +366,16 @@ const PropiedadServicioListBody = ({
 
 export const PropiedadServicioList = ({
   embedded = false,
-  perPage = 25,
+  perPage = 5,
   rowClick = "edit",
   createTo,
   filterDefaultValues,
   permanentFilter,
   storeKey,
   emptyMessage,
+  showEmbeddedHeader,
+  embeddedTitle,
+  embeddedExtraActions,
 }: PropiedadServicioListProps = {}) => (
   <PropiedadServicioListContent
     embedded={embedded}
@@ -389,6 +386,9 @@ export const PropiedadServicioList = ({
     permanentFilter={permanentFilter}
     storeKey={storeKey}
     emptyMessage={emptyMessage}
+    showEmbeddedHeader={showEmbeddedHeader}
+    embeddedTitle={embeddedTitle}
+    embeddedExtraActions={embeddedExtraActions}
   />
 );
 
@@ -401,38 +401,31 @@ const PropiedadServicioListContent = ({
   permanentFilter,
   storeKey,
   emptyMessage,
+  showEmbeddedHeader = false,
+  embeddedTitle = "Servicios",
+  embeddedExtraActions,
 }: Required<Pick<PropiedadServicioListProps, "embedded" | "perPage">> &
   Omit<PropiedadServicioListProps, "embedded" | "perPage">) => {
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const hiddenEmbeddedFilterSources = new Set(
     Object.keys(permanentFilter ?? {}).filter((key) =>
       isMeaningfulFilterValue(permanentFilter?.[key]),
     ),
   );
   const resolvedFilterDefaults = filterDefaultValues;
-  const embeddedCollapsedFilters = buildEmbeddedVisibleFilters(hiddenEmbeddedFilterSources);
-  const embeddedExpandedFilters = buildEmbeddedExpandedFilters(hiddenEmbeddedFilterSources);
-  const embeddedExpandableFilterSources =
-    buildEmbeddedExpandableFilterSources(hiddenEmbeddedFilterSources);
-  const resolvedFilters = embedded
-    ? showAdvancedFilters
-      ? embeddedExpandedFilters
-      : embeddedCollapsedFilters
-    : LIST_FILTERS;
+  const embeddedFilters = buildEmbeddedFilters(hiddenEmbeddedFilterSources);
+  const resolvedFilters = embedded ? embeddedFilters : LIST_FILTERS;
   const embeddedActions = embedded ? (
     <EmbeddedServicioListActions
+      filters={embeddedFilters}
       createTo={createTo}
-      showAdvancedFilters={showAdvancedFilters}
-      onToggleAdvancedFilters={() => setShowAdvancedFilters((current) => !current)}
-      filterDefaultValues={resolvedFilterDefaults}
-      expandableFilterSources={embeddedExpandableFilterSources}
+      extraActions={embeddedExtraActions}
     />
   ) : undefined;
 
   return (
     <List
       resource="propiedades-servicios"
-      title="Servicios"
+      title={embedded ? (showEmbeddedHeader ? embeddedTitle : undefined) : "Servicios"}
       filters={resolvedFilters}
       actions={embedded ? embeddedActions : <ListActions createTo={createTo} />}
       debounce={300}
@@ -441,12 +434,12 @@ const PropiedadServicioListContent = ({
       pagination={<ListPaginator />}
       sort={{ field: "id", order: "DESC" }}
       showBreadcrumb={!embedded}
-      showHeader={!embedded}
+      showHeader={embedded ? showEmbeddedHeader : true}
       filterDefaultValues={resolvedFilterDefaults}
       filter={permanentFilter}
       disableSyncWithLocation={embedded}
       storeKey={embedded ? (storeKey ?? "propiedades-servicios-embedded") : undefined}
-      filterFormComponent={embedded ? EmbeddedServicioFilterDiv : undefined}
+      filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <EmbeddedDefaultFilterSync
         enabled={embedded}

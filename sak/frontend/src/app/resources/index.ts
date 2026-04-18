@@ -27,6 +27,7 @@ export * from "./crm/crm-catalogos/crm-catalogos-tipos-evento";
 export * from "./crm/crm-catalogos/crm-catalogos-motivos-evento";
 export * from "./crm/crm-catalogos/crm-catalogos-respuestas";
 export * from "./configuracion/monedas";
+export * from "./configuracion/settings";
 export * from "./crm/crm-contactos";
 export * from "./crm/crm-oportunidades";
 export * from "./crm/crm-eventos";

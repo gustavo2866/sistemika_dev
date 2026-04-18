@@ -103,7 +103,7 @@ export function ResumenResultados({
         {/* Resultados de cuotas */}
         <div>
           <h3 className="font-semibold mb-3">Cuotas</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${resumen.sistema === "aleman" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
             <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
@@ -116,6 +116,25 @@ export function ResumenResultados({
                     </p>
                   </div>
                   <TrendingUp className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                      Cuota Media c/IVA
+                    </p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      Cuota {resumen.cuota_media_numero}
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
+                      {formatCurrency(resumen.cuota_media_con_iva)}
+                    </p>
+                  </div>
+                  <Percent className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
                 </div>
               </CardContent>
             </Card>

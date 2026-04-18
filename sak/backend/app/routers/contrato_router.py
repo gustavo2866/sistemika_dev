@@ -16,6 +16,7 @@ from app.crud.contrato_crud import contrato_crud
 from app.db import get_session
 from app.models.contrato import Contrato
 from app.models.contrato_archivo import ContratoArchivo
+from app.services.propiedad_status_service import sync_propiedad_status
 from app.services.gcs_storage_service import storage_service
 
 # ── Upload config ─────────────────────────────────────────────────────────────
@@ -43,137 +44,20 @@ def _get_contrato_or_404(id: int, session: Session) -> Contrato:
     return contrato
 
 
-def _sync_propiedad_activar(contrato: "Contrato", session: Session) -> None:
-    """Sincroniza los datos denormalizados de la propiedad al activar un contrato."""
-    from app.models.propiedad import Propiedad
-    propiedad = session.get(Propiedad, contrato.propiedad_id)
-    if not propiedad:
-        return
-    propiedad.valor_alquiler = contrato.valor_alquiler
-    propiedad.expensas = contrato.expensas
-    propiedad.fecha_inicio_contrato = contrato.fecha_inicio
-    propiedad.vencimiento_contrato = contrato.fecha_vencimiento
-    propiedad.fecha_renovacion = contrato.fecha_renovacion
-    propiedad.tipo_actualizacion_id = contrato.tipo_actualizacion_id
-    propiedad.vacancia_activa = False
-    propiedad.vacancia_fecha = None
-    propiedad.updated_at = datetime.now(UTC)
-    session.add(propiedad)
-
-
-def _sync_propiedad_liberar(contrato: "Contrato", fecha_liberacion: date, session: Session) -> None:
-    """Marca la propiedad como vacante al rescindir o finalizar un contrato."""
-    from app.models.propiedad import Propiedad
-    propiedad = session.get(Propiedad, contrato.propiedad_id)
-    if not propiedad:
-        return
-    propiedad.vacancia_activa = True
-    propiedad.vacancia_fecha = fecha_liberacion
-    propiedad.updated_at = datetime.now(UTC)
-    session.add(propiedad)
-
-
-# --- Activar: borrador → vigente ---
-
-@contrato_router.post("/{id}/activar", tags=["contratos"])
-def activar_contrato(id: int, session: Session = Depends(get_session)):
-    contrato = _get_contrato_or_404(id, session)
-
-    if contrato.estado != "borrador":
-        raise HTTPException(status_code=400, detail=f"Solo se puede activar un contrato en estado 'borrador'. Estado actual: '{contrato.estado}'")
-
-    vigente_existente = session.exec(
-        select(Contrato).where(
-            Contrato.propiedad_id == contrato.propiedad_id,
-            Contrato.estado == "vigente",
-            Contrato.deleted_at == None,  # noqa: E711
-        )
-    ).first()
-    if vigente_existente:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Ya existe un contrato vigente (id={vigente_existente.id}) para esta propiedad.",
-        )
-
-    contrato.estado = "vigente"
-    contrato.updated_at = datetime.now(UTC)
-    session.add(contrato)
-    _sync_propiedad_activar(contrato, session)
-    session.commit()
-    session.refresh(contrato)
-    return contrato
-
-
-# --- Rescindir: vigente → rescindido (extinción anticipada) ---
-
-class RescindirBody(BaseModel):
-    fecha_rescision: date
-    motivo_rescision: Optional[str] = None
-
-
-@contrato_router.post("/{id}/rescindir", tags=["contratos"])
-def rescindir_contrato(id: int, body: RescindirBody, session: Session = Depends(get_session)):
-    contrato = _get_contrato_or_404(id, session)
-
-    if contrato.estado != "vigente":
-        raise HTTPException(status_code=400, detail=f"Solo se puede rescindir un contrato 'vigente'. Estado actual: '{contrato.estado}'")
-
-    if body.fecha_rescision > date.today():
-        raise HTTPException(status_code=400, detail="La fecha de rescisión no puede ser futura.")
-
-    contrato.estado = "rescindido"
-    contrato.fecha_rescision = body.fecha_rescision
-    contrato.motivo_rescision = body.motivo_rescision
-    contrato.updated_at = datetime.now(UTC)
-    session.add(contrato)
-    _sync_propiedad_liberar(contrato, body.fecha_rescision, session)
-    session.commit()
-    session.refresh(contrato)
-    return contrato
-
-
-# --- Finalizar: vigente → finalizado (fin natural del contrato) ---
-
-@contrato_router.post("/{id}/finalizar", tags=["contratos"])
-def finalizar_contrato(id: int, session: Session = Depends(get_session)):
-    contrato = _get_contrato_or_404(id, session)
-
-    if contrato.estado != "vigente":
-        raise HTTPException(status_code=400, detail=f"Solo se puede finalizar un contrato 'vigente'. Estado actual: '{contrato.estado}'")
-
-    contrato.estado = "finalizado"
-    contrato.updated_at = datetime.now(UTC)
-    session.add(contrato)
-    _sync_propiedad_liberar(contrato, contrato.fecha_vencimiento or date.today(), session)
-    session.commit()
-    session.refresh(contrato)
-    return contrato
-
-
-# --- Renovar: vigente → finalizado + nuevo borrador ---
-
-@contrato_router.post("/{id}/renovar", tags=["contratos"])
-def renovar_contrato(id: int, session: Session = Depends(get_session)):
-    contrato = _get_contrato_or_404(id, session)
-
-    if contrato.estado != "vigente":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Solo se puede renovar un contrato 'vigente'. Estado actual: '{contrato.estado}'",
-        )
-
-    # Finalizar el contrato origen
-    contrato.estado = "finalizado"
-    contrato.updated_at = datetime.now(UTC)
-    session.add(contrato)
-
-    # Crear nuevo contrato en borrador copiando los datos base
-    nuevo = Contrato(
+def _build_contrato_borrador_desde_origen(
+    contrato: Contrato,
+    *,
+    fecha_inicio: Optional[date] = None,
+    fecha_vencimiento: Optional[date] = None,
+    fecha_renovacion: Optional[date] = None,
+) -> Contrato:
+    return Contrato(
         propiedad_id=contrato.propiedad_id,
         tipo_contrato_id=contrato.tipo_contrato_id,
         tipo_actualizacion_id=contrato.tipo_actualizacion_id,
-        fecha_inicio=contrato.fecha_vencimiento,
-        fecha_vencimiento=contrato.fecha_renovacion or contrato.fecha_vencimiento,
+        fecha_inicio=fecha_inicio or contrato.fecha_inicio,
+        fecha_vencimiento=fecha_vencimiento or contrato.fecha_vencimiento,
+        fecha_renovacion=fecha_renovacion if fecha_renovacion is not None else contrato.fecha_renovacion,
         duracion_meses=contrato.duracion_meses,
         valor_alquiler=contrato.valor_alquiler,
         expensas=contrato.expensas,
@@ -203,12 +87,250 @@ def renovar_contrato(id: int, session: Session = Depends(get_session)):
         garante2_domicilio=contrato.garante2_domicilio,
         garante2_tipo_garantia=contrato.garante2_tipo_garantia,
         lugar_celebracion=contrato.lugar_celebracion,
+        observaciones=contrato.observaciones,
         estado="borrador",
         contrato_origen_id=contrato.id,
     )
-    session.add(nuevo)
-    session.flush()
 
+
+def _sync_propiedad_activar(
+    contrato: "Contrato",
+    session: Session,
+    *,
+    sync_status: bool = False,
+    motivo_estado: Optional[str] = None,
+) -> None:
+    """Sincroniza los datos denormalizados de la propiedad al activar un contrato."""
+    from app.models.propiedad import Propiedad
+    propiedad = session.get(Propiedad, contrato.propiedad_id)
+    if not propiedad:
+        return
+    propiedad.valor_alquiler = contrato.valor_alquiler
+    propiedad.expensas = contrato.expensas
+    propiedad.fecha_inicio_contrato = contrato.fecha_inicio
+    propiedad.vencimiento_contrato = contrato.fecha_vencimiento
+    propiedad.fecha_renovacion = contrato.fecha_renovacion
+    propiedad.tipo_actualizacion_id = contrato.tipo_actualizacion_id
+    propiedad.vacancia_activa = False
+    propiedad.vacancia_fecha = None
+    propiedad.updated_at = datetime.now(UTC)
+    session.add(propiedad)
+    if sync_status:
+        sync_propiedad_status(
+            session,
+            propiedad=propiedad,
+            estado_orden=4,
+            fecha_cambio=contrato.fecha_inicio or date.today(),
+            motivo=motivo_estado,
+        )
+
+
+def _sync_propiedad_liberar(
+    contrato: "Contrato",
+    fecha_liberacion: date,
+    session: Session,
+    *,
+    motivo_estado: Optional[str] = None,
+) -> None:
+    """Marca la propiedad como vacante al rescindir o finalizar un contrato."""
+    from app.models.propiedad import Propiedad
+    propiedad = session.get(Propiedad, contrato.propiedad_id)
+    if not propiedad:
+        return
+    sync_propiedad_status(
+        session,
+        propiedad=propiedad,
+        estado_orden=1,
+        fecha_cambio=fecha_liberacion,
+        motivo=motivo_estado,
+    )
+
+
+# --- Activar: borrador → vigente ---
+
+@contrato_router.post("/{id}/activar", tags=["contratos"])
+def activar_contrato(id: int, session: Session = Depends(get_session)):
+    contrato = _get_contrato_or_404(id, session)
+
+    if contrato.estado != "borrador":
+        raise HTTPException(status_code=400, detail=f"Solo se puede activar un contrato en estado 'borrador'. Estado actual: '{contrato.estado}'")
+
+    vigente_existente = session.exec(
+        select(Contrato).where(
+            Contrato.propiedad_id == contrato.propiedad_id,
+            Contrato.estado == "vigente",
+            Contrato.deleted_at == None,  # noqa: E711
+        )
+    ).first()
+    if vigente_existente:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe un contrato vigente (id={vigente_existente.id}) para esta propiedad.",
+        )
+
+    contrato.estado = "vigente"
+    contrato.updated_at = datetime.now(UTC)
+    session.add(contrato)
+    _sync_propiedad_activar(
+        contrato,
+        session,
+        sync_status=True,
+        motivo_estado=f"Contrato #{contrato.id} activado",
+    )
+    session.commit()
+    session.refresh(contrato)
+    return contrato
+
+
+# --- Rescindir: vigente → rescindido (extinción anticipada) ---
+
+class RescindirBody(BaseModel):
+    fecha_rescision: date
+    motivo_rescision: Optional[str] = None
+
+
+class ActualizarVigenciaBody(BaseModel):
+    fecha_renovacion: Optional[date] = None
+    valor_alquiler: float
+
+
+@contrato_router.post("/{id}/rescindir", tags=["contratos"])
+def rescindir_contrato(id: int, body: RescindirBody, session: Session = Depends(get_session)):
+    contrato = _get_contrato_or_404(id, session)
+
+    if contrato.estado != "vigente":
+        raise HTTPException(status_code=400, detail=f"Solo se puede rescindir un contrato 'vigente'. Estado actual: '{contrato.estado}'")
+
+    if body.fecha_rescision > date.today():
+        raise HTTPException(status_code=400, detail="La fecha de rescisión no puede ser futura.")
+
+    contrato.estado = "rescindido"
+    contrato.fecha_rescision = body.fecha_rescision
+    contrato.motivo_rescision = body.motivo_rescision
+    contrato.updated_at = datetime.now(UTC)
+    session.add(contrato)
+    _sync_propiedad_liberar(
+        contrato,
+        body.fecha_rescision,
+        session,
+        motivo_estado=f"Rescision contrato #{contrato.id}",
+    )
+    session.commit()
+    session.refresh(contrato)
+    return contrato
+
+
+# --- Actualizar vigencia: vigente -> vigente (ajusta alquiler y próxima actualización) ---
+
+@contrato_router.post("/{id}/actualizar-vigencia", tags=["contratos"])
+def actualizar_vigencia_contrato(
+    id: int,
+    body: ActualizarVigenciaBody,
+    session: Session = Depends(get_session),
+):
+    contrato = _get_contrato_or_404(id, session)
+
+    if contrato.estado != "vigente":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo se puede actualizar un contrato 'vigente'. Estado actual: '{contrato.estado}'",
+        )
+
+    contrato.fecha_renovacion = body.fecha_renovacion
+    contrato.valor_alquiler = body.valor_alquiler
+    contrato.updated_at = datetime.now(UTC)
+    session.add(contrato)
+    _sync_propiedad_activar(contrato, session)
+    session.commit()
+    session.refresh(contrato)
+    return contrato
+
+
+# --- Finalizar: vigente → finalizado (fin natural del contrato) ---
+
+@contrato_router.post("/{id}/finalizar", tags=["contratos"])
+def finalizar_contrato(id: int, session: Session = Depends(get_session)):
+    contrato = _get_contrato_or_404(id, session)
+
+    if contrato.estado != "vigente":
+        raise HTTPException(status_code=400, detail=f"Solo se puede finalizar un contrato 'vigente'. Estado actual: '{contrato.estado}'")
+
+    contrato.estado = "finalizado"
+    contrato.updated_at = datetime.now(UTC)
+    session.add(contrato)
+    _sync_propiedad_liberar(
+        contrato,
+        contrato.fecha_vencimiento or date.today(),
+        session,
+        motivo_estado=f"Finalizacion contrato #{contrato.id}",
+    )
+    session.commit()
+    session.refresh(contrato)
+    return contrato
+
+
+# --- Renovar: vigente → finalizado + nuevo borrador ---
+
+@contrato_router.post("/{id}/renovar", tags=["contratos"])
+def renovar_contrato(id: int, session: Session = Depends(get_session)):
+    contrato = _get_contrato_or_404(id, session)
+
+    if contrato.estado != "borrador":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo se puede renovar un contrato en estado 'borrador'. Estado actual: '{contrato.estado}'",
+        )
+
+    vigente_existente = session.exec(
+        select(Contrato).where(
+            Contrato.propiedad_id == contrato.propiedad_id,
+            Contrato.estado == "vigente",
+            Contrato.id != contrato.id,
+            Contrato.deleted_at == None,  # noqa: E711
+        )
+    ).first()
+    if not vigente_existente:
+        raise HTTPException(
+            status_code=409,
+            detail="No existe un contrato vigente para renovar en esta propiedad.",
+        )
+
+    if contrato.fecha_inicio < vigente_existente.fecha_vencimiento:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "La fecha de inicio del nuevo contrato debe ser mayor o igual "
+                "a la fecha de finalizacion del contrato vigente."
+            ),
+        )
+
+    vigente_existente.estado = "finalizado"
+    vigente_existente.updated_at = datetime.now(UTC)
+    session.add(vigente_existente)
+
+    contrato.estado = "vigente"
+    contrato.contrato_origen_id = vigente_existente.id
+    contrato.updated_at = datetime.now(UTC)
+    session.add(contrato)
+    _sync_propiedad_activar(contrato, session)
+
+    session.commit()
+    session.refresh(contrato)
+    return {
+        "contrato_original_id": vigente_existente.id,
+        "nuevo_contrato_id": contrato.id,
+        "nuevo_contrato": contrato,
+    }
+
+
+# --- Duplicar: crea un nuevo borrador copiando el contrato origen (sin archivos) ---
+
+@contrato_router.post("/{id}/duplicar", tags=["contratos"])
+def duplicar_contrato(id: int, session: Session = Depends(get_session)):
+    contrato = _get_contrato_or_404(id, session)
+
+    nuevo = _build_contrato_borrador_desde_origen(contrato)
+    session.add(nuevo)
     session.commit()
     session.refresh(nuevo)
     return {"contrato_original_id": contrato.id, "nuevo_contrato_id": nuevo.id, "nuevo_contrato": nuevo}

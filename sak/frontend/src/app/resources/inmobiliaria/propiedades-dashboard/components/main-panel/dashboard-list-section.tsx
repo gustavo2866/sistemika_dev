@@ -178,7 +178,7 @@ const DashboardDetailEstadoCell = () => {
 const DashboardDetailDiasCell = () => {
   const dashboardItem = useDashboardDetailRecord();
   return (
-    <span className="block text-right text-[8px] leading-tight text-foreground">
+    <span className="block text-center text-[8px] leading-tight text-foreground">
       {formatInteger(dashboardItem?.item.dias_vacancia ?? 0)}
     </span>
   );
@@ -206,6 +206,11 @@ const DashboardDetailActionsCell = () => (
   <PropiedadRowActions refreshEventName="propiedades-dashboard-refresh" />
 );
 
+const DEFAULT_DASHBOARD_DETAIL_SORT = {
+  field: "propertyId",
+  order: "DESC" as const,
+};
+
 const DashboardDetailTable = ({
   records,
   showContratoColumn,
@@ -219,6 +224,7 @@ const DashboardDetailTable = ({
     data: records,
     resource: "propiedades",
     perPage: records.length || 1,
+    sort: DEFAULT_DASHBOARD_DETAIL_SORT,
   });
 
   return (
@@ -259,7 +265,7 @@ const DashboardDetailTable = ({
           <ListColumn source="estado" label="Estado" className="w-[54px]">
             <DashboardDetailEstadoCell />
           </ListColumn>
-          <ListColumn source="diasVacancia" label="Dias" className="w-[34px]">
+          <ListColumn source="diasVacancia" label="Dias" className="w-[34px] text-center">
             <DashboardDetailDiasCell />
           </ListColumn>
           {showContratoColumn ? (
@@ -267,10 +273,10 @@ const DashboardDetailTable = ({
               <DashboardDetailContratoCell />
             </ListColumn>
           ) : null}
-          <ListColumn source="valorAlquiler" label={valueColumnLabel} className="w-[48px]">
+          <ListColumn source="valorAlquiler" label={valueColumnLabel} className="w-[48px] text-right">
             <DashboardDetailAlquilerCell />
           </ListColumn>
-          <ListColumn source="key" label="Acciones" disableSort className="w-[44px]">
+          <ListColumn source="key" label="" disableSort className="w-[44px]">
             <DashboardDetailActionsCell />
           </ListColumn>
         </ResponsiveDataTable>

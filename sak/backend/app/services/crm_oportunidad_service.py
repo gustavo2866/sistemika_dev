@@ -4,7 +4,7 @@ from datetime import UTC, datetime, date
 from typing import Optional
 
 from sqlmodel import Session, select
-from sqlalchemy import delete, update
+from sqlalchemy import delete, func, update
 
 from app.models import (
     CRMOportunidad,
@@ -17,8 +17,10 @@ from app.models import (
     Propiedad,
     CRMMensaje,
     CRMEvento,
+    PoOrder,
+    PoOrderStatus,
 )
-from app.models.propiedad import PropiedadesLogStatus, PropiedadesStatus
+from app.services.propiedad_status_service import sync_propiedad_status
 from app.models.enums import (
     EstadoOportunidad,
     TRANSICIONES_ESTADO_OPORTUNIDAD,
@@ -80,6 +82,21 @@ class CRMOportunidadService:
         except ValueError:
             return datetime.now(UTC)
 
+    def _count_pending_orders(
+        self,
+        session: Session,
+        oportunidad_id: int,
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(PoOrder)
+            .join(PoOrderStatus, PoOrder.order_status_id == PoOrderStatus.id)
+            .where(PoOrder.oportunidad_id == oportunidad_id)
+            .where(PoOrder.deleted_at.is_(None))
+            .where(PoOrderStatus.es_final.is_(False))
+        )
+        return int(session.exec(stmt).one() or 0)
+
     def cambiar_estado(
         self,
         session: Session,
@@ -111,6 +128,13 @@ class CRMOportunidadService:
         ):
             if monto is None or moneda_id is None or condicion_pago_id is None:
                 raise ValueError("monto, moneda_id y condicion_pago_id son obligatorios para Reserva/Ganada")
+
+        if is_mantenimiento and nuevo_estado == EstadoOportunidad.GANADA.value:
+            pending_orders = self._count_pending_orders(session, oportunidad_id)
+            if pending_orders > 0:
+                raise ValueError(
+                    f"No se puede cerrar la oportunidad porque tiene {pending_orders} orden(es) pendiente(s)."
+                )
 
         estado_anterior = oportunidad.estado
         oportunidad.estado = nuevo_estado
@@ -187,51 +211,19 @@ class CRMOportunidadService:
         propiedad = session.get(Propiedad, oportunidad.propiedad_id)
         if not propiedad:
             return
-
-        estado_realizada = session.exec(
-            select(PropiedadesStatus).where(PropiedadesStatus.orden == 4)
-        ).first()
-        if not estado_realizada:
-            return
-
-        prev_status_id = propiedad.propiedad_status_id
         fecha_cambio = (
             oportunidad.fecha_estado.date()
             if oportunidad.fecha_estado
             else date.today()
         )
-
-        propiedad.propiedad_status_id = estado_realizada.id
-        propiedad.estado_fecha = fecha_cambio
-        propiedad.vacancia_activa = False
-        propiedad.vacancia_fecha = None
-        session.add(propiedad)
-
-        if prev_status_id != estado_realizada.id:
-            estado_anterior = (
-                session.get(PropiedadesStatus, prev_status_id)
-                if prev_status_id
-                else None
-            )
-            motivo = descripcion.strip() if descripcion else None
-            motivo_corto = motivo[:200] if motivo else None
-            log = PropiedadesLogStatus(
-                propiedad_id=propiedad.id,
-                estado_anterior_id=prev_status_id,
-                estado_nuevo_id=estado_realizada.id,
-                estado_anterior=estado_anterior.nombre if estado_anterior else None,
-                estado_nuevo=estado_realizada.nombre,
-                fecha_cambio=datetime(
-                    fecha_cambio.year,
-                    fecha_cambio.month,
-                    fecha_cambio.day,
-                    tzinfo=UTC,
-                ),
-                usuario_id=usuario_id or 1,
-                motivo=motivo_corto,
-                observaciones=motivo,
-            )
-            session.add(log)
+        sync_propiedad_status(
+            session,
+            propiedad=propiedad,
+            estado_orden=4,
+            fecha_cambio=fecha_cambio,
+            usuario_id=usuario_id,
+            motivo=descripcion,
+        )
 
     def eliminar_oportunidad_y_relaciones(self, session: Session, oportunidad_id: int) -> None:
         oportunidad = session.get(CRMOportunidad, oportunidad_id)

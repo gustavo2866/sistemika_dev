@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNotify, useRefresh } from "ra-core";
 import { apiUrl } from "@/lib/dataProvider";
 
@@ -15,6 +15,29 @@ const getAuthHeaders = (): Record<string, string> => {
 export const useContratoGenerarPdf = () => {
   const notify = useNotify();
   const [loading, setLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const closePreview = useCallback(() => {
+    setPreviewOpen(false);
+  }, []);
+
+  const downloadPreview = useCallback(() => {
+    if (!previewUrl || !previewName) return;
+    const a = document.createElement("a");
+    a.href = previewUrl;
+    a.download = previewName;
+    a.click();
+  }, [previewName, previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const generarPdf = async (id: number) => {
     setLoading(true);
@@ -30,11 +53,12 @@ export const useContratoGenerarPdf = () => {
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `contrato_${id}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return url;
+      });
+      setPreviewName(`contrato_${id}.pdf`);
+      setPreviewOpen(true);
     } catch {
       notify("Error al generar el PDF", { type: "warning" });
     } finally {
@@ -42,7 +66,15 @@ export const useContratoGenerarPdf = () => {
     }
   };
 
-  return { generarPdf, loading };
+  return {
+    generarPdf,
+    loading,
+    previewUrl,
+    previewName,
+    previewOpen,
+    closePreview,
+    downloadPreview,
+  };
 };
 
 // ── Activar ──────────────────────────────────────────────────────────────────
@@ -175,7 +207,7 @@ export const useContratoRenovar = () => {
       }
       const data = await res.json();
       refresh();
-      notify(`Contrato renovado. Nuevo contrato #${data?.nuevo_contrato_id ?? ""}`, {
+      notify(`Contrato renovado. Contrato activo #${data?.nuevo_contrato_id ?? ""}`, {
         type: "info",
       });
       return true;
@@ -188,6 +220,42 @@ export const useContratoRenovar = () => {
   };
 
   return { renovar, loading };
+};
+
+// ── Duplicar ─────────────────────────────────────────────────────────────────
+
+export const useContratoDuplicar = () => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  const duplicar = async (id: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/contratos/${id}/duplicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify(data?.detail ?? "No se pudo duplicar el contrato", { type: "warning" });
+        return false;
+      }
+      const data = await res.json();
+      refresh();
+      notify(`Contrato duplicado. Nuevo contrato #${data?.nuevo_contrato_id ?? ""}`, {
+        type: "info",
+      });
+      return true;
+    } catch {
+      notify("Error al duplicar el contrato", { type: "warning" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { duplicar, loading };
 };
 
 // ── Archivo: upload ───────────────────────────────────────────────────────────

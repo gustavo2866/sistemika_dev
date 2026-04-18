@@ -74,7 +74,7 @@ const ListActions = ({ createTo }: { createTo?: string }) => (
 
 export const ServicioTipoList = ({
   embedded = false,
-  perPage = 25,
+  perPage = 5,
   rowClick = "edit",
   createTo,
 }: ServicioTipoListProps = {}) => (

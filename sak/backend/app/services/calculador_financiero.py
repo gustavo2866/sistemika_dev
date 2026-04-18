@@ -36,6 +36,8 @@ class ResultadoCalculo:
     tem: Decimal
     cuota_inicial: Decimal
     cuota_final: Decimal
+    cuota_media_numero: int
+    cuota_media_con_iva: Decimal
     total_intereses: Decimal
     total_iva: Decimal
     total_a_pagar: Decimal
@@ -68,6 +70,16 @@ class CalculadorFinanciero:
         """Calcula el IVA sobre un interés"""
         iva = interes * (iva_porcentaje / Decimal("100"))
         return CalculadorFinanciero.redondear_moneda(iva)
+
+    @staticmethod
+    def obtener_cuota_media(detalle_cuotas: List[Dict[str, Any]]) -> tuple[int, Decimal]:
+        """Retorna el número de cuota media y su valor con IVA."""
+        if not detalle_cuotas:
+            return 0, Decimal("0.00")
+
+        cuota_media_numero = (len(detalle_cuotas) + 1) // 2
+        cuota_media = detalle_cuotas[cuota_media_numero - 1]
+        return cuota_media_numero, cuota_media["cuota_con_iva"]
     
     def calcular_sistema_frances(self, parametros: ParametrosCalculo) -> ResultadoCalculo:
         """
@@ -132,6 +144,8 @@ class CalculadorFinanciero:
                 "saldo_deuda": self.redondear_moneda(saldo_deuda)
             })
         
+        cuota_media_numero, cuota_media_con_iva = self.obtener_cuota_media(detalle_cuotas)
+
         # Resumen del cálculo
         total_a_pagar = capital + total_intereses + total_iva
         
@@ -139,6 +153,8 @@ class CalculadorFinanciero:
             tem=tem_porcentaje,
             cuota_inicial=cuota_constante,
             cuota_final=cuota_constante,
+            cuota_media_numero=cuota_media_numero,
+            cuota_media_con_iva=cuota_media_con_iva,
             total_intereses=total_intereses,
             total_iva=total_iva,
             total_a_pagar=total_a_pagar,
@@ -212,6 +228,8 @@ class CalculadorFinanciero:
                 "saldo_deuda": self.redondear_moneda(saldo_deuda)
             })
         
+        cuota_media_numero, cuota_media_con_iva = self.obtener_cuota_media(detalle_cuotas)
+
         # Resumen del cálculo
         total_a_pagar = capital + total_intereses + total_iva
         
@@ -219,6 +237,8 @@ class CalculadorFinanciero:
             tem=tem_porcentaje,
             cuota_inicial=cuota_inicial,
             cuota_final=cuota_final,
+            cuota_media_numero=cuota_media_numero,
+            cuota_media_con_iva=cuota_media_con_iva,
             total_intereses=total_intereses,
             total_iva=total_iva,
             total_a_pagar=total_a_pagar,
@@ -245,6 +265,8 @@ class CalculadorFinanciero:
             tem=resultado.tem,
             cuota_inicial=resultado.cuota_inicial,
             cuota_final=resultado.cuota_final,
+            cuota_media_numero=resultado.cuota_media_numero,
+            cuota_media_con_iva=resultado.cuota_media_con_iva,
             total_intereses=resultado.total_intereses,
             total_iva=resultado.total_iva,
             total_a_pagar=resultado.total_a_pagar,
@@ -266,6 +288,8 @@ class CalculadorFinanciero:
             tem=resultado.tem,
             cuota_inicial=resultado.cuota_inicial,
             cuota_final=resultado.cuota_final,
+            cuota_media_numero=resultado.cuota_media_numero,
+            cuota_media_con_iva=resultado.cuota_media_con_iva,
             total_intereses=resultado.total_intereses,
             total_iva=resultado.total_iva,
             total_a_pagar=resultado.total_a_pagar
@@ -302,6 +326,8 @@ class CalculadorFinanciero:
             tem=resultado.tem,
             cuota_inicial=resultado.cuota_inicial,
             cuota_final=resultado.cuota_final,
+            cuota_media_numero=resultado.cuota_media_numero,
+            cuota_media_con_iva=resultado.cuota_media_con_iva,
             total_intereses=resultado.total_intereses,
             total_iva=resultado.total_iva,
             total_a_pagar=resultado.total_a_pagar,
@@ -323,6 +349,8 @@ class CalculadorFinanciero:
             tem=resultado.tem,
             cuota_inicial=resultado.cuota_inicial,
             cuota_final=resultado.cuota_final,
+            cuota_media_numero=resultado.cuota_media_numero,
+            cuota_media_con_iva=resultado.cuota_media_con_iva,
             total_intereses=resultado.total_intereses,
             total_iva=resultado.total_iva,
             total_a_pagar=resultado.total_a_pagar

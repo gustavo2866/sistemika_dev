@@ -103,8 +103,8 @@ export const TipoPropiedadList = ({
       <ListColumn source="id" label="ID" className="w-[50px] text-center">
         <ListID source="id" widthClass="w-[50px]" />
       </ListColumn>
-      <ListColumn source="nombre" label="Nombre" className="w-[220px]">
-        <ListText source="nombre" className="whitespace-normal break-words" />
+      <ListColumn source="nombre" label="Nombre" className="w-[160px] max-w-[160px]">
+        <ListText source="nombre" className="max-w-[160px] whitespace-normal break-words" />
       </ListColumn>
       <ListColumn source="descripcion" label="Descripcion" className="w-[220px]">
         <ListText source="descripcion" className="whitespace-normal break-words" />

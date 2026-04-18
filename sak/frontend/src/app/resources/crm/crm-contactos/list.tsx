@@ -2,27 +2,27 @@
 
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { List, LIST_CONTAINER_STANDARD } from "@/components/list";
-import { FilterButton } from "@/components/filter-form";
+
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { ReferenceField } from "@/components/reference-field";
-import { TextField } from "@/components/text-field";
-import { Button } from "@/components/ui/button";
+import { FilterButton } from "@/components/filter-form";
 import {
   FormOrderListRowActions,
   IdentityFilterSync,
-  ListColumn,
-  ListID,
   ListPaginator,
   ListText,
   ResponsiveDataTable,
+  TextListColumn,
   buildListFilters,
   useIdentityFilterDefaults,
 } from "@/components/forms/form_order";
+import { List, LIST_CONTAINER_STANDARD_PLUS } from "@/components/list";
+import { ReferenceField } from "@/components/reference-field";
+import { TextField } from "@/components/text-field";
+import { Button } from "@/components/ui/button";
 import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 
-const LIST_FILTERS = buildListFilters(
+const listFilters = buildListFilters(
   [
     {
       type: "text",
@@ -59,9 +59,9 @@ const LIST_FILTERS = buildListFilters(
   { keyPrefix: "crm-contactos" },
 );
 
-const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ContactoListActions = ({ returnTo }: { returnTo?: string }) => {
+const CRMContactoListActions = ({ returnTo }: { returnTo?: string }) => {
   const navigate = useNavigate();
 
   return (
@@ -70,16 +70,20 @@ const ContactoListActions = ({ returnTo }: { returnTo?: string }) => {
         <Button
           type="button"
           variant="ghost"
-          className={ACTION_BUTTON_CLASS}
+          className={listActionButtonClass}
           onClick={() => navigate(returnTo)}
         >
           <ArrowLeft className="h-3 w-3" />
           Volver
         </Button>
       ) : null}
-      <FilterButton filters={LIST_FILTERS} size="sm" buttonClassName={ACTION_BUTTON_CLASS} />
-      <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
-      <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
+      <FilterButton
+        filters={listFilters}
+        size="sm"
+        buttonClassName={listActionButtonClass}
+      />
+      <CreateButton className={listActionButtonClass} label="Crear" />
+      <ExportButton className={listActionButtonClass} label="Exportar" />
     </div>
   );
 };
@@ -93,20 +97,8 @@ type CRMContactoListProps = {
 export const CRMContactoList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 10,
-}: CRMContactoListProps = {}) => (
-  <ListaContactos embedded={embedded} rowClick={rowClick} perPage={perPage} />
-);
-
-const ListaContactos = ({
-  embedded,
-  rowClick,
-  perPage,
-}: {
-  embedded: boolean;
-  rowClick: any;
-  perPage: number;
-}) => {
+  perPage = 25,
+}: CRMContactoListProps = {}) => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "responsable_id",
   });
@@ -115,60 +107,51 @@ const ListaContactos = ({
 
   return (
     <List
-      title="Contactos"
-      filters={LIST_FILTERS}
-      actions={<ContactoListActions returnTo={returnTo} />}
+      title="CRM - Contactos"
+      filters={listFilters}
+      actions={<CRMContactoListActions returnTo={returnTo} />}
       debounce={300}
       perPage={perPage}
       pagination={<ListPaginator />}
       sort={{ field: "nombre_completo", order: "ASC" }}
-      containerClassName={LIST_CONTAINER_STANDARD}
+      containerClassName={LIST_CONTAINER_STANDARD_PLUS}
       filterDefaultValues={defaultFilters}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
     >
-      <CRMContactoListBody identityId={identityId} rowClick={rowClick} />
+      {identityId ? (
+        <IdentityFilterSync identityId={identityId} source="responsable_id" />
+      ) : null}
+      <ResponsiveDataTable
+        rowClick={rowClick}
+        mobileConfig={{
+          primaryField: "nombre_completo",
+          secondaryFields: ["telefonos", "email"],
+          detailFields: ["responsable_id"],
+        }}
+        className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+      >
+        <TextListColumn source="id" label="ID" className="w-[60px]">
+          <ListText source="id" className="tabular-nums" />
+        </TextListColumn>
+        <TextListColumn source="nombre_completo" label="Nombre" className="w-[220px]">
+          <ListText source="nombre_completo" className="whitespace-normal break-words" />
+        </TextListColumn>
+        <TextListColumn source="telefonos" label="Telefonos" className="w-[170px]">
+          <TextField source="telefonos" className="whitespace-normal break-words" />
+        </TextListColumn>
+        <TextListColumn source="email" label="Email" className="w-[200px]">
+          <ListText source="email" className="whitespace-normal break-words" />
+        </TextListColumn>
+        <TextListColumn source="responsable_id" label="Responsable" className="w-[150px]">
+          <ReferenceField source="responsable_id" reference="users" link={false}>
+            <ListText source="nombre" className="whitespace-normal break-words" />
+          </ReferenceField>
+        </TextListColumn>
+        <TextListColumn label="Acciones" className="w-[80px]">
+          <FormOrderListRowActions showShow={!embedded} />
+        </TextListColumn>
+      </ResponsiveDataTable>
     </List>
   );
 };
-
-const CRMContactoListBody = ({
-  identityId,
-  rowClick,
-}: {
-  identityId?: number | string;
-  rowClick: any;
-}) => (
-  <>
-    {identityId ? (
-      <IdentityFilterSync identityId={identityId} source="responsable_id" />
-    ) : null}
-    <ResponsiveDataTable
-      rowClick={rowClick}
-      mobileConfig={{
-        primaryField: "nombre_completo",
-        secondaryFields: ["email", "telefonos", "responsable_id"],
-        detailFields: [],
-      }}
-      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
-    >
-      <ListColumn source="id" label="ID" className="w-[70px] min-w-[70px] text-center">
-        <ListID source="id" widthClass="w-[45px]" className="whitespace-normal break-words" />
-      </ListColumn>
-      <ListColumn source="nombre_completo" label="Nombre" className="min-w-[260px]">
-        <ListText source="nombre_completo" className="whitespace-normal break-words max-w-[420px]" />
-      </ListColumn>
-      <ListColumn source="telefonos" label="Telefonos">
-        <TextField source="telefonos" className="whitespace-normal break-words max-w-[220px]" />
-      </ListColumn>
-      <ListColumn source="responsable_id" label="Responsable">
-        <ReferenceField source="responsable_id" reference="users" link={false}>
-          <ListText source="nombre" />
-        </ReferenceField>
-      </ListColumn>
-      <ListColumn label="Acciones" className="w-[60px]">
-        <FormOrderListRowActions />
-      </ListColumn>
-    </ResponsiveDataTable>
-  </>
-);

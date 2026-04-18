@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRecordContext } from "ra-core";
+import { useGetList, useGetOne, useRecordContext } from "ra-core";
 import { Workflow } from "lucide-react";
 import { FormProvider, useForm } from "react-hook-form";
 import {
@@ -16,9 +16,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import type { Propiedad } from "./model";
-import { FormStatus, FormStatusContent, type FormStatusValues } from "./form_status";
+import { isTipoOperacionAlquiler } from "./model";
+import {
+  FormStatus,
+  FormStatusContent,
+  getStatusRestriction,
+  type FormStatusValues,
+} from "./form_status";
 import { usePropiedadStatusTransition } from "./form_hooks";
-import { FormRenovar } from "./form_renovar";
+import { FormActualizar } from "./form_actualizar";
+import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "./dialog_styles";
 import {
   PROPIEDAD_STATUS_IDS,
   getAllowedPropiedadStatusTargets,
@@ -48,23 +55,50 @@ const resolvePropiedadStatusId = (record?: PropiedadActionRecord | null) => {
   return null;
 };
 
+export const useCanDeletePropiedad = (record?: PropiedadActionRecord | null) => {
+  const resolvedStatusId = resolvePropiedadStatusId(record);
+  const { total: estadosLogTotal } = useGetList(
+    "propiedades-log-status",
+    {
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: "fecha_cambio", order: "DESC" },
+      filter: { propiedad_id: record?.id },
+    },
+    { enabled: Boolean(record?.id) },
+  );
+
+  return (
+    Boolean(record?.id) &&
+    resolvedStatusId === PROPIEDAD_STATUS_IDS.recibida &&
+    estadosLogTotal === 1
+  );
+};
+
 export const PropiedadRowActions = ({
   refreshEventName,
+  className,
 }: {
   refreshEventName?: string;
-}) => (
-  <FormOrderListRowActions
-    showShow={false}
-    showDelete
-    refreshEventName={refreshEventName}
-    extraMenuItems={
-      <>
-        <PropiedadStatusMenu />
-        <FormRenovar refreshEventName={refreshEventName} />
-      </>
-    }
-  />
-);
+  className?: string;
+}) => {
+  const record = useRecordContext<PropiedadActionRecord>();
+  const canDeletePropiedad = useCanDeletePropiedad(record);
+
+  return (
+    <FormOrderListRowActions
+      showShow={false}
+      showDelete={canDeletePropiedad}
+      className={className}
+      refreshEventName={refreshEventName}
+      extraMenuItems={
+        <>
+          <PropiedadStatusMenu />
+          <FormActualizar refreshEventName={refreshEventName} />
+        </>
+      }
+    />
+  );
+};
 
 export const PropiedadStatusMenu = () => {
   const record = useRecordContext<PropiedadActionRecord>();
@@ -99,8 +133,40 @@ export const PropiedadStatusMenu = () => {
     () => getAllowedPropiedadStatusTargets(normalizedRecord?.propiedad_status_id ?? null),
     [normalizedRecord?.propiedad_status_id],
   );
+  const tipoOperacionId = normalizedRecord?.tipo_operacion_id ?? null;
+  const { data: tipoOperacion } = useGetOne(
+    "crm/catalogos/tipos-operacion",
+    { id: tipoOperacionId ?? 0 },
+    {
+      enabled:
+        Boolean(tipoOperacionId) &&
+        !normalizedRecord?.tipo_operacion?.nombre &&
+        !("codigo" in ((normalizedRecord?.tipo_operacion as Record<string, unknown> | null) ?? {})),
+    },
+  );
+  const tipoOperacionRef =
+    normalizedRecord?.tipo_operacion ??
+    ((tipoOperacion as { nombre?: string | null; codigo?: string | null } | undefined) ?? null);
+  const isAlquiler = isTipoOperacionAlquiler(tipoOperacionRef ?? undefined);
+  const filteredTargets = useMemo(() => {
+    if (
+      isAlquiler &&
+      normalizedRecord?.propiedad_status_id === PROPIEDAD_STATUS_IDS.realizada
+    ) {
+      return allowedTargets.filter((option) => option.id !== PROPIEDAD_STATUS_IDS.retirada);
+    }
+    return allowedTargets;
+  }, [allowedTargets, isAlquiler, normalizedRecord?.propiedad_status_id]);
+  const getRestrictionMessage = (statusId: number) => {
+    if (!normalizedRecord) return null;
+    return getStatusRestriction({
+      isAlquiler,
+      record: normalizedRecord,
+      nextStatusId: statusId,
+    });
+  };
 
-  if (!normalizedRecord?.id || allowedTargets.length === 0) return null;
+  if (!normalizedRecord?.id || filteredTargets.length === 0) return null;
 
   const handleOpenChange = (open: boolean) => {
     setDialogOpen(open);
@@ -110,6 +176,7 @@ export const PropiedadStatusMenu = () => {
   const handleDialogConfirm = (statusId: number) =>
     form.handleSubmit(async (values) => {
       if (loading) return;
+      if (getRestrictionMessage(statusId)) return;
       await cambiarEstado({
         record: normalizedRecord,
         nextStatusId: statusId,
@@ -120,10 +187,12 @@ export const PropiedadStatusMenu = () => {
 
   const openDialogWithForm = (statusId: number) => {
     form.reset({ fecha_cambio: today, comentario: "" });
+    const restrictionMessage = getRestrictionMessage(statusId);
     if (dialog) {
       dialog.openDialog({
         title: "Cambiar estado",
         contentClassName: "sm:max-w-[420px]",
+        overlayClassName: PROPIEDAD_DIALOG_OVERLAY_CLASS,
         content: (
           <FormProvider {...form}>
             <FormStatusContent record={normalizedRecord} nextStatusId={statusId} />
@@ -131,6 +200,7 @@ export const PropiedadStatusMenu = () => {
         ),
         confirmLabel: "Confirmar",
         confirmColor: "primary",
+        confirmDisabled: Boolean(restrictionMessage),
         onConfirm: () => handleDialogConfirm(statusId),
       });
       return;
@@ -158,7 +228,7 @@ export const PropiedadStatusMenu = () => {
           Cambiar estado
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent className="w-28 sm:w-36">
-          {allowedTargets.map((option) => (
+          {filteredTargets.map((option) => (
             <DropdownMenuItem
               key={option.key}
               onSelect={(event) => handleOpenDialog(event, option.id)}

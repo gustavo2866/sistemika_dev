@@ -72,7 +72,7 @@ type TipoActualizacionListProps = {
 
 export const TipoActualizacionList = ({
   embedded = false,
-  perPage = 10,
+  perPage = 5,
   rowClick = "edit",
   createTo,
 }: TipoActualizacionListProps = {}) => (

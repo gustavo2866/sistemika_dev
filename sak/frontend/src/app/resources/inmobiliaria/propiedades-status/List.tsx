@@ -62,7 +62,7 @@ type PropiedadesStatusListProps = {
 
 export const PropiedadesStatusList = ({
   embedded = false,
-  perPage = 25,
+  perPage = 5,
   rowClick = "edit",
   createTo,
 }: PropiedadesStatusListProps = {}) => (
@@ -93,10 +93,10 @@ export const PropiedadesStatusList = ({
         <ListTextarea source="descripcion" maxLength={60} />
       </TextListColumn>
       <NumberListColumn source="orden" label="Orden" className="text-center" />
-      <BooleanListColumn source="activo" label="Activo" />
-      <BooleanListColumn source="es_inicial" label="Inicial" />
-      <BooleanListColumn source="es_final" label="Final" />
-      <TextListColumn label="Acciones">
+      <BooleanListColumn source="activo" label="Activo" className="w-[64px]" />
+      <BooleanListColumn source="es_inicial" label="Inicial" className="w-[64px]" />
+      <BooleanListColumn source="es_final" label="Final" className="w-[64px]" />
+      <TextListColumn className="w-[56px]">
         <FormOrderListRowActions />
       </TextListColumn>
     </ResponsiveDataTable>

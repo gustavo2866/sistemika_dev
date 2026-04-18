@@ -36,6 +36,7 @@ export { FormOrderBulkDeleteButton } from "./list/bulk/bulk_delete_button";
 export { FormOrderBulkExportButton } from "./list/bulk/bulk_export_button";
 export {
   FormOrderListRowActions,
+  RowActionDialogProvider,
   useRowActionDialog,
 } from "./list/actions/list_row_actions";
 export { ResponsiveDataTable } from "./list/responsive-data-table";
@@ -208,7 +209,6 @@ export const FormOrderSaveButton = (props: FormOrderSaveButtonProps) => {
           handleFormTabLoop(event);
         }
       }}
-      tabIndex={-1}
       {...rest}
     />
   );

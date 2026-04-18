@@ -6,10 +6,35 @@ from sqlmodel import Session, select
 from app.core.generic_crud import GenericCRUD
 from app.models import Propiedad
 from app.models.propiedad import PropiedadesLogStatus, PropiedadesStatus
+from app.models.propietario import Propietario
 
 
 class PropiedadCRUD(GenericCRUD[Propiedad]):
     """CRUD de Propiedad con reglas de vacancia y log de estado."""
+
+    def _sync_propietario_legacy_field(
+        self,
+        session: Session,
+        payload: Dict[str, Any],
+        current: Optional[Propiedad] = None,
+    ) -> None:
+        propietario = payload.get("propietario")
+        if isinstance(propietario, str):
+            propietario = propietario.strip()
+            if propietario:
+                payload["propietario"] = propietario
+                return
+
+        propietario_id = payload.get("propietario_id")
+        if propietario_id:
+            propietario_ref = session.get(Propietario, propietario_id)
+            propietario_nombre = getattr(propietario_ref, "nombre", None)
+            if isinstance(propietario_nombre, str) and propietario_nombre.strip():
+                payload["propietario"] = propietario_nombre.strip()
+                return
+
+        if current and isinstance(current.propietario, str) and current.propietario.strip():
+            payload["propietario"] = current.propietario.strip()
 
     def _get_status_by_id(
         self, session: Session, status_id: Optional[int]
@@ -57,6 +82,7 @@ class PropiedadCRUD(GenericCRUD[Propiedad]):
         payload = dict(data)
         payload.pop("vacancia_activa", None)
         payload.pop("vacancia_fecha", None)
+        self._sync_propietario_legacy_field(session, payload)
 
         status_id = payload.get("propiedad_status_id")
         status = self._get_status_by_id(session, status_id)
@@ -91,6 +117,8 @@ class PropiedadCRUD(GenericCRUD[Propiedad]):
         previous = self.get(session, obj_id)
         if not previous:
             return None
+
+        self._sync_propietario_legacy_field(session, payload, current=previous)
 
         prev_status_id = previous.propiedad_status_id
         next_status_id = payload.get("propiedad_status_id", prev_status_id)

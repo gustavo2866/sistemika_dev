@@ -1,4 +1,4 @@
-import { Building2, Home, Plus } from "lucide-react";
+import { Home, Plus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   SELECTOR_CARDS,
@@ -89,15 +89,23 @@ const getDetailTitle = (
   activeSelectorKey: PropDashboardSelectorKey | null,
   activeSubBucket: string | null,
   selectedAlertKey: PropDashboardAlertKey | null,
+  selectedTipoOperacionLabel?: string | null,
+  vacanciaDays?: number,
 ) => {
   if (selectedAlertKey === "vencimiento_lt_60") return "Vencimientos proximos";
   if (selectedAlertKey === "renovacion_lt_60") return "Renovaciones proximas";
+  if (selectedAlertKey === "vacancia_gt_90") return `Vacancia > ${vacanciaDays ?? 90} dias`;
   if (!activeSelectorKey) return "Detalle";
   const selector = getSelectorCardMeta(activeSelectorKey);
   if (!selector) return "Detalle";
-  if (!activeSubBucket) return selector.title;
+  const selectorTitle = resolveSelectorCardTitle(
+    selector.key,
+    selector.title,
+    selectedTipoOperacionLabel,
+  );
+  if (!activeSubBucket) return selectorTitle;
   const bucket = selector.buckets?.find((item) => item.key === activeSubBucket);
-  return bucket ? `${selector.title} / ${bucket.label}` : selector.title;
+  return bucket ? `${selectorTitle} / ${bucket.label}` : selectorTitle;
 };
 
 const getDetailEmptyMessage = (
@@ -112,6 +120,33 @@ const getDetailEmptyMessage = (
 
 const isVentaTipoOperacion = (label?: string | null) =>
   label?.trim().toLowerCase().includes("venta") ?? false;
+
+const isAlquilerTipoOperacion = (label?: string | null) =>
+  label?.trim().toLowerCase().includes("alquiler") ?? false;
+
+const shouldShowContratoColumn = ({
+  activeSelectorKey,
+  selectedAlertKey,
+  alquilerSelected,
+}: {
+  activeSelectorKey: PropDashboardSelectorKey | null;
+  selectedAlertKey: PropDashboardAlertKey | null;
+  alquilerSelected: boolean;
+}) =>
+  alquilerSelected &&
+  (activeSelectorKey === "realizada" ||
+    (selectedAlertKey != null && selectedAlertKey !== "vacancia_gt_90"));
+
+const resolveSelectorCardTitle = (
+  key: PropDashboardSelectorKey,
+  defaultTitle: string,
+  selectedTipoOperacionLabel?: string | null,
+) => {
+  if (key === "realizada" && isAlquilerTipoOperacion(selectedTipoOperacionLabel)) {
+    return "Alquilada";
+  }
+  return defaultTitle;
+};
 
 export const useDashboardMainPanel = ({
   selectorData,
@@ -132,68 +167,73 @@ export const useDashboardMainPanel = ({
   selectedTipoOperacionLabel,
 }: UseDashboardMainPanelParams): DashboardMainPanelViewModel => {
   const ventaSelected = isVentaTipoOperacion(selectedTipoOperacionLabel);
+  const alquilerSelected = isAlquilerTipoOperacion(selectedTipoOperacionLabel);
 
   return {
-  statusCards: SELECTOR_CARDS.map((card) => {
-    const selector = selectorData?.[card.key] ?? { count: 0 };
-    return {
-      key: card.key,
-      title: card.title,
-      count: selector.count ?? 0,
-      icon: card.icon,
-      accentClassName: card.accentClassName,
-      iconClassName: card.iconClassName,
-      selected: !selectedAlertKey && activeSelectorKey === card.key,
-      onSelect: () => onSelectStatusCard(card.key, null),
-      buckets: (card.buckets ?? []).map((bucket) => ({
-        key: bucket.key,
-        label: bucket.label,
-        count: Number(selector[bucket.key as keyof typeof selector] ?? 0),
-        tone: getBucketTone(bucket.tone),
-        selected:
-          !selectedAlertKey &&
-          activeSelectorKey === card.key &&
-          activeSubBucket === bucket.key,
-        onSelect: () => onSelectStatusCard(card.key, bucket.key),
-      })),
-    };
-  }),
-  detailItems: (detailData?.data ?? []).map((item) => ({
-    key: `${item.propiedad_id}-${item.vacancia_fecha ?? item.vencimiento_contrato ?? "x"}`,
-    item,
-    onClick: () => onOpenProperty(item),
-  })),
-  detailLoading,
-  hasMoreDetail,
-  onLoadMore,
-  alerts: alertItems.map((alert) => ({
-    ...alert,
-    selected: selectedAlertKey === alert.key,
-    onSelect: () => onSelectAlert(alert.key),
-  })),
-  quickActions: [
-    {
-      key: "nueva-propiedad",
-      label: "Nueva propiedad",
-      icon: Plus,
-      onClick: () => onNavigate(createPropertyPath),
-    },
-    {
-      key: "propiedades",
-      label: "Propiedades",
-      icon: Home,
-      onClick: () => onNavigate(propertyListPath),
-    },
-    {
-      key: "emprendimientos",
-      label: "Emprendimientos",
-      icon: Building2,
-      onClick: () => onNavigate("/emprendimientos"),
-    },
-  ],
-  detailTitle: getDetailTitle(activeSelectorKey, activeSubBucket, selectedAlertKey),
-  detailEmptyMessage: getDetailEmptyMessage(activeSelectorKey, selectedAlertKey),
-  showContratoColumn: !ventaSelected,
-  valueColumnLabel: ventaSelected ? "Precio" : "Alquiler",
-};
+    statusCards: SELECTOR_CARDS.map((card) => {
+      const selector = selectorData?.[card.key] ?? { count: 0 };
+      return {
+        key: card.key,
+        title: resolveSelectorCardTitle(card.key, card.title, selectedTipoOperacionLabel),
+        count: selector.count ?? 0,
+        icon: card.icon,
+        accentClassName: card.accentClassName,
+        iconClassName: card.iconClassName,
+        selected: !selectedAlertKey && activeSelectorKey === card.key,
+        onSelect: () => onSelectStatusCard(card.key, null),
+        buckets: (card.buckets ?? []).map((bucket) => ({
+          key: bucket.key,
+          label: bucket.label,
+          count: Number(selector[bucket.key as keyof typeof selector] ?? 0),
+          tone: getBucketTone(bucket.tone),
+          selected:
+            !selectedAlertKey &&
+            activeSelectorKey === card.key &&
+            activeSubBucket === bucket.key,
+          onSelect: () => onSelectStatusCard(card.key, bucket.key),
+        })),
+      };
+    }),
+    detailItems: (detailData?.data ?? []).map((item) => ({
+      key: `${item.propiedad_id}-${item.vacancia_fecha ?? item.vencimiento_contrato ?? "x"}`,
+      item,
+      onClick: () => onOpenProperty(item),
+    })),
+    detailLoading,
+    hasMoreDetail,
+    onLoadMore,
+    alerts: alertItems.map((alert) => ({
+      ...alert,
+      selected: selectedAlertKey === alert.key,
+      onSelect: () => onSelectAlert(alert.key),
+    })),
+    quickActions: [
+      {
+        key: "nueva-propiedad",
+        label: "Nueva propiedad",
+        icon: Plus,
+        onClick: () => onNavigate(createPropertyPath),
+      },
+      {
+        key: "propiedades",
+        label: "Propiedades",
+        icon: Home,
+        onClick: () => onNavigate(propertyListPath),
+      },
+    ],
+    detailTitle: getDetailTitle(
+      activeSelectorKey,
+      activeSubBucket,
+      selectedAlertKey,
+      selectedTipoOperacionLabel,
+      selectorData?.alert_days?.vacancia,
+    ),
+    detailEmptyMessage: getDetailEmptyMessage(activeSelectorKey, selectedAlertKey),
+    showContratoColumn: shouldShowContratoColumn({
+      activeSelectorKey,
+      selectedAlertKey,
+      alquilerSelected,
+    }),
+    valueColumnLabel: ventaSelected ? "Precio" : "Alquiler",
+  };
 };

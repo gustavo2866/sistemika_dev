@@ -55,6 +55,8 @@ export function useCalculadora(): UseCalculadoraReturn {
     tem: toNumber(resumen.tem),
     cuota_inicial: toNumber(resumen.cuota_inicial),
     cuota_final: toNumber(resumen.cuota_final),
+    cuota_media_numero: Number(resumen.cuota_media_numero),
+    cuota_media_con_iva: toNumber(resumen.cuota_media_con_iva),
     total_intereses: toNumber(resumen.total_intereses),
     total_iva: toNumber(resumen.total_iva),
     total_a_pagar: toNumber(resumen.total_a_pagar),

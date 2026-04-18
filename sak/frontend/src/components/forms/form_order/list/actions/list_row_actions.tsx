@@ -51,6 +51,35 @@ export const FormOrderListRowActions = ({
   showDelete?: boolean;
   refreshEventName?: string;
 }) => {
+  return (
+    <RowActionDialogProvider>
+      <FormOrderListRowActionsContent
+        contextSearch={contextSearch}
+        className={className}
+        extraMenuItems={extraMenuItems}
+        showShow={showShow}
+        showDelete={showDelete}
+        refreshEventName={refreshEventName}
+      />
+    </RowActionDialogProvider>
+  );
+};
+
+const FormOrderListRowActionsContent = ({
+  contextSearch,
+  className,
+  extraMenuItems,
+  showShow = true,
+  showDelete = true,
+  refreshEventName,
+}: {
+  contextSearch?: string;
+  className?: string;
+  extraMenuItems?: ReactNode;
+  showShow?: boolean;
+  showDelete?: boolean;
+  refreshEventName?: string;
+}) => {
   const record = useRecordContext();
   const dataProvider = useDataProvider();
   const notify = useNotify();
@@ -58,9 +87,8 @@ export const FormOrderListRowActions = ({
   const resource = useResourceContext();
   const createPath = useCreatePath();
   const navigate = useNavigate();
+  const dialog = useRowActionDialog();
   const [busy, setBusy] = useState(false);
-  const [dialogConfig, setDialogConfig] = useState<RowActionDialogConfig | null>(null);
-  const [dialogLoading, setDialogLoading] = useState(false);
 
   const statusKey = String((record as any)?.order_status?.nombre ?? "")
     .trim()
@@ -102,6 +130,91 @@ export const FormOrderListRowActions = ({
     }
   };
 
+  if (!record || !resource) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-5 w-5 sm:h-6 sm:w-6", className)}
+          disabled={busy}
+          onClick={stopRowClick}
+          data-row-click="ignore"
+        >
+          <MoreHorizontal className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+          <span className="sr-only">Acciones</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-32 sm:w-40" forceMount>
+        {showShow ? (
+          <DropdownMenuItem
+            onClick={handleShow}
+            disabled={busy}
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            <Eye className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Visualizar
+          </DropdownMenuItem>
+        ) : null}
+        {!isLocked && showDelete ? (
+          <DropdownMenuItem
+            onClick={(event) => {
+              stopRowClick(event);
+              if (busy) return;
+              dialog?.openDialog({
+                title: "Eliminar registro",
+                content: "Seguro que deseas eliminar este registro?",
+                confirmLabel: "Eliminar",
+                confirmColor: "warning",
+                onConfirm: handleDelete,
+              });
+            }}
+            disabled={busy}
+            variant="destructive"
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Eliminar
+          </DropdownMenuItem>
+        ) : null}
+        {extraMenuItems ? <DropdownMenuSeparator /> : null}
+        {extraMenuItems}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
+export type RowActionDialogConfig = {
+  title: ReactNode;
+  content: ReactNode;
+  confirmLabel?: string;
+  confirmColor?: "primary" | "warning";
+  confirmDisabled?: boolean;
+  onConfirm: () => Promise<void> | void;
+  contentClassName?: string;
+  overlayClassName?: string;
+  portalContainer?: HTMLElement | null;
+  contained?: boolean;
+};
+
+const RowActionDialogContext = createContext<{
+  openDialog: (config: RowActionDialogConfig) => void;
+} | null>(null);
+
+export const useRowActionDialog = () => useContext(RowActionDialogContext);
+
+export const RowActionDialogProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => {
+  const [dialogConfig, setDialogConfig] = useState<RowActionDialogConfig | null>(null);
+  const [dialogLoading, setDialogLoading] = useState(false);
+
   const openDialog = useCallback((config: RowActionDialogConfig) => {
     setDialogConfig(config);
   }, []);
@@ -127,123 +240,56 @@ export const FormOrderListRowActions = ({
     }
   }, [dialogConfig]);
 
-  if (!record || !resource) {
-    return null;
-  }
-
   return (
-    <>
-      <RowActionDialogContext.Provider value={{ openDialog }}>
-        <Dialog
-          open={Boolean(dialogConfig)}
-          onOpenChange={(open) => {
-            if (!open) handleDialogClose();
-          }}
-        >
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
+    <RowActionDialogContext.Provider value={{ openDialog }}>
+      <Dialog
+        open={Boolean(dialogConfig)}
+        onOpenChange={(open) => {
+          if (!open) handleDialogClose();
+        }}
+      >
+        {children}
+        {dialogConfig ? (
+          <DialogContent
+            className={cn(dialogConfig.contentClassName)}
+            overlayClassName={dialogConfig.overlayClassName}
+            portalContainer={dialogConfig.portalContainer}
+            contained={dialogConfig.contained}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <DialogHeader>
+              <DialogTitle>{dialogConfig.title}</DialogTitle>
+              {typeof dialogConfig.content === "string" ? (
+                <DialogDescription>{dialogConfig.content}</DialogDescription>
+              ) : (
+                dialogConfig.content
+              )}
+            </DialogHeader>
+            <DialogFooter>
               <Button
                 variant="ghost"
-                size="icon"
-                className={cn("h-5 w-5 sm:h-6 sm:w-6", className)}
-                disabled={busy}
-                onClick={stopRowClick}
-                data-row-click="ignore"
+                disabled={dialogLoading}
+                onClick={handleDialogClose}
               >
-                <MoreHorizontal className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                <span className="sr-only">Acciones</span>
+                Cancelar
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-32 sm:w-40" forceMount>
-              {showShow ? (
-                <DropdownMenuItem
-                  onClick={handleShow}
-                  disabled={busy}
-                  className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-                >
-                  <Eye className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-                  Visualizar
-                </DropdownMenuItem>
-              ) : null}
-              {!isLocked && showDelete ? (
-                <DropdownMenuItem
-                  onClick={(event) => {
-                    stopRowClick(event);
-                    if (busy) return;
-                    openDialog({
-                      title: "Eliminar registro",
-                      content: "Seguro que deseas eliminar este registro?",
-                      confirmLabel: "Eliminar",
-                      confirmColor: "warning",
-                      onConfirm: handleDelete,
-                    });
-                  }}
-                  disabled={busy}
-                  variant="destructive"
-                  className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-                >
-                  <Trash2 className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-                  Eliminar
-                </DropdownMenuItem>
-              ) : null}
-              {extraMenuItems ? <DropdownMenuSeparator /> : null}
-              {extraMenuItems}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {dialogConfig ? (
-            <DialogContent
-              className={cn(dialogConfig.contentClassName)}
-              onClick={(event) => event.stopPropagation()}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <DialogHeader>
-                <DialogTitle>{dialogConfig.title}</DialogTitle>
-                {typeof dialogConfig.content === "string" ? (
-                  <DialogDescription>{dialogConfig.content}</DialogDescription>
-                ) : (
-                  dialogConfig.content
-                )}
-              </DialogHeader>
-              <DialogFooter>
-                <Button
-                  variant="ghost"
-                  disabled={dialogLoading}
-                  onClick={handleDialogClose}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  disabled={dialogLoading}
-                  onClick={handleDialogConfirm}
-                  variant={
-                    dialogConfig.confirmColor === "warning"
-                      ? "destructive"
-                      : "default"
-                  }
-                >
-                  {dialogConfig.confirmLabel ?? "Confirmar"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          ) : null}
-        </Dialog>
-      </RowActionDialogContext.Provider>
-    </>
+              <Button
+                disabled={dialogLoading || Boolean(dialogConfig.confirmDisabled)}
+                onClick={handleDialogConfirm}
+                variant={
+                  dialogConfig.confirmColor === "warning"
+                    ? "destructive"
+                    : "default"
+                }
+              >
+                {dialogConfig.confirmLabel ?? "Confirmar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </RowActionDialogContext.Provider>
   );
 };
-
-export type RowActionDialogConfig = {
-  title: ReactNode;
-  content: ReactNode;
-  confirmLabel?: string;
-  confirmColor?: "primary" | "warning";
-  onConfirm: () => Promise<void> | void;
-  contentClassName?: string;
-};
-
-const RowActionDialogContext = createContext<{
-  openDialog: (config: RowActionDialogConfig) => void;
-} | null>(null);
-
-export const useRowActionDialog = () => useContext(RowActionDialogContext);
 

@@ -11,6 +11,7 @@ import {
   SetupEmptyState,
   SetupLayout,
   type SetupCreateComponentProps,
+  type SetupCustomComponentProps,
   type SetupEditComponentProps,
   type SetupListComponentProps,
   type SetupItem,
@@ -60,6 +61,7 @@ const INMOBILIARIA_SETUP_GROUPS: InmobiliariaSetupGroup[] = [
     items: [
       { key: "tipos-contrato", label: "Tipos" },
       { key: "tipos-actualizacion", label: "Actualizacion" },
+      { key: "alarmas", label: "Alarmas" },
     ],
   },
   {
@@ -242,6 +244,11 @@ const InmobiliariaSetupContent = ({
   view: SetupView;
   recordId?: string | null;
 }) => {
+  if (item.customComponent) {
+    const CustomComponent = item.customComponent as ComponentType<SetupCustomComponentProps>;
+    return <CustomComponent embedded />;
+  }
+
   if (!item.resource) return null;
 
   const listPath = getSetupViewPath(item, "list");

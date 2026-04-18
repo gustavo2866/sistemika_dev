@@ -75,6 +75,7 @@ const useLockedPropiedadId = () => {
   const location = useLocation();
   return useMemo(() => {
     const params = new URLSearchParams(location.search);
+    if (params.get("lock_propiedad") !== "1") return undefined;
     return parseNumericParam(params.get("propiedad_id"));
   }, [location.search]);
 };
@@ -83,6 +84,15 @@ const useDefaultTipoOperacionId = () => {
   const location = useLocation();
   return useMemo(() => {
     const params = new URLSearchParams(location.search);
+    return parseNumericParam(params.get("tipo_operacion_id"));
+  }, [location.search]);
+};
+
+const useLockedTipoOperacionId = () => {
+  const location = useLocation();
+  return useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("lock_tipo_operacion") !== "1") return undefined;
     return parseNumericParam(params.get("tipo_operacion_id"));
   }, [location.search]);
 };
@@ -167,6 +177,37 @@ const TipoPropiedadFromPropiedadSync = () => {
     isMantenimiento,
     propiedadId,
     propiedadTipoPropiedadId,
+    record?.id,
+    setValue,
+  ]);
+
+  return null;
+};
+
+const ContactoFromPropiedadSync = () => {
+  const record = useRecordContext<any>();
+  const { setValue } = useFormContext<CRMOportunidadFormValues>();
+  const lockedPropiedadId = useLockedPropiedadId();
+  const contactoValue = useWatch({ name: "contacto_id" }) as unknown;
+  const currentContactoId = resolveNumericId(contactoValue);
+  const { data: propiedad } = useGetOne(
+    "propiedades",
+    { id: lockedPropiedadId ?? 0 },
+    { enabled: Boolean(lockedPropiedadId) },
+  );
+  const propiedadContactoId = resolveNumericId((propiedad as any)?.contacto_id);
+
+  useEffect(() => {
+    if (record?.id || !lockedPropiedadId) return;
+    if (!propiedadContactoId || currentContactoId) return;
+    setValue("contacto_id", propiedadContactoId, {
+      shouldDirty: false,
+      shouldValidate: false,
+    });
+  }, [
+    currentContactoId,
+    lockedPropiedadId,
+    propiedadContactoId,
     record?.id,
     setValue,
   ]);
@@ -260,7 +301,7 @@ export const CRMOportunidadForm = () => {
   return (
     <SimpleForm<CRMOportunidadFormValues>
       className="w-full max-w-3xl"
-      toolbar={<FormOrderToolbar />}
+      toolbar={<FormOrderToolbar saveProps={{ alwaysEnable: true }} />}
       defaultValues={defaultValues}
     >
       <FormErrorSummary />
@@ -269,6 +310,7 @@ export const CRMOportunidadForm = () => {
       <TipoOperacionDefault />
       <MantenimientoCreateStateSync />
       <TipoPropiedadFromPropiedadSync />
+      <ContactoFromPropiedadSync />
       <CabeceraSection />
       <ChatSection />
       <EventosSection />
@@ -430,15 +472,24 @@ const CabeceraActionsMenu = () => {
 
 const CabeceraFields = () => {
   const lockedPropiedadId = useLockedPropiedadId();
+  const lockedTipoOperacionId = useLockedTipoOperacionId();
   const { isMantenimiento, validatePropiedad } = useMantenimientoRules();
   const { data: propiedadLocked } = useGetOne(
     "propiedades",
     { id: lockedPropiedadId ?? 0 },
     { enabled: Boolean(lockedPropiedadId) },
   );
+  const { data: tipoOperacionLocked } = useGetOne(
+    "crm/catalogos/tipos-operacion",
+    { id: lockedTipoOperacionId ?? 0 },
+    { enabled: Boolean(lockedTipoOperacionId) },
+  );
   const propiedadLabel =
     (propiedadLocked as any)?.nombre ??
     (lockedPropiedadId ? `Propiedad #${lockedPropiedadId}` : "Sin asignar");
+  const tipoOperacionLabel =
+    (tipoOperacionLocked as any)?.nombre ??
+    (lockedTipoOperacionId ? `Tipo operacion #${lockedTipoOperacionId}` : "Sin asignar");
 
   return (
     <div
@@ -466,17 +517,27 @@ const CabeceraFields = () => {
         }}
         widthClass="w-full min-w-0 md:max-w-[190px]"
       />
-      <ReferenceInput
-        source="tipo_operacion_id"
-        reference="crm/catalogos/tipos-operacion"
-      >
-        <FormSelectFijo
-          optionText="nombre"
+      {lockedTipoOperacionId ? (
+        <FormValue
           label="Tipo operacion"
           widthClass="w-full min-w-0"
-          fixedWidth="110px"
-        />
-      </ReferenceInput>
+          valueClassName="justify-start text-left"
+        >
+          {tipoOperacionLabel}
+        </FormValue>
+      ) : (
+        <ReferenceInput
+          source="tipo_operacion_id"
+          reference="crm/catalogos/tipos-operacion"
+        >
+          <FormSelectFijo
+            optionText="nombre"
+            label="Tipo operacion"
+            widthClass="w-full min-w-0"
+            fixedWidth="110px"
+          />
+        </ReferenceInput>
+      )}
       <FormReferenceAutocomplete
         referenceProps={{ source: "responsable_id", reference: "users" }}
         inputProps={{

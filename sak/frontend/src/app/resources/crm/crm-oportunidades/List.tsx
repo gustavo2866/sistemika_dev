@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type HTMLAttributes } from "react";
+import { cloneElement, useEffect, useState } from "react";
 import isEqual from "lodash/isEqual";
 import {
   useDataProvider,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { CreateButton } from "@/components/create-button";
+import { DateField } from "@/components/date-field";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import {
@@ -169,29 +170,19 @@ const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 const LIST_CONTAINER_CLASS_NAME = LIST_CONTAINER_WIDE;
 const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
 const COMPACT_LIST_TABLE_CLASS_NAME = "text-[10px] [&_th]:text-[10px] [&_td]:text-[10px]";
-const EMBEDDED_VISIBLE_FILTER_SOURCES = new Set(["q"]);
-
-const buildEmbeddedVisibleFilters = (hiddenSources: Set<string>) =>
-  LIST_FILTERS.filter((filterElement) => {
-    const source = String(filterElement.props.source ?? "");
-    return EMBEDDED_VISIBLE_FILTER_SOURCES.has(source) && !hiddenSources.has(source);
-  });
-
-const buildEmbeddedExpandableFilterSources = (hiddenSources: Set<string>) =>
+const buildEmbeddedFilters = (hiddenSources: Set<string>) =>
   LIST_FILTERS
-    .map((filterElement) => String(filterElement.props.source ?? ""))
-    .filter(
-      (source) =>
-        source &&
-        !EMBEDDED_VISIBLE_FILTER_SOURCES.has(source) &&
-        !hiddenSources.has(source),
-    );
-
-const buildEmbeddedExpandedFilters = (hiddenSources: Set<string>) =>
-  LIST_FILTERS.filter((filterElement) => {
-    const source = String(filterElement.props.source ?? "");
-    return !hiddenSources.has(source);
-  });
+    .filter((filterElement) => {
+      const source = String(filterElement.props.source ?? "");
+      return source && !hiddenSources.has(source);
+    })
+    .map((filterElement) => {
+      const source = String(filterElement.props.source ?? "");
+      return cloneElement(filterElement, {
+        ...filterElement.props,
+        alwaysOn: source === "q",
+      });
+    });
 
 const OportunidadListTitle = ({ onBack }: { onBack: () => void }) => (
   <>
@@ -254,15 +245,11 @@ const oportunidadRowClass = (record: any) =>
 
 //#region Fuera del patron: celdas enriquecidas del listado
 
-const ContactoTituloCell = () => (
+const ContactoCell = () => (
   <div className="flex flex-col gap-0">
     <ReferenceField source="contacto_id" reference="crm/contactos" link={false}>
       <ListText source="nombre_completo" className="font-medium" />
     </ReferenceField>
-    <ListText
-      source="titulo"
-      className="text-[8px] text-muted-foreground leading-tight"
-    />
     <ReferenceField
       source="tipo_operacion_id"
       reference="crm/catalogos/tipos-operacion"
@@ -273,6 +260,20 @@ const ContactoTituloCell = () => (
         className="text-[8px] text-muted-foreground leading-tight"
       />
     </ReferenceField>
+  </div>
+);
+
+const EstadoCell = () => (
+  <div className="flex flex-col items-center gap-0 text-center">
+    <ListEstado
+      source="estado"
+      statusClasses={CRM_OPORTUNIDAD_ESTADO_BADGES}
+      className="text-[9px] px-1.5 py-0.5 leading-tight"
+    />
+    <DateField
+      source="fecha_estado"
+      className="text-[8px] text-muted-foreground leading-tight"
+    />
   </div>
 );
 
@@ -621,75 +622,6 @@ const EmbeddedDefaultFilterSync = ({
   return null;
 };
 
-const EmbeddedOportunidadFilterDiv = ({
-  className,
-  ...props
-}: HTMLAttributes<HTMLDivElement>) => (
-  <StyledFilterDiv
-    {...props}
-    className={cn(
-      "!grid !min-w-0 !flex-1 !items-start !gap-3",
-      "grid-cols-1 sm:grid-cols-3",
-      "[&_[data-source=q]]:sm:col-span-full",
-      "[&_[data-source=q]]:sm:row-start-1",
-      "[&_[data-source]:not([data-source=q])]:sm:row-start-2",
-      className,
-    )}
-  />
-);
-
-const EmbeddedOportunidadListActions = ({
-  createTo,
-  showAdvancedFilters,
-  onToggleAdvancedFilters,
-  filterDefaultValues,
-  expandableFilterSources,
-}: {
-  createTo?: string;
-  showAdvancedFilters: boolean;
-  onToggleAdvancedFilters: () => void;
-  filterDefaultValues?: Record<string, unknown>;
-  expandableFilterSources: string[];
-}) => {
-  const { filterValues } = useListContext();
-  const activeAdvancedFiltersCount = expandableFilterSources.reduce(
-    (count, source) => {
-      const value = filterValues?.[source];
-      if (!isMeaningfulFilterValue(value)) return count;
-
-      const defaultValue = filterDefaultValues?.[source];
-      if (isEqual(value, defaultValue)) return count;
-
-      return count + 1;
-    },
-    0,
-  );
-
-  return (
-    <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant={showAdvancedFilters ? "secondary" : "outline"}
-        size="sm"
-        className={ACTION_BUTTON_CLASS}
-        onClick={onToggleAdvancedFilters}
-      >
-        {showAdvancedFilters
-          ? "Ocultar filtros"
-          : activeAdvancedFiltersCount > 0
-            ? `Mas filtros (${activeAdvancedFiltersCount})`
-            : "Mas filtros"}
-      </Button>
-      <CreateButton
-        to={createTo}
-        className={ACTION_BUTTON_CLASS}
-        label="Agregar"
-      />
-      <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
-    </div>
-  );
-};
-
 type CRMOportunidadListProps = {
   embedded?: boolean;
   filterDefaultValues?: Record<string, unknown>;
@@ -700,6 +632,8 @@ type CRMOportunidadListProps = {
   showBulkActions?: boolean;
   rowClick?: "edit" | "show" | "expand" | false | undefined;
   emptyMessage?: string;
+  showEmbeddedHeader?: boolean;
+  embeddedTitle?: React.ReactNode | string | false;
 };
 
 type CRMOportunidadListBodyProps = {
@@ -741,12 +675,15 @@ export const CRMOportunidadListBody = ({
         <ListID source="id" widthClass="w-[40px]" />
       </ListColumn>
       <ListColumn source="contacto_id" label="Contacto" className="w-[100px]">
-        <ContactoTituloCell />
+        <ContactoCell />
       </ListColumn>
-      <ListColumn source="estado" label="Estado" className="w-[75px]">
-        <ListEstado source="estado" statusClasses={CRM_OPORTUNIDAD_ESTADO_BADGES} />
+      <ListColumn source="titulo" label="Titulo" className="w-[100px]">
+        <ListText source="titulo" className="whitespace-normal break-words" />
       </ListColumn>
-      <ListColumn source="responsable_id" label="Resp" className="w-[60px]">
+      <ListColumn source="estado" label="Estado" className="w-[60px] text-center">
+        <EstadoCell />
+      </ListColumn>
+      <ListColumn source="responsable_id" label="Resp" className="w-[44px]">
         <ReferenceField source="responsable_id" reference="users" link={false}>
           <ResponsableAvatar />
         </ReferenceField>
@@ -758,7 +695,7 @@ export const CRMOportunidadListBody = ({
       >
         <DescripcionCell />
       </ListColumn>
-      <ListColumn label="Acciones" className="w-[70px]">
+      <ListColumn label="" className="w-[44px]">
         <FormOrderListRowActions
           showDelete={false}
           extraMenuItems={
@@ -784,11 +721,12 @@ export const CRMOportunidadList = ({
   showBulkActions = true,
   rowClick = "edit",
   emptyMessage,
+  showEmbeddedHeader = false,
+  embeddedTitle = "Oportunidades",
 }: CRMOportunidadListProps = {}) => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "responsable_id",
   });
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const hiddenEmbeddedFilterSources = new Set(
@@ -797,23 +735,22 @@ export const CRMOportunidadList = ({
     ),
   );
   const resolvedFilterDefaults = embedded ? filterDefaultValues : defaultFilters;
-  const embeddedCollapsedFilters = buildEmbeddedVisibleFilters(hiddenEmbeddedFilterSources);
-  const embeddedExpandedFilters = buildEmbeddedExpandedFilters(hiddenEmbeddedFilterSources);
-  const embeddedExpandableFilterSources =
-    buildEmbeddedExpandableFilterSources(hiddenEmbeddedFilterSources);
-  const resolvedFilters = embedded
-    ? showAdvancedFilters
-      ? embeddedExpandedFilters
-      : embeddedCollapsedFilters
-    : LIST_FILTERS;
+  const embeddedFilters = buildEmbeddedFilters(hiddenEmbeddedFilterSources);
+  const resolvedFilters = embedded ? embeddedFilters : LIST_FILTERS;
   const embeddedActions = embedded ? (
-    <EmbeddedOportunidadListActions
-      createTo={createTo}
-      showAdvancedFilters={showAdvancedFilters}
-      onToggleAdvancedFilters={() => setShowAdvancedFilters((current) => !current)}
-      filterDefaultValues={resolvedFilterDefaults}
-      expandableFilterSources={embeddedExpandableFilterSources}
-    />
+    <div className="flex items-center gap-2">
+      <FilterButton
+        filters={embeddedFilters}
+        size="sm"
+        buttonClassName={ACTION_BUTTON_CLASS}
+      />
+      <CreateButton
+        to={createTo}
+        className={ACTION_BUTTON_CLASS}
+        label="Crear"
+      />
+      <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
+    </div>
   ) : undefined;
 
   const handleBack = () => {
@@ -833,11 +770,17 @@ export const CRMOportunidadList = ({
   return (
     <List
       resource="crm/oportunidades"
-      title={embedded ? undefined : <OportunidadListTitle onBack={handleBack} />}
+      title={
+        embedded
+          ? showEmbeddedHeader
+            ? embeddedTitle
+            : undefined
+          : <OportunidadListTitle onBack={handleBack} />
+      }
       filters={resolvedFilters}
       actions={embedded ? embeddedActions : <CRMOportunidadListActions />}
       debounce={300}
-      perPage={10}
+      perPage={5}
       filter={permanentFilter}
       containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_CLASS_NAME}
       pagination={<ListPaginator />}
@@ -845,9 +788,9 @@ export const CRMOportunidadList = ({
       filterDefaultValues={resolvedFilterDefaults}
       disableSyncWithLocation={embedded}
       storeKey={embedded ? storeKey : undefined}
-      showBreadcrumb={!embedded}
-      showHeader={!embedded}
-      filterFormComponent={embedded ? EmbeddedOportunidadFilterDiv : undefined}
+      showBreadcrumb={embedded ? false : true}
+      showHeader={embedded ? showEmbeddedHeader : true}
+      filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <EmbeddedDefaultFilterSync
         enabled={embedded}

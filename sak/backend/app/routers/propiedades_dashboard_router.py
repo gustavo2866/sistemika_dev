@@ -63,6 +63,7 @@ from app.services.propiedades_dashboard import (
     build_prop_dashboard_bundle,
     build_prop_detalle,
     build_prop_detalle_alerta,
+    build_prop_detalle_alerta_vacancia,
     build_prop_selectors,
     build_propiedades_dashboard,
     build_realizada_vencimientos,
@@ -230,7 +231,7 @@ def get_detalle(
 
 @router.get("/detalle-alerta")
 def get_detalle_alerta(
-    alertKey: str = Query(..., description="vencimiento_lt_60|renovacion_lt_60"),
+    alertKey: str = Query(..., description="vencimiento_lt_60|renovacion_lt_60|vacancia_gt_90"),
     page: int = Query(1, ge=1),
     pageSize: int = Query(15, ge=1, le=200),
     tipoOperacionId: Optional[str] = Query(None),
@@ -239,24 +240,31 @@ def get_detalle_alerta(
     session: Session = Depends(get_session),
 ):
     """
-    Retorna el listado paginado de propiedades con alertas de vencimiento próximas.
+    Retorna el listado paginado de propiedades con alertas de vencimiento próximas
+    o con vacancia prolongada.
 
     `alertKey` acepta:
     - `vencimiento_lt_60`  — contratos cuyo `vencimiento_contrato` cae dentro de
       los próximos 60 días (desde `pivotDate`).
     - `renovacion_lt_60`   — contratos cuya `fecha_renovacion` cae dentro de los
       próximos 60 días, siempre que sea anterior o igual al vencimiento.
+    - `vacancia_gt_90`     — propiedades vacantes con más de 90 días de vacancia,
+      ordenadas por días descendente.
 
-    Cada ítem incluye:
-    - `dias_para_vencimiento` / `dias_para_renovacion`: días restantes desde
-      `pivotDate` hasta la fecha correspondiente.
-
-    `pivotDate` por defecto es la fecha de hoy.  Usar una fecha futura permite
-    simular el estado del portfolio en esa fecha.
-
+    `pivotDate` por defecto es la fecha de hoy.
     Respuesta: `{ total, page, pageSize, data: [ {id, nombre, ...}, ... ] }`
     """
     try:
+        if alertKey == "vacancia_gt_90":
+            pivot = date.fromisoformat(pivotDate) if pivotDate else None
+            return build_prop_detalle_alerta_vacancia(
+                session=session,
+                page=page,
+                page_size=pageSize,
+                tipo_operacion_id=_opt_int(tipoOperacionId),
+                emprendimiento_id=_opt_int(emprendimientoId),
+                pivot_date=pivot,
+            )
         pivot = date.fromisoformat(pivotDate) if pivotDate else None
         return build_prop_detalle_alerta(
             session=session,

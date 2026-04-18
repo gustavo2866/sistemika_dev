@@ -28,12 +28,13 @@ export const Layout = (props: CoreLayoutProps) => {
     >
       <AppSidebar />
       <main
+        id="admin-main"
         className={cn(
           "ml-auto w-full min-w-0 max-w-full",
           "peer-data-[state=collapsed]:w-[calc(100%-var(--sidebar-width-icon)-1rem)]",
           "peer-data-[state=expanded]:w-[calc(100%-var(--sidebar-width))]",
           "sm:transition-[width] sm:duration-200 sm:ease-linear",
-          "flex h-svh flex-col overflow-hidden",
+          "relative flex h-svh flex-col overflow-hidden",
           "group-data-[scroll-locked=1]/body:h-full",
           "has-[main.fixed-main]:group-data-[scroll-locked=1]/body:h-svh",
         )}
@@ -59,7 +60,7 @@ export const Layout = (props: CoreLayoutProps) => {
           <Suspense fallback={<Loading />}>
             <div
               id="admin-content"
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4"
+              className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4"
             >
               {props.children}
             </div>

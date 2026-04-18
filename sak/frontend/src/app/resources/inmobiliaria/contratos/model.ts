@@ -118,10 +118,22 @@ const optionalNumber = z.preprocess(
   (v) => (v === "" || v === null || v === undefined ? undefined : v),
   z.coerce.number().nullable().optional(),
 );
+const requiredStringField = (label: string) =>
+  z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : ""),
+    z.string().min(1, `El campo ${label} es obligatorio`),
+  );
+const requiredIdField = (label: string) => z.preprocess(
+  (v) => (v === "" || v === null || v === undefined ? undefined : v),
+  z
+    .coerce
+    .number({ message: `El campo ${label} es obligatorio` })
+    .positive(`El campo ${label} es obligatorio`),
+);
 
 export const contratoSchema = z.object({
   propiedad_id: z.coerce.number().nullable().optional(),
-  tipo_contrato_id: z.coerce.number().nullable().optional(),
+  tipo_contrato_id: requiredIdField("Tipo de contrato"),
   tipo_actualizacion_id: z.coerce.number().nullable().optional(),
   fecha_inicio: optionalString,
   fecha_vencimiento: optionalString,
@@ -131,8 +143,8 @@ export const contratoSchema = z.object({
   expensas: optionalNumber,
   deposito_garantia: optionalNumber,
   moneda: z.string().default("ARS"),
-  inquilino_nombre: optionalString,
-  inquilino_apellido: optionalString,
+  inquilino_nombre: requiredStringField("Nombre"),
+  inquilino_apellido: requiredStringField("Apellido"),
   inquilino_dni: optionalString,
   inquilino_cuit: optionalString,
   inquilino_email: optionalString,

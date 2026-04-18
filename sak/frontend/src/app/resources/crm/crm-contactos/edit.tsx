@@ -1,18 +1,44 @@
 "use client";
 
-import { useLocation, useNavigate } from "react-router-dom";
-import type { EditProps as BaseEditProps } from "@/components/edit";
+import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
+import { FormOrderDeleteButton } from "@/components/forms/form_order";
+import { Badge } from "@/components/ui/badge";
 import { UserRound } from "lucide-react";
-import { Edit } from "@/components/edit";
-import { ResourceTitle } from "@/components/resource-title";
+import { useEditContext } from "ra-core";
+import { useLocation, useNavigate } from "react-router-dom";
+
 import { CRMContactoForm } from "./form";
-import { normalizeCRMContactoPayload } from "./model";
+import { normalizeCRMContactoPayload, type CRMContacto } from "./model";
 
 type CRMContactoEditProps = {
   embedded?: boolean;
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
 };
+
+const CRMContactoEditTitle = () => {
+  const { record } = useEditContext<CRMContacto>();
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-2">
+        <UserRound className="h-4 w-4" />
+        Editar contacto CRM
+      </span>
+      {record?.id ? (
+        <Badge variant="outline" className="text-[11px]">
+          #{String(record.id).padStart(6, "0")}
+        </Badge>
+      ) : null}
+    </div>
+  );
+};
+
+const CRMContactoEditActions = () => (
+  <div className="flex justify-end">
+    <FormOrderDeleteButton />
+  </div>
+);
 
 export const CRMContactoEdit = ({
   embedded = false,
@@ -29,7 +55,9 @@ export const CRMContactoEdit = ({
       id={id}
       redirect={false}
       mutationMode="pessimistic"
-      title={<ResourceTitle icon={UserRound} text="Editar Contacto CRM" />}
+      title={<CRMContactoEditTitle />}
+      className="max-w-2xl w-full"
+      actions={<CRMContactoEditActions />}
       transform={(data: Record<string, unknown>) => normalizeCRMContactoPayload(data)}
       showBreadcrumb={!embedded}
       showHeader={!embedded}

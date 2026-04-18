@@ -143,6 +143,7 @@ class PoOrder(Base, table=True):
     tipo_solicitud: Optional["TipoSolicitud"] = Relationship()
     departamento: Optional["Departamento"] = Relationship()
     metodo_pago: "MetodoPago" = Relationship()
+    oportunidad: Optional["CRMOportunidad"] = Relationship()
     order_status: "PoOrderStatus" = Relationship(back_populates="orders")
     detalles: List["PoOrderDetail"] = Relationship(
         back_populates="order",

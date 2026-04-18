@@ -7,6 +7,7 @@ import {
   FormBoolean,
   FormDate,
   FormErrorSummary,
+  FormOrderToolbar,
   FormSelect,
   FormText,
   FormTextarea,
@@ -19,11 +20,16 @@ import {
   type EmprendimientoFormValues,
 } from "./model";
 
-export const EmprendimientoForm = () => (
+export const EmprendimientoForm = ({
+  onCancel,
+}: {
+  onCancel?: () => void;
+}) => (
   <SimpleForm<EmprendimientoFormValues>
     className="w-full max-w-3xl"
     warnWhenUnsavedChanges
     defaultValues={EMPRENDIMIENTO_DEFAULTS}
+    toolbar={<FormOrderToolbar cancelProps={onCancel ? { onClick: onCancel } : undefined} />}
   >
     <FormErrorSummary />
     <SectionBaseTemplate

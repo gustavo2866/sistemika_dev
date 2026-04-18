@@ -8,6 +8,7 @@ from typing import Any, Optional
 from sqlmodel import Session, select
 from sqlalchemy import func
 
+from app.models.setting import Setting
 from app.models.propiedad import Propiedad, PropiedadesLogStatus, PropiedadesStatus
 from app.models.crm.catalogos import CRMTipoOperacion
 
@@ -22,6 +23,13 @@ _PERIOD_MONTHS: dict[str, int] = {
     "semestre": 6,
     "anio": 12,
 }
+
+INM_DIAS_VENCIMIENTO_KEY = "INM_Dias_Vencimiento"
+INM_DIAS_ACTUALIZACION_KEY = "INM_Dias_Actualizacion"
+INM_DIAS_VACANCIA_KEY = "INM_Dias_Vacancia"
+DEFAULT_INM_DIAS_VENCIMIENTO = 60
+DEFAULT_INM_DIAS_ACTUALIZACION = 60
+DEFAULT_INM_DIAS_VACANCIA = 90
 
 
 def _to_date_str(value: str | date) -> date:
@@ -91,6 +99,28 @@ def _safe_days(pivot: date, start: Optional[date]) -> int:
         return 0
     delta = (pivot - start).days
     return max(delta, 0)
+
+
+def _parse_setting_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default
+
+
+def _get_inmobiliaria_alert_days(session: Session) -> tuple[int, int, int]:
+    rows = session.exec(
+        select(Setting.clave, Setting.valor)
+        .where(Setting.deleted_at.is_(None))
+        .where(Setting.clave.in_([INM_DIAS_VENCIMIENTO_KEY, INM_DIAS_ACTUALIZACION_KEY, INM_DIAS_VACANCIA_KEY]))
+    ).all()
+    settings_map = {clave: valor for clave, valor in rows}
+    return (
+        _parse_setting_int(settings_map.get(INM_DIAS_VENCIMIENTO_KEY), DEFAULT_INM_DIAS_VENCIMIENTO),
+        _parse_setting_int(settings_map.get(INM_DIAS_ACTUALIZACION_KEY), DEFAULT_INM_DIAS_ACTUALIZACION),
+        _parse_setting_int(settings_map.get(INM_DIAS_VACANCIA_KEY), DEFAULT_INM_DIAS_VACANCIA),
+    )
 
 
 def _estado_sort_key(value: str) -> tuple[int, str]:
@@ -266,19 +296,19 @@ def build_realizada_vencimientos(
 
     rows = session.exec(query).all()
 
-    bucket_days = getattr(Propiedad, "REALIZADA_ALERT_DAYS", 60)
+    bucket_days_vencimiento, bucket_days_actualizacion, bucket_days_vacancia = _get_inmobiliaria_alert_days(session)
     vencimiento_lt_60 = 0
     renovacion_lt_60 = 0
     for vencimiento, fecha_renovacion in rows:
         if vencimiento is not None:
             days = (vencimiento - pivot_date).days
-            if 0 <= days < bucket_days:
+            if 0 <= days < bucket_days_vencimiento:
                 vencimiento_lt_60 += 1
         if fecha_renovacion is not None:
             if vencimiento is not None and fecha_renovacion > vencimiento:
                 continue
             days = (fecha_renovacion - pivot_date).days
-            if 0 <= days < bucket_days:
+            if 0 <= days < bucket_days_actualizacion:
                 renovacion_lt_60 += 1
 
     return {
@@ -287,12 +317,12 @@ def build_realizada_vencimientos(
         "ranges": [
             {
                 "key": "vencimiento_lt_60",
-                "label": f"Vencimiento < {bucket_days} dias",
+                "label": f"Vencimiento < {bucket_days_vencimiento} dias",
                 "count": vencimiento_lt_60,
             },
             {
                 "key": "renovacion_lt_60",
-                "label": f"Renovacion < {bucket_days} dias",
+                "label": f"Renovacion < {bucket_days_actualizacion} dias",
                 "count": renovacion_lt_60,
             },
         ],
@@ -303,9 +333,6 @@ def build_realizada_vencimientos(
 # ===========================================================================
 # Nueva API: bundle / selectors / detalle / detalle-alerta
 # ===========================================================================
-
-ALERT_DAYS = 60  # umbral para alertas de vencimiento/renovación
-
 
 def _base_propiedad_query(
     session: Session,
@@ -364,6 +391,7 @@ def _build_period(
     """Construye el payload completo de un período."""
     start = _to_date_str(start_date)
     end = _to_date_str(end_date)
+    alert_days_vencimiento, alert_days_actualizacion, alert_days_vacancia = _get_inmobiliaria_alert_days(session)
 
     rows = session.exec(
         _base_propiedad_query(session, tipo_operacion_id, emprendimiento_id)
@@ -383,7 +411,7 @@ def _build_period(
     selectors: dict[str, Any] = {
         "recibida":      {"count": 0},
         "en_reparacion": {"count": 0},
-        "disponible":    {"count": 0},
+        "disponible":    {"count": 0, "vacancia_gt_90": 0},
         "realizada":     {"count": 0, "vencimiento_lt_60": 0, "renovacion_lt_60": 0},
         "retirada":      {"count": 0, "lt_30": 0, "gt_30": 0},
     }
@@ -391,6 +419,7 @@ def _build_period(
     # Alert counters (based on end_date as pivot)
     venc_lt_60 = 0
     renov_lt_60 = 0
+    vacancia_gt_90 = 0
     sin_vacancia_fecha = 0
 
     for prop, status in rows:
@@ -417,15 +446,21 @@ def _build_period(
             # Alertas de vencimiento/renovación al corte del período
             if prop.vencimiento_contrato:
                 d = (prop.vencimiento_contrato - end).days
-                if 0 <= d < ALERT_DAYS:
+                if 0 <= d < alert_days_vencimiento:
                     venc_lt_60 += 1
                     selectors["realizada"]["vencimiento_lt_60"] += 1
             if prop.fecha_renovacion:
                 if not prop.vencimiento_contrato or prop.fecha_renovacion <= prop.vencimiento_contrato:
                     d = (prop.fecha_renovacion - end).days
-                    if 0 <= d < ALERT_DAYS:
+                    if 0 <= d < alert_days_actualizacion:
                         renov_lt_60 += 1
                         selectors["realizada"]["renovacion_lt_60"] += 1
+        # Vacancia > N días — aplica a todos los estados vacantes (1, 2, 3)
+        if orden in (1, 2, 3) and prop.vacancia_fecha:
+            dias_vacancia_actual = max(0, (end - prop.vacancia_fecha).days)
+            if dias_vacancia_actual > alert_days_vacancia:
+                vacancia_gt_90 += 1
+                selectors["disponible"]["vacancia_gt_90"] += 1
 
         # --- KPI de vacancia (solo estados vacantes 1-3) ---
         if orden not in (1, 2, 3):
@@ -511,6 +546,7 @@ def _build_period(
         "alerts": {
             "vencimiento_lt_60": venc_lt_60,
             "renovacion_lt_60": renov_lt_60,
+            "vacancia_gt_90": vacancia_gt_90,
         },
         "stats": {"sin_vacancia_fecha": sin_vacancia_fecha},
     }
@@ -845,6 +881,7 @@ def build_prop_selectors(
 ) -> dict[str, Any]:
     """Consulta rápida de conteos por estado — sin carga de logs."""
     pivot = pivot_date or date.today()
+    alert_days_vencimiento, alert_days_actualizacion, alert_days_vacancia = _get_inmobiliaria_alert_days(session)
 
     rows = session.exec(
         _base_propiedad_query(session, tipo_operacion_id, emprendimiento_id)
@@ -853,9 +890,14 @@ def build_prop_selectors(
     result: dict[str, Any] = {
         "recibida":      {"count": 0},
         "en_reparacion": {"count": 0},
-        "disponible":    {"count": 0},
+        "disponible":    {"count": 0, "vacancia_gt_90": 0},
         "realizada":     {"count": 0, "vencimiento_lt_60": 0, "renovacion_lt_60": 0},
         "retirada":      {"count": 0, "lt_30": 0, "gt_30": 0},
+        "alert_days": {
+            "vencimiento": alert_days_vencimiento,
+            "actualizacion": alert_days_actualizacion,
+            "vacancia": alert_days_vacancia,
+        },
     }
 
     for prop, status in rows:
@@ -882,13 +924,18 @@ def build_prop_selectors(
             result["realizada"]["count"] += 1
             if prop.vencimiento_contrato:
                 d = (prop.vencimiento_contrato - pivot).days
-                if 0 <= d < ALERT_DAYS:
+                if 0 <= d < alert_days_vencimiento:
                     result["realizada"]["vencimiento_lt_60"] += 1
             if prop.fecha_renovacion:
                 if not prop.vencimiento_contrato or prop.fecha_renovacion <= prop.vencimiento_contrato:
                     d = (prop.fecha_renovacion - pivot).days
-                    if 0 <= d < ALERT_DAYS:
+                    if 0 <= d < alert_days_actualizacion:
                         result["realizada"]["renovacion_lt_60"] += 1
+        # Vacancia > N días — aplica a todos los estados vacantes (1, 2, 3)
+        if orden in (1, 2, 3) and prop.vacancia_fecha:
+            dias = (pivot - prop.vacancia_fecha).days
+            if dias > alert_days_vacancia:
+                result["disponible"]["vacancia_gt_90"] += 1
 
     result["pivotDate"] = pivot.isoformat()
     return result
@@ -907,6 +954,7 @@ def build_prop_detalle(
 ) -> dict[str, Any]:
     """Lista paginada para un selector (y sub-bucket) activado."""
     pivot = _to_date_str(end_date) if end_date else date.today()
+    alert_days_vencimiento, alert_days_actualizacion, _alert_days_vacancia = _get_inmobiliaria_alert_days(session)
 
     # Mapear selector_key a orden de estado
     orden_map: dict[str, list[int]] = {
@@ -941,7 +989,7 @@ def build_prop_detalle(
             if not prop.vencimiento_contrato:
                 continue
             d = (prop.vencimiento_contrato - pivot).days
-            if not (0 <= d < ALERT_DAYS):
+            if not (0 <= d < alert_days_vencimiento):
                 continue
         elif sub_bucket == "renovacion_lt_60":
             if not prop.fecha_renovacion:
@@ -949,7 +997,7 @@ def build_prop_detalle(
             if prop.vencimiento_contrato and prop.fecha_renovacion > prop.vencimiento_contrato:
                 continue
             d = (prop.fecha_renovacion - pivot).days
-            if not (0 <= d < ALERT_DAYS):
+            if not (0 <= d < alert_days_actualizacion):
                 continue
         elif sub_bucket == "lt_30":
             if not prop.estado_fecha:
@@ -1014,6 +1062,7 @@ def build_prop_detalle_alerta(
 ) -> dict[str, Any]:
     """Lista paginada para alertas de vencimiento/renovación."""
     pivot = pivot_date or date.today()
+    alert_days_vencimiento, alert_days_actualizacion, _alert_days_vacancia = _get_inmobiliaria_alert_days(session)
 
     q = (
         select(Propiedad, PropiedadesStatus)
@@ -1034,7 +1083,7 @@ def build_prop_detalle_alerta(
             if not prop.vencimiento_contrato:
                 continue
             d = (prop.vencimiento_contrato - pivot).days
-            if not (0 <= d < ALERT_DAYS):
+            if not (0 <= d < alert_days_vencimiento):
                 continue
         elif alert_key == "renovacion_lt_60":
             if not prop.fecha_renovacion:
@@ -1042,11 +1091,10 @@ def build_prop_detalle_alerta(
             if prop.vencimiento_contrato and prop.fecha_renovacion > prop.vencimiento_contrato:
                 continue
             d = (prop.fecha_renovacion - pivot).days
-            if not (0 <= d < ALERT_DAYS):
+            if not (0 <= d < alert_days_actualizacion):
                 continue
         else:
             continue
-
         filtered.append((prop, status))
 
     total = len(filtered)
@@ -1079,6 +1127,75 @@ def build_prop_detalle_alerta(
             "valor_alquiler": prop.valor_alquiler,
             "dias_para_vencimiento": dias_para_vencimiento,
             "dias_para_renovacion": dias_para_renovacion,
+        })
+
+    return {
+        "data": items,
+        "total": total,
+        "page": page,
+        "perPage": page_size,
+    }
+
+
+def build_prop_detalle_alerta_vacancia(
+    session: Session,
+    page: int = 1,
+    page_size: int = 15,
+    tipo_operacion_id: Optional[int] = None,
+    emprendimiento_id: Optional[int] = None,
+    pivot_date: Optional[date] = None,
+) -> dict[str, Any]:
+    """Lista paginada para la alarma de vacancia prolongada (estados vacantes)."""
+    pivot = pivot_date or date.today()
+    _, _, alert_days_vacancia = _get_inmobiliaria_alert_days(session)
+    q = (
+        select(Propiedad, PropiedadesStatus)
+        .where(Propiedad.deleted_at.is_(None))
+        .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id, isouter=True)
+        .where(PropiedadesStatus.orden.in_([1, 2, 3]))  # estados vacantes
+    )
+    if tipo_operacion_id is not None:
+        q = q.where(Propiedad.tipo_operacion_id == tipo_operacion_id)
+    if emprendimiento_id is not None:
+        q = q.where(Propiedad.emprendimiento_id == emprendimiento_id)
+
+    rows = session.exec(q).all()
+
+    filtered = []
+    for prop, status in rows:
+        if not prop.vacancia_fecha:
+            continue
+        dias = max(0, (pivot - prop.vacancia_fecha).days)
+        if dias > alert_days_vacancia:
+            filtered.append((prop, status, dias))
+
+    # ordenar por días de vacancia descendente
+    filtered.sort(key=lambda x: x[2], reverse=True)
+
+    total = len(filtered)
+    offset = (page - 1) * page_size
+    page_rows = filtered[offset: offset + page_size]
+
+    items = []
+    for prop, status, dias in page_rows:
+        items.append({
+            "propiedad_id": prop.id,
+            "nombre": prop.nombre,
+            "propietario": prop.propietario,
+            "tipo_propiedad_id": prop.tipo_propiedad_id,
+            "tipo_actualizacion_id": prop.tipo_actualizacion_id,
+            "tipo_operacion_id": prop.tipo_operacion_id,
+            "propiedad_status_id": prop.propiedad_status_id,
+            "estado": status.nombre if status else None,
+            "estado_fecha": prop.estado_fecha.isoformat() if prop.estado_fecha else None,
+            "vacancia_fecha": prop.vacancia_fecha.isoformat() if prop.vacancia_fecha else None,
+            "dias_vacancia": dias,
+            "fecha_inicio_contrato": prop.fecha_inicio_contrato.isoformat() if prop.fecha_inicio_contrato else None,
+            "vencimiento_contrato": prop.vencimiento_contrato.isoformat() if prop.vencimiento_contrato else None,
+            "fecha_renovacion": prop.fecha_renovacion.isoformat() if prop.fecha_renovacion else None,
+            "valor_alquiler": prop.valor_alquiler,
+            "dias_para_vencimiento": None,
+            "dias_para_renovacion": None,
         })
 
     return {

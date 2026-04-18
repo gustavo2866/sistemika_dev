@@ -9,4 +9,4 @@ export * from "./model";
 export * from "./form_status";
 export * from "./form_hooks";
 export * from "./status_transitions";
-export * from "./form_renovar";
+export * from "./form_actualizar";

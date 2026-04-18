@@ -141,7 +141,7 @@ type TipoContratoListProps = {
 
 export const TipoContratoList = ({
   embedded = false,
-  perPage = 10,
+  perPage = 5,
   rowClick = "edit",
   createTo,
 }: TipoContratoListProps = {}) => (
@@ -172,8 +172,8 @@ export const TipoContratoList = ({
       <TextListColumn source="nombre" label="Nombre">
         <ListText source="nombre" />
       </TextListColumn>
-      <TextListColumn source="descripcion" label="Descripcion" className="w-[280px]">
-        <ListText source="descripcion" />
+      <TextListColumn source="descripcion" label="Descripcion" className="w-[160px] max-w-[160px]">
+        <ListText source="descripcion" className="max-w-[160px] whitespace-normal break-words" />
       </TextListColumn>
       <BooleanListColumn source="activo" label="Activo" />
       <TextListColumn label="Acciones" className="w-[60px]">

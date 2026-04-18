@@ -12,6 +12,3 @@ export const canContratoRescindir = (estado?: string | null): boolean =>
 
 export const canContratoFinalizar = (estado?: string | null): boolean =>
   estado === "vigente";
-
-export const canContratoRenovar = (estado?: string | null): boolean =>
-  estado === "vigente";

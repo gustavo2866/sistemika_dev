@@ -56,6 +56,8 @@ class CalculoResponse(BaseModel):
     tem: Decimal = Field(description="Tasa Efectiva Mensual en %")
     cuota_inicial: Decimal = Field(description="Primera cuota sin IVA")
     cuota_final: Decimal = Field(description="Última cuota sin IVA")
+    cuota_media_numero: int = Field(description="Número de la cuota media usada para resumen")
+    cuota_media_con_iva: Decimal = Field(description="Cuota media con IVA")
     total_intereses: Decimal = Field(description="Total de intereses a pagar")
     total_iva: Decimal = Field(description="Total de IVA a pagar")
     total_a_pagar: Decimal = Field(description="Total a pagar (capital + intereses + IVA)")
@@ -74,6 +76,8 @@ class CalculoResponse(BaseModel):
                 "tem": 3.00,
                 "cuota_inicial": 100000.00,
                 "cuota_final": 100000.00,
+                "cuota_media_numero": 6,
+                "cuota_media_con_iva": 102500.00,
                 "total_intereses": 200000.00,
                 "total_iva": 21000.00,
                 "total_a_pagar": 1221000.00,
@@ -94,6 +98,8 @@ class ResumenCalculoResponse(BaseModel):
     tem: Decimal
     cuota_inicial: Decimal
     cuota_final: Decimal
+    cuota_media_numero: int
+    cuota_media_con_iva: Decimal
     total_intereses: Decimal
     total_iva: Decimal
     total_a_pagar: Decimal

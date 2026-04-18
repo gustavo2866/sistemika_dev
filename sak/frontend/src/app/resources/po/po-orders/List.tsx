@@ -22,6 +22,7 @@ import { List, LIST_CONTAINER_STANDARD } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
 
 import { FormConfirmar } from "./form_confirmar";
 import { ORDER_STATUS_BADGES } from "./model";
@@ -39,7 +40,7 @@ const getUserInitials = (name?: string | null) =>
     .join("") || "?";
 
 const OrderStatusWithDate = () => (
-  <div className="flex flex-col items-start gap-0 leading-none">
+  <div className="flex flex-col items-center gap-0 text-center leading-none">
     <ListEstado source="order_status.nombre" statusClasses={ORDER_STATUS_BADGES} />
     <DateField
       source="created_at"
@@ -276,6 +277,9 @@ type PoOrderListProps = {
   filterDefaultValues?: Record<string, unknown>;
   createTo?: string;
   storeKey?: string;
+  createAction?: ReactNode;
+  showEmbeddedHeader?: boolean;
+  embeddedTitle?: ReactNode | string | false;
 };
 
 // === Listado ===
@@ -285,6 +289,9 @@ export const PoOrderList = ({
   filterDefaultValues,
   createTo,
   storeKey,
+  createAction,
+  showEmbeddedHeader = false,
+  embeddedTitle = "Ordenes",
 }: PoOrderListProps = {}) => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "solicitante_id",
@@ -314,11 +321,13 @@ export const PoOrderList = ({
         size="sm"
         buttonClassName={ACTION_BUTTON_CLASS}
       />
-      <CreateButton
-        to={createTo}
-        className={ACTION_BUTTON_CLASS}
-        label="Agregar"
-      />
+      {createAction ?? (
+        <CreateButton
+          to={createTo}
+          className={ACTION_BUTTON_CLASS}
+          label="Crear"
+        />
+      )}
       <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
     </div>
   ) : undefined;
@@ -326,19 +335,25 @@ export const PoOrderList = ({
   return (
     <List
       resource="po-orders"
-      title={embedded ? undefined : <OrderListTitle onBack={handleBack} />}
+      title={
+        embedded
+          ? showEmbeddedHeader
+            ? embeddedTitle
+            : undefined
+          : <OrderListTitle onBack={handleBack} />
+      }
       filters={embedded ? EMBEDDED_LIST_FILTERS : LIST_FILTERS}
       actions={embedded ? embeddedActions : <AccionesListaOrdenes />}
       debounce={300}
-      perPage={10}
+      perPage={5}
       containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_STANDARD}
       pagination={<ListPaginator />}
       sort={{ field: "id", order: "DESC" }}
       filterDefaultValues={resolvedFilterDefaults}
       disableSyncWithLocation={embedded}
       storeKey={resolvedStoreKey}
-      showBreadcrumb={!embedded}
-      showHeader={!embedded}
+      showBreadcrumb={embedded ? false : true}
+      showHeader={embedded ? showEmbeddedHeader : true}
       filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <PoOrderListBody
@@ -398,7 +413,7 @@ export const PoOrderListBody = ({
           <ListText source="nombre" width="15ch" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
-      <ListColumn source="order_status_id" label="Estado" className="w-[44px]">
+      <ListColumn source="order_status_id" label="Estado" className="w-[44px] text-center">
         <OrderStatusWithDate />
       </ListColumn>
       <ListColumn source="total" label="Importe" className="w-[90px] text-right">

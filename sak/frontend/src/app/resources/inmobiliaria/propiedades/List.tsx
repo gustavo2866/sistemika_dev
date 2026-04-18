@@ -130,7 +130,8 @@ const ListaPropiedades = () => (
     filters={LIST_FILTERS}
     actions={<AccionesLista />}
     debounce={300}
-    perPage={10}
+    perPage={5}
+    storeKey="propiedades.list.v2"
     containerClassName={LIST_CONTAINER_WIDE}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}

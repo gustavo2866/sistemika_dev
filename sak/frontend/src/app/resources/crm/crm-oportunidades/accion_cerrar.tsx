@@ -104,6 +104,22 @@ export const CRMOportunidadAccionCerrar = () => {
         : getResultadoChoices(oportunidad?.estado),
     [isMantenimiento, oportunidad?.estado],
   );
+  const {
+    total: pendingOrdersTotal = 0,
+    isLoading: pendingOrdersLoading,
+  } = useGetList(
+    "po-orders",
+    {
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: "id", order: "DESC" },
+      filter: {
+        oportunidad_id: oportunidadId,
+        "order_status.es_final": false,
+      },
+    },
+    { enabled: isMantenimiento && Number.isFinite(oportunidadId) },
+  );
+  const hasPendingOrders = isMantenimiento && pendingOrdersTotal > 0;
 
   const defaultValues = useMemo(
     () => ({
@@ -130,6 +146,9 @@ export const CRMOportunidadAccionCerrar = () => {
       isMantenimiento={isMantenimiento}
       panelChange={panelChange}
       background={background}
+      pendingOrdersTotal={pendingOrdersTotal}
+      pendingOrdersLoading={pendingOrdersLoading}
+      hasPendingOrders={hasPendingOrders}
       dataProvider={dataProvider}
       notify={notify}
       refresh={refresh}
@@ -150,6 +169,9 @@ const AccionCerrarContent = ({
   isMantenimiento,
   panelChange,
   background,
+  pendingOrdersTotal,
+  pendingOrdersLoading,
+  hasPendingOrders,
   dataProvider,
   notify,
   refresh,
@@ -164,6 +186,9 @@ const AccionCerrarContent = ({
   isMantenimiento: boolean;
   panelChange?: PanelChange;
   background?: OportunidadModalBackground;
+  pendingOrdersTotal: number;
+  pendingOrdersLoading: boolean;
+  hasPendingOrders: boolean;
   dataProvider: ReturnType<typeof useDataProvider>;
   notify: ReturnType<typeof useNotify>;
   refresh: ReturnType<typeof useRefresh>;
@@ -186,6 +211,13 @@ const AccionCerrarContent = ({
       oportunidad?.estado === "4-reserva";
     if (!descripcion) {
       notify("La descripcion es obligatoria", { type: "warning" });
+      return;
+    }
+    if (isMantenimiento && hasPendingOrders) {
+      notify(
+        `No se puede cerrar la oportunidad porque tiene ${pendingOrdersTotal} orden(es) pendiente(s).`,
+        { type: "warning" },
+      );
       return;
     }
     if (nuevoEstado === "6-perdida" && !motivoPerdidaId) {
@@ -255,7 +287,12 @@ const AccionCerrarContent = ({
   return (
     <div className="relative min-h-full">
       {renderOportunidadModalBackground(background)}
-      <Dialog open onOpenChange={(open) => (!open ? navigate(returnTo) : null)}>
+      <Dialog
+        open
+        onOpenChange={(open) =>
+          !open ? navigate(returnTo, { replace: true }) : null
+        }
+      >
         <DialogContent
           className="sm:max-w-sm"
           overlayClassName="hidden"
@@ -287,12 +324,16 @@ const AccionCerrarContent = ({
                 <AccionCerrarFields
                   resultadoChoices={resultadoChoices}
                   isMantenimiento={isMantenimiento}
+                  pendingOrdersLoading={pendingOrdersLoading}
+                  pendingOrdersTotal={pendingOrdersTotal}
+                  hasPendingOrders={hasPendingOrders}
                 />
               }
             />
           </div>
           <AccionCerrarFooter
             saving={saving}
+            disabled={pendingOrdersLoading || hasPendingOrders}
             returnTo={returnTo}
             navigate={navigate}
           />
@@ -305,10 +346,12 @@ const AccionCerrarContent = ({
 
 const AccionCerrarFooter = ({
   saving,
+  disabled = false,
   returnTo,
   navigate,
 }: {
   saving: boolean;
+  disabled?: boolean;
   returnTo: string;
   navigate: ReturnType<typeof useNavigate>;
 }) => {
@@ -325,7 +368,7 @@ const AccionCerrarFooter = ({
       <Button
         type="button"
         variant="outline"
-        onClick={() => navigate(returnTo)}
+        onClick={() => navigate(returnTo, { replace: true })}
         disabled={saving}
         className="h-8 min-w-[96px] px-3 text-[11px] sm:h-8 sm:text-[11px]"
       >
@@ -333,7 +376,7 @@ const AccionCerrarFooter = ({
       </Button>
       <Button
         type="submit"
-        disabled={saving}
+        disabled={saving || disabled}
         className={cn(
           "h-8 min-w-[96px] px-3 text-[11px] text-white sm:h-8 sm:text-[11px]",
           isGanada
@@ -351,9 +394,15 @@ const AccionCerrarFooter = ({
 const AccionCerrarFields = ({
   resultadoChoices,
   isMantenimiento,
+  pendingOrdersLoading,
+  pendingOrdersTotal,
+  hasPendingOrders,
 }: {
   resultadoChoices: Array<{ id: string; name: string }>;
   isMantenimiento: boolean;
+  pendingOrdersLoading: boolean;
+  pendingOrdersTotal: number;
+  hasPendingOrders: boolean;
 }) => {
   const resultadoValue = useWatch({ name: "resultado" }) as string | undefined;
   const isGanada = resultadoValue === "ganada";
@@ -361,6 +410,22 @@ const AccionCerrarFields = ({
 
   return (
     <div className="grid gap-2 md:grid-cols-12">
+      {isMantenimiento ? (
+        <div
+          className={cn(
+            "rounded-md border px-3 py-2 text-[11px] md:col-span-12 sm:text-xs",
+            hasPendingOrders
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800",
+          )}
+        >
+          {pendingOrdersLoading
+            ? "Validando ordenes asociadas..."
+            : hasPendingOrders
+              ? `La oportunidad tiene ${pendingOrdersTotal} orden(es) pendiente(s). Debes resolverlas antes de cerrar la reparación.`
+              : "No hay ordenes pendientes. Ya puedes cerrar la reparación."}
+        </div>
+      ) : null}
       {isMantenimiento ? (
         <>
           <HiddenInput source="resultado" />

@@ -2,9 +2,11 @@ import * as React from "react";
 import {
   createContext,
   type MouseEventHandler,
+  useEffect,
   useCallback,
   useContext,
   useMemo,
+  useRef,
 } from "react";
 import {
   type CreateParams,
@@ -180,20 +182,34 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
   const form = useFormContext();
   const saveContext = useSaveContext();
   const { dirtyFields, isValidating, isSubmitting } = useFormState();
+  const clickGuardRef = useRef(false);
+  const isSubmittingRef = useRef(isSubmitting);
   // useFormState().isDirty might differ from useFormState().dirtyFields (https://github.com/react-hook-form/react-hook-form/issues/4740)
   const isDirty = Object.keys(dirtyFields).length > 0;
   // Use form isDirty, isValidating and form context saving to enable or disable the save button
   // if alwaysEnable is undefined and the form wasn't prefilled
   const recordFromLocation = useRecordFromLocation();
-  const disabled = valueOrDefault(
-    alwaysEnable === false || alwaysEnable === undefined
-      ? undefined
-      : !alwaysEnable,
+  const disabled =
     disabledProp ||
-      (!isDirty && recordFromLocation == null) ||
-      isValidating ||
-      isSubmitting,
-  );
+    (!alwaysEnable && !isDirty && recordFromLocation == null) ||
+    isValidating ||
+    isSubmitting;
+
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+    if (!isSubmitting) {
+      clickGuardRef.current = false;
+    }
+  }, [isSubmitting]);
+
+  const releaseSubmitLockIfIdle = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      if (!isSubmittingRef.current) {
+        clickGuardRef.current = false;
+      }
+    }, 0);
+  }, []);
 
   warning(
     type === "submit" &&
@@ -205,16 +221,9 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
 
   const handleSubmit = useCallback(
     async (values: FieldValues) => {
-      if (typeof window !== "undefined") {
-        console.log("[SaveButton] handleSubmit called");
-        console.log("[SaveButton] recordFromLocation:", recordFromLocation);
-        console.log("[SaveButton] saveContext keys:", saveContext ? Object.keys(saveContext) : null);
-      }
       let errors: unknown;
-      if (saveContext?.save) {
-        if (typeof window !== "undefined") {
-          console.log("[SaveButton] values:", values);
-        }
+      try {
+        if (saveContext?.save) {
         const callbacks: SaveHandlerCallbacks | undefined = (() => {
           const config: SaveHandlerCallbacks = {};
           if (mutationOptions?.onSuccess) {
@@ -229,32 +238,24 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
           return Object.keys(config).length > 0 ? config : undefined;
         })();
 
-        if (typeof window !== "undefined") {
-          console.log("[SaveButton] calling saveContext.save");
+          errors = await saveContext.save(values as Partial<RecordType>, callbacks);
         }
-        errors = await saveContext.save(values as Partial<RecordType>, callbacks);
-        if (typeof window !== "undefined") {
-          console.log("[SaveButton] saveContext.save resolved");
+        if (errors != null) {
+          setSubmissionErrors(errors, form.setError);
         }
-      } else {
-        if (typeof window !== "undefined") {
-          console.log("[SaveButton] saveContext.save is undefined", saveContext);
-        }
-      }
-      if (typeof window !== "undefined") {
-        console.log("[SaveButton] save result errors:", errors);
-      }
-      if (errors != null) {
-        setSubmissionErrors(errors, form.setError);
+      } finally {
+        releaseSubmitLockIfIdle();
       }
     },
-    [form.setError, saveContext, mutationOptions, transform],
+    [form.setError, mutationOptions, releaseSubmitLockIfIdle, saveContext, transform],
   );
 
   const handleClick: MouseEventHandler<HTMLButtonElement> = useCallback(
     async (event) => {
-      if (typeof window !== "undefined") {
-        console.log("[SaveButton] click", { type });
+      if (clickGuardRef.current || disabled) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
       }
       if (onClick) {
         onClick(event);
@@ -262,14 +263,17 @@ export const SaveButton = <RecordType extends RaRecord = RaRecord>(
       if (event.defaultPrevented) {
         return;
       }
+      clickGuardRef.current = true;
       if (type === "button") {
         // this button doesn't submit the form, so it doesn't trigger useIsFormInvalid in <FormContent>
         // therefore we need to check for errors manually
         event.stopPropagation();
         await form.handleSubmit(handleSubmit)(event);
+        return;
       }
+      releaseSubmitLockIfIdle();
     },
-    [onClick, type, form, handleSubmit],
+    [clickGuardRef, disabled, form, handleSubmit, onClick, releaseSubmitLockIfIdle, type],
   );
 
   const displayedLabel = label && translate(label, { _: label });
@@ -331,6 +335,4 @@ export type SaveButtonProps<RecordType extends RaRecord = RaRecord> =
       alwaysEnable?: boolean;
     };
 
-const valueOrDefault = <T,>(value: T | undefined, defaultValue: T): T =>
-  typeof value === "undefined" ? defaultValue : value;
 

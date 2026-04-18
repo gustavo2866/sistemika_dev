@@ -17,6 +17,7 @@ interface FormDialogProps {
   description?: string;
   children: ReactNode;
   contentClassName?: string;
+  overlayClassName?: string;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onCancel: () => void;
   submitLabel?: string;
@@ -33,6 +34,7 @@ export const FormDialog = ({
   description,
   children,
   contentClassName,
+  overlayClassName,
   onSubmit,
   onCancel,
   submitLabel = "Guardar",
@@ -53,7 +55,10 @@ export const FormDialog = ({
   const buttonSize = compact ? "sm" : undefined;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn(baseContentClassName, contentClassName)}>
+      <DialogContent
+        className={cn(baseContentClassName, contentClassName)}
+        overlayClassName={overlayClassName}
+      >
         <DialogHeader className={headerClassName}>
           <DialogTitle className={titleClassName}>{title}</DialogTitle>
           {description && (

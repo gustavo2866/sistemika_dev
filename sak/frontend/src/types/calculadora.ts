@@ -27,6 +27,8 @@ export interface ResumenCalculo {
   tem: number;
   cuota_inicial: number;
   cuota_final: number;
+  cuota_media_numero: number;
+  cuota_media_con_iva: number;
   total_intereses: number;
   total_iva: number;
   total_a_pagar: number;

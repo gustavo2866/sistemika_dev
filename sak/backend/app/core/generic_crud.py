@@ -376,8 +376,9 @@ class GenericCRUD(Generic[M]):
                     stmt = stmt.where(final_column.in_(coerced))
                     print(f"DEBUG: Filtro IN aplicado: {field_name} IN {coerced}")
                 else:
-                    stmt = stmt.where(final_column == coerced)
-                    print(f"DEBUG: Filtro igualdad aplicado: {field_name} = {coerced}")
+                    coerced_value = self._coerce_column_value(final_column, filter_value)
+                    stmt = stmt.where(final_column == coerced_value)
+                    print(f"DEBUG: Filtro igualdad aplicado: {field_name} = {coerced_value}")
             else:
                 print(f"ERROR: Campo {field_name} no encontrado en {current_model.__name__}")
                 

@@ -19,7 +19,7 @@ export type PropDashboardSelectorKey =
   | "realizada"
   | "retirada";
 
-export type PropDashboardAlertKey = "vencimiento_lt_60" | "renovacion_lt_60";
+export type PropDashboardAlertKey = "vencimiento_lt_60" | "renovacion_lt_60" | "vacancia_gt_90";
 
 export type PropDashboardKpiKey =
   | "vacancias_periodo"
@@ -52,6 +52,7 @@ export type PropDashboardSelectorValue = {
   count: number;
   vencimiento_lt_60?: number;
   renovacion_lt_60?: number;
+  vacancia_gt_90?: number;
   lt_30?: number;
   gt_30?: number;
 };
@@ -117,6 +118,11 @@ export type PropDashboardSelectorResponse = Record<
   PropDashboardSelectorValue
 > & {
   pivotDate?: string;
+  alert_days?: {
+    vencimiento?: number;
+    actualizacion?: number;
+    vacancia?: number;
+  };
 };
 
 export type PropDashboardDetalleItem = {
@@ -167,12 +173,10 @@ export type PropDashboardSelectorCardMeta = {
     tone: "danger" | "warning" | "muted";
   }>;
 };
-
 export const DEFAULT_PROP_PERIOD: PeriodType = "mes";
 export const PROP_DASHBOARD_DETAIL_PAGE_SIZE = 15;
 export const PROP_DASHBOARD_DETAIL_VISIBLE_ROWS = 6;
 export const PROP_DASHBOARD_DETAIL_VIEWPORT_HEIGHT = 236;
-
 const periodMap: Partial<Record<PeriodType, number>> = {
   mes: 1,
   trimestre: 3,
@@ -302,24 +306,38 @@ export const shiftDashboardFilters = (
 
 export const buildAlertItems = (
   selectorData: PropDashboardSelectorResponse | null,
-): PropDashboardAlertItem[] => [
-  {
-    key: "vencimiento_lt_60",
-    label: "Venc. <60d",
-    count: selectorData?.realizada?.vencimiento_lt_60 ?? 0,
-    icon: CalendarClock,
-    className: "border-rose-200 bg-rose-50 text-rose-700",
-    badgeClassName: "bg-rose-100 text-rose-700",
-  },
-  {
-    key: "renovacion_lt_60",
-    label: "Renov. <60d",
-    count: selectorData?.realizada?.renovacion_lt_60 ?? 0,
-    icon: CalendarSync,
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-    badgeClassName: "bg-amber-100 text-amber-700",
-  },
-];
+): PropDashboardAlertItem[] => {
+  const vencimientoDays = selectorData?.alert_days?.vencimiento ?? 60;
+  const actualizacionDays = selectorData?.alert_days?.actualizacion ?? 60;
+  const vacanciaDays = selectorData?.alert_days?.vacancia ?? 90;
+
+  return [
+    {
+      key: "vencimiento_lt_60",
+      label: `Contrato Venc ${vencimientoDays}d`,
+      count: selectorData?.realizada?.vencimiento_lt_60 ?? 0,
+      icon: CalendarClock,
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+      badgeClassName: "bg-rose-100 text-rose-700",
+    },
+    {
+      key: "renovacion_lt_60",
+      label: `Cuota Actual ${actualizacionDays}d`,
+      count: selectorData?.realizada?.renovacion_lt_60 ?? 0,
+      icon: CalendarSync,
+      className: "border-amber-200 bg-amber-50 text-amber-700",
+      badgeClassName: "bg-amber-100 text-amber-700",
+    },
+    {
+      key: "vacancia_gt_90",
+      label: `Vacancia > ${vacanciaDays}d`,
+      count: selectorData?.disponible?.vacancia_gt_90 ?? 0,
+      icon: Home,
+      className: "border-orange-200 bg-orange-50 text-orange-700",
+      badgeClassName: "bg-orange-100 text-orange-700",
+    },
+  ];
+};
 
 export const findActiveAlert = (
   alertItems: PropDashboardAlertItem[],

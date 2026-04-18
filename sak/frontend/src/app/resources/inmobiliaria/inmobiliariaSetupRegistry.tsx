@@ -6,6 +6,7 @@ import { TipoActualizacionCreate, TipoActualizacionEdit, TipoActualizacionList }
 import { TipoPropiedadCreate, TipoPropiedadEdit, TipoPropiedadList } from "./tipos-propiedad";
 import { TipoContratoCreate, TipoContratoEdit, TipoContratoList } from "./tipos-contrato";
 import { ServicioTipoCreate, ServicioTipoEdit, ServicioTipoList } from "./servicios-tipo";
+import { InmobiliariaAlarmSettingsPanel } from "./InmobiliariaAlarmSettingsPanel";
 
 export const INMOBILIARIA_SETUP_ITEMS: SetupItem[] = [
   {
@@ -43,6 +44,12 @@ export const INMOBILIARIA_SETUP_ITEMS: SetupItem[] = [
     listComponent: TipoContratoList,
     createComponent: TipoContratoCreate,
     editComponent: TipoContratoEdit,
+  },
+  {
+    key: "alarmas",
+    label: "Alarmas",
+    description: "Edita los parametros que controlan las alarmas de contratos del dashboard.",
+    customComponent: InmobiliariaAlarmSettingsPanel,
   },
   {
     key: "servicios-tipo",

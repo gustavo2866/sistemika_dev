@@ -261,6 +261,12 @@ import {
   MonedaShow,
 } from "@/app/resources/configuracion/monedas";
 import {
+  SettingList,
+  SettingCreate,
+  SettingEdit,
+  SettingShow,
+} from "@/app/resources/configuracion/settings";
+import {
   CRMContactoList,
   CRMContactoListAgenda,
   CRMContactoCreate,
@@ -794,6 +800,16 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Coins}
         options={{ label: "CRM ?? Monedas" }}
+      />
+      <Resource
+        name="settings"
+        list={SettingList}
+        create={SettingCreate}
+        edit={SettingEdit}
+        show={SettingShow}
+        recordRepresentation="clave"
+        icon={Settings}
+        options={{ label: "Settings" }}
       />
       <Resource
         name="crm/contactos"

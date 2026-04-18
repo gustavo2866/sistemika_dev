@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { required } from "ra-core";
+import { required, useRecordContext } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useFormContext, useWatch } from "react-hook-form";
 
@@ -86,9 +86,21 @@ export const PropiedadServicioForm = () => (
 );
 
 const PropiedadServicioFormContent = () => {
+  const record = useRecordContext<{ id?: number | string }>();
+  const defaultPropiedadId = useDefaultPropiedadId();
   const lockPropiedad = useLockPropiedad();
   const navigate = useNavigate();
   const returnTo = useReturnTo();
+  const defaultValues = useMemo(
+    () =>
+      record?.id
+        ? undefined
+        : {
+            activo: true,
+            ...(defaultPropiedadId ? { propiedad_id: defaultPropiedadId } : {}),
+          },
+    [defaultPropiedadId, record?.id],
+  );
   const handleCancel = () => {
     if (returnTo) {
       navigate(returnTo);
@@ -100,6 +112,7 @@ const PropiedadServicioFormContent = () => {
   return (
     <SimpleForm<PropiedadServicioFormValues>
       className="w-full max-w-2xl"
+      defaultValues={defaultValues}
       warnWhenUnsavedChanges
       toolbar={<FormOrderToolbar cancelProps={{ onClick: handleCancel }} />}
     >

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRecordContext } from "ra-core";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
@@ -17,7 +18,12 @@ import {
 } from "@/components/forms/form_order";
 import { ReferenceField } from "@/components/reference-field";
 
-import { CONTRATO_ESTADO_BADGES, isContratoVencido, type Contrato } from "./model";
+import {
+  CONTRATO_ESTADO_BADGES,
+  CONTRATO_ESTADO_LABELS,
+  isContratoVencido,
+  type Contrato,
+} from "./model";
 import {
   ContratoAccionesDialogs,
   ContratoAccionesMenuItems,
@@ -55,8 +61,19 @@ const filters = buildListFilters(
       selectProps: { optionText: "nombre", emptyText: "Todos", className: "w-full" },
     },
     {
-      type: "text",
-      props: { source: "estado", label: "Estado" },
+      type: "select",
+      props: {
+        source: "estado",
+        label: "Estado",
+        choices: Object.entries(CONTRATO_ESTADO_LABELS).map(([id, name]) => ({
+          id,
+          name,
+        })),
+        optionText: "name",
+        optionValue: "id",
+        emptyText: "Todos",
+        className: "w-[120px]",
+      },
     },
   ],
   { keyPrefix: "contratos" },
@@ -78,14 +95,16 @@ const isMeaningfulFilterValue = (value: unknown): boolean => {
 
 const ListActions = ({
   createTo,
+  createAction,
   filters,
 }: {
   createTo?: string;
+  createAction?: ReactNode;
   filters: ReturnType<typeof buildListFilters>;
 }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
-    <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
+    {createAction ?? <CreateButton className={actionButtonClass} label="Crear" to={createTo} />}
     <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
@@ -101,10 +120,12 @@ const InquilinoCell = () => {
 const ContratoAccionesCell = () => {
   const record = useRecordContext<Contrato>();
   const acciones = useContratoAccionesState(record);
+  const canDelete = record?.estado === "borrador";
   return (
     <>
       <FormOrderListRowActions
         showShow
+        showDelete={canDelete}
         extraMenuItems={<ContratoAccionesMenuItems acciones={acciones} />}
       />
       {record?.id ? <ContratoAccionesDialogs acciones={acciones} /> : null}
@@ -125,21 +146,27 @@ type ContratoListProps = {
   perPage?: number;
   rowClick?: "edit" | ((id: string | number) => string);
   createTo?: string;
+  createAction?: ReactNode;
   filterDefaultValues?: Record<string, unknown>;
   permanentFilter?: Record<string, unknown>;
   storeKey?: string;
   emptyMessage?: string;
+  showEmbeddedHeader?: boolean;
+  embeddedTitle?: ReactNode | string | false;
 };
 
 export const ContratoList = ({
   embedded = false,
-  perPage = 10,
+  perPage = 5,
   rowClick = "edit",
   createTo,
+  createAction,
   filterDefaultValues,
   permanentFilter,
   storeKey,
   emptyMessage,
+  showEmbeddedHeader = false,
+  embeddedTitle = "Contratos",
 }: ContratoListProps = {}) => {
   const hiddenEmbeddedFilterSources = new Set(
     Object.keys(permanentFilter ?? {}).filter((key) =>
@@ -156,9 +183,9 @@ export const ContratoList = ({
   return (
     <List
       resource="contratos"
-      title="Contratos"
+      title={embedded ? (showEmbeddedHeader ? embeddedTitle : undefined) : "Contratos"}
       filters={resolvedFilters}
-      actions={<ListActions createTo={createTo} filters={resolvedFilters} />}
+      actions={<ListActions createTo={createTo} createAction={createAction} filters={resolvedFilters} />}
       debounce={300}
       perPage={perPage}
       filter={permanentFilter}
@@ -168,8 +195,8 @@ export const ContratoList = ({
       sort={{ field: "id", order: "DESC" }}
       disableSyncWithLocation={embedded}
       storeKey={embedded ? storeKey : undefined}
-      showBreadcrumb={!embedded}
-      showHeader={!embedded}
+      showBreadcrumb={embedded ? false : true}
+      showHeader={embedded ? showEmbeddedHeader : true}
       filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <ResponsiveDataTable
@@ -186,7 +213,7 @@ export const ContratoList = ({
           <ListText source="id" />
         </ListColumn>
         <ListColumn source="propiedad_id" label="Propiedad" className="w-[120px]">
-          <ReferenceField source="propiedad_id" reference="propiedades" link="show">
+          <ReferenceField source="propiedad_id" reference="propiedades" link={false}>
             <ListText source="nombre" />
           </ReferenceField>
         </ListColumn>

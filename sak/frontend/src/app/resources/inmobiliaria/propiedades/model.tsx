@@ -99,6 +99,7 @@ export type PropiedadFormValues = {
   matricula_catastral?: string | null;
   padron?: string | null;
   tipo_propiedad_id?: number | null;
+  propietario_id?: number | null;
   tipo_actualizacion_id?: number | null;
   fecha_renovacion?: string | null;
   ambientes?: number | null;
@@ -109,6 +110,7 @@ export type PropiedadFormValues = {
   vencimiento_contrato?: string | null;
   estado_fecha?: string | null;
   estado_comentario?: string | null;
+  contacto_id?: number | null;
   tipo_operacion_id?: number | null;
   emprendimiento_id?: number | null;
   costo_propiedad?: number | null;
@@ -163,6 +165,7 @@ export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad
     matricula_catastral: stringField({ required: false, maxLength: 200 }),
     padron: stringField({ required: false, maxLength: 200 }),
     tipo_propiedad_id: numberField({ required: false, min: 1 }),
+    propietario_id: numberField({ required: true, min: 1 }),
     tipo_actualizacion_id: numberField({ required: false, min: 1 }),
     fecha_renovacion: stringField({ required: false }),
     ambientes: numberField({ required: false, min: 0 }),
@@ -172,6 +175,7 @@ export const propiedadSchema = createEntitySchema<PropiedadFormValues, Propiedad
     fecha_inicio_contrato: stringField({ required: false }),
     vencimiento_contrato: stringField({ required: false }),
     estado_comentario: stringField({ required: false, maxLength: 500 }),
+    contacto_id: numberField({ required: false, min: 1 }),
     tipo_operacion_id: numberField({ required: false, min: 1 }),
     emprendimiento_id: numberField({ required: false, min: 1 }),
     costo_propiedad: numberField({ required: false, min: 0 }),

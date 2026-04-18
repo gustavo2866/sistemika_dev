@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useWatch } from "react-hook-form";
-import { useGetOne, useRecordContext } from "ra-core";
+import { required, useGetOne, useRecordContext } from "ra-core";
 import { useLocation } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FileText, MoreHorizontal, Trash2, Upload } from "lucide-react";
@@ -25,12 +25,21 @@ import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/dataProvider";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "../propiedades/dialog_styles";
 
 import {
   CONTRATO_DEFAULT,
@@ -147,7 +156,7 @@ const resolveNumericId = (value: unknown) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const PropiedadTipoFields = () => {
+const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
   const record = useRecordContext<Contrato>();
   const propiedadValue = useWatch({ name: "propiedad_id" }) as unknown;
   const propiedadId = resolveNumericId(propiedadValue) ?? resolveNumericId(record?.propiedad_id);
@@ -172,18 +181,25 @@ const PropiedadTipoFields = () => {
         <FormSelect
           optionText="nombre"
           label="Propiedad"
-          widthClass="w-full"
+          widthClass="w-full md:w-[190px] xl:w-[220px]"
           emptyText="Sin asignar"
-          disabled={!canEditPropiedad}
+          disabled={readOnly || !canEditPropiedad}
         />
       </ReferenceInput>
       <div className="flex flex-col gap-1">
-        <FormValue label="Propietario" widthClass="w-full">
+        <FormValue label="Propietario" widthClass="w-full md:w-[180px] xl:w-[210px]">
           {propietarioNombre}
         </FormValue>
       </div>
       <ReferenceInput source="tipo_contrato_id" reference="tipos-contrato" label="Tipo de contrato">
-        <FormSelect optionText="nombre" label="Tipo de contrato" widthClass="w-full" emptyText="Sin asignar" />
+        <FormSelect
+          optionText="nombre"
+          label="Tipo de contrato"
+          widthClass="w-full md:w-[150px] xl:w-[175px]"
+          emptyText="Sin asignar"
+          validate={required("El campo Tipo de contrato es obligatorio")}
+          disabled={readOnly}
+        />
       </ReferenceInput>
     </div>
   );
@@ -191,7 +207,7 @@ const PropiedadTipoFields = () => {
 
 // ── Section: Vigencia y economía ─────────────────────────────────────────────
 
-const VigenciaEconomiaFields = () => {
+const VigenciaEconomiaFields = ({ readOnly = false }: { readOnly?: boolean }) => {
   return (
     <div className="flex flex-col gap-2">
       <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
@@ -200,21 +216,23 @@ const VigenciaEconomiaFields = () => {
             Condiciones economicas
           </h3>
         </div>
-        <div className="grid gap-2 md:grid-cols-5">
-          <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full" />
-          <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full" />
-          <FormNumber source="deposito_garantia" label="Deposito garantia" step="any" min={0} widthClass="w-full" />
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-end">
+          <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full md:w-[118px] xl:w-[132px]" readOnly={readOnly} />
+          <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full md:w-[110px] xl:w-[122px]" readOnly={readOnly} />
+          <FormNumber source="deposito_garantia" label="Deposito garantia" step="any" min={0} widthClass="w-full md:w-[136px] xl:w-[154px]" readOnly={readOnly} />
           <FormSelect
             source="moneda"
             label="Moneda"
-            widthClass="w-full"
+            widthClass="w-full md:w-[96px] xl:w-[108px]"
             choices={MONEDA_OPCIONES}
             optionText="nombre"
             optionValue="id"
+            disabled={readOnly}
           />
           <ReferenceInput source="tipo_actualizacion_id" reference="tipos-actualizacion" label="Tipo de actualizacion">
-            <FormSelect optionText="nombre" label="Tipo de actualizacion" widthClass="w-full" emptyText="Sin asignar" />
+            <FormSelect optionText="nombre" label="Tipo de actualizacion" widthClass="w-full md:w-[150px] xl:w-[170px]" emptyText="Sin asignar" disabled={readOnly} />
           </ReferenceInput>
+          <FormDate source="fecha_renovacion" label="Fecha de proxima actualizacion" widthClass="w-full md:w-[170px] xl:w-[184px]" readOnly={readOnly} />
         </div>
       </div>
       <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
@@ -224,14 +242,14 @@ const VigenciaEconomiaFields = () => {
           </h3>
         </div>
         <div className="grid gap-2 md:grid-cols-3">
-          <FormDate source="fecha_inicio" label="Fecha de inicio" widthClass="w-full" />
-          <FormDate source="fecha_vencimiento" label="Fecha de finalizacion" widthClass="w-full" />
-          <FormDate source="fecha_renovacion" label="Fecha de proxima actualizacion" widthClass="w-full" />
+          <FormDate source="fecha_inicio" label="Fecha de inicio" widthClass="w-full" readOnly={readOnly} />
+          <FormDate source="fecha_vencimiento" label="Fecha de finalizacion" widthClass="w-full" readOnly={readOnly} />
           <FormText
             source="lugar_celebracion"
             label="Lugar de celebracion"
             widthClass="w-full md:col-span-3"
             maxLength={200}
+            readOnly={readOnly}
           />
         </div>
       </div>
@@ -247,6 +265,7 @@ const VigenciaEconomiaFields = () => {
           widthClass="w-full"
           className="[&_textarea]:min-h-[96px]"
           maxLength={2000}
+          readOnly={readOnly}
         />
       </div>
     </div>
@@ -255,42 +274,63 @@ const VigenciaEconomiaFields = () => {
 
 // ── Section: Persona (inquilino / garante) ───────────────────────────────────
 
-const PersonaFields = ({ prefix }: { prefix: string }) => (
+const PersonaFields = ({ prefix, readOnly = false }: { prefix: string; readOnly?: boolean }) => {
+  const isInquilino = prefix === "inquilino";
+
+  return (
   <div className="grid gap-2 md:grid-cols-3">
-    <FormText source={`${prefix}_nombre`} label="Nombre" widthClass="w-full" maxLength={120} />
-    <FormText source={`${prefix}_apellido`} label="Apellido" widthClass="w-full" maxLength={120} />
-    <FormText source={`${prefix}_dni`} label="DNI" widthClass="w-full" maxLength={20} />
-    <FormText source={`${prefix}_cuit`} label="CUIT" widthClass="w-full" maxLength={20} />
-    <FormText source={`${prefix}_email`} label="Email" widthClass="w-full" maxLength={200} />
-    <FormText source={`${prefix}_telefono`} label="Telefono" widthClass="w-full" maxLength={50} />
+    <FormText
+      source={`${prefix}_nombre`}
+      label="Nombre"
+      widthClass="w-full"
+      maxLength={120}
+      validate={isInquilino ? required("El campo Nombre es obligatorio") : undefined}
+      readOnly={readOnly}
+    />
+    <FormText
+      source={`${prefix}_apellido`}
+      label="Apellido"
+      widthClass="w-full"
+      maxLength={120}
+      validate={isInquilino ? required("El campo Apellido es obligatorio") : undefined}
+      readOnly={readOnly}
+    />
+    <FormText source={`${prefix}_dni`} label="DNI" widthClass="w-full" maxLength={20} readOnly={readOnly} />
+    <FormText source={`${prefix}_cuit`} label="CUIT" widthClass="w-full" maxLength={20} readOnly={readOnly} />
+    <FormText source={`${prefix}_email`} label="Email" widthClass="w-full" maxLength={200} readOnly={readOnly} />
+    <FormText source={`${prefix}_telefono`} label="Telefono" widthClass="w-full" maxLength={50} readOnly={readOnly} />
     <FormText
       source={`${prefix}_domicilio`}
       label="Domicilio"
       widthClass="w-full md:col-span-3"
       maxLength={300}
+      readOnly={readOnly}
     />
   </div>
-);
+  );
+};
 
 const GaranteGroup = ({
   title,
   prefix,
+  readOnly = false,
 }: {
   title: string;
   prefix: "garante1" | "garante2";
+  readOnly?: boolean;
 }) => (
   <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
     <div className="mb-3">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
     </div>
-    <PersonaFields prefix={prefix} />
+    <PersonaFields prefix={prefix} readOnly={readOnly} />
   </div>
 );
 
-const GaranteFields = () => (
+const GaranteFields = ({ readOnly = false }: { readOnly?: boolean }) => (
   <div className="grid gap-3">
-    <GaranteGroup title="Garante 1" prefix="garante1" />
-    <GaranteGroup title="Garante 2" prefix="garante2" />
+    <GaranteGroup title="Garante 1" prefix="garante1" readOnly={readOnly} />
+    <GaranteGroup title="Garante 2" prefix="garante2" readOnly={readOnly} />
   </div>
 );
 
@@ -298,66 +338,19 @@ const GaranteFields = () => (
 
 const ArchivosContent = ({
   contrato,
-  pendingFile,
-  nombre,
-  uploading,
   deleting,
-  onNombreChange,
-  onUpload,
-  onCancel,
+  readOnly = false,
   onDelete,
 }: {
   contrato: Contrato;
-  pendingFile: File | null;
-  nombre: string;
-  uploading: boolean;
   deleting: boolean;
-  onNombreChange: (value: string) => void;
-  onUpload: () => void;
-  onCancel: () => void;
+  readOnly?: boolean;
   onDelete: (archivoId: number) => void;
 }) => {
   const archivos = contrato.archivos ?? [];
 
   return (
     <div className="flex flex-col gap-4">
-      {pendingFile ? (
-        <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground">Nombre del archivo</label>
-            <Input
-              value={nombre}
-              onChange={(e) => onNombreChange(e.target.value)}
-              placeholder="Nombre del archivo"
-              className="h-8 text-sm"
-              disabled={uploading}
-            />
-          </div>
-          <p className="text-[11px] text-muted-foreground truncate">Archivo: {pendingFile.name}</p>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              className="h-7 px-3 text-xs"
-              onClick={onUpload}
-              disabled={uploading}
-            >
-              {uploading ? "Subiendo..." : "Subir"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 px-3 text-xs"
-              onClick={onCancel}
-              disabled={uploading}
-            >
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
       {/* File list */}
       {archivos.length === 0 ? (
         <p className="text-sm text-muted-foreground">Sin archivos adjuntos.</p>
@@ -387,16 +380,18 @@ const ArchivosContent = ({
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <ArchivoViewerModal url={resolvedUrl} nombre={displayNombre} />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                  disabled={deleting}
-                  onClick={() => onDelete(a.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                {!readOnly ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    disabled={deleting}
+                    onClick={() => onDelete(a.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
               </div>
             </li>
             );
@@ -409,49 +404,52 @@ const ArchivosContent = ({
 
 // ── Section wrapper components ────────────────────────────────────────────────
 
-const VigenciaSection = ({ variant = "stacked" }: { variant?: ContratoSectionVariant }) => {
+const VigenciaSection = ({ variant = "stacked", readOnly = false }: { variant?: ContratoSectionVariant; readOnly?: boolean }) => {
   if (variant === "panel") {
     return (
       <ContratoDesktopPanel title="Terminos y economia" description="Fechas del contrato y condiciones economicas.">
-        <VigenciaEconomiaFields />
+        <VigenciaEconomiaFields readOnly={readOnly} />
       </ContratoDesktopPanel>
     );
   }
-  return <SectionBaseTemplate title="Terminos y economia" main={<VigenciaEconomiaFields />} defaultOpen />;
+  return <SectionBaseTemplate title="Terminos y economia" main={<VigenciaEconomiaFields readOnly={readOnly} />} defaultOpen readOnly={readOnly} />;
 };
 
-const InquilinoSection = ({ variant = "stacked" }: { variant?: ContratoSectionVariant }) => {
+const InquilinoSection = ({ variant = "stacked", readOnly = false }: { variant?: ContratoSectionVariant; readOnly?: boolean }) => {
   if (variant === "panel") {
     return (
       <ContratoDesktopPanel title="Inquilino" description="Datos del inquilino principal.">
-        <PersonaFields prefix="inquilino" />
+        <PersonaFields prefix="inquilino" readOnly={readOnly} />
       </ContratoDesktopPanel>
     );
   }
-  return <SectionBaseTemplate title="Inquilino" main={<PersonaFields prefix="inquilino" />} defaultOpen />;
+  return <SectionBaseTemplate title="Inquilino" main={<PersonaFields prefix="inquilino" readOnly={readOnly} />} defaultOpen readOnly={readOnly} />;
 };
 
-const GaranteSection = ({ variant = "stacked" }: { variant?: ContratoSectionVariant }) => {
+const GaranteSection = ({ variant = "stacked", readOnly = false }: { variant?: ContratoSectionVariant; readOnly?: boolean }) => {
   if (variant === "panel") {
     return (
       <ContratoDesktopPanel title="Garante" description="Datos de los garantes asociados al contrato.">
-        <GaranteFields />
+        <GaranteFields readOnly={readOnly} />
       </ContratoDesktopPanel>
     );
   }
-  return <SectionBaseTemplate title="Garante" main={<GaranteFields />} />;
+  return <SectionBaseTemplate title="Garante" main={<GaranteFields readOnly={readOnly} />} readOnly={readOnly} />;
 };
 
 const ArchivosSection = ({
   variant = "stacked",
   contrato,
+  readOnly = false,
 }: {
   variant?: ContratoSectionVariant;
   contrato: Contrato;
+  readOnly?: boolean;
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [nombre, setNombre] = useState("");
+  const [confirmUploadOpen, setConfirmUploadOpen] = useState(false);
   const { upload, loading: uploading } = useContratoArchivoUpload();
   const { deleteArchivo, loading: deleting } = useContratoArchivoDelete();
 
@@ -460,22 +458,25 @@ const ArchivosSection = ({
     if (!file) return;
     setPendingFile(file);
     setNombre(file.name);
+    setConfirmUploadOpen(true);
     e.target.value = "";
   };
 
   const handleOpenPicker = () => {
-    if (uploading) return;
+    if (readOnly || uploading) return;
     fileInputRef.current?.click();
   };
 
   const handleUpload = async () => {
     if (!pendingFile) return;
     await upload(contrato.id, pendingFile, nombre.trim() || pendingFile.name);
+    setConfirmUploadOpen(false);
     setPendingFile(null);
     setNombre("");
   };
 
   const handleCancel = () => {
+    setConfirmUploadOpen(false);
     setPendingFile(null);
     setNombre("");
   };
@@ -484,16 +485,18 @@ const ArchivosSection = ({
     void deleteArchivo(contrato.id, archivoId);
   };
 
-  const archivoActions = (
-    <DropdownMenuItem
-      onSelect={handleOpenPicker}
-      className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-      disabled={uploading}
-    >
-      <Upload className="h-3 w-3" />
-      Subir archivo
-    </DropdownMenuItem>
-  );
+  const archivoActions = readOnly
+    ? undefined
+    : (
+        <DropdownMenuItem
+          onSelect={handleOpenPicker}
+          className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          disabled={uploading}
+        >
+          <Upload className="h-3 w-3" />
+          Subir archivo
+        </DropdownMenuItem>
+      );
 
   const archivosMain = (
     <>
@@ -503,19 +506,72 @@ const ArchivosSection = ({
         className="hidden"
         accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.txt"
         onChange={handleFileSelect}
-        disabled={uploading}
+        disabled={readOnly || uploading}
       />
       <ArchivosContent
         contrato={contrato}
-        pendingFile={pendingFile}
-        nombre={nombre}
-        uploading={uploading}
         deleting={deleting}
-        onNombreChange={setNombre}
-        onUpload={handleUpload}
-        onCancel={handleCancel}
+        readOnly={readOnly}
         onDelete={handleDelete}
       />
+      <Dialog
+        open={confirmUploadOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCancel();
+        }}
+      >
+        <DialogContent overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}>
+          <DialogHeader>
+            <DialogTitle>Subir archivo</DialogTitle>
+            <DialogDescription>
+              Se adjuntará el archivo al contrato y quedará disponible en esta sección.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Nombre del archivo</label>
+              <Input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Nombre del archivo"
+                className="h-9 text-sm"
+                disabled={uploading}
+              />
+            </div>
+            <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+            <div className="grid gap-0.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                Nombre
+              </span>
+              <span className="break-all text-foreground">
+                {nombre.trim() || pendingFile?.name || "Sin nombre"}
+              </span>
+            </div>
+            <div className="grid gap-0.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                Archivo
+              </span>
+              <span className="break-all text-foreground">
+                {pendingFile?.name ?? "Sin archivo"}
+              </span>
+            </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={uploading}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => void handleUpload()} disabled={uploading}>
+              {uploading ? "Subiendo..." : "Subir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 
@@ -531,7 +587,7 @@ const ArchivosSection = ({
     );
   }
   return (
-    <SectionBaseTemplate title="Archivos" main={archivosMain} actions={archivoActions} />
+    <SectionBaseTemplate title="Archivos" main={archivosMain} actions={archivoActions} readOnly={readOnly} />
   );
 };
 
@@ -542,24 +598,26 @@ const ContratoDesktopSectionsLayout = ({
   visibleSections,
   onSectionChange,
   contrato,
+  readOnly = false,
 }: {
   activeSection: ContratoSectionId;
   visibleSections: Array<{ id: ContratoSectionId; label: string }>;
   onSectionChange: (id: ContratoSectionId) => void;
   contrato: Contrato | null;
+  readOnly?: boolean;
 }) => {
   const activeConfig = visibleSections.find((s) => s.id === activeSection) ?? visibleSections[0];
 
   const renderSection = () => {
     switch (activeSection) {
       case "vigencia":
-        return <VigenciaSection variant="panel" />;
+        return <VigenciaSection variant="panel" readOnly={readOnly} />;
       case "inquilino":
-        return <InquilinoSection variant="panel" />;
+        return <InquilinoSection variant="panel" readOnly={readOnly} />;
       case "garante":
-        return <GaranteSection variant="panel" />;
+        return <GaranteSection variant="panel" readOnly={readOnly} />;
       case "archivos":
-        return contrato ? <ArchivosSection variant="panel" contrato={contrato} /> : null;
+        return contrato ? <ArchivosSection variant="panel" contrato={contrato} readOnly={readOnly} /> : null;
       default:
         return null;
     }
@@ -602,7 +660,13 @@ const ContratoDesktopSectionsLayout = ({
 
 // ── Sections content orchestrator ─────────────────────────────────────────────
 
-const ContratoFormSectionsContent = ({ contrato }: { contrato: Contrato | null }) => {
+const ContratoFormSectionsContent = ({
+  contrato,
+  readOnly = false,
+}: {
+  contrato: Contrato | null;
+  readOnly?: boolean;
+}) => {
   const isDesktop = useContratoDesktopLayout();
   const isEdit = Boolean(contrato?.id);
 
@@ -625,16 +689,17 @@ const ContratoFormSectionsContent = ({ contrato }: { contrato: Contrato | null }
         visibleSections={visibleSections}
         onSectionChange={setActiveSection}
         contrato={contrato}
+        readOnly={readOnly}
       />
     );
   }
 
   return (
     <>
-      <VigenciaSection />
-      <InquilinoSection />
-      <GaranteSection />
-      {isEdit && contrato ? <ArchivosSection contrato={contrato} /> : null}
+      <VigenciaSection readOnly={readOnly} />
+      <InquilinoSection readOnly={readOnly} />
+      <GaranteSection readOnly={readOnly} />
+      {isEdit && contrato ? <ArchivosSection contrato={contrato} readOnly={readOnly} /> : null}
     </>
   );
 };
@@ -654,7 +719,7 @@ const ContratoStickyFooter = () => (
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
-export const ContratoForm = () => {
+export const ContratoForm = ({ readOnly = false }: { readOnly?: boolean }) => {
   const record = useRecordContext<Contrato>();
   const location = useLocation();
   const acciones = useContratoAccionesState(record);
@@ -674,19 +739,20 @@ export const ContratoForm = () => {
     <SimpleForm<ContratoFormValues>
       className="w-full max-w-5xl max-h-[calc(100svh-10rem)] overflow-y-auto overscroll-y-contain pr-1 pb-4 sm:max-h-[calc(100svh-9rem)]"
       resolver={zodResolver(contratoSchema) as any}
-      toolbar={<ContratoStickyFooter />}
+      toolbar={readOnly ? false : <ContratoStickyFooter />}
       defaultValues={defaultValues}
-      warnWhenUnsavedChanges
+      warnWhenUnsavedChanges={!readOnly}
     >
       <FormErrorSummary />
       <SectionBaseTemplate
         title="Cabecera"
-        main={<PropiedadTipoFields />}
+        main={<PropiedadTipoFields readOnly={readOnly} />}
         defaultOpen
-        actions={record?.id ? <ContratoAccionesMenuItems acciones={acciones} /> : undefined}
+        readOnly={readOnly}
+        actions={!readOnly && record?.id ? <ContratoAccionesMenuItems acciones={acciones} /> : undefined}
       />
-      <ContratoFormSectionsContent contrato={record ?? null} />
-      {record?.id ? <ContratoAccionesDialogs acciones={acciones} /> : null}
+      <ContratoFormSectionsContent contrato={record ?? null} readOnly={readOnly} />
+      {!readOnly && record?.id ? <ContratoAccionesDialogs acciones={acciones} /> : null}
     </SimpleForm>
   );
 };
