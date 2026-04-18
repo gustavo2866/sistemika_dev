@@ -6,7 +6,6 @@ import {
   useDataProvider,
   useGetList,
   useGetOne,
-  useNotify,
   useRecordContext,
 } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -26,7 +25,6 @@ import {
   RowActionDialogProvider,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
-import { CreateButton } from "@/components/create-button";
 import { CRMOportunidadList } from "@/app/resources/crm/crm-oportunidades/List";
 import { ContratoList } from "@/app/resources/inmobiliaria/contratos/list";
 import { PoOrderList } from "@/app/resources/po/po-orders/List";
@@ -63,8 +61,9 @@ import { CabeceraActionsMenu } from "./cabecera_actions_menu";
 import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "./dialog_styles";
 import {
   useDefaultTipoOperacionId,
-  useMantenimientoOportunidadesActivas,
+  formatPropiedadOrdenOportunidadLabel,
   useMantenimientoTipoOperacionId,
+  usePropiedadOrdenesFlow,
   useTiposOperacionCatalog,
 } from "./form_hooks";
 import {
@@ -753,7 +752,6 @@ const useAvailablePropiedadSections = () => {
   const record = useRecordContext<Propiedad>();
   const tiposOperacion = useTiposOperacionCatalog();
   const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
-  const propiedadId = resolveNumericId(record?.id);
   const currentTipoOperacionId =
     resolveNumericId(tipoOperacionValue) ?? resolveNumericId(record?.tipo_operacion_id);
   const selectedTipoOperacion = useMemo(
@@ -878,48 +876,15 @@ const PropiedadOrdenesSection = ({
 }) => {
   const record = useRecordContext<Propiedad>();
   const propiedadId = record?.id;
-  const location = useLocation();
-  const { oportunidades, isLoading } = useMantenimientoOportunidadesActivas(propiedadId);
-  const [selectorOpen, setSelectorOpen] = useState(false);
-  const navigate = useNavigate();
-  const notify = useNotify();
-  const returnTo = `${location.pathname}${location.search}`;
-
-  const buildCreatePath = useCallback((selectedOportunidadId: number) => {
-    const params = new URLSearchParams();
-    params.set("oportunidad_id", String(selectedOportunidadId));
-    params.set("lock_oportunidad", "1");
-    params.set("lock_centro", "1");
-    params.set("returnTo", returnTo);
-    return `/po-orders/create?${params.toString()}`;
-  }, [returnTo]);
-
-  const handleCreateOrder = useCallback(() => {
-    if (isLoading) return;
-    if (oportunidades.length === 0) {
-      notify("No hay oportunidades de mantenimiento abiertas para esta propiedad", {
-        type: "warning",
-      });
-      return;
-    }
-    if (oportunidades.length === 1) {
-      const onlyId = resolveNumericId(oportunidades[0]?.id);
-      if (!onlyId) return;
-      navigate(buildCreatePath(onlyId));
-      return;
-    }
-    setSelectorOpen(true);
-  }, [buildCreatePath, isLoading, navigate, notify, oportunidades]);
-
-  const defaultFilters = useMemo(
-    () =>
-      propiedadId
-        ? {
-            "oportunidad.propiedad_id": propiedadId,
-          }
-        : undefined,
-    [propiedadId],
-  );
+  const {
+    oportunidades,
+    isLoading,
+    selectorOpen,
+    setSelectorOpen,
+    defaultFilters,
+    handleCreateOrder,
+    handleSelectOportunidad,
+  } = usePropiedadOrdenesFlow(propiedadId);
 
   const createAction = useMemo(
     () => (
@@ -972,7 +937,7 @@ const PropiedadOrdenesSection = ({
           open={selectorOpen}
           onOpenChange={setSelectorOpen}
           oportunidades={oportunidades}
-          onSelect={(selectedOportunidadId) => navigate(buildCreatePath(selectedOportunidadId))}
+          onSelect={handleSelectOportunidad}
         />
       </>
     );
@@ -990,26 +955,10 @@ const PropiedadOrdenesSection = ({
         open={selectorOpen}
         onOpenChange={setSelectorOpen}
         oportunidades={oportunidades}
-        onSelect={(selectedOportunidadId) => navigate(buildCreatePath(selectedOportunidadId))}
+        onSelect={handleSelectOportunidad}
       />
     </>
   );
-};
-
-const formatOportunidadLabel = (oportunidad: {
-  id?: unknown;
-  titulo?: string | null;
-  descripcion_estado?: string | null;
-  contacto?: { nombre?: string | null } | null;
-  created_at?: string | null;
-}) => {
-  const title =
-    String(oportunidad.descripcion_estado ?? "").trim() ||
-    String(oportunidad.titulo ?? "").trim() ||
-    `Oportunidad #${resolveNumericId(oportunidad.id) ?? "s/n"}`;
-  const contacto = String(oportunidad.contacto?.nombre ?? "").trim();
-  const createdAt = String(oportunidad.created_at ?? "").trim();
-  return { title, contacto, createdAt };
 };
 
 const SeleccionarOportunidadOrdenDialog = ({
@@ -1044,7 +993,7 @@ const SeleccionarOportunidadOrdenDialog = ({
         {oportunidades.map((oportunidad) => {
           const oportunidadId = resolveNumericId(oportunidad.id);
           if (!oportunidadId) return null;
-          const { title, contacto, createdAt } = formatOportunidadLabel(oportunidad);
+          const { title, contacto, createdAt } = formatPropiedadOrdenOportunidadLabel(oportunidad);
 
           return (
             <button

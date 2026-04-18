@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useDataProvider, useGetList, useNotify, useRefresh } from "ra-core";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { resolveNumericId, useIdentityId } from "@/components/forms/form_order";
 import { isClosedOportunidad } from "@/app/resources/crm/crm-oportunidades/model";
@@ -15,6 +15,16 @@ type ChangeStatusPayload = {
   nextStatusId: number;
   fechaCambio: string;
   comentario?: string;
+};
+
+export type PropiedadOrdenMantenimientoOportunidad = {
+  id?: unknown;
+  titulo?: string | null;
+  descripcion_estado?: string | null;
+  created_at?: string | null;
+  contacto?: { nombre?: string | null } | null;
+  contacto_id?: unknown;
+  estado?: string | null;
 };
 
 export const useDefaultTipoOperacionId = () => {
@@ -62,16 +72,91 @@ export const useMantenimientoOportunidadesActivas = (propiedadId?: number) => {
   );
 
   return {
-    oportunidades: (oportunidades as Array<{
-      id?: unknown;
-      titulo?: string | null;
-      descripcion_estado?: string | null;
-      created_at?: string | null;
-      contacto?: { nombre?: string | null } | null;
-      contacto_id?: unknown;
-      estado?: string | null;
-    }>).filter((oportunidad) => !isClosedOportunidad(oportunidad.estado as any)),
+    oportunidades: (oportunidades as PropiedadOrdenMantenimientoOportunidad[]).filter(
+      (oportunidad) => !isClosedOportunidad(oportunidad.estado as any),
+    ),
     isLoading: Boolean(propiedadId) && (Boolean(!tipoOperacionId) || (enabled && isPending)),
+  };
+};
+
+export const formatPropiedadOrdenOportunidadLabel = (
+  oportunidad: Pick<
+    PropiedadOrdenMantenimientoOportunidad,
+    "id" | "titulo" | "descripcion_estado" | "created_at" | "contacto"
+  >,
+) => {
+  const title =
+    String(oportunidad.descripcion_estado ?? "").trim() ||
+    String(oportunidad.titulo ?? "").trim() ||
+    `Oportunidad #${resolveNumericId(oportunidad.id) ?? "s/n"}`;
+  const contacto = String(oportunidad.contacto?.nombre ?? "").trim();
+  const createdAt = String(oportunidad.created_at ?? "").trim();
+
+  return { title, contacto, createdAt };
+};
+
+export const usePropiedadOrdenesFlow = (propiedadId?: number) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const notify = useNotify();
+  const { oportunidades, isLoading } = useMantenimientoOportunidadesActivas(propiedadId);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const returnTo = `${location.pathname}${location.search}`;
+
+  const buildCreatePath = useCallback(
+    (selectedOportunidadId: number) => {
+      const params = new URLSearchParams();
+      params.set("oportunidad_id", String(selectedOportunidadId));
+      params.set("lock_oportunidad", "1");
+      params.set("lock_centro", "1");
+      params.set("returnTo", returnTo);
+      return `/po-orders/create?${params.toString()}`;
+    },
+    [returnTo],
+  );
+
+  const handleSelectOportunidad = useCallback(
+    (selectedOportunidadId: number) => {
+      navigate(buildCreatePath(selectedOportunidadId));
+    },
+    [buildCreatePath, navigate],
+  );
+
+  const handleCreateOrder = useCallback(() => {
+    if (isLoading) return;
+    if (oportunidades.length === 0) {
+      notify("No hay oportunidades de mantenimiento abiertas para esta propiedad", {
+        type: "warning",
+      });
+      return;
+    }
+    if (oportunidades.length === 1) {
+      const onlyId = resolveNumericId(oportunidades[0]?.id);
+      if (!onlyId) return;
+      navigate(buildCreatePath(onlyId));
+      return;
+    }
+    setSelectorOpen(true);
+  }, [buildCreatePath, isLoading, navigate, notify, oportunidades]);
+
+  const defaultFilters = useMemo(
+    () =>
+      propiedadId
+        ? {
+            "oportunidad.propiedad_id": propiedadId,
+          }
+        : undefined,
+    [propiedadId],
+  );
+
+  return {
+    oportunidades,
+    isLoading,
+    selectorOpen,
+    setSelectorOpen,
+    defaultFilters,
+    handleCreateOrder,
+    handleSelectOportunidad,
   };
 };
 
