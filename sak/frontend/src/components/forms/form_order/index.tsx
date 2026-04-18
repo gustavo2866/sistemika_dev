@@ -44,6 +44,20 @@ export { HiddenInput } from "./form/hidden_input";
 export { FormErrorSummary } from "./form/form_error_summary";
 export { SectionCard } from "./form/section_card";
 export { SectionBaseTemplate } from "./form/section_base_template";
+export { FormSectionEmptyState } from "./form/form_section_empty_state";
+export { FormSectionPanel } from "./form/form_section_panel";
+export {
+  FormSectionsMobileAccordion,
+} from "./form/form_sections_mobile_accordion";
+export {
+  FormSectionsDesktopLayout,
+} from "./form/form_sections_desktop_layout";
+export type {
+  FormSectionsDesktopLayoutItem,
+} from "./form/form_sections_desktop_layout";
+export type {
+  FormSectionsMobileAccordionItem,
+} from "./form/form_sections_mobile_accordion";
 export {
   SectionDetailTemplate,
   useDetailSectionContext,
@@ -115,6 +129,7 @@ export {
 export { useActiveRow } from "./form/use_active_row";
 export { useConfirmDelete } from "./form/use_confirm_delete";
 export { useIdentityId } from "./form/use_identity_id";
+export { useMinWidth, usePersistedActiveSection } from "./form/use_form_section_layout";
 export { resolveNumericId } from "./form/resolve_numeric_id";
 export { FormOrderPrintButton } from "./show/print_button";
 export { SetupLayout } from "./setup/SetupLayout";

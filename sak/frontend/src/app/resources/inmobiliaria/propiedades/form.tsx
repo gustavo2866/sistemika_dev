@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   required,
   useDataProvider,
@@ -17,6 +17,11 @@ import {
   FormErrorSummary,
   FormNumber,
   FormOrderToolbar,
+  FormSectionEmptyState,
+  FormSectionPanel,
+  FormSectionsDesktopLayout,
+  FormSectionsMobileAccordion,
+  type FormSectionsDesktopLayoutItem,
   FormSelect,
   FormText,
   FormTextarea,
@@ -24,6 +29,8 @@ import {
   resolveNumericId,
   RowActionDialogProvider,
   SectionBaseTemplate,
+  useMinWidth,
+  usePersistedActiveSection,
 } from "@/components/forms/form_order";
 import { CRMOportunidadList } from "@/app/resources/crm/crm-oportunidades/List";
 import { ContratoList } from "@/app/resources/inmobiliaria/contratos/list";
@@ -47,8 +54,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-
 import {
   type PropiedadDesktopSectionId,
   type Propiedad,
@@ -76,45 +81,8 @@ const PROPIEDAD_ACTIVE_SECTION_STORAGE_KEY_PREFIX = "propiedades-form-active-sec
 
 type PropiedadSectionVariant = "stacked" | "panel";
 
-const PROPIEDAD_DESKTOP_SECTIONS: Array<{
-  id: PropiedadDesktopSectionId;
-  label: string;
-}> = [
-  { id: "ficha", label: "Ficha" },
-  { id: "servicios", label: "Servicios" },
-  { id: "contrato", label: "Contrato" },
-  { id: "reparaciones", label: "Reparaciones" },
-  { id: "ordenes", label: "Ordenes" },
-];
-
-const isPropiedadDesktopSectionId = (
-  value: unknown,
-): value is PropiedadDesktopSectionId =>
-  PROPIEDAD_DESKTOP_SECTIONS.some((section) => section.id === value);
-
-const getStoredPropiedadSection = (storageKey: string) => {
-  if (typeof window === "undefined") return null;
-  const savedValue = window.sessionStorage.getItem(storageKey);
-  return isPropiedadDesktopSectionId(savedValue) ? savedValue : null;
-};
-
-const usePropiedadDesktopLayout = () => {
-  const [isDesktop, setIsDesktop] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth >= DESKTOP_LAYOUT_BREAKPOINT;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const mediaQuery = window.matchMedia(`(min-width: ${DESKTOP_LAYOUT_BREAKPOINT}px)`);
-    const updateLayout = () => setIsDesktop(mediaQuery.matches);
-
-    updateLayout();
-    mediaQuery.addEventListener("change", updateLayout);
-    return () => mediaQuery.removeEventListener("change", updateLayout);
-  }, []);
-
-  return isDesktop;
+type PropiedadSectionDefinition = FormSectionsDesktopLayoutItem<PropiedadDesktopSectionId> & {
+  render: (variant?: PropiedadSectionVariant) => ReactNode;
 };
 
 const TipoOperacionDefaultSync = () => {
@@ -158,46 +126,6 @@ const CostoMonedaDefaultSync = () => {
 
   return null;
 };
-
-const PropiedadDesktopPanel = ({
-  title,
-  description,
-  actions,
-  toolbar,
-  children,
-}: {
-  title?: string;
-  description?: string;
-  actions?: ReactNode;
-  toolbar?: ReactNode;
-  children: ReactNode;
-}) => (
-  <section className="flex min-h-[24rem] flex-col">
-    {title || description || actions ? (
-      <div className="border-b border-border/50 px-4 py-3 xl:px-5">
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
-            {title ? (
-              <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
-            ) : null}
-            {description ? (
-              <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">{description}</p>
-            ) : null}
-          </div>
-          {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-        </div>
-        {toolbar ? <div className={cn("flex min-w-0", (title || description || actions) && "mt-2")}>{toolbar}</div> : null}
-      </div>
-    ) : null}
-    <div className="min-w-0 overflow-x-auto px-4 py-4 xl:px-6 xl:py-5">{children}</div>
-  </section>
-);
-
-const PropiedadDesktopEmptyState = ({ message }: { message: string }) => (
-  <div className="rounded-2xl border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
-    {message}
-  </div>
-);
 
 const PropiedadStickyFooter = () => {
   const location = useLocation();
@@ -270,26 +198,14 @@ const PropiedadCabeceraSection = () => {
 
 const PropiedadFormSectionsContent = () => {
   const location = useLocation();
-  const isDesktopLayout = usePropiedadDesktopLayout();
+  const isDesktopLayout = useMinWidth(DESKTOP_LAYOUT_BREAKPOINT);
   const availableSections = useAvailablePropiedadSections();
   const activeSectionStorageKey = `${PROPIEDAD_ACTIVE_SECTION_STORAGE_KEY_PREFIX}:${location.pathname}`;
-  const [activeSection, setActiveSection] = useState<PropiedadDesktopSectionId>(() => {
-    return getStoredPropiedadSection(activeSectionStorageKey) ?? "ficha";
+  const [activeSection, setActiveSection] = usePersistedActiveSection<PropiedadDesktopSectionId>({
+    storageKey: activeSectionStorageKey,
+    sections: availableSections.map((section) => section.id),
+    defaultSection: availableSections[0]?.id ?? "ficha",
   });
-
-  useEffect(() => {
-    setActiveSection(getStoredPropiedadSection(activeSectionStorageKey) ?? "ficha");
-  }, [activeSectionStorageKey]);
-
-  useEffect(() => {
-    if (availableSections.some((section) => section.id === activeSection)) return;
-    setActiveSection(availableSections[0]?.id ?? "ficha");
-  }, [activeSection, availableSections]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.sessionStorage.setItem(activeSectionStorageKey, activeSection);
-  }, [activeSection, activeSectionStorageKey]);
 
   if (isDesktopLayout) {
     return (
@@ -302,13 +218,11 @@ const PropiedadFormSectionsContent = () => {
   }
 
   return (
-    <>
-      <FichaSection />
-      <ServiciosSection />
-      {availableSections.some((section) => section.id === "contrato") ? <DatosContratoSection /> : null}
-      <ReparacionesSection />
-      {availableSections.some((section) => section.id === "ordenes") ? <PropiedadOrdenesSection /> : null}
-    </>
+    <FormSectionsMobileAccordion<PropiedadDesktopSectionId, PropiedadSectionDefinition>
+      sections={availableSections}
+      defaultOpenSectionIds={[availableSections[0]?.id ?? "ficha"]}
+      renderSection={(section) => section.render("stacked")}
+    />
   );
 };
 
@@ -572,13 +486,13 @@ const FichaSection = ({
 }) => {
   if (variant === "panel") {
     return (
-      <PropiedadDesktopPanel
+      <FormSectionPanel
         title="Ficha"
         description="Datos descriptivos y economicos de la propiedad."
         actions={<FichaActionsMenu />}
       >
         <FichaFields />
-      </PropiedadDesktopPanel>
+      </FormSectionPanel>
     );
   }
 
@@ -689,7 +603,7 @@ const ContratosListSection = ({
   if (!resolvedPropiedadId) {
     const placeholder = (
       <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
-        <PropiedadDesktopEmptyState message={`Los ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
+        <FormSectionEmptyState message={`Los ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
       </div>
     );
     return placeholder;
@@ -763,7 +677,7 @@ const useAvailablePropiedadSections = () => {
 
   return useMemo(() => {
     const visibleIds = getVisiblePropiedadSectionIds(isAlquiler);
-    return PROPIEDAD_DESKTOP_SECTIONS.filter((section) => visibleIds.includes(section.id));
+    return getPropiedadSectionDefinitions().filter((section) => visibleIds.includes(section.id));
   }, [isAlquiler]);
 };
 
@@ -797,7 +711,7 @@ const ServiciosSection = ({
   if (!resolvedPropiedadId) {
     const placeholder = (
       <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
-        <PropiedadDesktopEmptyState message="Los servicios estaran disponibles despues de guardar la propiedad." />
+        <FormSectionEmptyState message="Los servicios estaran disponibles despues de guardar la propiedad." />
       </div>
     );
     return placeholder;
@@ -907,7 +821,7 @@ const PropiedadOrdenesSection = ({
   if (!propiedadId) {
     content = (
       <div className="min-h-[22rem] px-4 py-4 xl:px-6 xl:py-5">
-        <PropiedadDesktopEmptyState message="Las ordenes estaran disponibles despues de guardar la propiedad." />
+        <FormSectionEmptyState message="Las ordenes estaran disponibles despues de guardar la propiedad." />
       </div>
     );
   } else {
@@ -1084,17 +998,17 @@ const OportunidadesListSection = ({
 
   if (!resolvedPropiedadId) {
     const placeholder = (
-      <PropiedadDesktopEmptyState message={`Las ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
+      <FormSectionEmptyState message={`Las ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
     );
 
     if (variant === "panel") {
       return (
-        <PropiedadDesktopPanel
+        <FormSectionPanel
           title={title}
           description={`Seguimiento comercial y operativo asociado a la propiedad para ${title.toLowerCase()}.`}
         >
           {placeholder}
-        </PropiedadDesktopPanel>
+        </FormSectionPanel>
       );
     }
 
@@ -1110,17 +1024,17 @@ const OportunidadesListSection = ({
 
   if (waitForTipoOperacion && !tipoOperacionId) {
     const placeholder = (
-      <PropiedadDesktopEmptyState message={`Cargando el tipo de operacion para ${title.toLowerCase()}...`} />
+      <FormSectionEmptyState message={`Cargando el tipo de operacion para ${title.toLowerCase()}...`} />
     );
 
     if (variant === "panel") {
       return (
-        <PropiedadDesktopPanel
+        <FormSectionPanel
           title={title}
           description={`Seguimiento comercial y operativo asociado a la propiedad para ${title.toLowerCase()}.`}
         >
           {placeholder}
-        </PropiedadDesktopPanel>
+        </FormSectionPanel>
       );
     }
 
@@ -1176,62 +1090,47 @@ const PropiedadDesktopSectionsLayout = ({
   onSectionChange,
 }: {
   activeSection: PropiedadDesktopSectionId;
-  availableSections: Array<{ id: PropiedadDesktopSectionId; label: string }>;
+  availableSections: PropiedadSectionDefinition[];
   onSectionChange: (sectionId: PropiedadDesktopSectionId) => void;
 }) => {
-  const activeConfig =
-    availableSections.find((section) => section.id === activeSection) ??
-    availableSections[0];
-
-  const renderActiveSection = () => {
-    switch (activeSection) {
-      case "ficha":
-        return <FichaSection variant="panel" />;
-      case "contrato":
-        return <DatosContratoSection variant="panel" />;
-      case "reparaciones":
-        return <ReparacionesSection variant="panel" />;
-      case "servicios":
-        return <ServiciosSection variant="panel" />;
-      case "ordenes":
-        return <PropiedadOrdenesSection variant="panel" />;
-      default:
-        return null;
-    }
-  };
+  const activeSectionDefinition =
+    availableSections.find((section) => section.id === activeSection) ?? availableSections[0];
 
   return (
-    <div className="hidden rounded-[28px] border border-border/60 bg-card/90 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)] lg:grid lg:grid-cols-[98px_minmax(0,1fr)]">
-      <aside className="border-r border-border/50 bg-[linear-gradient(180deg,rgba(248,250,252,0.98)_0%,rgba(241,245,249,0.96)_100%)] p-2">
-        <div className="flex flex-col gap-1">
-          {availableSections.map((section) => {
-            const isActive = section.id === activeSection;
-
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => onSectionChange(section.id)}
-                className={cn(
-                  "group mr-[-10px] flex min-h-[34px] items-center justify-center rounded-l-lg rounded-r-none border border-r-0 px-2 py-1 text-center transition-all",
-                  isActive
-                    ? "-translate-x-2 border-border/80 bg-background text-foreground shadow-[10px_12px_30px_-24px_rgba(15,23,42,0.45)]"
-                    : "border-transparent bg-muted/50 text-slate-500 hover:bg-muted/80 hover:text-slate-700",
-                )}
-                aria-pressed={isActive}
-              >
-                <span className="whitespace-normal break-words text-[10px] font-semibold leading-[1.05]">
-                  {section.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-      <div className="min-w-0 overflow-x-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(249,250,251,0.96)_100%)]">
-        <div className="sr-only">{activeConfig.label}</div>
-        {renderActiveSection()}
-      </div>
-    </div>
+    <FormSectionsDesktopLayout
+      sections={availableSections}
+      activeSection={activeSection}
+      onSectionChange={onSectionChange}
+    >
+      {activeSectionDefinition?.render("panel") ?? null}
+    </FormSectionsDesktopLayout>
   );
 };
+
+const getPropiedadSectionDefinitions = (): PropiedadSectionDefinition[] => [
+  {
+    id: "ficha",
+    label: "Ficha",
+    render: (variant = "stacked") => <FichaSection variant={variant} />,
+  },
+  {
+    id: "servicios",
+    label: "Servicios",
+    render: (variant = "stacked") => <ServiciosSection variant={variant} />,
+  },
+  {
+    id: "contrato",
+    label: "Contrato",
+    render: (variant = "stacked") => <DatosContratoSection variant={variant} />,
+  },
+  {
+    id: "reparaciones",
+    label: "Reparaciones",
+    render: (variant = "stacked") => <ReparacionesSection variant={variant} />,
+  },
+  {
+    id: "ordenes",
+    label: "Ordenes",
+    render: (variant = "stacked") => <PropiedadOrdenesSection variant={variant} />,
+  },
+];
