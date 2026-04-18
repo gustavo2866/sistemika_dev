@@ -1,8 +1,8 @@
 "use client";
 
-import { cloneElement, useEffect, useState } from "react";
+import { cloneElement, useCallback, useEffect, useState, type ReactNode } from "react";
 import isEqual from "lodash/isEqual";
-import { ExternalLink, Pencil } from "lucide-react";
+import { ExternalLink, MoreHorizontal, Pencil, Wrench } from "lucide-react";
 import {
   useDataProvider,
   useListContext,
@@ -24,10 +24,18 @@ import {
   ResponsiveDataTable,
   SectionBaseTemplate,
   buildListFilters,
+  resolveNumericId,
+  useRowActionDialog,
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -62,6 +70,8 @@ const LIST_FILTERS = buildListFilters(
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 const LIST_TABLE_CLASS_NAME = "text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]";
+const FICHA_ACTION_ITEM_CLASSNAME = "gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]";
+const FICHA_ACTION_ICON_CLASSNAME = "mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5";
 const buildEmbeddedFilters = (hiddenSources: Set<string>) =>
   LIST_FILTERS
     .filter((filterElement) => {
@@ -205,6 +215,147 @@ const EmbeddedServicioListActions = ({
       <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
       {extraActions}
     </div>
+  );
+};
+
+const useAgregarServiciosActivos = (propiedadId: number) => {
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [busy, setBusy] = useState(false);
+
+  const handleAgregarServiciosActivos = useCallback(async () => {
+    if (!propiedadId || busy) return;
+
+    setBusy(true);
+    try {
+      const [{ data: serviciosActivos = [] }, { data: serviciosActuales = [] }] = await Promise.all([
+        dataProvider.getList("servicios-tipo", {
+          filter: { activo: true },
+          sort: { field: "nombre", order: "ASC" },
+          pagination: { page: 1, perPage: 500 },
+        }),
+        dataProvider.getList("propiedades-servicios", {
+          filter: { propiedad_id: propiedadId },
+          sort: { field: "id", order: "ASC" },
+          pagination: { page: 1, perPage: 500 },
+        }),
+      ]);
+
+      const existentes = new Set(
+        (serviciosActuales as Array<{ servicio_tipo_id?: unknown }>).map((item) =>
+          resolveNumericId(item?.servicio_tipo_id),
+        ),
+      );
+
+      const faltantes = (serviciosActivos as Array<{ id?: unknown; nombre?: string | null }>).filter(
+        (item) => {
+          const servicioTipoId = resolveNumericId(item?.id);
+          return servicioTipoId && !existentes.has(servicioTipoId);
+        },
+      );
+
+      if (faltantes.length === 0) {
+        notify("La propiedad ya tiene todos los servicios activos", { type: "info" });
+        return;
+      }
+
+      await Promise.all(
+        faltantes.map((item) =>
+          dataProvider.create("propiedades-servicios", {
+            data: {
+              propiedad_id: propiedadId,
+              servicio_tipo_id: resolveNumericId(item.id),
+              activo: true,
+            },
+          }),
+        ),
+      );
+
+      notify(
+        faltantes.length === 1
+          ? "Se agrego 1 servicio activo"
+          : `Se agregaron ${faltantes.length} servicios activos`,
+        { type: "info" },
+      );
+      refresh();
+    } catch (error) {
+      console.error(error);
+      notify("No se pudieron agregar los servicios activos", { type: "warning" });
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, dataProvider, notify, propiedadId, refresh]);
+
+  return { busy, handleAgregarServiciosActivos };
+};
+
+const PropiedadServiciosAccionesItem = ({
+  propiedadId,
+  overlayClassName,
+}: {
+  propiedadId: number;
+  overlayClassName?: string;
+}) => {
+  const dialog = useRowActionDialog();
+  const { busy, handleAgregarServiciosActivos } = useAgregarServiciosActivos(propiedadId);
+
+  return (
+    <DropdownMenuItem
+      className={FICHA_ACTION_ITEM_CLASSNAME}
+      disabled={busy}
+      onSelect={(event) => {
+        event.stopPropagation();
+        dialog?.openDialog({
+          title: "Agregar servicios activos",
+          content:
+            "Se agregaran a la propiedad todos los servicios activos que aun no esten vinculados.",
+          confirmLabel: "Agregar",
+          confirmColor: "primary",
+          overlayClassName,
+          onConfirm: handleAgregarServiciosActivos,
+        });
+      }}
+    >
+      <Wrench className={FICHA_ACTION_ICON_CLASSNAME} />
+      Servicios ++
+    </DropdownMenuItem>
+  );
+};
+
+export const PropiedadServiciosAccionesMenu = ({
+  propiedadId,
+  overlayClassName,
+}: {
+  propiedadId: number;
+  overlayClassName?: string;
+}) => {
+  const { busy } = useAgregarServiciosActivos(propiedadId);
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground"
+          tabIndex={-1}
+          aria-label="Acciones de servicios"
+          title="Acciones de servicios"
+          disabled={busy}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <PropiedadServiciosAccionesItem
+          propiedadId={propiedadId}
+          overlayClassName={overlayClassName}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 

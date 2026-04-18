@@ -122,6 +122,13 @@ export type PropiedadFormValues = {
   propiedad_status_id?: number | null;
 };
 
+export type PropiedadDesktopSectionId =
+  | "ficha"
+  | "contrato"
+  | "reparaciones"
+  | "servicios"
+  | "ordenes";
+
 export const VACANCIA_STATE_STEPS = [
   {
     key: "recibida",
@@ -261,6 +268,23 @@ export const isTipoOperacionAlquiler = (tipo?: {
   const nombre = String(tipo?.nombre ?? "").toLowerCase();
   const codigo = String(tipo?.codigo ?? "").toLowerCase();
   return nombre.includes("alquiler") || codigo.includes("alquiler");
+};
+
+export const getVisiblePropiedadSectionIds = (
+  isAlquiler: boolean,
+): PropiedadDesktopSectionId[] => {
+  const visibleIds: PropiedadDesktopSectionId[] = [
+    "ficha",
+    "servicios",
+    "reparaciones",
+    "ordenes",
+  ];
+
+  if (isAlquiler) {
+    visibleIds.splice(2, 0, "contrato");
+  }
+
+  return visibleIds;
 };
 
 export const excludeMantenimientoTipoOperacion = (tipo?: {

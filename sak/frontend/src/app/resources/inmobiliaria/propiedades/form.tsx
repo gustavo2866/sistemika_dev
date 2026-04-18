@@ -2,17 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  ListBase,
   required,
   useDataProvider,
   useGetList,
   useGetOne,
   useNotify,
   useRecordContext,
-  useRefresh,
 } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Home, MoreHorizontal, Plus, UserRound, Wrench } from "lucide-react";
+import { Home, MoreHorizontal, Plus, UserRound } from "lucide-react";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
@@ -27,16 +25,15 @@ import {
   resolveNumericId,
   RowActionDialogProvider,
   SectionBaseTemplate,
-  useRowActionDialog,
 } from "@/components/forms/form_order";
 import { CreateButton } from "@/components/create-button";
-import { CRMChatShow } from "@/app/resources/crm/crm-chat";
-import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
 import { CRMOportunidadList } from "@/app/resources/crm/crm-oportunidades/List";
-import { isClosedOportunidad } from "@/app/resources/crm/crm-oportunidades/model";
 import { ContratoList } from "@/app/resources/inmobiliaria/contratos/list";
 import { PoOrderList } from "@/app/resources/po/po-orders/List";
-import { PropiedadServicioList } from "@/app/resources/inmobiliaria/propiedades-servicios";
+import {
+  PropiedadServicioList,
+  PropiedadServiciosAccionesMenu,
+} from "@/app/resources/inmobiliaria/propiedades-servicios";
 import { ReferenceInput } from "@/components/reference-input";
 import {
   DropdownMenu,
@@ -52,18 +49,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { appendFilterParam, buildOportunidadFilter } from "@/lib/oportunidad-context";
 import { cn } from "@/lib/utils";
 
 import {
+  type PropiedadDesktopSectionId,
   type Propiedad,
   type PropiedadFormValues,
   excludeMantenimientoTipoOperacion,
+  getVisiblePropiedadSectionIds,
   isTipoOperacionAlquiler,
-  isTipoOperacionMantenimiento,
 } from "./model";
 import { CabeceraActionsMenu } from "./cabecera_actions_menu";
 import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "./dialog_styles";
+import {
+  useDefaultTipoOperacionId,
+  useMantenimientoOportunidadesActivas,
+  useMantenimientoTipoOperacionId,
+  useTiposOperacionCatalog,
+} from "./form_hooks";
 import {
   PropiedadRelatedCreateProvider,
   usePropiedadRelatedCreate,
@@ -71,15 +74,6 @@ import {
 
 const DESKTOP_LAYOUT_BREAKPOINT = 1024;
 const PROPIEDAD_ACTIVE_SECTION_STORAGE_KEY_PREFIX = "propiedades-form-active-section";
-
-type PropiedadDesktopSectionId =
-  | "ficha"
-  | "contrato"
-  | "reparaciones"
-  | "servicios"
-  | "ordenes"
-  | "chat"
-  | "eventos";
 
 type PropiedadSectionVariant = "stacked" | "panel";
 
@@ -92,8 +86,6 @@ const PROPIEDAD_DESKTOP_SECTIONS: Array<{
   { id: "contrato", label: "Contrato" },
   { id: "reparaciones", label: "Reparaciones" },
   { id: "ordenes", label: "Ordenes" },
-  { id: "chat", label: "Chat" },
-  { id: "eventos", label: "Eventos" },
 ];
 
 const isPropiedadDesktopSectionId = (
@@ -124,24 +116,6 @@ const usePropiedadDesktopLayout = () => {
   }, []);
 
   return isDesktop;
-};
-
-const useDefaultTipoOperacionId = () => {
-  const location = useLocation();
-
-  return useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return resolveNumericId(params.get("tipo_operacion_id"));
-  }, [location.search]);
-};
-
-const useTiposOperacionCatalog = () => {
-  const { data: tiposOperacion = [] } = useGetList("crm/catalogos/tipos-operacion", {
-    pagination: { page: 1, perPage: 500 },
-    sort: { field: "nombre", order: "ASC" },
-  });
-
-  return tiposOperacion as Array<{ id?: unknown; nombre?: string | null; codigo?: string | null }>;
 };
 
 const TipoOperacionDefaultSync = () => {
@@ -335,8 +309,6 @@ const PropiedadFormSectionsContent = () => {
       {availableSections.some((section) => section.id === "contrato") ? <DatosContratoSection /> : null}
       <ReparacionesSection />
       {availableSections.some((section) => section.id === "ordenes") ? <PropiedadOrdenesSection /> : null}
-      {availableSections.some((section) => section.id === "chat") ? <PropiedadChatSection /> : null}
-      {availableSections.some((section) => section.id === "eventos") ? <PropiedadEventosSection /> : null}
     </>
   );
 };
@@ -777,44 +749,6 @@ const DatosContratoSection = ({
   );
 };
 
-const useMantenimientoTipoOperacionId = () => {
-  const tiposOperacion = useTiposOperacionCatalog();
-
-  return useMemo(() => {
-    const mantenimiento = (tiposOperacion ?? []).find((tipo: any) => isTipoOperacionMantenimiento(tipo));
-    return (mantenimiento?.id as number | undefined) ?? null;
-  }, [tiposOperacion]);
-};
-
-const useLatestMantenimientoOportunidad = (propiedadId?: number) => {
-  const tipoOperacionId = useMantenimientoTipoOperacionId();
-  const enabled = Boolean(propiedadId && tipoOperacionId);
-  const { data: oportunidades = [], isPending } = useGetList<any>(
-    "crm/oportunidades",
-    {
-      filter: {
-        propiedad_id: propiedadId,
-        tipo_operacion_id: tipoOperacionId,
-        activo: true,
-      },
-      pagination: { page: 1, perPage: 1 },
-      sort: { field: "created_at", order: "DESC" },
-    },
-    { enabled },
-  );
-
-  const oportunidad = oportunidades[0] as
-    | { id?: unknown; contacto_id?: unknown }
-    | undefined;
-
-  return {
-    tipoOperacionId,
-    oportunidadId: resolveNumericId(oportunidad?.id),
-    contactoId: resolveNumericId(oportunidad?.contacto_id),
-    isLoading: Boolean(propiedadId) && (Boolean(!tipoOperacionId) || (enabled && isPending)),
-  };
-};
-
 const useAvailablePropiedadSections = () => {
   const record = useRecordContext<Propiedad>();
   const tiposOperacion = useTiposOperacionCatalog();
@@ -828,20 +762,9 @@ const useAvailablePropiedadSections = () => {
     [currentTipoOperacionId, tiposOperacion],
   );
   const isAlquiler = isTipoOperacionAlquiler(selectedTipoOperacion);
-  useLatestMantenimientoOportunidad(propiedadId);
 
   return useMemo(() => {
-    const visibleIds: PropiedadDesktopSectionId[] = [
-      "ficha",
-      "servicios",
-      "reparaciones",
-      "ordenes",
-    ];
-
-    if (isAlquiler) {
-      visibleIds.splice(2, 0, "contrato");
-    }
-
+    const visibleIds = getVisiblePropiedadSectionIds(isAlquiler);
     return PROPIEDAD_DESKTOP_SECTIONS.filter((section) => visibleIds.includes(section.id));
   }, [isAlquiler]);
 };
@@ -897,7 +820,12 @@ const ServiciosSection = ({
             Servicios
           </span>
         }
-        embeddedExtraActions={<ServiciosSectionActionsMenu propiedadId={resolvedPropiedadId} />}
+        embeddedExtraActions={
+          <PropiedadServiciosAccionesMenu
+            propiedadId={resolvedPropiedadId}
+            overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}
+          />
+        }
         filterDefaultValues={defaultFilters}
         permanentFilter={permanentFilter}
         createTo={createTo}
@@ -921,163 +849,6 @@ const ServiciosSection = ({
   );
 };
 
-const useMantenimientoOportunidadesActivas = (propiedadId?: number) => {
-  const tipoOperacionId = useMantenimientoTipoOperacionId();
-  const enabled = Boolean(propiedadId && tipoOperacionId);
-  const { data: oportunidades = [], isPending } = useGetList<any>(
-    "crm/oportunidades",
-    {
-      filter: {
-        propiedad_id: propiedadId,
-        tipo_operacion_id: tipoOperacionId,
-        activo: true,
-      },
-      pagination: { page: 1, perPage: 100 },
-      sort: { field: "created_at", order: "DESC" },
-    },
-    { enabled },
-  );
-
-  return {
-    oportunidades: (oportunidades as Array<{
-      id?: unknown;
-      titulo?: string | null;
-      descripcion_estado?: string | null;
-      created_at?: string | null;
-      contacto?: { nombre?: string | null } | null;
-      contacto_id?: unknown;
-      estado?: string | null;
-    }>).filter((oportunidad) => !isClosedOportunidad(oportunidad.estado as any)),
-    isLoading: Boolean(propiedadId) && (Boolean(!tipoOperacionId) || (enabled && isPending)),
-  };
-};
-
-const useAgregarServiciosActivos = (propiedadId: number) => {
-  const dataProvider = useDataProvider();
-  const notify = useNotify();
-  const refresh = useRefresh();
-  const [busy, setBusy] = useState(false);
-
-  const handleAgregarServiciosActivos = async () => {
-    if (!propiedadId || busy) return;
-
-    setBusy(true);
-    try {
-      const [{ data: serviciosActivos = [] }, { data: serviciosActuales = [] }] = await Promise.all([
-        dataProvider.getList("servicios-tipo", {
-          filter: { activo: true },
-          sort: { field: "nombre", order: "ASC" },
-          pagination: { page: 1, perPage: 500 },
-        }),
-        dataProvider.getList("propiedades-servicios", {
-          filter: { propiedad_id: propiedadId },
-          sort: { field: "id", order: "ASC" },
-          pagination: { page: 1, perPage: 500 },
-        }),
-      ]);
-
-      const existentes = new Set(
-        (serviciosActuales as Array<{ servicio_tipo_id?: unknown }>).map((item) =>
-          resolveNumericId(item?.servicio_tipo_id),
-        ),
-      );
-
-      const faltantes = (serviciosActivos as Array<{ id?: unknown; nombre?: string | null }>).filter(
-        (item) => {
-          const servicioTipoId = resolveNumericId(item?.id);
-          return servicioTipoId && !existentes.has(servicioTipoId);
-        },
-      );
-
-      if (faltantes.length === 0) {
-        notify("La propiedad ya tiene todos los servicios activos", { type: "info" });
-        return;
-      }
-
-      await Promise.all(
-        faltantes.map((item) =>
-          dataProvider.create("propiedades-servicios", {
-            data: {
-              propiedad_id: propiedadId,
-              servicio_tipo_id: resolveNumericId(item.id),
-              activo: true,
-            },
-          }),
-        ),
-      );
-
-      notify(
-        faltantes.length === 1
-          ? "Se agrego 1 servicio activo"
-          : `Se agregaron ${faltantes.length} servicios activos`,
-        { type: "info" },
-      );
-      refresh();
-    } catch (error) {
-      console.error(error);
-      notify("No se pudieron agregar los servicios activos", { type: "warning" });
-      throw error;
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return { busy, handleAgregarServiciosActivos };
-};
-
-const ServiciosSectionActionItems = ({ propiedadId }: { propiedadId: number }) => {
-  const dialog = useRowActionDialog();
-  const { busy, handleAgregarServiciosActivos } = useAgregarServiciosActivos(propiedadId);
-
-  return (
-    <DropdownMenuItem
-      className={FICHA_ACTION_ITEM_CLASSNAME}
-      disabled={busy}
-      onSelect={(event) => {
-        event.stopPropagation();
-        dialog?.openDialog({
-          title: "Agregar servicios activos",
-          content:
-            "Se agregaran a la propiedad todos los servicios activos que aun no esten vinculados.",
-          confirmLabel: "Agregar",
-          confirmColor: "primary",
-          overlayClassName: PROPIEDAD_DIALOG_OVERLAY_CLASS,
-          onConfirm: handleAgregarServiciosActivos,
-        });
-      }}
-    >
-      <Wrench className={FICHA_ACTION_ICON_CLASSNAME} />
-      Servicios ++
-    </DropdownMenuItem>
-  );
-};
-
-const ServiciosSectionActionsMenu = ({ propiedadId }: { propiedadId: number }) => {
-  const { busy } = useAgregarServiciosActivos(propiedadId);
-
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground"
-          tabIndex={-1}
-          aria-label="Acciones de servicios"
-          title="Acciones de servicios"
-          disabled={busy}
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <ServiciosSectionActionItems propiedadId={propiedadId} />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
-
 const ReparacionesSection = ({
   variant = "stacked",
 }: {
@@ -1097,196 +868,6 @@ const ReparacionesSection = ({
       variant={variant}
       waitForTipoOperacion
     />
-  );
-};
-
-const PropiedadChatSection = ({
-  variant = "stacked",
-}: {
-  variant?: PropiedadSectionVariant;
-}) => {
-  const record = useRecordContext<Propiedad>();
-  const propiedadId = record?.id;
-  const { oportunidadId, isLoading } = useLatestMantenimientoOportunidad(propiedadId);
-
-  let content: ReactNode;
-  if (!propiedadId) {
-    content = (
-      <PropiedadDesktopEmptyState message="El chat estara disponible despues de guardar la propiedad." />
-    );
-  } else if (isLoading) {
-    content = (
-      <PropiedadDesktopEmptyState message="Cargando la ultima oportunidad de mantenimiento..." />
-    );
-  } else if (!oportunidadId) {
-    content = (
-      <PropiedadDesktopEmptyState message="El chat estara disponible cuando exista una oportunidad de mantenimiento para esta propiedad." />
-    );
-  } else {
-    content = <CRMChatShow forcedId={`op-${oportunidadId}`} embedded />;
-  }
-
-  if (variant === "panel") {
-    return (
-      <PropiedadDesktopPanel
-        title="Chat"
-        description="Conversacion y seguimiento contextual vinculado a la ultima oportunidad de mantenimiento."
-      >
-        {content}
-      </PropiedadDesktopPanel>
-    );
-  }
-
-  return (
-    <SectionBaseTemplate
-      title="Chat"
-      defaultOpen={false}
-      persistKey={`propiedades-chat-mantenimiento-${propiedadId ?? "sin-propiedad"}`}
-      main={content}
-    />
-  );
-};
-
-const PropiedadEventosSection = ({
-  variant = "stacked",
-}: {
-  variant?: PropiedadSectionVariant;
-}) => {
-  const record = useRecordContext<Propiedad>();
-  const propiedadId = record?.id;
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { oportunidadId, contactoId, isLoading } = useLatestMantenimientoOportunidad(propiedadId);
-  const returnTo = `${location.pathname}${location.search}`;
-
-  const createTo = useMemo(() => {
-    if (!oportunidadId) return "";
-    const params = new URLSearchParams();
-    appendFilterParam(
-      params,
-      buildOportunidadFilter(
-        oportunidadId,
-        contactoId ? { contacto_id: contactoId } : undefined,
-      ),
-    );
-    params.set("returnTo", returnTo);
-    return `/crm/crm-eventos/create?${params.toString()}`;
-  }, [contactoId, oportunidadId, returnTo]);
-
-  const defaultFilters = useMemo(
-    () =>
-      oportunidadId
-        ? {
-            default_scope: "pendientes_mes",
-            oportunidad_id: oportunidadId,
-            solo_pendientes: true,
-          }
-        : undefined,
-    [oportunidadId],
-  );
-
-  const placeholder = !propiedadId ? (
-    <PropiedadDesktopEmptyState message="Los eventos estaran disponibles despues de guardar la propiedad." />
-  ) : isLoading ? (
-    <PropiedadDesktopEmptyState message="Cargando la ultima oportunidad de mantenimiento..." />
-  ) : !oportunidadId ? (
-    <PropiedadDesktopEmptyState message="Los eventos estaran disponibles cuando exista una oportunidad de mantenimiento para esta propiedad." />
-  ) : null;
-
-  if (placeholder) {
-    if (variant === "panel") {
-      return (
-        <PropiedadDesktopPanel
-          title="Eventos"
-          description="Agenda comercial y operativa asociada a la ultima oportunidad de mantenimiento."
-        >
-          {placeholder}
-        </PropiedadDesktopPanel>
-      );
-    }
-
-    return (
-      <SectionBaseTemplate
-        title="Eventos"
-        defaultOpen={false}
-        persistKey={`propiedades-eventos-mantenimiento-${propiedadId ?? "sin-propiedad"}`}
-        main={placeholder}
-      />
-    );
-  }
-
-  if (variant === "panel") {
-    return (
-      <PropiedadDesktopPanel
-        title="Eventos"
-        description="Agenda comercial y operativa asociada a la ultima oportunidad de mantenimiento."
-        actions={<CreateButton to={createTo} label="Agregar evento" />}
-      >
-        <ListBase
-          resource="crm/crm-eventos"
-          perPage={200}
-          sort={{ field: "fecha_evento", order: "DESC" }}
-          filterDefaultValues={defaultFilters}
-          disableSyncWithLocation
-          storeKey={`crm-eventos-propiedad-mantenimiento-${oportunidadId}`}
-        >
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-start">
-              <MinimalActivosToggleFilter source="solo_pendientes" />
-            </div>
-            <CRMEventoListBody
-              fromChat={false}
-              fromOportunidad
-              oportunidadIdFilter={oportunidadId}
-              showContextHeader={false}
-              compact
-            />
-          </div>
-        </ListBase>
-      </PropiedadDesktopPanel>
-    );
-  }
-
-  return (
-    <ListBase
-      resource="crm/crm-eventos"
-      perPage={200}
-      sort={{ field: "fecha_evento", order: "DESC" }}
-      filterDefaultValues={defaultFilters}
-      disableSyncWithLocation
-      storeKey={`crm-eventos-propiedad-mantenimiento-${oportunidadId}`}
-    >
-      <SectionBaseTemplate
-        title="Eventos"
-        defaultOpen={false}
-        persistKey={`propiedades-eventos-mantenimiento-${propiedadId}`}
-        headerSummary={(isOpen) =>
-          isOpen ? <MinimalActivosToggleFilter source="solo_pendientes" /> : null
-        }
-        headerSummaryClassName="flex items-center"
-        actions={
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.stopPropagation();
-              navigate(createTo);
-            }}
-            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
-          >
-            <Plus className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
-            Agregar evento
-          </DropdownMenuItem>
-        }
-        main={
-          <CRMEventoListBody
-            fromChat={false}
-            fromOportunidad
-            oportunidadIdFilter={oportunidadId}
-            showContextHeader={false}
-            compact
-          />
-        }
-      />
-    </ListBase>
   );
 };
 
@@ -1665,10 +1246,6 @@ const PropiedadDesktopSectionsLayout = ({
         return <ServiciosSection variant="panel" />;
       case "ordenes":
         return <PropiedadOrdenesSection variant="panel" />;
-      case "chat":
-        return <PropiedadChatSection variant="panel" />;
-      case "eventos":
-        return <PropiedadEventosSection variant="panel" />;
       default:
         return null;
     }
