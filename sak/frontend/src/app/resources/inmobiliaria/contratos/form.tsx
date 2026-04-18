@@ -19,6 +19,7 @@ import {
   FormValue,
   SectionBaseTemplate,
   ArchivoViewerModal,
+  resolveNumericId,
 } from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
 import { Button } from "@/components/ui/button";
@@ -143,18 +144,6 @@ const ContratoDesktopPanel = ({
 );
 
 // ── Cabecera fields ─────────────────────────────────────────────────────────
-
-const resolveNumericId = (value: unknown) => {
-  if (value == null || value === "") return undefined;
-  if (typeof value === "object") {
-    const candidate =
-      (value as { id?: unknown; value?: unknown }).id ??
-      (value as { value?: unknown }).value;
-    return resolveNumericId(candidate);
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-};
 
 const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
   const record = useRecordContext<Contrato>();

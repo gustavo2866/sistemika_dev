@@ -37,6 +37,7 @@ import {
   SectionDetailTemplate2,
   TotalCompute,
   ArchivoViewerModal,
+  resolveNumericId,
 } from "@/components/forms/form_order";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import { ReferenceInput } from "@/components/reference-input";
@@ -93,25 +94,6 @@ const PoOrderExternalLockContext = createContext<PoOrderExternalLockState>({
 });
 
 const usePoOrderExternalLock = () => useContext(PoOrderExternalLockContext);
-
-const resolveNumericId = (value: unknown) => {
-  if (value == null) return undefined;
-  if (typeof value === "object") {
-    const maybeId = (value as { id?: unknown; value?: unknown }).id ??
-      (value as { value?: unknown }).value;
-    return resolveNumericId(maybeId);
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed === "" || trimmed === "0") return undefined;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  }
-  return undefined;
-};
 
 const parseNumericParam = (value: string | null) => {
   if (!value) return undefined;

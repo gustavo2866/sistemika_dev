@@ -7,6 +7,7 @@ import { useWatch } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useRowActionDialog } from "@/components/forms/form_order";
+import { resolveNumericId } from "@/components/forms/form_order";
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -20,18 +21,6 @@ import { OportunidadesDialogContent } from "./oportunidades_dialog";
 import { PropiedadStatusMenu, useCanDeletePropiedad } from "./row-actions";
 
 const PROPIEDAD_FORM_DIALOG_CONTENT_CLASS = "sm:max-w-6xl";
-
-const resolveNumericId = (value: unknown) => {
-  if (value == null || value === "") return undefined;
-  if (typeof value === "object") {
-    const candidate =
-      (value as { id?: unknown; value?: unknown }).id ??
-      (value as { value?: unknown }).value;
-    return resolveNumericId(candidate);
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-};
 
 export const CabeceraActionsMenu = ({
   onOpenPropietario,

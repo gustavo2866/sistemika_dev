@@ -115,6 +115,7 @@ export {
 export { useActiveRow } from "./form/use_active_row";
 export { useConfirmDelete } from "./form/use_confirm_delete";
 export { useIdentityId } from "./form/use_identity_id";
+export { resolveNumericId } from "./form/resolve_numeric_id";
 export { FormOrderPrintButton } from "./show/print_button";
 export { SetupLayout } from "./setup/SetupLayout";
 export { SetupSidebar } from "./setup/SetupSidebar";

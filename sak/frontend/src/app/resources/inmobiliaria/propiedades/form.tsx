@@ -24,6 +24,7 @@ import {
   FormText,
   FormTextarea,
   FormValue,
+  resolveNumericId,
   RowActionDialogProvider,
   SectionBaseTemplate,
   useRowActionDialog,
@@ -123,18 +124,6 @@ const usePropiedadDesktopLayout = () => {
   }, []);
 
   return isDesktop;
-};
-
-const resolveNumericId = (value: unknown) => {
-  if (value == null || value === "") return undefined;
-  if (typeof value === "object") {
-    const candidate =
-      (value as { id?: unknown; value?: unknown }).id ??
-      (value as { value?: unknown }).value;
-    return resolveNumericId(candidate);
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
 const useDefaultTipoOperacionId = () => {

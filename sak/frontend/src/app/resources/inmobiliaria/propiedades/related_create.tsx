@@ -11,6 +11,7 @@ import { ContactoDialog } from "@/app/resources/crm/crm-contactos/contacto_dialo
 import { EmprendimientoDialog } from "@/app/resources/inmobiliaria/emprendimientos/emprendimiento_dialog";
 import { PropietarioCreate } from "@/app/resources/inmobiliaria/propietarios/create";
 import {
+  resolveNumericId,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -36,18 +37,6 @@ type PropiedadRelatedCreateContextValue = {
 };
 
 const PropiedadRelatedCreateContext = createContext<PropiedadRelatedCreateContextValue | null>(null);
-
-const resolveNumericId = (value: unknown) => {
-  if (value == null || value === "") return undefined;
-  if (typeof value === "object") {
-    const candidate =
-      (value as { id?: unknown; value?: unknown }).id ??
-      (value as { value?: unknown }).value;
-    return resolveNumericId(candidate);
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-};
 
 export const usePropiedadRelatedCreate = () => {
   const context = useContext(PropiedadRelatedCreateContext);

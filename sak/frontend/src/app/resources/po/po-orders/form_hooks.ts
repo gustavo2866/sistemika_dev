@@ -20,7 +20,7 @@ import {
   useCreatePath,
 } from "ra-core";
 import { useNavigate } from "react-router-dom";
-import { useConfirmDelete, useIdentityId } from "@/components/forms/form_order";
+import { resolveNumericId, useConfirmDelete, useIdentityId } from "@/components/forms/form_order";
 import { apiUrl } from "@/lib/dataProvider";
 import {
   capitalizeStatusName,
@@ -29,25 +29,6 @@ import {
   type PoOrderArchivo,
   type PoOrderFormValues,
 } from "./model";
-
-const resolveNumericId = (value: unknown) => {
-  if (value == null) return undefined;
-  if (typeof value === "object") {
-    const maybeId = (value as { id?: unknown; value?: unknown }).id ??
-      (value as { value?: unknown }).value;
-    return resolveNumericId(maybeId);
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed === "" || trimmed === "0") return undefined;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  }
-  return undefined;
-};
 
 const resolveCentroCostoFromSolicitante = async (
   dataProvider: ReturnType<typeof useDataProvider>,
