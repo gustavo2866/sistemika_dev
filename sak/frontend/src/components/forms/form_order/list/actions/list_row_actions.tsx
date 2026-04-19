@@ -224,6 +224,14 @@ export const RowActionDialogProvider = ({
     setDialogConfig(null);
   }, [dialogLoading]);
 
+  const stopDialogEvent = useCallback((event: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
   const handleDialogConfirm = useCallback(async () => {
     if (!dialogConfig?.onConfirm) {
       setDialogConfig(null);
@@ -270,13 +278,21 @@ export const RowActionDialogProvider = ({
               <Button
                 variant="ghost"
                 disabled={dialogLoading}
-                onClick={handleDialogClose}
+                onPointerDown={stopDialogEvent}
+                onClick={(event) => {
+                  stopDialogEvent(event);
+                  handleDialogClose();
+                }}
               >
                 Cancelar
               </Button>
               <Button
                 disabled={dialogLoading || Boolean(dialogConfig.confirmDisabled)}
-                onClick={handleDialogConfirm}
+                onPointerDown={stopDialogEvent}
+                onClick={(event) => {
+                  stopDialogEvent(event);
+                  void handleDialogConfirm();
+                }}
                 variant={
                   dialogConfig.confirmColor === "warning"
                     ? "destructive"

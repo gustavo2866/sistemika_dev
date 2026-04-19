@@ -272,8 +272,9 @@ const AccionesListaOrdenes = () => (
   </div>
 );
 
-type PoOrderListProps = {
+export type PoOrderListProps = {
   embedded?: boolean;
+  propiedadId?: number | null;
   filterDefaultValues?: Record<string, unknown>;
   createTo?: string;
   storeKey?: string;
@@ -284,15 +285,17 @@ type PoOrderListProps = {
 
 // === Listado ===
 // Listado principal de ordenes de compra.
-export const PoOrderList = ({
-  embedded = false,
-  filterDefaultValues,
-  createTo,
-  storeKey,
-  createAction,
-  showEmbeddedHeader = false,
-  embeddedTitle = "Ordenes",
-}: PoOrderListProps = {}) => {
+export const PoOrderList = (props: PoOrderListProps = {}) => {
+  const {
+    embedded = false,
+    propiedadId,
+    filterDefaultValues,
+    createTo,
+    storeKey,
+    createAction,
+    showEmbeddedHeader = false,
+    embeddedTitle = "Ordenes",
+  } = props;
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "solicitante_id",
   });
@@ -312,8 +315,14 @@ export const PoOrderList = ({
     navigate("/po-orders");
   };
 
-  const resolvedFilterDefaults = embedded ? filterDefaultValues : defaultFilters;
-  const resolvedStoreKey = embedded ? storeKey : undefined;
+  const resolvedFilterDefaults =
+    embedded
+      ? (filterDefaultValues ?? (propiedadId ? { "oportunidad.propiedad_id": propiedadId } : undefined))
+      : defaultFilters;
+  const resolvedStoreKey =
+    embedded
+      ? (storeKey ?? (propiedadId ? `po-orders-propiedad-${propiedadId}` : undefined))
+      : undefined;
   const embeddedActions = embedded ? (
     <div className="flex items-center gap-2">
       <FilterButton

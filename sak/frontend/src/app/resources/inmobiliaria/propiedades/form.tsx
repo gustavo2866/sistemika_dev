@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   required,
-  useDataProvider,
   useGetList,
   useGetOne,
   useRecordContext,
@@ -22,7 +21,9 @@ import {
   FormSectionsDesktopLayout,
   FormSectionsMobileAccordion,
   type FormSectionsDesktopLayoutItem,
+  FormReferenceAutocomplete,
   FormSelect,
+  FormSelectFijo,
   FormText,
   FormTextarea,
   FormValue,
@@ -32,9 +33,9 @@ import {
   useMinWidth,
   usePersistedActiveSection,
 } from "@/components/forms/form_order";
-import { CRMOportunidadList } from "@/app/resources/crm/crm-oportunidades/List";
 import { ContratoList } from "@/app/resources/inmobiliaria/contratos/list";
-import { PoOrderList } from "@/app/resources/po/po-orders/List";
+import { PoOrderList } from "@/app/resources/po/po-orders";
+import { OportunidadesList } from "@/app/resources/inmobiliaria/propiedades/oportunidades_list";
 import {
   PropiedadServicioList,
   PropiedadServiciosAccionesMenu,
@@ -47,13 +48,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+  Button,
+} from "@/components/ui/button";
+import { SeleccionarOportunidadOrdenDialog } from "./seleccionar_oportunidad_orden_dialog";
 import {
   type PropiedadDesktopSectionId,
   type Propiedad,
@@ -66,8 +63,8 @@ import { CabeceraActionsMenu } from "./cabecera_actions_menu";
 import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "./dialog_styles";
 import {
   useDefaultTipoOperacionId,
-  formatPropiedadOrdenOportunidadLabel,
   useMantenimientoTipoOperacionId,
+  useNombreUnicoFormValidator,
   usePropiedadOrdenesFlow,
   useTiposOperacionCatalog,
 } from "./form_hooks";
@@ -79,12 +76,129 @@ import {
 const DESKTOP_LAYOUT_BREAKPOINT = 1024;
 const PROPIEDAD_ACTIVE_SECTION_STORAGE_KEY_PREFIX = "propiedades-form-active-section";
 
-type PropiedadSectionVariant = "stacked" | "panel";
+type PropiedadSectionVariant = "stacked" | "panel" | "accordion";
 
 type PropiedadSectionDefinition = FormSectionsDesktopLayoutItem<PropiedadDesktopSectionId> & {
   render: (variant?: PropiedadSectionVariant) => ReactNode;
 };
 
+// #region Layout y composicion general
+const PROPIEDAD_EMBEDDED_SECTION_CONTENT_CLASSNAME =
+  "min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5";
+const PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME =
+  "w-full min-w-0 overflow-hidden [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate";
+
+// Renderiza una seccion segun el modo visual activo del formulario.
+const renderPropiedadSectionVariant = ({
+  variant,
+  title,
+  description,
+  actions,
+  accordionActions,
+  persistKey,
+  defaultOpen = false,
+  panelMode = "plain",
+  children,
+}: {
+  variant: PropiedadSectionVariant;
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  accordionActions?: ReactNode;
+  persistKey?: string;
+  defaultOpen?: boolean;
+  panelMode?: "plain" | "decorated";
+  children: ReactNode;
+}) => {
+  if (variant === "panel") {
+    if (panelMode === "plain") return children;
+
+    return (
+      <FormSectionPanel title={title} description={description} actions={actions}>
+        {children}
+      </FormSectionPanel>
+    );
+  }
+
+  if (variant === "accordion") {
+    if (!accordionActions) return children;
+
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-end">{accordionActions}</div>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title={title}
+      main={children}
+      actions={actions}
+      defaultOpen={defaultOpen}
+      persistKey={persistKey}
+    />
+  );
+};
+
+// Renderiza el titulo consistente de un listado embebido dentro de propiedades.
+const PropiedadEmbeddedSectionTitle = ({ title }: { title: string }) => (
+  <span className="text-base font-semibold tracking-tight sm:text-lg">{title}</span>
+);
+
+// Renderiza el cascaron visual comun de una seccion embebida del formulario.
+const PropiedadEmbeddedSection = ({
+  variant,
+  title,
+  persistKey,
+  description,
+  panelMode = "plain",
+  isReady,
+  emptyMessage,
+  renderPlaceholderAsSection = true,
+  contentClassName = PROPIEDAD_EMBEDDED_SECTION_CONTENT_CLASSNAME,
+  emptyContentClassName,
+  children,
+}: {
+  variant: PropiedadSectionVariant;
+  title: string;
+  persistKey: string;
+  description?: string;
+  panelMode?: "plain" | "decorated";
+  isReady: boolean;
+  emptyMessage: string;
+  renderPlaceholderAsSection?: boolean;
+  contentClassName?: string;
+  emptyContentClassName?: string;
+  children: ReactNode;
+}) => {
+  const content = isReady ? (
+    <div className={contentClassName}>{children}</div>
+  ) : (
+    <div className={emptyContentClassName ?? contentClassName}>
+      <FormSectionEmptyState message={emptyMessage} />
+    </div>
+  );
+
+  if (!isReady && !renderPlaceholderAsSection) {
+    return content;
+  }
+
+  return renderPropiedadSectionVariant({
+    variant,
+    title,
+    description,
+    persistKey,
+    panelMode,
+    children: content,
+  });
+};
+
+// #endregion
+
+// #region Defaults y sincronizacion de formulario
+// Sincroniza el tipo de operacion inicial cuando el formulario se abre en alta.
 const TipoOperacionDefaultSync = () => {
   const record = useRecordContext<Propiedad>();
   const defaultTipoOperacionId = useDefaultTipoOperacionId();
@@ -101,6 +215,7 @@ const TipoOperacionDefaultSync = () => {
   return null;
 };
 
+// Sincroniza la moneda ARS por defecto al crear una nueva propiedad.
 const CostoMonedaDefaultSync = () => {
   const record = useRecordContext<Propiedad>();
   const { setValue } = useFormContext<PropiedadFormValues>();
@@ -127,6 +242,10 @@ const CostoMonedaDefaultSync = () => {
   return null;
 };
 
+// #endregion
+
+// #region Shell principal del formulario
+// Renderiza la barra inferior fija con guardar y cancelar respetando returnTo.
 const PropiedadStickyFooter = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -156,6 +275,7 @@ const PropiedadStickyFooter = () => {
   );
 };
 
+// Renderiza el formulario principal de propiedades y monta sus providers locales.
 export const PropiedadForm = () => {
   return (
     <div
@@ -182,6 +302,7 @@ export const PropiedadForm = () => {
   );
 };
 
+// Renderiza la seccion Cabecera con sus campos principales y acciones.
 const PropiedadCabeceraSection = () => {
   const { openDialog } = usePropiedadRelatedCreate();
 
@@ -196,6 +317,7 @@ const PropiedadCabeceraSection = () => {
   );
 };
 
+// Renderiza el conjunto de secciones del formulario en desktop o mobile.
 const PropiedadFormSectionsContent = () => {
   const location = useLocation();
   const isDesktopLayout = useMinWidth(DESKTOP_LAYOUT_BREAKPOINT);
@@ -221,11 +343,15 @@ const PropiedadFormSectionsContent = () => {
     <FormSectionsMobileAccordion<PropiedadDesktopSectionId, PropiedadSectionDefinition>
       sections={availableSections}
       defaultOpenSectionIds={[availableSections[0]?.id ?? "ficha"]}
-      renderSection={(section) => section.render("stacked")}
+      renderSection={(section) => section.render("accordion")}
     />
   );
 };
 
+// #endregion
+
+// #region Cabecera
+// Resume los datos contractuales visibles cuando la propiedad es de alquiler.
 const CabeceraContratoResumen = () => {
   const record = useRecordContext<Propiedad>();
   const tiposOperacion = useTiposOperacionCatalog();
@@ -285,6 +411,7 @@ const CabeceraContratoResumen = () => {
   );
 };
 
+// Renderiza los campos principales de la cabecera del formulario.
 const CabeceraFields = () => {
   const { propietarioRefreshKey } = usePropiedadRelatedCreate();
 
@@ -294,7 +421,13 @@ const CabeceraFields = () => {
         <FormText source="nombre" label="Nombre" validate={required()} widthClass="w-full md:max-w-[260px]" />
         <div className="md:w-[150px] md:min-w-[150px] md:max-w-[150px]">
           <ReferenceInput source="tipo_propiedad_id" reference="tipos-propiedad" label="Tipo propiedad">
-            <FormSelect optionText="nombre" label="Tipo propiedad" widthClass="w-full" emptyText="Sin asignar" />
+            <FormSelect
+              optionText="nombre"
+              label="Tipo propiedad"
+              widthClass="w-full min-w-0"
+              emptyText="Sin asignar"
+              triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+            />
           </ReferenceInput>
         </div>
         <div className="md:w-[140px] md:min-w-[140px] md:max-w-[140px]">
@@ -306,9 +439,11 @@ const CabeceraFields = () => {
             <FormSelect
               optionText="nombre"
               label="Tipo de operacion"
-              widthClass="w-full"
+              widthClass="w-full min-w-0"
               emptyText="Sin asignar"
               choicesFilter={excludeMantenimientoTipoOperacion}
+              validate={required()}
+              triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
             />
           </ReferenceInput>
         </div>
@@ -321,9 +456,10 @@ const CabeceraFields = () => {
           <FormSelect
             optionText="nombre"
             label="Propietario"
-            widthClass="w-full"
+            widthClass="w-full min-w-0"
             emptyText="Sin asignar"
             validate={required()}
+            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
           />
         </ReferenceInput>
       </div>
@@ -332,35 +468,7 @@ const CabeceraFields = () => {
   );
 };
 
-const useNombreUnicoFormValidator = () => {
-  const dataProvider = useDataProvider();
-  const record = useRecordContext<Propiedad>();
-
-  return async (values: PropiedadFormValues) => {
-    const normalized = String(values?.nombre ?? "").trim();
-    if (!normalized) return {};
-    const currentNombre = String(record?.nombre ?? "").trim();
-    if (currentNombre && currentNombre.toLowerCase() === normalized.toLowerCase()) {
-      return {};
-    }
-    try {
-      const result = await dataProvider.getList<Propiedad>("propiedades", {
-        filter: { nombre__eq: normalized },
-        pagination: { page: 1, perPage: 10 },
-        sort: { field: "id", order: "DESC" },
-      });
-      const exists = (result.data ?? []).some(
-        (item) =>
-          String(item?.nombre ?? "").trim().toLowerCase() === normalized.toLowerCase() &&
-          item.id !== record?.id,
-      );
-      return exists ? { nombre: "Ya existe una propiedad con ese nombre" } : {};
-    } catch {
-      return {};
-    }
-  };
-};
-
+// Renderiza los campos opcionales asociados al estado de la propiedad.
 const CabeceraOpcionales = () => (
   <div className="mt-1 space-y-0">
     <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
@@ -376,23 +484,34 @@ const CabeceraOpcionales = () => (
   </div>
 );
 
+// #endregion
+
+// #region Ficha
+// Mantiene un punto unico de entrada para los campos de la ficha.
 const FichaFields = () => (
   <FichaFieldsContent />
 );
 
+// Renderiza los campos descriptivos y economicos de la ficha.
 const FichaFieldsContent = () => {
   const { contactoRefreshKey, emprendimientoRefreshKey } = usePropiedadRelatedCreate();
 
   return (
     <div className="space-y-2">
-      <div className="grid gap-2 md:grid-cols-4">
+      <div className="grid gap-2 md:items-start md:grid-cols-[minmax(0,1.2fr)_150px_110px_170px]">
         <ReferenceInput
           key={`emprendimiento-${emprendimientoRefreshKey}`}
           source="emprendimiento_id"
           reference="emprendimientos"
           label="Emprendimiento"
         >
-          <FormSelect optionText="nombre" label="Emprendimiento" widthClass="w-full" emptyText="Sin asignar" />
+          <FormSelect
+            optionText="nombre"
+            label="Emprendimiento"
+            widthClass="w-full min-w-0"
+            emptyText="Sin asignar"
+            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+          />
         </ReferenceInput>
         <ReferenceInput
           key={`contacto-${contactoRefreshKey}`}
@@ -400,24 +519,32 @@ const FichaFieldsContent = () => {
           reference="crm/contactos"
           label="Contacto propietario"
         >
-          <FormSelect
+          <FormSelectFijo
             optionText="nombre_completo"
             label="Contacto propietario"
-            widthClass="w-full"
+            widthClass="w-full min-w-0"
             emptyText="Sin asignar"
+            fixedWidth="150px"
+            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
           />
         </ReferenceInput>
-        <FormNumber source="ambientes" label="Ambientes" min={0} widthClass="w-full" />
+        <FormNumber source="ambientes" label="Ambientes" min={0} widthClass="w-full min-w-0" />
         <FormNumber
           source="metros_cuadrados"
           label="Metros cuadrados"
           min={0}
           step={0.1}
-          widthClass="w-full"
+          widthClass="w-full min-w-0"
         />
-        <FormNumber source="costo_propiedad" label="Costo" step="any" min={0} widthClass="w-full" />
+        <FormNumber source="costo_propiedad" label="Costo" step="any" min={0} widthClass="w-full min-w-0" />
         <ReferenceInput source="costo_moneda_id" reference="monedas" label="Moneda">
-          <FormSelect optionText="nombre" label="Moneda" widthClass="w-full" emptyText="Sin asignar" />
+          <FormSelect
+            optionText="nombre"
+            label="Moneda"
+            widthClass="w-full min-w-0"
+            emptyText="Sin asignar"
+            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+          />
         </ReferenceInput>
       </div>
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
@@ -433,6 +560,7 @@ const FichaFieldsContent = () => {
 const FICHA_ACTION_ITEM_CLASSNAME = "gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]";
 const FICHA_ACTION_ICON_CLASSNAME = "mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5";
 
+// Muestra las acciones rapidas para crear entidades relacionadas desde la ficha.
 const FichaActionsMenu = () => {
   const { openDialog } = usePropiedadRelatedCreate();
 
@@ -479,33 +607,24 @@ const FichaActionsMenu = () => {
   );
 };
 
+// Renderiza la seccion Ficha respetando el layout activo del formulario.
 const FichaSection = ({
   variant = "stacked",
 }: {
   variant?: PropiedadSectionVariant;
-}) => {
-  if (variant === "panel") {
-    return (
-      <FormSectionPanel
-        title="Ficha"
-        description="Datos descriptivos y economicos de la propiedad."
-        actions={<FichaActionsMenu />}
-      >
-        <FichaFields />
-      </FormSectionPanel>
-    );
-  }
+}) =>
+  renderPropiedadSectionVariant({
+    variant,
+    title: "Ficha",
+    description: "Datos descriptivos y economicos de la propiedad.",
+    actions: <FichaActionsMenu />,
+    accordionActions: <FichaActionsMenu />,
+    defaultOpen: true,
+    panelMode: "decorated",
+    children: <FichaFields />,
+  });
 
-  return (
-    <SectionBaseTemplate
-      title="Ficha"
-      main={<FichaFields />}
-      actions={<FichaActionsMenu />}
-      defaultOpen
-    />
-  );
-};
-
+// Renderiza los campos de direccion y datos catastrales de la propiedad.
 const DireccionFields = () => (
   <div className="grid gap-2 md:grid-cols-3">
     <FormText
@@ -532,6 +651,7 @@ const DireccionFields = () => (
   </div>
 );
 
+// Formatea fechas simples de propiedad para su visualizacion en UI.
 const formatPropiedadDisplayDate = (value?: string | null) => {
   if (!value) return "Sin fecha";
   const parsed = new Date(`${value}T00:00:00`);
@@ -539,6 +659,9 @@ const formatPropiedadDisplayDate = (value?: string | null) => {
   return parsed.toLocaleDateString("es-AR");
 };
 
+// #endregion
+
+// #region Secciones externas
 type ContratosListSectionProps = {
   title: string;
   propiedadId?: number;
@@ -547,6 +670,7 @@ type ContratosListSectionProps = {
   variant?: PropiedadSectionVariant;
 };
 
+// Inserta el listado de contratos relacionado a la propiedad actual.
 const ContratosListSection = ({
   title,
   propiedadId,
@@ -554,19 +678,7 @@ const ContratosListSection = ({
   storeKey,
   variant = "stacked",
 }: ContratosListSectionProps) => {
-  const location = useLocation();
-  const navigate = useNavigate();
   const resolvedPropiedadId = propiedadId ?? null;
-  const returnTo = `${location.pathname}${location.search}`;
-
-  const createTo = useMemo(() => {
-    const params = new URLSearchParams();
-    if (resolvedPropiedadId) {
-      params.set("propiedad_id", String(resolvedPropiedadId));
-    }
-    params.set("returnTo", returnTo);
-    return `/contratos/create?${params.toString()}`;
-  }, [resolvedPropiedadId, returnTo]);
 
   const defaultFilters = useMemo(
     () => ({ propiedad_id: resolvedPropiedadId }),
@@ -576,74 +688,30 @@ const ContratosListSection = ({
     () => ({ propiedad_id: resolvedPropiedadId }),
     [resolvedPropiedadId],
   );
-  const rowClick = useMemo(
-    () =>
-      (id: string | number) =>
-        `/contratos/${id}?returnTo=${encodeURIComponent(returnTo)}`,
-    [returnTo],
-  );
-  const createAction = useMemo(
-    () => (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs"
-        onClick={() => {
-          navigate(createTo);
-        }}
-      >
-        <Plus />
-        Crear
-      </Button>
-    ),
-    [createTo, navigate],
-  );
 
-  if (!resolvedPropiedadId) {
-    const placeholder = (
-      <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
-        <FormSectionEmptyState message={`Los ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
-      </div>
-    );
-    return placeholder;
-  }
-
-  const list = (
-    <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
+  return (
+    <PropiedadEmbeddedSection
+      variant={variant}
+      title={title}
+      persistKey={persistKey}
+      isReady={Boolean(resolvedPropiedadId)}
+      emptyMessage={`Los ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`}
+    >
       <ContratoList
         embedded
+        propiedadId={resolvedPropiedadId}
         showEmbeddedHeader
-        embeddedTitle={
-          <span className="text-base font-semibold tracking-tight sm:text-lg">
-            {title}
-          </span>
-        }
+        embeddedTitle={<PropiedadEmbeddedSectionTitle title={title} />}
         filterDefaultValues={defaultFilters}
         permanentFilter={permanentFilter}
-        createTo={createTo}
-        createAction={createAction}
-        rowClick={rowClick}
         storeKey={storeKey}
         emptyMessage={`No hay ${title.toLowerCase()} registrados para esta propiedad.`}
       />
-    </div>
-  );
-
-  if (variant === "panel") {
-    return list;
-  }
-
-  return (
-    <SectionBaseTemplate
-      title={title}
-      defaultOpen={false}
-      persistKey={persistKey}
-      main={list}
-    />
+    </PropiedadEmbeddedSection>
   );
 };
 
+// Adapta la seccion de contratos al contexto de la propiedad actual.
 const DatosContratoSection = ({
   variant = "stacked",
 }: {
@@ -662,6 +730,7 @@ const DatosContratoSection = ({
   );
 };
 
+// Calcula las secciones visibles segun el tipo de operacion seleccionado.
 const useAvailablePropiedadSections = () => {
   const record = useRecordContext<Propiedad>();
   const tiposOperacion = useTiposOperacionCatalog();
@@ -681,6 +750,7 @@ const useAvailablePropiedadSections = () => {
   }, [isAlquiler]);
 };
 
+// Inserta el listado de servicios vinculado a la propiedad actual.
 const ServiciosSection = ({
   variant = "stacked",
 }: {
@@ -688,79 +758,45 @@ const ServiciosSection = ({
 }) => {
   const record = useRecordContext<Propiedad>();
   const propiedadId = record?.id;
-  const location = useLocation();
   const resolvedPropiedadId = propiedadId ?? null;
-  const returnTo = `${location.pathname}${location.search}`;
-
-  const createTo = useMemo(() => {
-    const params = new URLSearchParams();
-    if (resolvedPropiedadId) {
-      params.set("propiedad_id", String(resolvedPropiedadId));
-      params.set("lock_propiedad", "1");
-    }
-    params.set("returnTo", returnTo);
-    return `/propiedades-servicios/create?${params.toString()}`;
-  }, [resolvedPropiedadId, returnTo]);
-  const rowClick = useMemo(
-    () =>
-      (id: string | number) =>
-        `/propiedades-servicios/${id}?returnTo=${encodeURIComponent(returnTo)}`,
-    [returnTo],
-  );
-
-  if (!resolvedPropiedadId) {
-    const placeholder = (
-      <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
-        <FormSectionEmptyState message="Los servicios estaran disponibles despues de guardar la propiedad." />
-      </div>
-    );
-    return placeholder;
-  }
-
   const defaultFilters = { propiedad_id: resolvedPropiedadId };
   const permanentFilter = { propiedad_id: resolvedPropiedadId };
   const storeKey = `propiedades-servicios-propiedad-${resolvedPropiedadId}`;
 
-  const list = (
-    <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
-      <PropiedadServicioList
-        key={storeKey}
-        embedded
-        showEmbeddedHeader
-        embeddedTitle={
-          <span className="text-base font-semibold tracking-tight sm:text-lg">
-            Servicios
-          </span>
-        }
-        embeddedExtraActions={
-          <PropiedadServiciosAccionesMenu
-            propiedadId={resolvedPropiedadId}
-            overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}
-          />
-        }
-        filterDefaultValues={defaultFilters}
-        permanentFilter={permanentFilter}
-        createTo={createTo}
-        rowClick={rowClick}
-        storeKey={storeKey}
-      />
-    </div>
-  );
-
-  if (variant === "panel") {
-    return <RowActionDialogProvider>{list}</RowActionDialogProvider>;
-  }
-
   return (
-    <SectionBaseTemplate
+    <PropiedadEmbeddedSection
+      variant={variant}
       title="Servicios"
-      defaultOpen={false}
       persistKey={`propiedades-servicios-${resolvedPropiedadId ?? "sin-propiedad"}`}
-      main={<RowActionDialogProvider>{list}</RowActionDialogProvider>}
-    />
+      isReady={Boolean(resolvedPropiedadId)}
+      emptyMessage="Los servicios estaran disponibles despues de guardar la propiedad."
+      renderPlaceholderAsSection={false}
+    >
+      <RowActionDialogProvider>
+        <PropiedadServicioList
+          key={storeKey}
+          embedded
+          propiedadId={resolvedPropiedadId}
+          showEmbeddedHeader
+          embeddedTitle={<PropiedadEmbeddedSectionTitle title="Servicios" />}
+          embeddedExtraActions={
+            resolvedPropiedadId ? (
+              <PropiedadServiciosAccionesMenu
+                propiedadId={resolvedPropiedadId}
+                overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}
+              />
+            ) : undefined
+          }
+          filterDefaultValues={defaultFilters}
+          permanentFilter={permanentFilter}
+          storeKey={storeKey}
+        />
+      </RowActionDialogProvider>
+    </PropiedadEmbeddedSection>
   );
 };
 
+// Inserta el listado de oportunidades de mantenimiento como reparaciones.
 const ReparacionesSection = ({
   variant = "stacked",
 }: {
@@ -783,6 +819,7 @@ const ReparacionesSection = ({
   );
 };
 
+// Inserta el listado de ordenes y orquesta la seleccion de oportunidad asociada.
 const PropiedadOrdenesSection = ({
   variant = "stacked",
 }: {
@@ -795,7 +832,6 @@ const PropiedadOrdenesSection = ({
     isLoading,
     selectorOpen,
     setSelectorOpen,
-    defaultFilters,
     handleCreateOrder,
     handleSelectOportunidad,
   } = usePropiedadOrdenesFlow(propiedadId);
@@ -817,54 +853,25 @@ const PropiedadOrdenesSection = ({
     [handleCreateOrder, isLoading, propiedadId],
   );
 
-  let content: ReactNode;
-  if (!propiedadId) {
-    content = (
-      <div className="min-h-[22rem] px-4 py-4 xl:px-6 xl:py-5">
-        <FormSectionEmptyState message="Las ordenes estaran disponibles despues de guardar la propiedad." />
-      </div>
-    );
-  } else {
-    content = (
-      <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
+  return (
+    <>
+      <PropiedadEmbeddedSection
+        variant={variant}
+        title="Ordenes"
+        persistKey={`propiedades-ordenes-${propiedadId ?? "sin-propiedad"}`}
+        isReady={Boolean(propiedadId)}
+        emptyMessage="Las ordenes estaran disponibles despues de guardar la propiedad."
+        emptyContentClassName="min-h-[22rem] px-4 py-4 xl:px-6 xl:py-5"
+      >
         <PoOrderList
           embedded
           showEmbeddedHeader
-          embeddedTitle={
-            <span className="text-base font-semibold tracking-tight sm:text-lg">
-              Ordenes
-            </span>
-          }
-          filterDefaultValues={defaultFilters}
-          createAction={createAction}
+          embeddedTitle={<PropiedadEmbeddedSectionTitle title="Ordenes" />}
+          filterDefaultValues={{ "oportunidad.propiedad_id": propiedadId }}
           storeKey={`po-orders-propiedad-${propiedadId}`}
+          createAction={createAction}
         />
-      </div>
-    );
-  }
-
-  if (variant === "panel") {
-    return (
-      <>
-        {content}
-        <SeleccionarOportunidadOrdenDialog
-          open={selectorOpen}
-          onOpenChange={setSelectorOpen}
-          oportunidades={oportunidades}
-          onSelect={handleSelectOportunidad}
-        />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <SectionBaseTemplate
-        title="Ordenes"
-        defaultOpen={false}
-        persistKey={`propiedades-ordenes-${propiedadId ?? "sin-propiedad"}`}
-        main={content}
-      />
+      </PropiedadEmbeddedSection>
       <SeleccionarOportunidadOrdenDialog
         open={selectorOpen}
         onOpenChange={setSelectorOpen}
@@ -874,74 +881,6 @@ const PropiedadOrdenesSection = ({
     </>
   );
 };
-
-const SeleccionarOportunidadOrdenDialog = ({
-  open,
-  onOpenChange,
-  oportunidades,
-  onSelect,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  oportunidades: Array<{
-    id?: unknown;
-    titulo?: string | null;
-    descripcion_estado?: string | null;
-    created_at?: string | null;
-    contacto?: { nombre?: string | null } | null;
-  }>;
-  onSelect: (oportunidadId: number) => void;
-}) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent
-      className="sm:max-w-md"
-      overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}
-    >
-      <DialogHeader className="gap-1">
-        <DialogTitle className="text-base leading-none">Seleccionar reparacion</DialogTitle>
-        <DialogDescription className="text-[11px] leading-tight sm:text-xs">
-          Hay mas de una reparacion abierta. Elige una para la nueva orden.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="flex max-h-[42vh] flex-col gap-1.5 overflow-y-auto pr-1">
-        {oportunidades.map((oportunidad) => {
-          const oportunidadId = resolveNumericId(oportunidad.id);
-          if (!oportunidadId) return null;
-          const { title, contacto, createdAt } = formatPropiedadOrdenOportunidadLabel(oportunidad);
-
-          return (
-            <button
-              key={oportunidadId}
-              type="button"
-              className="rounded-lg border border-border/70 px-2.5 py-1.5 text-left transition hover:border-primary/40 hover:bg-muted/40"
-              onClick={() => {
-                onOpenChange(false);
-                onSelect(oportunidadId);
-              }}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-[12px] font-medium leading-tight text-foreground">
-                    {title}
-                  </div>
-                  <div className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
-                    {contacto || "Sin contacto"}
-                  </div>
-                </div>
-                <div className="shrink-0 text-[10px] leading-none text-muted-foreground">
-                  #{oportunidadId}
-                </div>
-              </div>
-              <div className="mt-1 text-[10px] leading-none text-muted-foreground/90">
-                {createdAt ? `Creada: ${createdAt}` : "Sin fecha"}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </DialogContent>
-  </Dialog>
-);
 
 type OportunidadesListSectionProps = {
   title: string;
@@ -953,6 +892,7 @@ type OportunidadesListSectionProps = {
   waitForTipoOperacion?: boolean;
 };
 
+// Inserta un listado de oportunidades filtrado por propiedad y tipo de operacion.
 const OportunidadesListSection = ({
   title,
   propiedadId,
@@ -962,128 +902,38 @@ const OportunidadesListSection = ({
   variant = "stacked",
   waitForTipoOperacion = false,
 }: OportunidadesListSectionProps) => {
-  const location = useLocation();
   const resolvedPropiedadId = propiedadId ?? null;
-  const returnTo = `${location.pathname}${location.search}`;
-
-  const createTo = useMemo(() => {
-    const basePath = "/crm/oportunidades/create";
-    const params = new URLSearchParams();
-    if (resolvedPropiedadId) {
-      params.set("propiedad_id", String(resolvedPropiedadId));
-      params.set("lock_propiedad", "1");
-    }
-    if (tipoOperacionId) {
-      params.set("tipo_operacion_id", String(tipoOperacionId));
-      params.set("lock_tipo_operacion", "1");
-    }
-    params.set("returnTo", returnTo);
-    return `${basePath}?${params.toString()}`;
-  }, [resolvedPropiedadId, returnTo, tipoOperacionId]);
-
-  const defaultFilters = useMemo(
-    () => ({
-      propiedad_id: resolvedPropiedadId,
-      tipo_operacion_id: tipoOperacionId ?? null,
-    }),
-    [resolvedPropiedadId, tipoOperacionId],
-  );
-  const permanentFilter = useMemo(
-    () => ({
-      propiedad_id: resolvedPropiedadId,
-      ...(tipoOperacionId ? { tipo_operacion_id: tipoOperacionId } : {}),
-    }),
-    [resolvedPropiedadId, tipoOperacionId],
-  );
-
-  if (!resolvedPropiedadId) {
-    const placeholder = (
-      <FormSectionEmptyState message={`Las ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`} />
-    );
-
-    if (variant === "panel") {
-      return (
-        <FormSectionPanel
-          title={title}
-          description={`Seguimiento comercial y operativo asociado a la propiedad para ${title.toLowerCase()}.`}
-        >
-          {placeholder}
-        </FormSectionPanel>
-      );
-    }
-
-    return (
-      <SectionBaseTemplate
-        title={title}
-        defaultOpen={false}
-        persistKey={persistKey}
-        main={placeholder}
-      />
-    );
-  }
-
-  if (waitForTipoOperacion && !tipoOperacionId) {
-    const placeholder = (
-      <FormSectionEmptyState message={`Cargando el tipo de operacion para ${title.toLowerCase()}...`} />
-    );
-
-    if (variant === "panel") {
-      return (
-        <FormSectionPanel
-          title={title}
-          description={`Seguimiento comercial y operativo asociado a la propiedad para ${title.toLowerCase()}.`}
-        >
-          {placeholder}
-        </FormSectionPanel>
-      );
-    }
-
-    return (
-      <SectionBaseTemplate
-        title={title}
-        defaultOpen={false}
-        persistKey={persistKey}
-        main={placeholder}
-      />
-    );
-  }
-
-  const list = (
-    <div className="min-h-[22rem] px-4 pt-1 pb-4 xl:px-6 xl:pt-1.5 xl:pb-5">
-      <CRMOportunidadList
-        key={storeKey}
-        embedded
-        showEmbeddedHeader
-        embeddedTitle={
-          <span className="text-base font-semibold tracking-tight sm:text-lg">
-            {title}
-          </span>
-        }
-        compact
-        showBulkActions={false}
-        filterDefaultValues={defaultFilters}
-        permanentFilter={permanentFilter}
-        createTo={createTo}
-        storeKey={storeKey}
-        emptyMessage={`No hay ${title.toLowerCase()} registradas para esta propiedad.`}
-      />
-    </div>
-  );
-
-  if (variant === "panel") {
-    return list;
-  }
+  const isReady = Boolean(resolvedPropiedadId) && (!waitForTipoOperacion || Boolean(tipoOperacionId));
+  const emptyMessage = !resolvedPropiedadId
+    ? `Las ${title.toLowerCase()} estaran disponibles despues de guardar la propiedad.`
+    : `Cargando el tipo de operacion para ${title.toLowerCase()}...`;
 
   return (
-    <SectionBaseTemplate
+    <PropiedadEmbeddedSection
+      variant={variant}
       title={title}
-      defaultOpen={false}
+      description={`Seguimiento comercial y operativo asociado a la propiedad para ${title.toLowerCase()}.`}
       persistKey={persistKey}
-      main={list}
-    />
+      panelMode="decorated"
+      isReady={isReady}
+      emptyMessage={emptyMessage}
+    >
+      {resolvedPropiedadId ? (
+        <OportunidadesList
+          title={title}
+          propiedadId={resolvedPropiedadId}
+          tipoOperacionId={tipoOperacionId}
+          storeKey={storeKey}
+        />
+      ) : null}
+    </PropiedadEmbeddedSection>
   );
 };
 
+// #endregion
+
+// #region Layout de secciones
+// Renderiza la navegacion desktop de secciones y la seccion activa.
 const PropiedadDesktopSectionsLayout = ({
   activeSection,
   availableSections,
@@ -1107,6 +957,7 @@ const PropiedadDesktopSectionsLayout = ({
   );
 };
 
+// Define el catalogo de secciones que puede mostrar el formulario de propiedades.
 const getPropiedadSectionDefinitions = (): PropiedadSectionDefinition[] => [
   {
     id: "ficha",
@@ -1134,3 +985,4 @@ const getPropiedadSectionDefinitions = (): PropiedadSectionDefinition[] => [
     render: (variant = "stacked") => <PropiedadOrdenesSection variant={variant} />,
   },
 ];
+// #endregion

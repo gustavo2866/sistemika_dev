@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, useCallback, useEffect, useState, type ReactNode } from "react";
+import { cloneElement, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import isEqual from "lodash/isEqual";
 import { ExternalLink, MoreHorizontal, Pencil, Wrench } from "lucide-react";
 import {
@@ -39,6 +39,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useLocation } from "react-router-dom";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -138,6 +139,7 @@ const ServicioUrlButton = () => {
 type PropiedadServicioListProps = {
   embedded?: boolean;
   perPage?: number;
+  propiedadId?: number | null;
   rowClick?: "edit" | false | ((id: string | number) => string);
   createTo?: string;
   filterDefaultValues?: Record<string, unknown>;
@@ -518,6 +520,7 @@ const PropiedadServicioListBody = ({
 export const PropiedadServicioList = ({
   embedded = false,
   perPage = 5,
+  propiedadId,
   rowClick = "edit",
   createTo,
   filterDefaultValues,
@@ -531,6 +534,7 @@ export const PropiedadServicioList = ({
   <PropiedadServicioListContent
     embedded={embedded}
     perPage={perPage}
+    propiedadId={propiedadId}
     rowClick={rowClick}
     createTo={createTo}
     filterDefaultValues={filterDefaultValues}
@@ -546,6 +550,7 @@ export const PropiedadServicioList = ({
 const PropiedadServicioListContent = ({
   embedded,
   perPage,
+  propiedadId,
   rowClick,
   createTo,
   filterDefaultValues,
@@ -557,18 +562,39 @@ const PropiedadServicioListContent = ({
   embeddedExtraActions,
 }: Required<Pick<PropiedadServicioListProps, "embedded" | "perPage">> &
   Omit<PropiedadServicioListProps, "embedded" | "perPage">) => {
+  const location = useLocation();
+  const returnTo = useMemo(() => `${location.pathname}${location.search}`, [location.pathname, location.search]);
+  const resolvedCreateTo = useMemo(() => {
+    if (createTo) return createTo;
+    if (!embedded || !propiedadId) return undefined;
+
+    const params = new URLSearchParams();
+    params.set("propiedad_id", String(propiedadId));
+    params.set("lock_propiedad", "1");
+    params.set("returnTo", returnTo);
+    return `/propiedades-servicios/create?${params.toString()}`;
+  }, [createTo, embedded, propiedadId, returnTo]);
+  const resolvedRowClick = useMemo(() => {
+    if (typeof rowClick === "function" || rowClick === false) return rowClick;
+    if (!embedded || !propiedadId || rowClick !== "edit") return rowClick;
+
+    return (id: string | number) =>
+      `/propiedades-servicios/${id}?returnTo=${encodeURIComponent(returnTo)}`;
+  }, [embedded, propiedadId, returnTo, rowClick]);
+  const resolvedFilterDefaults = filterDefaultValues;
+  const resolvedPermanentFilter = permanentFilter;
+  const resolvedStoreKey = storeKey;
   const hiddenEmbeddedFilterSources = new Set(
-    Object.keys(permanentFilter ?? {}).filter((key) =>
-      isMeaningfulFilterValue(permanentFilter?.[key]),
+    Object.keys(resolvedPermanentFilter ?? {}).filter((key) =>
+      isMeaningfulFilterValue(resolvedPermanentFilter?.[key]),
     ),
   );
-  const resolvedFilterDefaults = filterDefaultValues;
   const embeddedFilters = buildEmbeddedFilters(hiddenEmbeddedFilterSources);
   const resolvedFilters = embedded ? embeddedFilters : LIST_FILTERS;
   const embeddedActions = embedded ? (
     <EmbeddedServicioListActions
       filters={embeddedFilters}
-      createTo={createTo}
+      createTo={resolvedCreateTo}
       extraActions={embeddedExtraActions}
     />
   ) : undefined;
@@ -578,7 +604,7 @@ const PropiedadServicioListContent = ({
       resource="propiedades-servicios"
       title={embedded ? (showEmbeddedHeader ? embeddedTitle : undefined) : "Servicios"}
       filters={resolvedFilters}
-      actions={embedded ? embeddedActions : <ListActions createTo={createTo} />}
+      actions={embedded ? embeddedActions : <ListActions createTo={resolvedCreateTo} />}
       debounce={300}
       perPage={perPage}
       containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_WIDE}
@@ -587,9 +613,9 @@ const PropiedadServicioListContent = ({
       showBreadcrumb={!embedded}
       showHeader={embedded ? showEmbeddedHeader : true}
       filterDefaultValues={resolvedFilterDefaults}
-      filter={permanentFilter}
+      filter={resolvedPermanentFilter}
       disableSyncWithLocation={embedded}
-      storeKey={embedded ? (storeKey ?? "propiedades-servicios-embedded") : undefined}
+      storeKey={embedded ? (resolvedStoreKey ?? "propiedades-servicios-embedded") : undefined}
       filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <EmbeddedDefaultFilterSync
@@ -597,7 +623,7 @@ const PropiedadServicioListContent = ({
         filterDefaultValues={resolvedFilterDefaults}
       />
       <PropiedadServicioListBody
-        rowClick={rowClick}
+        rowClick={resolvedRowClick}
         showBulkActions={!embedded}
         emptyMessage={emptyMessage}
       />

@@ -1,5 +1,8 @@
 "use client";
+import { useEffect } from "react";
 import { required } from "ra-core";
+import { useRecordContext } from "ra-core";
+import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import { ReferenceInput } from "@/components/reference-input";
@@ -10,13 +13,30 @@ import {
   FormText,
   FormTextarea,
   SectionBaseTemplate,
+  useIdentityId,
 } from "@/components/forms/form_order";
 
 import {
   CRM_CONTACTO_DEFAULTS,
   CRM_CONTACTO_VALIDATIONS,
+  type CRMContacto,
   type CRMContactoFormValues,
 } from "./model";
+
+// Sincroniza el responsable por defecto con el usuario autenticado al crear un contacto.
+const ResponsableDefaultSync = () => {
+  const record = useRecordContext<CRMContacto>();
+  const { identityId } = useIdentityId();
+  const { setValue } = useFormContext<CRMContactoFormValues>();
+  const responsableId = useWatch({ name: "responsable_id" });
+
+  useEffect(() => {
+    if (record?.id || !identityId || responsableId) return;
+    setValue("responsable_id", identityId, { shouldDirty: false });
+  }, [identityId, record?.id, responsableId, setValue]);
+
+  return null;
+};
 
 const CamposPrincipalesContacto = () => (
   <div className="flex flex-col gap-2">
@@ -92,6 +112,7 @@ export const CRMContactoForm = ({
     }
     defaultValues={CRM_CONTACTO_DEFAULTS}
   >
+    <ResponsableDefaultSync />
     <FormErrorSummary />
     <SectionBaseTemplate
       title="Datos del contacto"

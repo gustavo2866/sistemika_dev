@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useRecordContext } from "ra-core";
+import { useLocation } from "react-router-dom";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
@@ -144,6 +145,7 @@ const EstadoCell = () => {
 type ContratoListProps = {
   embedded?: boolean;
   perPage?: number;
+  propiedadId?: number | null;
   rowClick?: "edit" | ((id: string | number) => string);
   createTo?: string;
   createAction?: ReactNode;
@@ -158,6 +160,7 @@ type ContratoListProps = {
 export const ContratoList = ({
   embedded = false,
   perPage = 5,
+  propiedadId,
   rowClick = "edit",
   createTo,
   createAction,
@@ -168,6 +171,24 @@ export const ContratoList = ({
   showEmbeddedHeader = false,
   embeddedTitle = "Contratos",
 }: ContratoListProps = {}) => {
+  const location = useLocation();
+  const returnTo = useMemo(() => `${location.pathname}${location.search}`, [location.pathname, location.search]);
+  const resolvedCreateTo = useMemo(() => {
+    if (createTo) return createTo;
+    if (!embedded || !propiedadId) return undefined;
+
+    const params = new URLSearchParams();
+    params.set("propiedad_id", String(propiedadId));
+    params.set("returnTo", returnTo);
+    return `/contratos/create?${params.toString()}`;
+  }, [createTo, embedded, propiedadId, returnTo]);
+  const resolvedRowClick = useMemo(() => {
+    if (typeof rowClick === "function") return rowClick;
+    if (!embedded || !propiedadId || rowClick !== "edit") return rowClick;
+
+    return (id: string | number) =>
+      `/contratos/${id}?returnTo=${encodeURIComponent(returnTo)}`;
+  }, [embedded, propiedadId, returnTo, rowClick]);
   const hiddenEmbeddedFilterSources = new Set(
     Object.keys(permanentFilter ?? {}).filter((key) =>
       isMeaningfulFilterValue(permanentFilter?.[key]),
@@ -185,7 +206,7 @@ export const ContratoList = ({
       resource="contratos"
       title={embedded ? (showEmbeddedHeader ? embeddedTitle : undefined) : "Contratos"}
       filters={resolvedFilters}
-      actions={<ListActions createTo={createTo} createAction={createAction} filters={resolvedFilters} />}
+      actions={<ListActions createTo={resolvedCreateTo} createAction={createAction} filters={resolvedFilters} />}
       debounce={300}
       perPage={perPage}
       filter={permanentFilter}
@@ -200,7 +221,7 @@ export const ContratoList = ({
       filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <ResponsiveDataTable
-        rowClick={rowClick}
+        rowClick={resolvedRowClick}
         mobileConfig={{
           primaryField: "id",
           secondaryFields: ["estado", "inquilino_nombre"],

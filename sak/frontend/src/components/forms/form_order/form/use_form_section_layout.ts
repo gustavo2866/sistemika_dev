@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const getMatches = (minWidth: number) => {
   if (typeof window === "undefined") return false;
@@ -43,18 +43,20 @@ export const usePersistedActiveSection = <T extends string>({
   sections,
   defaultSection,
 }: UsePersistedActiveSectionOptions<T>) => {
+  const sectionsKey = sections.join("|");
+  const stableSections = useMemo(() => sections, [sectionsKey]);
   const [activeSection, setActiveSection] = useState<T>(() =>
-    readStoredSection({ storageKey, sections, defaultSection }),
+    readStoredSection({ storageKey, sections: stableSections, defaultSection }),
   );
 
   useEffect(() => {
-    setActiveSection(readStoredSection({ storageKey, sections, defaultSection }));
-  }, [defaultSection, sections, storageKey]);
+    setActiveSection(readStoredSection({ storageKey, sections: stableSections, defaultSection }));
+  }, [defaultSection, stableSections, storageKey]);
 
   useEffect(() => {
-    if (sections.includes(activeSection)) return;
-    setActiveSection(sections[0] ?? defaultSection);
-  }, [activeSection, defaultSection, sections]);
+    if (stableSections.includes(activeSection)) return;
+    setActiveSection(stableSections[0] ?? defaultSection);
+  }, [activeSection, defaultSection, stableSections]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

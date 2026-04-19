@@ -80,6 +80,7 @@ class PropiedadCRUD(GenericCRUD[Propiedad]):
         self, session: Session, data: Dict[str, Any], auto_commit: bool = True
     ) -> Propiedad:
         payload = dict(data)
+        usuario_id = payload.pop("usuario_id", None)
         payload.pop("vacancia_activa", None)
         payload.pop("vacancia_fecha", None)
         self._sync_propietario_legacy_field(session, payload)
@@ -99,7 +100,30 @@ class PropiedadCRUD(GenericCRUD[Propiedad]):
             payload["vacancia_activa"] = True
             payload["vacancia_fecha"] = fecha_estado
 
-        return super().create(session, payload, auto_commit=auto_commit)
+        obj = super().create(session, payload, auto_commit=False)
+
+        resolved_status_id = obj.propiedad_status_id or payload.get("propiedad_status_id")
+        resolved_status = status or self._get_status_by_id(session, resolved_status_id)
+        if resolved_status:
+            fecha_cambio = self._coerce_fecha_cambio(obj.estado_fecha or fecha_estado or date.today())
+            log = PropiedadesLogStatus(
+                propiedad_id=obj.id,
+                estado_anterior_id=None,
+                estado_nuevo_id=resolved_status.id,
+                estado_anterior=None,
+                estado_nuevo=resolved_status.nombre,
+                fecha_cambio=fecha_cambio,
+                usuario_id=usuario_id or 1,
+                motivo=None,
+                observaciones=None,
+            )
+            session.add(log)
+
+        if auto_commit:
+            session.commit()
+            session.refresh(obj)
+
+        return obj
 
     def update(
         self,

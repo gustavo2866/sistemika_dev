@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   Accordion,
@@ -26,11 +26,44 @@ export const FormSectionsMobileAccordion = <
 }) => {
   if (!sections.length) return null;
 
+  const sectionIds = useMemo(() => sections.map((section) => section.id), [sections]);
+  const fallbackOpenSectionIds = useMemo(() => {
+    const requested = (defaultOpenSectionIds ?? []).filter((sectionId) =>
+      sectionIds.includes(sectionId),
+    );
+    if (requested.length) return requested;
+    return [sectionIds[0]] as T[];
+  }, [defaultOpenSectionIds, sectionIds]);
+  const [openSectionIds, setOpenSectionIds] = useState<T[]>(fallbackOpenSectionIds);
+  const sectionIdsKey = sectionIds.join("|");
+  const fallbackOpenSectionIdsKey = fallbackOpenSectionIds.join("|");
+
+  useEffect(() => {
+    setOpenSectionIds((currentOpenSectionIds) => {
+      const nextOpenSectionIds = currentOpenSectionIds.filter((sectionId) =>
+        sectionIds.includes(sectionId),
+      );
+
+      if (nextOpenSectionIds.length > 0) {
+        if (
+          nextOpenSectionIds.length === currentOpenSectionIds.length &&
+          nextOpenSectionIds.every((sectionId, index) => sectionId === currentOpenSectionIds[index])
+        ) {
+          return currentOpenSectionIds;
+        }
+        return nextOpenSectionIds;
+      }
+
+      return fallbackOpenSectionIds;
+    });
+  }, [fallbackOpenSectionIds, fallbackOpenSectionIdsKey, sectionIds, sectionIdsKey]);
+
   return (
     <Accordion
       type="multiple"
       className="space-y-2"
-      defaultValue={defaultOpenSectionIds ?? [sections[0].id]}
+      value={openSectionIds}
+      onValueChange={(value) => setOpenSectionIds(value as T[])}
     >
       {sections.map((section) => (
         <AccordionItem

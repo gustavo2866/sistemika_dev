@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useDataProvider, useGetList, useNotify, useRefresh } from "ra-core";
+import { useDataProvider, useGetList, useNotify, useRecordContext, useRefresh } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { resolveNumericId, useIdentityId } from "@/components/forms/form_order";
 import { isClosedOportunidad } from "@/app/resources/crm/crm-oportunidades/model";
-import type { Propiedad } from "./model";
+import type { Propiedad, PropiedadFormValues } from "./model";
 import { getPropiedadStatusLabel } from "./status_transitions";
 import { isTipoOperacionMantenimiento } from "./model";
 
@@ -139,24 +139,42 @@ export const usePropiedadOrdenesFlow = (propiedadId?: number) => {
     setSelectorOpen(true);
   }, [buildCreatePath, isLoading, navigate, notify, oportunidades]);
 
-  const defaultFilters = useMemo(
-    () =>
-      propiedadId
-        ? {
-            "oportunidad.propiedad_id": propiedadId,
-          }
-        : undefined,
-    [propiedadId],
-  );
-
   return {
     oportunidades,
     isLoading,
     selectorOpen,
     setSelectorOpen,
-    defaultFilters,
     handleCreateOrder,
     handleSelectOportunidad,
+  };
+};
+
+export const useNombreUnicoFormValidator = () => {
+  const dataProvider = useDataProvider();
+  const record = useRecordContext<Propiedad>();
+
+  return async (values: PropiedadFormValues) => {
+    const normalized = String(values?.nombre ?? "").trim();
+    if (!normalized) return {};
+    const currentNombre = String(record?.nombre ?? "").trim();
+    if (currentNombre && currentNombre.toLowerCase() === normalized.toLowerCase()) {
+      return {};
+    }
+    try {
+      const result = await dataProvider.getList<Propiedad>("propiedades", {
+        filter: { nombre__eq: normalized },
+        pagination: { page: 1, perPage: 10 },
+        sort: { field: "id", order: "DESC" },
+      });
+      const exists = (result.data ?? []).some(
+        (item) =>
+          String(item?.nombre ?? "").trim().toLowerCase() === normalized.toLowerCase() &&
+          item.id !== record?.id,
+      );
+      return exists ? { nombre: "Ya existe una propiedad con ese nombre" } : {};
+    } catch {
+      return {};
+    }
   };
 };
 

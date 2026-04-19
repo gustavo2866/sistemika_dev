@@ -10,8 +10,8 @@ import { useFormContext } from "react-hook-form";
 import { ContactoDialog } from "@/app/resources/crm/crm-contactos/contacto_dialog";
 import { EmprendimientoDialog } from "@/app/resources/inmobiliaria/emprendimientos/emprendimiento_dialog";
 import { PropietarioCreate } from "@/app/resources/inmobiliaria/propietarios/create";
+import { resolveNumericId } from "@/components/forms/form_order";
 import {
-  resolveNumericId,
   Dialog,
   DialogContent,
   DialogDescription,

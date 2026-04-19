@@ -624,6 +624,8 @@ const EmbeddedDefaultFilterSync = ({
 
 type CRMOportunidadListProps = {
   embedded?: boolean;
+  propiedadId?: number | null;
+  tipoOperacionId?: number | null;
   filterDefaultValues?: Record<string, unknown>;
   permanentFilter?: Record<string, unknown>;
   createTo?: string;
@@ -713,6 +715,8 @@ export const CRMOportunidadListBody = ({
 
 export const CRMOportunidadList = ({
   embedded = false,
+  propiedadId,
+  tipoOperacionId,
   filterDefaultValues,
   permanentFilter,
   createTo,
@@ -737,6 +741,20 @@ export const CRMOportunidadList = ({
   const resolvedFilterDefaults = embedded ? filterDefaultValues : defaultFilters;
   const embeddedFilters = buildEmbeddedFilters(hiddenEmbeddedFilterSources);
   const resolvedFilters = embedded ? embeddedFilters : LIST_FILTERS;
+  const resolvedCreateTo = (() => {
+    if (createTo) return createTo;
+    if (!embedded || !propiedadId) return undefined;
+
+    const params = new URLSearchParams();
+    params.set("propiedad_id", String(propiedadId));
+    params.set("lock_propiedad", "1");
+    if (tipoOperacionId) {
+      params.set("tipo_operacion_id", String(tipoOperacionId));
+      params.set("lock_tipo_operacion", "1");
+    }
+    params.set("returnTo", `${location.pathname}${location.search}`);
+    return `/crm/oportunidades/create?${params.toString()}`;
+  })();
   const embeddedActions = embedded ? (
     <div className="flex items-center gap-2">
       <FilterButton
@@ -745,7 +763,7 @@ export const CRMOportunidadList = ({
         buttonClassName={ACTION_BUTTON_CLASS}
       />
       <CreateButton
-        to={createTo}
+        to={resolvedCreateTo}
         className={ACTION_BUTTON_CLASS}
         label="Crear"
       />
