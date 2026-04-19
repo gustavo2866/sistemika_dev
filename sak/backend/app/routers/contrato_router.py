@@ -194,6 +194,10 @@ class ActualizarVigenciaBody(BaseModel):
     valor_alquiler: float
 
 
+class ActualizarContratoArchivoBody(BaseModel):
+    descripcion: Optional[str] = None
+
+
 @contrato_router.post("/{id}/rescindir", tags=["contratos"])
 def rescindir_contrato(id: int, body: RescindirBody, session: Session = Depends(get_session)):
     contrato = _get_contrato_or_404(id, session)
@@ -383,6 +387,7 @@ async def upload_contrato_archivo(
     file: UploadFile = File(...),
     nombre: Optional[str] = Form(default=None),
     tipo: Optional[str] = Form(default=None),
+    descripcion: Optional[str] = Form(default=None),
     session: Session = Depends(get_session),
 ):
     _get_contrato_or_404(id, session)
@@ -416,6 +421,7 @@ async def upload_contrato_archivo(
     archivo = ContratoArchivo(
         contrato_id=id,
         nombre=nombre or file.filename,
+        descripcion=descripcion,
         tipo=tipo,
         archivo_url=gcs_result["download_url"],
         mime_type=file.content_type,
@@ -451,3 +457,24 @@ def delete_contrato_archivo(
     session.delete(archivo)
     session.commit()
     return {"ok": True}
+
+
+@contrato_router.put("/{id}/archivos/{archivo_id}", tags=["contratos"])
+def update_contrato_archivo(
+    id: int,
+    archivo_id: int,
+    body: ActualizarContratoArchivoBody,
+    session: Session = Depends(get_session),
+):
+    _get_contrato_or_404(id, session)
+
+    archivo = session.get(ContratoArchivo, archivo_id)
+    if not archivo or archivo.contrato_id != id:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    descripcion = (body.descripcion or "").strip()
+    archivo.descripcion = descripcion or None
+    session.add(archivo)
+    session.commit()
+    session.refresh(archivo)
+    return archivo

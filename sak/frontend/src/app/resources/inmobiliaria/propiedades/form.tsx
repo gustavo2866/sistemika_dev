@@ -459,7 +459,9 @@ const CabeceraFields = () => {
             widthClass="w-full min-w-0"
             emptyText="Sin asignar"
             validate={required()}
-            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+            triggerProps={{
+              className: `${PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME} justify-start text-left [&_[data-slot=select-value]]:text-left`,
+            }}
           />
         </ReferenceInput>
       </div>

@@ -22,6 +22,8 @@ const spanishOverrides = {
 		message: {
 			delete_title: "Eliminar registro",
 			delete_content: "Seguro que deseas eliminar este registro?",
+			unsaved_changes:
+				"Algunos cambios no fueron guardados. Seguro que deseas descartarlos?",
 		},
 		notification: {
 			updated: "Actualizado correctamente",

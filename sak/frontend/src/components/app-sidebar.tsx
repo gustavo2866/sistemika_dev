@@ -79,6 +79,7 @@ const ADMIN_RESOURCES = [
 ] as const;
 const CONFIG_RESOURCES = [
   "users",
+  "settings",
   "monedas",
   "tipos-operacion",
   "metodos-pago",

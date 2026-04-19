@@ -1,13 +1,129 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useNotify, useRefresh } from "ra-core";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useGetList, useNotify, useRefresh } from "ra-core";
 import { apiUrl } from "@/lib/dataProvider";
+import { resolveNumericId } from "@/components/forms/form_order";
+
+type SettingRecord = {
+  id: number;
+  clave: string;
+  valor?: string | null;
+};
+
+type TipoContratoRecord = {
+  id?: unknown;
+  nombre?: string | null;
+};
+
+type TipoActualizacionRecord = {
+  id?: unknown;
+  nombre?: string | null;
+  cantidad_meses?: number | null;
+};
 
 const getAuthHeaders = (): Record<string, string> => {
   if (typeof window === "undefined") return {};
   const token = localStorage.getItem("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+export const useDefaultTipoContratoId = () => {
+  const { data: defaultTipoSettings = [] } = useGetList<SettingRecord>("settings", {
+    pagination: { page: 1, perPage: 1 },
+    sort: { field: "id", order: "ASC" },
+    filter: { clave: "INM_Default_Tipo" },
+  });
+  const tipoDefault = String(defaultTipoSettings[0]?.valor ?? "").trim();
+
+  const { data: tiposContratoExact = [] } = useGetList<TipoContratoRecord>(
+    "tipos-contrato",
+    {
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: "id", order: "ASC" },
+      filter: { nombre: tipoDefault },
+    },
+    { enabled: Boolean(tipoDefault) && !resolveNumericId(tipoDefault) },
+  );
+
+  const { data: tiposContratoSearch = [] } = useGetList<TipoContratoRecord>(
+    "tipos-contrato",
+    {
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: "id", order: "ASC" },
+      filter: { q: tipoDefault },
+    },
+    { enabled: Boolean(tipoDefault) && !resolveNumericId(tipoDefault) },
+  );
+
+  return useMemo(() => {
+    if (!tipoDefault) return null;
+    return (
+      resolveNumericId(tipoDefault) ??
+      resolveNumericId(tiposContratoExact[0]?.id) ??
+      resolveNumericId(tiposContratoSearch[0]?.id)
+    );
+  }, [tipoDefault, tiposContratoExact, tiposContratoSearch]);
+};
+
+export const useDefaultLugarCelebracion = () => {
+  const { data: defaultLugarSettings = [] } = useGetList<SettingRecord>("settings", {
+    pagination: { page: 1, perPage: 1 },
+    sort: { field: "id", order: "ASC" },
+    filter: { clave: "INM_Default_Lugar" },
+  });
+
+  return useMemo(() => {
+    const lugar = String(defaultLugarSettings[0]?.valor ?? "").trim();
+    return lugar || null;
+  }, [defaultLugarSettings]);
+};
+
+export const useTiposActualizacionCatalog = () => {
+  const { data: tiposActualizacion = [] } = useGetList<TipoActualizacionRecord>(
+    "tipos-actualizacion",
+    {
+      pagination: { page: 1, perPage: 500 },
+      sort: { field: "nombre", order: "ASC" },
+    },
+  );
+
+  return tiposActualizacion as TipoActualizacionRecord[];
+};
+
+export const useCantidadMesesTipoActualizacion = (
+  tipoActualizacionId?: number | null,
+) => {
+  const tiposActualizacion = useTiposActualizacionCatalog();
+
+  return useMemo(() => {
+    if (!tipoActualizacionId) return 0;
+    return Number(
+      tiposActualizacion.find(
+        (tipo) => resolveNumericId(tipo?.id) === tipoActualizacionId,
+      )?.cantidad_meses ?? 0,
+    );
+  }, [tipoActualizacionId, tiposActualizacion]);
+};
+
+export const calculateFechaRenovacionFromInicio = (
+  fechaInicio?: string | null,
+  cantidadMeses?: number | null,
+) => {
+  if (!fechaInicio || !cantidadMeses || cantidadMeses <= 0) return "";
+
+  const base = new Date(fechaInicio);
+  if (Number.isNaN(base.getTime())) return "";
+
+  const baseYear = base.getFullYear();
+  const baseMonth = base.getMonth();
+  const baseDay = base.getDate();
+  const targetMonth = baseMonth + cantidadMeses;
+  const year = baseYear + Math.floor(targetMonth / 12);
+  const month = ((targetMonth % 12) + 12) % 12;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(baseDay, daysInMonth);
+  return new Date(year, month, day).toISOString().slice(0, 10);
 };
 
 // ── Generar PDF ──────────────────────────────────────────────────────────────
@@ -265,13 +381,14 @@ export const useContratoArchivoUpload = () => {
   const refresh = useRefresh();
   const [loading, setLoading] = useState(false);
 
-  const upload = async (contratoId: number, file: File, nombre?: string, tipo?: string) => {
+  const upload = async (contratoId: number, file: File, nombre?: string, tipo?: string, descripcion?: string) => {
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
       if (nombre) formData.append("nombre", nombre);
       if (tipo) formData.append("tipo", tipo);
+      if (descripcion) formData.append("descripcion", descripcion);
 
       const res = await fetch(`${apiUrl}/contratos/${contratoId}/archivos`, {
         method: "POST",
@@ -328,4 +445,42 @@ export const useContratoArchivoDelete = () => {
   };
 
   return { deleteArchivo, loading };
+};
+
+// —— Archivo: actualizar descripcion ——————————————————————————————————————————————
+
+export const useContratoArchivoUpdate = () => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  const updateArchivo = async (
+    contratoId: number,
+    archivoId: number,
+    payload: { descripcion?: string | null },
+  ) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/contratos/${contratoId}/archivos/${archivoId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify(data?.detail ?? "No se pudo actualizar el archivo", { type: "warning" });
+        return false;
+      }
+      refresh();
+      notify("Descripcion actualizada", { type: "info" });
+      return true;
+    } catch {
+      notify("Error al actualizar el archivo", { type: "warning" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { updateArchivo, loading };
 };

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useWatch } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 import { required, useGetOne, useRecordContext } from "ra-core";
 import { useLocation } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FileText, MoreHorizontal, Trash2, Upload } from "lucide-react";
+import { FileText, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
@@ -13,6 +13,10 @@ import {
   FormErrorSummary,
   FormNumber,
   FormOrderToolbar,
+  FormSectionPanel,
+  FormSectionsDesktopLayout,
+  FormSectionsMobileAccordion,
+  type FormSectionsDesktopLayoutItem,
   FormSelect,
   FormText,
   FormTextarea,
@@ -20,11 +24,14 @@ import {
   SectionBaseTemplate,
   ArchivoViewerModal,
   resolveNumericId,
+  useMinWidth,
+  usePersistedActiveSection,
 } from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/dataProvider";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +46,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "../propiedades/dialog_styles";
 
 import {
@@ -48,9 +59,15 @@ import {
   contratoSchema,
   type Contrato,
   type ContratoFormValues,
-} from "./model";import {
+} from "./model";
+import {
+  calculateFechaRenovacionFromInicio,
+  useCantidadMesesTipoActualizacion,
   useContratoArchivoDelete,
   useContratoArchivoUpload,
+  useContratoArchivoUpdate,
+  useDefaultLugarCelebracion,
+  useDefaultTipoContratoId,
 } from "./form_hooks";
 import {
   ContratoAccionesDialogs,
@@ -61,6 +78,7 @@ import {
 // ── Desktop layout ────────────────────────────────────────────────────────────
 
 const DESKTOP_LAYOUT_BREAKPOINT = 1024;
+const CONTRATO_ACTIVE_SECTION_STORAGE_KEY_PREFIX = "contratos-form-active-section";
 
 type ContratoSectionId =
   | "vigencia"
@@ -68,82 +86,162 @@ type ContratoSectionId =
   | "garante"
   | "archivos";
 
-type ContratoSectionVariant = "stacked" | "panel";
+type ContratoSectionVariant = "stacked" | "panel" | "accordion";
 
-const CONTRATO_SECTIONS: Array<{ id: ContratoSectionId; label: string }> = [
-  { id: "vigencia", label: "Terminos" },
-  { id: "inquilino", label: "Inquilino" },
-  { id: "garante", label: "Garante" },
-  { id: "archivos", label: "Archivos" },
-];
-
-const useContratoDesktopLayout = () => {
-  const [isDesktop, setIsDesktop] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth >= DESKTOP_LAYOUT_BREAKPOINT;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const mq = window.matchMedia(`(min-width: ${DESKTOP_LAYOUT_BREAKPOINT}px)`);
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  return isDesktop;
+type ContratoSectionDefinition = FormSectionsDesktopLayoutItem<ContratoSectionId> & {
+  render: (variant?: ContratoSectionVariant) => ReactNode;
 };
 
-// ── Desktop panel wrapper ─────────────────────────────────────────────────────
+const ContratoSectionActionsMenu = ({
+  children,
+  contentClassName = "w-32",
+}: {
+  children: ReactNode;
+  contentClassName?: string;
+}) => (
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 shrink-0 text-muted-foreground"
+        tabIndex={-1}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end" className={contentClassName}>
+      {children}
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
 
-const ContratoDesktopPanel = ({
+const renderContratoSectionVariant = ({
+  variant,
   title,
   description,
   actions,
+  persistKey,
+  defaultOpen = true,
+  readOnly = false,
   children,
 }: {
-  title?: string;
+  variant: ContratoSectionVariant;
+  title: string;
   description?: string;
   actions?: ReactNode;
+  persistKey?: string;
+  defaultOpen?: boolean;
+  readOnly?: boolean;
   children: ReactNode;
-}) => (
-  <section className="flex min-h-[24rem] flex-col">
-    {title || description ? (
-      <div className="flex items-start justify-between gap-3 border-b border-border/50 px-4 py-3 xl:px-5">
-        <div className="min-w-0">
-          {title ? (
-            <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
-          ) : null}
-          {description ? (
-            <p className="mt-0.5 max-w-2xl text-xs text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
-        {actions ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 shrink-0 text-muted-foreground"
-                tabIndex={-1}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-32">
-              {actions}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+}) => {
+  const actionsMenu = actions ? <ContratoSectionActionsMenu>{actions}</ContratoSectionActionsMenu> : undefined;
+
+  if (variant === "panel") {
+    return (
+      <FormSectionPanel title={title} description={description} actions={actionsMenu}>
+        {children}
+      </FormSectionPanel>
+    );
+  }
+
+  if (variant === "accordion") {
+    if (!actionsMenu) return children;
+
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-end">{actionsMenu}</div>
+        {children}
       </div>
-    ) : null}
-    <div className="min-w-0 overflow-x-auto px-4 py-4 xl:px-6 xl:py-5">{children}</div>
-  </section>
-);
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title={title}
+      main={children}
+      actions={actions}
+      defaultOpen={defaultOpen}
+      readOnly={readOnly}
+      persistKey={persistKey}
+    />
+  );
+};
+
+
+
+// ── Desktop panel wrapper ─────────────────────────────────────────────────────
+
 
 // ── Cabecera fields ─────────────────────────────────────────────────────────
+
+const ContratoTipoContratoDefaultSync = () => {
+  const record = useRecordContext<Contrato>();
+  const defaultTipoContratoId = useDefaultTipoContratoId();
+  const { setValue } = useFormContext<ContratoFormValues>();
+  const tipoContratoValue = useWatch({ name: "tipo_contrato_id" }) as unknown;
+
+  useEffect(() => {
+    if (record?.id || !defaultTipoContratoId) return;
+    const currentTipoContratoId = resolveNumericId(tipoContratoValue);
+    if (currentTipoContratoId) return;
+    setValue("tipo_contrato_id", defaultTipoContratoId, { shouldDirty: false });
+  }, [defaultTipoContratoId, record?.id, setValue, tipoContratoValue]);
+
+  return null;
+};
+
+const ContratoLugarCelebracionDefaultSync = () => {
+  const record = useRecordContext<Contrato>();
+  const defaultLugarCelebracion = useDefaultLugarCelebracion();
+  const { setValue } = useFormContext<ContratoFormValues>();
+  const lugarCelebracionValue = useWatch({ name: "lugar_celebracion" }) as
+    | string
+    | null
+    | undefined;
+
+  useEffect(() => {
+    if (record?.id || !defaultLugarCelebracion) return;
+    const currentLugar = String(lugarCelebracionValue ?? "").trim();
+    if (currentLugar) return;
+    setValue("lugar_celebracion", defaultLugarCelebracion, { shouldDirty: false });
+  }, [defaultLugarCelebracion, lugarCelebracionValue, record?.id, setValue]);
+
+  return null;
+};
+
+const ContratoFechaRenovacionSync = () => {
+  const record = useRecordContext<Contrato>();
+  const { setValue } = useFormContext<ContratoFormValues>();
+  const fechaInicioValue = useWatch({ name: "fecha_inicio" }) as string | null | undefined;
+  const tipoActualizacionValue = useWatch({ name: "tipo_actualizacion_id" }) as unknown;
+  const fechaRenovacionValue = useWatch({ name: "fecha_renovacion" }) as string | null | undefined;
+  const tipoActualizacionId = resolveNumericId(tipoActualizacionValue);
+  const cantidadMeses = useCantidadMesesTipoActualizacion(tipoActualizacionId);
+
+  useEffect(() => {
+    if (record?.id || !tipoActualizacionId) return;
+
+    const nextFechaRenovacion = calculateFechaRenovacionFromInicio(
+      fechaInicioValue,
+      cantidadMeses,
+    );
+    if (!nextFechaRenovacion) return;
+    if (String(fechaRenovacionValue ?? "") === nextFechaRenovacion) return;
+
+    setValue("fecha_renovacion", nextFechaRenovacion, { shouldDirty: false });
+  }, [
+    cantidadMeses,
+    fechaInicioValue,
+    fechaRenovacionValue,
+    record?.id,
+    setValue,
+    tipoActualizacionId,
+  ]);
+
+  return null;
+};
 
 const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
   const record = useRecordContext<Contrato>();
@@ -172,11 +270,16 @@ const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
           label="Propiedad"
           widthClass="w-full md:w-[190px] xl:w-[220px]"
           emptyText="Sin asignar"
+          validate={required("El campo Propiedad es obligatorio")}
           disabled={readOnly || !canEditPropiedad}
         />
       </ReferenceInput>
       <div className="flex flex-col gap-1">
-        <FormValue label="Propietario" widthClass="w-full md:w-[180px] xl:w-[210px]">
+        <FormValue
+          label="Propietario"
+          widthClass="w-full md:w-[180px] xl:w-[210px]"
+          valueClassName="justify-start text-left"
+        >
           {propietarioNombre}
         </FormValue>
       </div>
@@ -202,13 +305,29 @@ const VigenciaEconomiaFields = ({ readOnly = false }: { readOnly?: boolean }) =>
       <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
         <div className="mb-2">
           <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Condiciones economicas
+            Vigencia
           </h3>
         </div>
         <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-end">
-          <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full md:w-[118px] xl:w-[132px]" readOnly={readOnly} />
-          <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full md:w-[110px] xl:w-[122px]" readOnly={readOnly} />
-          <FormNumber source="deposito_garantia" label="Deposito garantia" step="any" min={0} widthClass="w-full md:w-[136px] xl:w-[154px]" readOnly={readOnly} />
+          <FormDate source="fecha_inicio" label="Inicio" widthClass="w-full md:w-[118px] xl:w-[132px]" validate={required("El campo Inicio es obligatorio")} readOnly={readOnly} />
+          <FormDate source="fecha_vencimiento" label="Finalizacion" widthClass="w-full md:w-[128px] xl:w-[144px]" validate={required("El campo Finalizacion es obligatorio")} readOnly={readOnly} />
+          <FormText
+            source="lugar_celebracion"
+            label="Lugar"
+            widthClass="w-full md:w-[180px] xl:w-[220px]"
+            maxLength={200}
+            readOnly={readOnly}
+          />
+        </div>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+        <div className="mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Condiciones economicas
+          </h3>
+        </div>
+        <div className="grid gap-2 md:grid-cols-4">
+          <FormNumber source="valor_alquiler" label="Valor alquiler" step="any" min={0} widthClass="w-full md:w-[118px] xl:w-[132px]" validate={required("El campo Valor alquiler es obligatorio")} readOnly={readOnly} />
           <FormSelect
             source="moneda"
             label="Moneda"
@@ -219,27 +338,11 @@ const VigenciaEconomiaFields = ({ readOnly = false }: { readOnly?: boolean }) =>
             disabled={readOnly}
           />
           <ReferenceInput source="tipo_actualizacion_id" reference="tipos-actualizacion" label="Tipo de actualizacion">
-            <FormSelect optionText="nombre" label="Tipo de actualizacion" widthClass="w-full md:w-[150px] xl:w-[170px]" emptyText="Sin asignar" disabled={readOnly} />
+            <FormSelect optionText="nombre" label="Tipo de actualizacion" widthClass="w-full md:w-[128px] xl:w-[144px]" emptyText="Sin asignar" disabled={readOnly} />
           </ReferenceInput>
-          <FormDate source="fecha_renovacion" label="Fecha de proxima actualizacion" widthClass="w-full md:w-[170px] xl:w-[184px]" readOnly={readOnly} />
-        </div>
-      </div>
-      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
-        <div className="mb-2">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Vigencia
-          </h3>
-        </div>
-        <div className="grid gap-2 md:grid-cols-3">
-          <FormDate source="fecha_inicio" label="Fecha de inicio" widthClass="w-full" readOnly={readOnly} />
-          <FormDate source="fecha_vencimiento" label="Fecha de finalizacion" widthClass="w-full" readOnly={readOnly} />
-          <FormText
-            source="lugar_celebracion"
-            label="Lugar de celebracion"
-            widthClass="w-full md:col-span-3"
-            maxLength={200}
-            readOnly={readOnly}
-          />
+          <FormDate source="fecha_renovacion" label="Proxima actualizacion" widthClass="w-full md:w-[122px] xl:w-[136px]" readOnly={readOnly} />
+          <FormNumber source="expensas" label="Expensas" step="any" min={0} widthClass="w-full md:w-[110px] xl:w-[122px]" readOnly={readOnly} />
+          <FormNumber source="deposito_garantia" label="Deposito garantia" step="any" min={0} widthClass="w-full md:w-[136px] xl:w-[154px]" readOnly={readOnly} />
         </div>
       </div>
       <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
@@ -325,6 +428,118 @@ const GaranteFields = ({ readOnly = false }: { readOnly?: boolean }) => (
 
 // ── Archivos inline content ───────────────────────────────────────────────────
 
+const ContratoArchivoDescripcionPopover = ({
+  archivo,
+  contratoId,
+  disabled = false,
+}: {
+  archivo: NonNullable<Contrato["archivos"]>[number];
+  contratoId: number;
+  disabled?: boolean;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const { updateArchivo, loading } = useContratoArchivoUpdate();
+
+  useEffect(() => {
+    if (!open) return;
+    setValue(String(archivo.descripcion ?? ""));
+  }, [archivo.descripcion, open]);
+
+  const handleSave = async () => {
+    if (disabled || loading) return;
+    const ok = await updateArchivo(contratoId, archivo.id, {
+      descripcion: value.trim() || null,
+    });
+    if (ok) {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="group flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1 text-left transition hover:bg-muted/30"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!disabled) setOpen(true);
+            }}
+            data-row-click="ignore"
+            aria-label="Editar descripcion del archivo"
+            title="Editar descripcion del archivo"
+            disabled={disabled}
+          >
+            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="break-all text-sm font-medium text-foreground">{archivo.nombre || "Archivo"}</p>
+              {archivo.descripcion ? (
+                <p className="text-[10px] text-muted-foreground">{archivo.descripcion}</p>
+              ) : archivo.tipo ? (
+                <p className="text-[10px] text-muted-foreground">{archivo.tipo}</p>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">Sin descripcion</p>
+              )}
+            </div>
+            {!disabled ? (
+              <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700/70 opacity-0 transition group-hover:opacity-100" />
+            ) : null}
+          </button>
+        </PopoverTrigger>
+        {!disabled ? (
+          <PopoverContent
+            align="start"
+            side="bottom"
+            sideOffset={6}
+            className="w-80 border-none bg-transparent p-0 shadow-none"
+          >
+            <SectionBaseTemplate
+              title="Editar descripcion"
+              main={
+                <div className="space-y-2">
+                  <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+                    <p className="break-all text-xs font-medium text-foreground">{archivo.nombre || "Archivo"}</p>
+                  </div>
+                  <Textarea
+                    value={value}
+                    onChange={(event) => setValue(event.target.value)}
+                    className="min-h-[88px] text-sm"
+                    placeholder="Escribe una descripcion..."
+                    disabled={loading}
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      disabled={loading}
+                      onClick={() => setOpen(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      disabled={loading}
+                      onClick={() => void handleSave()}
+                    >
+                      Guardar
+                    </Button>
+                  </div>
+                </div>
+              }
+            />
+          </PopoverContent>
+        ) : null}
+      </Popover>
+    </div>
+  );
+};
+
 const ArchivosContent = ({
   contrato,
   deleting,
@@ -334,7 +549,7 @@ const ArchivosContent = ({
   contrato: Contrato;
   deleting: boolean;
   readOnly?: boolean;
-  onDelete: (archivoId: number) => void;
+  onDelete: (archivo: NonNullable<Contrato["archivos"]>[number]) => void;
 }) => {
   const archivos = contrato.archivos ?? [];
 
@@ -357,32 +572,28 @@ const ArchivosContent = ({
             // Fallback name: extract last segment from URL
             const displayNombre = a.nombre || resolvedUrl.split("/").pop() || "Archivo";
             return (
-            <li key={a.id} className="flex items-center justify-between gap-2 py-2">
-              <div className="flex min-w-0 items-start gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
-                  <p className="break-all text-sm font-medium text-foreground">{displayNombre}</p>
-                  {a.tipo ? (
-                    <p className="text-[10px] text-muted-foreground">{a.tipo}</p>
+              <li key={a.id} className="flex items-start justify-between gap-2 py-1.5">
+                <ContratoArchivoDescripcionPopover
+                  archivo={{ ...a, nombre: displayNombre }}
+                  contratoId={contrato.id}
+                  disabled={readOnly}
+                />
+                <div className="mt-1 flex shrink-0 items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-1 py-0.5">
+                  <ArchivoViewerModal url={resolvedUrl} nombre={displayNombre} />
+                  {!readOnly ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      disabled={deleting}
+                      onClick={() => onDelete({ ...a, nombre: displayNombre })}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   ) : null}
                 </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <ArchivoViewerModal url={resolvedUrl} nombre={displayNombre} />
-                {!readOnly ? (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                    disabled={deleting}
-                    onClick={() => onDelete(a.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
-              </div>
-            </li>
+              </li>
             );
           })}
         </ul>
@@ -393,38 +604,53 @@ const ArchivosContent = ({
 
 // ── Section wrapper components ────────────────────────────────────────────────
 
-const VigenciaSection = ({ variant = "stacked", readOnly = false }: { variant?: ContratoSectionVariant; readOnly?: boolean }) => {
-  if (variant === "panel") {
-    return (
-      <ContratoDesktopPanel title="Terminos y economia" description="Fechas del contrato y condiciones economicas.">
-        <VigenciaEconomiaFields readOnly={readOnly} />
-      </ContratoDesktopPanel>
-    );
-  }
-  return <SectionBaseTemplate title="Terminos y economia" main={<VigenciaEconomiaFields readOnly={readOnly} />} defaultOpen readOnly={readOnly} />;
-};
+const VigenciaSection = ({
+  variant = "stacked",
+  readOnly = false,
+}: {
+  variant?: ContratoSectionVariant;
+  readOnly?: boolean;
+}) =>
+  renderContratoSectionVariant({
+    variant,
+    title: "Terminos y economia",
+    description: "Fechas del contrato y condiciones economicas.",
+    persistKey: "contratos-vigencia",
+    readOnly,
+    children: <VigenciaEconomiaFields readOnly={readOnly} />,
+  });
 
-const InquilinoSection = ({ variant = "stacked", readOnly = false }: { variant?: ContratoSectionVariant; readOnly?: boolean }) => {
-  if (variant === "panel") {
-    return (
-      <ContratoDesktopPanel title="Inquilino" description="Datos del inquilino principal.">
-        <PersonaFields prefix="inquilino" readOnly={readOnly} />
-      </ContratoDesktopPanel>
-    );
-  }
-  return <SectionBaseTemplate title="Inquilino" main={<PersonaFields prefix="inquilino" readOnly={readOnly} />} defaultOpen readOnly={readOnly} />;
-};
+const InquilinoSection = ({
+  variant = "stacked",
+  readOnly = false,
+}: {
+  variant?: ContratoSectionVariant;
+  readOnly?: boolean;
+}) =>
+  renderContratoSectionVariant({
+    variant,
+    title: "Inquilino",
+    description: "Datos del inquilino principal.",
+    persistKey: "contratos-inquilino",
+    readOnly,
+    children: <PersonaFields prefix="inquilino" readOnly={readOnly} />,
+  });
 
-const GaranteSection = ({ variant = "stacked", readOnly = false }: { variant?: ContratoSectionVariant; readOnly?: boolean }) => {
-  if (variant === "panel") {
-    return (
-      <ContratoDesktopPanel title="Garante" description="Datos de los garantes asociados al contrato.">
-        <GaranteFields readOnly={readOnly} />
-      </ContratoDesktopPanel>
-    );
-  }
-  return <SectionBaseTemplate title="Garante" main={<GaranteFields readOnly={readOnly} />} readOnly={readOnly} />;
-};
+const GaranteSection = ({
+  variant = "stacked",
+  readOnly = false,
+}: {
+  variant?: ContratoSectionVariant;
+  readOnly?: boolean;
+}) =>
+  renderContratoSectionVariant({
+    variant,
+    title: "Garante",
+    description: "Datos de los garantes asociados al contrato.",
+    persistKey: "contratos-garante",
+    readOnly,
+    children: <GaranteFields readOnly={readOnly} />,
+  });
 
 const ArchivosSection = ({
   variant = "stacked",
@@ -438,7 +664,9 @@ const ArchivosSection = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [nombre, setNombre] = useState("");
+  const [descripcion, setDescripcion] = useState("");
   const [confirmUploadOpen, setConfirmUploadOpen] = useState(false);
+  const [archivoAEliminar, setArchivoAEliminar] = useState<NonNullable<Contrato["archivos"]>[number] | null>(null);
   const { upload, loading: uploading } = useContratoArchivoUpload();
   const { deleteArchivo, loading: deleting } = useContratoArchivoDelete();
 
@@ -447,6 +675,7 @@ const ArchivosSection = ({
     if (!file) return;
     setPendingFile(file);
     setNombre(file.name);
+    setDescripcion("");
     setConfirmUploadOpen(true);
     e.target.value = "";
   };
@@ -458,20 +687,30 @@ const ArchivosSection = ({
 
   const handleUpload = async () => {
     if (!pendingFile) return;
-    await upload(contrato.id, pendingFile, nombre.trim() || pendingFile.name);
+    await upload(contrato.id, pendingFile, nombre.trim() || pendingFile.name, undefined, descripcion.trim() || undefined);
     setConfirmUploadOpen(false);
     setPendingFile(null);
     setNombre("");
+    setDescripcion("");
   };
 
   const handleCancel = () => {
     setConfirmUploadOpen(false);
     setPendingFile(null);
     setNombre("");
+    setDescripcion("");
   };
 
-  const handleDelete = (archivoId: number) => {
-    void deleteArchivo(contrato.id, archivoId);
+  const handleDeleteRequest = (archivo: NonNullable<Contrato["archivos"]>[number]) => {
+    setArchivoAEliminar(archivo);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!archivoAEliminar) return;
+    const ok = await deleteArchivo(contrato.id, archivoAEliminar.id);
+    if (ok) {
+      setArchivoAEliminar(null);
+    }
   };
 
   const archivoActions = readOnly
@@ -501,7 +740,7 @@ const ArchivosSection = ({
         contrato={contrato}
         deleting={deleting}
         readOnly={readOnly}
-        onDelete={handleDelete}
+        onDelete={handleDeleteRequest}
       />
       <Dialog
         open={confirmUploadOpen}
@@ -521,29 +760,21 @@ const ArchivosSection = ({
               <label className="text-xs font-medium text-muted-foreground">Nombre del archivo</label>
               <Input
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
+                readOnly
                 placeholder="Nombre del archivo"
+                className="h-9 text-sm"
+                disabled
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Descripcion <span className="font-normal">(opcional)</span></label>
+              <Input
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                placeholder="Ej: DNI del inquilino, contrato firmado..."
                 className="h-9 text-sm"
                 disabled={uploading}
               />
-            </div>
-            <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm">
-            <div className="grid gap-0.5">
-              <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                Nombre
-              </span>
-              <span className="break-all text-foreground">
-                {nombre.trim() || pendingFile?.name || "Sin nombre"}
-              </span>
-            </div>
-            <div className="grid gap-0.5">
-              <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                Archivo
-              </span>
-              <span className="break-all text-foreground">
-                {pendingFile?.name ?? "Sin archivo"}
-              </span>
-            </div>
             </div>
           </div>
           <DialogFooter>
@@ -561,93 +792,136 @@ const ArchivosSection = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={Boolean(archivoAEliminar)}
+        onOpenChange={(open) => {
+          if (!open) setArchivoAEliminar(null);
+        }}
+      >
+        <DialogContent overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}>
+          <DialogHeader>
+            <DialogTitle>Eliminar archivo</DialogTitle>
+            <DialogDescription>
+              Se eliminará el archivo adjunto del contrato. Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="grid gap-1">
+              <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                Archivo
+              </span>
+              <span className="break-all text-sm text-foreground">
+                {archivoAEliminar?.nombre ?? "Sin archivo"}
+              </span>
+              {archivoAEliminar?.descripcion ? (
+                <span className="text-xs text-muted-foreground">{archivoAEliminar.descripcion}</span>
+              ) : null}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setArchivoAEliminar(null)}
+              disabled={deleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleDeleteConfirm()}
+              disabled={deleting}
+            >
+              {deleting ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 
-  if (variant === "panel") {
-    return (
-      <ContratoDesktopPanel
-        title="Archivos"
-        description="Documentos adjuntos al contrato."
-        actions={archivoActions}
-      >
-        {archivosMain}
-      </ContratoDesktopPanel>
-    );
-  }
-  return (
-    <SectionBaseTemplate title="Archivos" main={archivosMain} actions={archivoActions} readOnly={readOnly} />
-  );
+  return renderContratoSectionVariant({
+    variant,
+    title: "Archivos",
+    description: "Documentos adjuntos al contrato.",
+    actions: archivoActions,
+    persistKey: `contratos-archivos-${contrato.id}`,
+    readOnly,
+    children: archivosMain,
+  });
 };
 
 // ── Desktop sections layout ───────────────────────────────────────────────────
 
 const ContratoDesktopSectionsLayout = ({
   activeSection,
-  visibleSections,
+  availableSections,
   onSectionChange,
-  contrato,
-  readOnly = false,
 }: {
   activeSection: ContratoSectionId;
-  visibleSections: Array<{ id: ContratoSectionId; label: string }>;
+  availableSections: ContratoSectionDefinition[];
   onSectionChange: (id: ContratoSectionId) => void;
-  contrato: Contrato | null;
-  readOnly?: boolean;
 }) => {
-  const activeConfig = visibleSections.find((s) => s.id === activeSection) ?? visibleSections[0];
-
-  const renderSection = () => {
-    switch (activeSection) {
-      case "vigencia":
-        return <VigenciaSection variant="panel" readOnly={readOnly} />;
-      case "inquilino":
-        return <InquilinoSection variant="panel" readOnly={readOnly} />;
-      case "garante":
-        return <GaranteSection variant="panel" readOnly={readOnly} />;
-      case "archivos":
-        return contrato ? <ArchivosSection variant="panel" contrato={contrato} readOnly={readOnly} /> : null;
-      default:
-        return null;
-    }
-  };
+  const activeSectionDefinition =
+    availableSections.find((section) => section.id === activeSection) ?? availableSections[0];
 
   return (
-    <div className="hidden rounded-[28px] border border-border/60 bg-card/90 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)] lg:grid lg:grid-cols-[98px_minmax(0,1fr)]">
-      <aside className="border-r border-border/50 bg-[linear-gradient(180deg,rgba(248,250,252,0.98)_0%,rgba(241,245,249,0.96)_100%)] p-2">
-        <div className="flex flex-col gap-1">
-          {visibleSections.map((section) => {
-            const isActive = section.id === activeSection;
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => onSectionChange(section.id)}
-                className={cn(
-                  "group mr-[-10px] flex min-h-[34px] items-center justify-center rounded-l-lg rounded-r-none border border-r-0 px-2 py-1 text-center transition-all",
-                  isActive
-                    ? "-translate-x-2 border-border/80 bg-background text-foreground shadow-[10px_12px_30px_-24px_rgba(15,23,42,0.45)]"
-                    : "border-transparent bg-muted/50 text-slate-500 hover:bg-muted/80 hover:text-slate-700",
-                )}
-                aria-pressed={isActive}
-              >
-                <span className="whitespace-normal break-words text-[10px] font-semibold leading-[1.05]">
-                  {section.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-      <div className="min-w-0 overflow-x-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(249,250,251,0.96)_100%)]">
-        {activeConfig ? <div className="sr-only">{activeConfig.label}</div> : null}
-        {renderSection()}
-      </div>
-    </div>
+    <FormSectionsDesktopLayout
+      sections={availableSections}
+      activeSection={activeSection}
+      onSectionChange={onSectionChange}
+    >
+      {activeSectionDefinition?.render("panel") ?? null}
+    </FormSectionsDesktopLayout>
   );
 };
 
 // ── Sections content orchestrator ─────────────────────────────────────────────
+
+const getContratoSectionDefinitions = ({
+  contrato,
+  readOnly = false,
+}: {
+  contrato: Contrato | null;
+  readOnly?: boolean;
+}): ContratoSectionDefinition[] => {
+  const sections: ContratoSectionDefinition[] = [
+    {
+      id: "vigencia",
+      label: "Terminos",
+      render: (variant = "stacked") => (
+        <VigenciaSection variant={variant} readOnly={readOnly} />
+      ),
+    },
+    {
+      id: "inquilino",
+      label: "Inquilino",
+      render: (variant = "stacked") => (
+        <InquilinoSection variant={variant} readOnly={readOnly} />
+      ),
+    },
+    {
+      id: "garante",
+      label: "Garante",
+      render: (variant = "stacked") => (
+        <GaranteSection variant={variant} readOnly={readOnly} />
+      ),
+    },
+  ];
+
+  if (contrato?.id) {
+    sections.push({
+      id: "archivos",
+      label: "Archivos",
+      render: (variant = "stacked") => (
+        <ArchivosSection variant={variant} contrato={contrato} readOnly={readOnly} />
+      ),
+    });
+  }
+
+  return sections;
+};
 
 const ContratoFormSectionsContent = ({
   contrato,
@@ -656,40 +930,35 @@ const ContratoFormSectionsContent = ({
   contrato: Contrato | null;
   readOnly?: boolean;
 }) => {
-  const isDesktop = useContratoDesktopLayout();
-  const isEdit = Boolean(contrato?.id);
-
-  const visibleSections = useMemo(
-    () => CONTRATO_SECTIONS.filter((s) => (s.id === "archivos" ? isEdit : true)),
-    [isEdit],
+  const location = useLocation();
+  const isDesktop = useMinWidth(DESKTOP_LAYOUT_BREAKPOINT);
+  const availableSections = useMemo(
+    () => getContratoSectionDefinitions({ contrato, readOnly }),
+    [contrato, readOnly],
   );
-
-  const [activeSection, setActiveSection] = useState<ContratoSectionId>("vigencia");
-
-  useEffect(() => {
-    if (visibleSections.some((s) => s.id === activeSection)) return;
-    setActiveSection(visibleSections[0]?.id ?? "vigencia");
-  }, [activeSection, visibleSections]);
+  const activeSectionStorageKey = `${CONTRATO_ACTIVE_SECTION_STORAGE_KEY_PREFIX}:${location.pathname}`;
+  const [activeSection, setActiveSection] = usePersistedActiveSection<ContratoSectionId>({
+    storageKey: activeSectionStorageKey,
+    sections: availableSections.map((section) => section.id),
+    defaultSection: availableSections[0]?.id ?? "vigencia",
+  });
 
   if (isDesktop) {
     return (
       <ContratoDesktopSectionsLayout
         activeSection={activeSection}
-        visibleSections={visibleSections}
+        availableSections={availableSections}
         onSectionChange={setActiveSection}
-        contrato={contrato}
-        readOnly={readOnly}
       />
     );
   }
 
   return (
-    <>
-      <VigenciaSection readOnly={readOnly} />
-      <InquilinoSection readOnly={readOnly} />
-      <GaranteSection readOnly={readOnly} />
-      {isEdit && contrato ? <ArchivosSection contrato={contrato} readOnly={readOnly} /> : null}
-    </>
+    <FormSectionsMobileAccordion<ContratoSectionId, ContratoSectionDefinition>
+      sections={availableSections}
+      defaultOpenSectionIds={[availableSections[0]?.id ?? "vigencia"]}
+      renderSection={(section) => section.render("accordion")}
+    />
   );
 };
 
@@ -732,6 +1001,9 @@ export const ContratoForm = ({ readOnly = false }: { readOnly?: boolean }) => {
       defaultValues={defaultValues}
       warnWhenUnsavedChanges={!readOnly}
     >
+      <ContratoTipoContratoDefaultSync />
+      <ContratoLugarCelebracionDefaultSync />
+      <ContratoFechaRenovacionSync />
       <FormErrorSummary />
       <SectionBaseTemplate
         title="Cabecera"
@@ -745,5 +1017,3 @@ export const ContratoForm = ({ readOnly = false }: { readOnly?: boolean }) => {
     </SimpleForm>
   );
 };
-
-

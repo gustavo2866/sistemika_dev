@@ -43,6 +43,7 @@ export type ContratoArchivo = {
   id: number;
   contrato_id: number;
   nombre: string;
+  descripcion?: string | null;
   tipo?: string | null;
   archivo_url: string;
   mime_type?: string | null;
@@ -113,7 +114,17 @@ export type Contrato = {
 
 // ── Form values ──────────────────────────────────────────────────────────────
 
-const optionalString = z.string().nullable().optional();
+const optionalString = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined) return undefined;
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      return trimmed === "" ? undefined : trimmed;
+    }
+    return v;
+  },
+  z.string().nullable().optional(),
+);
 const optionalNumber = z.preprocess(
   (v) => (v === "" || v === null || v === undefined ? undefined : v),
   z.coerce.number().nullable().optional(),
@@ -130,16 +141,35 @@ const requiredIdField = (label: string) => z.preprocess(
     .number({ message: `El campo ${label} es obligatorio` })
     .positive(`El campo ${label} es obligatorio`),
 );
+const requiredDateField = (label: string) =>
+  z.preprocess(
+    (v) => {
+      if (typeof v === "string") {
+        const trimmed = v.trim();
+        return trimmed === "" ? undefined : trimmed;
+      }
+      return v ?? undefined;
+    },
+    z.string().min(1, `El campo ${label} es obligatorio`),
+  );
+const requiredNumberField = (label: string) =>
+  z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : v),
+    z
+      .coerce
+      .number({ message: `El campo ${label} es obligatorio` })
+      .min(0, `El campo ${label} es obligatorio`),
+  );
 
 export const contratoSchema = z.object({
-  propiedad_id: z.coerce.number().nullable().optional(),
+  propiedad_id: requiredIdField("Propiedad"),
   tipo_contrato_id: requiredIdField("Tipo de contrato"),
   tipo_actualizacion_id: z.coerce.number().nullable().optional(),
-  fecha_inicio: optionalString,
-  fecha_vencimiento: optionalString,
+  fecha_inicio: requiredDateField("Inicio"),
+  fecha_vencimiento: requiredDateField("Finalizacion"),
   fecha_renovacion: optionalString,
   duracion_meses: optionalNumber,
-  valor_alquiler: optionalNumber,
+  valor_alquiler: requiredNumberField("Valor alquiler"),
   expensas: optionalNumber,
   deposito_garantia: optionalNumber,
   moneda: z.string().default("ARS"),
