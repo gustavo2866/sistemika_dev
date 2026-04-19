@@ -12,12 +12,12 @@ type SettingRecord = {
 };
 
 type TipoContratoRecord = {
-  id?: unknown;
+  id: number;
   nombre?: string | null;
 };
 
 type TipoActualizacionRecord = {
-  id?: unknown;
+  id: number;
   nombre?: string | null;
   cantidad_meses?: number | null;
 };

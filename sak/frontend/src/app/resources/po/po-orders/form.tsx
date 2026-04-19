@@ -224,7 +224,7 @@ const OrdenCompraContenido = () => {
 
       <ResumenTotalesOrdenCompra />
 
-      {isEdit ? <ArchivosSection record={record} /> : null}
+      {isEdit && record ? <ArchivosSection record={record} /> : null}
 
       <Confirm
         isOpen={confirmOpen}

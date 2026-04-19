@@ -1,7 +1,8 @@
 "use client";
 
 import { Edit } from "@/components/edit";
-import { FormOrderDeleteButton, type SetupEditComponentProps } from "@/components/forms";
+import { FormOrderDeleteButton } from "@/components/forms";
+import { type SetupEditComponentProps } from "@/components/forms/form_order";
 import { PropietarioForm } from "./form";
 
 export const PropietarioEdit = ({

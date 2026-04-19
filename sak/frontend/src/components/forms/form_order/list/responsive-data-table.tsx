@@ -665,7 +665,6 @@ export function ResponsiveDataTable<RecordType extends RaRecord = RaRecord>(
         compact={compact}
         bulkActionButtons={bulkActionButtons}
         bulkActionsToolbar={bulkActionsToolbar}
-        emptyMessage={emptyMessage}
       >
         {columns}
       </DataTable>
