@@ -1,5 +1,4 @@
 name: Deploy to GCP Cloud Run (Test)
-
 on:
   push:
     branches:
@@ -38,7 +37,7 @@ jobs:
             --service-account ${{ env.SERVICE_ACCOUNT }} \
             --allow-unauthenticated \
             --set-secrets="DATABASE_URL=DATABASE_URL_TEST:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,JWT_SECRET=JWT_SECRET:latest" \
-            --set-env-vars="ENV=test,CORS_ORIGINS=${{ secrets.CORS_ORIGINS_TEST }};http://localhost:3000,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
+            --set-env-vars="ENV=test,CORS_ORIGINS=https://wcl-git-test-gustavo2866s-projects.vercel.app;http://localhost:3000,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
 
       - name: Show service URL
         run: |
