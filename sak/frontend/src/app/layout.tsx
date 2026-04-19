@@ -23,7 +23,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const isTest = process.env.NEXT_PUBLIC_API_URL?.includes("test");
+  const isTest = process.env.NEXT_PUBLIC_ENV === "test" || process.env.NEXT_PUBLIC_API_URL?.includes("test");
   return (
     <html lang="en">
       <body
