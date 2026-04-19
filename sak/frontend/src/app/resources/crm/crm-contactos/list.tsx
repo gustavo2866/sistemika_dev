@@ -140,7 +140,7 @@ export const CRMContactoList = ({
         mobileConfig={{
           primaryField: "nombre_completo",
           secondaryFields: ["telefonos", "email"],
-          detailFields: ["responsable_id"],
+          detailFields: [{ source: "responsable_id" }],
         }}
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
