@@ -103,6 +103,7 @@ app = FastAPI(title="API genérica con FastAPI + SQLModel")
 
 # Configure CORS - Dynamic origins from environment or defaults
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
+cors_origins_regex = os.getenv("CORS_ORIGINS_REGEX", None)
 if cors_origins_env:
     # Production: usar orígenes desde variable de entorno
     # Soportar tanto coma (,) como punto y coma (;) como separadores
@@ -122,6 +123,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=cors_origins_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
