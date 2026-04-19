@@ -137,12 +137,20 @@ class MetaWebhookService:
             raise ValueError("No hay usuarios activos para asignar como responsable")
 
         nombre_contacto = nombre_from_meta or f"Contacto {numero_telefono}"
+
+        from sqlmodel import select as sqlmodel_select
+        from app.models.crm.catalogos import CRMTipoContacto
+        tipo_inmobiliaria = self.session.exec(
+            sqlmodel_select(CRMTipoContacto).where(CRMTipoContacto.nombre == "Inmobiliaria")
+        ).first()
+
         contacto = crm_contacto_crud.create(
             self.session,
             {
                 "nombre_completo": nombre_contacto,
                 "telefonos": [numero_telefono],
                 "responsable_id": usuario_default.id,
+                "tipo_id": tipo_inmobiliaria.id if tipo_inmobiliaria else None,
             },
         )
         logger.info(

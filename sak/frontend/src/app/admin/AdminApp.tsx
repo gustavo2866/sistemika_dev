@@ -223,6 +223,12 @@ import {
   CRMTipoOperacionShow,
 } from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-operacion";
 import {
+  CRMTipoContactoList,
+  CRMTipoContactoCreate,
+  CRMTipoContactoEdit,
+  CRMTipoContactoShow,
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-contacto";
+import {
   CRMMotivoPerdidaList,
   CRMMotivoPerdidaCreate,
   CRMMotivoPerdidaEdit,
@@ -740,6 +746,16 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={GitBranch}
         options={{ label: "CRM · Tipos de Operación" }}
+      />
+      <Resource
+        name="crm/catalogos/tipos-contacto"
+        list={CRMTipoContactoList}
+        create={CRMTipoContactoCreate}
+        edit={CRMTipoContactoEdit}
+        show={CRMTipoContactoShow}
+        recordRepresentation="nombre"
+        icon={GitBranch}
+        options={{ label: "CRM · Tipos de Contacto" }}
       />
       <Resource
         name="crm/catalogos/motivos-perdida"

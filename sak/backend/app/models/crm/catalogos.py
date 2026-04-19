@@ -96,3 +96,17 @@ class CRMCatalogoRespuesta(Base, table=True):
     titulo: str = Field(max_length=255, description="Título de la respuesta")
     texto: str = Field(default="", description="Contenido de la respuesta")
     activo: bool = Field(default=True, description="Indica si la respuesta está activa")
+
+
+class CRMTipoContacto(Base, table=True):
+    __tablename__ = "crm_tipos_contacto"
+    __searchable_fields__ = ["nombre"]
+    __auto_include_enabled__ = False
+
+    nombre: str = Field(max_length=100, unique=True, index=True, description="Nombre del tipo de contacto")
+    activo: bool = Field(default=True, description="Indica si el tipo está activo")
+
+    contactos: list["CRMContacto"] = Relationship(
+        back_populates="tipo",
+        sa_relationship_kwargs={"lazy": "noload"},
+    )

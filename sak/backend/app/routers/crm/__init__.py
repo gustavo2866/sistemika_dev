@@ -9,6 +9,7 @@ from .crm_catalogos_router import (
     crm_moneda_router,
     cotizacion_moneda_router,
     cotizacion_conversion_router,
+    crm_tipo_contacto_router,
 )
 from .crm_contacto_router import crm_contacto_router
 from .crm_oportunidad_router import crm_oportunidad_router
@@ -30,4 +31,5 @@ __all__ = [
     "crm_oportunidad_router",
     "crm_evento_router",
     "crm_mensaje_router",
+    "crm_tipo_contacto_router",
 ]

@@ -15,6 +15,7 @@ from app.models import (
     Moneda,
     CotizacionMoneda,
     CRMCatalogoRespuesta,
+    CRMTipoContacto,
 )
 from app.crud.crm_tipo_operacion_crud import crm_tipo_operacion_crud
 from app.crud.crm_motivo_perdida_crud import crm_motivo_perdida_crud
@@ -24,6 +25,7 @@ from app.crud.crm_motivo_evento_crud import crm_motivo_evento_crud
 from app.crud.moneda_crud import moneda_crud
 from app.crud.cotizacion_moneda_crud import cotizacion_moneda_crud
 from app.crud.crm_catalogo_respuesta_crud import crm_catalogo_respuesta_crud
+from app.crud.crm_tipo_contacto_crud import crm_tipo_contacto_crud
 from app.services.cotizacion_service import cotizacion_service
 
 
@@ -69,6 +71,12 @@ crm_catalogo_respuesta_router = create_generic_router(
     tags=["crm-catalogos"],
 )
 
+crm_tipo_contacto_router = create_generic_router(
+    model=CRMTipoContacto,
+    crud=crm_tipo_contacto_crud,
+    prefix="/crm/catalogos/tipos-contacto",
+    tags=["crm-catalogos"],
+)
 
 
 moneda_router = create_generic_router(

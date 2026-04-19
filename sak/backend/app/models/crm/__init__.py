@@ -12,6 +12,7 @@ from .catalogos import (
     CRMMotivoEvento,
     Moneda,
     CRMCatalogoRespuesta,
+    CRMTipoContacto,
 )
 from .contacto import CRMContacto
 from .oportunidad import CRMOportunidad
@@ -29,6 +30,7 @@ __all__ = [
     "CRMMotivoEvento",
     "Moneda",
     "CRMCatalogoRespuesta",
+    "CRMTipoContacto",
     # Core models
     "CRMContacto",
     "CRMOportunidad", 

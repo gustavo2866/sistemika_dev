@@ -55,6 +55,19 @@ const listFilters = buildListFilters(
         emptyText: "Todos",
       },
     },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "tipo_id",
+        reference: "crm/catalogos/tipos-contacto",
+        label: "Tipo",
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
   ],
   { keyPrefix: "crm-contactos" },
 );
@@ -97,7 +110,7 @@ type CRMContactoListProps = {
 export const CRMContactoList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 25,
+  perPage = 5,
 }: CRMContactoListProps = {}) => {
   const { identityId, defaultFilters } = useIdentityFilterDefaults({
     source: "responsable_id",
@@ -143,8 +156,8 @@ export const CRMContactoList = ({
         <TextListColumn source="email" label="Email" className="w-[200px]">
           <ListText source="email" className="whitespace-normal break-words" />
         </TextListColumn>
-        <TextListColumn source="responsable_id" label="Responsable" className="w-[150px]">
-          <ReferenceField source="responsable_id" reference="users" link={false}>
+        <TextListColumn source="tipo_id" label="Tipo" className="w-[120px]">
+          <ReferenceField source="tipo_id" reference="crm/catalogos/tipos-contacto" link={false}>
             <ListText source="nombre" className="whitespace-normal break-words" />
           </ReferenceField>
         </TextListColumn>

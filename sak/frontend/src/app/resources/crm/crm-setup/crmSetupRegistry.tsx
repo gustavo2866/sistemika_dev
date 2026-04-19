@@ -37,6 +37,11 @@ import {
   CRMTipoOperacionList,
 } from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-operacion";
 import {
+  CRMTipoContactoCreate,
+  CRMTipoContactoEdit,
+  CRMTipoContactoList,
+} from "@/app/resources/crm/crm-catalogos/crm-catalogos-tipos-contacto";
+import {
   MonedaCreate,
   MonedaEdit,
   MonedaList,
@@ -53,6 +58,15 @@ export const CRM_SETUP_ITEMS: SetupItem[] = [
     listComponent: CRMTipoOperacionList,
     createComponent: CRMTipoOperacionCreate,
     editComponent: CRMTipoOperacionEdit,
+  },
+  {
+    key: "tipos-contacto",
+    label: "Tipos de contacto",
+    description: "Clasificaciones de contactos CRM (Inmobiliaria, Encargado, Propietario, etc.).",
+    resource: "crm/catalogos/tipos-contacto",
+    listComponent: CRMTipoContactoList,
+    createComponent: CRMTipoContactoCreate,
+    editComponent: CRMTipoContactoEdit,
   },
   {
     key: "motivos-perdida",

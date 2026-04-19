@@ -520,6 +520,7 @@ const FichaFieldsContent = () => {
           source="contacto_id"
           reference="crm/contactos"
           label="Contacto propietario"
+          filter={{ tipo_id: 1 }}
         >
           <FormSelectFijo
             optionText="nombre_completo"

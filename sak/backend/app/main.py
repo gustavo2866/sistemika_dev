@@ -88,6 +88,7 @@ from app.routers.crm import (
     crm_oportunidad_router,
     crm_evento_router,
     crm_mensaje_router,
+    crm_tipo_contacto_router,
 )
 from app.routers.crm_celular_router import router as crm_celular_router
 from app.routers.meta_webhook_router import router as meta_webhook_router
@@ -196,6 +197,7 @@ app.include_router(propiedades_dashboard_router)
 app.include_router(crm_dashboard_router)
 app.include_router(proyectos_dashboard_router)
 app.include_router(crm_tipo_operacion_router)
+app.include_router(crm_tipo_contacto_router)
 app.include_router(crm_motivo_perdida_router)
 app.include_router(crm_condicion_pago_router)
 app.include_router(crm_tipo_evento_router)

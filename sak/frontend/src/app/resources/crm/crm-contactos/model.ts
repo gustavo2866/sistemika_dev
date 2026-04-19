@@ -19,6 +19,7 @@ export type CRMContacto = {
   red_social?: string | null;
   responsable_id: number;
   responsable_nombre?: string | null;
+  tipo_id?: number | null;
   notas?: string | null;
 };
 
@@ -28,6 +29,7 @@ export type CRMContactoFormValues = {
   email?: string | null;
   red_social?: string | null;
   responsable_id: number | null;
+  tipo_id?: number | null;
   notas?: string | null;
 };
 
@@ -37,6 +39,7 @@ export const CRM_CONTACTO_DEFAULTS: CRMContactoFormValues = {
   email: "",
   red_social: "",
   responsable_id: null,
+  tipo_id: null,
   notas: "",
 };
 
@@ -82,6 +85,11 @@ export const crmContactoSchema = createEntitySchema<
     responsable_id: referenceField({
       required: true,
       resource: "users",
+      labelField: "nombre",
+    }),
+    tipo_id: referenceField({
+      required: true,
+      resource: "crm/catalogos/tipos-contacto",
       labelField: "nombre",
     }),
     notas: stringField({

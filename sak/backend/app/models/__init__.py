@@ -22,6 +22,7 @@ from .crm import (
     CRMMotivoEvento,
     Moneda,
     CRMCatalogoRespuesta,
+    CRMTipoContacto,
     CRMContacto,
     CRMOportunidad,
     CRMOportunidadLogEstado,

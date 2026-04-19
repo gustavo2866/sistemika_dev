@@ -6,7 +6,7 @@ from sqlmodel import Field, Relationship
 from ..base import Base
 
 if TYPE_CHECKING:
-    from .catalogos import CRMOrigenLead
+    from .catalogos import CRMOrigenLead, CRMTipoContacto
     from .oportunidad import CRMOportunidad
     from .mensaje import CRMMensaje
     from ..user import User
@@ -27,10 +27,12 @@ class CRMContacto(Base, table=True):
     red_social: Optional[str] = Field(default=None, max_length=255, description="Usuario/red social")
     # origen_lead_id eliminado
     responsable_id: int = Field(foreign_key="users.id")
+    tipo_id: Optional[int] = Field(default=None, foreign_key="crm_tipos_contacto.id", index=True)
     notas: Optional[str] = Field(default=None, max_length=1000)
 
     # origen_lead eliminado
     responsable: Optional["User"] = Relationship()
+    tipo: Optional["CRMTipoContacto"] = Relationship(back_populates="contactos")
     oportunidades: list["CRMOportunidad"] = Relationship(back_populates="contacto")
     mensajes: list["CRMMensaje"] = Relationship(back_populates="contacto")
 

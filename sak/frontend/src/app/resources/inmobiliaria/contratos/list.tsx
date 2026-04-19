@@ -238,6 +238,11 @@ export const ContratoList = ({
             <ListText source="nombre" />
           </ReferenceField>
         </ListColumn>
+        <ListColumn source="tipo_contrato_id" label="Tipo contrato" className="w-[110px]">
+          <ReferenceField source="tipo_contrato_id" reference="tipos-contrato" link={false}>
+            <ListText source="nombre" />
+          </ReferenceField>
+        </ListColumn>
         <ListColumn source="inquilino_nombre" label="Inquilino" className="w-[100px]">
           <InquilinoCell />
         </ListColumn>

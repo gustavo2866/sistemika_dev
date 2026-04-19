@@ -53,11 +53,19 @@ class CRMMensajeService:
         
         if not nombre or not referencia or not responsable_id:
             raise ValueError("nombre, referencia y responsable_id son obligatorios para crear contacto")
+
+        from sqlmodel import select
+        from app.models.crm.catalogos import CRMTipoContacto
+        tipo_inmobiliaria = session.exec(
+            select(CRMTipoContacto).where(CRMTipoContacto.nombre == "Inmobiliaria")
+        ).first()
+
         payload = {
             "nombre_completo": nombre,
             "telefonos": [referencia] if referencia and "@" not in referencia else [],
             "email": referencia if referencia and "@" in referencia else None,
             "responsable_id": responsable_id,
+            "tipo_id": tipo_inmobiliaria.id if tipo_inmobiliaria else None,
         }
         contacto = crm_contacto_crud.create(session, payload)
         return contacto

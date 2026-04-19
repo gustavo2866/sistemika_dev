@@ -61,6 +61,7 @@ const INMOBILIARIA_SETUP_GROUPS: InmobiliariaSetupGroup[] = [
     items: [
       { key: "tipos-contrato", label: "Tipos" },
       { key: "tipos-actualizacion", label: "Actualizacion" },
+      { key: "contratos-tipo", label: "Clasificacion" },
       { key: "alarmas", label: "Alarmas" },
     ],
   },

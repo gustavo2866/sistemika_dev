@@ -50,6 +50,7 @@ const CRM_SETUP_GROUPS: CRMSetupGroup[] = [
     items: [
       { key: "tipos-operacion", label: "Tipo de operacion" },
       { key: "motivos-perdida", label: "Motivos de perdida" },
+      { key: "tipos-contacto", label: "Tipos de contacto" },
     ],
   },
   {
