@@ -1,6 +1,6 @@
 name: Deploy to GCP Cloud Run Test
 
-on:
+'on':
   push:
     branches:
       - test

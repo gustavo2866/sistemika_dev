@@ -1,6 +1,6 @@
 name: Deploy to GCP Cloud Run
 
-on:
+'on':
   push:
     branches:
       - master
