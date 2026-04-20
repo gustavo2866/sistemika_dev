@@ -2,6 +2,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { TestBanner } from "@/components/test-banner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,17 +24,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const isTest = process.env.NEXT_PUBLIC_ENV === "test" || process.env.NEXT_PUBLIC_API_URL?.includes("test");
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {isTest && (
-          <div className="fixed top-0 left-0 right-0 z-[9999] bg-yellow-400 text-yellow-900 text-center text-xs font-bold py-1">
-            AMBIENTE DE TEST
-          </div>
-        )}
+        <TestBanner />
         <Providers>{children}</Providers>
       </body>
     </html>
