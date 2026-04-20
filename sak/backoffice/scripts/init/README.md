@@ -23,7 +23,7 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 
 ## Módulo: Sistema / Global
 
-### Parámetros — revisar antes de operar
+### Parámetros — revisar antes de operar ((OK))
 
 | Tabla | Descripción |
 |-------|-------------|
@@ -33,7 +33,7 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `centros_costo` | Centros de costo. Definir estructura contable. |
 | `settings` | Configuración clave-valor. Ver claves requeridas abajo. |
 
-#### Settings requeridas
+#### Settings requeridas ((ok))
 
 | Clave | Descripción | Seed |
 |-------|-------------|------|
@@ -41,18 +41,17 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `INM_Dias_Actualizacion` | Días de anticipación para notificar actualización | `15` |
 | `INM_Dias_Vacancia` | Días para considerar una propiedad en vacancia | `30` |
 
-### Datos operativos — limpiar al inicializar
+### Datos operativos — limpiar al inicializar ((Ok))
 
 | Tabla | Descripción |
 |-------|-------------|
 | `webhook_logs` | Log de webhooks entrantes (WhatsApp, etc.) |
-| `item` | Modelo genérico demo/test |
 
 ---
 
 ## Módulo: CRM
 
-### Parámetros — revisar antes de operar
+### Parámetros — revisar antes de operar ((Ok))
 
 | Tabla | Descripción | Observaciones |
 |-------|-------------|---------------|
@@ -64,8 +63,9 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `crm_catalogo_respuestas` | Respuestas rápidas de WhatsApp | Opcional. Cargar templates de respuesta. |
 | `crm_tipos_contacto` | Tipos de contacto: Inmobiliaria, Particular, etc. | Obligatorio. |
 | `monedas` | Catálogo de monedas: USD, ARS, etc. | Obligatorio. |
+| `crm_celulares` | Canales de WhatsApp Business conectados a Meta API | Obligatorio si se usa WhatsApp. Configurar con `meta_celular_id` y número. |
 
-### Datos operativos — limpiar al inicializar
+### Datos operativos — limpiar al inicializar ((OK))
 
 | Tabla | Descripción |
 |-------|-------------|
@@ -74,13 +74,12 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `crm_eventos` | Eventos por oportunidad |
 | `crm_mensajes` | Mensajes WhatsApp recibidos/enviados |
 | `crm_oportunidad_log_estado` | Log de cambios de estado de oportunidades |
-| `crm_celulares` | Números de celular registrados |
 
 ---
 
 ## Módulo: Inmobiliaria
 
-### Parámetros — revisar antes de operar
+### Parámetros — revisar antes de operar ((OK))
 
 | Tabla | Descripción | Observaciones |
 |-------|-------------|---------------|
@@ -89,6 +88,8 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `tipos_actualizacion` | ICL, IPC, Fijo, etc. | Obligatorio para contratos. |
 | `propiedades_status` | Estados: Disponible, Alquilada, En venta, etc. | Obligatorio. |
 | `servicios_tipo` | Agua, Luz, Gas, Expensas, etc. | Recomendado. |
+| `propietarios` | Propietarios registrados | Cargar antes de crear propiedades. |
+| `emprendimientos` | Proyectos/emprendimientos inmobiliarios | Cargar los emprendimientos existentes. |
 
 ### Datos operativos — limpiar al inicializar
 
@@ -97,8 +98,6 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `propiedades` | Portfolio de propiedades gestionadas |
 | `propiedades_log_status` | Historial de cambios de estado por propiedad |
 | `propiedades_servicios` | Servicios asociados a cada propiedad |
-| `propietarios` | Propietarios registrados |
-| `emprendimientos` | Proyectos inmobiliarios |
 | `contratos` | Contratos de alquiler/comodato vigentes e históricos |
 | `contratos_archivos` | Archivos adjuntos a contratos |
 
@@ -106,7 +105,7 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 
 ## Módulo: Compras (Purchase Orders)
 
-### Parámetros — revisar antes de operar
+### Parámetros — revisar antes de operar ((OK))
 
 | Tabla | Descripción | Observaciones |
 |-------|-------------|---------------|
@@ -121,12 +120,12 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 | `tax_profiles` | Perfiles de configuración de impuestos (IVA, etc.) | Revisar alícuotas. |
 | `tax_profile_details` | Detalle de alícuotas por perfil | Revisar según jurisdicción. |
 | `adm_conceptos` | Conceptos contables/administrativos | Revisar y ampliar. |
+| `tipos_operacion` | Tipos de operación fiscal: compra, venta, etc. | Requerido por facturas. Incluye configuración de IVA y cuenta contable. |
+| `proveedores` | Proveedores dados de alta | Cargar antes de crear órdenes de compra. |
 
-### Datos operativos — limpiar al inicializar
+### Datos operativos — limpiar al inicializar ((OK))
 
 | Tabla | Descripción |
-|-------|-------------|
-| `proveedores` | Proveedores dados de alta |
 | `po_orders` | Órdenes de compra emitidas |
 | `po_order_details` | Líneas de detalle por orden |
 | `po_order_status_log` | Log de cambios de estado de órdenes |
@@ -144,17 +143,20 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 
 ## Módulo: Proyectos (Constructora)
 
-### Parámetros — revisar antes de operar
+### Parámetros — revisar antes de operar ((Ok))
 
 > Este módulo no tiene tablas de parámetros propias. Depende de `centros_costo`, `users` y `crm_oportunidades`.
 
-### Datos operativos — limpiar al inicializar
+| Tabla | Descripción | Observaciones |
+|-------|-------------|---------------|
+| `proy_fases` | Fases estándar del ciclo de un proyecto | Cargar las fases base antes de crear proyectos. |
+
+### Datos operativos — limpiar al inicializar ((Ok))
 
 | Tabla | Descripción |
 |-------|-------------|
 | `proyectos` | Proyectos en curso o cerrados |
 | `proyecto_avance` | Hitos de avance por proyecto |
-| `proy_fases` | Fases definidas dentro de cada proyecto |
 | `proy_presupuestos` | Ítems de presupuesto por proyecto |
 | `partes_diario` | Partes diarios de obra |
 | `partes_diario_detalles` | Líneas de detalle por parte diario |
@@ -172,67 +174,11 @@ Guía de referencia para inicializar un ambiente nuevo (test, staging, cliente).
 
 ---
 
-## Resumen general
+## Tablas excluidas de esta guía
 
-| | Cant. |
-|--|--|
-| Tablas de **parámetros** (revisar/cargar) | 26 |
-| Tablas de **datos operativos** (limpiar) | 37 |
-| Vistas SQL | 1 |
-| **Total** | **64** |
+| Tabla | Motivo |
+|-------|--------|
+| `item` | Tabla scaffold de demo. No se usa en producción. |
+| `vw_kpis_proyectos_po_orders` | Vista SQL de solo lectura. No requiere carga de datos. |
 
 ---
-
-## SQL de limpieza de datos operativos
-
-> ⚠️ Ejecutar SOLO en ambiente de inicialización. Orden respeta FK constraints.
-
-```sql
--- RRHH
-TRUNCATE TABLE tareas CASCADE;
-TRUNCATE TABLE nominas CASCADE;
-
--- Proyectos
-TRUNCATE TABLE partes_diario_detalles CASCADE;
-TRUNCATE TABLE partes_diario CASCADE;
-TRUNCATE TABLE proy_presupuestos CASCADE;
-TRUNCATE TABLE proy_fases CASCADE;
-TRUNCATE TABLE proyecto_avance CASCADE;
-TRUNCATE TABLE proyectos CASCADE;
-
--- Compras
-TRUNCATE TABLE po_invoice_taxes CASCADE;
-TRUNCATE TABLE po_invoice_detalles CASCADE;
-TRUNCATE TABLE po_invoices CASCADE;
-TRUNCATE TABLE po_order_status_log CASCADE;
-TRUNCATE TABLE po_orders_archivos CASCADE;
-TRUNCATE TABLE po_order_details CASCADE;
-TRUNCATE TABLE po_orders CASCADE;
-TRUNCATE TABLE proveedores CASCADE;
-TRUNCATE TABLE factura_impuestos CASCADE;
-TRUNCATE TABLE factura_detalles CASCADE;
-TRUNCATE TABLE facturas CASCADE;
-TRUNCATE TABLE comprobantes CASCADE;
-TRUNCATE TABLE cotizacion_moneda CASCADE;
-
--- Inmobiliaria
-TRUNCATE TABLE contratos_archivos CASCADE;
-TRUNCATE TABLE contratos CASCADE;
-TRUNCATE TABLE propiedades_servicios CASCADE;
-TRUNCATE TABLE propiedades_log_status CASCADE;
-TRUNCATE TABLE emprendimientos CASCADE;
-TRUNCATE TABLE propietarios CASCADE;
-TRUNCATE TABLE propiedades CASCADE;
-
--- CRM
-TRUNCATE TABLE crm_oportunidad_log_estado CASCADE;
-TRUNCATE TABLE crm_celulares CASCADE;
-TRUNCATE TABLE crm_mensajes CASCADE;
-TRUNCATE TABLE crm_eventos CASCADE;
-TRUNCATE TABLE crm_oportunidades CASCADE;
-TRUNCATE TABLE crm_contactos CASCADE;
-
--- Sistema
-TRUNCATE TABLE webhook_logs CASCADE;
-TRUNCATE TABLE item CASCADE;
-```
