@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useFormContext, useWatch } from "react-hook-form";
+import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { required, useGetOne, useRecordContext } from "ra-core";
 import { useLocation } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FileText, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
+import { Copy, FileText, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
@@ -68,6 +68,7 @@ import {
   useContratoArchivoUpdate,
   useDefaultLugarCelebracion,
   useDefaultTipoContratoId,
+  useInquilinoDesdeContacto,
 } from "./form_hooks";
 import {
   ContratoAccionesDialogs,
@@ -122,6 +123,7 @@ const renderContratoSectionVariant = ({
   title,
   description,
   actions,
+  wrapActionsMenu = true,
   persistKey,
   defaultOpen = true,
   readOnly = false,
@@ -131,27 +133,32 @@ const renderContratoSectionVariant = ({
   title: string;
   description?: string;
   actions?: ReactNode;
+  wrapActionsMenu?: boolean;
   persistKey?: string;
   defaultOpen?: boolean;
   readOnly?: boolean;
   children: ReactNode;
 }) => {
-  const actionsMenu = actions ? <ContratoSectionActionsMenu>{actions}</ContratoSectionActionsMenu> : undefined;
+  const resolvedActions = actions
+    ? wrapActionsMenu
+      ? <ContratoSectionActionsMenu>{actions}</ContratoSectionActionsMenu>
+      : actions
+    : undefined;
 
   if (variant === "panel") {
     return (
-      <FormSectionPanel title={title} description={description} actions={actionsMenu}>
+      <FormSectionPanel title={title} description={description} actions={resolvedActions}>
         {children}
       </FormSectionPanel>
     );
   }
 
   if (variant === "accordion") {
-    if (!actionsMenu) return children;
+    if (!resolvedActions) return children;
 
     return (
       <div className="space-y-2">
-        <div className="flex justify-end">{actionsMenu}</div>
+        <div className="flex justify-end">{resolvedActions}</div>
         {children}
       </div>
     );
@@ -161,7 +168,7 @@ const renderContratoSectionVariant = ({
     <SectionBaseTemplate
       title={title}
       main={children}
-      actions={actions}
+      actions={resolvedActions}
       defaultOpen={defaultOpen}
       readOnly={readOnly}
       persistKey={persistKey}
@@ -213,7 +220,8 @@ const ContratoLugarCelebracionDefaultSync = () => {
 
 const ContratoFechaRenovacionSync = () => {
   const record = useRecordContext<Contrato>();
-  const { setValue } = useFormContext<ContratoFormValues>();
+  const { control, setValue } = useFormContext<ContratoFormValues>();
+  const { dirtyFields } = useFormState({ control });
   const fechaInicioValue = useWatch({ name: "fecha_inicio" }) as string | null | undefined;
   const tipoActualizacionValue = useWatch({ name: "tipo_actualizacion_id" }) as unknown;
   const fechaRenovacionValue = useWatch({ name: "fecha_renovacion" }) as string | null | undefined;
@@ -221,18 +229,23 @@ const ContratoFechaRenovacionSync = () => {
   const cantidadMeses = useCantidadMesesTipoActualizacion(tipoActualizacionId);
 
   useEffect(() => {
-    if (record?.id || !tipoActualizacionId) return;
+    if (readOnlyOrManualOverride(record?.id, dirtyFields?.fecha_renovacion)) return;
 
     const nextFechaRenovacion = calculateFechaRenovacionFromInicio(
       fechaInicioValue,
       cantidadMeses,
     );
-    if (!nextFechaRenovacion) return;
+    if (!nextFechaRenovacion) {
+      if (!fechaRenovacionValue) return;
+      setValue("fecha_renovacion", "", { shouldDirty: false });
+      return;
+    }
     if (String(fechaRenovacionValue ?? "") === nextFechaRenovacion) return;
 
     setValue("fecha_renovacion", nextFechaRenovacion, { shouldDirty: false });
   }, [
     cantidadMeses,
+    dirtyFields?.fecha_renovacion,
     fechaInicioValue,
     fechaRenovacionValue,
     record?.id,
@@ -242,6 +255,11 @@ const ContratoFechaRenovacionSync = () => {
 
   return null;
 };
+
+const readOnlyOrManualOverride = (
+  recordId?: number,
+  fechaRenovacionDirty?: unknown,
+) => Boolean(recordId) || Boolean(fechaRenovacionDirty);
 
 const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
   const record = useRecordContext<Contrato>();
@@ -372,19 +390,19 @@ const PersonaFields = ({ prefix, readOnly = false }: { prefix: string; readOnly?
   return (
   <div className="grid gap-2 md:grid-cols-3">
     <FormText
-      source={`${prefix}_nombre`}
-      label="Nombre"
-      widthClass="w-full"
-      maxLength={120}
-      validate={isInquilino ? required("El campo Nombre es obligatorio") : undefined}
-      readOnly={readOnly}
-    />
-    <FormText
       source={`${prefix}_apellido`}
       label="Apellido"
       widthClass="w-full"
       maxLength={120}
       validate={isInquilino ? required("El campo Apellido es obligatorio") : undefined}
+      readOnly={readOnly}
+    />
+    <FormText
+      source={`${prefix}_nombre`}
+      label="Nombre"
+      widthClass="w-full"
+      maxLength={120}
+      validate={isInquilino ? required("El campo Nombre es obligatorio") : undefined}
       readOnly={readOnly}
     />
     <FormText source={`${prefix}_dni`} label="DNI" widthClass="w-full" maxLength={20} readOnly={readOnly} />
@@ -425,6 +443,37 @@ const GaranteFields = ({ readOnly = false }: { readOnly?: boolean }) => (
     <GaranteGroup title="Garante 2" prefix="garante2" readOnly={readOnly} />
   </div>
 );
+
+const InquilinoHeaderActions = ({ readOnly = false }: { readOnly?: boolean }) => {
+  const record = useRecordContext<Contrato>();
+  const propiedadValue = useWatch({ name: "propiedad_id" }) as unknown;
+  const propiedadId = resolveNumericId(propiedadValue) ?? resolveNumericId(record?.propiedad_id);
+  const { canCompletar, completar, contactoNombre, isLoading } =
+    useInquilinoDesdeContacto(propiedadId);
+
+  return (
+    <div className="flex items-center justify-end gap-0">
+      <span className="text-[11px] font-medium text-muted-foreground">Contacto</span>
+      <div className="flex h-6 min-w-0 items-center rounded-md border border-border/60 bg-muted/15 px-1 text-sm text-foreground md:w-[132px]">
+        <span className="truncate">{contactoNombre}</span>
+      </div>
+      {!readOnly ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 text-muted-foreground"
+          onClick={completar}
+          disabled={!canCompletar || isLoading}
+          title="Completar inquilino desde contacto"
+          aria-label="Completar inquilino desde contacto"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </Button>
+      ) : null}
+    </div>
+  );
+};
 
 // ── Archivos inline content ───────────────────────────────────────────────────
 
@@ -631,6 +680,8 @@ const InquilinoSection = ({
     variant,
     title: "Inquilino",
     description: "Datos del inquilino principal.",
+    actions: <InquilinoHeaderActions readOnly={readOnly} />,
+    wrapActionsMenu: false,
     persistKey: "contratos-inquilino",
     readOnly,
     children: <PersonaFields prefix="inquilino" readOnly={readOnly} />,

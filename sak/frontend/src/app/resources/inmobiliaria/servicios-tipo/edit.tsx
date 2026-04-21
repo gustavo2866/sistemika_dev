@@ -15,6 +15,7 @@ export const ServicioTipoEdit = ({
   <Edit
     id={id}
     redirect={redirect ?? "list"}
+    mutationMode="pessimistic"
     showBreadcrumb={!embedded}
     showHeader={!embedded}
     title={<ResourceTitle icon={Globe} text="Editar tipo de servicio" />}

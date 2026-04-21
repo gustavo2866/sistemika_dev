@@ -55,6 +55,15 @@ const useReturnTo = () => {
   }, [location.search]);
 };
 
+const useReturnMode = () => {
+  const location = useLocation();
+
+  return useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("returnMode");
+  }, [location.search]);
+};
+
 const PropiedadDefaultSync = () => {
   const defaultPropiedadId = useDefaultPropiedadId();
   const { setValue } = useFormContext<PropiedadServicioFormValues>();
@@ -80,6 +89,7 @@ const PropiedadServicioFormContent = () => {
   const lockPropiedad = useLockPropiedad();
   const navigate = useNavigate();
   const returnTo = useReturnTo();
+  const returnMode = useReturnMode();
   const defaultValues = useMemo(
     () =>
       record?.id
@@ -91,8 +101,12 @@ const PropiedadServicioFormContent = () => {
     [defaultPropiedadId, record?.id],
   );
   const handleCancel = () => {
+    if (returnMode === "history") {
+      navigate(-1);
+      return;
+    }
     if (returnTo) {
-      navigate(returnTo);
+      navigate(returnTo, { replace: true });
       return;
     }
     navigate(-1);

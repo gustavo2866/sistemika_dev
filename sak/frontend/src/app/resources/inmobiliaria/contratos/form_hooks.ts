@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useGetList, useNotify, useRefresh } from "ra-core";
+import { useFormContext } from "react-hook-form";
+import { useGetList, useGetOne, useNotify, useRefresh } from "ra-core";
 import { apiUrl } from "@/lib/dataProvider";
 import { resolveNumericId } from "@/components/forms/form_order";
+import type { ContratoFormValues } from "./model";
 
 type SettingRecord = {
   id: number;
@@ -20,6 +22,18 @@ type TipoActualizacionRecord = {
   id: number;
   nombre?: string | null;
   cantidad_meses?: number | null;
+};
+
+type PropiedadContactoRecord = {
+  id: number;
+  contacto_id?: unknown;
+};
+
+type CRMContactoRecord = {
+  id: number;
+  nombre_completo?: string | null;
+  telefonos?: unknown;
+  email?: string | null;
 };
 
 const getAuthHeaders = (): Record<string, string> => {
@@ -483,4 +497,94 @@ export const useContratoArchivoUpdate = () => {
   };
 
   return { updateArchivo, loading };
+};
+
+const splitNombreCompleto = (nombreCompleto?: string | null) => {
+  const parts = String(nombreCompleto ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { nombre: "", apellido: "" };
+  }
+
+  if (parts.length === 1) {
+    return { nombre: parts[0], apellido: "" };
+  }
+
+  return {
+    nombre: parts.slice(0, -1).join(" "),
+    apellido: parts[parts.length - 1],
+  };
+};
+
+const getTelefonoPrincipal = (telefonos?: unknown) => {
+  if (Array.isArray(telefonos)) {
+    const first = telefonos.find((value) => String(value ?? "").trim());
+    return first ? String(first).trim() : "";
+  }
+
+  if (telefonos && typeof telefonos === "object") {
+    const indexed = telefonos as Record<string, unknown>;
+    const first = indexed["0"];
+    return first ? String(first).trim() : "";
+  }
+
+  if (typeof telefonos === "string") {
+    return telefonos.trim();
+  }
+
+  return "";
+};
+
+export const useInquilinoDesdeContacto = (propiedadId?: number | null) => {
+  const notify = useNotify();
+  const { setValue } = useFormContext<ContratoFormValues>();
+
+  const { data: propiedad } = useGetOne<PropiedadContactoRecord>(
+    "propiedades",
+    { id: propiedadId ?? 0 },
+    { enabled: Boolean(propiedadId) },
+  );
+
+  const contactoId = resolveNumericId(propiedad?.contacto_id) ?? null;
+
+  const { data: contacto, isLoading } = useGetOne<CRMContactoRecord>(
+    "crm/contactos",
+    { id: contactoId ?? 0 },
+    { enabled: Boolean(contactoId) },
+  );
+
+  const contactoNombre = contacto?.nombre_completo?.trim() || "Sin asignar";
+
+  const completar = useCallback(() => {
+    if (!contactoId || !contacto) {
+      notify("La propiedad no tiene un contacto asociado", { type: "warning" });
+      return;
+    }
+
+    const { nombre, apellido } = splitNombreCompleto(contacto.nombre_completo);
+    const telefono = getTelefonoPrincipal(contacto.telefonos);
+
+    setValue("inquilino_nombre", nombre, { shouldDirty: true, shouldValidate: true });
+    setValue("inquilino_apellido", apellido, { shouldDirty: true, shouldValidate: true });
+    setValue("inquilino_email", contacto.email?.trim() || "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue("inquilino_telefono", telefono, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+
+    notify("Datos del inquilino completados desde el contacto", { type: "info" });
+  }, [contacto, contactoId, notify, setValue]);
+
+  return {
+    contactoNombre,
+    canCompletar: Boolean(contactoId && contacto),
+    completar,
+    isLoading,
+  };
 };

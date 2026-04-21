@@ -103,7 +103,7 @@ export const PROPIETARIO_DEFAULT: Partial<PropietarioFormValues> = {
   nombre: "",
   dni: "",
   cuit: "",
-  tipo_persona: undefined,
+  tipo_persona: "fisica",
   domicilio: "",
   localidad: "",
   provincia: "",

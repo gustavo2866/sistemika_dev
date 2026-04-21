@@ -16,6 +16,7 @@ export const PropiedadServicioCreate = ({
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
+  const returnMode = params.get("returnMode");
 
   return (
     <Create
@@ -27,7 +28,15 @@ export const PropiedadServicioCreate = ({
         redirect
           ? undefined
           : {
-              onSuccess: () => navigate(returnTo ?? "/propiedades-servicios"),
+              onSuccess: () => {
+                if (returnMode === "history") {
+                  navigate(-1);
+                  return;
+                }
+                navigate(returnTo ?? "/propiedades-servicios", {
+                  replace: Boolean(returnTo),
+                });
+              },
             }
       }
     >
