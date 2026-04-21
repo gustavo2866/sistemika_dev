@@ -122,6 +122,7 @@ const HIDDEN_RESOURCES = [
   "propiedades-servicios",
   "settings",
   "crm/catalogos/respuestas",
+  "crm/catalogos/tipos-contacto",
   "crm/chat",
   "crm/celulares",
   "crm/contactos",

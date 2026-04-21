@@ -572,6 +572,7 @@ const PropiedadServicioListContent = ({
     params.set("propiedad_id", String(propiedadId));
     params.set("lock_propiedad", "1");
     params.set("returnTo", returnTo);
+    params.set("returnMode", "history");
     return `/propiedades-servicios/create?${params.toString()}`;
   }, [createTo, embedded, propiedadId, returnTo]);
   const resolvedRowClick = useMemo(() => {
@@ -579,7 +580,7 @@ const PropiedadServicioListContent = ({
     if (!embedded || !propiedadId || rowClick !== "edit") return rowClick;
 
     return (id: string | number) =>
-      `/propiedades-servicios/${id}?returnTo=${encodeURIComponent(returnTo)}`;
+      `/propiedades-servicios/${id}?returnTo=${encodeURIComponent(returnTo)}&returnMode=history`;
   }, [embedded, propiedadId, returnTo, rowClick]);
   const resolvedFilterDefaults = filterDefaultValues;
   const resolvedPermanentFilter = permanentFilter;

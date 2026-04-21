@@ -25,7 +25,25 @@ export const ContratoCreate = ({
         redirect
           ? undefined
           : {
-              onSuccess: () => navigate(returnTo ?? "/contratos"),
+              onSuccess: (data) => {
+                const createdId = data?.id;
+
+                if (createdId != null) {
+                  const nextParams = new URLSearchParams();
+                  if (returnTo) {
+                    nextParams.set("returnTo", returnTo);
+                  }
+                  const nextSearch = nextParams.toString();
+
+                  navigate(`/contratos/${createdId}${nextSearch ? `?${nextSearch}` : ""}`, {
+                    replace: true,
+                    state: returnTo ? { returnTo } : undefined,
+                  });
+                  return;
+                }
+
+                navigate(returnTo ?? "/contratos", { replace: true });
+              },
             }
       }
     >

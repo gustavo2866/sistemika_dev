@@ -17,11 +17,13 @@ export const PropiedadServicioEdit = ({
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
+  const returnMode = params.get("returnMode");
 
   return (
     <Edit
       id={id}
       redirect={redirect ?? false}
+      mutationMode="pessimistic"
       showBreadcrumb={!embedded}
       showHeader={!embedded}
       title={<ResourceTitle icon={Zap} text="Editar servicio de propiedad" />}
@@ -29,8 +31,15 @@ export const PropiedadServicioEdit = ({
         redirect
           ? undefined
           : {
-              onSuccess: () =>
-                navigate(returnTo ?? "/propiedades-servicios", { replace: true }),
+              onSuccess: () => {
+                if (returnMode === "history") {
+                  navigate(-1);
+                  return;
+                }
+                navigate(returnTo ?? "/propiedades-servicios", {
+                  replace: true,
+                });
+              },
             }
       }
     >
