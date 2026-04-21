@@ -274,7 +274,6 @@ import {
 } from "@/app/resources/configuracion/settings";
 import {
   CRMContactoList,
-  CRMContactoListAgenda,
   CRMContactoCreate,
   CRMContactoEdit,
   CRMContactoShow,
@@ -829,7 +828,7 @@ const AdminApp = () => {
       />
       <Resource
         name="crm/contactos"
-        list={CRMContactoListAgenda}
+        list={CRMContactoList}
         create={CRMContactoCreate}
         edit={CRMContactoEdit}
         show={CRMContactoShow}

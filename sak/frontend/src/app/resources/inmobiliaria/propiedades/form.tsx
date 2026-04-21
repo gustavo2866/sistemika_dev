@@ -21,7 +21,6 @@ import {
   FormSectionsDesktopLayout,
   FormSectionsMobileAccordion,
   type FormSectionsDesktopLayoutItem,
-  FormReferenceAutocomplete,
   FormSelect,
   FormSelectFijo,
   FormText,
@@ -58,6 +57,7 @@ import {
   excludeMantenimientoTipoOperacion,
   getVisiblePropiedadSectionIds,
   isTipoOperacionAlquiler,
+  isTipoOperacionVenta,
 } from "./model";
 import { CabeceraActionsMenu } from "./cabecera_actions_menu";
 import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "./dialog_styles";
@@ -276,7 +276,11 @@ const PropiedadStickyFooter = () => {
 };
 
 // Renderiza el formulario principal de propiedades y monta sus providers locales.
-export const PropiedadForm = () => {
+export const PropiedadForm = ({
+  mode = "edit",
+}: {
+  mode?: "create" | "edit";
+}) => {
   return (
     <div
       id="propiedad-form-shell"
@@ -295,7 +299,7 @@ export const PropiedadForm = () => {
           <RowActionDialogProvider>
             <PropiedadCabeceraSection />
           </RowActionDialogProvider>
-          <PropiedadFormSectionsContent />
+          <PropiedadFormSectionsContent mode={mode} />
         </PropiedadRelatedCreateProvider>
       </SimpleForm>
     </div>
@@ -318,10 +322,14 @@ const PropiedadCabeceraSection = () => {
 };
 
 // Renderiza el conjunto de secciones del formulario en desktop o mobile.
-const PropiedadFormSectionsContent = () => {
+const PropiedadFormSectionsContent = ({
+  mode,
+}: {
+  mode: "create" | "edit";
+}) => {
   const location = useLocation();
   const isDesktopLayout = useMinWidth(DESKTOP_LAYOUT_BREAKPOINT);
-  const availableSections = useAvailablePropiedadSections();
+  const availableSections = useAvailablePropiedadSections(mode);
   const activeSectionStorageKey = `${PROPIEDAD_ACTIVE_SECTION_STORAGE_KEY_PREFIX}:${location.pathname}`;
   const [activeSection, setActiveSection] = usePersistedActiveSection<PropiedadDesktopSectionId>({
     storageKey: activeSectionStorageKey,
@@ -355,6 +363,7 @@ const PropiedadFormSectionsContent = () => {
 const CabeceraContratoResumen = () => {
   const record = useRecordContext<Propiedad>();
   const tiposOperacion = useTiposOperacionCatalog();
+  const { contactoRefreshKey } = usePropiedadRelatedCreate();
   const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
   const tipoActualizacionValue = useWatch({ name: "tipo_actualizacion_id" }) as unknown;
   const vencimientoContratoValue = useWatch({
@@ -385,28 +394,44 @@ const CabeceraContratoResumen = () => {
   const fechaRenovacion = fechaRenovacionValue ?? record?.fecha_renovacion ?? null;
 
   return (
-    <div className="grid gap-2 md:grid-cols-[160px_minmax(0,220px)_160px]">
+    <div className="grid gap-2 md:grid-cols-[132px_132px_132px_150px]">
       <FormValue
         label="Fecha Vencimiento"
-        widthClass="w-full"
+        widthClass="w-full md:w-[132px]"
         valueClassName="justify-start text-left"
       >
         {formatPropiedadDisplayDate(vencimientoContrato)}
       </FormValue>
       <FormValue
         label="Tipo actualizacion"
-        widthClass="w-full"
+        widthClass="w-full md:w-[132px]"
         valueClassName="justify-start text-left"
       >
         {tipoActualizacionLabel}
       </FormValue>
       <FormValue
         label="Fecha Actualizacion"
-        widthClass="w-full"
+        widthClass="w-full md:w-[132px]"
         valueClassName="justify-start text-left"
       >
         {formatPropiedadDisplayDate(fechaRenovacion)}
       </FormValue>
+      <ReferenceInput
+        key={`contacto-${contactoRefreshKey}`}
+        source="contacto_id"
+        reference="crm/contactos"
+        label="Contacto"
+        filter={{ tipo_id: 1 }}
+      >
+        <FormSelectFijo
+          optionText="nombre_completo"
+          label="Contacto"
+          widthClass="w-full min-w-0 md:w-[150px] md:min-w-[150px] md:max-w-[150px]"
+          emptyText="Sin asignar"
+          fixedWidth="150px"
+          triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+        />
+      </ReferenceInput>
     </div>
   );
 };
@@ -465,7 +490,6 @@ const CabeceraFields = () => {
           />
         </ReferenceInput>
       </div>
-      <CabeceraContratoResumen />
     </div>
   );
 };
@@ -496,66 +520,70 @@ const FichaFields = () => (
 
 // Renderiza los campos descriptivos y economicos de la ficha.
 const FichaFieldsContent = () => {
-  const { contactoRefreshKey, emprendimientoRefreshKey } = usePropiedadRelatedCreate();
+  const record = useRecordContext<Propiedad>();
+  const { emprendimientoRefreshKey } = usePropiedadRelatedCreate();
+  const tiposOperacion = useTiposOperacionCatalog();
+  const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
+  const currentTipoOperacionId =
+    resolveNumericId(tipoOperacionValue) ?? resolveNumericId(record?.tipo_operacion_id);
+  const selectedTipoOperacion = useMemo(
+    () =>
+      tiposOperacion.find((tipo) => resolveNumericId(tipo?.id) === currentTipoOperacionId) ??
+      record?.tipo_operacion,
+    [currentTipoOperacionId, record?.tipo_operacion, tiposOperacion],
+  );
+  const isAlquiler = isTipoOperacionAlquiler(selectedTipoOperacion ?? undefined);
+  const isVenta = isTipoOperacionVenta(selectedTipoOperacion ?? undefined);
 
   return (
     <div className="space-y-2">
-      <div className="grid gap-2 md:items-start md:grid-cols-[minmax(0,1.2fr)_150px_110px_170px]">
-        <ReferenceInput
-          key={`emprendimiento-${emprendimientoRefreshKey}`}
-          source="emprendimiento_id"
-          reference="emprendimientos"
-          label="Emprendimiento"
-        >
-          <FormSelect
-            optionText="nombre"
-            label="Emprendimiento"
-            widthClass="w-full min-w-0"
-            emptyText="Sin asignar"
-            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
-          />
-        </ReferenceInput>
-        <ReferenceInput
-          key={`contacto-${contactoRefreshKey}`}
-          source="contacto_id"
-          reference="crm/contactos"
-          label="Contacto propietario"
-          filter={{ tipo_id: 1 }}
-        >
-          <FormSelectFijo
-            optionText="nombre_completo"
-            label="Contacto propietario"
-            widthClass="w-full min-w-0"
-            emptyText="Sin asignar"
-            fixedWidth="150px"
-            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
-          />
-        </ReferenceInput>
-        <FormNumber source="ambientes" label="Ambientes" min={0} widthClass="w-full min-w-0" />
-        <FormNumber
-          source="metros_cuadrados"
-          label="Metros cuadrados"
-          min={0}
-          step={0.1}
-          widthClass="w-full min-w-0"
-        />
-        <FormNumber source="costo_propiedad" label="Costo" step="any" min={0} widthClass="w-full min-w-0" />
-        <ReferenceInput source="costo_moneda_id" reference="monedas" label="Moneda">
-          <FormSelect
-            optionText="nombre"
-            label="Moneda"
-            widthClass="w-full min-w-0"
-            emptyText="Sin asignar"
-            triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
-          />
-        </ReferenceInput>
-      </div>
       <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
         <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           Direccion
         </div>
         <DireccionFields />
       </div>
+      {isAlquiler ? (
+        <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Alquiler
+          </div>
+          <CabeceraContratoResumen />
+        </div>
+      ) : null}
+      {isVenta ? (
+        <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Cotizacion
+          </div>
+          <div className="grid gap-2 md:items-start md:grid-cols-[minmax(0,1.2fr)_170px_150px]">
+            <ReferenceInput
+              key={`emprendimiento-${emprendimientoRefreshKey}`}
+              source="emprendimiento_id"
+              reference="emprendimientos"
+              label="Emprendimiento"
+            >
+              <FormSelect
+                optionText="nombre"
+                label="Emprendimiento"
+                widthClass="w-full min-w-0"
+                emptyText="Sin asignar"
+                triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+              />
+            </ReferenceInput>
+            <FormNumber source="costo_propiedad" label="Costo" step="any" min={0} widthClass="w-full min-w-0" />
+            <ReferenceInput source="costo_moneda_id" reference="monedas" label="Moneda">
+              <FormSelect
+                optionText="nombre"
+                label="Moneda"
+                widthClass="w-full min-w-0"
+                emptyText="Sin asignar"
+                triggerProps={{ className: PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME }}
+              />
+            </ReferenceInput>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -640,16 +668,23 @@ const DireccionFields = () => (
     <FormText source="provincia" label="Provincia" widthClass="w-full" maxLength={100} />
     <FormText source="codigo_postal" label="Codigo postal" widthClass="w-full" maxLength={20} />
     <FormText
-      source="matricula_catastral"
-      label="Matricula catastral"
-      widthClass="w-full md:col-span-2"
-      maxLength={200}
-    />
-    <FormText
       source="padron"
       label="Padron"
-      widthClass="w-full md:col-span-2"
+      widthClass="w-full min-w-0"
       maxLength={200}
+    />
+    <FormNumber
+      source="ambientes"
+      label="Ambientes"
+      min={0}
+      widthClass="w-full min-w-0 md:w-[88px] md:max-w-[88px]"
+    />
+    <FormNumber
+      source="metros_cuadrados"
+      label="Metros 2"
+      min={0}
+      step={0.1}
+      widthClass="w-full min-w-0 md:w-[104px] md:max-w-[104px]"
     />
   </div>
 );
@@ -734,7 +769,7 @@ const DatosContratoSection = ({
 };
 
 // Calcula las secciones visibles segun el tipo de operacion seleccionado.
-const useAvailablePropiedadSections = () => {
+const useAvailablePropiedadSections = (mode: "create" | "edit") => {
   const record = useRecordContext<Propiedad>();
   const tiposOperacion = useTiposOperacionCatalog();
   const tipoOperacionValue = useWatch({ name: "tipo_operacion_id" }) as unknown;
@@ -748,9 +783,13 @@ const useAvailablePropiedadSections = () => {
   const isAlquiler = isTipoOperacionAlquiler(selectedTipoOperacion);
 
   return useMemo(() => {
+    if (mode === "create") {
+      return getPropiedadSectionDefinitions().filter((section) => section.id === "ficha");
+    }
+
     const visibleIds = getVisiblePropiedadSectionIds(isAlquiler);
     return getPropiedadSectionDefinitions().filter((section) => visibleIds.includes(section.id));
-  }, [isAlquiler]);
+  }, [isAlquiler, mode]);
 };
 
 // Inserta el listado de servicios vinculado a la propiedad actual.

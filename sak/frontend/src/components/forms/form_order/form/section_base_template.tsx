@@ -131,7 +131,7 @@ export const SectionBaseTemplate = ({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-6 w-6 -mb-1 items-center justify-center rounded-full leading-none transition",
+                  "inline-flex h-6 w-6 items-center justify-center rounded-full leading-none transition",
                   showOptional
                     ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]"
                     : "text-blue-600 hover:text-blue-700 hover:bg-blue-50/60",

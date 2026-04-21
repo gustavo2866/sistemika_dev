@@ -42,7 +42,7 @@ export const PropiedadEdit = () => {
         },
       }}
     >
-      <PropiedadForm />
+      <PropiedadForm mode="edit" />
     </Edit>
   );
 };

@@ -8,13 +8,11 @@ import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
 import {
   FormOrderListRowActions,
-  IdentityFilterSync,
   ListPaginator,
   ListText,
   ResponsiveDataTable,
   TextListColumn,
   buildListFilters,
-  useIdentityFilterDefaults,
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_STANDARD_PLUS } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
@@ -112,9 +110,6 @@ export const CRMContactoList = ({
   rowClick = "edit",
   perPage = 5,
 }: CRMContactoListProps = {}) => {
-  const { identityId, defaultFilters } = useIdentityFilterDefaults({
-    source: "responsable_id",
-  });
   const location = useLocation();
   const returnTo = getReturnToFromLocation(location);
 
@@ -128,13 +123,9 @@ export const CRMContactoList = ({
       pagination={<ListPaginator />}
       sort={{ field: "nombre_completo", order: "ASC" }}
       containerClassName={LIST_CONTAINER_STANDARD_PLUS}
-      filterDefaultValues={defaultFilters}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
     >
-      {identityId ? (
-        <IdentityFilterSync identityId={identityId} source="responsable_id" />
-      ) : null}
       <ResponsiveDataTable
         rowClick={rowClick}
         mobileConfig={{

@@ -22,22 +22,41 @@ export const PropiedadCreate = () => {
       redirect={false}
       title={<ResourceTitle icon={Home} text="Crear propiedad" />}
       mutationOptions={{
-        onSuccess: () => {
+        onSuccess: (data) => {
+          const createdId = data?.id;
+
           if (returnTo) {
             const existingReturnMarker = loadDashboardReturnMarker(returnTo);
             saveDashboardReturnMarker(returnTo, {
               ...existingReturnMarker,
               savedAt: Date.now(),
+              propiedadId: createdId ?? existingReturnMarker?.propiedadId,
               refreshAll: true,
             });
-            navigate(returnTo);
+          }
+
+          if (createdId != null) {
+            const nextParams = new URLSearchParams();
+            if (returnTo) {
+              nextParams.set("returnTo", returnTo);
+            }
+            const nextSearch = nextParams.toString();
+            navigate(`/propiedades/${createdId}${nextSearch ? `?${nextSearch}` : ""}`, {
+              replace: true,
+            });
             return;
           }
-          navigate("/propiedades");
+
+          if (returnTo) {
+            navigate(returnTo, { replace: true });
+            return;
+          }
+
+          navigate("/propiedades", { replace: true });
         },
       }}
     >
-      <PropiedadForm />
+      <PropiedadForm mode="create" />
     </Create>
   );
 };

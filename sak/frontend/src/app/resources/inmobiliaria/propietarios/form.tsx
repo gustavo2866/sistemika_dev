@@ -23,50 +23,60 @@ import {
 } from "./model";
 
 const PropietarioMainFields = () => (
-  <div className="flex flex-col gap-2">
-    <div className="grid gap-2 md:grid-cols-2">
-      <FormText
-        source="nombre"
-        label="Nombre"
-        validate={required()}
-        widthClass="w-full"
-        maxLength={PROPIETARIO_VALIDATIONS.NOMBRE_MAX}
-      />
-      <ReferenceInput
-        source="adm_concepto_id"
-        reference={CONCEPTOS_REFERENCE.resource}
-        label="Concepto administrativo"
-        perPage={CONCEPTOS_REFERENCE.limit}
-      >
-        <FormSelect
-          optionText={CONCEPTOS_REFERENCE.labelField}
-          emptyText="Sin concepto"
+  <div className="grid gap-3 md:grid-cols-[minmax(280px,360px)_auto] md:items-end">
+    <FormText
+      source="nombre"
+      label="Nombre"
+      validate={required()}
+      widthClass="w-full md:w-[360px]"
+      maxLength={PROPIETARIO_VALIDATIONS.NOMBRE_MAX}
+    />
+    <FormBoolean
+      source="activo"
+      label="Activo"
+      defaultValue
+      className="self-end pb-1 md:justify-self-start"
+    />
+  </div>
+);
+
+const PropietarioMainOptionalFields = () => (
+  <div className="mt-1 space-y-0">
+    <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+      <div className="grid gap-2 md:grid-cols-2">
+        <ReferenceInput
+          source="adm_concepto_id"
+          reference={CONCEPTOS_REFERENCE.resource}
+          label="Concepto administrativo"
+          perPage={CONCEPTOS_REFERENCE.limit}
+        >
+          <FormSelect
+            optionText={CONCEPTOS_REFERENCE.labelField}
+            emptyText="Sin concepto"
+            widthClass="w-full"
+          />
+        </ReferenceInput>
+        <ReferenceInput
+          source="centro_costo_id"
+          reference={CENTROS_COSTO_REFERENCE.resource}
+          label="Centro de costo"
+          perPage={CENTROS_COSTO_REFERENCE.limit}
+        >
+          <FormSelect
+            optionText={CENTROS_COSTO_REFERENCE.labelField}
+            emptyText="Sin centro de costo"
+            widthClass="w-full"
+          />
+        </ReferenceInput>
+        <FormTextarea
+          source="comentario"
+          label="Comentario"
+          rows={3}
           widthClass="w-full"
+          maxLength={PROPIETARIO_VALIDATIONS.COMENTARIO_MAX}
+          className="md:col-span-2"
         />
-      </ReferenceInput>
-      <ReferenceInput
-        source="centro_costo_id"
-        reference={CENTROS_COSTO_REFERENCE.resource}
-        label="Centro de costo"
-        perPage={CENTROS_COSTO_REFERENCE.limit}
-      >
-        <FormSelect
-          optionText={CENTROS_COSTO_REFERENCE.labelField}
-          emptyText="Sin centro de costo"
-          widthClass="w-full"
-        />
-      </ReferenceInput>
-      <FormTextarea
-        source="comentario"
-        label="Comentario"
-        rows={3}
-        widthClass="w-full"
-        maxLength={PROPIETARIO_VALIDATIONS.COMENTARIO_MAX}
-        className="md:col-span-2"
-      />
-    </div>
-    <div className="flex flex-wrap gap-4 pt-1">
-      <FormBoolean source="activo" label="Activo" defaultValue />
+      </div>
     </div>
   </div>
 );
@@ -137,12 +147,13 @@ export const PropietarioForm = () => (
     <SectionBaseTemplate
       title="Datos del propietario"
       main={<PropietarioMainFields />}
+      optional={<PropietarioMainOptionalFields />}
       defaultOpen
     />
     <SectionBaseTemplate
       title="Datos de contacto"
       main={<PropietarioContactoFields />}
-      defaultOpen={false}
+      defaultOpen
     />
   </SimpleForm>
 );
