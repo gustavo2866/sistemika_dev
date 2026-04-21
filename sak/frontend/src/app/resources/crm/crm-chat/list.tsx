@@ -2,16 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCreatePath, useGetIdentity, useNotify } from "ra-core";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Bell,
-  MessageCircle,
+  ArrowLeft,
   Trash2,
-  Phone,
-  Users,
-  MoreHorizontal,
   Plus,
-  User,
   Search,
 } from "lucide-react";
 
@@ -22,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Confirm } from "@/components/confirm";
 import type { CRMMensaje } from "../crm-mensajes/model";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 import {
   formatMensajeDate,
   formatMensajeTime,
@@ -50,6 +46,7 @@ const getTipoOperacionBadgeClasses = (value: string | null | undefined) => {
 export const CRMChatList = () => {
   const notify = useNotify();
   const navigate = useNavigate();
+  const location = useLocation();
   const createPath = useCreatePath();
   const { data: identity } = useGetIdentity();
   const [loading, setLoading] = useState(false);
@@ -64,6 +61,7 @@ export const CRMChatList = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTargetId, setConfirmTargetId] = useState<number | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const returnTo = getReturnToFromLocation(location);
   const dedupeById = (items: CRMChatConversation[]) => {
     const map = new Map<string, CRMChatConversation>();
     items.forEach((item) => map.set(String(item.id), item));
@@ -170,6 +168,18 @@ export const CRMChatList = () => {
     [conversations]
   );
 
+  const handleBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/dashboard-crm");
+  };
+
   const handleOpen = (conversation: CRMChatConversation) => {
     const path = createPath({ resource: "crm/chat", type: "show", id: conversation.id });
     const params = new URLSearchParams();
@@ -209,8 +219,19 @@ export const CRMChatList = () => {
 
   return (
     <div className="mr-auto flex w-full max-w-xl flex-col gap-3 bg-[#f6f2e8] px-2 pb-24 pt-3 sm:px-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900">Chats</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-7 px-1.5 text-[11px] font-medium text-primary sm:h-8 sm:px-2 sm:text-sm"
+            onClick={handleBack}
+          >
+            <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+            Volver
+          </Button>
+          <h1 className="text-2xl font-semibold text-slate-900">Chats</h1>
+        </div>
         <div className="flex items-center gap-2">
           <ResponsableSelector
             includeTodos={false}
@@ -309,7 +330,6 @@ export const CRMChatList = () => {
                 const preview = mensaje?.contenido?.trim() ?? "Sin mensaje";
                 const timeLabel = mensaje ? formatMensajeTime(mensaje) : "";
                 const dateLabel = mensaje ? formatMensajeDate(mensaje) : "";
-                const isOutgoing = mensaje?.tipo === "salida";
                 const oportunidadId =
                   conversation.oportunidad_id ??
                   mensaje?.oportunidad_id ??

@@ -4,6 +4,7 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine
@@ -14,6 +15,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 os.environ.setdefault("JWT_SECRET", "test-secret")
+
+SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "JSON"  # type: ignore[attr-defined]
 
 import_module("app.models")
 from app.main import app as fastapi_app

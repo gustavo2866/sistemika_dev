@@ -7,7 +7,7 @@ import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { ResourceTitle } from "@/components/resource-title";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TodoBoard } from "@/components/todo/todo-board";
 import { AlarmClock, Calendar, CalendarCheck, CalendarClock, CalendarDays, CalendarRange, House, MessageCircle, ArrowLeft } from "lucide-react";
 import { useGetIdentity, useGetOne, useListContext } from "ra-core";
@@ -150,6 +150,20 @@ const LIST_FILTERS = buildListFilters(
 
 // Top-right list actions with filters/create/export buttons.
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+const BACK_BUTTON_CLASS =
+  "h-7 px-1.5 text-[11px] font-medium text-primary sm:h-8 sm:px-2 sm:text-sm";
+
+const CRMBackButton = ({ onClick }: { onClick: () => void }) => (
+  <Button
+    type="button"
+    variant="ghost"
+    className={BACK_BUTTON_CLASS}
+    onClick={onClick}
+  >
+    <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+    Volver
+  </Button>
+);
 
 const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
@@ -223,6 +237,17 @@ export const CRMEventoList = () => {
     (oportunidad as any)?.descripcion_estado ??
     (oportunidadIdFilter ? `Oportunidad #${oportunidadIdFilter}` : "");
   const returnTo = getReturnToFromLocation(location);
+  const handleBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/dashboard-crm");
+  };
   const handleOpenChat = () => {
     if (!oportunidadIdFilter) return;
     const params = new URLSearchParams();
@@ -260,12 +285,15 @@ export const CRMEventoList = () => {
     <List
       key={listKey}
       title={
-        <ResourceTitle
-          icon={CalendarCheck}
-          text="CRM - Eventos"
-          iconWrapperClassName="h-9 w-9 rounded-xl bg-rose-100 text-rose-700"
-          iconClassName="h-4 w-4"
-        />
+        <div className="flex items-center gap-2">
+          {!oportunidadIdFilter ? <CRMBackButton onClick={handleBack} /> : null}
+          <ResourceTitle
+            icon={CalendarCheck}
+            text="CRM - Eventos"
+            iconWrapperClassName="h-9 w-9 rounded-xl bg-rose-100 text-rose-700"
+            iconClassName="h-4 w-4"
+          />
+        </div>
       }
       filters={LIST_FILTERS}
       filterDefaultValues={defaultFilters}
@@ -282,13 +310,7 @@ export const CRMEventoList = () => {
         contactoNombre={contactoNombre}
         oportunidadTitulo={oportunidadTitulo}
         returnTo={returnTo}
-        onBack={() => {
-          if (returnTo) {
-            navigate(returnTo);
-          } else {
-            navigate(-1);
-          }
-        }}
+        onBack={handleBack}
         onOpenChat={handleOpenChat}
         onOpenOportunidad={handleOpenOportunidad}
       />
@@ -353,53 +375,50 @@ export const CRMEventoListBody = ({
           </div>
         ) : null}
         {shouldShowHeader ? (
-          <div className="mb-2 flex items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onBack ?? (() => {})}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Avatar className="size-9 border border-slate-200">
-              <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
-                {(contactoNombre ?? "Contacto")
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .map((part: string) => part[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-900">
-                {contactoNombre ?? "Contacto"}
-              </p>
-              <p className="truncate text-[10px] text-slate-500">
-                {oportunidadTitulo} ({oportunidadIdFilter})
-              </p>
+          <div className="mb-2 rounded-2xl border border-slate-200/70 bg-white/95 px-3 py-2 shadow-sm sm:mb-3">
+            <div className="flex items-center justify-start">
+              <CRMBackButton onClick={onBack ?? (() => {})} />
             </div>
-            <div className="ml-auto flex items-center gap-1 text-slate-400">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={onOpenChat ?? (() => {})}
-                disabled={!oportunidadIdFilter}
-              >
-                <MessageCircle className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={onOpenOportunidad ?? (() => {})}
-                disabled={!oportunidadIdFilter}
-              >
-                <House className="h-4 w-4" />
-              </Button>
+            <div className="mt-1 flex items-center gap-3">
+              <Avatar className="size-9 border border-slate-200">
+                <AvatarFallback className="bg-slate-100 text-xs font-semibold text-slate-600">
+                  {(contactoNombre ?? "Contacto")
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .map((part: string) => part[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">
+                  {contactoNombre ?? "Contacto"}
+                </p>
+                <p className="truncate text-[10px] text-slate-500">
+                  {oportunidadTitulo} ({oportunidadIdFilter})
+                </p>
+              </div>
+              <div className="ml-auto flex items-center gap-1 text-slate-400">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onOpenChat ?? (() => {})}
+                  disabled={!oportunidadIdFilter}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onOpenOportunidad ?? (() => {})}
+                  disabled={!oportunidadIdFilter}
+                >
+                  <House className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         ) : null}
