@@ -302,6 +302,7 @@ export const PoOrderList = (props: PoOrderListProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = getReturnToFromLocation(location);
+  const hasExplicitFilter = new URLSearchParams(location.search).has("filter");
 
   const handleBack = () => {
     if (returnTo) {
@@ -318,7 +319,9 @@ export const PoOrderList = (props: PoOrderListProps = {}) => {
   const resolvedFilterDefaults =
     embedded
       ? (filterDefaultValues ?? (propiedadId ? { "oportunidad.propiedad_id": propiedadId } : undefined))
-      : defaultFilters;
+      : hasExplicitFilter
+        ? undefined
+        : defaultFilters;
   const resolvedStoreKey =
     embedded
       ? (storeKey ?? (propiedadId ? `po-orders-propiedad-${propiedadId}` : undefined))
@@ -366,7 +369,7 @@ export const PoOrderList = (props: PoOrderListProps = {}) => {
       filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <PoOrderListBody
-        identityId={embedded ? undefined : identityId}
+        identityId={embedded || hasExplicitFilter ? undefined : identityId}
         compact={embedded}
         showBulkActions={!embedded}
       />

@@ -12,6 +12,7 @@ import {
 } from "./model";
 import { Target } from "lucide-react";
 import { CRMOportunidadForm } from "./form";
+import { CRMOportunidadBackButton } from "./navigation-title";
 
 const OportunidadEditTitle = () => {
   const { record } = useEditContext();
@@ -19,6 +20,7 @@ const OportunidadEditTitle = () => {
   const estado = record.estado ?? "Sin estado";
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <CRMOportunidadBackButton />
       <span className="inline-flex items-center gap-2">
         <Target className="h-4 w-4" />
         <span>Editar Oportunidad</span>

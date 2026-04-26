@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { saveDashboardReturnMarker } from "../po-dashboard/return-state";
 import { PoOrderForm } from "./form";
 import { normalizePoOrderPayload } from "./model";
+import { PoOrderBackButton } from "./navigation-title";
 
 export const PoOrderCreate = () => {
   const location = useLocation();
@@ -17,10 +18,13 @@ export const PoOrderCreate = () => {
     <Create
       redirect={false}
       title={
-        <span className="inline-flex items-center gap-2">
-          <ClipboardList className="h-4 w-4" />
-          Crear Orden
-        </span>
+        <div className="flex items-center gap-2">
+          <PoOrderBackButton returnTo={returnTo ?? undefined} />
+          <span className="inline-flex items-center gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Crear Orden
+          </span>
+        </div>
       }
       transform={(data: any) => normalizePoOrderPayload(data)}
       mutationOptions={{

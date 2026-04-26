@@ -11,12 +11,10 @@ from app.models.crm import CRMOportunidad
 from app.models.enums import EstadoOportunidad
 from app.services.crm_dashboard import (
     build_dashboard_detail_entry_from_oportunidad,
-    build_crm_dashboard_payload,
     build_crm_dashboard_bundle,
     check_oportunidad_alert,
     fetch_current_oportunidades_for_dashboard,
     fetch_current_oportunidades_for_detail,
-    fetch_oportunidades_for_dashboard,
     fetch_selector_summary_fast,
     filter_current_oportunidades_by_alert,
 )
@@ -44,65 +42,6 @@ def _parse_str_list(value: Optional[str]) -> Optional[List[str]]:
         return None
     result = [chunk.strip() for chunk in value.split(",") if chunk.strip()]
     return result or None
-
-
-@router.get("")
-def get_crm_dashboard(
-    startDate: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
-    endDate: str = Query(..., description="Fecha fin YYYY-MM-DD"),
-    tipoOperacion: Optional[str] = Query(None, description="IDs separados por coma"),
-    tipoPropiedad: Optional[str] = Query(None, description="Tipos de propiedad separados por coma"),
-    responsable: Optional[str] = Query(None, description="IDs de responsables separados por coma"),
-    emprendimiento: Optional[str] = Query(None, description="IDs de emprendimiento"),
-    propietario: Optional[str] = Query(None, description="Filtro contains por propietario"),
-    limitTop: int = Query(5, ge=1, le=20),
-    session: Session = Depends(get_session),
-):
-    try:
-        items = fetch_oportunidades_for_dashboard(
-            session=session,
-            start_date=startDate,
-            end_date=endDate,
-            tipo_operacion_ids=_parse_int_list(tipoOperacion),
-            tipo_propiedad=_parse_str_list(tipoPropiedad),
-            responsable_ids=_parse_int_list(responsable),
-            propietario=propietario,
-            emprendimiento_ids=_parse_int_list(emprendimiento),
-        )
-        # Derive current oportunidades from items already loaded (avoids second DB query).
-        # Current = all still-open (pending) or closed within the last 30 days.
-        current_oportunidades = [
-            item.oportunidad for item in items if item.es_pendiente or item.es_cerrada_30d
-        ]
-        payload = build_crm_dashboard_payload(
-            items,
-            start_date=startDate,
-            end_date=endDate,
-            limit_top=limitTop,
-            filters={
-                "tipoOperacion": _parse_int_list(tipoOperacion),
-                "tipoPropiedad": _parse_str_list(tipoPropiedad),
-                "responsable": _parse_int_list(responsable),
-                "emprendimiento": _parse_int_list(emprendimiento),
-                "propietario": propietario,
-            },
-            session=session,
-            current_oportunidades=current_oportunidades,
-        )
-
-        ranking = payload.get("ranking", {})
-        for entries in ranking.values():
-            for entry in entries:
-                entry["oportunidad"] = filtrar_respuesta(entry["oportunidad"])
-
-        for entry in payload.get("ranking_propiedades", []):
-            entry["propiedad"] = filtrar_respuesta(entry["propiedad"])
-
-        return payload
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
 @router.get("/detalle-alerta")

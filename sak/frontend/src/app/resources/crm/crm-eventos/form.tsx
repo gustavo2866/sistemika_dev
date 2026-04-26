@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { required, useGetIdentity, useGetList, useGetOne, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
+import { ArrowLeft, type LucideIcon } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { ResourceTitle } from "@/components/resource-title";
 import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import {
   FormErrorSummary,
@@ -15,6 +18,8 @@ import {
   HiddenInput,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 
 const CRMEventoFormContent = ({ lockedOportunidadId }: { lockedOportunidadId?: number }) => {
   const record = useRecordContext();
@@ -328,18 +333,68 @@ type CRMEventoFormProps = {
   lockedOportunidadId?: number;
 };
 
-export const CRMEventoForm = ({ defaultValues, lockedOportunidadId }: CRMEventoFormProps) => (
-  <SimpleForm
-    defaultValues={defaultValues}
-    className="w-full max-w-md"
-    toolbar={<FormOrderToolbar saveProps={{ tabIndex: 0 }} />}
-  >
-    <FormErrorSummary />
-    <CRMEventoFormContent lockedOportunidadId={lockedOportunidadId} />
-    <HiddenInput source="tipo_evento" />
-    <HiddenInput source="motivo_id" />
-    <HiddenInput source="contacto_id" />
-    <HiddenInput source="oportunidad_id" />
-    <HiddenInput source="estado_evento" defaultValue="1-pendiente" />
-  </SimpleForm>
-);
+type CRMEventoFormTitleProps = {
+  icon: LucideIcon;
+  text: string;
+};
+
+export const CRMEventoFormTitle = ({ icon, text }: CRMEventoFormTitleProps) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = getReturnToFromLocation(location);
+
+  const handleBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/crm/crm-eventos");
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-6 px-1.5 text-[11px] font-medium text-primary"
+        onClick={handleBack}
+      >
+        <ArrowLeft className="mr-1 h-3 w-3" />
+        Volver
+      </Button>
+      <ResourceTitle
+        icon={icon}
+        text={text}
+        className="gap-2 text-lg"
+        iconWrapperClassName="h-9 w-9 rounded-xl"
+        iconClassName="h-5 w-5"
+      />
+    </div>
+  );
+};
+
+export const CRMEventoForm = ({ defaultValues, lockedOportunidadId }: CRMEventoFormProps) => {
+  return (
+    <div className="w-full max-w-md">
+      <SimpleForm
+        defaultValues={defaultValues}
+        className="w-full"
+        toolbar={<FormOrderToolbar saveProps={{ tabIndex: 0 }} />}
+      >
+        <FormErrorSummary />
+        <CRMEventoFormContent lockedOportunidadId={lockedOportunidadId} />
+        <HiddenInput source="tipo_evento" />
+        <HiddenInput source="motivo_id" />
+        <HiddenInput source="contacto_id" />
+        <HiddenInput source="oportunidad_id" />
+        <HiddenInput source="estado_evento" defaultValue="1-pendiente" />
+      </SimpleForm>
+    </div>
+  );
+};

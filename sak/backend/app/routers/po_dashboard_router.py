@@ -11,7 +11,6 @@ from app.db import get_session
 from app.models.base import filtrar_respuesta
 from app.services.po_dashboard import (
     build_po_dashboard_bundle,
-    build_po_dashboard_payload,
     check_po_alert,
     fetch_po_orders_for_dashboard,
     fetch_po_selector_summary_fast,
@@ -58,48 +57,6 @@ def _serialize_item(item) -> dict:
         "bucket": item.bucket_creacion,
         "estado": item.estado,
     }
-
-
-@router.get("")
-def get_po_dashboard(
-    startDate: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
-    endDate: str = Query(..., description="Fecha fin YYYY-MM-DD"),
-    solicitante: Optional[str] = Query(None, description="IDs de solicitante separados por coma"),
-    proveedor: Optional[str] = Query(None, description="IDs de proveedor separados por coma"),
-    tipoSolicitud: Optional[str] = Query(None, description="IDs de tipo de solicitud separados por coma"),
-    departamento: Optional[str] = Query(None, description="IDs de departamento separados por coma"),
-    tipoCompra: Optional[str] = Query(None, description="Tipos de orden separados por coma"),
-    limitTop: int = Query(8, ge=1, le=20),
-    session: Session = Depends(get_session),
-):
-    try:
-        items = fetch_po_orders_for_dashboard(
-            session=session,
-            start_date=startDate,
-            end_date=endDate,
-            solicitante_ids=_parse_int_list(solicitante),
-            proveedor_ids=_parse_int_list(proveedor),
-            tipo_solicitud_ids=_parse_int_list(tipoSolicitud),
-            departamento_ids=_parse_int_list(departamento),
-            tipo_compra_values=_parse_str_list(tipoCompra),
-        )
-        return build_po_dashboard_payload(
-            items,
-            start_date=startDate,
-            end_date=endDate,
-            limit_top=limitTop,
-            filters={
-                "solicitante": _parse_int_list(solicitante),
-                "proveedor": _parse_int_list(proveedor),
-                "tipoSolicitud": _parse_int_list(tipoSolicitud),
-                "departamento": _parse_int_list(departamento),
-                "tipoCompra": _parse_str_list(tipoCompra),
-            },
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
 @router.get("/detalle-alerta")

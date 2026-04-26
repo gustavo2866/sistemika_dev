@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import json
 import os
-from datetime import UTC, date, datetime, timedelta
+from urllib.parse import quote
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Date, cast, func, or_
+from sqlalchemy import and_, false, func, or_
 from sqlmodel import Session, select
 
 from app.db import ENV
 from app.models.base import current_utc_time, serialize_datetime
-from app.models.compras import PoInvoice, PoInvoiceStatus, PoOrder, PoOrderStatus
+from app.models.compras import PoOrder, PoOrderStatus
 from app.models.crm import CRMEvento, CRMMensaje, CRMOportunidad
 from app.models.enums import EstadoEvento, EstadoMensaje, EstadoOportunidad, TipoMensaje
+from app.models.contrato import Contrato
 from app.models.propiedad import Propiedad, PropiedadesStatus
 from app.models.user import User
 from app.services.propiedades_dashboard import _get_inmobiliaria_alert_days
@@ -22,12 +25,30 @@ OPEN_CRM_STATES = (
     EstadoOportunidad.COTIZA.value,
     EstadoOportunidad.RESERVA.value,
 )
+CRM_STALE_OPPORTUNITY_DAYS = 30
+MY_PURCHASE_STATUS_NAMES = ("solicitada", "emitida", "aprobada")
 
-HOME_PARTIAL_KEYS = {"miDia", "radar", "summary"}
+HOME_PARTIAL_KEYS = {"miDia", "radar"}
+HOME_DOMAIN_KEYS = {"personal", "poorders", "oportunidades", "contratos", "propiedades"}
+RADAR_PRIORITY_GROUPS = (
+    ("aprobaciones_pendientes",),
+    ("solicitudes_pendientes",),
+    ("contratos_proximos_vencer",),
+    ("contratos_proximos_actualizar",),
+    ("vacancias_prolongadas",),
+    ("oportunidades_sin_actividad",),
+    ("oportunidades_prospect",),
+)
 
 
 def _scalar_count(session: Session, statement) -> int:
     return int(session.exec(statement).one() or 0)
+
+
+def _build_resource_href(path: str, filters: dict[str, Any] | None = None) -> str:
+    if not filters:
+        return path
+    return f"{path}?filter={quote(json.dumps(filters, separators=(',', ':')))}"
 
 
 def _item(
@@ -82,35 +103,6 @@ def _build_environment_payload() -> dict[str, str]:
     return mapping.get(raw_env, {"key": raw_env, "label": raw_env.upper(), "color": "neutral"})
 
 
-def _build_quick_actions() -> list[dict[str, str]]:
-    return [
-        {
-            "key": "nuevo_evento",
-            "label": "Nuevo evento",
-            "href": "/crm/crm-eventos/create",
-        },
-        {
-            "key": "nueva_oportunidad",
-            "label": "Nueva oportunidad",
-            "href": "/crm/oportunidades/create",
-        },
-        {
-            "key": "nueva_orden",
-            "label": "Nueva orden",
-            "href": "/po-orders/create",
-        },
-    ]
-
-
-def _build_summary_payload(items: list[dict[str, Any]]) -> dict[str, int]:
-    return {
-        "total": sum(item["count"] for item in items),
-        "urgent": sum(item["count"] for item in items if item["severity"] == "urgent"),
-        "high": sum(item["count"] for item in items if item["severity"] == "high"),
-        "normal": sum(item["count"] for item in items if item["severity"] == "normal"),
-    }
-
-
 def _build_mi_dia_payload(
     personal: dict[str, Any],
     compras: dict[str, Any],
@@ -138,7 +130,7 @@ def _build_mi_dia_payload(
     items = [
         personal_items["chats_nuevos"],
         agenda_item,
-        compras_items["aprobaciones_pendientes"],
+        compras_items["mis_compras"],
     ]
     return {
         "total": sum(item["count"] for item in items),
@@ -147,25 +139,34 @@ def _build_mi_dia_payload(
 
 
 def _build_radar_payload(sections: list[dict[str, Any]]) -> dict[str, Any]:
-    severity_order = {"urgent": 0, "high": 1, "normal": 2}
     excluded_radar_keys = {
         "chats_nuevos",
         "agenda_pendiente",
         "agenda_vencida",
-        "aprobaciones_pendientes",
+        "mis_compras",
     }
-    items = sorted(
-        (
-            {
-                **item,
-                "sectionLabel": section["label"],
-            }
-            for section in sections
-            for item in section["items"]
-            if item["key"] not in excluded_radar_keys
-        ),
-        key=lambda item: (severity_order.get(item["severity"], 99), -item["count"], item["label"]),
-    )[:4]
+    available_items = [
+        {
+            **item,
+            "sectionLabel": section["label"],
+        }
+        for section in sections
+        for item in section["items"]
+        if item["key"] not in excluded_radar_keys
+    ]
+    items_by_key = {item["key"]: item for item in available_items}
+
+    prioritized_items: list[dict[str, Any]] = []
+    for group in RADAR_PRIORITY_GROUPS:
+        selected_item = next(
+            (items_by_key[item_key] for item_key in group if item_key in items_by_key),
+            None,
+        )
+        if selected_item is None:
+            continue
+        prioritized_items.append(selected_item)
+
+    items = prioritized_items
     return {
         "items": items,
     }
@@ -254,7 +255,19 @@ def _build_crm_section(
     current_user: User,
     now_utc: datetime,
 ) -> dict[str, Any]:
-    stale_cutoff = now_utc - timedelta(days=30)
+    stale_cutoff = now_utc - timedelta(days=CRM_STALE_OPPORTUNITY_DAYS)
+    oportunidades_sin_actividad_href = _build_resource_href(
+        "/crm/oportunidades",
+        {
+            "sin_actividad_days": CRM_STALE_OPPORTUNITY_DAYS,
+        },
+    )
+    oportunidades_prospect_href = _build_resource_href(
+        "/crm/oportunidades",
+        {
+            "estado": EstadoOportunidad.PROSPECT.value,
+        },
+    )
 
     prospects = _scalar_count(
         session,
@@ -269,7 +282,6 @@ def _build_crm_section(
         session,
         select(func.count(CRMOportunidad.id))
         .where(CRMOportunidad.deleted_at.is_(None))
-        .where(CRMOportunidad.responsable_id == current_user.id)
         .where(CRMOportunidad.activo.is_(True))
         .where(CRMOportunidad.estado.in_(OPEN_CRM_STATES))
         .where(CRMOportunidad.fecha_estado.is_not(None))
@@ -282,21 +294,21 @@ def _build_crm_section(
         description="Seguimiento comercial",
         items=[
             _item(
-                "prospects_sin_resolver",
-                "Prospects sin resolver",
+                "oportunidades_prospect",
+                "Oportunidades prospect",
                 prospects,
                 "normal",
                 "personal",
-                "/dashboard-crm",
-                "Ver prospects",
+                oportunidades_prospect_href,
+                "Ver oportunidades",
             ),
             _item(
                 "oportunidades_sin_actividad",
-                "Oportunidades sin actividad",
+                f"Oportunidades inactivas > {CRM_STALE_OPPORTUNITY_DAYS} dias",
                 sin_actividad,
                 "high",
-                "personal",
-                "/dashboard-crm",
+                "global",
+                oportunidades_sin_actividad_href,
                 "Reactivar",
             ),
         ],
@@ -306,41 +318,77 @@ def _build_crm_section(
 def _build_compras_section(
     session: Session,
     current_user: User,
-    today: date,
 ) -> dict[str, Any]:
-    oc_emitidas = _scalar_count(
-        session,
-        select(func.count(PoOrder.id))
-        .select_from(PoOrder)
-        .join(PoOrderStatus, PoOrder.order_status_id == PoOrderStatus.id)
-        .where(PoOrder.deleted_at.is_(None))
-        .where(func.lower(PoOrderStatus.nombre) == "emitida"),
+    status_names = (*MY_PURCHASE_STATUS_NAMES, "emitida")
+    status_rows = session.exec(
+        select(PoOrderStatus.nombre, PoOrderStatus.id)
+        .where(func.lower(PoOrderStatus.nombre).in_(status_names))
+        .order_by(PoOrderStatus.orden.asc(), PoOrderStatus.id.asc())
+    ).all()
+    status_ids_by_name = {
+        nombre.lower(): status_id
+        for nombre, status_id in status_rows
+        if nombre
+    }
+    solicitada_status_id = status_ids_by_name.get("solicitada")
+    emitida_status_id = status_ids_by_name.get("emitida")
+    my_purchase_status_ids = [
+        status_ids_by_name[status_name]
+        for status_name in MY_PURCHASE_STATUS_NAMES
+        if status_name in status_ids_by_name
+    ]
+
+    emitida_condition = (
+        PoOrder.order_status_id == emitida_status_id
+        if emitida_status_id is not None
+        else false()
+    )
+    solicitada_condition = (
+        PoOrder.order_status_id == solicitada_status_id
+        if solicitada_status_id is not None
+        else false()
+    )
+    my_purchase_condition = (
+        and_(
+            PoOrder.solicitante_id == current_user.id,
+            PoOrder.order_status_id.in_(my_purchase_status_ids),
+        )
+        if my_purchase_status_ids
+        else false()
     )
 
-    fc_confirmadas = _scalar_count(
-        session,
-        select(func.count(PoInvoice.id))
-        .select_from(PoInvoice)
-        .join(PoInvoiceStatus, PoInvoice.invoice_status_id == PoInvoiceStatus.id)
-        .where(PoInvoice.deleted_at.is_(None))
-        .where(func.lower(PoInvoiceStatus.nombre) == "confirmada"),
-    )
+    order_counts = session.exec(
+        select(
+            func.count(PoOrder.id).filter(emitida_condition),
+            func.count(PoOrder.id).filter(solicitada_condition),
+            func.count(PoOrder.id).filter(my_purchase_condition),
+        ).where(PoOrder.deleted_at.is_(None))
+    ).one()
+    oc_emitidas = int(order_counts[0] or 0)
+    solicitudes_pendientes = int(order_counts[1] or 0)
+    mis_compras = int(order_counts[2] or 0)
 
-    facturas_vencidas = _scalar_count(
-        session,
-        select(func.count(PoInvoice.id))
-        .select_from(PoInvoice)
-        .join(PoInvoiceStatus, PoInvoice.invoice_status_id == PoInvoiceStatus.id, isouter=True)
-        .where(PoInvoice.deleted_at.is_(None))
-        .where(PoInvoice.usuario_responsable_id == current_user.id)
-        .where(PoInvoice.fecha_vencimiento.is_not(None))
-        .where(cast(PoInvoice.fecha_vencimiento, Date) < today)
-        .where(
-            or_(
-                PoInvoiceStatus.id.is_(None),
-                func.lower(PoInvoiceStatus.nombre).not_in(["cerrada", "anulada"]),
-            )
+    aprobaciones_count = oc_emitidas
+    aprobaciones_meta = {
+        "ordenes_compra_emitidas": oc_emitidas,
+    }
+
+    solicitudes_href = _build_resource_href(
+        "/po-orders",
+        (
+            {
+                "order_status_id": solicitada_status_id,
+            }
+            if solicitada_status_id is not None
+            else None
         ),
+    )
+    mis_compras_href = _build_resource_href(
+        "/po-orders",
+        {
+            "solicitante_id": current_user.id,
+            "order_status_id__in": my_purchase_status_ids,
+        },
     )
 
     return _section(
@@ -351,120 +399,221 @@ def _build_compras_section(
             _item(
                 "aprobaciones_pendientes",
                 "Aprobaciones pendientes",
-                oc_emitidas + fc_confirmadas,
+                aprobaciones_count,
                 "high",
                 "global",
                 "/po-orders-approval",
                 "Abrir bandeja",
+                meta=aprobaciones_meta,
+            ),
+            _item(
+                "mis_compras",
+                "Mis compras",
+                mis_compras,
+                "high",
+                "personal",
+                mis_compras_href,
+                "Ver mis compras",
                 meta={
-                    "ordenes_compra_emitidas": oc_emitidas,
-                    "facturas_confirmadas": fc_confirmadas,
+                    "estados": ", ".join(MY_PURCHASE_STATUS_NAMES),
                 },
             ),
             _item(
-                "facturas_vencidas",
-                "Facturas vencidas",
-                facturas_vencidas,
-                "urgent",
-                "personal",
-                "/po-invoices-agenda",
-                "Ver facturas",
+                "solicitudes_pendientes",
+                "Solicitudes pendientes",
+                solicitudes_pendientes,
+                "high",
+                "global",
+                solicitudes_href,
+                "Ver solicitudes",
             ),
         ],
     )
 
 
-def _build_inmobiliaria_section(
+def _build_inmobiliaria_alert_context(
     session: Session,
     today: date,
-) -> tuple[dict[str, Any], dict[str, int]]:
+) -> dict[str, Any]:
     dias_vencimiento, dias_actualizacion, dias_vacancia = _get_inmobiliaria_alert_days(session)
-    limite_vencimiento = today + timedelta(days=dias_vencimiento)
-    limite_actualizacion = today + timedelta(days=dias_actualizacion)
-    corte_vacancia = today - timedelta(days=dias_vacancia)
+    return {
+        "dias_vencimiento": dias_vencimiento,
+        "dias_actualizacion": dias_actualizacion,
+        "dias_vacancia": dias_vacancia,
+        "limite_vencimiento": today + timedelta(days=dias_vencimiento),
+        "limite_actualizacion": today + timedelta(days=dias_actualizacion),
+        "corte_vacancia": today - timedelta(days=dias_vacancia),
+    }
 
+
+def _build_contratos_section(
+    session: Session,
+    alert_context: dict[str, Any],
+) -> dict[str, Any]:
+    dias_vencimiento = alert_context["dias_vencimiento"]
+    dias_actualizacion = alert_context["dias_actualizacion"]
+    limite_vencimiento = alert_context["limite_vencimiento"]
+    limite_actualizacion = alert_context["limite_actualizacion"]
+    contratos_vencer_href = _build_resource_href(
+        "/contratos",
+        {
+            "estado": "vigente",
+            "fecha_vencimiento": {
+                "lte": limite_vencimiento.isoformat(),
+            },
+        },
+    )
+    contratos_actualizar_href = _build_resource_href(
+        "/contratos",
+        {
+            "estado": "vigente",
+            "fecha_renovacion": {
+                "lte": limite_actualizacion.isoformat(),
+            },
+        },
+    )
+
+    # Mismo modelo y criterio que propiedades_dashboard (orden=4 / realizada)
+    # JOIN a Propiedad+PropiedadesStatus para garantizar coherencia entre dashboards
     contratos_vencer = _scalar_count(
         session,
-        select(func.count(Propiedad.id))
-        .select_from(Propiedad)
+        select(func.count(Contrato.id))
+        .select_from(Contrato)
+        .join(Propiedad, Contrato.propiedad_id == Propiedad.id)
         .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id)
-        .where(Propiedad.deleted_at.is_(None))
-        .where(PropiedadesStatus.orden == 4)
-        .where(Propiedad.vencimiento_contrato.is_not(None))
-        .where(Propiedad.vencimiento_contrato >= today)
-        .where(Propiedad.vencimiento_contrato < limite_vencimiento),
-    )
-
-    contratos_actualizar = _scalar_count(
-        session,
-        select(func.count(Propiedad.id))
-        .select_from(Propiedad)
-        .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id)
-        .where(Propiedad.deleted_at.is_(None))
-        .where(PropiedadesStatus.orden == 4)
-        .where(Propiedad.fecha_renovacion.is_not(None))
-        .where(Propiedad.fecha_renovacion >= today)
-        .where(Propiedad.fecha_renovacion < limite_actualizacion)
         .where(
-            or_(
-                Propiedad.vencimiento_contrato.is_(None),
-                Propiedad.fecha_renovacion <= Propiedad.vencimiento_contrato,
-            )
+            Contrato.deleted_at.is_(None),
+            Contrato.estado == "vigente",
+            Propiedad.deleted_at.is_(None),
+            PropiedadesStatus.orden == 4,
+            Contrato.fecha_vencimiento.is_not(None),
+            Contrato.fecha_vencimiento <= limite_vencimiento,
         ),
     )
+    contratos_actualizar = _scalar_count(
+        session,
+        select(func.count(Contrato.id))
+        .select_from(Contrato)
+        .join(Propiedad, Contrato.propiedad_id == Propiedad.id)
+        .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id)
+        .where(
+            Contrato.deleted_at.is_(None),
+            Contrato.estado == "vigente",
+            Propiedad.deleted_at.is_(None),
+            PropiedadesStatus.orden == 4,
+            Contrato.fecha_renovacion.is_not(None),
+            Contrato.fecha_renovacion <= limite_actualizacion,
+            or_(
+                Contrato.fecha_vencimiento.is_(None),
+                Contrato.fecha_renovacion <= Contrato.fecha_vencimiento,
+            ),
+        ),
+    )
+    return _section(
+        key="contratos",
+        label="Inmobiliaria",
+        description="Contratos",
+        items=[
+            _item(
+                "contratos_proximos_vencer",
+                f"Contratos vencimiento < {dias_vencimiento} dias",
+                contratos_vencer,
+                "urgent",
+                "global",
+                contratos_vencer_href,
+                "Ver contratos",
+            ),
+            _item(
+                "contratos_proximos_actualizar",
+                f"Contratos actualizacion < {dias_actualizacion} dias",
+                contratos_actualizar,
+                "high",
+                "global",
+                contratos_actualizar_href,
+                "Ver renovaciones",
+            ),
+        ],
+    )
 
+
+def _build_propiedades_section(
+    session: Session,
+    alert_context: dict[str, Any],
+) -> dict[str, Any]:
+    dias_vacancia = alert_context["dias_vacancia"]
+    corte_vacancia = alert_context["corte_vacancia"]
     vacancias_prolongadas = _scalar_count(
         session,
         select(func.count(Propiedad.id))
         .select_from(Propiedad)
         .join(PropiedadesStatus, Propiedad.propiedad_status_id == PropiedadesStatus.id)
-        .where(Propiedad.deleted_at.is_(None))
-        .where(PropiedadesStatus.orden.in_([1, 2, 3]))
-        .where(Propiedad.vacancia_fecha.is_not(None))
-        .where(Propiedad.vacancia_fecha < corte_vacancia),
+        .where(
+            Propiedad.deleted_at.is_(None),
+            PropiedadesStatus.orden.in_([1, 2, 3]),
+            Propiedad.vacancia_fecha.is_not(None),
+            Propiedad.vacancia_fecha < corte_vacancia,
+        ),
     )
 
+    return _section(
+        key="propiedades",
+        label="Inmobiliaria",
+        description="Propiedades",
+        items=[
+            _item(
+                "vacancias_prolongadas",
+                f"Propiedades vacantes > {dias_vacancia} dias",
+                vacancias_prolongadas,
+                "high",
+                "global",
+                "/propiedades-dashboard",
+                "Ver vacancias",
+            ),
+        ],
+    )
+
+
+def _build_inmobiliaria_sections(
+    session: Session,
+    today: date,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, int]]:
+    alert_context = _build_inmobiliaria_alert_context(session, today)
+    contratos = _build_contratos_section(session, alert_context)
+    propiedades = _build_propiedades_section(session, alert_context)
+
     return (
-        _section(
-            key="inmobiliaria",
-            label="Inmobiliaria",
-            description="Contratos y vacancias",
-            items=[
-                _item(
-                    "contratos_proximos_vencer",
-                    "Contratos proximos a vencer",
-                    contratos_vencer,
-                    "urgent",
-                    "global",
-                    "/propiedades-dashboard",
-                    "Ver contratos",
-                ),
-                _item(
-                    "contratos_proximos_actualizar",
-                    "Contratos proximos a actualizar",
-                    contratos_actualizar,
-                    "high",
-                    "global",
-                    "/propiedades-dashboard",
-                    "Ver renovaciones",
-                ),
-                _item(
-                    "vacancias_prolongadas",
-                    "Vacancias prolongadas",
-                    vacancias_prolongadas,
-                    "high",
-                    "global",
-                    "/propiedades-dashboard",
-                    "Ver vacancias",
-                ),
-            ],
-        ),
+        contratos,
+        propiedades,
         {
-            "vencimiento": dias_vencimiento,
-            "actualizacion": dias_actualizacion,
-            "vacancia": dias_vacancia,
+            "vencimiento": alert_context["dias_vencimiento"],
+            "actualizacion": alert_context["dias_actualizacion"],
+            "vacancia": alert_context["dias_vacancia"],
         },
     )
+
+
+def _build_home_context_payload(
+    current_user: User,
+    now_utc: datetime,
+) -> dict[str, Any]:
+    return {
+        "generatedAt": serialize_datetime(now_utc),
+        "environment": _build_environment_payload(),
+        "user": {
+            "id": current_user.id,
+            "nombre": current_user.nombre,
+        },
+    }
+
+
+def _build_section_response(
+    section: dict[str, Any],
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    return {
+        "generatedAt": serialize_datetime(now_utc or current_utc_time()),
+        "section": section,
+    }
 
 
 def build_home_dashboard_bundle(
@@ -476,25 +625,52 @@ def build_home_dashboard_bundle(
 
     personal = _build_personal_section(session, current_user, today)
     crm = _build_crm_section(session, current_user, now_utc)
-    compras = _build_compras_section(session, current_user, today)
-    inmobiliaria, _alert_days = _build_inmobiliaria_section(session, today)
-    sections = [personal, compras, inmobiliaria, crm]
-
-    items = [item for section in sections for item in section["items"]]
-    summary = _build_summary_payload(items)
+    compras = _build_compras_section(session, current_user)
+    contratos, propiedades, _alert_days = _build_inmobiliaria_sections(session, today)
+    sections = [personal, compras, contratos, propiedades, crm]
 
     return {
-        "generatedAt": serialize_datetime(now_utc),
-        "environment": _build_environment_payload(),
-        "user": {
-            "id": current_user.id,
-            "nombre": current_user.nombre,
-        },
-        "summary": summary,
+        **_build_home_context_payload(current_user, now_utc),
         "miDia": _build_mi_dia_payload(personal, compras),
         "radar": _build_radar_payload(sections),
-        "quickActions": _build_quick_actions(),
     }
+
+
+def build_home_dashboard_context(
+    current_user: User,
+) -> dict[str, Any]:
+    return _build_home_context_payload(current_user, current_utc_time())
+
+
+def build_home_dashboard_domain(
+    session: Session,
+    current_user: User,
+    domain: str,
+) -> dict[str, Any]:
+    if domain not in HOME_DOMAIN_KEYS:
+        raise ValueError(f"Dominio de home dashboard invalido: {domain}")
+
+    today = date.today()
+    now_utc = current_utc_time()
+
+    if domain == "personal":
+        section = _build_personal_section(session, current_user, today)
+    elif domain == "poorders":
+        section = _build_compras_section(session, current_user)
+    elif domain == "oportunidades":
+        section = _build_crm_section(session, current_user, now_utc)
+    elif domain == "contratos":
+        section = _build_contratos_section(
+            session,
+            _build_inmobiliaria_alert_context(session, today),
+        )
+    else:
+        section = _build_propiedades_section(
+            session,
+            _build_inmobiliaria_alert_context(session, today),
+        )
+
+    return _build_section_response(section, now_utc)
 
 
 def build_home_dashboard_partial(
@@ -514,7 +690,7 @@ def build_home_dashboard_partial(
     personal: dict[str, Any] | None = None
     compras: dict[str, Any] | None = None
     crm: dict[str, Any] | None = None
-    inmobiliaria: dict[str, Any] | None = None
+    inmobiliaria_sections: tuple[dict[str, Any], dict[str, Any]] | None = None
 
     def get_personal() -> dict[str, Any]:
         nonlocal personal
@@ -525,7 +701,7 @@ def build_home_dashboard_partial(
     def get_compras() -> dict[str, Any]:
         nonlocal compras
         if compras is None:
-            compras = _build_compras_section(session, current_user, today)
+            compras = _build_compras_section(session, current_user)
         return compras
 
     def get_crm() -> dict[str, Any]:
@@ -534,11 +710,12 @@ def build_home_dashboard_partial(
             crm = _build_crm_section(session, current_user, now_utc)
         return crm
 
-    def get_inmobiliaria() -> dict[str, Any]:
-        nonlocal inmobiliaria
-        if inmobiliaria is None:
-            inmobiliaria, _ = _build_inmobiliaria_section(session, today)
-        return inmobiliaria
+    def get_inmobiliaria_sections() -> tuple[dict[str, Any], dict[str, Any]]:
+        nonlocal inmobiliaria_sections
+        if inmobiliaria_sections is None:
+            contratos, propiedades, _ = _build_inmobiliaria_sections(session, today)
+            inmobiliaria_sections = (contratos, propiedades)
+        return inmobiliaria_sections
 
     payload: dict[str, Any] = {
         "generatedAt": serialize_datetime(now_utc),
@@ -548,12 +725,9 @@ def build_home_dashboard_partial(
         if key == "miDia":
             payload["miDia"] = _build_mi_dia_payload(get_personal(), get_compras())
         elif key == "radar":
+            contratos, propiedades = get_inmobiliaria_sections()
             payload["radar"] = _build_radar_payload(
-                [get_compras(), get_inmobiliaria(), get_crm()],
+                [get_compras(), contratos, propiedades, get_crm()],
             )
-        elif key == "summary":
-            sections = [get_personal(), get_compras(), get_inmobiliaria(), get_crm()]
-            items = [item for section in sections for item in section["items"]]
-            payload["summary"] = _build_summary_payload(items)
 
     return payload

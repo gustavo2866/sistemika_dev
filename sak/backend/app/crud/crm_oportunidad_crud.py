@@ -6,6 +6,14 @@ from sqlmodel import Session, select
 
 from app.core.generic_crud import GenericCRUD
 from app.models import CRMOportunidad
+from app.models.enums import EstadoOportunidad
+
+OPEN_CRM_STATES = (
+    EstadoOportunidad.ABIERTA.value,
+    EstadoOportunidad.VISITA.value,
+    EstadoOportunidad.COTIZA.value,
+    EstadoOportunidad.RESERVA.value,
+)
 
 
 class CRMOportunidadCRUD(GenericCRUD):
@@ -19,6 +27,19 @@ class CRMOportunidadCRUD(GenericCRUD):
             if days > 0:
                 cutoff = datetime.now(UTC) - timedelta(days=days)
                 stmt = stmt.where(self.model.fecha_estado >= cutoff)
+
+        sin_actividad_days = filters.pop("sin_actividad_days", None)
+        if sin_actividad_days is not None:
+            try:
+                days = int(sin_actividad_days)
+            except (TypeError, ValueError):
+                days = 0
+            if days > 0:
+                cutoff = datetime.now(UTC) - timedelta(days=days)
+                stmt = stmt.where(self.model.activo.is_(True))
+                stmt = stmt.where(self.model.estado.in_(OPEN_CRM_STATES))
+                stmt = stmt.where(self.model.fecha_estado.is_not(None))
+                stmt = stmt.where(self.model.fecha_estado < cutoff)
 
         return super()._apply_filters(stmt, filters)
 

@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { CRMContactoForm } from "./form";
 import { normalizeCRMContactoPayload } from "./model";
+import { CRMContactoBackButton } from "./navigation-title";
 
 type CRMContactoCreateProps = {
   embedded?: boolean;
@@ -15,8 +16,15 @@ type CRMContactoCreateProps = {
   redirect?: BaseCreateProps["redirect"];
 };
 
-const CRMContactoCreateTitle = () => (
+const CRMContactoCreateTitle = ({
+  fallbackTo,
+  returnTo,
+}: {
+  fallbackTo?: string;
+  returnTo?: string;
+}) => (
   <div className="flex flex-wrap items-center gap-2">
+    <CRMContactoBackButton fallbackTo={fallbackTo} returnTo={returnTo} />
     <span className="inline-flex items-center gap-2">
       <UserRound className="h-4 w-4" />
       Crear contacto CRM
@@ -41,7 +49,12 @@ export const CRMContactoCreate = ({
   return (
     <Create
       redirect={false}
-      title={<CRMContactoCreateTitle />}
+      title={
+        <CRMContactoCreateTitle
+          fallbackTo={typeof redirect === "string" ? redirect : undefined}
+          returnTo={returnTo ?? undefined}
+        />
+      }
       className="max-w-2xl w-full"
       transform={(data: Record<string, unknown>) => normalizeCRMContactoPayload(data)}
       showBreadcrumb={!embedded}

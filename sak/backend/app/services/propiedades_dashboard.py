@@ -302,13 +302,13 @@ def build_realizada_vencimientos(
     for vencimiento, fecha_renovacion in rows:
         if vencimiento is not None:
             days = (vencimiento - pivot_date).days
-            if 0 <= days < bucket_days_vencimiento:
+            if days <= bucket_days_vencimiento:
                 vencimiento_lt_60 += 1
         if fecha_renovacion is not None:
             if vencimiento is not None and fecha_renovacion > vencimiento:
                 continue
             days = (fecha_renovacion - pivot_date).days
-            if 0 <= days < bucket_days_actualizacion:
+            if days <= bucket_days_actualizacion:
                 renovacion_lt_60 += 1
 
     return {
@@ -317,12 +317,12 @@ def build_realizada_vencimientos(
         "ranges": [
             {
                 "key": "vencimiento_lt_60",
-                "label": f"Vencimiento < {bucket_days_vencimiento} dias",
+                "label": f"Vencimiento <= {bucket_days_vencimiento} dias",
                 "count": vencimiento_lt_60,
             },
             {
                 "key": "renovacion_lt_60",
-                "label": f"Renovacion < {bucket_days_actualizacion} dias",
+                "label": f"Renovacion <= {bucket_days_actualizacion} dias",
                 "count": renovacion_lt_60,
             },
         ],
@@ -446,13 +446,13 @@ def _build_period(
             # Alertas de vencimiento/renovación al corte del período
             if prop.vencimiento_contrato:
                 d = (prop.vencimiento_contrato - end).days
-                if 0 <= d < alert_days_vencimiento:
+                if d <= alert_days_vencimiento:
                     venc_lt_60 += 1
                     selectors["realizada"]["vencimiento_lt_60"] += 1
             if prop.fecha_renovacion:
                 if not prop.vencimiento_contrato or prop.fecha_renovacion <= prop.vencimiento_contrato:
                     d = (prop.fecha_renovacion - end).days
-                    if 0 <= d < alert_days_actualizacion:
+                    if d <= alert_days_actualizacion:
                         renov_lt_60 += 1
                         selectors["realizada"]["renovacion_lt_60"] += 1
         # Vacancia > N días — aplica a todos los estados vacantes (1, 2, 3)
@@ -924,12 +924,12 @@ def build_prop_selectors(
             result["realizada"]["count"] += 1
             if prop.vencimiento_contrato:
                 d = (prop.vencimiento_contrato - pivot).days
-                if 0 <= d < alert_days_vencimiento:
+                if d <= alert_days_vencimiento:
                     result["realizada"]["vencimiento_lt_60"] += 1
             if prop.fecha_renovacion:
                 if not prop.vencimiento_contrato or prop.fecha_renovacion <= prop.vencimiento_contrato:
                     d = (prop.fecha_renovacion - pivot).days
-                    if 0 <= d < alert_days_actualizacion:
+                    if d <= alert_days_actualizacion:
                         result["realizada"]["renovacion_lt_60"] += 1
         # Vacancia > N días — aplica a todos los estados vacantes (1, 2, 3)
         if orden in (1, 2, 3) and prop.vacancia_fecha:
@@ -989,7 +989,7 @@ def build_prop_detalle(
             if not prop.vencimiento_contrato:
                 continue
             d = (prop.vencimiento_contrato - pivot).days
-            if not (0 <= d < alert_days_vencimiento):
+            if not (d <= alert_days_vencimiento):
                 continue
         elif sub_bucket == "renovacion_lt_60":
             if not prop.fecha_renovacion:
@@ -997,7 +997,7 @@ def build_prop_detalle(
             if prop.vencimiento_contrato and prop.fecha_renovacion > prop.vencimiento_contrato:
                 continue
             d = (prop.fecha_renovacion - pivot).days
-            if not (0 <= d < alert_days_actualizacion):
+            if not (d <= alert_days_actualizacion):
                 continue
         elif sub_bucket == "lt_30":
             if not prop.estado_fecha:
@@ -1083,7 +1083,7 @@ def build_prop_detalle_alerta(
             if not prop.vencimiento_contrato:
                 continue
             d = (prop.vencimiento_contrato - pivot).days
-            if not (0 <= d < alert_days_vencimiento):
+            if not (d <= alert_days_vencimiento):
                 continue
         elif alert_key == "renovacion_lt_60":
             if not prop.fecha_renovacion:
@@ -1091,7 +1091,7 @@ def build_prop_detalle_alerta(
             if prop.vencimiento_contrato and prop.fecha_renovacion > prop.vencimiento_contrato:
                 continue
             d = (prop.fecha_renovacion - pivot).days
-            if not (0 <= d < alert_days_actualizacion):
+            if not (d <= alert_days_actualizacion):
                 continue
         else:
             continue

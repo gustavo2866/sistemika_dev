@@ -9,6 +9,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ResourceTitle } from "@/components/resource-title";
 import { ContratoForm } from "./form";
 import { CONTRATO_ESTADO_BADGES, getContratoEstadoLabel, type Contrato } from "./model";
+import { ContratoBackButton } from "./navigation-title";
 
 const ContratoEditTitle = () => {
   const record = useRecordContext<Contrato>();
@@ -16,6 +17,7 @@ const ContratoEditTitle = () => {
   const badgeClass = CONTRATO_ESTADO_BADGES[estado] ?? "bg-gray-100 text-gray-600";
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      <ContratoBackButton />
       <ResourceTitle icon={FileText} text={`Contrato #${record?.id ?? ""}`} />
       <Badge variant="outline" className={`text-[11px] ${badgeClass}`}>
         {getContratoEstadoLabel(estado)}

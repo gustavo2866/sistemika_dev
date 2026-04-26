@@ -4,7 +4,7 @@ const HOME_DASHBOARD_RETURN_MARKER_PREFIX = "home-dashboard:return:";
 
 export const HOME_DASHBOARD_RETURN_TTL_MS = 5 * 60 * 1000;
 
-export type HomeDashboardPartialKey = "miDia" | "radar" | "summary";
+export type HomeDashboardPartialKey = "miDia" | "radar";
 
 export type HomeDashboardReturnMarker = {
   savedAt: number;

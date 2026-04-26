@@ -8,6 +8,7 @@ import {
   saveDashboardReturnMarker,
 } from "../crm-dashboard/return-state";
 import { CRMOportunidadForm } from "./form";
+import { CRMOportunidadBackButton } from "./navigation-title";
 
 export const CRMOportunidadCreate = () => {
   const location = useLocation();
@@ -19,10 +20,13 @@ export const CRMOportunidadCreate = () => {
     <Create
       redirect={false}
       title={
-        <span className="inline-flex items-center gap-2">
-          <Target className="h-4 w-4" />
-          Crear Oportunidad
-        </span>
+        <div className="flex items-center gap-2">
+          <CRMOportunidadBackButton returnTo={returnTo ?? undefined} />
+          <span className="inline-flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            Crear Oportunidad
+          </span>
+        </div>
       }
       mutationOptions={{
         onSuccess: () => {

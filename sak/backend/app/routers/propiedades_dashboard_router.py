@@ -158,8 +158,8 @@ def get_selectors(
     - `en_reparacion.count` — propiedades en estado En Reparación.
     - `disponible.count` — propiedades en estado Disponible.
     - `realizada.count` — propiedades en estado Realizada (ocupadas).
-      - `vencimiento_lt_60`: contratos venciendo en < 60 días desde `pivotDate`.
-      - `renovacion_lt_60`: fechas de renovación en < 60 días desde `pivotDate`.
+      - `vencimiento_lt_60`: contratos vencidos o venciendo dentro de los días configurados desde `pivotDate`.
+      - `renovacion_lt_60`: renovaciones vencidas o dentro de los días configurados desde `pivotDate`.
     - `retirada.count` — propiedades retiradas del portfolio.
       - `lt_30`: retiradas hace ≤ 30 días desde `pivotDate`.
       - `gt_30`: retiradas hace > 30 días desde `pivotDate`.
@@ -244,10 +244,10 @@ def get_detalle_alerta(
     o con vacancia prolongada.
 
     `alertKey` acepta:
-    - `vencimiento_lt_60`  — contratos cuyo `vencimiento_contrato` cae dentro de
-      los próximos 60 días (desde `pivotDate`).
-    - `renovacion_lt_60`   — contratos cuya `fecha_renovacion` cae dentro de los
-      próximos 60 días, siempre que sea anterior o igual al vencimiento.
+    - `vencimiento_lt_60`  — contratos con `vencimiento_contrato` vencido o dentro
+      de los días configurados desde `pivotDate`.
+    - `renovacion_lt_60`   — contratos con `fecha_renovacion` vencida o dentro de
+      los días configurados, siempre que sea anterior o igual al vencimiento.
     - `vacancia_gt_90`     — propiedades vacantes con más de 90 días de vacancia,
       ordenadas por días descendente.
 
@@ -282,10 +282,9 @@ def get_detalle_alerta(
 
 
 # ---------------------------------------------------------------------------
-# Endpoints legacy (backward compat)
+# Helpers legacy no registrados como endpoints.
 # ---------------------------------------------------------------------------
 
-@router.get("")
 def get_dashboard(
     pivotDate: Optional[str] = Query(None, description="Fecha pivot YYYY-MM-DD"),
     tipoOperacionId: Optional[int] = Query(None, description="ID tipo de operacion"),
@@ -309,7 +308,6 @@ def get_dashboard(
         raise HTTPException(status_code=400, detail={"error": str(exc)})
 
 
-@router.get("/realizada-vencimientos")
 def get_realizada_vencimientos(
     pivotDate: Optional[str] = Query(None, description="Fecha pivot YYYY-MM-DD"),
     tipoOperacionId: Optional[int] = Query(None, description="ID tipo de operacion"),

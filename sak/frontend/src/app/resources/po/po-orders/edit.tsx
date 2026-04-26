@@ -9,6 +9,7 @@ import { PoOrderForm } from "./form";
 import { getOrderStatusBadgeClass, normalizePoOrderPayload } from "./model";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ClipboardList } from "lucide-react";
+import { PoOrderBackButton } from "./navigation-title";
 
 const PoOrderEditTitle = () => {
   const { record } = useEditContext();
@@ -17,6 +18,7 @@ const PoOrderEditTitle = () => {
   const formattedId = String(record.id ?? "").padStart(6, "0");
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <PoOrderBackButton />
       <span className="inline-flex items-center gap-2">
         <ClipboardList className="h-4 w-4" />
         <span>Editar Orden</span>

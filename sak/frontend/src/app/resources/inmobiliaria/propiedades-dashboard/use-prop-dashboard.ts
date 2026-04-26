@@ -155,7 +155,6 @@ export const usePropDashboard = () => {
 
   const fetchSelectors = useCallback(async () => {
     const params = serializeBaseFiltersToParams(filters);
-    params.set("pivotDate", filters.endDate);
     return fetchJsonWithAuth<PropDashboardSelectorResponse>(
       `${apiUrl}/api/dashboard/propiedades/selectors?${params.toString()}`,
     );
@@ -178,7 +177,6 @@ export const usePropDashboard = () => {
         params.set("alertKey", selectedAlertKey);
         params.set("page", page.toString());
         params.set("pageSize", PROP_DASHBOARD_DETAIL_PAGE_SIZE.toString());
-        params.set("pivotDate", filters.endDate);
         return fetchJsonWithAuth<PropDashboardDetalleResponse>(
           `${apiUrl}/api/dashboard/propiedades/detalle-alerta?${params.toString()}`,
         );

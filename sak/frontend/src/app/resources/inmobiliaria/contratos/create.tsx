@@ -6,6 +6,7 @@ import { ResourceTitle } from "@/components/resource-title";
 import { FileText } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ContratoForm } from "./form";
+import { ContratoBackButton } from "./navigation-title";
 
 export const ContratoCreate = ({
   embedded = false,
@@ -20,7 +21,12 @@ export const ContratoCreate = ({
       redirect={redirect ?? false}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
-      title={<ResourceTitle icon={FileText} text="Crear contrato" />}
+      title={
+        <div className="flex items-center gap-2">
+          <ContratoBackButton returnTo={returnTo ?? undefined} />
+          <ResourceTitle icon={FileText} text="Crear contrato" />
+        </div>
+      }
       mutationOptions={
         redirect
           ? undefined

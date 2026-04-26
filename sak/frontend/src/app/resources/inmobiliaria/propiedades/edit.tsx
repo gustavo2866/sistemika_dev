@@ -12,6 +12,7 @@ import {
 
 import { PropiedadForm } from "./form";
 import { getPropiedadStatusBadgeClass, type Propiedad } from "./model";
+import { PropiedadBackButton } from "./navigation-title";
 
 export const PropiedadEdit = () => {
   const location = useLocation();
@@ -65,6 +66,7 @@ const PropiedadEditTitle = () => {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <PropiedadBackButton />
       <span className="inline-flex items-center gap-2">
         <Home className="h-4 w-4" />
         Editar propiedad

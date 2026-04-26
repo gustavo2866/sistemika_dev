@@ -10,6 +10,7 @@ import {
 } from "../propiedades-dashboard/return-state";
 
 import { PropiedadForm } from "./form";
+import { PropiedadBackButton } from "./navigation-title";
 
 export const PropiedadCreate = () => {
   const location = useLocation();
@@ -20,7 +21,12 @@ export const PropiedadCreate = () => {
   return (
     <Create
       redirect={false}
-      title={<ResourceTitle icon={Home} text="Crear propiedad" />}
+      title={
+        <div className="flex items-center gap-2">
+          <PropiedadBackButton returnTo={returnTo ?? undefined} />
+          <ResourceTitle icon={Home} text="Crear propiedad" />
+        </div>
+      }
       mutationOptions={{
         onSuccess: (data) => {
           const createdId = data?.id;

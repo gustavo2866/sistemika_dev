@@ -1,13 +1,11 @@
 from typing import List, Optional
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
 from app.db import get_session
 from app.models.base import filtrar_respuesta
-from app.models.proyecto import Proyecto
 from app.services.proyectos_dashboard import (
     CalculatedProyecto,  # 🚀 Tipo para nuevas funciones optimizadas
     build_dashboard_detail_entry_from_calculated_proyecto,  # 🚀 Nueva función optimizada
@@ -189,28 +187,6 @@ def get_proyectos_dashboard_alert_detail(
         raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
-@router.get("/alerta-item")
-def get_proyectos_dashboard_alerta_item(
-    id: int = Query(..., description="ID del proyecto"),
-    alertKey: str = Query(
-        ...,
-        pattern="^(mensajes|eventos|ordenes_rechazadas)$",
-        description="Tipo de alerta"
-    ),
-    session: Session = Depends(get_session),
-):
-    """Indica si un proyecto concreto sigue teniendo activa la alerta indicada."""
-    try:
-        tiene_alerta = check_proyecto_alert(
-            proyecto_id=id,
-            alert_key=alertKey,
-            session=session,
-        )
-        return {"id": id, "alertKey": alertKey, "hasAlert": tiene_alerta}
-    except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="Error inesperado") from exc
-
-
 @router.get("/detalle")
 def get_proyectos_dashboard_detalle(
     startDate: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
@@ -330,7 +306,7 @@ def get_proyectos_dashboard_selectors(
         raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
-@router.get("/metricas-avance")
+# Helpers legacy no registrados como endpoints.
 def get_proyectos_metricas_avance(
     startDate: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
     endDate: str = Query(..., description="Fecha fin YYYY-MM-DD"),
@@ -415,7 +391,6 @@ def get_proyectos_metricas_avance(
         raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
-@router.get("/alertas")
 def get_proyectos_alertas(
     startDate: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
     endDate: str = Query(..., description="Fecha fin YYYY-MM-DD"),

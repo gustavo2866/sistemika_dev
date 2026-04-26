@@ -21,7 +21,7 @@ export const FormSectionPanel = ({
     {title || description || actions || toolbar ? (
       <div className="border-b border-border/50 px-4 py-3 xl:px-5">
         {title || description || actions ? (
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-end justify-between gap-2">
             <div className="min-w-0">
               {title ? (
                 <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>

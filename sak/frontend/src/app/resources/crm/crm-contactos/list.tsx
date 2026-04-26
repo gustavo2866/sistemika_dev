@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Users } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { CreateButton } from "@/components/create-button";
@@ -72,32 +72,52 @@ const listFilters = buildListFilters(
 
 const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const CRMContactoListActions = ({ returnTo }: { returnTo?: string }) => {
-  const navigate = useNavigate();
-
-  return (
-    <div className="flex items-center gap-2">
-      {returnTo ? (
-        <Button
-          type="button"
-          variant="ghost"
-          className={listActionButtonClass}
-          onClick={() => navigate(returnTo)}
-        >
-          <ArrowLeft className="h-3 w-3" />
-          Volver
-        </Button>
-      ) : null}
-      <FilterButton
-        filters={listFilters}
-        size="sm"
-        buttonClassName={listActionButtonClass}
-      />
-      <CreateButton className={listActionButtonClass} label="Crear" />
-      <ExportButton className={listActionButtonClass} label="Exportar" />
+const CRMContactoListTitle = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <div className="sm:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-7 px-1.5 text-[11px] font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <div className="-mt-0.5 flex items-center justify-center gap-2">
+        <Users className="h-4 w-4" />
+        <span>CRM Contactos</span>
+      </div>
     </div>
-  );
-};
+    <span className="hidden items-center gap-3 sm:inline-flex">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-2 text-sm font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <span className="inline-flex items-center gap-2">
+        <Users className="h-4 w-4" />
+        CRM Contactos
+      </span>
+    </span>
+  </>
+);
+
+const CRMContactoListActions = () => (
+  <div className="flex items-center gap-2">
+    <FilterButton
+      filters={listFilters}
+      size="sm"
+      buttonClassName={listActionButtonClass}
+    />
+    <CreateButton className={listActionButtonClass} label="Crear" />
+    <ExportButton className={listActionButtonClass} label="Exportar" />
+  </div>
+);
 
 type CRMContactoListProps = {
   embedded?: boolean;
@@ -111,13 +131,26 @@ export const CRMContactoList = ({
   perPage = 5,
 }: CRMContactoListProps = {}) => {
   const location = useLocation();
-  const returnTo = getReturnToFromLocation(location);
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    const returnTo = getReturnToFromLocation(location);
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/crm");
+  };
 
   return (
     <List
-      title="CRM - Contactos"
+      title={embedded ? "CRM - Contactos" : <CRMContactoListTitle onBack={handleBack} />}
       filters={listFilters}
-      actions={<CRMContactoListActions returnTo={returnTo} />}
+      actions={<CRMContactoListActions />}
       debounce={300}
       perPage={perPage}
       pagination={<ListPaginator />}

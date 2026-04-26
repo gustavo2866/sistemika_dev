@@ -9,6 +9,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { CRMContactoForm } from "./form";
 import { normalizeCRMContactoPayload, type CRMContacto } from "./model";
+import { CRMContactoBackButton } from "./navigation-title";
 
 type CRMContactoEditProps = {
   embedded?: boolean;
@@ -16,11 +17,18 @@ type CRMContactoEditProps = {
   redirect?: BaseEditProps["redirect"];
 };
 
-const CRMContactoEditTitle = () => {
+const CRMContactoEditTitle = ({
+  fallbackTo,
+  returnTo,
+}: {
+  fallbackTo?: string;
+  returnTo?: string;
+}) => {
   const { record } = useEditContext<CRMContacto>();
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <CRMContactoBackButton fallbackTo={fallbackTo} returnTo={returnTo} />
       <span className="inline-flex items-center gap-2">
         <UserRound className="h-4 w-4" />
         Editar contacto CRM
@@ -55,7 +63,12 @@ export const CRMContactoEdit = ({
       id={id}
       redirect={false}
       mutationMode="pessimistic"
-      title={<CRMContactoEditTitle />}
+      title={
+        <CRMContactoEditTitle
+          fallbackTo={typeof redirect === "string" ? redirect : undefined}
+          returnTo={returnTo ?? undefined}
+        />
+      }
       className="max-w-2xl w-full"
       actions={<CRMContactoEditActions />}
       transform={(data: Record<string, unknown>) => normalizeCRMContactoPayload(data)}

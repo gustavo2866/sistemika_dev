@@ -1,8 +1,7 @@
 ﻿"use client";
 
 import { Create } from "@/components/create";
-import { CRMEventoForm } from "./form";
-import { ResourceTitle } from "@/components/resource-title";
+import { CRMEventoForm, CRMEventoFormTitle } from "./form";
 import { CalendarCheck } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMemo } from "react";
@@ -48,7 +47,7 @@ export const CRMEventoCreate = () => {
           navigate(-1);
         },
       }}
-      title={<ResourceTitle icon={CalendarCheck} text="Crear Evento CRM" />}
+      title={<CRMEventoFormTitle icon={CalendarCheck} text="Crear Evento CRM" />}
     >
       <CRMEventoForm
         defaultValues={{

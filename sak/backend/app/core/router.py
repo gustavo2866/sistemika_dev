@@ -1,12 +1,32 @@
 import json
-import json
 from typing import Dict, List, Type, Optional, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, Request
 from sqlmodel import SQLModel, Session
 from app.db import get_session
-from app.core.generic_crud import GenericCRUD
+from app.core.generic_crud import FilterOperator, GenericCRUD
 from app.core.responses import DataResponse, ListResponse, DeleteResponse, ErrorResponse, ErrorCodes
 from app.models.base import filtrar_respuesta
+
+FILTER_OPERATOR_KEYS = {
+    FilterOperator.EQ,
+    FilterOperator.IN,
+    FilterOperator.GTE,
+    FilterOperator.GT,
+    FilterOperator.LTE,
+    FilterOperator.LT,
+    FilterOperator.IS,
+    FilterOperator.LIKE,
+    FilterOperator.STARTSWITH,
+}
+
+
+def _is_operator_filter(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and bool(value)
+        and all(str(key).lower() in FILTER_OPERATOR_KEYS for key in value.keys())
+    )
+
 
 def flatten_nested_filters(nested_dict: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
     """
@@ -20,8 +40,11 @@ def flatten_nested_filters(nested_dict: Dict[str, Any], prefix: str = "") -> Dic
         new_key = f"{prefix}.{key}" if prefix else key
         
         if isinstance(value, dict):
-            # Recursivamente aplanar objetos anidados
-            flat_dict.update(flatten_nested_filters(value, new_key))
+            if _is_operator_filter(value):
+                flat_dict[new_key] = value
+            else:
+                # Recursivamente aplanar objetos anidados
+                flat_dict.update(flatten_nested_filters(value, new_key))
         else:
             # Convertir strings numéricos a int si terminan en _id
             if new_key.endswith('_id') and isinstance(value, str) and value.isdigit():

@@ -32,6 +32,7 @@ class FilterOperator:
     LIKE = "like"      # texto (case insensitive)
     STARTSWITH = "startswith"  # empieza con (case insensitive)
 
+
 class GenericCRUD(Generic[M]):
     def __init__(self, model: Type[M]):
         self.model: Type[M] = model
@@ -276,6 +277,11 @@ class GenericCRUD(Generic[M]):
         # Excluir version del update normal (se maneja por separado)
         return {k: v for k, v in data.items() if k in allowed and k != "version"}
 
+    def _coerce_operator_value(self, column, value):
+        if isinstance(value, list):
+            return [self._coerce_column_value(column, item) for item in value]
+        return self._coerce_column_value(column, value)
+
     def _apply_filters(self, stmt, filters: Dict[str, Any]):
         """Aplica filtros al statement SQL"""
         for field_name, filter_value in filters.items():
@@ -314,7 +320,8 @@ class GenericCRUD(Generic[M]):
             if isinstance(filter_value, dict):
                 # Filtros complejos: {"gte": 10, "lt": 100}
                 for operator, value in filter_value.items():
-                    stmt = self._apply_operator_filter(stmt, column, operator, value)
+                    coerced_value = self._coerce_operator_value(column, value)
+                    stmt = self._apply_operator_filter(stmt, column, operator, coerced_value)
             elif isinstance(filter_value, list):
                 # Filtro de array: usar operador IN para mÃºltiples valores
                 coerced_values = [self._coerce_column_value(column, value) for value in filter_value]
@@ -371,7 +378,12 @@ class GenericCRUD(Generic[M]):
             
             if hasattr(current_model, field_name):
                 final_column = getattr(current_model, field_name)
-                if isinstance(filter_value, list):
+                if isinstance(filter_value, dict):
+                    for operator, value in filter_value.items():
+                        coerced_value = self._coerce_operator_value(final_column, value)
+                        stmt = self._apply_operator_filter(stmt, final_column, operator, coerced_value)
+                        print(f"DEBUG: Filtro operador aplicado: {field_name} {operator} {coerced_value}")
+                elif isinstance(filter_value, list):
                     coerced = [self._coerce_column_value(final_column, value) for value in filter_value]
                     stmt = stmt.where(final_column.in_(coerced))
                     print(f"DEBUG: Filtro IN aplicado: {field_name} IN {coerced}")

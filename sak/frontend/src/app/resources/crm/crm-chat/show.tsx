@@ -482,7 +482,7 @@ export const CRMChatShow = ({
         className={
           embedded
           ? "flex h-[392px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8]"
-          : "mx-auto flex h-[calc(100vh-64px)] w-full max-w-xl flex-col bg-[#f6f2e8]"
+          : "mr-auto flex h-[calc(100dvh-88px)] max-h-[680px] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-[#f6f2e8] lg:h-[calc(100dvh-112px)]"
         }
       >
       {!embedded ? (
@@ -599,7 +599,11 @@ export const CRMChatShow = ({
 
       <div
         ref={listRef}
-        className={embedded ? "flex-1 overflow-y-auto px-2.5 pb-16 pt-3" : "flex-1 overflow-y-auto px-3 pb-28 pt-4"}
+        className={
+          embedded
+            ? "flex-1 overflow-y-auto px-2.5 pb-16 pt-3"
+            : "min-h-0 flex-1 overflow-y-scroll overscroll-y-contain px-3 pb-28 pt-4 [scrollbar-gutter:stable]"
+        }
         onScroll={handleScroll}
       >
         {loading ? (

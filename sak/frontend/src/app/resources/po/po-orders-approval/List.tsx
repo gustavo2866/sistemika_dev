@@ -302,14 +302,13 @@ const PoOrderQuickActionButtons = ({
           disabled={loading}
           aria-label="Rechazar"
           title="Rechazar"
-          className="h-6 w-6 shrink-0 rounded-full border-emerald-200 px-0 text-[8px] font-semibold text-emerald-700 hover:bg-emerald-50 sm:h-7 sm:w-auto sm:px-3 sm:text-[11px]"
+          className="h-6 w-6 shrink-0 rounded-full border-red-200 px-0 text-[8px] font-semibold text-red-600 hover:bg-red-50"
           onClick={(event) => {
             event.stopPropagation();
             setPendingAction("reject");
           }}
         >
-          <XCircle className="h-2.5 w-2.5 sm:mr-1 sm:h-3.5 sm:w-3.5" />
-          <span className="hidden sm:inline">Rechazar</span>
+          <XCircle className="h-2.5 w-2.5" />
         </Button>
         <Button
           type="button"
@@ -317,14 +316,13 @@ const PoOrderQuickActionButtons = ({
           disabled={loading}
           aria-label="Aprobar"
           title="Aprobar"
-          className="h-6 w-6 shrink-0 rounded-full bg-emerald-500 px-0 text-[8px] font-semibold text-white shadow-sm hover:bg-emerald-600 sm:h-7 sm:w-auto sm:px-3.5 sm:text-[11px]"
+          className="h-6 w-6 shrink-0 rounded-full bg-emerald-500 px-0 text-[8px] font-semibold text-white shadow-sm hover:bg-emerald-600"
           onClick={(event) => {
             event.stopPropagation();
             setPendingAction("approve");
           }}
         >
-          <CheckCircle2 className="h-2.5 w-2.5 sm:mr-1 sm:h-3.5 sm:w-3.5" />
-          <span className="hidden sm:inline">Aprobar</span>
+          <CheckCircle2 className="h-2.5 w-2.5" />
         </Button>
       </div>
       <Confirm
@@ -395,14 +393,13 @@ const PoInvoiceQuickActionButtons = ({
           disabled={loading}
           aria-label="Rechazar"
           title="Rechazar"
-          className="h-6 w-6 shrink-0 rounded-full border-sky-200 px-0 text-[8px] font-semibold text-sky-700 hover:bg-sky-50 sm:h-7 sm:w-auto sm:px-3 sm:text-[11px]"
+          className="h-6 w-6 shrink-0 rounded-full border-red-200 px-0 text-[8px] font-semibold text-red-600 hover:bg-red-50"
           onClick={(event) => {
             event.stopPropagation();
             setPendingAction("reject");
           }}
         >
-          <XCircle className="h-2.5 w-2.5 sm:mr-1 sm:h-3.5 sm:w-3.5" />
-          <span className="hidden sm:inline">Rechazar</span>
+          <XCircle className="h-2.5 w-2.5" />
         </Button>
         <Button
           type="button"
@@ -410,14 +407,13 @@ const PoInvoiceQuickActionButtons = ({
           disabled={loading}
           aria-label="Aprobar"
           title="Aprobar"
-          className="h-6 w-6 shrink-0 rounded-full bg-sky-600 px-0 text-[8px] font-semibold text-white shadow-sm hover:bg-sky-700 sm:h-7 sm:w-auto sm:px-3.5 sm:text-[11px]"
+          className="h-6 w-6 shrink-0 rounded-full bg-sky-600 px-0 text-[8px] font-semibold text-white shadow-sm hover:bg-sky-700"
           onClick={(event) => {
             event.stopPropagation();
             setPendingAction("approve");
           }}
         >
-          <CheckCircle2 className="h-2.5 w-2.5 sm:mr-1 sm:h-3.5 sm:w-3.5" />
-          <span className="hidden sm:inline">Aprobar</span>
+          <CheckCircle2 className="h-2.5 w-2.5" />
         </Button>
       </div>
       <Confirm
@@ -477,7 +473,7 @@ const PoOrderApprovalCard = ({
           onOpen(record.id);
         }
       }}
-      className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] transition hover:border-slate-200 hover:shadow-[0_3px_8px_rgba(0,0,0,0.10)] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-150 hover:scale-[1.012] hover:border-emerald-200 hover:bg-emerald-50/30 hover:shadow-[0_6px_18px_rgba(0,0,0,0.12)] active:scale-[0.998] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
     >
       <span className="absolute inset-y-0 left-0 w-[3px] rounded-l-2xl bg-emerald-500" />
 
@@ -562,7 +558,7 @@ const PoInvoiceApprovalCard = ({
           onOpen(record.id);
         }
       }}
-      className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] transition hover:border-slate-200 hover:shadow-[0_3px_8px_rgba(0,0,0,0.10)] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-150 hover:scale-[1.012] hover:border-sky-200 hover:bg-sky-50/30 hover:shadow-[0_6px_18px_rgba(0,0,0,0.12)] active:scale-[0.998] focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
     >
       <span className="absolute inset-y-0 left-0 w-[3px] rounded-l-2xl bg-sky-600" />
 
@@ -643,7 +639,7 @@ const PoInvoicePaymentCard = ({
           onOpen(record.id);
         }
       }}
-      className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] transition hover:border-slate-200 hover:shadow-[0_3px_8px_rgba(0,0,0,0.10)] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-150 hover:scale-[1.012] hover:border-orange-200 hover:bg-orange-50/30 hover:shadow-[0_6px_18px_rgba(0,0,0,0.12)] active:scale-[0.998] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
     >
       <span className="absolute inset-y-0 left-0 w-[3px] rounded-l-2xl bg-orange-800" />
 
@@ -963,7 +959,7 @@ export const PoOrdersApprovalList = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f8f9fb]">
+    <div className="flex h-[calc(100dvh-88px)] max-h-[680px] min-h-0 flex-col overflow-hidden bg-[#f8f9fb] lg:h-[calc(100dvh-112px)]">
       <div className="shrink-0 bg-[#f8f9fb]/95 backdrop-blur">
         <div className="mx-auto w-full max-w-xl px-1 pt-3 pb-1.5 sm:px-4 lg:ml-0 lg:mr-auto lg:max-w-[50%]">
           <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-[0_2px_10px_rgba(15,23,42,0.06)]">
@@ -1071,9 +1067,9 @@ export const PoOrdersApprovalList = () => {
 
       <div
         ref={listViewportRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain"
+        className="mx-auto min-h-0 w-full max-w-xl flex-1 overflow-y-scroll overscroll-y-contain px-1 [scrollbar-gutter:stable] sm:px-4 lg:ml-0 lg:mr-auto lg:max-w-[50%]"
       >
-        <div className="mx-auto flex w-full max-w-xl flex-col gap-2.5 px-1 pb-4 pt-1 sm:px-4 lg:ml-0 lg:mr-auto lg:max-w-[50%]">
+        <div className="flex w-full flex-col gap-2.5 pb-4 pt-1">
           {activeLoading && activeItems.length === 0 ? (
             <>
               <ApprovalCardSkeleton />

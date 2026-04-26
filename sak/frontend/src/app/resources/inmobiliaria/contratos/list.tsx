@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
-import { useRecordContext } from "ra-core";
-import { useLocation } from "react-router-dom";
+import { useEffect, useMemo, type ReactNode } from "react";
+import { useListContext, useRecordContext } from "ra-core";
+import { ArrowLeft } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
@@ -18,6 +19,8 @@ import {
   buildListFilters,
 } from "@/components/forms/form_order";
 import { ReferenceField } from "@/components/reference-field";
+import { Button } from "@/components/ui/button";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 
 import {
   CONTRATO_ESTADO_BADGES,
@@ -142,6 +145,66 @@ const EstadoCell = () => {
   return <ListEstado source="estado" statusClasses={CONTRATO_ESTADO_BADGES} record={{ ...record, estado: displayEstado }} />;
 };
 
+const UrlFilterSync = ({ enabled, search }: { enabled: boolean; search: string }) => {
+  const { filterValues, setFilters } = useListContext();
+
+  const urlFilters = useMemo(() => {
+    if (!enabled) return null;
+    const params = new URLSearchParams(search);
+    const rawFilter = params.get("filter");
+    if (!rawFilter) return null;
+    try {
+      return JSON.parse(rawFilter) as Record<string, unknown>;
+    } catch (error) {
+      console.error("No se pudo parsear el filtro de contratos desde la URL", error);
+      return null;
+    }
+  }, [enabled, search]);
+
+  useEffect(() => {
+    if (!enabled || !urlFilters) return;
+
+    const currentFilters = JSON.stringify(filterValues ?? {});
+    const nextFilters = JSON.stringify(urlFilters);
+    if (currentFilters === nextFilters) return;
+
+    setFilters(urlFilters, undefined, false);
+  }, [enabled, filterValues, setFilters, urlFilters]);
+
+  return null;
+};
+
+const ContratoListTitle = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <div className="sm:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-7 px-1.5 text-[11px] font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <div className="-mt-0.5 flex items-center justify-center">
+        <span>Contratos</span>
+      </div>
+    </div>
+    <span className="hidden items-center gap-3 sm:inline-flex">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-2 text-sm font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <span>Contratos</span>
+    </span>
+  </>
+);
+
 type ContratoListProps = {
   embedded?: boolean;
   perPage?: number;
@@ -171,8 +234,21 @@ export const ContratoList = ({
   showEmbeddedHeader = false,
   embeddedTitle = "Contratos",
 }: ContratoListProps = {}) => {
+  const navigate = useNavigate();
   const location = useLocation();
+  const locationReturnTo = getReturnToFromLocation(location);
   const returnTo = useMemo(() => `${location.pathname}${location.search}`, [location.pathname, location.search]);
+  const handleBack = () => {
+    if (locationReturnTo) {
+      navigate(locationReturnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/contratos");
+  };
   const resolvedCreateTo = useMemo(() => {
     if (createTo) return createTo;
     if (!embedded || !propiedadId) return undefined;
@@ -204,7 +280,11 @@ export const ContratoList = ({
   return (
     <List
       resource="contratos"
-      title={embedded ? (showEmbeddedHeader ? embeddedTitle : undefined) : "Contratos"}
+      title={
+        embedded
+          ? (showEmbeddedHeader ? embeddedTitle : undefined)
+          : <ContratoListTitle onBack={handleBack} />
+      }
       filters={resolvedFilters}
       actions={<ListActions createTo={resolvedCreateTo} createAction={createAction} filters={resolvedFilters} />}
       debounce={300}
@@ -220,6 +300,7 @@ export const ContratoList = ({
       showHeader={embedded ? showEmbeddedHeader : true}
       filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
+      <UrlFilterSync enabled={!embedded} search={location.search} />
       <ResponsiveDataTable
         rowClick={resolvedRowClick}
         mobileConfig={{
