@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ListBase,
   required,
+  useGetList,
   useGetOne,
   useListContext,
   useRecordContext,
@@ -39,9 +40,8 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import {
   PROYECTO_DEFAULTS,
+  PROYECTO_ESTADO_CHOICES,
   PROYECTO_VALIDATIONS,
-  computeProyectoPresupuestoTotal,
-  getProyectoHorasTotales,
   getProyectoUltimoAvance,
   proyectoSchema,
   type ProyectoFormValues,
@@ -59,6 +59,11 @@ const resolveNumericId = (value: unknown) => {
   return Number.isFinite(normalizedValue) && normalizedValue > 0
     ? normalizedValue
     : undefined;
+};
+
+const toNumber = (value: unknown) => {
+  const normalized = Number(value ?? 0);
+  return Number.isFinite(normalized) ? normalized : 0;
 };
 
 const DESKTOP_LAYOUT_BREAKPOINT = 1024;
@@ -627,11 +632,12 @@ const ProyectoCabeceraMainFields = () => (
       className="md:col-span-2"
       maxLength={PROYECTO_VALIDATIONS.NOMBRE_MAX}
     />
-    <FormText
+    <FormSelect
       source="estado"
       label="Estado"
+      choices={PROYECTO_ESTADO_CHOICES}
+      validate={required()}
       widthClass="w-full"
-      maxLength={PROYECTO_VALIDATIONS.ESTADO_MAX}
     />
     <ReferenceInput source="responsable_id" reference="users" label="Responsable">
       <FormSelect
@@ -714,18 +720,37 @@ const ProyectoCabeceraOptionalFields = () => (
 );
 
 const ResumenProyecto = ({ className }: { className?: string }) => {
-  const importes = useWatch({
-    name: ["importe_mat", "importe_mo", "terceros", "herramientas", "ingresos", "avances"],
-  }) as [number?, number?, number?, number?, number?, ProyectoFormValues["avances"]?];
+  const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
+  const proyectoId = resolveNumericId(record?.id);
 
-  const [importeMat, importeMo, terceros, herramientas, ingresos, avances] = importes;
-  const presupuesto = computeProyectoPresupuestoTotal({
-    importe_mat: importeMat,
-    importe_mo: importeMo,
-    terceros,
-    herramientas,
-  });
-  const horas = getProyectoHorasTotales(avances);
+  const { data: presupuestos = [] } = useGetList(
+    "proy-presupuestos",
+    {
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: "fecha", order: "DESC" },
+      filter: { proyecto_id: proyectoId ?? -1 },
+    },
+  );
+  const { data: avances = [] } = useGetList(
+    "proyecto-avance",
+    {
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: "fecha_registracion", order: "DESC" },
+      filter: { proyecto_id: proyectoId ?? -1 },
+    },
+  );
+
+  const presupuesto = presupuestos.reduce(
+    (acc, item) =>
+      acc +
+      toNumber(item.mo_propia) +
+      toNumber(item.mo_terceros) +
+      toNumber(item.materiales) +
+      toNumber(item.herramientas),
+    0,
+  );
+  const ingresos = presupuestos.reduce((acc, item) => acc + toNumber(item.importe), 0);
+  const horas = presupuestos.reduce((acc, item) => acc + toNumber(item.horas), 0);
   const avanceActual = getProyectoUltimoAvance(avances);
 
   return (

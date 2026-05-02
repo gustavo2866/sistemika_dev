@@ -50,6 +50,10 @@ const ProyPresupuestoResumen = () => {
           <NumberField source="materiales" options={{ style: "currency", currency: "ARS" }} />
         </div>
         <div>
+          <span className="block text-xs font-medium text-muted-foreground">Herramientas</span>
+          <NumberField source="herramientas" options={{ style: "currency", currency: "ARS" }} />
+        </div>
+        <div>
           <span className="block text-xs font-medium text-muted-foreground">Horas</span>
           <NumberField source="horas" options={{ minimumFractionDigits: 0, maximumFractionDigits: 2 }} />
         </div>
@@ -66,6 +70,12 @@ const ProyPresupuestoResumen = () => {
           />
         </div>
       </div>
+      {record?.descripcion && (
+        <div>
+          <span className="block text-xs font-medium text-muted-foreground">Descripcion</span>
+          <p className="text-sm">{record.descripcion}</p>
+        </div>
+      )}
     </Card>
   );
 };

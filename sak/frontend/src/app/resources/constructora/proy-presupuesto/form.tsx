@@ -12,11 +12,12 @@ import {
   FormDate,
   FormNumber,
   FormReferenceAutocomplete,
+  FormTextarea,
+  FormValue,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import {
   PROY_PRESUPUESTO_DEFAULT,
-  computeProyPresupuestoTotal,
   proyPresupuestoSchema,
   type ProyPresupuestoFormValues,
 } from "./model";
@@ -27,23 +28,96 @@ const parseNumericParam = (value: string | null) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const PresupuestoMainFields = () => (
-  <div className="grid gap-2 md:grid-cols-2">
-    <FormReferenceAutocomplete
-      referenceProps={{ source: "proyecto_id", reference: "proyectos" }}
-      inputProps={{
-        optionText: "nombre",
-        label: "Proyecto",
-        validate: required(),
-      }}
+const toNumber = (value: unknown) => {
+  const normalized = Number(value ?? 0);
+  return Number.isFinite(normalized) ? normalized : 0;
+};
+
+const PresupuestoCabeceraFields = () => (
+  <div className="grid gap-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      <FormReferenceAutocomplete
+        referenceProps={{ source: "proyecto_id", reference: "proyectos" }}
+        inputProps={{
+          optionText: "nombre",
+          label: "Proyecto",
+          validate: required(),
+        }}
+        widthClass="w-full"
+      />
+      <FormDate
+        source="fecha"
+        label="Fecha"
+        validate={required()}
+        widthClass="w-full"
+      />
+    </div>
+    <FormTextarea
+      source="descripcion"
+      label="Descripcion"
       widthClass="w-full"
+      className="[&_textarea]:w-full"
     />
-    <FormDate
-      source="fecha"
-      label="Fecha"
-      validate={required()}
+  </div>
+);
+
+const PresupuestoCostoTotal = () => {
+  const [moPropia, moTerceros, materiales, herramientas] = useWatch({
+    name: ["mo_propia", "mo_terceros", "materiales", "herramientas"],
+  }) as [unknown, unknown, unknown, unknown];
+
+  const costoTotal =
+    toNumber(moPropia) +
+    toNumber(moTerceros) +
+    toNumber(materiales) +
+    toNumber(herramientas);
+
+  return (
+    <FormValue
+      label="Costo total"
       widthClass="w-full"
-    />
+      valueClassName="justify-end bg-primary/5 font-semibold text-foreground"
+    >
+      <NumberField
+        source="costo_total"
+        record={{ costo_total: costoTotal }}
+        options={{ style: "currency", currency: "ARS" }}
+        className="tabular-nums"
+      />
+    </FormValue>
+  );
+};
+
+const PresupuestoNeto = () => {
+  const [moPropia, moTerceros, materiales, herramientas, importe] = useWatch({
+    name: ["mo_propia", "mo_terceros", "materiales", "herramientas", "importe"],
+  }) as [unknown, unknown, unknown, unknown, unknown];
+
+  const costoTotal =
+    toNumber(moPropia) +
+    toNumber(moTerceros) +
+    toNumber(materiales) +
+    toNumber(herramientas);
+  const presupuestoNeto = toNumber(importe) - costoTotal;
+
+  return (
+    <FormValue
+      label="Presupuesto neto"
+      widthClass="w-full"
+      valueClassName="justify-end bg-primary/5 font-semibold text-foreground"
+    >
+      <NumberField
+        source="presupuesto_neto"
+        record={{ presupuesto_neto: presupuestoNeto }}
+        options={{ style: "currency", currency: "ARS" }}
+        className="tabular-nums"
+      />
+    </FormValue>
+  );
+};
+
+const PresupuestoCostosFields = () => (
+  <div className="grid gap-2 md:grid-cols-4">
     <FormNumber
       source="mo_propia"
       label="MO propia"
@@ -66,12 +140,27 @@ const PresupuestoMainFields = () => (
       widthClass="w-full"
     />
     <FormNumber
+      source="herramientas"
+      label="Herramientas"
+      min={0}
+      step="0.01"
+      widthClass="w-full"
+    />
+    <FormNumber
       source="horas"
       label="Horas"
       min={0}
       step="0.01"
       widthClass="w-full"
     />
+    <div className="md:col-start-4">
+      <PresupuestoCostoTotal />
+    </div>
+  </div>
+);
+
+const PresupuestoIngresosFields = () => (
+  <div className="grid gap-2 md:grid-cols-4">
     <FormNumber
       source="metros"
       label="Metros"
@@ -86,29 +175,11 @@ const PresupuestoMainFields = () => (
       step="0.01"
       widthClass="w-full"
     />
+    <div className="md:col-start-4">
+      <PresupuestoNeto />
+    </div>
   </div>
 );
-
-const PresupuestoResumen = () => {
-  const importe = useWatch({ name: "importe" }) as number | undefined;
-  const total = computeProyPresupuestoTotal({
-    importe,
-  });
-
-  return (
-    <div className="flex justify-end">
-      <div className="rounded-md border border-muted/60 bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground">
-        <span className="mr-2 font-medium">Importe:</span>
-        <NumberField
-          source="importe"
-          record={{ importe: total }}
-          options={{ style: "currency", currency: "ARS" }}
-          className="font-semibold text-foreground"
-        />
-      </div>
-    </div>
-  );
-};
 
 export const ProyPresupuestoForm = () => {
   const record = useRecordContext<ProyPresupuestoFormValues & { id?: number | string }>();
@@ -135,9 +206,18 @@ export const ProyPresupuestoForm = () => {
       defaultValues={defaultValues}
     >
       <SectionBaseTemplate
-        title="Presupuesto"
-        main={<PresupuestoMainFields />}
-        optional={<PresupuestoResumen />}
+        title="Cabecera"
+        main={<PresupuestoCabeceraFields />}
+        defaultOpen
+      />
+      <SectionBaseTemplate
+        title="Costos"
+        main={<PresupuestoCostosFields />}
+        defaultOpen
+      />
+      <SectionBaseTemplate
+        title="Ingresos"
+        main={<PresupuestoIngresosFields />}
         defaultOpen
       />
     </SimpleForm>

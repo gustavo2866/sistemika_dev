@@ -12,8 +12,30 @@ export const PROYECTO_VALIDATIONS = {
   HORAS_MAX: 9999,
 } as const;
 
+export const PROYECTO_ESTADO_VALUES = [
+  "01-plan",
+  "02-ejecucion",
+  "03-conclusion",
+  "04-terminados",
+] as const;
+
+export type ProyectoEstado = (typeof PROYECTO_ESTADO_VALUES)[number];
+
+export const PROYECTO_ESTADO_CHOICES: Array<{
+  id: ProyectoEstado;
+  name: string;
+}> = [
+  { id: "01-plan", name: "01-plan" },
+  { id: "02-ejecucion", name: "02-ejecucion" },
+  { id: "03-conclusion", name: "03-conclusion" },
+  { id: "04-terminados", name: "04-terminados" },
+];
+
 const normalizeOptionalString = (value: unknown) =>
   value === "" || value === null ? undefined : value;
+
+const normalizeProyectoEstado = (value: unknown) =>
+  value === "" || value === null ? "01-plan" : value;
 
 const trimRequiredText = (value?: string | null) => (value ?? "").trim();
 
@@ -120,8 +142,9 @@ export const proyectoSchema = z.object({
   nombre: z.string().min(1).max(PROYECTO_VALIDATIONS.NOMBRE_MAX),
   oportunidad_id: optionalPositiveIdSchema,
   responsable_id: optionalPositiveIdSchema,
-  estado: optionalStringSchema.pipe(
-    z.string().max(PROYECTO_VALIDATIONS.ESTADO_MAX).optional(),
+  estado: z.preprocess(
+    normalizeProyectoEstado,
+    z.enum(PROYECTO_ESTADO_VALUES),
   ),
   fecha_inicio: optionalDateSchema,
   fecha_final: optionalDateSchema,
@@ -148,7 +171,7 @@ export const PROYECTO_DEFAULTS: ProyectoFormValues = {
   nombre: "",
   oportunidad_id: undefined,
   responsable_id: undefined,
-  estado: "",
+  estado: "01-plan",
   fecha_inicio: "",
   fecha_final: "",
   centro_costo: undefined,
@@ -239,7 +262,9 @@ export const normalizeProyectoPayload = (
   nombre: trimRequiredText(data.nombre),
   oportunidad_id: resolveNumericId(data.oportunidad_id),
   responsable_id: resolveNumericId(data.responsable_id),
-  estado: trimOptionalText(data.estado),
+  estado: PROYECTO_ESTADO_VALUES.includes(data.estado as ProyectoEstado)
+    ? (data.estado as ProyectoEstado)
+    : "01-plan",
   fecha_inicio: trimOptionalText(data.fecha_inicio),
   fecha_final: trimOptionalText(data.fecha_final),
   centro_costo: resolveNumericId(data.centro_costo),

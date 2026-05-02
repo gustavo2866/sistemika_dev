@@ -21,9 +21,11 @@ export type ProyPresupuesto = {
   mo_propia: number;
   mo_terceros: number;
   materiales: number;
+  herramientas: number;
   horas: number;
   metros: number;
   importe: number;
+  descripcion?: string | null;
   proyecto?: {
     id?: number;
     nombre?: string | null;
@@ -38,9 +40,11 @@ export const proyPresupuestoSchema = z.object({
   mo_propia: decimalField,
   mo_terceros: decimalField,
   materiales: decimalField,
+  herramientas: decimalField,
   horas: decimalField,
   metros: decimalField,
   importe: decimalField,
+  descripcion: z.string().max(500).optional(),
 });
 
 export type ProyPresupuestoFormValues = z.infer<typeof proyPresupuestoSchema>;
@@ -51,9 +55,11 @@ export const PROY_PRESUPUESTO_DEFAULT: ProyPresupuestoFormValues = {
   mo_propia: 0,
   mo_terceros: 0,
   materiales: 0,
+  herramientas: 0,
   horas: 0,
   metros: 0,
   importe: 0,
+  descripcion: "",
 };
 
 export const computeProyPresupuestoTotal = (values: {
@@ -61,6 +67,7 @@ export const computeProyPresupuestoTotal = (values: {
   mo_propia?: unknown;
   mo_terceros?: unknown;
   materiales?: unknown;
+  herramientas?: unknown;
 }) => {
   const importe = values.importe;
   if (importe !== undefined && importe !== null && importe !== "") {
@@ -72,5 +79,6 @@ export const computeProyPresupuestoTotal = (values: {
   const moPropia = Number(values.mo_propia ?? 0);
   const moTerceros = Number(values.mo_terceros ?? 0);
   const materiales = Number(values.materiales ?? 0);
-  return Number((moPropia + moTerceros + materiales).toFixed(2));
+  const herramientas = Number(values.herramientas ?? 0);
+  return Number((moPropia + moTerceros + materiales + herramientas).toFixed(2));
 };
