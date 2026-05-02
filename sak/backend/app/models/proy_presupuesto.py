@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import ClassVar, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, DECIMAL
+from sqlalchemy import Column, DECIMAL, String
 from sqlmodel import Field, Relationship
 
 from .base import Base
@@ -41,6 +41,11 @@ class ProyPresupuesto(Base, table=True):
         sa_column=Column(DECIMAL(14, 2), nullable=False, server_default="0"),
         description="Costo de materiales"
     )
+    herramientas: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(14, 2), nullable=False, server_default="0"),
+        description="Costo de herramientas"
+    )
     horas: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(10, 2), nullable=False, server_default="0"),
@@ -55,6 +60,11 @@ class ProyPresupuesto(Base, table=True):
         default=Decimal("0"),
         sa_column=Column(DECIMAL(14, 2), nullable=False, server_default="0"),
         description="Importe total del presupuesto"
+    )
+    descripcion: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(500), nullable=True),
+        description="Descripcion del presupuesto"
     )
 
     # Relaciones
