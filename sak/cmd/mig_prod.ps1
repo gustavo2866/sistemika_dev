@@ -1,7 +1,9 @@
 # Migraciones Alembic en Produccion
 Write-Host "Aplicando migraciones en produccion (Neon)..." -ForegroundColor Cyan
 
-Set-Location ..\backend
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$backendDir = Join-Path $scriptDir "..\backend"
+Push-Location $backendDir
 
 # Obtener el DATABASE_URL de GCP Secret Manager
 Write-Host "Obteniendo DATABASE_URL de GCP Secret Manager..." -ForegroundColor Yellow
@@ -9,7 +11,7 @@ $DATABASE_URL = gcloud secrets versions access latest --secret="DATABASE_URL" --
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Error al obtener DATABASE_URL de Secret Manager" -ForegroundColor Red
-    Set-Location ..\cmd
+    Pop-Location
     exit 1
 }
 
@@ -26,4 +28,4 @@ if ($LASTEXITCODE -eq 0) {
 # Limpiar variable de entorno
 Remove-Item Env:\DATABASE_URL
 
-Set-Location ..\cmd
+Pop-Location
