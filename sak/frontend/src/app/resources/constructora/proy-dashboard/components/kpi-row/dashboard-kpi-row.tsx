@@ -54,18 +54,18 @@ const AdvanceCard = ({ rows }: { rows: DashboardKpiRowViewModel["advanceRows"] }
       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Avance
       </div>
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {rows.map((row) => {
           const max = getAdvanceScaleMax(row);
           return (
-            <div key={row.key} className="space-y-1">
+            <div key={row.key} className="space-y-0.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] font-semibold text-foreground">{row.label}</span>
                 <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-700">
                   {formatAdvanceRatio(row.ratio)}
                 </span>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <div className="grid grid-cols-[34px_1fr_auto] items-center gap-2">
                   <span className="text-[9px] font-medium text-muted-foreground">Pres.</span>
                   <div className="h-2 rounded-full bg-slate-100">

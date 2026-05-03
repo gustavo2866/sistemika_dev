@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { apiUrl, dataProvider } from "@/lib/dataProvider";
 import {
@@ -22,36 +22,20 @@ import {
   DASHBOARD_RETURN_TTL_MS,
   loadDashboardReturnMarker,
 } from "./return-state";
-
-const buildAuthenticatedHeaders = () => {
-  const headers = new Headers();
-  if (typeof window !== "undefined") {
-    const token = window.localStorage.getItem("auth_token");
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
-  return headers;
-};
-
-const fetchJsonWithAuth = async <T>(url: string): Promise<T> => {
-  const response = await fetch(url, { headers: buildAuthenticatedHeaders() });
-  const rawBody = await response.text();
-
-  if (!response.ok) {
-    throw new Error(rawBody || `Error HTTP ${response.status}`);
-  }
-
-  return JSON.parse(rawBody) as T;
-};
-
-type CatalogItem = {
-  id?: string | number;
-  nombre?: string | null;
-  full_name?: string | null;
-};
+import {
+  type DashboardCatalogItem,
+  fetchJsonWithAuth,
+  getDashboardRequestKey,
+  getDetailRequestKey,
+  getStoredShowKpis,
+  loadDashboardSnapshot,
+  saveDashboardSnapshot,
+  SHOW_KPIS_STORAGE_KEY,
+} from "./state-helpers";
 
 const parseCatalogOptions = (
-  rawItems: CatalogItem[] | undefined,
-  resolveLabel: (item: CatalogItem) => string,
+  rawItems: DashboardCatalogItem[] | undefined,
+  resolveLabel: (item: DashboardCatalogItem) => string,
 ): SelectOption[] => [
   { value: "todos", label: "Todos" },
   ...((rawItems ?? []).map((item) => ({
@@ -67,33 +51,81 @@ export const useProyDashboard = () => {
     () => loadDashboardReturnMarker(returnTo, DASHBOARD_RETURN_TTL_MS),
     [returnTo],
   );
-  const initialPeriodType = pendingReturnMarker?.periodType ?? DEFAULT_PROY_PERIOD;
+  const hasPendingReturn = Boolean(pendingReturnMarker);
+  const initialSnapshot = useMemo(
+    () => loadDashboardSnapshot(returnTo, hasPendingReturn, DASHBOARD_RETURN_TTL_MS),
+    [returnTo, hasPendingReturn],
+  );
+  const shouldSkipInitialFetch = Boolean(initialSnapshot || pendingReturnMarker);
+  const initialPeriodType =
+    pendingReturnMarker?.periodType ?? initialSnapshot?.periodType ?? DEFAULT_PROY_PERIOD;
   const initialFilters =
-    pendingReturnMarker?.filters ?? buildDefaultFilters(initialPeriodType);
-  const initialShowKpis = pendingReturnMarker?.showKpis ?? false;
+    pendingReturnMarker?.filters ??
+    initialSnapshot?.filters ??
+    buildDefaultFilters(initialPeriodType);
+  const initialActiveSelectorKey =
+    pendingReturnMarker?.activeSelectorKey ??
+    initialSnapshot?.activeSelectorKey ??
+    (initialFilters.estado !== "todos" ? initialFilters.estado : null);
+  const initialSelectedAlertKey =
+    pendingReturnMarker?.selectedAlertKey ?? initialSnapshot?.selectedAlertKey ?? null;
+  const initialDashboardRequestKey = shouldSkipInitialFetch
+    ? `0:${getDashboardRequestKey(initialPeriodType, initialFilters)}`
+    : null;
+  const initialDetailRequestKey = shouldSkipInitialFetch
+    ? `0:${getDetailRequestKey({
+        filters: initialFilters,
+        detailPage: initialSnapshot?.detailPage ?? 1,
+        selectedAlertKey: initialSelectedAlertKey,
+        periodType: initialPeriodType,
+      })}`
+    : null;
+  const processingReturnMarkerRef = useRef<string | null>(null);
+  const initialDashboardRequestKeyRef = useRef(initialDashboardRequestKey);
+  const initialDetailRequestKeyRef = useRef(initialDetailRequestKey);
 
   const [periodType, setPeriodType] = useState<PeriodType>(initialPeriodType);
   const [filters, setFilters] = useState<ProyDashboardFilters>(() => initialFilters);
-  const [dashboardData, setDashboardData] = useState<ProyDashboardResponse | null>(null);
-  const [selectorData, setSelectorData] = useState<ProyDashboardSelectorsResponse | null>(null);
+  const [dashboardData, setDashboardData] = useState<ProyDashboardResponse | null>(
+    initialSnapshot?.dashboardData ?? null,
+  );
+  const [selectorData, setSelectorData] = useState<ProyDashboardSelectorsResponse | null>(
+    initialSnapshot?.selectorData ?? null,
+  );
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [detailData, setDetailData] = useState<ProyDashboardDetalleResponse | null>(null);
+  const [detailData, setDetailData] = useState<ProyDashboardDetalleResponse | null>(
+    initialSnapshot?.detailData ?? null,
+  );
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailPage, setDetailPage] = useState(1);
-  const [showKpis, setShowKpis] = useState(initialShowKpis);
-  const [selectedAlertKey, setSelectedAlertKey] = useState<AlertKey | null>(null);
+  const [detailPage, setDetailPage] = useState(initialSnapshot?.detailPage ?? 1);
+  const [showKpis, setShowKpis] = useState(
+    pendingReturnMarker?.showKpis ?? getStoredShowKpis,
+  );
+  const [activeSelectorKey, setActiveSelectorKey] = useState<string | null>(
+    initialActiveSelectorKey,
+  );
+  const [selectedAlertKey, setSelectedAlertKey] = useState<AlertKey | null>(
+    initialSelectedAlertKey,
+  );
   const [proyectoOptions, setProyectoOptions] = useState<SelectOption[]>([
     { value: "todos", label: "Todos" },
   ]);
+  const [refreshSeq, setRefreshSeq] = useState(0);
 
   const dashboardRequestKey = useMemo(
-    () => JSON.stringify({ filters, periodType }),
-    [filters, periodType],
+    () => `${refreshSeq}:${getDashboardRequestKey(periodType, filters)}`,
+    [filters, periodType, refreshSeq],
   );
 
   const detailRequestKey = useMemo(
-    () => JSON.stringify({ filters, detailPage, selectedAlertKey, periodType }),
-    [detailPage, filters, periodType, selectedAlertKey],
+    () =>
+      `${refreshSeq}:${getDetailRequestKey({
+        filters,
+        detailPage,
+        selectedAlertKey,
+        periodType,
+      })}`,
+    [detailPage, filters, periodType, refreshSeq, selectedAlertKey],
   );
 
   const estadoOptions = useMemo<SelectOption[]>(() => {
@@ -148,11 +180,10 @@ export const useProyDashboard = () => {
   );
 
   useEffect(() => {
-    if (!pendingReturnMarker?.savedAt) return;
-    clearDashboardReturnMarker(returnTo);
-  }, [pendingReturnMarker, returnTo]);
-
-  useEffect(() => {
+    if (initialDashboardRequestKeyRef.current === dashboardRequestKey) {
+      return;
+    }
+    initialDashboardRequestKeyRef.current = null;
     let cancelled = false;
     setDashboardLoading(true);
 
@@ -173,6 +204,10 @@ export const useProyDashboard = () => {
   }, [dashboardRequestKey, fetchDashboardBundle]);
 
   useEffect(() => {
+    if (initialDetailRequestKeyRef.current === detailRequestKey) {
+      return;
+    }
+    initialDetailRequestKeyRef.current = null;
     let cancelled = false;
     setDetailLoading(true);
 
@@ -216,7 +251,7 @@ export const useProyDashboard = () => {
         if (cancelled) return;
 
         setProyectoOptions(
-          parseCatalogOptions(projectsResponse.data as CatalogItem[], (item) =>
+          parseCatalogOptions(projectsResponse.data as DashboardCatalogItem[], (item) =>
             item.nombre?.trim() || `Proyecto ${item.id}`,
           ),
         );
@@ -232,11 +267,90 @@ export const useProyDashboard = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SHOW_KPIS_STORAGE_KEY, String(showKpis));
+  }, [showKpis]);
+
+  useEffect(() => {
+    saveDashboardSnapshot(returnTo, {
+      savedAt: Date.now(),
+      periodType,
+      filters,
+      dashboardData,
+      selectorData,
+      detailData,
+      detailPage,
+      activeSelectorKey,
+      selectedAlertKey,
+    });
+  }, [
+    activeSelectorKey,
+    dashboardData,
+    detailData,
+    detailPage,
+    filters,
+    periodType,
+    returnTo,
+    selectedAlertKey,
+    selectorData,
+  ]);
+
+  useEffect(() => {
+    if (!pendingReturnMarker?.savedAt) return;
+
+    const markerKey = String(pendingReturnMarker.savedAt);
+    if (processingReturnMarkerRef.current === markerKey) return;
+    processingReturnMarkerRef.current = markerKey;
+
+    let cancelled = false;
+
+    const refreshFromReturn = async () => {
+      try {
+        setDashboardLoading(true);
+        setDetailLoading(true);
+        setDetailPage(1);
+
+        const [{ dashboard, selectors }, detail] = await Promise.all([
+          fetchDashboardBundle(),
+          fetchDetailPage(1),
+        ]);
+        if (cancelled) return;
+
+        setDashboardData(dashboard);
+        setSelectorData(selectors);
+        setDetailData(detail);
+      } catch (error) {
+        console.error("No se pudo sincronizar el dashboard de proyectos al volver", error);
+      } finally {
+        if (!cancelled) {
+          setDashboardLoading(false);
+          setDetailLoading(false);
+          processingReturnMarkerRef.current = null;
+          clearDashboardReturnMarker(returnTo);
+        }
+      }
+    };
+
+    void refreshFromReturn();
+
+    return () => {
+      cancelled = true;
+      if (processingReturnMarkerRef.current === markerKey) {
+        processingReturnMarkerRef.current = null;
+      }
+    };
+  }, [fetchDashboardBundle, fetchDetailPage, pendingReturnMarker, returnTo]);
+
   const handleFilterChange = <K extends keyof ProyDashboardFilters>(
     field: K,
     value: ProyDashboardFilters[K],
   ) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
+    if (field === "estado") {
+      setActiveSelectorKey(value === "todos" ? null : String(value));
+      setSelectedAlertKey(null);
+    }
     setDetailPage(1);
   };
 
@@ -253,7 +367,32 @@ export const useProyDashboard = () => {
 
   const selectAlert = (key: AlertKey) => {
     setSelectedAlertKey((current) => (current === key ? null : key));
+    setActiveSelectorKey(null);
+    setFilters((prev) =>
+      prev.estado === "todos"
+        ? prev
+        : {
+            ...prev,
+            estado: "todos",
+          },
+    );
     setDetailPage(1);
+  };
+
+  const selectEstado = (estado: string) => {
+    const nextEstado = activeSelectorKey === estado && !selectedAlertKey ? "todos" : estado;
+    setSelectedAlertKey(null);
+    setActiveSelectorKey(nextEstado === "todos" ? null : nextEstado);
+    setFilters((prev) => ({
+      ...prev,
+      estado: nextEstado,
+    }));
+    setDetailPage(1);
+  };
+
+  const refreshDashboard = () => {
+    setDetailPage(1);
+    setRefreshSeq((current) => current + 1);
   };
 
   const alertItems = useMemo(() => buildAlertItems(dashboardData), [dashboardData]);
@@ -267,8 +406,8 @@ export const useProyDashboard = () => {
     dashboardLoading,
     detailData,
     detailLoading,
-    detailPage,
     showKpis,
+    activeSelectorKey,
     selectedAlertKey,
     proyectoOptions,
     estadoOptions,
@@ -277,8 +416,9 @@ export const useProyDashboard = () => {
     applyRange,
     handleFilterChange,
     setDetailPage,
-    setSelectedAlertKey,
     setShowKpis,
+    refreshDashboard,
     selectAlert,
+    selectEstado,
   };
 };

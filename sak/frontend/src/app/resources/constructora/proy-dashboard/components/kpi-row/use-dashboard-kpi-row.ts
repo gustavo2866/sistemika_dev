@@ -2,6 +2,7 @@ import {
   formatMillions,
   formatPeriodLabel,
   formatPercent,
+  getCostoTotal,
   getIngresoTotal,
   getResultadoPeriodo,
   type ProyDashboardResponse,
@@ -60,6 +61,11 @@ export const useDashboardKpiRow = ({
           valueClassName: "text-emerald-700",
         },
         {
+          label: "Costo total",
+          value: formatMillions(getCostoTotal(realTotal)),
+          valueClassName: "text-rose-700",
+        },
+        {
           label: "MO propios",
           value: formatMillions(Number(realTotal?.mo_propia ?? 0)),
         },
@@ -71,16 +77,13 @@ export const useDashboardKpiRow = ({
           label: "Materiales",
           value: formatMillions(Number(realTotal?.materiales ?? 0)),
         },
+        {
+          label: "Herram. & Otros",
+          value: formatMillions(Number(realTotal?.herramientas ?? 0)),
+        },
       ],
     },
     advanceRows: [
-      {
-        key: "ingresos",
-        label: "Ingresos",
-        presupuestado: Number(presupuestoTotal?.importe ?? 0),
-        real: getIngresoTotal(realTotal),
-        ratio: getConceptRatio(getIngresoTotal(realTotal), Number(presupuestoTotal?.importe ?? 0)),
-      },
       {
         key: "mo_propia",
         label: "MO propios",
@@ -102,6 +105,13 @@ export const useDashboardKpiRow = ({
         real: Number(realTotal?.materiales ?? 0),
         ratio: getConceptRatio(Number(realTotal?.materiales ?? 0), Number(presupuestoTotal?.materiales ?? 0)),
       },
+      {
+        key: "herramientas",
+        label: "Herram. & Otros",
+        presupuestado: Number(presupuestoTotal?.herramientas ?? 0),
+        real: Number(realTotal?.herramientas ?? 0),
+        ratio: getConceptRatio(Number(realTotal?.herramientas ?? 0), Number(presupuestoTotal?.herramientas ?? 0)),
+      },
     ],
     trendData: realByPeriod.map((item) => ({
       label: formatPeriodLabel(item.periodo),
@@ -109,7 +119,8 @@ export const useDashboardKpiRow = ({
       egresos:
         Number(item.mo_propia ?? 0) +
         Number(item.mo_terceros ?? 0) +
-        Number(item.materiales ?? 0),
+        Number(item.materiales ?? 0) +
+        Number(item.herramientas ?? 0),
     })),
   };
 };

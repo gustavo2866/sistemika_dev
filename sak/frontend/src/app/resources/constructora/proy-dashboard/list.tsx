@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartNoAxesCombined, FolderKanban, RefreshCcw } from "lucide-react";
+import { BarChart3, ChartNoAxesCombined, RefreshCcw } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useProyDashboard } from "./use-proy-dashboard";
@@ -46,11 +46,6 @@ export default function ProyDashboardList() {
 
   const handleMobileBack = () => navigate("/proyectos");
 
-  const handleHardRefresh = () => {
-    if (typeof window === "undefined") return;
-    window.location.reload();
-  };
-
   const {
     periodType,
     filters,
@@ -60,6 +55,7 @@ export default function ProyDashboardList() {
     detailData,
     detailLoading,
     showKpis,
+    activeSelectorKey,
     selectedAlertKey,
     proyectoOptions,
     estadoOptions,
@@ -68,9 +64,10 @@ export default function ProyDashboardList() {
     applyRange,
     handleFilterChange,
     setDetailPage,
-    setSelectedAlertKey,
     setShowKpis,
+    refreshDashboard,
     selectAlert,
+    selectEstado,
   } = useProyDashboard();
 
   const saveDashboardContext = () => {
@@ -79,7 +76,27 @@ export default function ProyDashboardList() {
       filters,
       periodType,
       showKpis,
+      activeSelectorKey,
+      selectedAlertKey,
     });
+  };
+
+  const createProjectPath = appendReturnToParam("/proyectos/create");
+  const projectListPath = appendReturnToParam("/proyectos");
+
+  const handleOpenProject = (item: { proyecto?: { id?: string | number | null } | null }) => {
+    if (!item.proyecto?.id) return;
+    saveDashboardContext();
+    navigate(appendReturnToParam(`/proyectos/${item.proyecto.id}`));
+  };
+
+  const handleNavigate = (path: string) => {
+    const shouldSaveContext = path.startsWith("/proyectos");
+    if (shouldSaveContext) {
+      saveDashboardContext();
+    }
+    const hasReturnTo = path.includes("returnTo=");
+    navigate(shouldSaveContext && !hasReturnTo ? appendReturnToParam(path) : path);
   };
 
   const headerModel = useDashboardHeader({
@@ -103,35 +120,26 @@ export default function ProyDashboardList() {
 
   const mainPanelModel = useDashboardMainPanel({
     selectorData,
-    selectedEstado: filters.estado,
+    activeSelectorKey,
     selectedAlertKey,
     detailData,
     detailLoading,
     hasMoreDetail,
     onLoadMore: () => setDetailPage((current) => current + 1),
     alertItems,
-    onSelectEstado: (estado) => {
-      setSelectedAlertKey(null);
-      handleFilterChange("estado", filters.estado === estado ? "todos" : estado);
-    },
+    onSelectEstado: selectEstado,
     onSelectAlert: selectAlert,
-    onOpenProject: (item) => {
-      if (!item.proyecto?.id) return;
-      saveDashboardContext();
-      navigate(appendReturnToParam(`/proyectos/${item.proyecto.id}`));
-    },
-    onNavigate: (path) => {
-      saveDashboardContext();
-      const nextPath = path.startsWith("/proyectos") ? appendReturnToParam(path) : path;
-      navigate(nextPath);
-    },
+    onOpenProject: handleOpenProject,
+    onNavigate: handleNavigate,
+    createProjectPath,
+    projectListPath,
   });
 
   const kpiToggleLabel = showKpis ? "Ocultar KPIs" : "Mostrar KPIs";
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[1180px] min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-0 pt-2 pb-3 sm:px-2 sm:pt-4 sm:pb-4">
-      <section className="w-full max-w-[940px]">
+    <div className="mx-auto flex h-full w-full max-w-5xl min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-0 pt-2 pb-3 xl:max-w-6xl 2xl:max-w-7xl sm:px-2 sm:pt-4 sm:pb-4">
+      <section className="w-full">
         <SectionShell className="pt-2 pb-1 sm:pt-3 sm:pb-2">
           <div className="relative space-y-0.5 px-0 pt-1 pb-0 sm:space-y-1.5 sm:px-5 sm:pt-2 sm:pb-1">
             <DashboardHeader {...headerModel} />
@@ -140,7 +148,7 @@ export default function ProyDashboardList() {
         </SectionShell>
       </section>
 
-      <section className="w-full max-w-[940px]">
+      <section className="w-full">
         <SectionShell className="px-3 py-2 sm:px-5 sm:py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">
@@ -157,7 +165,11 @@ export default function ProyDashboardList() {
                 aria-label={kpiToggleLabel}
                 title={kpiToggleLabel}
               >
-                <FolderKanban className="h-3.5 w-3.5" />
+                {showKpis ? (
+                  <ChartNoAxesCombined className="h-3.5 w-3.5" />
+                ) : (
+                  <BarChart3 className="h-3.5 w-3.5" />
+                )}
                 <span>{showKpis ? "Ocultar" : "Mostrar"}</span>
               </Button>
               <Button
@@ -165,7 +177,7 @@ export default function ProyDashboardList() {
                 variant="outline"
                 size="sm"
                 className="h-7 w-7 shrink-0 px-0 text-muted-foreground sm:h-7 sm:w-7"
-                onClick={handleHardRefresh}
+                onClick={refreshDashboard}
                 title="Actualizar"
                 aria-label="Actualizar"
               >
@@ -181,7 +193,7 @@ export default function ProyDashboardList() {
         </SectionShell>
       </section>
 
-      <section className="flex w-full max-w-[940px] flex-col">
+      <section className="flex w-full flex-col">
         <SectionShell className="px-0 py-0 sm:px-4 sm:py-4">
           <div className="flex flex-col px-0 py-0">
             <DashboardMainPanel {...mainPanelModel} />

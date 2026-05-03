@@ -7,11 +7,10 @@ import {
   required,
   useGetList,
   useGetOne,
-  useListContext,
   useRecordContext,
 } from "ra-core";
 import { useWatch } from "react-hook-form";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 
 import { CRMChatShow } from "@/app/resources/crm/crm-chat";
@@ -34,10 +33,10 @@ import {
   FormTextarea,
   FormValue,
   SectionBaseTemplate,
+  usePersistedActiveSection,
 } from "@/components/forms/form_order";
 import { ReferenceInput } from "@/components/reference-input";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import {
   PROYECTO_DEFAULTS,
   PROYECTO_ESTADO_CHOICES,
@@ -67,6 +66,7 @@ const toNumber = (value: unknown) => {
 };
 
 const DESKTOP_LAYOUT_BREAKPOINT = 1024;
+const PROYECTO_ACTIVE_SECTION_STORAGE_KEY_PREFIX = "proyectos-form-active-section";
 
 type ProyectoDesktopSectionId =
   | "presupuesto"
@@ -148,74 +148,6 @@ const ProyectoDesktopEmptyState = ({ message }: { message: string }) => (
   <div className="rounded-2xl border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground">
     {message}
   </div>
-);
-
-const ProyectoDesktopPager = ({
-  listTo,
-  showListLink = true,
-}: {
-  listTo: string;
-  showListLink?: boolean;
-}) => {
-  const { page, perPage, total, setPage } = useListContext();
-  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
-  const totalPages =
-    resolvedTotal != null && perPage > 0 ? Math.max(1, Math.ceil(resolvedTotal / perPage)) : 1;
-  const canPrev = page > 1;
-  const canNext = resolvedTotal != null ? page < totalPages : false;
-
-  return (
-    <div className="flex items-center justify-between text-[9px] text-muted-foreground">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="px-1 hover:text-foreground disabled:opacity-40"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canPrev) setPage(page - 1);
-          }}
-          disabled={!canPrev}
-          aria-label="Pagina anterior"
-        >
-          &lt;&lt;
-        </button>
-        <span>
-          pag {page}/{totalPages}
-        </span>
-        <button
-          type="button"
-          className="px-1 hover:text-foreground disabled:opacity-40"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (canNext) setPage(page + 1);
-          }}
-          disabled={!canNext}
-          aria-label="Pagina siguiente"
-        >
-          &gt;&gt;
-        </button>
-      </div>
-      {showListLink ? (
-        <Link
-          to={listTo}
-          className="font-medium text-primary hover:underline"
-          onClick={(event) => event.stopPropagation()}
-        >
-          Abrir listado
-        </Link>
-      ) : null}
-    </div>
-  );
-};
-
-const ProyectoPresupuestoFooter = ({
-  listTo,
-  showListLink = true,
-}: {
-  listTo: string;
-  showListLink?: boolean;
-}) => (
-  <ProyectoDesktopPager listTo={listTo} showListLink={showListLink} />
 );
 
 const ProyectoOportunidadField = () => {
@@ -540,14 +472,6 @@ const ProyectoCertificadosSection = ({
       main={list}
     />
   );
-};
-
-const ProyectoPresupuestoHeaderSummary = () => {
-  const { total, isLoading, isFetching } = useListContext();
-  const resolvedTotal = typeof total === "number" && total >= 0 ? total : undefined;
-  const label = isLoading || isFetching ? "..." : resolvedTotal ?? "-";
-
-  return <span>Presupuestos: {label}</span>;
 };
 
 const ProyectoPresupuestoSection = ({
@@ -879,8 +803,14 @@ const ProyectoDesktopSectionsLayout = ({
 
 export const ProyectoForm = () => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
+  const location = useLocation();
   const isDesktopLayout = useProyectoDesktopLayout();
-  const [activeSection, setActiveSection] = useState<ProyectoDesktopSectionId>("presupuesto");
+  const activeSectionStorageKey = `${PROYECTO_ACTIVE_SECTION_STORAGE_KEY_PREFIX}:${location.pathname}`;
+  const [activeSection, setActiveSection] = usePersistedActiveSection<ProyectoDesktopSectionId>({
+    storageKey: activeSectionStorageKey,
+    sections: PROYECTO_DESKTOP_SECTIONS.map((section) => section.id),
+    defaultSection: "presupuesto",
+  });
   const defaultValues = useMemo(
     () => (record?.id ? undefined : PROYECTO_DEFAULTS),
     [record?.id],

@@ -10,6 +10,7 @@ import {
   saveDashboardReturnMarker,
 } from "../proy-dashboard/return-state";
 import { ProyectoForm } from "./form";
+import { ProyectoBackButton } from "./navigation-title";
 import {
   getProyectoEstadoBadgeClass,
   getProyectoEstadoLabel,
@@ -29,6 +30,7 @@ const ProyectoEditTitle = () => {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <ProyectoBackButton />
       <span>Editar proyecto</span>
       <Badge variant="outline" className="text-[11px]">
         #{String(record.id ?? "").padStart(6, "0")}

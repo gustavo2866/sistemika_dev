@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { required } from "ra-core";
+import { required, useRecordContext } from "ra-core";
+import { useLocation } from "react-router-dom";
 import { SimpleForm } from "@/components/simple-form";
 import { FormOrderToolbar } from "@/components/forms";
 import {
@@ -16,6 +18,12 @@ import {
   proyectoAvanceSchema,
   type ProyectoAvanceFormValues,
 } from "./model";
+
+const parseNumericParam = (value: string | null) => {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
 
 const ProyectoAvanceMainFields = () => (
   <div className="grid gap-2 md:grid-cols-2">
@@ -70,17 +78,35 @@ const ProyectoAvanceMainFields = () => (
   </div>
 );
 
-export const ProyectoAvanceForm = () => (
-  <SimpleForm<ProyectoAvanceFormValues>
-    className="w-full max-w-3xl"
-    resolver={zodResolver(proyectoAvanceSchema) as any}
-    toolbar={<FormOrderToolbar />}
-    defaultValues={PROYECTO_AVANCE_DEFAULTS}
-  >
-    <SectionBaseTemplate
-      title="Certificado"
-      main={<ProyectoAvanceMainFields />}
-      defaultOpen
-    />
-  </SimpleForm>
-);
+export const ProyectoAvanceForm = () => {
+  const record = useRecordContext<ProyectoAvanceFormValues & { id?: number | string }>();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const proyectoIdFromQuery = parseNumericParam(params.get("proyecto_id"));
+
+  const defaultValues = useMemo(
+    () =>
+      record?.id
+        ? undefined
+        : {
+            ...PROYECTO_AVANCE_DEFAULTS,
+            proyecto_id: proyectoIdFromQuery ?? PROYECTO_AVANCE_DEFAULTS.proyecto_id,
+          },
+    [proyectoIdFromQuery, record?.id],
+  );
+
+  return (
+    <SimpleForm<ProyectoAvanceFormValues>
+      className="w-full max-w-3xl"
+      resolver={zodResolver(proyectoAvanceSchema) as any}
+      toolbar={<FormOrderToolbar />}
+      defaultValues={defaultValues}
+    >
+      <SectionBaseTemplate
+        title="Certificado"
+        main={<ProyectoAvanceMainFields />}
+        defaultOpen
+      />
+    </SimpleForm>
+  );
+};

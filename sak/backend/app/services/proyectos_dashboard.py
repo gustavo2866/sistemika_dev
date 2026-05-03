@@ -256,6 +256,7 @@ def _calculate_presupuestado_kpis(
             "materiales": 0.0,
             "mo_propia": 0.0,
             "mo_terceros": 0.0,
+            "herramientas": 0.0,
             "importe": 0.0,
             "horas": 0.0,
             "metros": 0.0,
@@ -268,6 +269,7 @@ def _calculate_presupuestado_kpis(
         ProyPresupuesto.mo_propia,
         ProyPresupuesto.mo_terceros,
         ProyPresupuesto.materiales,
+        ProyPresupuesto.herramientas,
         ProyPresupuesto.fecha,
         Proyecto.estado
     ).select_from(
@@ -285,6 +287,7 @@ def _calculate_presupuestado_kpis(
         "materiales": 0.0,
         "mo_propia": 0.0,
         "mo_terceros": 0.0,
+        "herramientas": 0.0,
         "importe": 0.0,
         "horas": 0.0,
         "metros": 0.0,
@@ -303,12 +306,14 @@ def _calculate_presupuestado_kpis(
         materiales_periodo = sum(row.materiales or 0 for row in periodo_data)
         mo_propia_periodo = sum(row.mo_propia or 0 for row in periodo_data)
         mo_terceros_periodo = sum(row.mo_terceros or 0 for row in periodo_data)
-        importe_periodo = materiales_periodo + mo_propia_periodo + mo_terceros_periodo
+        herramientas_periodo = sum(row.herramientas or 0 for row in periodo_data)
+        importe_periodo = materiales_periodo + mo_propia_periodo + mo_terceros_periodo + herramientas_periodo
         
         # Acumular totales
         kpis["materiales"] += float(materiales_periodo)
         kpis["mo_propia"] += float(mo_propia_periodo)
         kpis["mo_terceros"] += float(mo_terceros_periodo)
+        kpis["herramientas"] += float(herramientas_periodo)
         kpis["importe"] += float(importe_periodo)
         
         # Detalle por período
@@ -317,6 +322,7 @@ def _calculate_presupuestado_kpis(
             "materiales": float(materiales_periodo),
             "mo_propia": float(mo_propia_periodo),
             "mo_terceros": float(mo_terceros_periodo),
+            "herramientas": float(herramientas_periodo),
             "importe": float(importe_periodo),
             "horas": 0.0,  # No disponible en presupuesto
             "metros": 0.0,  # No disponible en presupuesto
@@ -341,6 +347,7 @@ def _calculate_real_kpis(
             "materiales": 0.0,
             "mo_propia": 0.0,
             "mo_terceros": 0.0,
+            "herramientas": 0.0,
             "importe": 0.0,
             "horas": 0.0,
             "superficie": 0.0,
@@ -385,6 +392,7 @@ def _calculate_real_kpis(
         "materiales": 0.0,
         "mo_propia": 0.0,
         "mo_terceros": 0.0,
+        "herramientas": 0.0,
         "importe": 0.0,
         "horas": 0.0,
         "superficie": 0.0,
@@ -411,6 +419,10 @@ def _calculate_real_kpis(
             row.importe for row in costos_periodo 
             if row.concepto_proyecto == 'mo_terceros'
         )
+        herramientas_periodo = sum(
+            row.importe for row in costos_periodo
+            if row.concepto_proyecto == 'otros'
+        )
         
         # Filtrar ingresos del período
         ingresos_periodo = [
@@ -426,6 +438,7 @@ def _calculate_real_kpis(
         kpis["materiales"] += float(materiales_periodo)
         kpis["mo_propia"] += float(mo_propia_periodo)
         kpis["mo_terceros"] += float(mo_terceros_periodo)
+        kpis["herramientas"] += float(herramientas_periodo)
         kpis["importe"] += float(importe_periodo)
         kpis["horas"] += float(horas_periodo)
         
@@ -435,6 +448,7 @@ def _calculate_real_kpis(
             "materiales": float(materiales_periodo),
             "mo_propia": float(mo_propia_periodo),
             "mo_terceros": float(mo_terceros_periodo),
+            "herramientas": float(herramientas_periodo),
             "importe": float(importe_periodo),
             "horas": float(horas_periodo),
             "superficie": 0.0,  # Se calcula en totales si es necesario
@@ -454,6 +468,7 @@ def _calculate_presupuesto_total_kpis(
             "materiales": 0.0,
             "mo_propia": 0.0,
             "mo_terceros": 0.0,
+            "herramientas": 0.0,
             "importe": 0.0,
             "horas": 0.0,
             "metros": 0.0,
@@ -463,7 +478,8 @@ def _calculate_presupuesto_total_kpis(
     stmt = select(
         ProyPresupuesto.mo_propia,
         ProyPresupuesto.mo_terceros,
-        ProyPresupuesto.materiales
+        ProyPresupuesto.materiales,
+        ProyPresupuesto.herramientas
     ).select_from(
         ProyPresupuesto
     ).join(
@@ -479,9 +495,10 @@ def _calculate_presupuesto_total_kpis(
         "materiales": float(sum(row.materiales or 0 for row in presupuesto_total_detalle)),
         "mo_propia": float(sum(row.mo_propia or 0 for row in presupuesto_total_detalle)),
         "mo_terceros": float(sum(row.mo_terceros or 0 for row in presupuesto_total_detalle)),
+        "herramientas": float(sum(row.herramientas or 0 for row in presupuesto_total_detalle)),
     }
     
-    kpis["importe"] = kpis["materiales"] + kpis["mo_propia"] + kpis["mo_terceros"]
+    kpis["importe"] = kpis["materiales"] + kpis["mo_propia"] + kpis["mo_terceros"] + kpis["herramientas"]
     kpis["horas"] = 0.0  # No disponible en presupuesto
     kpis["metros"] = 0.0  # No disponible en presupuesto
     
@@ -500,6 +517,7 @@ def _calculate_real_total_kpis(
             "materiales": 0.0,
             "mo_propia": 0.0,
             "mo_terceros": 0.0,
+            "herramientas": 0.0,
             "importe": 0.0,
             "horas": 0.0,
             "superficie": 0.0,
@@ -548,6 +566,10 @@ def _calculate_real_total_kpis(
         "mo_terceros": float(sum(
             row.importe for row in real_costo_total 
             if row.concepto_proyecto == 'mo_terceros'
+        )),
+        "herramientas": float(sum(
+            row.importe for row in real_costo_total
+            if row.concepto_proyecto == 'otros'
         )),
         "importe": float(sum(row.importe or 0 for row in ingreso_total)),
         "horas": float(sum(row.horas or 0 for row in ingreso_total)),
@@ -626,7 +648,8 @@ def fetch_proyectos_optimized_single_query(
         func.sum(
             ProyPresupuesto.mo_propia + 
             ProyPresupuesto.mo_terceros + 
-            ProyPresupuesto.materiales
+            ProyPresupuesto.materiales +
+            ProyPresupuesto.herramientas
         ).label('presupuesto_total')
     ).where(ProyPresupuesto.proyecto_id.in_(proyecto_ids)).group_by(ProyPresupuesto.proyecto_id)
     
@@ -819,7 +842,8 @@ def fetch_proyectos_for_dashboard(
         func.sum(
             ProyPresupuesto.mo_propia + 
             ProyPresupuesto.mo_terceros + 
-            ProyPresupuesto.materiales
+            ProyPresupuesto.materiales +
+            ProyPresupuesto.herramientas
         ).label('presupuesto_total')
     ).where(ProyPresupuesto.proyecto_id.in_(proyecto_ids)).group_by(ProyPresupuesto.proyecto_id)
     

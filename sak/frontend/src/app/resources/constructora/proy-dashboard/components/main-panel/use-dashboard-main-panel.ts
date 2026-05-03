@@ -1,14 +1,4 @@
-import {
-  Ban,
-  CheckCircle2,
-  CircleDot,
-  Clock3,
-  Kanban,
-  PauseCircle,
-  PlayCircle,
-  Plus,
-  ShoppingCart,
-} from "lucide-react";
+import { Kanban, Plus, ShoppingCart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
   AlertKey,
@@ -17,6 +7,7 @@ import type {
   ProyDashboardDetalleResponse,
   ProyDashboardSelectorsResponse,
 } from "../../model";
+import { getProyDashboardEstadoVisuals } from "../../model";
 import { getProyectoEstadoLabel } from "../../../proyectos/model";
 
 export type DashboardDetailItem = {
@@ -57,12 +48,13 @@ export type DashboardMainPanelViewModel = {
   alerts: DashboardAlertItemViewModel[];
   quickActions: DashboardQuickActionItem[];
   totalProjects: number;
-  listTitle: string;
+  detailTitle: string;
+  detailEmptyMessage: string;
 };
 
 type UseDashboardMainPanelParams = {
   selectorData: ProyDashboardSelectorsResponse | null;
-  selectedEstado: string;
+  activeSelectorKey: string | null;
   selectedAlertKey: AlertKey | null;
   detailData: ProyDashboardDetalleResponse | null;
   detailLoading: boolean;
@@ -73,6 +65,8 @@ type UseDashboardMainPanelParams = {
   onSelectAlert: (key: AlertKey) => void;
   onOpenProject: (item: ProyDashboardDetalleItem) => void;
   onNavigate: (path: string) => void;
+  createProjectPath?: string;
+  projectListPath?: string;
 };
 
 const ALERT_LIST_TITLES: Record<AlertKey, string> = {
@@ -81,93 +75,28 @@ const ALERT_LIST_TITLES: Record<AlertKey, string> = {
   eventos: "Proyectos con tareas vencidas",
 };
 
-const normalizeEstadoKey = (value: string) => String(value ?? "").trim().toLowerCase();
+const getDetailTitle = (
+  activeSelectorKey: string | null,
+  selectedAlertKey: AlertKey | null,
+) => {
+  if (selectedAlertKey) return ALERT_LIST_TITLES[selectedAlertKey];
+  if (activeSelectorKey) return getProyectoEstadoLabel(activeSelectorKey);
+  return "Proyectos";
+};
 
-const getEstadoVisuals = (estado: string): Pick<DashboardStatusCardItem, "icon" | "accentClassName" | "iconClassName"> => {
-  const normalized = normalizeEstadoKey(estado);
-
-  if (normalized.startsWith("01-plan")) {
-    return {
-      icon: Clock3,
-      accentClassName: "bg-amber-500",
-      iconClassName: "text-amber-600",
-    };
+const getDetailEmptyMessage = (
+  activeSelectorKey: string | null,
+  selectedAlertKey: AlertKey | null,
+) => {
+  if (!activeSelectorKey && !selectedAlertKey) {
+    return "Selecciona un estado o una alarma para ver proyectos.";
   }
-
-  if (normalized.startsWith("02-ejeucion") || normalized.startsWith("02-ejecucion")) {
-    return {
-      icon: PlayCircle,
-      accentClassName: "bg-sky-500",
-      iconClassName: "text-sky-600",
-    };
-  }
-
-  if (normalized.startsWith("03-conclusion")) {
-    return {
-      icon: CircleDot,
-      accentClassName: "bg-violet-500",
-      iconClassName: "text-violet-600",
-    };
-  }
-
-  if (normalized.startsWith("04-terminados")) {
-    return {
-      icon: CheckCircle2,
-      accentClassName: "bg-emerald-500",
-      iconClassName: "text-emerald-600",
-    };
-  }
-
-  if (["finalizado", "finalizada", "cerrado", "cerrada", "completado", "completada"].includes(normalized)) {
-    return {
-      icon: CheckCircle2,
-      accentClassName: "bg-emerald-500",
-      iconClassName: "text-emerald-600",
-    };
-  }
-
-  if (["en_proceso", "en proceso", "iniciado", "activa", "activo", "en_ejecucion", "ejecutando"].includes(normalized)) {
-    return {
-      icon: PlayCircle,
-      accentClassName: "bg-sky-500",
-      iconClassName: "text-sky-600",
-    };
-  }
-
-  if (["pendiente", "planificado", "planificada", "borrador", "planificacion"].includes(normalized)) {
-    return {
-      icon: Clock3,
-      accentClassName: "bg-amber-500",
-      iconClassName: "text-amber-600",
-    };
-  }
-
-  if (["cancelado", "cancelada", "pausado", "pausada"].includes(normalized)) {
-    return {
-      icon: Ban,
-      accentClassName: "bg-rose-500",
-      iconClassName: "text-rose-600",
-    };
-  }
-
-  if (["sin_estado", "sin estado"].includes(normalized)) {
-    return {
-      icon: PauseCircle,
-      accentClassName: "bg-slate-400",
-      iconClassName: "text-slate-500",
-    };
-  }
-
-  return {
-    icon: CircleDot,
-    accentClassName: "bg-slate-500",
-    iconClassName: "text-slate-600",
-  };
+  return "No hay proyectos para mostrar en este corte.";
 };
 
 export const useDashboardMainPanel = ({
   selectorData,
-  selectedEstado,
+  activeSelectorKey,
   selectedAlertKey,
   detailData,
   detailLoading,
@@ -178,17 +107,19 @@ export const useDashboardMainPanel = ({
   onSelectAlert,
   onOpenProject,
   onNavigate,
+  createProjectPath = "/proyectos/create",
+  projectListPath = "/proyectos",
 }: UseDashboardMainPanelParams): DashboardMainPanelViewModel => ({
   statusCards: Object.entries(selectorData?.por_estado ?? {})
     .sort((left, right) => left[0].localeCompare(right[0], "es"))
     .map(([estado, count]) => {
-      const visuals = getEstadoVisuals(estado);
+      const visuals = getProyDashboardEstadoVisuals(estado);
       return {
         key: estado,
         title: getProyectoEstadoLabel(estado),
         count,
         ...visuals,
-        selected: !selectedAlertKey && selectedEstado === estado,
+        selected: !selectedAlertKey && activeSelectorKey === estado,
         onSelect: () => onSelectEstado(estado),
       };
     }),
@@ -210,13 +141,13 @@ export const useDashboardMainPanel = ({
       key: "crear-proyecto",
       label: "Crear proyecto",
       icon: Plus,
-      onClick: () => onNavigate("/proyectos/create"),
+      onClick: () => onNavigate(createProjectPath),
     },
     {
       key: "proyectos",
       label: "Proyectos",
       icon: Kanban,
-      onClick: () => onNavigate("/proyectos"),
+      onClick: () => onNavigate(projectListPath),
     },
     {
       key: "compras",
@@ -225,8 +156,9 @@ export const useDashboardMainPanel = ({
       onClick: () => onNavigate("/po-dashboard"),
     },
   ],
-  totalProjects: selectedAlertKey || selectedEstado !== "todos"
+  totalProjects: selectedAlertKey || activeSelectorKey
     ? detailData?.total ?? 0
     : selectorData?.total ?? detailData?.total ?? 0,
-  listTitle: selectedAlertKey ? ALERT_LIST_TITLES[selectedAlertKey] : "Proyectos",
+  detailTitle: getDetailTitle(activeSelectorKey, selectedAlertKey),
+  detailEmptyMessage: getDetailEmptyMessage(activeSelectorKey, selectedAlertKey),
 });

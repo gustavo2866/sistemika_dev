@@ -7,8 +7,9 @@ import {
   useList,
   useRecordContext,
 } from "ra-core";
-import { FolderKanban } from "lucide-react";
+import { ChevronDown, ChevronUp, FolderKanban } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ListColumn, ResponsiveDataTable } from "@/components/forms/form_order";
 import { getProyectoEstadoBadgeClass, getProyectoEstadoLabel } from "../../../proyectos/model";
 import {
@@ -20,8 +21,15 @@ import type { DashboardDetailItem, DashboardMainPanelViewModel } from "./use-das
 
 type DashboardListSectionProps = Pick<
   DashboardMainPanelViewModel,
-  "detailItems" | "detailLoading" | "hasMoreDetail" | "onLoadMore" | "totalProjects"
+  | "detailItems"
+  | "detailLoading"
+  | "hasMoreDetail"
+  | "onLoadMore"
+  | "totalProjects"
+  | "detailEmptyMessage"
 > & {
+  expanded: boolean;
+  onToggleExpanded: () => void;
   title: string;
 };
 
@@ -79,7 +87,7 @@ const DetailProjectCard = ({ item, onClick }: DashboardDetailItem) => (
 const DashboardDetailIdCell = () => {
   const dashboardItem = useDashboardDetailRecord();
   return (
-    <span className="text-[10px] font-semibold leading-tight text-foreground">
+    <span className="text-[8px] font-semibold leading-tight text-foreground">
       {dashboardItem?.item.proyecto?.id ?? "-"}
     </span>
   );
@@ -96,7 +104,7 @@ const DashboardDetailNombreCell = () => {
         event.stopPropagation();
         dashboardItem.onClick();
       }}
-      className="block truncate text-left text-[10px] font-medium leading-tight hover:text-primary"
+      className="block w-full max-w-full overflow-hidden truncate text-left text-[8px] font-medium leading-tight hover:text-primary"
       data-row-click="ignore"
     >
       {dashboardItem.item.proyecto?.nombre ?? "Sin proyecto"}
@@ -108,7 +116,7 @@ const DashboardDetailEstadoCell = () => {
   const dashboardItem = useDashboardDetailRecord();
   const estado = dashboardItem?.item.estado_al_corte;
   return (
-    <Badge className={`h-5 px-1.5 py-0 text-[8px] ${getProyectoEstadoBadgeClass(estado)}`}>
+    <Badge className={`h-4.5 px-1.5 py-0 text-[7px] font-medium ${getProyectoEstadoBadgeClass(estado)}`}>
       {getProyectoEstadoLabel(estado)}
     </Badge>
   );
@@ -117,7 +125,7 @@ const DashboardDetailEstadoCell = () => {
 const DashboardDetailIngresosCell = () => {
   const dashboardItem = useDashboardDetailRecord();
   return (
-    <span className="block text-right text-[10px] font-medium leading-tight text-foreground">
+    <span className="block text-right text-[8px] leading-tight text-foreground">
       {formatCurrency(dashboardItem?.item.importe_ejecutado ?? 0)}
     </span>
   );
@@ -126,7 +134,7 @@ const DashboardDetailIngresosCell = () => {
 const DashboardDetailCostosCell = () => {
   const dashboardItem = useDashboardDetailRecord();
   return (
-    <span className="block text-right text-[10px] font-medium leading-tight text-foreground">
+    <span className="block text-right text-[8px] leading-tight text-foreground">
       {formatCurrency(dashboardItem?.item.costo_ejecutado ?? 0)}
     </span>
   );
@@ -153,7 +161,7 @@ const DashboardDetailTable = ({
           }}
           bulkActionButtons={false}
           compact
-          className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+          className="w-full overflow-hidden text-[11px] [&_th]:text-[11px] [&_td]:text-[11px] [&_[data-slot=table-container]]:overflow-x-hidden [&_[data-slot=table]]:min-w-full [&_[data-slot=table]]:w-full [&_[data-slot=table]]:table-fixed"
           mobileConfig={{
             customCard: (record) => {
               const { key, ...cardProps } = (record as DashboardDetailTableRecord).dashboardItem;
@@ -161,19 +169,19 @@ const DashboardDetailTable = ({
             },
           }}
         >
-          <ListColumn source="projectId" label="ID" className="w-[44px]">
+          <ListColumn source="projectId" label="ID" className="w-[28px]">
             <DashboardDetailIdCell />
           </ListColumn>
-          <ListColumn source="nombre" label="Nombre" className="w-[180px]">
+          <ListColumn source="nombre" label="Nombre" className="w-[120px]">
             <DashboardDetailNombreCell />
           </ListColumn>
-          <ListColumn source="estado" label="Estado" className="w-[92px]">
+          <ListColumn source="estado" label="Estado" className="w-[58px]">
             <DashboardDetailEstadoCell />
           </ListColumn>
-          <ListColumn source="ingresos" label="Ingresos" className="w-[112px]">
+          <ListColumn source="ingresos" label="Ingresos" className="w-[58px]">
             <DashboardDetailIngresosCell />
           </ListColumn>
-          <ListColumn source="costos" label="Costos" className="w-[112px]">
+          <ListColumn source="costos" label="Costos" className="w-[58px]">
             <DashboardDetailCostosCell />
           </ListColumn>
         </ResponsiveDataTable>
@@ -189,6 +197,9 @@ export const DashboardListSection = ({
   detailLoading,
   hasMoreDetail,
   onLoadMore,
+  detailEmptyMessage,
+  expanded,
+  onToggleExpanded,
 }: DashboardListSectionProps) => {
   const detailViewportRef = useRef<HTMLDivElement | null>(null);
   const detailLoadSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -214,7 +225,7 @@ export const DashboardListSection = ({
     const root = detailViewportRef.current;
     const target = detailLoadSentinelRef.current;
 
-    if (!root || !target || !hasMoreDetail) {
+    if (!expanded || !root || !target || !hasMoreDetail) {
       return;
     }
 
@@ -239,7 +250,7 @@ export const DashboardListSection = ({
     return () => {
       observer.disconnect();
     };
-  }, [detailItems.length, detailLoading, hasMoreDetail, onLoadMore]);
+  }, [detailItems.length, detailLoading, expanded, hasMoreDetail, onLoadMore]);
 
   return (
     <section className="flex min-h-0 flex-col rounded-xl border border-border/60 bg-card/80 shadow-sm">
@@ -248,45 +259,60 @@ export const DashboardListSection = ({
           <FolderKanban className="h-3.5 w-3.5 text-muted-foreground" />
           <span>{title}</span>
         </span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-          {totalProjects} proyectos
-        </span>
-      </div>
-
-      <div className="px-2 pb-2 sm:px-3 sm:pb-3">
-        <div className="space-y-2">
-          {isInitialDetailLoading ? (
-            <div className="rounded-lg border border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-              Cargando proyectos...
-            </div>
-          ) : null}
-
-          {!isInitialDetailLoading && detailItems.length === 0 ? (
-            <div className="rounded-lg border border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
-              No hay proyectos para mostrar.
-            </div>
-          ) : null}
-
-          {!isInitialDetailLoading && records.length > 0 ? (
-            <div className="space-y-2">
-              <div
-                ref={detailViewportRef}
-                className="overflow-y-auto overscroll-y-contain pr-1"
-                style={{ height: PROY_DASHBOARD_DETAIL_VIEWPORT_HEIGHT }}
-              >
-                <DashboardDetailTable records={records} />
-                {hasMoreDetail ? (
-                  <div
-                    ref={detailLoadSentinelRef}
-                    aria-hidden="true"
-                    className="h-px w-full shrink-0 opacity-0"
-                  />
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+            {totalProjects} proyectos
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-[10px] text-muted-foreground"
+            onClick={onToggleExpanded}
+            aria-label={expanded ? "Ocultar detalle" : "Mostrar detalle"}
+          >
+            <span>{expanded ? "Ocultar" : "Mostrar"}</span>
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </Button>
         </div>
       </div>
+
+      {expanded ? (
+        <div className="px-2 pb-2 sm:px-3 sm:pb-3">
+          <div className="space-y-2">
+            {isInitialDetailLoading ? (
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+                Cargando proyectos...
+              </div>
+            ) : null}
+
+            {!isInitialDetailLoading && detailItems.length === 0 ? (
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+                {detailEmptyMessage}
+              </div>
+            ) : null}
+
+            {!isInitialDetailLoading && records.length > 0 ? (
+              <div className="space-y-2">
+                <div
+                  ref={detailViewportRef}
+                  className="overflow-y-auto overscroll-y-contain pr-1"
+                  style={{ height: PROY_DASHBOARD_DETAIL_VIEWPORT_HEIGHT }}
+                >
+                  <DashboardDetailTable records={records} />
+                  {hasMoreDetail ? (
+                    <div
+                      ref={detailLoadSentinelRef}
+                      aria-hidden="true"
+                      className="h-px w-full shrink-0 opacity-0"
+                    />
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 };

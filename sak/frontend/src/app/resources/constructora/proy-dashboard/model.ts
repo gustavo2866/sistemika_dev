@@ -1,5 +1,15 @@
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, Mail, OctagonX } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  CheckCircle2,
+  CircleDot,
+  Clock3,
+  Mail,
+  OctagonX,
+  PauseCircle,
+  PlayCircle,
+} from "lucide-react";
 import type { PeriodType } from "@/components/forms/period-range-navigator";
 export type { PeriodType } from "@/components/forms/period-range-navigator";
 
@@ -15,6 +25,7 @@ export type ProyDashboardKpiConcept = {
   materiales: number;
   mo_propia: number;
   mo_terceros: number;
+  herramientas?: number;
   importe: number;
   horas?: number;
   metros?: number;
@@ -87,6 +98,12 @@ export type ProyDashboardAlertItem = {
   icon: LucideIcon;
   className: string;
   badgeClassName: string;
+};
+
+export type ProyDashboardEstadoVisuals = {
+  icon: LucideIcon;
+  accentClassName: string;
+  iconClassName: string;
 };
 
 export const DEFAULT_PROY_PERIOD: PeriodType = "mes";
@@ -239,9 +256,126 @@ export const formatDateValue = (value?: string | null) => {
 
 export const getIngresoTotal = (kpi?: Partial<ProyDashboardKpiConcept> | null) => Number(kpi?.importe ?? 0);
 export const getCostoTotal = (kpi?: Partial<ProyDashboardKpiConcept> | null) =>
-  Number(kpi?.mo_propia ?? 0) + Number(kpi?.mo_terceros ?? 0) + Number(kpi?.materiales ?? 0);
+  Number(kpi?.mo_propia ?? 0) +
+  Number(kpi?.mo_terceros ?? 0) +
+  Number(kpi?.materiales ?? 0) +
+  Number(kpi?.herramientas ?? 0);
 export const getResultadoPeriodo = (kpi?: Partial<ProyDashboardKpiConcept> | null) =>
   getIngresoTotal(kpi) - getCostoTotal(kpi);
+
+const normalizeEstadoKey = (value?: string | null) =>
+  String(value ?? "").trim().toLowerCase();
+
+export const getProyDashboardEstadoVisuals = (
+  estado?: string | null,
+): ProyDashboardEstadoVisuals => {
+  const normalized = normalizeEstadoKey(estado);
+
+  if (normalized.startsWith("01-plan")) {
+    return {
+      icon: Clock3,
+      accentClassName: "bg-amber-500",
+      iconClassName: "text-amber-600",
+    };
+  }
+
+  if (normalized.startsWith("02-ejeucion") || normalized.startsWith("02-ejecucion")) {
+    return {
+      icon: PlayCircle,
+      accentClassName: "bg-sky-500",
+      iconClassName: "text-sky-600",
+    };
+  }
+
+  if (normalized.startsWith("03-conclusion")) {
+    return {
+      icon: CircleDot,
+      accentClassName: "bg-violet-500",
+      iconClassName: "text-violet-600",
+    };
+  }
+
+  if (normalized.startsWith("04-terminados")) {
+    return {
+      icon: CheckCircle2,
+      accentClassName: "bg-emerald-500",
+      iconClassName: "text-emerald-600",
+    };
+  }
+
+  if (
+    [
+      "finalizado",
+      "finalizada",
+      "cerrado",
+      "cerrada",
+      "completado",
+      "completada",
+    ].includes(normalized)
+  ) {
+    return {
+      icon: CheckCircle2,
+      accentClassName: "bg-emerald-500",
+      iconClassName: "text-emerald-600",
+    };
+  }
+
+  if (
+    [
+      "en_proceso",
+      "en proceso",
+      "iniciado",
+      "activa",
+      "activo",
+      "en_ejecucion",
+      "ejecutando",
+    ].includes(normalized)
+  ) {
+    return {
+      icon: PlayCircle,
+      accentClassName: "bg-sky-500",
+      iconClassName: "text-sky-600",
+    };
+  }
+
+  if (
+    [
+      "pendiente",
+      "planificado",
+      "planificada",
+      "borrador",
+      "planificacion",
+    ].includes(normalized)
+  ) {
+    return {
+      icon: Clock3,
+      accentClassName: "bg-amber-500",
+      iconClassName: "text-amber-600",
+    };
+  }
+
+  if (["cancelado", "cancelada", "pausado", "pausada"].includes(normalized)) {
+    return {
+      icon: Ban,
+      accentClassName: "bg-rose-500",
+      iconClassName: "text-rose-600",
+    };
+  }
+
+  if (["sin_estado", "sin estado"].includes(normalized)) {
+    return {
+      icon: PauseCircle,
+      accentClassName: "bg-slate-400",
+      iconClassName: "text-slate-500",
+    };
+  }
+
+  return {
+    icon: CircleDot,
+    accentClassName: "bg-slate-500",
+    iconClassName: "text-slate-600",
+  };
+};
 
 export const buildAlertItems = (dashboardData: ProyDashboardResponse | null): ProyDashboardAlertItem[] => [
   {

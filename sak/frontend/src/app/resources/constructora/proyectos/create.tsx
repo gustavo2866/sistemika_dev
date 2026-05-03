@@ -8,6 +8,7 @@ import {
   saveDashboardReturnMarker,
 } from "../proy-dashboard/return-state";
 import { ProyectoForm } from "./form";
+import { ProyectoBackButton } from "./navigation-title";
 import {
   getProyectoEstadoBadgeClass,
   getProyectoEstadoLabel,
@@ -19,8 +20,9 @@ type ProyectoCreateProps = {
   redirect?: BaseCreateProps["redirect"];
 };
 
-const ProyectoCreateTitle = () => (
+const ProyectoCreateTitle = ({ returnTo }: { returnTo?: string }) => (
   <div className="flex flex-wrap items-center gap-2">
+    <ProyectoBackButton returnTo={returnTo} />
     <span>Crear proyecto</span>
     <Badge variant="secondary" className={getProyectoEstadoBadgeClass(undefined)}>
       {getProyectoEstadoLabel(undefined)}
@@ -40,7 +42,7 @@ export const ProyectoCreate = ({
   return (
     <Create
       redirect={false}
-      title={<ProyectoCreateTitle />}
+      title={<ProyectoCreateTitle returnTo={returnTo ?? undefined} />}
       className="max-w-5xl w-full"
       transform={normalizeProyectoPayload}
       showBreadcrumb={!embedded}

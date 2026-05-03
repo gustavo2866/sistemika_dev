@@ -1,6 +1,6 @@
 "use client";
 
-import type { PeriodType, ProyDashboardFilters } from "./model";
+import type { AlertKey, PeriodType, ProyDashboardFilters } from "./model";
 
 const DASHBOARD_RETURN_MARKER_PREFIX = "proy-dashboard:return:";
 
@@ -11,6 +11,8 @@ export type ProyDashboardReturnMarker = {
   filters?: ProyDashboardFilters;
   periodType?: PeriodType;
   showKpis?: boolean;
+  activeSelectorKey?: string | null;
+  selectedAlertKey?: AlertKey | null;
 };
 
 const getDashboardReturnMarkerStorageKey = (returnTo: string) =>
