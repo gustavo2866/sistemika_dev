@@ -1,6 +1,12 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import {
+  FieldTitle,
+  type InputProps,
+  useInput,
+  useResourceContext,
+} from "ra-core";
 import { TextInput, type TextInputProps } from "@/components/text-input";
 import { NumberInput, type NumberInputProps } from "@/components/number-input";
 import {
@@ -17,12 +23,31 @@ import {
   type BooleanInputProps,
 } from "@/components/boolean-input";
 import {
+  FormError,
+  FormField,
+  FormLabel,
+} from "@/components/form";
+import { InputHelperText } from "@/components/input-helper-text";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   buildFieldClassName,
   FORM_FIELD_DEFAULT_WIDTH_CLASS,
   FORM_FIELD_LABEL_CLASS,
   FORM_SELECT_TRIGGER_CLASS,
   FORM_VALUE_BASE_CLASS,
 } from "./field_styles";
+import {
+  buildQuincenaDateValue,
+  getQuincenaDateParts,
+  type QuincenaValue,
+} from "./quincena_date";
 
 type FieldWrapperProps = {
   widthClass?: string;
@@ -63,6 +88,84 @@ export const FormDate = ({
     className={buildFieldClassName(widthClass, className)}
   />
 );
+
+export type FormQuincenaDateProps = InputProps & FieldWrapperProps;
+
+export const FormQuincenaDate = ({
+  widthClass,
+  className,
+  helperText,
+  label,
+  source,
+  ...props
+}: FormQuincenaDateProps) => {
+  const resource = useResourceContext(props);
+  const { id, field, isRequired } = useInput({
+    ...props,
+    helperText,
+    label,
+    source,
+  });
+  const { month, quincena } = getQuincenaDateParts(field.value);
+
+  const handleMonthChange = (nextMonth: string) => {
+    field.onChange(buildQuincenaDateValue(nextMonth, quincena));
+  };
+
+  const handleQuincenaChange = (nextQuincena: string) => {
+    field.onChange(buildQuincenaDateValue(month, nextQuincena as QuincenaValue));
+  };
+
+  return (
+    <FormField
+      id={id}
+      name={field.name}
+      className={buildFieldClassName(widthClass, className)}
+    >
+      {label !== false ? (
+        <FormLabel>
+          <FieldTitle
+            label={label}
+            source={source}
+            resource={resource}
+            isRequired={isRequired}
+          />
+        </FormLabel>
+      ) : null}
+      <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-1.5">
+        <Input
+          id={id}
+          type="month"
+          value={month}
+          onChange={(event) => handleMonthChange(event.target.value)}
+          onBlur={field.onBlur}
+          name={`${field.name}__month`}
+          ref={field.ref}
+          disabled={field.disabled}
+        />
+        <Select
+          value={quincena}
+          onValueChange={handleQuincenaChange}
+          disabled={field.disabled}
+        >
+          <SelectTrigger className={cn(FORM_SELECT_TRIGGER_CLASS, "w-full")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="text-[9px] sm:text-[10px]">
+            <SelectItem value="1" className="h-7 text-[9px] sm:text-[10px]">
+              1ra
+            </SelectItem>
+            <SelectItem value="2" className="h-7 text-[9px] sm:text-[10px]">
+              2da
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <InputHelperText helperText={helperText} />
+      <FormError />
+    </FormField>
+  );
+};
 
 export const FormNumber = ({
   widthClass,

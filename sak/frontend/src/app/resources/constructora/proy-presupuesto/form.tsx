@@ -9,8 +9,8 @@ import { NumberField } from "@/components/number-field";
 import { SimpleForm } from "@/components/simple-form";
 import { FormOrderToolbar } from "@/components/forms";
 import {
-  FormDate,
   FormNumber,
+  FormQuincenaDate,
   FormReferenceAutocomplete,
   FormTextarea,
   FormValue,
@@ -45,9 +45,9 @@ const PresupuestoCabeceraFields = () => (
         }}
         widthClass="w-full"
       />
-      <FormDate
+      <FormQuincenaDate
         source="fecha"
-        label="Fecha"
+        label="Quincena"
         validate={required()}
         widthClass="w-full"
       />

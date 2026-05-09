@@ -104,6 +104,7 @@ export {
   FormBoolean,
   FormDate,
   FormNumber,
+  FormQuincenaDate,
   FormReferenceAutocomplete,
   FormSelect,
   FormSelectFijo,
@@ -111,7 +112,16 @@ export {
   FormTextarea,
   FormValue,
 } from "./form/field_wrappers";
-export type { FormReferenceAutocompleteProps } from "./form/field_wrappers";
+export type {
+  FormQuincenaDateProps,
+  FormReferenceAutocompleteProps,
+} from "./form/field_wrappers";
+export {
+  buildQuincenaDateValue,
+  getQuincenaDateParts,
+  normalizeQuincenaDateValue,
+} from "./form/quincena_date";
+export type { QuincenaValue } from "./form/quincena_date";
 export { PeriodRangeNavigator } from "./dashboard/period_range_navigator";
 export type {
   PeriodRange,

@@ -1,6 +1,7 @@
 "use client";
 
 import { z } from "zod";
+import { normalizeQuincenaDateValue } from "@/components/forms/form_order/form/quincena_date";
 
 const requiredId = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),
@@ -8,7 +9,10 @@ const requiredId = z.preprocess(
 );
 
 const requiredDate = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
+  (value) =>
+    value === "" || value === null
+      ? undefined
+      : normalizeQuincenaDateValue(value),
   z.string().min(1, "La fecha es requerida"),
 );
 
@@ -51,7 +55,7 @@ export type ProyPresupuestoFormValues = z.infer<typeof proyPresupuestoSchema>;
 
 export const PROY_PRESUPUESTO_DEFAULT: ProyPresupuestoFormValues = {
   proyecto_id: undefined as unknown as number,
-  fecha: new Date().toISOString().split("T")[0],
+  fecha: normalizeQuincenaDateValue(new Date().toISOString().split("T")[0]),
   mo_propia: 0,
   mo_terceros: 0,
   materiales: 0,
