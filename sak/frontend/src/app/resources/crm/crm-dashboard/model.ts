@@ -165,8 +165,8 @@ export type CrmDashboardKpiCard = {
 
 export const DEFAULT_CRM_PERIOD: PeriodType = "trimestre";
 export const CRM_DASHBOARD_DETAIL_PAGE_SIZE = 15;
-export const CRM_DASHBOARD_DETAIL_VISIBLE_ROWS = 5;
-export const CRM_DASHBOARD_DETAIL_VIEWPORT_HEIGHT = 196;
+export const CRM_DASHBOARD_DETAIL_VISIBLE_ROWS = 6;
+export const CRM_DASHBOARD_DETAIL_VIEWPORT_HEIGHT = 236;
 
 const periodMap: Partial<Record<PeriodType, number>> = {
   mes: 1,

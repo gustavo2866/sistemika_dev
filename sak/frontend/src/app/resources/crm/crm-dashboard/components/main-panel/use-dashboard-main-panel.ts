@@ -49,6 +49,8 @@ export type DashboardMainPanelViewModel = {
   onLoadMore: () => void;
   alerts: DashboardAlertItemViewModel[];
   quickActions: DashboardQuickActionItem[];
+  detailTitle: string;
+  detailEmptyMessage: string;
 };
 
 const KPI_ACCENT_CLASSES: Record<KpiKey, string> = {
@@ -79,6 +81,35 @@ type UseDashboardMainPanelParams = {
   onOpenOpportunity: (item: CrmDashboardDetalleItem) => void;
   onNavigate: (path: string) => void;
   createOpportunityPath?: string;
+};
+
+const getKpiTitle = (key: KpiKey) =>
+  KPI_CARDS.find((card) => card.key === key)?.title ?? "Oportunidades";
+
+const getDetailTitle = (
+  detailKpi: KpiKey,
+  selectedAlertKey: AlertKey | null,
+  alertItems: CrmDashboardAlertItem[],
+) => {
+  if (selectedAlertKey) {
+    const alertLabel = alertItems.find((alert) => alert.key === selectedAlertKey)?.label;
+    return alertLabel ? `Oportunidades / ${alertLabel}` : "Oportunidades";
+  }
+  return `Oportunidades / ${getKpiTitle(detailKpi)}`;
+};
+
+const getDetailEmptyMessage = (
+  detailKpi: KpiKey,
+  selectedAlertKey: AlertKey | null,
+  alertItems: CrmDashboardAlertItem[],
+) => {
+  if (selectedAlertKey) {
+    const alertLabel = alertItems.find((alert) => alert.key === selectedAlertKey)?.label;
+    return alertLabel
+      ? `No hay oportunidades para la alarma ${alertLabel}.`
+      : "No hay oportunidades para esta alarma.";
+  }
+  return `No hay oportunidades en ${getKpiTitle(detailKpi)}.`;
 };
 
 export const useDashboardMainPanel = ({
@@ -149,4 +180,6 @@ export const useDashboardMainPanel = ({
       onClick: () => onNavigate("/crm/contactos"),
     },
   ],
+  detailTitle: getDetailTitle(detailKpi, selectedAlertKey, alertItems),
+  detailEmptyMessage: getDetailEmptyMessage(detailKpi, selectedAlertKey, alertItems),
 });
