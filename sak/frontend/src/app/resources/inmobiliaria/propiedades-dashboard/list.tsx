@@ -1,8 +1,6 @@
 "use client";
 
-import { BarChart3, ChartNoAxesCombined, RefreshCcw } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { saveDashboardReturnMarker } from "./return-state";
 import type { PropDashboardDetalleItem } from "./model";
 import { usePropDashboard } from "./use-prop-dashboard";
@@ -118,6 +116,9 @@ export default function PropiedadesDashboardList() {
   const headerModel = useDashboardHeader({
     dashboardLoading,
     onMobileBack: handleMobileBack,
+    showKpis,
+    onToggleKpis: () => setShowKpis((current: boolean) => !current),
+    onRefresh: handleHardRefresh,
   });
 
   const primaryFiltersModel = useDashboardPrimaryFilters({
@@ -162,8 +163,6 @@ export default function PropiedadesDashboardList() {
     selectedTipoOperacionLabel,
   });
 
-  const kpiToggleLabel = showKpis ? "Ocultar KPIs" : "Mostrar KPIs";
-
   return (
     <div className="mx-auto flex h-full w-full max-w-5xl min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-0 pt-2 pb-3 xl:max-w-6xl 2xl:max-w-7xl sm:px-2 sm:pt-4 sm:pb-4">
       <section className="w-full">
@@ -175,55 +174,14 @@ export default function PropiedadesDashboardList() {
         </SectionShell>
       </section>
 
-      <section className="w-full">
-        <SectionShell className="px-3 py-2 sm:px-5 sm:py-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">
-              <ChartNoAxesCombined className="h-3.5 w-3.5 text-primary" />
-              <span>KPIs</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-1 px-2 text-[10px] text-muted-foreground sm:text-[11px]"
-                onClick={() => setShowKpis((current: boolean) => !current)}
-                aria-label={kpiToggleLabel}
-                title={kpiToggleLabel}
-              >
-                {showKpis ? (
-                  <ChartNoAxesCombined className="h-3.5 w-3.5" />
-                ) : (
-                  <BarChart3 className="h-3.5 w-3.5" />
-                )}
-                <span>{showKpis ? "Ocultar" : "Mostrar"}</span>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 w-7 shrink-0 px-0 text-muted-foreground sm:h-7 sm:w-7"
-                onClick={handleHardRefresh}
-                title="Actualizar"
-                aria-label="Actualizar"
-              >
-                <RefreshCcw className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-          {showKpis ? (
-            <div className="mt-3">
-              <DashboardKpiRow {...kpiRowModel} />
-            </div>
-          ) : null}
-        </SectionShell>
-      </section>
-
       <section className="flex w-full flex-col">
         <SectionShell className="px-0 py-0 sm:px-4 sm:py-4">
           <div className="flex flex-col px-0 py-0">
-            <DashboardMainPanel {...mainPanelModel} />
+            <DashboardMainPanel
+              {...mainPanelModel}
+              kpiContent={<DashboardKpiRow {...kpiRowModel} />}
+              showKpis={showKpis}
+            />
           </div>
         </SectionShell>
       </section>

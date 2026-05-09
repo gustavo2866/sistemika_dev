@@ -180,7 +180,7 @@ export const DashboardKpiRow = ({
   advanceRows,
   trendData,
 }: DashboardKpiRowViewModel) => (
-  <div className="grid w-full max-w-[920px] gap-3 px-0 sm:px-1 md:grid-cols-2 xl:grid-cols-3">
+  <div className="grid w-full gap-3 px-0 sm:px-1 md:grid-cols-2 xl:grid-cols-3">
     <PeriodCard result={periodCard.result} metrics={periodCard.metrics} />
     <AdvanceCard rows={advanceRows} />
     <TrendCard data={trendData} />

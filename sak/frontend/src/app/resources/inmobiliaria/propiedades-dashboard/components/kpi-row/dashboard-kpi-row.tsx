@@ -157,7 +157,7 @@ export const DashboardKpiRow = ({
   metricCard,
   trendData,
 }: DashboardKpiRowViewModel) => (
-  <div className="grid w-full max-w-[920px] gap-3 px-0 sm:px-1 md:grid-cols-2">
+  <div className="grid w-full gap-3 px-0 sm:px-1 md:grid-cols-2">
     <CompactMetricCard
       eyebrow={metricCard.eyebrow}
       totalDias={metricCard.totalDias}

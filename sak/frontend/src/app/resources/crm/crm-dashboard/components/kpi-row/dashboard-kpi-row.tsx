@@ -141,7 +141,7 @@ export const DashboardKpiRow = ({
   trendData,
   funnelData,
 }: DashboardKpiRowViewModel) => (
-  <div className="grid w-full max-w-[920px] gap-3 px-0 sm:px-1 md:grid-cols-2 xl:grid-cols-3">
+  <div className="grid w-full gap-3 px-0 sm:px-1 md:grid-cols-2 xl:grid-cols-3">
     <CompactMetricCard
       title={metricCard.title}
       count={metricCard.count}

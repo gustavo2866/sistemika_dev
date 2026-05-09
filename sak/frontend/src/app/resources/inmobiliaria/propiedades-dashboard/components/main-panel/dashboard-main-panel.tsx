@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -182,6 +183,11 @@ const DashboardQuickActionsSection = ({
   </section>
 );
 
+type DashboardMainPanelProps = DashboardMainPanelViewModel & {
+  kpiContent: ReactNode;
+  showKpis: boolean;
+};
+
 export const DashboardMainPanel = ({
   statusCards,
   detailItems,
@@ -194,7 +200,9 @@ export const DashboardMainPanel = ({
   detailEmptyMessage,
   showContratoColumn,
   valueColumnLabel,
-}: DashboardMainPanelViewModel) => {
+  kpiContent,
+  showKpis,
+}: DashboardMainPanelProps) => {
   const [isListExpanded, setIsListExpanded] = useState(true);
   const prevDetailTitleRef = useRef(detailTitle);
   useEffect(() => {
@@ -205,30 +213,38 @@ export const DashboardMainPanel = ({
   }, [detailTitle]);
 
   return (
-    <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,8fr)_minmax(0,2fr)] lg:items-start">
-      {/* Left column: selectors + list */}
-      <div className="flex flex-col gap-3">
-        <DashboardSelectorsSection
-          statusCards={statusCards}
-          detailLoading={detailLoading}
-        />
-        <DashboardListSection
-          detailItems={detailItems}
-          detailLoading={detailLoading}
-          hasMoreDetail={hasMoreDetail}
-          onLoadMore={onLoadMore}
-          expanded={isListExpanded}
-          onToggleExpanded={() => setIsListExpanded((current) => !current)}
-          title={detailTitle}
-          emptyMessage={detailEmptyMessage}
-          showContratoColumn={showContratoColumn}
-          valueColumnLabel={valueColumnLabel}
-        />
-      </div>
-      {/* Right column: alerts + quick actions */}
-      <div className="flex flex-col gap-3">
-        <DashboardAlertsSection alerts={alerts} />
-        <DashboardQuickActionsSection quickActions={quickActions} />
+    <div className="flex flex-col gap-3">
+      {showKpis ? (
+        <section className="w-full rounded-xl border border-border/60 bg-card/80 p-2 shadow-sm sm:p-3">
+          {kpiContent}
+        </section>
+      ) : null}
+
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,8fr)_minmax(0,2fr)] lg:items-start">
+        {/* Left column: selectors + list */}
+        <div className="flex flex-col gap-3">
+          <DashboardSelectorsSection
+            statusCards={statusCards}
+            detailLoading={detailLoading}
+          />
+          <DashboardListSection
+            detailItems={detailItems}
+            detailLoading={detailLoading}
+            hasMoreDetail={hasMoreDetail}
+            onLoadMore={onLoadMore}
+            expanded={isListExpanded}
+            onToggleExpanded={() => setIsListExpanded((current) => !current)}
+            title={detailTitle}
+            emptyMessage={detailEmptyMessage}
+            showContratoColumn={showContratoColumn}
+            valueColumnLabel={valueColumnLabel}
+          />
+        </div>
+        {/* Right column: alerts + quick actions */}
+        <div className="flex flex-col gap-3">
+          <DashboardAlertsSection alerts={alerts} />
+          <DashboardQuickActionsSection quickActions={quickActions} />
+        </div>
       </div>
     </div>
   );
