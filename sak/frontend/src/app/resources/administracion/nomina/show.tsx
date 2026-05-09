@@ -7,10 +7,12 @@ import { DateField } from "@/components/date-field";
 import { NumberField } from "@/components/number-field";
 import { UrlField } from "@/components/url-field";
 import { SelectField } from "@/components/select-field";
-import { categoriaChoices, estadoChoices } from "./constants";
+import { ReferenceField } from "@/components/reference-field";
+import { FormOrderEditButton } from "@/components/forms/form_order";
+import { CATEGORIA_CHOICES, ESTADO_CHOICES } from "./model";
 
 export const NominaShow = () => (
-  <Show>
+  <Show actions={<FormOrderEditButton />}>
     <SimpleShowLayout>
       <TextField source="id" label="ID" />
       <TextField source="nombre" label="Nombre" />
@@ -21,8 +23,11 @@ export const NominaShow = () => (
       <TextField source="direccion" label="Direccion" />
       <SelectField
         source="categoria"
-        choices={categoriaChoices}
+        choices={CATEGORIA_CHOICES}
       />
+      <ReferenceField source="idproyecto" reference="proyectos" label="Proyecto">
+        <TextField source="nombre" />
+      </ReferenceField>
       <NumberField
         source="salario_mensual"
         label="Salario Mensual"
@@ -32,7 +37,7 @@ export const NominaShow = () => (
       <DateField source="fecha_ingreso" />
       <SelectField
         source="activo"
-        choices={estadoChoices}
+        choices={ESTADO_CHOICES}
       />
       <UrlField source="url_foto" />
       <DateField source="created_at" />

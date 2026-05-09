@@ -1,110 +1,141 @@
 "use client";
 
-import { List } from "@/components/list";
-import { DataTable } from "@/components/data-table";
-import { TextField } from "@/components/text-field";
-import { DateField } from "@/components/date-field";
-import { NumberField } from "@/components/number-field";
-import { TextInput } from "@/components/text-input";
-import { SelectInput } from "@/components/select-input";
-import { SelectField } from "@/components/select-field";
+import { List, LIST_CONTAINER_XL } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
-import { ReferenceInput } from "@/components/reference-input";
 import { FilterButton } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { EditButton } from "@/components/edit-button";
-import { ShowButton } from "@/components/show-button";
-import { categoriaChoices, estadoChoices } from "./constants";
+import {
+  BooleanListColumn,
+  DateListColumn,
+  FormOrderListRowActions,
+  ListColumn,
+  ListMoney,
+  ListPaginator,
+  ListText,
+  NumberListColumn,
+  ResponsiveDataTable,
+  TextListColumn,
+  buildListFilters,
+} from "@/components/forms/form_order";
+import { SelectField } from "@/components/select-field";
+import { CATEGORIA_CHOICES, ESTADO_CHOICES } from "./model";
 
-const filters = [
-  <TextInput
-    key="q"
-    source="q"
-    label={false}
-    placeholder="Buscar empleados"
-    alwaysOn
-  />,
-  <SelectInput
-    key="categoria"
-    source="categoria"
-    label="Categoria"
-    choices={categoriaChoices}
-    emptyText="Todas"
-  />,
-  <SelectInput
-    key="activo"
-    source="activo"
-    label="Estado"
-    choices={estadoChoices}
-    emptyText="Todos"
-  />,
-  <ReferenceInput
-    key="idproyecto"
-    source="idproyecto"
-    reference="proyectos"
-    label="Proyecto"
-  >
-    <SelectInput emptyText="Todos" optionText="nombre" />
-  </ReferenceInput>,
-];
+const LIST_FILTERS = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar empleados",
+        alwaysOn: true,
+        className: "w-[130px] sm:w-[180px]",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "categoria",
+        label: "Categoria",
+        choices: CATEGORIA_CHOICES,
+        emptyText: "Todas",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "activo",
+        label: "Estado",
+        choices: ESTADO_CHOICES,
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "idproyecto",
+        reference: "proyectos",
+        label: "Proyecto",
+      },
+      selectProps: {
+        optionText: "nombre",
+        className: "w-full",
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "nominas" },
+);
+
+const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const ListActions = () => (
   <div className="flex items-center gap-2">
-    <FilterButton filters={filters} />
-    <CreateButton />
-    <ExportButton />
+    <FilterButton
+      filters={LIST_FILTERS}
+      size="sm"
+      buttonClassName={ACTION_BUTTON_CLASS}
+    />
+    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
+    <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
 
 export const NominaList = () => (
-  <List filters={filters} actions={<ListActions />} perPage={25}>
-    <DataTable rowClick="edit">
-      <DataTable.Col source="id" label="ID" className="w-[70px]">
-        <TextField source="id" />
-      </DataTable.Col>
-      <DataTable.Col source="nombre" label="Nombre">
-        <TextField source="nombre" />
-      </DataTable.Col>
-      <DataTable.Col source="apellido" label="Apellido">
-        <TextField source="apellido" />
-      </DataTable.Col>
-      <DataTable.Col source="dni" label="DNI">
-        <TextField source="dni" />
-      </DataTable.Col>
-      <DataTable.Col source="categoria" label="Categoria">
-        <SelectField source="categoria" choices={categoriaChoices} />
-      </DataTable.Col>
-      <DataTable.Col source="idproyecto" label="Proyecto">
+  <List
+    resource="nominas"
+    title="Nomina"
+    filters={LIST_FILTERS}
+    actions={<ListActions />}
+    debounce={300}
+    perPage={5}
+    pagination={<ListPaginator />}
+    sort={{ field: "id", order: "DESC" }}
+    containerClassName={LIST_CONTAINER_XL}
+  >
+    <ResponsiveDataTable
+      rowClick="edit"
+      mobileConfig={{
+        primaryField: "nombre",
+        secondaryFields: ["apellido", "dni", "categoria", "idproyecto"],
+      }}
+      className="text-[10px] [&_th]:text-[10px] [&_td]:text-[10px] xl:text-[11px] xl:[&_th]:text-[11px] xl:[&_td]:text-[11px]"
+    >
+      <NumberListColumn
+        source="id"
+        label="ID"
+        className="w-[50px] text-center"
+      />
+      <TextListColumn source="nombre" label="Nombre" className="w-[130px]">
+        <ListText source="nombre" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <TextListColumn source="apellido" label="Apellido" className="w-[130px]">
+        <ListText source="apellido" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <TextListColumn source="dni" label="DNI" className="w-[90px]">
+        <ListText source="dni" />
+      </TextListColumn>
+      <ListColumn source="categoria" label="Categoria" className="w-[110px]">
+        <SelectField source="categoria" choices={CATEGORIA_CHOICES} />
+      </ListColumn>
+      <ListColumn source="idproyecto" label="Proyecto" className="w-[160px]">
         <ReferenceField source="idproyecto" reference="proyectos">
-          <TextField source="nombre" />
+          <ListText source="nombre" className="whitespace-normal break-words" />
         </ReferenceField>
-      </DataTable.Col>
-      <DataTable.Col source="email" label="Email">
-        <TextField source="email" />
-      </DataTable.Col>
-      <DataTable.Col source="telefono" label="Telefono">
-        <TextField source="telefono" />
-      </DataTable.Col>
-      <DataTable.Col source="fecha_ingreso" label="Ingreso">
-        <DateField source="fecha_ingreso" />
-      </DataTable.Col>
-      <DataTable.Col source="salario_mensual" label="Salario">
-        <NumberField
-          source="salario_mensual"
-          options={{ style: "currency", currency: "ARS" }}
-        />
-      </DataTable.Col>
-      <DataTable.Col source="activo" label="Estado">
-        <SelectField source="activo" choices={estadoChoices} />
-      </DataTable.Col>
-      <DataTable.Col className="w-[110px]">
-        <div className="flex items-center gap-2">
-          <EditButton />
-          <ShowButton />
-        </div>
-      </DataTable.Col>
-    </DataTable>
+      </ListColumn>
+      <TextListColumn source="email" label="Email" className="w-[170px]">
+        <ListText source="email" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <DateListColumn source="fecha_ingreso" label="Ingreso" className="w-[80px]" />
+      <ListColumn source="salario_mensual" label="Salario" className="w-[90px] text-right">
+        <ListMoney source="salario_mensual" showCurrency={false} />
+      </ListColumn>
+      <BooleanListColumn source="activo" label="Activo" className="w-[70px]" />
+      <ListColumn label="Acciones" className="w-[56px]">
+        <FormOrderListRowActions />
+      </ListColumn>
+    </ResponsiveDataTable>
   </List>
 );
 

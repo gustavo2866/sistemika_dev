@@ -44,11 +44,6 @@ export default function PoDashboardList() {
     navigate("/po-orders");
   };
 
-  const handleHardRefresh = () => {
-    if (typeof window === "undefined") return;
-    window.location.reload();
-  };
-
   const {
     periodType,
     filters,
@@ -76,9 +71,28 @@ export default function PoDashboardList() {
     setShowAdditionalFilters,
     setShowKpis,
     resetFilters,
+    refreshDashboard,
     selectAlert,
     selectDetailKpi,
   } = usePoDashboard();
+
+  const saveDashboardContext = (extra?: {
+    orderId?: string | number | null;
+    refreshAll?: boolean;
+    deleted?: boolean;
+  }) => {
+    saveDashboardReturnMarker(returnTo, {
+      savedAt: Date.now(),
+      orderId: extra?.orderId,
+      refreshAll: extra?.refreshAll ?? false,
+      deleted: extra?.deleted,
+      filters,
+      periodType,
+      detailKpi,
+      selectedAlertKey,
+      showAdditionalFilters,
+    });
+  };
 
   const headerModel = useDashboardHeader({
     dashboardLoading,
@@ -113,14 +127,13 @@ export default function PoDashboardList() {
 
   const handleOpenOrder = (item: PoDashboardDetalleItem) => {
     if (!item.order?.id) return;
-    saveDashboardReturnMarker(returnTo, {
-      savedAt: Date.now(),
-      orderId: item.order.id,
-    });
+    saveDashboardContext({ orderId: item.order.id });
     navigate(`/po-orders/${item.order.id}`, {
       state: { returnTo },
     });
   };
+
+  const createOrderPath = `/po-orders/create?returnTo=${encodeURIComponent(returnTo)}`;
 
   const mainPanelModel = useDashboardMainPanel({
     selectorData,
@@ -135,22 +148,24 @@ export default function PoDashboardList() {
     onSelectStatusCard: selectDetailKpi,
     onOpenOrder: handleOpenOrder,
     onNavigate: (path) => {
-      const createOrderPath = `/po-orders/create?returnTo=${encodeURIComponent(returnTo)}`;
-      if (path === createOrderPath) {
-        saveDashboardReturnMarker(returnTo, {
-          savedAt: Date.now(),
-        });
+      const isManagedDestination =
+        path === createOrderPath ||
+        path.startsWith("/po-orders") ||
+        path.startsWith("/po-orders-approval") ||
+        path.startsWith("/po-invoices");
+      if (isManagedDestination) {
+        saveDashboardContext({ refreshAll: path === createOrderPath });
       }
       navigate(path);
     },
-    createOrderPath: `/po-orders/create?returnTo=${encodeURIComponent(returnTo)}`,
+    createOrderPath,
   });
 
   const kpiToggleLabel = showKpis ? "Ocultar KPIs" : "Mostrar KPIs";
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[1180px] min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-0 pt-2 pb-3 sm:px-2 sm:pt-4 sm:pb-4">
-      <section className="w-full max-w-[940px]">
+    <div className="mx-auto flex h-full w-full max-w-5xl min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain px-0 pt-2 pb-3 xl:max-w-6xl 2xl:max-w-7xl sm:px-2 sm:pt-4 sm:pb-4">
+      <section className="w-full">
         <SectionShell className="pt-2 pb-1 sm:pt-3 sm:pb-2">
           <div className="relative space-y-0.5 px-0 pt-1 pb-0 sm:space-y-1.5 sm:px-5 sm:pt-2 sm:pb-1">
             <DashboardHeader {...headerModel} />
@@ -159,7 +174,7 @@ export default function PoDashboardList() {
         </SectionShell>
       </section>
 
-      <section className="w-full max-w-[940px]">
+      <section className="w-full">
         <SectionShell className="px-3 py-2 sm:px-5 sm:py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">
@@ -188,7 +203,7 @@ export default function PoDashboardList() {
                 variant="outline"
                 size="sm"
                 className="h-7 w-7 shrink-0 px-0 text-muted-foreground sm:h-7 sm:w-7"
-                onClick={handleHardRefresh}
+                onClick={refreshDashboard}
                 title="Actualizar"
                 aria-label="Actualizar"
               >
@@ -204,7 +219,7 @@ export default function PoDashboardList() {
         </SectionShell>
       </section>
 
-      <section className="flex w-full max-w-[940px] flex-col">
+      <section className="flex w-full flex-col">
         <SectionShell className="px-0 py-0 sm:px-4 sm:py-4">
           <div className="flex flex-col px-0 py-0">
             <DashboardMainPanel {...mainPanelModel} />

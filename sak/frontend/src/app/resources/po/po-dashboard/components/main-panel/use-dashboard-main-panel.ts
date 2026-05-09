@@ -54,6 +54,8 @@ export type DashboardMainPanelViewModel = {
   onLoadMore: () => void;
   alerts: DashboardAlertItemViewModel[];
   quickActions: DashboardQuickActionItem[];
+  detailTitle: string;
+  detailEmptyMessage: string;
 };
 
 const KPI_ACCENT_CLASSES: Record<PoDashboardKpiKey, string> = {
@@ -102,64 +104,76 @@ export const useDashboardMainPanel = ({
   onOpenOrder,
   onNavigate,
   createOrderPath = "/po-orders/create",
-}: UseDashboardMainPanelParams): DashboardMainPanelViewModel => ({
-  statusCards: PO_DASHBOARD_KPI_CARDS.map((card) => {
-    const kpi = selectorData?.[card.key] ?? { count: 0, amount: 0 };
-    return {
-      key: card.key,
-      title: card.title,
-      count: kpi.count,
-      amount: kpi.amount,
-      icon: card.icon,
-      accentClassName: KPI_ACCENT_CLASSES[card.key],
-      iconClassName: KPI_ICON_CLASSES[card.key],
-      selected: !selectedAlertKey && detailKpi === card.key,
-      onSelect: () => onSelectStatusCard(card.key),
-    };
-  }),
-  detailItems: (detailData?.data ?? []).map((item) => ({
-    key: `${item.order?.id ?? "x"}-${item.fecha_creacion}`,
-    item,
-    onClick: () => onOpenOrder(item),
-  })),
-  detailLoading,
-  hasMoreDetail,
-  onLoadMore,
-  alerts: alertItems.map((alert) => ({
-    ...alert,
-    selected: selectedAlertKey === alert.key,
-    onSelect: () => onSelectAlert(alert.key),
-  })),
-  quickActions: [
-    {
-      key: "crear-orden",
-      label: "Crear Orden",
-      icon: FilePlus2,
-      onClick: () => onNavigate(createOrderPath),
-    },
-    {
-      key: "crear-factura",
-      label: "Crear Factura",
-      icon: FilePlus2,
-      onClick: () => onNavigate("/po-invoices/create"),
-    },
-    {
-      key: "aprobaciones",
-      label: "Aprobaciones",
-      icon: ClipboardCheck,
-      onClick: () => onNavigate("/po-orders-approval"),
-    },
-    {
-      key: "ordenes",
-      label: "Ordenes",
-      icon: ClipboardList,
-      onClick: () => onNavigate("/po-orders"),
-    },
-    {
-      key: "facturas",
-      label: "Facturas",
-      icon: Receipt,
-      onClick: () => onNavigate("/po-invoices"),
-    },
-  ],
-});
+}: UseDashboardMainPanelParams): DashboardMainPanelViewModel => {
+  const activeAlert = selectedAlertKey
+    ? alertItems.find((alert) => alert.key === selectedAlertKey) ?? null
+    : null;
+  const activeStatusCard =
+    PO_DASHBOARD_KPI_CARDS.find((card) => card.key === detailKpi) ??
+    PO_DASHBOARD_KPI_CARDS[0];
+  const detailTitle = activeAlert?.label ?? activeStatusCard?.title ?? "Ordenes";
+
+  return {
+    statusCards: PO_DASHBOARD_KPI_CARDS.map((card) => {
+      const kpi = selectorData?.[card.key] ?? { count: 0, amount: 0 };
+      return {
+        key: card.key,
+        title: card.title,
+        count: kpi.count,
+        amount: kpi.amount,
+        icon: card.icon,
+        accentClassName: KPI_ACCENT_CLASSES[card.key],
+        iconClassName: KPI_ICON_CLASSES[card.key],
+        selected: !selectedAlertKey && detailKpi === card.key,
+        onSelect: () => onSelectStatusCard(card.key),
+      };
+    }),
+    detailItems: (detailData?.data ?? []).map((item) => ({
+      key: `${item.order?.id ?? "x"}-${item.fecha_creacion}`,
+      item,
+      onClick: () => onOpenOrder(item),
+    })),
+    detailLoading,
+    hasMoreDetail,
+    onLoadMore,
+    alerts: alertItems.map((alert) => ({
+      ...alert,
+      selected: selectedAlertKey === alert.key,
+      onSelect: () => onSelectAlert(alert.key),
+    })),
+    quickActions: [
+      {
+        key: "crear-orden",
+        label: "Crear Orden",
+        icon: FilePlus2,
+        onClick: () => onNavigate(createOrderPath),
+      },
+      {
+        key: "crear-factura",
+        label: "Crear Factura",
+        icon: FilePlus2,
+        onClick: () => onNavigate("/po-invoices/create"),
+      },
+      {
+        key: "aprobaciones",
+        label: "Aprobaciones",
+        icon: ClipboardCheck,
+        onClick: () => onNavigate("/po-orders-approval"),
+      },
+      {
+        key: "ordenes",
+        label: "Ordenes",
+        icon: ClipboardList,
+        onClick: () => onNavigate("/po-orders"),
+      },
+      {
+        key: "facturas",
+        label: "Facturas",
+        icon: Receipt,
+        onClick: () => onNavigate("/po-invoices"),
+      },
+    ],
+    detailTitle,
+    detailEmptyMessage: "No hay ordenes para mostrar en este corte.",
+  };
+};

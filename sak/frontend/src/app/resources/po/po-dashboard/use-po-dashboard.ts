@@ -68,40 +68,52 @@ export const usePoDashboard = () => {
     () => loadDashboardSnapshot(returnTo, hasPendingReturn, DASHBOARD_SNAPSHOT_TTL_MS),
     [returnTo, hasPendingReturn],
   );
+  const initialPeriodType =
+    pendingReturnMarker?.periodType ?? initialSnapshot?.periodType ?? DEFAULT_PO_PERIOD;
+  const initialFilters =
+    pendingReturnMarker?.filters ??
+    initialSnapshot?.filters ??
+    buildDefaultFilters(initialPeriodType);
+  const initialDetailKpi = normalizeVisibleDetailKpi(
+    pendingReturnMarker?.detailKpi ?? initialSnapshot?.detailKpi,
+  );
+  const markerHasSelectedAlertKey =
+    pendingReturnMarker != null && "selectedAlertKey" in pendingReturnMarker;
+  const initialSelectedAlertKey =
+    markerHasSelectedAlertKey
+      ? (pendingReturnMarker.selectedAlertKey ?? null)
+      : (initialSnapshot?.selectedAlertKey ?? null);
+  const initialShowAdditionalFilters =
+    pendingReturnMarker?.showAdditionalFilters ??
+    initialSnapshot?.showAdditionalFilters ??
+    false;
   const hasHydratedSnapshot = Boolean(initialSnapshot);
   const initialDashboardRequestKey = hasHydratedSnapshot
-    ? getDashboardRequestKey(
-        initialSnapshot?.periodType ?? DEFAULT_PO_PERIOD,
-        initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_PO_PERIOD),
-      )
+    ? `0:${getDashboardRequestKey(initialPeriodType, initialFilters)}`
     : null;
   const initialDetailRequestKey = hasHydratedSnapshot
-    ? getDetailRequestKey({
-        filters: initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_PO_PERIOD),
-        detailKpi: normalizeVisibleDetailKpi(initialSnapshot?.detailKpi),
+    ? `0:${getDetailRequestKey({
+        filters: initialFilters,
+        detailKpi: initialDetailKpi,
         detailPage: initialSnapshot?.detailPage ?? 1,
-        selectedAlertKey: initialSnapshot?.selectedAlertKey ?? null,
-      })
+        selectedAlertKey: initialSelectedAlertKey,
+      })}`
     : null;
 
   const processingReturnMarkerRef = useRef<string | null>(null);
   const initialDashboardRequestKeyRef = useRef(initialDashboardRequestKey);
   const initialDetailRequestKeyRef = useRef(initialDetailRequestKey);
 
-  const [periodType, setPeriodType] = useState<PeriodType>(
-    initialSnapshot?.periodType ?? DEFAULT_PO_PERIOD,
-  );
+  const [periodType, setPeriodType] = useState<PeriodType>(initialPeriodType);
   const [filters, setFilters] = useState<PoDashboardFilters>(
-    () => initialSnapshot?.filters ?? buildDefaultFilters(DEFAULT_PO_PERIOD),
+    () => initialFilters,
   );
   const [dashboardData, setDashboardData] = useState<PoDashboardResponse | null>(
     initialSnapshot?.dashboardData ?? null,
   );
   const [dashboardLoading, setDashboardLoading] = useState(false);
 
-  const [detailKpi, setDetailKpi] = useState<PoDashboardKpiKey>(
-    normalizeVisibleDetailKpi(initialSnapshot?.detailKpi),
-  );
+  const [detailKpi, setDetailKpi] = useState<PoDashboardKpiKey>(initialDetailKpi);
   const [detailData, setDetailData] = useState<PoDashboardDetalleResponse | null>(
     initialSnapshot?.detailData ?? null,
   );
@@ -112,7 +124,7 @@ export const usePoDashboard = () => {
   const [detailPage, setDetailPage] = useState(initialSnapshot?.detailPage ?? 1);
   const [showKpis, setShowKpis] = useState(getStoredShowKpis);
   const [selectedAlertKey, setSelectedAlertKey] = useState<PoDashboardAlertKey | null>(
-    initialSnapshot?.selectedAlertKey ?? null,
+    initialSelectedAlertKey,
   );
   const [fastSelectorData, setFastSelectorData] = useState<
     Record<PoDashboardKpiKey, { count: number; amount: number }> | null
@@ -124,9 +136,7 @@ export const usePoDashboard = () => {
   const [periodTrendData, setPeriodTrendData] = useState<
     Array<{ label: string; amount: number; count: number }>
   >(initialSnapshot?.periodTrendData ?? []);
-  const [showAdditionalFilters, setShowAdditionalFilters] = useState(
-    initialSnapshot?.showAdditionalFilters ?? false,
-  );
+  const [showAdditionalFilters, setShowAdditionalFilters] = useState(initialShowAdditionalFilters);
 
   const [solicitanteOptions, setSolicitanteOptions] = useState<SelectOption[]>(
     initialSnapshot?.solicitanteOptions ?? [{ value: "todos", label: "Todos" }],
@@ -149,20 +159,21 @@ export const usePoDashboard = () => {
       })),
     ],
   );
+  const [refreshSeq, setRefreshSeq] = useState(0);
 
   const dashboardRequestKey = useMemo(
-    () => getDashboardRequestKey(periodType, filters),
-    [filters, periodType],
+    () => `${refreshSeq}:${getDashboardRequestKey(periodType, filters)}`,
+    [filters, periodType, refreshSeq],
   );
   const detailRequestKey = useMemo(
     () =>
-      getDetailRequestKey({
+      `${refreshSeq}:${getDetailRequestKey({
         filters,
         detailKpi,
         detailPage,
         selectedAlertKey,
-      }),
-    [detailKpi, detailPage, filters, selectedAlertKey],
+      })}`,
+    [detailKpi, detailPage, filters, refreshSeq, selectedAlertKey],
   );
 
   const fetchSelectors = useCallback(async () => {
@@ -766,6 +777,11 @@ export const usePoDashboard = () => {
     setShowAdditionalFilters(false);
   };
 
+  const refreshDashboard = useCallback(() => {
+    setDetailPage(1);
+    setRefreshSeq((current) => current + 1);
+  }, []);
+
   const selectAlert = (key: PoDashboardAlertKey) => {
     setSelectedAlertKey(key);
     setDetailPage(1);
@@ -820,6 +836,7 @@ export const usePoDashboard = () => {
     setShowAdditionalFilters,
     setShowKpis,
     resetFilters,
+    refreshDashboard,
     selectAlert,
     selectDetailKpi,
   };

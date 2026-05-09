@@ -1,92 +1,154 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
-import { SimpleForm } from "@/components/simple-form";
-import { TextInput } from "@/components/text-input";
-import { NumberInput } from "@/components/number-input";
-import { SelectInput } from "@/components/select-input";
-import { BooleanInput } from "@/components/boolean-input";
-import { ReferenceInput } from "@/components/reference-input";
-import { categoriaChoices } from "./constants";
+import { FormOrderToolbar } from "@/components/forms";
+import {
+  FormBoolean,
+  FormDate,
+  FormErrorSummary,
+  FormNumber,
+  FormReferenceAutocomplete,
+  FormSelect,
+  FormText,
+  FormTextarea,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
+import { SimpleForm } from "@/components/forms/form_order/simple_form";
+import {
+  CATEGORIA_CHOICES,
+  NOMINA_DEFAULT,
+  VALIDATION_RULES,
+  nominaSchema,
+  type NominaFormValues,
+} from "./model";
 
-export const NominaForm = () => (
-  <SimpleForm>
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <TextInput source="nombre" label="Nombre" validate={required()} className="w-full" />
-      <TextInput
-        source="apellido"
-        label="Apellido"
-        validate={required()}
-        className="w-full"
-      />
-      <TextInput source="dni" label="DNI" validate={required()} className="w-full" />
-      <SelectInput
-        source="categoria"
-        label="Categoria"
-        choices={categoriaChoices}
-        validate={required()}
-        className="w-full"
-      />
-      <ReferenceInput
-        source="idproyecto"
-        reference="proyectos"
-        label="Proyecto"
-      >
-        <SelectInput
-          className="w-full"
-          optionText="nombre"
-          emptyText="Seleccionar proyecto"
-          validate={required()}
-        />
-      </ReferenceInput>
-      <TextInput
-        source="email"
-        label="Email"
-        type="email"
-        className="w-full"
-      />
-      <TextInput
-        source="telefono"
-        label="Telefono"
-        className="w-full"
-      />
-      <TextInput
-        source="fecha_nacimiento"
-        label="Fecha de Nacimiento"
-        type="date"
-        className="w-full"
-      />
-      <TextInput
-        source="fecha_ingreso"
-        label="Fecha de Ingreso"
-        type="date"
-        className="w-full"
-      />
-      <NumberInput
-        source="salario_mensual"
-        label="Salario Mensual"
-        step="0.01"
-        className="w-full"
-      />
-      <TextInput
-        source="url_foto"
-        label="URL Foto"
-        type="url"
-        className="w-full"
+const DatosPersonalesFields = () => (
+  <div className="grid gap-2 md:grid-cols-2">
+    <FormText
+      source="nombre"
+      label="Nombre"
+      validate={required()}
+      widthClass="w-full"
+      maxLength={VALIDATION_RULES.NOMBRE.MAX_LENGTH}
+    />
+    <FormText
+      source="apellido"
+      label="Apellido"
+      validate={required()}
+      widthClass="w-full"
+      maxLength={VALIDATION_RULES.APELLIDO.MAX_LENGTH}
+    />
+    <FormText
+      source="dni"
+      label="DNI"
+      validate={required()}
+      widthClass="w-full"
+      maxLength={VALIDATION_RULES.DNI.MAX_LENGTH}
+    />
+    <FormDate
+      source="fecha_nacimiento"
+      label="Fecha de nacimiento"
+      widthClass="w-full"
+    />
+  </div>
+);
+
+const DatosLaboralesFields = () => (
+  <div className="grid gap-2 md:grid-cols-2">
+    <FormSelect
+      source="categoria"
+      label="Categoria"
+      choices={CATEGORIA_CHOICES}
+      validate={required()}
+      widthClass="w-full"
+    />
+    <FormReferenceAutocomplete
+      referenceProps={{ source: "idproyecto", reference: "proyectos" }}
+      inputProps={{
+        optionText: "nombre",
+        label: "Proyecto",
+        validate: required(),
+      }}
+      widthClass="w-full"
+    />
+    <FormDate
+      source="fecha_ingreso"
+      label="Fecha de ingreso"
+      widthClass="w-full"
+    />
+    <FormNumber
+      source="salario_mensual"
+      label="Salario mensual"
+      min={0}
+      step="0.01"
+      widthClass="w-full"
+    />
+    <div className="md:col-span-2">
+      <FormBoolean
+        source="activo"
+        label="Activo"
+        defaultValue
       />
     </div>
-    <TextInput
+  </div>
+);
+
+const ContactoFields = () => (
+  <div className="grid gap-2 md:grid-cols-2">
+    <FormText
+      source="email"
+      label="Email"
+      type="email"
+      widthClass="w-full"
+      maxLength={VALIDATION_RULES.EMAIL.MAX_LENGTH}
+    />
+    <FormText
+      source="telefono"
+      label="Telefono"
+      widthClass="w-full"
+      maxLength={VALIDATION_RULES.TELEFONO.MAX_LENGTH}
+    />
+    <FormText
+      source="url_foto"
+      label="URL foto"
+      type="url"
+      widthClass="w-full md:col-span-2"
+      maxLength={VALIDATION_RULES.URL_FOTO.MAX_LENGTH}
+    />
+    <FormTextarea
       source="direccion"
       label="Direccion"
-      multiline
       rows={3}
-      className="w-full"
+      widthClass="w-full"
+      className="md:col-span-2 [&_textarea]:min-h-[72px]"
+      maxLength={VALIDATION_RULES.DIRECCION.MAX_LENGTH}
     />
-    <BooleanInput
-      source="activo"
-      label="Activo"
-      defaultValue={true}
-      helperText="Desmarca para ocultar al empleado en listados operativos"
+  </div>
+);
+
+export const NominaForm = () => (
+  <SimpleForm<NominaFormValues>
+    className="w-full max-w-3xl"
+    resolver={zodResolver(nominaSchema) as any}
+    toolbar={<FormOrderToolbar />}
+    defaultValues={NOMINA_DEFAULT}
+  >
+    <FormErrorSummary />
+    <SectionBaseTemplate
+      title="Datos personales"
+      main={<DatosPersonalesFields />}
+      defaultOpen
+    />
+    <SectionBaseTemplate
+      title="Datos laborales"
+      main={<DatosLaboralesFields />}
+      defaultOpen
+    />
+    <SectionBaseTemplate
+      title="Contacto"
+      main={<ContactoFields />}
+      defaultOpen={false}
     />
   </SimpleForm>
 );
