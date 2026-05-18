@@ -30,7 +30,7 @@ class AgentProcess(Protocol):
         """
         ...
 
-    def handle(self, ctx: TurnContext) -> TurnResult:
+    async def handle(self, ctx: TurnContext) -> TurnResult:
         """Ejecuta el turno y devuelve resultado con respuesta y nuevo estado."""
         ...
 

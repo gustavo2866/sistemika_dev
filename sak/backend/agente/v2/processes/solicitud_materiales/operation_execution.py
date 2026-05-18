@@ -27,6 +27,14 @@ class RequestOperationExecutor:
                 continue
 
             if operation.action == "add":
+                # Deduplicar: si ya existe un item con la misma descripcion o familia, convertir en update
+                dup_index = self._find_duplicate_for_add(request_state, operation)
+                if dup_index is not None:
+                    # Solo actualizar si la operacion trae nueva informacion util
+                    if operation.cantidad is not None or operation.unidad is not None:
+                        self._apply_update(request_state.items[dup_index], operation)
+                    # Si no, saltearlo silenciosamente (es una repeticion)
+                    continue
                 request_state.items.append(self._build_item(operation))
                 continue
 
@@ -57,6 +65,21 @@ class RequestOperationExecutor:
             familia=operation.familia,
             atributos=dict(operation.atributos),
         )
+
+    def _find_duplicate_for_add(self, request_state: MaterialRequestState, operation: ItemOperation) -> int | None:
+        """Busca si ya existe un item con descripcion equivalente al de la operacion add.
+        Solo compara por descripcion (no por familia) para evitar falsos positivos
+        entre materiales distintos de la misma familia (ej: arena fina vs arena gruesa).
+        Retorna el indice si hay duplicado, None si no."""
+        desc_key = normalize_text_without_accents(operation.descripcion)
+        if not desc_key:
+            return None
+
+        for index, item in enumerate(request_state.items):
+            item_desc = normalize_text_without_accents(item.descripcion)
+            if item_desc and (desc_key in item_desc or item_desc in desc_key):
+                return index
+        return None
 
     def _find_target_index(self, request_state: MaterialRequestState, operation: ItemOperation) -> int | None:
         if operation.target_item_id:

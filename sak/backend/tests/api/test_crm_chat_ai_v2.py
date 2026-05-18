@@ -17,8 +17,8 @@ from app.models.enums import EstadoOportunidad
 
 @pytest.fixture()
 def isolated_v2(monkeypatch, tmp_path):
-    context_loader, agent = build_v2_dependencies(requests_root=tmp_path)
-    monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+    state_store, agent = build_v2_dependencies(requests_root=tmp_path)
+    monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
     monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
     return agent, tmp_path
 
@@ -57,13 +57,12 @@ def isolated_v2_catalog(monkeypatch, tmp_path):
     )
 
     def fake_reload() -> None:
-        context_loader, agent = build_v2_dependencies(
+        state_store, agent = build_v2_dependencies(
             families_path=families_path,
             requests_root=tmp_path / "requests",
             state_root=tmp_path / "conversation_state",
-            executions_root=tmp_path / "turn_executions",
         )
-        monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+        monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
         monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
 
     monkeypatch.setattr(crm_mensaje_router_module, "V2_FAMILIES_PATH", families_path)

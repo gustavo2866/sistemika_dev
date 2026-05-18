@@ -3,10 +3,11 @@ Router para recibir webhooks de Meta WhatsApp
 """
 import logging
 from typing import Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Query
 from sqlmodel import Session
 
-from app.db import get_session
+from app.db import engine, get_session
 from app.schemas.meta_webhook import WebhookEventPayload, WebhookResponse
 from app.services.meta_webhook_service import MetaWebhookService
 
@@ -28,7 +29,6 @@ async def verify_webhook(
     
     Retorna el hub.challenge si el verify_token es correcto.
     """
-    # Obtener el token esperado de variables de entorno
     import os
     expected_token = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "mi_token_secreto_123")
     
@@ -42,41 +42,31 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Token de verificación inválido")
 
 
+async def _process_webhook_background(payload: dict) -> None:
+    """
+    Procesa el webhook en background — fuera del ciclo de vida del request original.
+    Usa su propia Session para no depender de la sesión del request que ya cerró.
+    """
+    with Session(engine) as session:
+        try:
+            service = MetaWebhookService(session)
+            await service.process_webhook(payload)
+        except Exception:
+            logger.exception("Error procesando webhook en background")
+
+
 @router.post("/", response_model=WebhookResponse)
 async def receive_webhook(
     payload: Dict[str, Any],
-    session: Session = Depends(get_session),
+    background_tasks: BackgroundTasks,
 ):
     """
-    Endpoint para recibir notificaciones de meta-w.
+    Recibe el webhook de Meta y retorna 200 inmediatamente.
+    El procesamiento (guardar mensaje, llamar al LLM, responder por WhatsApp)
+    ocurre en background — Meta no necesita esperar ese resultado.
     
-    Formato esperado:
-    {
-      "event_type": "message.received",
-      "timestamp": "2025-12-18T22:12:46.661309Z",
-      "mensaje": {
-        "from_phone": "5491156384310",
-        "to_phone": "+15551676015",
-        "direccion": "in",
-        "tipo": "text",
-        "texto": "...",
-        "celular": {"id": "...", "phone_number": "..."}
-      }
-    }
-    
-    Eventos soportados:
-    - message.received: Mensaje entrante de un contacto
-    - message.status: Cambio de estado de un mensaje enviado
+    Patron estandar para webhooks asincrónicos: ack rapido + proceso en background.
     """
-    logger.info(f"Webhook recibido: {payload}")
-    
-    try:
-        service = MetaWebhookService(session)
-        result = await service.process_webhook(payload)
-        return WebhookResponse(status="ok", message=result.get("message"))
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error procesando webhook: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error procesando webhook: {str(e)}")
+    logger.info(f"Webhook recibido: {payload.get('event_type', '?')}")
+    background_tasks.add_task(_process_webhook_background, payload)
+    return WebhookResponse(status="ok", message="Recibido")

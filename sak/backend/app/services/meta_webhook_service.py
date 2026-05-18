@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.runtime import should_auto_process
-from agente.v2.processes.solicitud_materiales.handler import build_v2_dependencies
+from agente.v2.processes.secretario_materiales.handler import build_secretario_dependencies
 from app.crud.crm_contacto_crud import crm_contacto_crud
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, WebhookLog
@@ -34,10 +34,11 @@ class MetaWebhookService:
     ) -> None:
         self.session = session
         if orchestrator is None:
-            state_store, agent = build_v2_dependencies(session=session)
+            state_store, agent = build_secretario_dependencies(session=session)
             orchestrator = AgentTurnOrchestrator(
                 processes=[agent],
                 state_store=state_store,
+                history_limit=0,  # secretario no usa historial
             )
         self._orchestrator = orchestrator
         self._delivery_service = TurnDeliveryService()

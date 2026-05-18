@@ -122,10 +122,10 @@ def build_request_reply_text(request_state: MaterialRequestState) -> str:
 
 
 class ConversationAgentV2:
-    """Proceso `solicitud_materiales` implementado sobre el contrato del agente v2."""
+    """Proceso `solicitud_materiales` (v1 — mantenido como referencia)."""
 
-    # Nombre usado por el core para identificar el proceso (AgentProcess.name)
-    name = "solicitud_materiales"
+    # Renombrado a _v1 para que no compita con el proceso activo
+    name = "solicitud_materiales_v1"
     process_name = name  # alias de compatibilidad
 
     def __init__(
@@ -161,10 +161,11 @@ class ConversationAgentV2:
 
         return 10  # fallback conversacional para proyectos
 
-    def handle(self, ctx: TurnContext) -> TurnResult:
+    async def handle(self, ctx: TurnContext) -> TurnResult:
         """Ejecuta el turno y devuelve TurnResult para el orquestador."""
+        import asyncio
         material_context = self._build_turn_context(ctx)
-        old_result = self.handle_turn(material_context)
+        old_result = await asyncio.to_thread(self.handle_turn, material_context)
         return TurnResult(
             payload=old_result.response_payload,
             keep_active=old_result.keep_process_active,
@@ -366,31 +367,34 @@ class ConversationAgentV2:
                 context.prompt_families,
             )
             if normal_decision.decision_type == "request_operation":
-                # Operacion sobre la solicitud (agregar item, cambiar cantidad, etc.)
-                # Se procesa normalmente; el validador retomara las preguntas pendientes.
-                return self._process_normal_decision(
-                    context,
-                    normal_decision,
-                    process_state=process_state,
-                    prompts_used=["pending_attribute_turn", "normal_turn"],
-                )
-            # Smalltalk o no_op: responder el mensaje y retomar la repregunta pendiente
-            reply_to_user = self._llm_client.reply_independent_during_pending(
-                context,
-                active_query_item,
-                pending_attribute=(attribute.prompt_dict() if attribute else {}),
-            )
+                # No se puede confirmar mientras haya atributos pendientes; otros cambios
+                # se procesan normalmente y el validador retomara las preguntas pendientes.
+                ops_without_confirm = [op for op in normal_decision.operations if op.action != "confirm_request"]
+                if ops_without_confirm:
+                    return self._process_normal_decision(
+                        context,
+                        normal_decision,
+                        process_state=process_state,
+                        prompts_used=["pending_attribute_turn", "normal_turn"],
+                    )
+                # Solo habia confirm_request: ignorarlo y retomar la repregunta
+            # Smalltalk / no_op / confirm bloqueado: responder y retomar la repregunta pendiente
+            reply_parts: list[str] = []
+            if normal_decision.reply_to_user:
+                reply_parts.append(normal_decision.reply_to_user.strip())
+            if active_query_item.consulta:
+                reply_parts.append(active_query_item.consulta)
+            reply_to_user = "\n\n".join(p for p in reply_parts if p) or (active_query_item.consulta or "")
             saved_request = self._request_store.save(request_state, context.mensaje_objetivo.id)
-            return self._build_material_process_result(
-                saved_request,
-                request_action="show",
+            return self._build_chat_process_result(
                 reply_to_user=reply_to_user,
-                warnings=[],
+                warnings=normal_decision.warnings,
+                request_state=saved_request,
                 actions=[
                     BusinessAction("set_pending_query", self._pending_query_payload(saved_request)),
                     BusinessAction("send_reply", {"text": reply_to_user}),
                 ],
-                prompts_used=["pending_attribute_turn", "normal_turn", "independent_during_pending"],
+                prompts_used=["pending_attribute_turn", "normal_turn"],
                 user_intent="independent_message_during_pending",
             )
 
@@ -589,11 +593,10 @@ class ConversationAgentV2:
 
         follow_up_question = self._get_follow_up_question(request_state)
         if follow_up_question:
-            guidance = f"Para seguir con la solicitud necesito esto: {follow_up_question}"
             if operation_summary:
-                return f"{operation_summary}\n\n{guidance}"
+                return f"{operation_summary}\n\n{follow_up_question}"
             if llm_reply and llm_reply.strip() and llm_reply.strip() != follow_up_question:
-                return f"{llm_reply}\n\n{guidance}"
+                return f"{llm_reply}\n\n{follow_up_question}"
             return follow_up_question
 
         if not request_state.items:
@@ -627,7 +630,7 @@ class ConversationAgentV2:
 
         follow_up_question = self._get_follow_up_question(request_state)
         if follow_up_question:
-            return f"{base_reply}\n\nPara seguir con la solicitud necesito esto: {follow_up_question}"
+            return f"{base_reply}\n\n{follow_up_question}"
 
         if process_state.awaiting_user_decision == "continue_or_close" or (
             request_state.estado_solicitud == "ready" and bool(request_state.items)

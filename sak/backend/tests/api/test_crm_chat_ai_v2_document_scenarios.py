@@ -41,11 +41,11 @@ def scenario_v2(monkeypatch, tmp_path):
             encoding="utf-8",
         )
         requests_root = tmp_path / "requests"
-        context_loader, agent = build_v2_dependencies(
+        state_store, agent = build_v2_dependencies(
             families_path=families_path,
             requests_root=requests_root,
         )
-        monkeypatch.setattr(crm_mensaje_router_module, "V2_CONTEXT_LOADER", context_loader)
+        monkeypatch.setattr(crm_mensaje_router_module, "V2_STATE_STORE", state_store)
         monkeypatch.setattr(crm_mensaje_router_module, "V2_AGENT", agent)
         return agent, requests_root
 
@@ -333,7 +333,8 @@ def test_document_scenario_09_handles_smalltalk_during_pending_without_losing_qu
     body = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2").json()
     assert body["type"] == "chat_reply"
     assert body["respuesta"].startswith("De nada.")
-    assert "Para seguir con la solicitud necesito esto:" in body["respuesta"]
+    assert "Para seguir con la solicitud necesito esto:" not in body["respuesta"]
+    assert "Que tipo necesitas para cemento?" in body["respuesta"]
     assert body["workflow"]["mode"] == "completa_atributos"
 
 
@@ -517,7 +518,8 @@ def test_document_scenario_18_handles_free_message_out_of_scope(client, db_sessi
     body = client.post(f"/crm/mensajes/acciones/chat/{oportunidad_id}/ia-respuesta-v2").json()
     assert body["type"] == "chat_reply"
     assert body["respuesta"].startswith("Todo bien, seguimos cuando quieras.")
-    assert "Para seguir con la solicitud necesito esto:" in body["respuesta"]
+    assert "Para seguir con la solicitud necesito esto:" not in body["respuesta"]
+    assert "Que tipo necesitas para cemento?" in body["respuesta"]
     assert body["workflow"]["mode"] == "completa_atributos"
 
 

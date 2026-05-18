@@ -70,6 +70,7 @@ class RequestValidator:
     def refresh(self, request_state: MaterialRequestState) -> MaterialRequestState:
         first_query_assigned = False
         has_pending = False
+        is_confirmed = request_state.estado_solicitud == "confirmed"
 
         for item in request_state.items:
             self._ensure_family(item)
@@ -77,7 +78,7 @@ class RequestValidator:
             self._apply_family_defaults(item)
             self._compute_missing_attributes(item)
 
-            if item.faltantes and not first_query_assigned:
+            if item.faltantes and not first_query_assigned and not is_confirmed:
                 has_pending = True
                 first_query_assigned = True
                 item.consulta_atributo = item.faltantes[0]
@@ -87,10 +88,7 @@ class RequestValidator:
                 item.consulta_atributo = None
                 item.consulta_intentos = 0 if not item.faltantes else item.consulta_intentos
 
-        if request_state.estado_solicitud == "confirmed" and has_pending:
-            request_state.estado_solicitud = "needs_clarification"
-            request_state.activa = True
-        elif request_state.estado_solicitud != "confirmed":
+        if request_state.estado_solicitud != "confirmed":
             if has_pending:
                 request_state.estado_solicitud = "needs_clarification"
                 request_state.activa = True

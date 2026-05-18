@@ -12,7 +12,8 @@ from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.runtime import resolve_chat_agent_mode
 from agente.v2.processes.solicitud_materiales.models import MaterialRequestState
 from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
-from agente.v2.processes.solicitud_materiales.handler import ConversationAgentV2, build_request_reply_text, build_v2_dependencies
+from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text
+from agente.v2.processes.secretario_materiales.handler import build_secretario_dependencies, SecretarioMaterialesProcess
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -37,7 +38,7 @@ V2_FAMILIES_PATH: Path | None = None
 
 def _reload_v2_dependencies() -> None:
     global V2_STATE_STORE, V2_AGENT
-    V2_STATE_STORE, V2_AGENT = build_v2_dependencies(
+    V2_STATE_STORE, V2_AGENT = build_secretario_dependencies(
         families_path=V2_FAMILIES_PATH,
     )
 
@@ -49,12 +50,11 @@ def _build_v2_orchestrator() -> AgentTurnOrchestrator:
     return AgentTurnOrchestrator(
         processes=[V2_AGENT],
         state_store=V2_STATE_STORE,
+        history_limit=0,  # secretario no usa historial
     )
 
 
-def _get_v2_material_agent() -> ConversationAgentV2:
-    if not isinstance(V2_AGENT, ConversationAgentV2):
-        raise HTTPException(status_code=500, detail="Agente v2 de solicitud_materiales no configurado")
+def _get_v2_material_agent():
     return V2_AGENT
 
 
@@ -326,6 +326,74 @@ def sugerir_mensaje_llm(
         return {"llm_suggestions": suggestions}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/acciones/chat/{oportunidad_id}/simular")
+async def simular_mensaje_chat(
+    oportunidad_id: int,
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+):
+    """
+    Endpoint de prueba: simula recibir un mensaje del encargado sin pasar por WhatsApp/Meta.
+
+    Body: { "texto": "necesito 50 bolsas de cemento" }
+    Crea el mensaje en BD, lo procesa con el agente y devuelve la respuesta.
+    """
+    import time
+    t0 = time.perf_counter()
+
+    texto = str((payload or {}).get("texto") or "").strip()
+    if not texto:
+        raise HTTPException(status_code=422, detail="El campo 'texto' es requerido")
+
+    oportunidad = session.get(CRMOportunidad, oportunidad_id)
+    if not oportunidad:
+        raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
+
+    # Crear el mensaje entrante en la BD (simula lo que haría el webhook de Meta)
+    mensaje = CRMMensaje(
+        tipo="entrada",
+        canal="whatsapp",
+        oportunidad_id=oportunidad_id,
+        contacto_id=oportunidad.contacto_id if hasattr(oportunidad, "contacto_id") else None,
+        contenido=texto,
+        estado="nuevo",
+        metadata_json={"simulated": True},
+    )
+    session.add(mensaje)
+    session.commit()
+    session.refresh(mensaje)
+    t_db_insert = time.perf_counter()
+
+    try:
+        # Usa el mismo store que producción (PostgreSQL), no los JSON en disco
+        state_store, agent = build_secretario_dependencies(session=session)
+        orchestrator = AgentTurnOrchestrator(
+            processes=[agent],
+            state_store=state_store,
+            history_limit=0,
+        )
+        result = await orchestrator.process_turn(session, mensaje.id, "simulated")
+        t_total = time.perf_counter()
+        timing = {
+            "db_insert_ms": round((t_db_insert - t0) * 1000),
+            "agent_ms": round((t_total - t_db_insert) * 1000),
+            "total_ms": round((t_total - t0) * 1000),
+        }
+        return {
+            **result,
+            "simulated_message_id": mensaje.id,
+            "texto_enviado": texto,
+            "_timing": timing,
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error("Error procesando mensaje simulado", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error al procesar: {str(e)}")
 
 
 @router.post("/acciones/chat/{oportunidad_id}/ia-respuesta")

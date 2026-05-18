@@ -101,7 +101,8 @@ class AgentTurnOrchestrator:
             self._mark_done(session, message, result=result, process_name=None, trigger=trigger)
             return {**result, "message_id": message_id, "cached": False}
 
-        turn_result = process.handle(ctx)
+        # process.handle() es async — await directo sin bloquear el event loop
+        turn_result = await process.handle(ctx)
 
         state.active_process = process.name if turn_result.keep_active else None
         state.process_state = turn_result.process_state if turn_result.keep_active else {}
@@ -192,6 +193,8 @@ class AgentTurnOrchestrator:
     # ------------------------------------------------------------------
 
     def _load_history(self, session: Session, oportunidad_id: int) -> list[MessageInfo]:
+        if self._history_limit == 0:
+            return []
         fecha_ref = func.coalesce(CRMMensaje.fecha_mensaje, CRMMensaje.created_at)
         rows = session.exec(
             select(CRMMensaje)
