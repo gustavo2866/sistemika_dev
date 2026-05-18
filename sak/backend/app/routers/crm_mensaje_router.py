@@ -13,7 +13,7 @@ from agente.v2.core.runtime import resolve_chat_agent_mode
 from agente.v2.processes.solicitud_materiales.models import MaterialRequestState
 from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
 from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text
-from agente.v2.processes.secretario_materiales.handler import build_secretario_dependencies, SecretarioMaterialesProcess
+from agente.v2.processes.pedido_obra.handler import build_pedido_obra_dependencies
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -38,9 +38,7 @@ V2_FAMILIES_PATH: Path | None = None
 
 def _reload_v2_dependencies() -> None:
     global V2_STATE_STORE, V2_AGENT
-    V2_STATE_STORE, V2_AGENT = build_secretario_dependencies(
-        families_path=V2_FAMILIES_PATH,
-    )
+    V2_STATE_STORE, V2_AGENT = build_pedido_obra_dependencies()
 
 
 _reload_v2_dependencies()
@@ -50,12 +48,14 @@ def _build_v2_orchestrator() -> AgentTurnOrchestrator:
     return AgentTurnOrchestrator(
         processes=[V2_AGENT],
         state_store=V2_STATE_STORE,
-        history_limit=0,  # secretario no usa historial
+        history_limit=0,
     )
 
 
-def _get_v2_material_agent():
-    return V2_AGENT
+def _load_v2_material_request_state(oportunidad_id: int) -> MaterialRequestState | None:
+    if not hasattr(V2_AGENT, "load_request_state"):
+        return None
+    return V2_AGENT.load_request_state(oportunidad_id)
 
 
 def _build_v2_request_workflow(request_state: MaterialRequestState) -> dict[str, Any]:
@@ -131,7 +131,7 @@ def _build_v2_debug_payload(
         outbound_message_id = state.last_outbound_message_id
     latest_outbound_message = session.get(CRMMensaje, int(outbound_message_id)) if outbound_message_id else None
 
-    request_state = _get_v2_material_agent().load_request_state(oportunidad.id)
+    request_state = _load_v2_material_request_state(oportunidad.id)
 
     return {
         "oportunidad_id": oportunidad.id,
@@ -351,6 +351,11 @@ async def simular_mensaje_chat(
     if not oportunidad:
         raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
 
+    # Pre-cargar el contacto en el identity map de la sesion para que el orquestador
+    # no haga un round-trip adicional cuando llama a session.get(CRMContacto, ...).
+    if oportunidad.contacto_id:
+        session.get(CRMContacto, oportunidad.contacto_id)
+
     # Crear el mensaje entrante en la BD (simula lo que haría el webhook de Meta)
     mensaje = CRMMensaje(
         tipo="entrada",
@@ -368,7 +373,7 @@ async def simular_mensaje_chat(
 
     try:
         # Usa el mismo store que producción (PostgreSQL), no los JSON en disco
-        state_store, agent = build_secretario_dependencies(session=session)
+        state_store, agent = build_pedido_obra_dependencies(session=session)
         orchestrator = AgentTurnOrchestrator(
             processes=[agent],
             state_store=state_store,
@@ -451,7 +456,7 @@ def obtener_solicitud_chat_ia_v2(
     if not oportunidad:
         raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
 
-    request_state = _get_v2_material_agent().load_request_state(oportunidad_id)
+    request_state = _load_v2_material_request_state(oportunidad_id)
     if request_state is None:
         raise HTTPException(status_code=404, detail="No hay solicitud v2 para la oportunidad")
 

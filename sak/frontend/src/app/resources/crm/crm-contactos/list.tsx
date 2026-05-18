@@ -27,9 +27,9 @@ const listFilters = buildListFilters(
       props: {
         source: "q",
         label: "Buscar",
-        placeholder: "Buscar contactos",
+        placeholder: "Nombre, email o telefono",
         alwaysOn: true,
-        className: "w-[120px] sm:w-[170px]",
+        className: "w-[150px] sm:w-[210px]",
       },
     },
     {

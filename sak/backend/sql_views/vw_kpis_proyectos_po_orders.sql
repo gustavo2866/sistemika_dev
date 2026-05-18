@@ -29,7 +29,9 @@ INNER JOIN proyectos p ON o.oportunidad_id = p.oportunidad_id
 WHERE 
     o.oportunidad_id IS NOT NULL
     AND p.oportunidad_id IS NOT NULL
-    AND log_emision.fecha_registro IS NOT NULL;
+    AND log_emision.fecha_registro IS NOT NULL
+    AND o.deleted_at IS NULL
+    AND p.deleted_at IS NULL;
 
 -- Índices recomendados para performance:
 -- CREATE INDEX idx_vw_kpis_proyectos_fecha_emision ON po_order_status_log (fecha_registro) WHERE status_nuevo_id = 3;

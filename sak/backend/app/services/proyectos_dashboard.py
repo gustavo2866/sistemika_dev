@@ -277,7 +277,8 @@ def _calculate_presupuestado_kpis(
     ).join(
         Proyecto, ProyPresupuesto.proyecto_id == Proyecto.id
     ).where(
-        ProyPresupuesto.proyecto_id.in_(proyectos_ids)
+        ProyPresupuesto.proyecto_id.in_(proyectos_ids),
+        ProyPresupuesto.deleted_at.is_(None)
     )
     
     presupuesto_detalle = session.exec(stmt).all()
@@ -381,7 +382,8 @@ def _calculate_real_kpis(
     ).join(
         Proyecto, ProyectoAvance.proyecto_id == Proyecto.id
     ).where(
-        ProyectoAvance.proyecto_id.in_(proyectos_ids)
+        ProyectoAvance.proyecto_id.in_(proyectos_ids),
+        ProyectoAvance.deleted_at.is_(None)
     )
     
     ingreso_detalle = session.exec(stmt_avances).all()
@@ -485,7 +487,8 @@ def _calculate_presupuesto_total_kpis(
     ).join(
         Proyecto, ProyPresupuesto.proyecto_id == Proyecto.id
     ).where(
-        ProyPresupuesto.proyecto_id.in_(proyectos_ids)
+        ProyPresupuesto.proyecto_id.in_(proyectos_ids),
+        ProyPresupuesto.deleted_at.is_(None)
     )
     
     presupuesto_total_detalle = session.exec(stmt).all()
@@ -548,7 +551,8 @@ def _calculate_real_total_kpis(
         Proyecto, ProyectoAvance.proyecto_id == Proyecto.id
     ).where(
         ProyectoAvance.proyecto_id.in_(proyectos_ids),
-        ProyectoAvance.fecha_registracion <= end_date  # Hasta fecha límite
+        ProyectoAvance.fecha_registracion <= end_date,  # Hasta fecha límite
+        ProyectoAvance.deleted_at.is_(None)
     )
     
     ingreso_total = session.exec(stmt_avances).all()
@@ -616,6 +620,7 @@ def fetch_proyectos_optimized_single_query(
     
     # 1. Query principal para proyectos (rápida con LIMIT)
     stmt = select(Proyecto).options(selectinload(Proyecto.avances))
+    stmt = stmt.where(Proyecto.deleted_at.is_(None))
     
     # Aplicar filtros
     if proyecto_ids:
@@ -651,7 +656,10 @@ def fetch_proyectos_optimized_single_query(
             ProyPresupuesto.materiales +
             ProyPresupuesto.herramientas
         ).label('presupuesto_total')
-    ).where(ProyPresupuesto.proyecto_id.in_(proyecto_ids)).group_by(ProyPresupuesto.proyecto_id)
+    ).where(
+        ProyPresupuesto.proyecto_id.in_(proyecto_ids),
+        ProyPresupuesto.deleted_at.is_(None)
+    ).group_by(ProyPresupuesto.proyecto_id)
     
     presupuestos_dict = {
         row.proyecto_id: Decimal(str(row.presupuesto_total or 0)) 
@@ -819,6 +827,7 @@ def fetch_proyectos_for_dashboard(
     stmt = select(Proyecto).options(
         selectinload(Proyecto.avances),
     )
+    stmt = stmt.where(Proyecto.deleted_at.is_(None))
     
     # Aplicar filtros
     if responsable_ids:
@@ -845,7 +854,10 @@ def fetch_proyectos_for_dashboard(
             ProyPresupuesto.materiales +
             ProyPresupuesto.herramientas
         ).label('presupuesto_total')
-    ).where(ProyPresupuesto.proyecto_id.in_(proyecto_ids)).group_by(ProyPresupuesto.proyecto_id)
+    ).where(
+        ProyPresupuesto.proyecto_id.in_(proyecto_ids),
+        ProyPresupuesto.deleted_at.is_(None)
+    ).group_by(ProyPresupuesto.proyecto_id)
     
     presupuestos_dict = {
         row.proyecto_id: row.presupuesto_total or Decimal("0") 
@@ -1170,6 +1182,7 @@ def fetch_current_proyectos_for_dashboard(
     stmt = select(Proyecto).options(
         selectinload(Proyecto.avances),
     )
+    stmt = stmt.where(Proyecto.deleted_at.is_(None))
     
     # Aplicar filtros
     if responsable_ids:
@@ -1330,6 +1343,7 @@ def fetch_selector_summary_fast(
     """Resumen rápido para selectores"""
     
     stmt = select(Proyecto)
+    stmt = stmt.where(Proyecto.deleted_at.is_(None))
     
     # Aplicar filtros
     if proyecto_ids:

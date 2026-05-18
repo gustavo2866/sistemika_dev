@@ -101,7 +101,7 @@ class TurnDeliveryService:
 
     @staticmethod
     def extract_reply_text(result: dict) -> str:
-        for key in ("respuesta", "reply", "mensaje", "texto"):
+        for key in ("respuesta", "reply_to_user", "reply", "mensaje", "texto"):
             val = result.get(key)
             if val:
                 return str(val).strip()

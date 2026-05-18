@@ -104,6 +104,8 @@ class DbProcessRequestStore:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        # Cache de lectura para el turno actual — evita re-queries identicas
+        self._cache: dict[int, MaterialRequestState | None] = {}
 
     def _get_row(self, oportunidad_id: int) -> AgentProcessRequest | None:
         stmt = (
@@ -116,10 +118,12 @@ class DbProcessRequestStore:
         return self._session.execute(stmt).scalar_one_or_none()
 
     def load(self, oportunidad_id: int) -> MaterialRequestState | None:
+        if oportunidad_id in self._cache:
+            return self._cache[oportunidad_id]
         row = self._get_row(oportunidad_id)
-        if row is None:
-            return None
-        return self._row_to_state(row, oportunidad_id)
+        result = self._row_to_state(row, oportunidad_id) if row else None
+        self._cache[oportunidad_id] = result
+        return result
 
     def load_active(self, oportunidad_id: int) -> MaterialRequestState | None:
         state = self.load(oportunidad_id)
@@ -128,6 +132,8 @@ class DbProcessRequestStore:
         return state
 
     def save(self, request_state: MaterialRequestState, ultimo_mensaje_id: int | None) -> MaterialRequestState:
+        # Invalidar cache al guardar
+        self._cache.pop(request_state.oportunidad_id, None)
         row = self._get_row(request_state.oportunidad_id)
         now = datetime.now(UTC)
         payload = self._state_to_payload(request_state)

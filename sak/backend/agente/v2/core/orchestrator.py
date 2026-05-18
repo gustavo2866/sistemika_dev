@@ -36,6 +36,12 @@ from app.models.base import serialize_datetime
 from app.models.crm.catalogos import CRMTipoOperacion
 
 
+# Cache en memoria para is_project por oportunidad_id.
+# Se invalida automaticamente cuando una oportunidad se vincula a un proyecto,
+# pero para el ciclo de vida normal es correcto: una vez proyecto, siempre proyecto.
+_IS_PROJECT_CACHE: dict[int, bool] = {}
+
+
 class AgentTurnOrchestrator:
     """Orquestador del pipeline de un turno del agente."""
 
@@ -86,8 +92,10 @@ class AgentTurnOrchestrator:
         if isinstance(cached, dict):
             return {**cached, "message_id": message_id, "cached": True}
 
-        # load_for_update serializa turnos concurrentes del mismo contacto (SELECT FOR UPDATE)
-        if hasattr(self._state_store, "load_for_update"):
+        # load_for_update serializa turnos concurrentes del mismo contacto (SELECT FOR UPDATE).
+        # Para el trigger "simulated" (herramienta de dev) no necesitamos el lock.
+        use_lock = trigger != "simulated" and hasattr(self._state_store, "load_for_update")
+        if use_lock:
             state = self._state_store.load_for_update(message.oportunidad_id)
         else:
             state = self._state_store.load(message.oportunidad_id)
@@ -218,10 +226,14 @@ class AgentTurnOrchestrator:
 
     @staticmethod
     def _is_project(session: Session, oportunidad: CRMOportunidad) -> bool:
+        cached = _IS_PROJECT_CACHE.get(oportunidad.id)
+        if cached is not None:
+            return cached
         linked = session.exec(
             select(Proyecto.id).where(Proyecto.oportunidad_id == oportunidad.id).limit(1)
         ).first()
         if linked:
+            _IS_PROJECT_CACHE[oportunidad.id] = True
             return True
         if oportunidad.tipo_operacion_id:
             tipo = session.get(CRMTipoOperacion, oportunidad.tipo_operacion_id)
@@ -229,7 +241,9 @@ class AgentTurnOrchestrator:
                 codigo = str(tipo.codigo or "").strip().lower()
                 nombre = str(tipo.nombre or "").strip().lower()
                 if codigo == "proyecto" or nombre == "proyecto":
+                    _IS_PROJECT_CACHE[oportunidad.id] = True
                     return True
+        _IS_PROJECT_CACHE[oportunidad.id] = False
         return False
 
     @staticmethod
