@@ -4,6 +4,7 @@ Servicio para procesar webhooks de Meta WhatsApp
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Optional
 
 from sqlalchemy import func
@@ -243,6 +244,7 @@ class MetaWebhookService:
         return timestamp_utc
 
     async def _handle_inbound_message(self, msg: Any, celular: CRMCelular) -> dict[str, Any]:
+        t0 = time.perf_counter()
         crm_mensaje = self._find_existing_inbound_message(msg.meta_message_id)
         if crm_mensaje:
             logger.info(
@@ -284,26 +286,37 @@ class MetaWebhookService:
                 contacto.id,
                 oportunidad.id,
             )
+        t_message_ready = time.perf_counter()
 
         auto_process_result = None
         if should_auto_process(session=self.session):
+            t_agent_start = time.perf_counter()
             auto_process_result = await self._orchestrator.process_turn(
                 self.session,
                 crm_mensaje.id,
                 "webhook",
             )
+            t_agent_done = time.perf_counter()
             delivery = await self._delivery_service.deliver_result(
                 session=self.session,
                 message=crm_mensaje,
                 result=auto_process_result,
             )
+            t_delivery_done = time.perf_counter()
             self._delivery_service.mark_inbound_as_processed(self.session, crm_mensaje)
             auto_process_result = {
                 **auto_process_result,
                 "delivery": delivery.to_dict(),
+                "_timing": {
+                    "message_ready_ms": round((t_message_ready - t0) * 1000),
+                    "agent_ms": round((t_agent_done - t_agent_start) * 1000),
+                    "delivery_ms": round((t_delivery_done - t_agent_done) * 1000),
+                    "total_before_metadata_ms": round((t_delivery_done - t0) * 1000),
+                },
             }
             metadata = dict(crm_mensaje.metadata_json or {})
             agent_meta = dict(metadata.get("agent_v2") or {})
+            agent_meta["result"] = auto_process_result
             agent_meta["delivery"] = delivery.to_dict()
             if delivery.outbound_message_id is not None:
                 agent_meta["outbound_message_id"] = delivery.outbound_message_id
@@ -319,6 +332,10 @@ class MetaWebhookService:
             "mensaje_id": crm_mensaje.id,
             "oportunidad_id": crm_mensaje.oportunidad_id,
             "agent_result": auto_process_result,
+            "_timing": {
+                "message_ready_ms": round((t_message_ready - t0) * 1000),
+                "total_ms": round((time.perf_counter() - t0) * 1000),
+            },
         }
         return payload
 

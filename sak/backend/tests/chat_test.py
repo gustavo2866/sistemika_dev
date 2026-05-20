@@ -36,6 +36,7 @@ TO_PHONE = os.environ.get("CHAT_TEST_TO_PHONE", "+5493815550000")
 CELULAR_ID = os.environ.get("CHAT_TEST_CELULAR_ID", "11111111-1111-1111-1111-111111111111")
 CELULAR_ALIAS = os.environ.get("CHAT_TEST_CELULAR_ALIAS", "Linea test obra")
 POLL_TIMEOUT_SECONDS = float(os.environ.get("CHAT_TEST_TIMEOUT", "30"))
+SHOW_TIMING = os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
 
 
 def _request_json(method: str, path: str, payload: dict | None = None, params: dict | None = None) -> dict:
@@ -85,11 +86,12 @@ def _build_webhook_payload(texto: str, meta_message_id: str) -> dict:
     }
 
 
-def enviar_webhook(texto: str) -> str:
+def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     meta_message_id = f"wamid.chat-test.{uuid4().hex}"
     payload = _build_webhook_payload(texto, meta_message_id)
-    _request_json("POST", "/api/webhooks/meta-whatsapp/", payload)
-    return meta_message_id
+    started = time.time()
+    response = _request_json("POST", "/api/webhooks/meta-whatsapp/", payload)
+    return meta_message_id, response, time.time() - started
 
 
 def _listar_mensajes() -> list[dict]:
@@ -210,7 +212,7 @@ def main() -> None:
         t_inicio = time.time()
         hora_envio = datetime.now().strftime("%H:%M:%S")
         try:
-            meta_message_id = enviar_webhook(texto)
+            meta_message_id, webhook_response, t_post = enviar_webhook(texto)
             inbound, result, outbound = esperar_resultado(meta_message_id)
         except urllib.error.URLError as exc:
             print(f"[Error] No se pudo conectar al servidor: {exc.reason}")
@@ -231,8 +233,18 @@ def main() -> None:
             continue
 
         print(f"Agente: {_reply_text(result, outbound)}\n")
-        _mostrar_estado(result, inbound, outbound)
-        print()
+        if SHOW_TIMING:
+            timing = result.get("_timing") if isinstance(result, dict) else None
+            pedido_timing = (result.get("pedido_obra") or {}) if isinstance(result, dict) else {}
+            webhook_timing = webhook_response.get("_timing") if isinstance(webhook_response, dict) else None
+            print(f"[Timing] post={t_post:.1f}s total={t_total:.1f}s")
+            if isinstance(timing, dict):
+                print(f"[Timing] webhook-agent={timing.get('agent_ms')}ms delivery={timing.get('delivery_ms')}ms")
+            if isinstance(pedido_timing, dict):
+                print(f"[Timing] llm={pedido_timing.get('llm_ms')}ms executor={pedido_timing.get('executor_ms')}ms process={pedido_timing.get('process_ms')}ms")
+            if isinstance(webhook_timing, dict):
+                print(f"[Timing] webhook-total={webhook_timing.get('total_ms')}ms")
+            print()
 
 
 if __name__ == "__main__":

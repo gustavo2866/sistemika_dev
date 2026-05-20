@@ -16,6 +16,12 @@ class MetaWClient:
     def __init__(self):
         self.base_url = METAW_BASE_URL
         self.timeout = 30.0
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
     
     async def enviar_mensaje(
         self,
@@ -59,13 +65,13 @@ class MetaWClient:
         
         logger.info(f"Enviando mensaje a {telefono_destino} vía meta-w")
         
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            
-            result = response.json()
-            logger.info(f"Mensaje enviado exitosamente. Meta message ID: {result.get('meta_message_id')}")
-            return result
+        client = self._get_client()
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(f"Mensaje enviado exitosamente. Meta message ID: {result.get('meta_message_id')}")
+        return result
 
 
 metaw_client = MetaWClient()
