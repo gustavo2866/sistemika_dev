@@ -524,14 +524,14 @@ async def responder_mensaje_whatsapp(
     session: Session = Depends(get_session),
 ):
     """
-    Responde a un mensaje de WhatsApp a través de meta-w.
+    Responde a un mensaje de WhatsApp a través del modulo interno de canales.
     
     1. Busca el mensaje original
     2. Crea oportunidad en estado 0-prospect si no existe
     3. Actualiza mensaje original a estado 'recibido'
     4. Crea registro de mensaje de salida en crm_mensajes
-    5. Llama a meta-w para enviar el mensaje
-    6. Actualiza estado según respuesta de meta-w
+    5. Llama al modulo de canales para enviar el mensaje
+    6. Actualiza estado según respuesta del provider
     
     Args:
         mensaje_id: ID del mensaje a responder
@@ -640,10 +640,9 @@ async def responder_mensaje_whatsapp(
     from app.services.crm_mensaje_service import CRMMensajeService
     CRMMensajeService.actualizar_ultimo_mensaje_oportunidad(session, mensaje_salida)
     
-    # 7. Enviar a través de meta-w
+    # 7. Enviar a través del modulo de canales
     try:
-        # meta-w requiere empresa_id y celular_id como UUIDs
-        # Por ahora usamos meta_celular_id del celular (UUID)
+        # La fachada conserva empresa_id/celular_id para mantener el contrato anterior.
         if not celular.meta_celular_id:
             raise HTTPException(
                 status_code=400,
@@ -671,7 +670,7 @@ async def responder_mensaje_whatsapp(
             template_fallback_language=request.template_fallback_language
         )
         
-        # 8. Actualizar mensaje con respuesta de meta-w
+        # 8. Actualizar mensaje con respuesta del provider
         mensaje_salida.estado_meta = resultado_metaw.get("status", "sent")
         mensaje_salida.origen_externo_id = resultado_metaw.get("meta_message_id")
         mensaje_salida.estado = EstadoMensaje.ENVIADO.value
@@ -691,8 +690,8 @@ async def responder_mensaje_whatsapp(
         )
         
     except httpx.HTTPStatusError as e:
-        # Error de meta-w
-        error_msg = f"Error meta-w: {e.response.status_code} - {e.response.text}"
+        # Error del provider de canales
+        error_msg = f"Error channels/meta: {e.response.status_code} - {e.response.text}"
         logger.error(error_msg)
         
         mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value

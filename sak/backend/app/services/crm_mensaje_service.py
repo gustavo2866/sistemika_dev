@@ -641,7 +641,7 @@ class CRMMensajeService:
                 texto=contenido.strip(),
                 nombre_contacto=nombre_contacto,
                 template_fallback_name=payload.get("template_fallback_name", "notificacion_general"),
-                template_fallback_language=payload.get("template_fallback_language", "es_AR"),
+                template_fallback_language=payload.get("template_fallback_language", "en"),
             )
 
             mensaje.estado_meta = resultado_metaw.get("status", "sent")
@@ -660,7 +660,7 @@ class CRMMensajeService:
                 "meta_message_id": mensaje.origen_externo_id,
             }
         except httpx.HTTPStatusError as exc:
-            error_msg = f"Error meta-w: {exc.response.status_code} - {exc.response.text}"
+            error_msg = f"Error channels/meta: {exc.response.status_code} - {exc.response.text}"
             mensaje.estado = EstadoMensaje.ERROR_ENVIO.value
             mensaje.estado_meta = "failed"
             mensaje.metadata_json = {

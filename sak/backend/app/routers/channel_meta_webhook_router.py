@@ -1,0 +1,58 @@
+"""Direct Meta webhook endpoint for the channels module."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
+from sqlmodel import Session
+
+from app.db import engine, get_session
+from app.modules.channels.config import meta_account_resolver
+from app.modules.channels.providers.meta.webhook import raw_meta_to_metaw_payloads
+from app.schemas.meta_webhook import WebhookResponse
+from app.services.meta_webhook_service import MetaWebhookService
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/channel-webhooks/meta", tags=["channel-webhooks"])
+
+
+@router.get("/", response_class=PlainTextResponse)
+async def verify_meta_webhook(
+    hub_mode: str = Query(alias="hub.mode"),
+    hub_verify_token: str = Query(alias="hub.verify_token"),
+    hub_challenge: str = Query(alias="hub.challenge"),
+    session: Session = Depends(get_session),
+):
+    expected_token = meta_account_resolver.resolve_webhook_verify_token(session)
+    if hub_mode == "subscribe" and expected_token and hub_verify_token == expected_token:
+        return PlainTextResponse(content=hub_challenge)
+    raise HTTPException(status_code=403, detail="Token de verificacion invalido")
+
+
+async def process_raw_meta_webhook_payload(session: Session, payload: dict[str, Any]) -> None:
+    normalized_payloads = raw_meta_to_metaw_payloads(session, payload)
+    service = MetaWebhookService(session)
+    for normalized_payload in normalized_payloads:
+        await service.process_webhook(normalized_payload)
+
+
+async def _process_raw_meta_background(payload: dict[str, Any]) -> None:
+    with Session(engine) as session:
+        try:
+            await process_raw_meta_webhook_payload(session, payload)
+        except Exception:
+            logger.exception("Error procesando webhook directo de Meta")
+
+
+@router.post("/", response_model=WebhookResponse)
+async def receive_meta_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
+    payload = await request.json()
+    background_tasks.add_task(_process_raw_meta_background, payload)
+    return WebhookResponse(status="ok", message="Recibido")

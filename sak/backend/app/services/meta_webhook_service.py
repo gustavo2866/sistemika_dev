@@ -14,6 +14,8 @@ from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.runtime import should_auto_process
 from agente.v2.processes.pedido_obra.handler import build_pedido_obra_dependencies
+from app.modules.channels.gateway import channel_gateway
+from app.modules.channels.types import ChannelEventData
 from app.crud.crm_contacto_crud import crm_contacto_crud
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, WebhookLog
@@ -377,6 +379,24 @@ class MetaWebhookService:
         self.session.add(log_entry)
 
         try:
+            event_direction = "inbound" if msg.direccion == "in" else "status"
+            channel_gateway.record_event(
+                self.session,
+                ChannelEventData(
+                    provider="meta",
+                    channel_type="whatsapp",
+                    account_ref=str(msg.celular.id),
+                    direction=event_direction,
+                    from_address=msg.from_phone,
+                    to_address=msg.to_phone,
+                    external_message_id=msg.meta_message_id,
+                    status=msg.status,
+                    occurred_at=self._normalize_timestamp_to_utc(msg.meta_timestamp),
+                    raw_payload=payload,
+                    normalized_payload=msg.model_dump(mode="json"),
+                ),
+            )
+
             celular = self._ensure_crm_celular(
                 str(msg.celular.id),
                 msg.celular.phone_number,

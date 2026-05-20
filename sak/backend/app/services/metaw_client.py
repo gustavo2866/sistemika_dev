@@ -1,28 +1,17 @@
 """
-Cliente para comunicarse con meta-w API
+Compatibility facade for the old meta-w client contract.
+
+The implementation now delegates to the internal channels module instead of
+posting to the external meta_w service.
 """
-import httpx
-import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
-
-METAW_BASE_URL = "https://meta-w-webhook-653893994930.southamerica-east1.run.app/api/v1"
+from app.modules.channels.gateway import channel_gateway
 
 
 class MetaWClient:
-    """Cliente para enviar mensajes a través de meta-w"""
-    
-    def __init__(self):
-        self.base_url = METAW_BASE_URL
-        self.timeout = 30.0
-        self._client: httpx.AsyncClient | None = None
+    """Backward-compatible client used by the CRM layer."""
 
-    def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
-        return self._client
-    
     async def enviar_mensaje(
         self,
         empresa_id: str,
@@ -31,47 +20,17 @@ class MetaWClient:
         texto: str,
         nombre_contacto: Optional[str] = None,
         template_fallback_name: str = "notificacion_general",
-        template_fallback_language: str = "es_AR"
+        template_fallback_language: str = "en",
     ) -> Dict[str, Any]:
-        """
-        Envía un mensaje a través de meta-w.
-        
-        Args:
-            empresa_id: UUID de la empresa en meta-w
-            celular_id: UUID del celular (canal) en meta-w
-            telefono_destino: Número de teléfono sin + (ej: 5491156384310)
-            texto: Contenido del mensaje
-            nombre_contacto: Nombre del contacto (opcional)
-            template_fallback_name: Template a usar si está fuera de ventana 24h
-            template_fallback_language: Idioma del template
-            
-        Returns:
-            Dict con respuesta de meta-w
-            
-        Raises:
-            httpx.HTTPStatusError: Si meta-w retorna error
-        """
-        url = f"{self.base_url}/mensajes/send"
-        
-        payload = {
-            "empresa_id": empresa_id,
-            "celular_id": celular_id,
-            "telefono_destino": telefono_destino,
-            "texto": texto
-        }
-        
-        if nombre_contacto:
-            payload["nombre_contacto"] = nombre_contacto
-        
-        logger.info(f"Enviando mensaje a {telefono_destino} vía meta-w")
-        
-        client = self._get_client()
-        response = await client.post(url, json=payload)
-        response.raise_for_status()
-
-        result = response.json()
-        logger.info(f"Mensaje enviado exitosamente. Meta message ID: {result.get('meta_message_id')}")
-        return result
+        return await channel_gateway.enviar_mensaje(
+            empresa_id=empresa_id,
+            celular_id=celular_id,
+            telefono_destino=telefono_destino,
+            texto=texto,
+            nombre_contacto=nombre_contacto,
+            template_fallback_name=template_fallback_name,
+            template_fallback_language=template_fallback_language,
+        )
 
 
 metaw_client = MetaWClient()

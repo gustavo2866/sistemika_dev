@@ -13,7 +13,7 @@ class ResponderMensajeRequest(BaseModel):
         description="Template a usar si está fuera de ventana 24h"
     )
     template_fallback_language: Optional[str] = Field(
-        default="es_AR",
+        default="en",
         description="Idioma del template fallback"
     )
 

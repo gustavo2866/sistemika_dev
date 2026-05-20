@@ -35,6 +35,7 @@ from .adm import (
 )
 from .cotizacion_moneda import CotizacionMoneda
 from .webhook_log import WebhookLog
+from app.modules.channels.persistence import ChannelEvent
 from .emprendimiento import Emprendimiento
 from .articulo import Articulo
 from .tipo_articulo import TipoArticulo
@@ -115,6 +116,7 @@ __all__ = [
     "CRMMensaje",
     "CRMCelular",
     "WebhookLog",
+    "ChannelEvent",
     "Emprendimiento",
     "Articulo",
     "TipoArticulo", 

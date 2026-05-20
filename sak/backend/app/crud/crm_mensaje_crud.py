@@ -24,7 +24,14 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
         
         return mensaje
     
-    def update(self, session: Session, obj_id: Any, data: Dict[str, Any]) -> CRMMensaje:
+    def update(
+        self,
+        session: Session,
+        obj_id: Any,
+        data: Dict[str, Any],
+        check_version: bool = True,
+        auto_commit: bool = True,
+    ) -> CRMMensaje:
         """Actualizar mensaje y recalcular ultimo_mensaje si es necesario."""
         # Obtener el mensaje antes de la actualización
         mensaje_anterior = self.get(session, obj_id)
@@ -32,7 +39,13 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
             raise ValueError(f"Mensaje {obj_id} no encontrado")
         
         # Actualizar usando el método padre
-        mensaje = super().update(session, obj_id, data)
+        mensaje = super().update(
+            session,
+            obj_id,
+            data,
+            check_version=check_version,
+            auto_commit=auto_commit,
+        )
         
         # Si cambió la oportunidad_id o fecha_mensaje, actualizar ultimo_mensaje
         if ('oportunidad_id' in data and data['oportunidad_id'] != mensaje_anterior.oportunidad_id) or \
@@ -94,12 +107,12 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
         
         # Logging para debugging
         if result.rowcount > 0:
-            print(f"✅ Actualizado ultimo_mensaje para oportunidad {mensaje.oportunidad_id}: "
+            print(f"Actualizado ultimo_mensaje para oportunidad {mensaje.oportunidad_id}: "
                   f"mensaje_id={mensaje.id}, fecha={mensaje.fecha_mensaje}")
             # IMPORTANTE: Hacer commit para persistir la actualización
             session.commit()
         else:
-            print(f"ℹ️  No se actualizó oportunidad {mensaje.oportunidad_id} "
+            print(f"No se actualizo oportunidad {mensaje.oportunidad_id} "
                   f"(mensaje más antiguo o igual)")
     
     def _recalcular_ultimo_mensaje_oportunidad(self, session: Session, oportunidad_id: int):
@@ -140,9 +153,9 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                 """),
                 {"oportunidad_id": oportunidad_id}
             )
-            print(f"🧹 Limpiados campos ultimo_mensaje para oportunidad {oportunidad_id} (sin mensajes)")
+            print(f"Limpiados campos ultimo_mensaje para oportunidad {oportunidad_id} (sin mensajes)")
         else:
-            print(f"🔄 Recalculado ultimo_mensaje para oportunidad {oportunidad_id}")
+            print(f"Recalculado ultimo_mensaje para oportunidad {oportunidad_id}")
         
         # IMPORTANTE: Hacer commit para persistir los cambios
         session.commit()
