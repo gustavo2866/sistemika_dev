@@ -34,6 +34,31 @@ class MetaGraphClient:
         response.raise_for_status()
         return response.json()
 
+    async def mark_message_read(
+        self,
+        *,
+        access_token: str,
+        phone_number_id: str,
+        message_id: str,
+        show_typing: bool = False,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "messaging_product": "whatsapp",
+            "status": "read",
+            "message_id": message_id,
+        }
+        if show_typing:
+            payload["typing_indicator"] = {"type": "text"}
+
+        url = f"{self.base_url}/{phone_number_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+        response = await self._get_client().post(url, headers=headers, json=payload, timeout=1.0)
+        response.raise_for_status()
+        return response.json()
+
 
 meta_graph_client = MetaGraphClient()
 

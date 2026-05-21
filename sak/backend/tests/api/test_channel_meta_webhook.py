@@ -1,8 +1,11 @@
+import asyncio
+
 from sqlmodel import Session, select
 import pytest
 
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Setting, User
 from app.routers.channel_meta_webhook_router import process_raw_meta_webhook_payload
+from app.services.agent_pending_processor import process_pending_agent_messages
 from app.services.meta_webhook_service import MetaWebhookService
 
 
@@ -112,3 +115,117 @@ async def test_channel_meta_webhook_raw_message_creates_crm_message(db_session: 
     assert mensaje is not None
     assert mensaje.contenido == "Hola desde test local"
     assert mensaje.contacto_referencia == "5491156384310"
+
+
+def test_pending_processor_retries_inbound_message_without_agent_result(db_session: Session, monkeypatch):
+    monkeypatch.setattr("app.services.agent_pending_processor.should_auto_process", lambda *args, **kwargs: True)
+
+    user = User(nombre="Tester Pendientes", email="tester-pending-channel@example.com")
+    db_session.add(user)
+    db_session.flush()
+    contacto = CRMContacto(
+        nombre_completo="Cliente Pendientes",
+        telefonos=["5491156384310"],
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+    oportunidad = CRMOportunidad(
+        titulo="Oportunidad pendientes",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.flush()
+    mensaje = CRMMensaje(
+        tipo="entrada",
+        canal="whatsapp",
+        contacto_id=contacto.id,
+        oportunidad_id=oportunidad.id,
+        contenido="Hola pendiente",
+        estado="nuevo",
+        contacto_referencia="5491156384310",
+        origen_externo_id="wamid.test.pending.agent",
+        metadata_json={"from_name": "Cliente Pendientes"},
+    )
+    db_session.add(mensaje)
+    db_session.commit()
+    db_session.refresh(mensaje)
+
+    calls: list[dict[str, object]] = []
+
+    async def fake_process_existing(self, crm_mensaje, **kwargs):
+        calls.append({"message_id": crm_mensaje.id, "trigger": kwargs["trigger"]})
+        metadata = dict(crm_mensaje.metadata_json or {})
+        metadata["agent_v2"] = {"result": {"type": "chat_reply", "respuesta": "Hola"}}
+        crm_mensaje.metadata_json = metadata
+        db_session.add(crm_mensaje)
+        db_session.commit()
+        db_session.refresh(crm_mensaje)
+        return metadata["agent_v2"]["result"]
+
+    monkeypatch.setattr(
+        MetaWebhookService,
+        "process_existing_inbound_message",
+        fake_process_existing,
+    )
+
+    result = asyncio.run(process_pending_agent_messages(db_session, limit=5))
+    db_session.refresh(mensaje)
+
+    assert calls == [{"message_id": mensaje.id, "trigger": "pending_retry"}]
+    assert result["processed"] == [{"message_id": mensaje.id, "result_type": "chat_reply"}]
+    assert "agent_v2_processing" not in mensaje.metadata_json
+    assert mensaje.metadata_json["agent_v2"]["result"]["respuesta"] == "Hola"
+
+
+def test_pending_processor_skips_already_processed_message(db_session: Session, monkeypatch):
+    monkeypatch.setattr("app.services.agent_pending_processor.should_auto_process", lambda *args, **kwargs: True)
+
+    user = User(nombre="Tester Pendientes Skip", email="tester-pending-skip@example.com")
+    db_session.add(user)
+    db_session.flush()
+    contacto = CRMContacto(
+        nombre_completo="Cliente Pendientes Skip",
+        telefonos=["5491156384311"],
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+    oportunidad = CRMOportunidad(
+        titulo="Oportunidad pendientes skip",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.flush()
+    mensaje = CRMMensaje(
+        tipo="entrada",
+        canal="whatsapp",
+        contacto_id=contacto.id,
+        oportunidad_id=oportunidad.id,
+        contenido="Hola procesado",
+        estado="nuevo",
+        contacto_referencia="5491156384311",
+        origen_externo_id="wamid.test.pending.done",
+        metadata_json={"agent_v2": {"result": {"type": "chat_reply"}}},
+    )
+    db_session.add(mensaje)
+    db_session.commit()
+    db_session.refresh(mensaje)
+
+    async def fail_process_existing(*args, **kwargs):
+        raise AssertionError("No debe reprocesar mensajes con agent_v2.result")
+
+    monkeypatch.setattr(
+        MetaWebhookService,
+        "process_existing_inbound_message",
+        fail_process_existing,
+    )
+
+    result = asyncio.run(process_pending_agent_messages(db_session, limit=5))
+
+    assert result["processed"] == []
+    assert {"message_id": mensaje.id, "reason": "already_processed"} in result["skipped"]

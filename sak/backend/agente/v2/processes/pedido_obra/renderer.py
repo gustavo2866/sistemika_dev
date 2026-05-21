@@ -15,7 +15,7 @@ def anotado(state: PedidoState) -> str:
 
 
 def actualizado(state: PedidoState) -> str:
-    return f"Actualizado:\n{state.resumen_items()}\n\nCuando termines, escribi listo."
+    return f"Pedido abierto actualizado:\n{state.resumen_items()}\n\nCuando termines, escribi listo."
 
 
 def pedido_previo(state: PedidoState) -> str:
@@ -53,11 +53,30 @@ def confirmar_pedido(state: PedidoState) -> str:
 
 
 def pedido_confirmado(state: PedidoState) -> str:
-    return f"Pedido confirmado:\n{state.resumen_items()}\n\nLo vamos a gestionar."
+    return (
+        "*PEDIDO CONFIRMADO*\n"
+        "━━━━━━━━━━━━━━\n\n"
+        "*Materiales*\n"
+        f"{_resumen_items_bullets(state)}\n\n"
+        "━━━━━━━━━━━━━━\n"
+        "Lo vamos a gestionar.\n"
+        "Si necesitas hacer otro pedido, mandame los materiales."
+    )
 
 
 def pedido_cancelado() -> str:
     return "Pedido cancelado. Cuando necesites, escribime."
+
+
+def offtopic(reply: str | None, state: PedidoState) -> str:
+    base = reply or "Decime que materiales necesitas o escribi listo para cerrar el pedido."
+    if state.items:
+        return (
+            f"{base}\n\n"
+            f"Pedido abierto:\n{state.resumen_items()}\n\n"
+            "Podes agregar materiales, cambiar algo, limpiar el pedido o escribir listo para cerrarlo."
+        )
+    return base
 
 
 def aclaracion(reply: str | None, state: PedidoState) -> str:
@@ -66,3 +85,9 @@ def aclaracion(reply: str | None, state: PedidoState) -> str:
     if state.items:
         return f"No entendi bien. Pedido actual:\n{state.resumen_items()}"
     return "No entendi bien. Mandame los materiales que necesitas."
+
+
+def _resumen_items_bullets(state: PedidoState) -> str:
+    if not state.items:
+        return "• (lista vacia)"
+    return "\n".join(f"• {item.resumen()}" for item in state.items)

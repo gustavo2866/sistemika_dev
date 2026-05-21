@@ -6,7 +6,7 @@ from sqlmodel import Session
 
 from app.modules.channels.config import meta_account_resolver
 from app.modules.channels.persistence import channel_event_store
-from app.modules.channels.types import ChannelEventData, DeliveryResult, SendMessageCommand
+from app.modules.channels.types import ChannelEventData, DeliveryResult, MarkReadCommand, SendMessageCommand
 from app.modules.channels.utils import normalize_address, normalize_phone_for_meta
 from .client import meta_graph_client
 
@@ -14,6 +14,42 @@ from .client import meta_graph_client
 class MetaProvider:
     provider = "meta"
     channel_type = "whatsapp"
+
+    async def mark_message_read(self, session: Session, command: MarkReadCommand) -> DeliveryResult:
+        account_config = meta_account_resolver.resolve(session, command.account_ref)
+        meta_response = await meta_graph_client.mark_message_read(
+            access_token=account_config.access_token,
+            phone_number_id=account_config.phone_number_id,
+            message_id=command.external_message_id,
+            show_typing=command.show_typing,
+        )
+        status = "read_with_typing" if command.show_typing else "read"
+        channel_event_store.record(
+            session,
+            ChannelEventData(
+                provider=self.provider,
+                channel_type=self.channel_type,
+                account_ref=command.account_ref,
+                external_account_id=account_config.phone_number_id,
+                direction="control",
+                from_address=command.business_address or account_config.phone_number_id,
+                to_address=command.contact_address,
+                external_message_id=command.external_message_id,
+                status=status,
+                raw_payload=meta_response,
+                normalized_payload={
+                    "message_id": command.external_message_id,
+                    "show_typing": command.show_typing,
+                },
+            ),
+        )
+        session.commit()
+        return DeliveryResult(
+            status=status,
+            external_message_id=command.external_message_id,
+            provider_message_type="read_receipt",
+            raw_response=meta_response,
+        )
 
     async def send_message(self, session: Session, command: SendMessageCommand) -> DeliveryResult:
         account_config = meta_account_resolver.resolve(session, command.account_ref)

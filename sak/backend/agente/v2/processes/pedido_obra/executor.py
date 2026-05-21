@@ -57,7 +57,7 @@ def execute_plan(state: PedidoState, plan: TurnPlan) -> ExecutionResult:
             return ExecutionResult(
                 status="offtopic",
                 next_state=current,
-                reply=renderer.aclaracion(op.reply or reply_override, current),
+                reply=renderer.offtopic(op.reply or reply_override, current),
                 applied_operations=applied,
             )
 
@@ -219,14 +219,130 @@ def _add_items(state: PedidoState, items: list[OperationItem]) -> None:
     state.esperando = None
     state.item_cantidad_idx = None
     for item in items:
-        state.items.append(
-            PedidoItem(
-                descripcion=item.descripcion,
-                cantidad=item.cantidad,
-                unidad=item.unidad,
+        incoming = _normalize_incoming_item(item)
+        existing = _find_merge_target(state, incoming)
+        if existing is None:
+            state.items.append(
+                PedidoItem(
+                    descripcion=incoming.descripcion,
+                    cantidad=incoming.cantidad,
+                    unidad=incoming.unidad,
+                )
             )
-        )
+            continue
+
+        _normalize_existing_item(existing)
+        if existing.cantidad is None:
+            existing.cantidad = incoming.cantidad
+        elif incoming.cantidad is not None:
+            existing.cantidad += incoming.cantidad
+        if not existing.unidad and incoming.unidad:
+            existing.unidad = incoming.unidad
     state.touch()
+
+
+_LEADING_UNIT_ALIASES = {
+    "bolsa": "bolsas",
+    "bolsas": "bolsas",
+    "lata": "latas",
+    "latas": "latas",
+    "barra": "barras",
+    "barras": "barras",
+    "litro": "litros",
+    "litros": "litros",
+    "lts": "litros",
+    "lt": "litros",
+    "metro": "mts",
+    "metros": "mts",
+    "mts": "mts",
+    "mt": "mts",
+    "m2": "m2",
+    "m3": "m3",
+    "kg": "kg",
+    "kilo": "kg",
+    "kilos": "kg",
+}
+
+
+def _normalize_incoming_item(item: OperationItem) -> OperationItem:
+    unit = _canonical_unit(item.unidad)
+    description = item.descripcion.strip()
+    inferred_unit, stripped_description = _split_leading_unit(description)
+    if not unit and inferred_unit:
+        unit = inferred_unit
+        description = stripped_description
+    return OperationItem(descripcion=description, cantidad=item.cantidad, unidad=unit or item.unidad)
+
+
+def _normalize_existing_item(item: PedidoItem) -> None:
+    if item.unidad:
+        item.unidad = _canonical_unit(item.unidad) or item.unidad
+        return
+    inferred_unit, stripped_description = _split_leading_unit(item.descripcion)
+    if inferred_unit:
+        item.unidad = inferred_unit
+        item.descripcion = stripped_description
+
+
+def _find_merge_target(state: PedidoState, incoming: OperationItem) -> PedidoItem | None:
+    matches: list[PedidoItem] = []
+    for existing in state.items:
+        if _can_merge(existing, incoming):
+            matches.append(existing)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _can_merge(existing: PedidoItem, incoming: OperationItem) -> bool:
+    existing_unit, existing_key = _item_match_parts(existing.descripcion, existing.unidad)
+    incoming_unit, incoming_key = _item_match_parts(incoming.descripcion, incoming.unidad)
+    if not existing_key or not incoming_key:
+        return False
+    if existing_unit and incoming_unit and existing_unit != incoming_unit:
+        return False
+    if existing_key == incoming_key:
+        return True
+    shorter, longer = sorted([existing_key, incoming_key], key=len)
+    return len(shorter) >= 4 and shorter in longer
+
+
+def _item_match_parts(description: str | None, unit: str | None) -> tuple[str | None, str]:
+    canonical_unit = _canonical_unit(unit)
+    material = (description or "").strip()
+    inferred_unit, stripped_description = _split_leading_unit(material)
+    if not canonical_unit and inferred_unit:
+        canonical_unit = inferred_unit
+        material = stripped_description
+    return canonical_unit, _normalize_material(material)
+
+
+def _split_leading_unit(description: str) -> tuple[str | None, str]:
+    match = re.match(
+        r"^\s*([A-Za-z0-9]+)\s+(?:de\s+)?(.+?)\s*$",
+        description,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None, description.strip()
+    unit = _canonical_unit(match.group(1))
+    if not unit:
+        return None, description.strip()
+    return unit, match.group(2).strip()
+
+
+def _canonical_unit(unit: str | None) -> str | None:
+    normalized = _normalize(unit)
+    if not normalized:
+        return None
+    first = normalized.split()[0]
+    return _LEADING_UNIT_ALIASES.get(first, first)
+
+
+def _normalize_material(description: str | None) -> str:
+    value = _normalize(description)
+    tokens = [token for token in value.split() if token not in set(_LEADING_UNIT_ALIASES)]
+    return " ".join(tokens)
 
 
 def _update_item(state: PedidoState, op: PedidoOperation) -> str | None:

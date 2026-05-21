@@ -1,15 +1,19 @@
 """
-Chat de prueba para el agente pedido_obra usando el mismo webhook que Meta.
+Chat de prueba para el agente pedido_obra simulando el webhook de Meta.
 
 Uso:
   python backend/tests/chat_test.py
 
 Variables opcionales:
   CHAT_TEST_BASE_URL=http://localhost:8000
+  CHAT_TEST_WEBHOOK_MODE=channel   # channel | legacy
+  CHAT_TEST_READ_MODE=auto         # auto | db | api
+  CHAT_TEST_TYPING_INDICATOR=1
   CHAT_TEST_FROM_PHONE=5491156384310
   CHAT_TEST_FROM_NAME=Encargado Test
-  CHAT_TEST_TO_PHONE=+5493815550000
-  CHAT_TEST_CELULAR_ID=11111111-1111-1111-1111-111111111111
+  CHAT_TEST_TO_PHONE=5493816259343
+  CHAT_TEST_META_PHONE_NUMBER_ID=1046006975257973
+  CHAT_TEST_CELULAR_ID=56953906-7099-4d1a-8379-3174d732d21e
 
 Importante:
   El telefono de prueba debe tener una oportunidad activa de proyecto/obra.
@@ -26,17 +30,49 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://localhost:8000").rstrip("/")
+WEBHOOK_MODE = os.environ.get("CHAT_TEST_WEBHOOK_MODE", "channel").strip().lower()
+READ_MODE = os.environ.get("CHAT_TEST_READ_MODE", "auto").strip().lower()
 FROM_PHONE = os.environ.get("CHAT_TEST_FROM_PHONE", "5491156384310")
 FROM_NAME = os.environ.get("CHAT_TEST_FROM_NAME", "Encargado Test")
-TO_PHONE = os.environ.get("CHAT_TEST_TO_PHONE", "+5493815550000")
-CELULAR_ID = os.environ.get("CHAT_TEST_CELULAR_ID", "11111111-1111-1111-1111-111111111111")
-CELULAR_ALIAS = os.environ.get("CHAT_TEST_CELULAR_ALIAS", "Linea test obra")
+TO_PHONE = os.environ.get("CHAT_TEST_TO_PHONE", "5493816259343")
+META_PHONE_NUMBER_ID = os.environ.get("CHAT_TEST_META_PHONE_NUMBER_ID", "1046006975257973")
+META_WABA_ID = os.environ.get("CHAT_TEST_META_WABA_ID", "1516474752918083")
+CELULAR_ID = os.environ.get("CHAT_TEST_CELULAR_ID", "56953906-7099-4d1a-8379-3174d732d21e")
+CELULAR_ALIAS = os.environ.get("CHAT_TEST_CELULAR_ALIAS", "Canal test obra")
 POLL_TIMEOUT_SECONDS = float(os.environ.get("CHAT_TEST_TIMEOUT", "30"))
+POLL_INTERVAL_SECONDS = float(os.environ.get("CHAT_TEST_POLL_INTERVAL", "0.2"))
+SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+}
 SHOW_TIMING = os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+
+
+_DB_READ_FAILED = False
+
+
+def _is_local_base_url() -> bool:
+    return BASE_URL.startswith("http://localhost") or BASE_URL.startswith("http://127.0.0.1")
+
+
+def _use_db_read_mode() -> bool:
+    if READ_MODE == "db":
+        return True
+    if READ_MODE == "api":
+        return False
+    if READ_MODE == "auto":
+        return _is_local_base_url()
+    raise ValueError("CHAT_TEST_READ_MODE debe ser 'auto', 'db' o 'api'")
 
 
 def _request_json(method: str, path: str, payload: dict | None = None, params: dict | None = None) -> dict:
@@ -56,7 +92,52 @@ def _request_json(method: str, path: str, payload: dict | None = None, params: d
         return json.loads(raw) if raw else {}
 
 
-def _build_webhook_payload(texto: str, meta_message_id: str) -> dict:
+def _webhook_path() -> str:
+    if WEBHOOK_MODE == "channel":
+        return "/api/channel-webhooks/meta/"
+    if WEBHOOK_MODE == "legacy":
+        return "/api/webhooks/meta-whatsapp/"
+    raise ValueError("CHAT_TEST_WEBHOOK_MODE debe ser 'channel' o 'legacy'")
+
+
+def _build_raw_meta_payload(texto: str, meta_message_id: str) -> dict:
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": META_WABA_ID,
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "metadata": {
+                                "display_phone_number": TO_PHONE,
+                                "phone_number_id": META_PHONE_NUMBER_ID,
+                            },
+                            "contacts": [
+                                {
+                                    "wa_id": FROM_PHONE,
+                                    "profile": {"name": FROM_NAME},
+                                }
+                            ],
+                            "messages": [
+                                {
+                                    "from": FROM_PHONE,
+                                    "id": meta_message_id,
+                                    "timestamp": str(int(time.time())),
+                                    "type": "text",
+                                    "text": {"body": texto},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _build_legacy_webhook_payload(texto: str, meta_message_id: str) -> dict:
     now = datetime.now(UTC).isoformat()
     return {
         "event_type": "message.received",
@@ -86,15 +167,62 @@ def _build_webhook_payload(texto: str, meta_message_id: str) -> dict:
     }
 
 
+def _build_webhook_payload(texto: str, meta_message_id: str) -> dict:
+    if WEBHOOK_MODE == "channel":
+        return _build_raw_meta_payload(texto, meta_message_id)
+    return _build_legacy_webhook_payload(texto, meta_message_id)
+
+
 def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     meta_message_id = f"wamid.chat-test.{uuid4().hex}"
     payload = _build_webhook_payload(texto, meta_message_id)
     started = time.time()
-    response = _request_json("POST", "/api/webhooks/meta-whatsapp/", payload)
+    response = _request_json("POST", _webhook_path(), payload)
     return meta_message_id, response, time.time() - started
 
 
-def _listar_mensajes() -> list[dict]:
+def _serialize_datetime(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if value is None:
+        return None
+    return str(value)
+
+
+def _row_to_message_dict(row: Any) -> dict:
+    return {
+        "id": row.id,
+        "tipo": row.tipo,
+        "canal": row.canal,
+        "estado": row.estado,
+        "contenido": row.contenido,
+        "contacto_referencia": row.contacto_referencia,
+        "origen_externo_id": row.origen_externo_id,
+        "fecha_mensaje": _serialize_datetime(row.fecha_mensaje),
+        "created_at": _serialize_datetime(row.created_at),
+        "metadata_json": row.metadata_json or {},
+    }
+
+
+def _listar_mensajes_db() -> list[dict]:
+    from sqlmodel import Session, select
+
+    from app.db import engine
+    from app.models import CRMMensaje
+
+    with Session(engine) as session:
+        rows = session.exec(
+            select(CRMMensaje)
+            .where(CRMMensaje.deleted_at.is_(None))
+            .where(CRMMensaje.contacto_referencia == FROM_PHONE)
+            .where(CRMMensaje.canal == "whatsapp")
+            .order_by(CRMMensaje.fecha_mensaje.desc(), CRMMensaje.id.desc())
+            .limit(20)
+        ).all()
+        return [_row_to_message_dict(row) for row in rows]
+
+
+def _listar_mensajes_api() -> list[dict]:
     response = _request_json(
         "GET",
         "/crm/mensajes/acciones/cursor",
@@ -107,6 +235,18 @@ def _listar_mensajes() -> list[dict]:
     return response.get("data") or []
 
 
+def _listar_mensajes() -> list[dict]:
+    global _DB_READ_FAILED
+    if _use_db_read_mode() and not _DB_READ_FAILED:
+        try:
+            return _listar_mensajes_db()
+        except Exception:
+            if READ_MODE == "db":
+                raise
+            _DB_READ_FAILED = True
+    return _listar_mensajes_api()
+
+
 def _metadata(mensaje: dict) -> dict:
     raw = mensaje.get("metadata_json")
     if raw is None:
@@ -114,22 +254,82 @@ def _metadata(mensaje: dict) -> dict:
     return raw if isinstance(raw, dict) else {}
 
 
+def _same_id(value: Any, expected: Any) -> bool:
+    if value is None or expected is None:
+        return False
+    try:
+        return int(value) == int(expected)
+    except (TypeError, ValueError):
+        return str(value) == str(expected)
+
+
+def _find_outbound_for_inbound(mensajes: list[dict], inbound: dict) -> dict | None:
+    inbound_id = inbound.get("id")
+    for mensaje in mensajes:
+        if mensaje.get("tipo") != "salida":
+            continue
+        if _same_id(_metadata(mensaje).get("source_message_id"), inbound_id):
+            return mensaje
+    inbound_time = inbound.get("fecha_mensaje") or inbound.get("created_at")
+    if not inbound_time:
+        return None
+    candidates = [
+        mensaje
+        for mensaje in mensajes
+        if mensaje.get("tipo") == "salida"
+        and (mensaje.get("fecha_mensaje") or mensaje.get("created_at") or "") >= inbound_time
+    ]
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda item: (item.get("fecha_mensaje") or item.get("created_at") or "", item.get("id") or 0),
+    )[0]
+
+
+def _typing_text(frame: int) -> str:
+    dots = "." * ((frame % 3) + 1)
+    return f"Agente: {dots:<3}"
+
+
+def _print_typing(frame: int) -> None:
+    if not SHOW_TYPING_INDICATOR:
+        return
+    print(f"\r{_typing_text(frame)}", end="", flush=True)
+
+
+def _clear_typing() -> None:
+    if not SHOW_TYPING_INDICATOR:
+        return
+    print("\r" + (" " * 80) + "\r", end="", flush=True)
+
+
 def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
     deadline = time.time() + POLL_TIMEOUT_SECONDS
     inbound = None
+    frame = 0
 
     while time.time() < deadline:
+        _print_typing(frame)
+        frame += 1
         mensajes = _listar_mensajes()
         inbound = next((m for m in mensajes if m.get("origen_externo_id") == meta_message_id), None)
         if inbound:
+            outbound = _find_outbound_for_inbound(mensajes, inbound)
+            if outbound:
+                _clear_typing()
+                return inbound, None, outbound
+
             agent_meta = _metadata(inbound).get("agent_v2") or {}
             result = agent_meta.get("result")
             if isinstance(result, dict):
                 outbound_id = agent_meta.get("outbound_message_id") or (agent_meta.get("delivery") or {}).get("outbound_message_id")
                 outbound = next((m for m in mensajes if m.get("id") == outbound_id), None)
+                _clear_typing()
                 return inbound, result, outbound
-        time.sleep(0.8)
+        time.sleep(POLL_INTERVAL_SECONDS)
 
+    _clear_typing()
     return inbound, None, None
 
 
@@ -187,8 +387,11 @@ def _format_quantity(value: Any) -> str:
 
 def main() -> None:
     print("=== Chat webhook pedido_obra ===")
-    print(f"Webhook: {BASE_URL}/api/webhooks/meta-whatsapp/")
+    print(f"Webhook: {BASE_URL}{_webhook_path()} [{WEBHOOK_MODE}]")
+    print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
+    if WEBHOOK_MODE == "channel":
+        print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
     print("Nota: ese contacto debe tener una oportunidad activa de proyecto/obra.")
     print("Comandos: 'limpiar' envia cancelar, 'items' envia mostrar, 'salir' termina.\n")
 
@@ -215,9 +418,11 @@ def main() -> None:
             meta_message_id, webhook_response, t_post = enviar_webhook(texto)
             inbound, result, outbound = esperar_resultado(meta_message_id)
         except urllib.error.URLError as exc:
+            _clear_typing()
             print(f"[Error] No se pudo conectar al servidor: {exc.reason}")
             continue
         except Exception as exc:
+            _clear_typing()
             print(f"[Error] {exc}")
             continue
 
@@ -225,7 +430,7 @@ def main() -> None:
         hora_respuesta = datetime.now().strftime("%H:%M:%S")
         print(f"\n[{hora_envio} -> {hora_respuesta} | {t_total:.1f}s]")
 
-        if result is None:
+        if result is None and outbound is None:
             if inbound is None:
                 print("No encontre el mensaje entrante creado por el webhook.")
             else:
@@ -233,6 +438,8 @@ def main() -> None:
             continue
 
         print(f"Agente: {_reply_text(result, outbound)}\n")
+        if result is None and outbound is not None:
+            print(f"[Salida CRM: {outbound.get('estado') or '?'}]\n")
         if SHOW_TIMING:
             timing = result.get("_timing") if isinstance(result, dict) else None
             pedido_timing = (result.get("pedido_obra") or {}) if isinstance(result, dict) else {}
