@@ -92,13 +92,7 @@ class AgentTurnOrchestrator:
         if isinstance(cached, dict):
             return {**cached, "message_id": message_id, "cached": True}
 
-        # load_for_update serializa turnos concurrentes del mismo contacto (SELECT FOR UPDATE).
-        # Para el trigger "simulated" (herramienta de dev) no necesitamos el lock.
-        use_lock = trigger != "simulated" and hasattr(self._state_store, "load_for_update")
-        if use_lock:
-            state = self._state_store.load_for_update(message.oportunidad_id)
-        else:
-            state = self._state_store.load(message.oportunidad_id)
+        state = self._state_store.load(message.oportunidad_id)
         ctx = self.build_context(session, message_id, trigger=trigger, state=state)
 
         process = self._registry.resolve(ctx)
@@ -110,6 +104,10 @@ class AgentTurnOrchestrator:
             return {**result, "message_id": message_id, "cached": False}
 
         # process.handle() es async — await directo sin bloquear el event loop
+        # Evita mantener una transaccion abierta mientras esperamos al LLM.
+        # Neon corta sesiones idle-in-transaction y eso impide persistir el resultado.
+        session.commit()
+
         turn_result = await process.handle(ctx)
 
         state.active_process = process.name if turn_result.keep_active else None

@@ -47,10 +47,12 @@ async def _process_raw_meta_background(payload: dict[str, Any]) -> None:
         try:
             await process_raw_meta_webhook_payload(session, payload)
         except Exception:
+            session.rollback()
             logger.exception("Error procesando webhook directo de Meta")
         try:
             await process_pending_agent_messages(session, limit=5)
         except Exception:
+            session.rollback()
             logger.exception("Error reprocesando mensajes pendientes de agente")
 
 
