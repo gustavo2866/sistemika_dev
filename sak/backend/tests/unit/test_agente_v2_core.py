@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from agente.v2.core.context import MessageInfo, TurnContext
+from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.process import ProcessRegistry, TurnResult
 from agente.v2.core.state import ConversationState, JsonConversationStateStore
 
@@ -139,6 +140,26 @@ class TestTurnResult:
         ps = {"foo": "bar"}
         r = TurnResult(payload={}, process_state=ps)
         assert r.process_state == ps
+
+
+# ===========================================================================
+# TurnDeliveryService
+# ===========================================================================
+
+class TestTurnDeliveryService:
+    def test_with_version_banner_prefixes_reply(self, monkeypatch):
+        monkeypatch.delenv("AGENT_REPLY_VERSION_BANNER_ENABLED", raising=False)
+        monkeypatch.delenv("AGENT_REPLY_VERSION_BANNER", raising=False)
+
+        text = TurnDeliveryService.with_version_banner("Hola")
+
+        assert text.startswith("[sak-agent 2026-05-21.1]\n")
+        assert text.endswith("Hola")
+
+    def test_with_version_banner_can_be_disabled(self, monkeypatch):
+        monkeypatch.setenv("AGENT_REPLY_VERSION_BANNER_ENABLED", "0")
+
+        assert TurnDeliveryService.with_version_banner("Hola") == "Hola"
 
 
 # ===========================================================================

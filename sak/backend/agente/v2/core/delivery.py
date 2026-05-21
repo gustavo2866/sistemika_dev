@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import os
 
 from sqlmodel import Session
 
 from agente.v2.infrastructure.channels.crm_channel_adapter import CRMOutboundChannelAdapter
 from app.models import CRMMensaje
 from app.models.enums import TipoMensaje
+
+
+DEFAULT_AGENT_REPLY_VERSION_BANNER = "sak-agent 2026-05-21.1"
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +84,7 @@ class TurnDeliveryService:
         reply_text = self.extract_reply_text(result)
         if not reply_text:
             return SendResult(sent=False, status="no_reply")
+        reply_text = self.with_version_banner(reply_text)
         if not message.contacto_id:
             return SendResult(sent=False, status="missing_contact")
         if not message.oportunidad_id:
@@ -106,6 +111,21 @@ class TurnDeliveryService:
             if val:
                 return str(val).strip()
         return ""
+
+    @staticmethod
+    def with_version_banner(text: str) -> str:
+        enabled = os.getenv("AGENT_REPLY_VERSION_BANNER_ENABLED", "1").strip().lower()
+        if enabled in {"0", "false", "no"}:
+            return text
+
+        banner = os.getenv("AGENT_REPLY_VERSION_BANNER", DEFAULT_AGENT_REPLY_VERSION_BANNER).strip()
+        if not banner:
+            return text
+
+        prefix = f"[{banner}]"
+        if text.startswith(prefix):
+            return text
+        return f"{prefix}\n{text}"
 
     @staticmethod
     def mark_inbound_as_processed(session: Session, message: CRMMensaje) -> None:
