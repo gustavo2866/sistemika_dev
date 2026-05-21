@@ -24,6 +24,17 @@ class SendMessageCommand:
 
 
 @dataclass(slots=True)
+class MarkReadCommand:
+    provider: str
+    channel_type: str
+    account_ref: str
+    external_message_id: str
+    contact_address: str | None = None
+    business_address: str | None = None
+    show_typing: bool = False
+
+
+@dataclass(slots=True)
 class DeliveryResult:
     status: str
     external_message_id: str | None = None

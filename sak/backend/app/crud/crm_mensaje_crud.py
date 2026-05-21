@@ -7,6 +7,7 @@ from typing import Dict, Any
 from sqlmodel import Session, select, text
 
 from app.core.generic_crud import GenericCRUD
+from app.models.base import current_utc_time
 from app.models.crm.mensaje import CRMMensaje
 from app.models.crm.oportunidad import CRMOportunidad
 
@@ -94,14 +95,15 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                 UPDATE crm_oportunidades 
                 SET ultimo_mensaje_id = :mensaje_id,
                     ultimo_mensaje_at = :fecha_mensaje,
-                    updated_at = NOW()
+                    updated_at = :updated_at
                 WHERE id = :oportunidad_id
                 AND (ultimo_mensaje_at IS NULL OR :fecha_mensaje >= ultimo_mensaje_at)
             """),
             {
                 "mensaje_id": mensaje.id,
                 "fecha_mensaje": mensaje.fecha_mensaje,
-                "oportunidad_id": mensaje.oportunidad_id
+                "oportunidad_id": mensaje.oportunidad_id,
+                "updated_at": current_utc_time(),
             }
         )
         
@@ -126,7 +128,7 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                 UPDATE crm_oportunidades 
                 SET ultimo_mensaje_id = COALESCE(ultimo_msg.mensaje_id, NULL),
                     ultimo_mensaje_at = COALESCE(ultimo_msg.fecha_mensaje, NULL),
-                    updated_at = NOW()
+                    updated_at = :updated_at
                 FROM (
                     SELECT id as mensaje_id, fecha_mensaje
                     FROM crm_mensajes 
@@ -137,7 +139,7 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                 ) ultimo_msg
                 WHERE crm_oportunidades.id = :oportunidad_id
             """),
-            {"oportunidad_id": oportunidad_id}
+            {"oportunidad_id": oportunidad_id, "updated_at": current_utc_time()}
         )
         
         # Si no hay mensajes, limpiar los campos
@@ -147,11 +149,11 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                     UPDATE crm_oportunidades 
                     SET ultimo_mensaje_id = NULL,
                         ultimo_mensaje_at = NULL,
-                        updated_at = NOW()
+                        updated_at = :updated_at
                     WHERE id = :oportunidad_id
                     AND ultimo_mensaje_id IS NOT NULL
                 """),
-                {"oportunidad_id": oportunidad_id}
+                {"oportunidad_id": oportunidad_id, "updated_at": current_utc_time()}
             )
             print(f"Limpiados campos ultimo_mensaje para oportunidad {oportunidad_id} (sin mensajes)")
         else:

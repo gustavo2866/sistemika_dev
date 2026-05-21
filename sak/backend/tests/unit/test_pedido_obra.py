@@ -148,7 +148,76 @@ class TestExecutor:
         assert result.status == "updated"
         assert [item.descripcion for item in result.next_state.items] == ["puertas", "ventanas", "palas"]
         assert result.next_state.etapa == "carga"
-        assert "Anotado" in result.reply or "Actualizado" in result.reply
+        assert "actualizado" in result.reply.lower()
+
+    def test_add_items_sums_existing_material_with_same_unit(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="cemento", cantidad=30, unidad="bolsas")],
+        )
+
+        result = execute_plan(
+            state,
+            TurnPlan(
+                operations=[
+                    PedidoOperation(
+                        type="add_items",
+                        items=[OperationItem(descripcion="cemento", cantidad=10, unidad="bolsas")],
+                    )
+                ]
+            ),
+        )
+
+        assert len(result.next_state.items) == 1
+        assert result.next_state.items[0].cantidad == 40
+        assert result.next_state.items[0].unidad == "bolsas"
+
+    def test_add_items_infers_unit_and_sums_existing_material(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="cemento", cantidad=30, unidad="bolsas")],
+        )
+
+        result = execute_plan(
+            state,
+            TurnPlan(
+                operations=[
+                    PedidoOperation(
+                        type="add_items",
+                        items=[OperationItem(descripcion="bolsas de cemento", cantidad=10)],
+                    )
+                ]
+            ),
+        )
+
+        assert len(result.next_state.items) == 1
+        assert result.next_state.items[0].cantidad == 40
+        assert result.next_state.items[0].descripcion == "cemento"
+
+    def test_add_items_sums_more_specific_existing_material(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="pintura de 20lts", cantidad=8, unidad="latas")],
+        )
+
+        result = execute_plan(
+            state,
+            TurnPlan(
+                operations=[
+                    PedidoOperation(
+                        type="add_items",
+                        items=[OperationItem(descripcion="pintura", cantidad=4, unidad="latas")],
+                    )
+                ]
+            ),
+        )
+
+        assert len(result.next_state.items) == 1
+        assert result.next_state.items[0].cantidad == 12
+        assert result.next_state.items[0].descripcion == "pintura de 20lts"
 
     def test_finish_order_asks_missing_quantities_only_at_close(self):
         state = PedidoState(
@@ -254,6 +323,31 @@ class TestExecutor:
 
         assert "pedido previo" in result.reply.lower()
         assert "continuar" in result.reply.lower()
+
+    def test_offtopic_greeting_uses_llm_reply(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="cemento", cantidad=20, unidad="bolsas")],
+        )
+
+        result = execute_plan(
+            state,
+            TurnPlan(
+                operations=[
+                    PedidoOperation(
+                        type="offtopic",
+                        reply="Hola, todo bien. Decime que materiales necesitas o escribi listo para cerrar el pedido.",
+                    )
+                ]
+            ),
+        )
+
+        assert result.status == "offtopic"
+        assert result.reply.startswith("Hola")
+        assert "No entendi" not in result.reply
+        assert "Pedido abierto:" in result.reply
+        assert "20 bolsas cemento" in result.reply
 
 
 class TestHandler:

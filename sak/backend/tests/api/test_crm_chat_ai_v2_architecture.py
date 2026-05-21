@@ -353,6 +353,14 @@ def test_meta_webhook_service_skips_orchestrator_when_webhook_processing_is_manu
     service._find_existing_inbound_message = lambda external_message_id: mensaje
     monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: False)
 
+    async def fail_show_typing(*args, **kwargs):
+        raise AssertionError("No debe mostrar typing si el agente no procesa")
+
+    monkeypatch.setattr(
+        "app.services.meta_webhook_service.channel_gateway.show_typing",
+        fail_show_typing,
+    )
+
     msg = SimpleNamespace(
         id=uuid4(),
         meta_message_id="wamid.test.webhook.agent",
@@ -431,11 +439,23 @@ def test_meta_webhook_service_processes_and_sends_when_webhook_processing_is_aut
             calls["count"] = int(calls.get("count", 0)) + 1
             calls["message_id"] = message_id
             calls["trigger"] = trigger
+            await asyncio.sleep(0)
             return {"type": "chat_reply", "respuesta": "Hola, en que te ayudo?"}
 
     service = MetaWebhookService(db_session, orchestrator=FakeOrchestrator())
     service._find_existing_inbound_message = lambda external_message_id: mensaje
     monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: True)
+    typing_calls: list[dict[str, object]] = []
+
+    async def fake_show_typing(session, **kwargs):
+        typing_calls.append(kwargs)
+        await asyncio.sleep(10)
+        return {"status": "read_with_typing"}
+
+    monkeypatch.setattr(
+        "app.services.meta_webhook_service.channel_gateway.show_typing",
+        fake_show_typing,
+    )
 
     async def fake_deliver_result(*, session, message, result):
         assert result["respuesta"] == "Hola, en que te ayudo?"
@@ -466,6 +486,16 @@ def test_meta_webhook_service_processes_and_sends_when_webhook_processing_is_aut
 
     assert calls["count"] == 1
     assert calls["trigger"] == "webhook"
+    assert typing_calls == [
+        {
+            "provider": "meta",
+            "channel_type": "whatsapp",
+            "account_ref": celular.meta_celular_id,
+            "external_message_id": "wamid.test.webhook.agent.auto",
+            "contact_address": "+5491111111188",
+            "business_address": "+5491111000088",
+        }
+    ]
     assert result["agent_result"]["delivery"]["sent"] is True
     assert mensaje.estado == "nuevo"
     assert mensaje.metadata_json["agent_v2"]["delivery_processed_at"]

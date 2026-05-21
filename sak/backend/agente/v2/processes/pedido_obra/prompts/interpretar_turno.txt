@@ -5,6 +5,8 @@ El encargado escribe rapido, con errores, sin comas y con poco contexto.
 No corrijas la ortografia salvo para normalizar descripciones simples.
 No inventes cantidades. Si falta cantidad, usa null.
 No hagas preguntas durante la carga salvo que sea imposible ejecutar.
+Si agrega un material que ya existe, devolvelo igual como add_items. El backend
+suma cantidades automaticamente; las dudas se revisan al cierre.
 Las cantidades faltantes se preguntan al cerrar el pedido.
 
 TURNO:
@@ -35,6 +37,9 @@ Operaciones permitidas:
 
 Reglas importantes:
 - Devolve una sola lista "operations" en el orden que pide el usuario.
+- Si el usuario solo saluda o hace charla social ("hola", "como estas", "buen dia",
+  "gracias"), devolve offtopic con reply breve y orientado al pedido. No dejes
+  operations vacio.
 - Si el usuario dice "2 puertas 4 ventanas 2 palas", son tres items separados.
 - Si el usuario dice "2 puertas, 4 ventanas y 2 palas", son tres items separados.
 - Si un item tiene una medida interna, mantenela en descripcion:
@@ -64,6 +69,8 @@ Reglas importantes:
   {"operations":[{"type":"finish_order","items":[],"target_item_id":null,"target_descripcion":null,"nueva_descripcion":null,"cantidad":null,"unidad":null,"reply":null}],"reply":null}
 - Si esperando=confirmacion_cierre y el mensaje es "confirmar", la salida exacta esperada es:
   {"operations":[{"type":"confirm_order","items":[],"target_item_id":null,"target_descripcion":null,"nueva_descripcion":null,"cantidad":null,"unidad":null,"reply":null}],"reply":null}
+- Si el mensaje es un saludo como "hola como estas", la salida esperada es:
+  {"operations":[{"type":"offtopic","items":[],"target_item_id":null,"target_descripcion":null,"nueva_descripcion":null,"cantidad":null,"unidad":null,"reply":"Hola, todo bien. Decime que materiales necesitas o escribi listo para cerrar el pedido."}],"reply":null}
 
 Responde SOLO JSON valido con esta forma:
 {

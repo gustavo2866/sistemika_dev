@@ -3,6 +3,7 @@ Servicio para procesar webhooks de Meta WhatsApp
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any, Optional
@@ -10,6 +11,7 @@ from typing import Any, Optional
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from app.db import engine
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.runtime import should_auto_process
@@ -24,6 +26,7 @@ from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.schemas.metaw_webhook import MetaWWebhookPayload
 
 logger = logging.getLogger(__name__)
+_typing_indicator_tasks: set[asyncio.Task[None]] = set()
 
 
 class MetaWebhookService:
@@ -245,6 +248,46 @@ class MetaWebhookService:
             timestamp_utc = timestamp_arg.astimezone(UTC)
         return timestamp_utc
 
+    def _schedule_agent_typing_indicator(self, msg: Any, celular: CRMCelular) -> None:
+        if not msg.meta_message_id:
+            return
+        task = asyncio.create_task(
+            self._show_agent_typing_indicator(
+                account_ref=str(celular.meta_celular_id),
+                external_message_id=msg.meta_message_id,
+                contact_address=msg.from_phone,
+                business_address=celular.numero_celular or msg.to_phone,
+            )
+        )
+        _typing_indicator_tasks.add(task)
+        task.add_done_callback(_typing_indicator_tasks.discard)
+
+    @staticmethod
+    async def _show_agent_typing_indicator(
+        *,
+        account_ref: str,
+        external_message_id: str,
+        contact_address: str | None,
+        business_address: str | None,
+    ) -> None:
+        try:
+            with Session(engine) as session:
+                await channel_gateway.show_typing(
+                    session,
+                    provider="meta",
+                    channel_type="whatsapp",
+                    account_ref=account_ref,
+                    external_message_id=external_message_id,
+                    contact_address=contact_address,
+                    business_address=business_address,
+                )
+        except Exception:
+            logger.warning(
+                "No se pudo mostrar typing indicator para meta_message_id=%s",
+                external_message_id,
+                exc_info=True,
+            )
+
     async def _handle_inbound_message(self, msg: Any, celular: CRMCelular) -> dict[str, Any]:
         t0 = time.perf_counter()
         crm_mensaje = self._find_existing_inbound_message(msg.meta_message_id)
@@ -290,43 +333,15 @@ class MetaWebhookService:
             )
         t_message_ready = time.perf_counter()
 
-        auto_process_result = None
-        if should_auto_process(session=self.session):
-            t_agent_start = time.perf_counter()
-            auto_process_result = await self._orchestrator.process_turn(
-                self.session,
-                crm_mensaje.id,
-                "webhook",
-            )
-            t_agent_done = time.perf_counter()
-            delivery = await self._delivery_service.deliver_result(
-                session=self.session,
-                message=crm_mensaje,
-                result=auto_process_result,
-            )
-            t_delivery_done = time.perf_counter()
-            self._delivery_service.mark_inbound_as_processed(self.session, crm_mensaje)
-            auto_process_result = {
-                **auto_process_result,
-                "delivery": delivery.to_dict(),
-                "_timing": {
-                    "message_ready_ms": round((t_message_ready - t0) * 1000),
-                    "agent_ms": round((t_agent_done - t_agent_start) * 1000),
-                    "delivery_ms": round((t_delivery_done - t_agent_done) * 1000),
-                    "total_before_metadata_ms": round((t_delivery_done - t0) * 1000),
-                },
-            }
-            metadata = dict(crm_mensaje.metadata_json or {})
-            agent_meta = dict(metadata.get("agent_v2") or {})
-            agent_meta["result"] = auto_process_result
-            agent_meta["delivery"] = delivery.to_dict()
-            if delivery.outbound_message_id is not None:
-                agent_meta["outbound_message_id"] = delivery.outbound_message_id
-            metadata["agent_v2"] = agent_meta
-            crm_mensaje.metadata_json = metadata
-            self.session.add(crm_mensaje)
-            self.session.commit()
-            self.session.refresh(crm_mensaje)
+        auto_process_result = await self.process_existing_inbound_message(
+            crm_mensaje,
+            trigger="webhook",
+            schedule_typing=True,
+            typing_source=msg,
+            celular=celular,
+            started_at=t0,
+            message_ready_ms=round((t_message_ready - t0) * 1000),
+        )
 
         payload = {
             "status": "ok",
@@ -340,6 +355,81 @@ class MetaWebhookService:
             },
         }
         return payload
+
+    async def process_existing_inbound_message(
+        self,
+        crm_mensaje: CRMMensaje,
+        *,
+        trigger: str = "webhook_retry",
+        schedule_typing: bool = False,
+        typing_source: Any | None = None,
+        celular: CRMCelular | None = None,
+        started_at: float | None = None,
+        message_ready_ms: int | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Procesa con agente un mensaje entrante ya persistido.
+
+        Es idempotente: si el mensaje ya tiene resultado o ya fue marcado como
+        entregado, no vuelve a enviar respuesta al canal.
+        """
+        metadata = dict(crm_mensaje.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        cached_result = agent_meta.get("result")
+        if isinstance(cached_result, dict):
+            return {**cached_result, "message_id": crm_mensaje.id, "cached": True}
+        if agent_meta.get("delivery_processed_at"):
+            return {
+                "type": "already_delivered",
+                "skipped": True,
+                "message_id": crm_mensaje.id,
+                "cached": True,
+            }
+
+        if not should_auto_process(session=self.session):
+            return None
+
+        if schedule_typing and typing_source is not None and celular is not None:
+            self._schedule_agent_typing_indicator(typing_source, celular)
+
+        t0 = started_at or time.perf_counter()
+        t_agent_start = time.perf_counter()
+        auto_process_result = await self._orchestrator.process_turn(
+            self.session,
+            crm_mensaje.id,
+            trigger,
+        )
+        t_agent_done = time.perf_counter()
+        delivery = await self._delivery_service.deliver_result(
+            session=self.session,
+            message=crm_mensaje,
+            result=auto_process_result,
+        )
+        t_delivery_done = time.perf_counter()
+        self._delivery_service.mark_inbound_as_processed(self.session, crm_mensaje)
+        auto_process_result = {
+            **auto_process_result,
+            "delivery": delivery.to_dict(),
+            "_timing": {
+                "message_ready_ms": message_ready_ms if message_ready_ms is not None else 0,
+                "agent_ms": round((t_agent_done - t_agent_start) * 1000),
+                "delivery_ms": round((t_delivery_done - t_agent_done) * 1000),
+                "total_before_metadata_ms": round((t_delivery_done - t0) * 1000),
+            },
+        }
+
+        metadata = dict(crm_mensaje.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        agent_meta["result"] = auto_process_result
+        agent_meta["delivery"] = delivery.to_dict()
+        if delivery.outbound_message_id is not None:
+            agent_meta["outbound_message_id"] = delivery.outbound_message_id
+        metadata["agent_v2"] = agent_meta
+        crm_mensaje.metadata_json = metadata
+        self.session.add(crm_mensaje)
+        self.session.commit()
+        self.session.refresh(crm_mensaje)
+        return auto_process_result
 
     def _handle_outbound_status(self, msg: Any) -> None:
         mensaje = self.session.exec(
