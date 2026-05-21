@@ -380,6 +380,68 @@ class TestHandler:
         assert result.payload["items"][0]["descripcion"] == "cemento"
         assert result.payload["pedido_obra"]["operations"] == ["add_items"]
 
+    @pytest.mark.asyncio
+    async def test_handle_answers_missing_quantity_number_without_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="confirmacion",
+            esperando="cantidad_faltante",
+            item_cantidad_idx=0,
+            items=[PedidoItem(descripcion="puertas", item_id="p1")],
+        )
+        llm = SimpleNamespace(interpret_turn=AsyncMock())
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="2", state=state.to_dict()))
+
+        llm.interpret_turn.assert_not_awaited()
+        assert result.payload["items"][0]["cantidad"] == 2
+        assert result.payload["esperando"] == "confirmacion_cierre"
+        assert result.payload["pedido_obra"]["fast_path"] == "missing_quantity_number"
+        assert result.payload["pedido_obra"]["llm_ms"] == 0
+
+    @pytest.mark.asyncio
+    async def test_handle_answers_missing_quantity_words_without_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="confirmacion",
+            esperando="cantidad_faltante",
+            item_cantidad_idx=0,
+            items=[PedidoItem(descripcion="bolsas cemento", item_id="p1")],
+        )
+        llm = SimpleNamespace(interpret_turn=AsyncMock())
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="treinta y cinco", state=state.to_dict()))
+
+        llm.interpret_turn.assert_not_awaited()
+        assert result.payload["items"][0]["cantidad"] == 35
+        assert result.payload["pedido_obra"]["fast_path"] == "missing_quantity_number"
+
+    @pytest.mark.asyncio
+    async def test_handle_missing_quantity_with_unit_still_uses_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="confirmacion",
+            esperando="cantidad_faltante",
+            item_cantidad_idx=0,
+            items=[PedidoItem(descripcion="cemento", item_id="p1")],
+        )
+        llm = SimpleNamespace(
+            interpret_turn=AsyncMock(
+                return_value=TurnPlan(
+                    operations=[PedidoOperation(type="answer_missing_quantity", cantidad=2, unidad="bolsas")]
+                )
+            )
+        )
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="2 bolsas", state=state.to_dict()))
+
+        llm.interpret_turn.assert_awaited_once()
+        assert result.payload["items"][0]["cantidad"] == 2
+        assert result.payload["items"][0]["unidad"] == "bolsas"
+
     def test_turn_result_includes_items_and_metadata(self):
         state = PedidoState(
             oportunidad_id=1,

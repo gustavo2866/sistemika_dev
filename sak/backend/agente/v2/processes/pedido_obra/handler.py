@@ -11,14 +11,16 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+import re
 import time
+import unicodedata
 
 from agente.v2.core.context import TurnContext
 from agente.v2.core.process import TurnResult
 from agente.v2.core.state import JsonConversationStateStore
 from agente.v2.processes.pedido_obra.executor import execute_plan
 from agente.v2.processes.pedido_obra.llm_client import PedidoObraLLMClient
-from agente.v2.processes.pedido_obra.models import ExecutionResult, PedidoState, TurnPlan
+from agente.v2.processes.pedido_obra.models import ExecutionResult, PedidoOperation, PedidoState, TurnPlan
 
 
 _STALE_MINUTES = 60
@@ -45,6 +47,21 @@ class PedidoObraProcess:
         if state.tiene_pedido_activo() and _is_stale(state) and state.esperando != "decision_pedido_previo":
             state.esperando = "decision_pedido_previo"
             state.touch()
+
+        fast_plan = _missing_quantity_fast_plan(ctx.message.contenido, state)
+        if fast_plan is not None:
+            executor_started = time.perf_counter()
+            result = execute_plan(state, fast_plan)
+            executor_ms = round((time.perf_counter() - executor_started) * 1000)
+            total_ms = round((time.perf_counter() - started) * 1000)
+            return _to_turn_result(
+                result,
+                ctx,
+                plan=fast_plan,
+                executor_ms=executor_ms,
+                process_ms=total_ms,
+                extra_metadata={"fast_path": "missing_quantity_number"},
+            )
 
         try:
             plan = await self._llm.interpret_turn(ctx.message.contenido, state)
@@ -75,6 +92,117 @@ def _is_stale(state: PedidoState) -> bool:
         return False
 
 
+def _missing_quantity_fast_plan(text: str | None, state: PedidoState) -> TurnPlan | None:
+    if state.esperando != "cantidad_faltante":
+        return None
+    if state.item_cantidad_idx is None or not (0 <= state.item_cantidad_idx < len(state.items)):
+        return None
+    quantity = _parse_single_quantity_response(text)
+    if quantity is None:
+        return None
+    return TurnPlan(
+        operations=[PedidoOperation(type="answer_missing_quantity", cantidad=quantity)],
+        raw_response={"fast_path": "missing_quantity_number", "cantidad": quantity},
+        llm_ms=0,
+    )
+
+
+def _parse_single_quantity_response(text: str | None) -> float | None:
+    value = _normalize_quantity_text(text)
+    if not value:
+        return None
+
+    if re.fullmatch(r"\d+(?:[.,]\d+)?", value):
+        quantity = float(value.replace(",", "."))
+        return quantity if quantity > 0 else None
+
+    if not re.fullmatch(r"[a-z ]+", value):
+        return None
+
+    quantity = _parse_spanish_integer_words(value.split())
+    if quantity is None or quantity <= 0:
+        return None
+    return float(quantity)
+
+
+def _normalize_quantity_text(text: str | None) -> str:
+    if not text:
+        return ""
+    value = unicodedata.normalize("NFKD", text.strip().lower())
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^a-z0-9,.\s]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+_WORD_UNITS = {
+    "un": 1,
+    "uno": 1,
+    "una": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+}
+_WORD_0_TO_29 = {
+    "cero": 0,
+    **_WORD_UNITS,
+    "diez": 10,
+    "once": 11,
+    "doce": 12,
+    "trece": 13,
+    "catorce": 14,
+    "quince": 15,
+    "dieciseis": 16,
+    "diecisiete": 17,
+    "dieciocho": 18,
+    "diecinueve": 19,
+    "veinte": 20,
+    "veintiuno": 21,
+    "veintiuna": 21,
+    "veintidos": 22,
+    "veintitres": 23,
+    "veinticuatro": 24,
+    "veinticinco": 25,
+    "veintiseis": 26,
+    "veintisiete": 27,
+    "veintiocho": 28,
+    "veintinueve": 29,
+}
+_WORD_TENS = {
+    "treinta": 30,
+    "cuarenta": 40,
+    "cincuenta": 50,
+    "sesenta": 60,
+    "setenta": 70,
+    "ochenta": 80,
+    "noventa": 90,
+}
+
+
+def _parse_spanish_integer_words(tokens: list[str]) -> int | None:
+    if len(tokens) == 1:
+        token = tokens[0]
+        if token in _WORD_0_TO_29:
+            return _WORD_0_TO_29[token]
+        if token in _WORD_TENS:
+            return _WORD_TENS[token]
+        if token == "cien":
+            return 100
+        return None
+
+    if len(tokens) == 3 and tokens[1] == "y":
+        tens = _WORD_TENS.get(tokens[0])
+        unit = _WORD_UNITS.get(tokens[2])
+        if tens is not None and unit is not None:
+            return tens + unit
+
+    return None
+
+
 def _to_turn_result(
     result: ExecutionResult,
     ctx: TurnContext,
@@ -82,6 +210,7 @@ def _to_turn_result(
     plan: TurnPlan | None = None,
     executor_ms: int | None = None,
     process_ms: int | None = None,
+    extra_metadata: dict[str, Any] | None = None,
 ) -> TurnResult:
     metadata = {
         "status": result.status,
@@ -95,6 +224,8 @@ def _to_turn_result(
         metadata["executor_ms"] = executor_ms
     if process_ms is not None:
         metadata["process_ms"] = process_ms
+    if extra_metadata:
+        metadata.update(extra_metadata)
 
     return _build_turn_result(
         reply=result.reply,

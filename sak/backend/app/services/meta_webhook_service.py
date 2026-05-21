@@ -86,24 +86,36 @@ class MetaWebhookService:
         Asegura que exista el CRMCelular.
         Busca por meta_celular_id primero, luego por numero_celular para evitar duplicados.
         """
+        t0 = time.perf_counter()
         celular = self.session.exec(
             select(CRMCelular).where(CRMCelular.meta_celular_id == meta_celular_id)
         ).first()
         if celular:
+            logger.info(
+                "Webhook timing ensure_celular meta_id=%s found_by_meta=%sms",
+                meta_celular_id,
+                round((time.perf_counter() - t0) * 1000),
+            )
             return celular
 
+        t_by_number = time.perf_counter()
         celular_existente = self.session.exec(
             select(CRMCelular).where(CRMCelular.numero_celular == numero_celular)
         ).first()
         if celular_existente:
             celular_existente.meta_celular_id = meta_celular_id
             self.session.add(celular_existente)
+            t_commit = time.perf_counter()
             self.session.commit()
             self.session.refresh(celular_existente)
             logger.info(
-                "CRMCelular actualizado: %s - nuevo meta_id: %s",
+                "CRMCelular actualizado: %s - nuevo meta_id: %s timing by_meta=%sms by_number=%sms commit_refresh=%sms total=%sms",
                 celular_existente.id,
                 meta_celular_id,
+                round((t_by_number - t0) * 1000),
+                round((t_commit - t_by_number) * 1000),
+                round((time.perf_counter() - t_commit) * 1000),
+                round((time.perf_counter() - t0) * 1000),
             )
             return celular_existente
 
@@ -114,9 +126,18 @@ class MetaWebhookService:
             activo=True,
         )
         self.session.add(celular)
+        t_commit = time.perf_counter()
         self.session.commit()
         self.session.refresh(celular)
-        logger.info("CRMCelular auto-creado: %s - %s", celular.id, numero_celular)
+        logger.info(
+            "CRMCelular auto-creado: %s - %s timing by_meta=%sms by_number=%sms commit_refresh=%sms total=%sms",
+            celular.id,
+            numero_celular,
+            round((t_by_number - t0) * 1000),
+            round((t_commit - t_by_number) * 1000),
+            round((time.perf_counter() - t_commit) * 1000),
+            round((time.perf_counter() - t0) * 1000),
+        )
         return celular
 
     def _find_or_create_contacto(
@@ -132,14 +153,23 @@ class MetaWebhookService:
         from sqlalchemy.dialects.postgresql import JSONB
         from app.models.user import User
 
+        t0 = time.perf_counter()
         stmt = select(CRMContacto).where(
             cast(CRMContacto.telefonos, JSONB).op("@>")(cast([numero_telefono], JSONB))
         )
         contacto = self.session.exec(stmt).first()
+        t_lookup = time.perf_counter()
         if contacto:
+            logger.info(
+                "Webhook timing contacto telefono=%s lookup=%sms found_id=%s",
+                numero_telefono,
+                round((t_lookup - t0) * 1000),
+                contacto.id,
+            )
             return contacto
 
         usuario_default = self.session.exec(select(User).limit(1)).first()
+        t_user = time.perf_counter()
         if not usuario_default:
             raise ValueError("No hay usuarios activos para asignar como responsable")
 
@@ -150,6 +180,7 @@ class MetaWebhookService:
         tipo_inmobiliaria = self.session.exec(
             sqlmodel_select(CRMTipoContacto).where(CRMTipoContacto.nombre == "Inmobiliaria")
         ).first()
+        t_tipo = time.perf_counter()
 
         contacto = crm_contacto_crud.create(
             self.session,
@@ -161,11 +192,16 @@ class MetaWebhookService:
             },
         )
         logger.info(
-            "Contacto auto-creado: %s - %s (%s), responsable: %s",
+            "Contacto auto-creado: %s - %s (%s), responsable: %s timing lookup=%sms user=%sms tipo=%sms create=%sms total=%sms",
             contacto.id,
             nombre_contacto,
             numero_telefono,
             usuario_default.id,
+            round((t_lookup - t0) * 1000),
+            round((t_user - t_lookup) * 1000),
+            round((t_tipo - t_user) * 1000),
+            round((time.perf_counter() - t_tipo) * 1000),
+            round((time.perf_counter() - t0) * 1000),
         )
         return contacto
 
@@ -200,23 +236,33 @@ class MetaWebhookService:
         return contenido, adjuntos
 
     def _resolve_or_create_oportunidad(self, contacto: CRMContacto) -> CRMOportunidad:
+        t0 = time.perf_counter()
         oportunidad = self.session.exec(
             select(CRMOportunidad).where(
                 CRMOportunidad.contacto_id == contacto.id,
                 CRMOportunidad.activo == True,  # noqa: E712
             )
         ).first()
+        t_lookup = time.perf_counter()
         if oportunidad:
+            logger.info(
+                "Webhook timing oportunidad contacto_id=%s lookup=%sms found_id=%s",
+                contacto.id,
+                round((t_lookup - t0) * 1000),
+                oportunidad.id,
+            )
             return oportunidad
 
         from app.models.enums import EstadoOportunidad
         from app.models.user import User
 
         usuario_default = self.session.exec(select(User).limit(1)).first()
+        t_user = time.perf_counter()
         if not usuario_default:
             raise ValueError("No hay usuarios activos para asignar como responsable")
 
         tipo_operacion_id = self._determinar_tipo_operacion_contacto(contacto.id)
+        t_tipo_operacion = time.perf_counter()
         oportunidad = CRMOportunidad(
             titulo="Nueva oportunidad desde WhatsApp",
             contacto_id=contacto.id,
@@ -228,11 +274,16 @@ class MetaWebhookService:
         self.session.add(oportunidad)
         self.session.flush()
         logger.info(
-            "Oportunidad auto-creada: %s para contacto %s en estado %s con tipo_operacion_id=%s",
+            "Oportunidad auto-creada: %s para contacto %s en estado %s con tipo_operacion_id=%s timing lookup=%sms user=%sms tipo_operacion=%sms flush=%sms total=%sms",
             oportunidad.id,
             contacto.id,
             oportunidad.estado,
             tipo_operacion_id,
+            round((t_lookup - t0) * 1000),
+            round((t_user - t_lookup) * 1000),
+            round((t_tipo_operacion - t_user) * 1000),
+            round((time.perf_counter() - t_tipo_operacion) * 1000),
+            round((time.perf_counter() - t0) * 1000),
         )
         return oportunidad
 
@@ -288,9 +339,23 @@ class MetaWebhookService:
                 exc_info=True,
             )
 
-    async def _handle_inbound_message(self, msg: Any, celular: CRMCelular) -> dict[str, Any]:
+    async def _handle_inbound_message(
+        self,
+        msg: Any,
+        celular: CRMCelular,
+        *,
+        schedule_typing: bool = True,
+    ) -> dict[str, Any]:
         t0 = time.perf_counter()
+        t_lookup_start = time.perf_counter()
         crm_mensaje = self._find_existing_inbound_message(msg.meta_message_id)
+        t_lookup_done = time.perf_counter()
+        t_contact_done = t_lookup_done
+        t_oportunidad_done = t_lookup_done
+        t_content_done = t_lookup_done
+        t_crud_create_done = t_lookup_done
+        t_extra_commit_done = t_lookup_done
+        t_refresh_done = t_lookup_done
         if crm_mensaje:
             logger.info(
                 "Mensaje entrante duplicado detectado para meta_message_id=%s",
@@ -298,9 +363,12 @@ class MetaWebhookService:
             )
         else:
             contacto = self._find_or_create_contacto(msg.from_phone, msg.from_name)
+            t_contact_done = time.perf_counter()
             oportunidad = self._resolve_or_create_oportunidad(contacto)
+            t_oportunidad_done = time.perf_counter()
             contenido, adjuntos = self._normalize_message_content(msg)
             fecha_mensaje_utc = self._normalize_timestamp_to_utc(msg.meta_timestamp)
+            t_content_done = time.perf_counter()
 
             crm_mensaje = crm_mensaje_crud.create(
                 self.session,
@@ -323,8 +391,11 @@ class MetaWebhookService:
                     },
                 },
             )
+            t_crud_create_done = time.perf_counter()
             self.session.commit()
+            t_extra_commit_done = time.perf_counter()
             self.session.refresh(crm_mensaje)
+            t_refresh_done = time.perf_counter()
             logger.info(
                 "Mensaje entrante creado: %s de contacto %s con oportunidad %s",
                 crm_mensaje.id,
@@ -332,15 +403,38 @@ class MetaWebhookService:
                 oportunidad.id,
             )
         t_message_ready = time.perf_counter()
+        pre_agent_timing = {
+            "find_existing_ms": round((t_lookup_done - t_lookup_start) * 1000),
+            "contacto_ms": round((t_contact_done - t_lookup_done) * 1000),
+            "oportunidad_ms": round((t_oportunidad_done - t_contact_done) * 1000),
+            "normalize_ms": round((t_content_done - t_oportunidad_done) * 1000),
+            "crm_create_crud_ms": round((t_crud_create_done - t_content_done) * 1000),
+            "extra_commit_ms": round((t_extra_commit_done - t_crud_create_done) * 1000),
+            "refresh_ms": round((t_refresh_done - t_extra_commit_done) * 1000),
+            "message_ready_ms": round((t_message_ready - t0) * 1000),
+        }
+        logger.info(
+            "Webhook inbound pre-agent timing meta_message_id=%s find_existing=%sms contacto=%sms oportunidad=%sms normalize=%sms crm_create_crud=%sms extra_commit=%sms refresh=%sms ready=%sms",
+            msg.meta_message_id,
+            pre_agent_timing["find_existing_ms"],
+            pre_agent_timing["contacto_ms"],
+            pre_agent_timing["oportunidad_ms"],
+            pre_agent_timing["normalize_ms"],
+            pre_agent_timing["crm_create_crud_ms"],
+            pre_agent_timing["extra_commit_ms"],
+            pre_agent_timing["refresh_ms"],
+            pre_agent_timing["message_ready_ms"],
+        )
 
         auto_process_result = await self.process_existing_inbound_message(
             crm_mensaje,
             trigger="webhook",
-            schedule_typing=True,
+            schedule_typing=schedule_typing,
             typing_source=msg,
             celular=celular,
             started_at=t0,
             message_ready_ms=round((t_message_ready - t0) * 1000),
+            pre_agent_timing=pre_agent_timing,
         )
 
         payload = {
@@ -366,6 +460,7 @@ class MetaWebhookService:
         celular: CRMCelular | None = None,
         started_at: float | None = None,
         message_ready_ms: int | None = None,
+        pre_agent_timing: dict[str, int] | None = None,
     ) -> dict[str, Any] | None:
         """
         Procesa con agente un mensaje entrante ya persistido.
@@ -412,6 +507,7 @@ class MetaWebhookService:
             "delivery": delivery.to_dict(),
             "_timing": {
                 "message_ready_ms": message_ready_ms if message_ready_ms is not None else 0,
+                "pre_agent": pre_agent_timing or {},
                 "agent_ms": round((t_agent_done - t_agent_start) * 1000),
                 "delivery_ms": round((t_delivery_done - t_agent_done) * 1000),
                 "total_before_metadata_ms": round((t_delivery_done - t0) * 1000),
@@ -457,8 +553,11 @@ class MetaWebhookService:
         Procesa el webhook de meta-w.
         Registra en WebhookLog y procesa el mensaje.
         """
+        t_parse_start = time.perf_counter()
         metaw_payload = MetaWWebhookPayload(**payload)
         msg = metaw_payload.mensaje
+        t0 = t_parse_start
+        t_parse_done = time.perf_counter()
 
         log_entry = WebhookLog(
             evento=metaw_payload.event_type,
@@ -467,8 +566,24 @@ class MetaWebhookService:
             fecha_recepcion=current_utc_time(),
         )
         self.session.add(log_entry)
+        t_log_added = time.perf_counter()
 
         try:
+            auto_process = msg.direccion == "in" and should_auto_process(session=self.session)
+            t_mode_done = time.perf_counter()
+            if auto_process:
+                task = asyncio.create_task(
+                    self._show_agent_typing_indicator(
+                        account_ref=str(msg.celular.id),
+                        external_message_id=msg.meta_message_id,
+                        contact_address=msg.from_phone,
+                        business_address=msg.to_phone or msg.celular.phone_number,
+                    )
+                )
+                _typing_indicator_tasks.add(task)
+                task.add_done_callback(_typing_indicator_tasks.discard)
+            t_typing_scheduled = time.perf_counter()
+
             event_direction = "inbound" if msg.direccion == "in" else "status"
             channel_gateway.record_event(
                 self.session,
@@ -486,22 +601,40 @@ class MetaWebhookService:
                     normalized_payload=msg.model_dump(mode="json"),
                 ),
             )
+            t_record_event_done = time.perf_counter()
 
             celular = self._ensure_crm_celular(
                 str(msg.celular.id),
                 msg.celular.phone_number,
             )
+            t_celular_done = time.perf_counter()
 
             if msg.direccion == "in":
-                result = await self._handle_inbound_message(msg, celular)
+                result = await self._handle_inbound_message(msg, celular, schedule_typing=not auto_process)
             else:
                 self._handle_outbound_status(msg)
                 result = {"status": "ok", "message": "Webhook procesado exitosamente"}
+            t_message_done = time.perf_counter()
 
             log_entry.procesado = True
             log_entry.response_status = 200
             self.session.add(log_entry)
             self.session.commit()
+            t_commit_done = time.perf_counter()
+            logger.info(
+                "Webhook process timing meta_message_id=%s direction=%s parse=%sms log_add=%sms mode=%sms typing_schedule=%sms record_event=%sms ensure_celular=%sms message_handler=%sms final_commit=%sms total=%sms",
+                msg.meta_message_id,
+                msg.direccion,
+                round((t_parse_done - t_parse_start) * 1000),
+                round((t_log_added - t_parse_done) * 1000),
+                round((t_mode_done - t_log_added) * 1000),
+                round((t_typing_scheduled - t_mode_done) * 1000),
+                round((t_record_event_done - t_typing_scheduled) * 1000),
+                round((t_celular_done - t_record_event_done) * 1000),
+                round((t_message_done - t_celular_done) * 1000),
+                round((t_commit_done - t_message_done) * 1000),
+                round((t_commit_done - t0) * 1000),
+            )
             return result
 
         except Exception as exc:

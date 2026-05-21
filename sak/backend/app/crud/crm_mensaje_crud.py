@@ -3,6 +3,8 @@ Extensión del CRUD de mensajes para mantener actualizados los campos
 ultimo_mensaje_id y ultimo_mensaje_at en la tabla crm_oportunidades.
 """
 
+import logging
+import time
 from typing import Dict, Any
 from sqlmodel import Session, select, text
 
@@ -11,6 +13,8 @@ from app.models.base import current_utc_time
 from app.models.crm.mensaje import CRMMensaje
 from app.models.crm.oportunidad import CRMOportunidad
 
+logger = logging.getLogger(__name__)
+
 
 class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
     """CRUD extendido para CRMMensaje con actualización automática de ultimo_mensaje."""
@@ -18,10 +22,20 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
     def create(self, session: Session, data: Dict[str, Any]) -> CRMMensaje:
         """Crear mensaje y actualizar ultimo_mensaje en oportunidad."""
         # Crear el mensaje usando el método padre
+        t0 = time.perf_counter()
         mensaje = super().create(session, data)
+        t_create = time.perf_counter()
         
         # Actualizar ultimo_mensaje en oportunidad si corresponde
         self._actualizar_ultimo_mensaje_oportunidad(session, mensaje)
+        logger.info(
+            "CRM mensaje create timing mensaje_id=%s oportunidad_id=%s generic_create_commit_refresh=%sms update_ultimo=%sms total=%sms",
+            mensaje.id,
+            mensaje.oportunidad_id,
+            round((t_create - t0) * 1000),
+            round((time.perf_counter() - t_create) * 1000),
+            round((time.perf_counter() - t0) * 1000),
+        )
         
         return mensaje
     
@@ -90,6 +104,7 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
             return
         
         # Usar SQL directo para mejor performance y evitar problemas de concurrencia
+        t0 = time.perf_counter()
         result = session.execute(
             text("""
                 UPDATE crm_oportunidades 
@@ -106,6 +121,7 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                 "updated_at": current_utc_time(),
             }
         )
+        t_execute = time.perf_counter()
         
         # Logging para debugging
         if result.rowcount > 0:
@@ -113,6 +129,14 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
                   f"mensaje_id={mensaje.id}, fecha={mensaje.fecha_mensaje}")
             # IMPORTANTE: Hacer commit para persistir la actualización
             session.commit()
+            logger.info(
+                "CRM mensaje update_ultimo timing oportunidad_id=%s mensaje_id=%s execute=%sms commit=%sms total=%sms",
+                mensaje.oportunidad_id,
+                mensaje.id,
+                round((t_execute - t0) * 1000),
+                round((time.perf_counter() - t_execute) * 1000),
+                round((time.perf_counter() - t0) * 1000),
+            )
         else:
             print(f"No se actualizo oportunidad {mensaje.oportunidad_id} "
                   f"(mensaje más antiguo o igual)")

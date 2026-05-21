@@ -307,6 +307,8 @@ def _clear_typing() -> None:
 def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
     deadline = time.time() + POLL_TIMEOUT_SECONDS
     inbound = None
+    latest_result = None
+    latest_outbound = None
     frame = 0
 
     while time.time() < deadline:
@@ -317,20 +319,26 @@ def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, d
         if inbound:
             outbound = _find_outbound_for_inbound(mensajes, inbound)
             if outbound:
-                _clear_typing()
-                return inbound, None, outbound
+                latest_outbound = outbound
 
             agent_meta = _metadata(inbound).get("agent_v2") or {}
             result = agent_meta.get("result")
             if isinstance(result, dict):
+                latest_result = result
                 outbound_id = agent_meta.get("outbound_message_id") or (agent_meta.get("delivery") or {}).get("outbound_message_id")
-                outbound = next((m for m in mensajes if m.get("id") == outbound_id), None)
+                if outbound_id is not None:
+                    latest_outbound = next((m for m in mensajes if m.get("id") == outbound_id), None) or latest_outbound
+                if not SHOW_TIMING or isinstance(result.get("_timing"), dict):
+                    _clear_typing()
+                    return inbound, result, latest_outbound
+
+            if latest_outbound is not None and not SHOW_TIMING:
                 _clear_typing()
-                return inbound, result, outbound
+                return inbound, latest_result, latest_outbound
         time.sleep(POLL_INTERVAL_SECONDS)
 
     _clear_typing()
-    return inbound, None, None
+    return inbound, latest_result, latest_outbound
 
 
 def _reply_text(result: dict | None, outbound: dict | None) -> str:
@@ -447,6 +455,19 @@ def main() -> None:
             print(f"[Timing] post={t_post:.1f}s total={t_total:.1f}s")
             if isinstance(timing, dict):
                 print(f"[Timing] webhook-agent={timing.get('agent_ms')}ms delivery={timing.get('delivery_ms')}ms")
+                pre_agent = timing.get("pre_agent")
+                if isinstance(pre_agent, dict) and pre_agent:
+                    print(
+                        "[Timing pre-agent] "
+                        f"find={pre_agent.get('find_existing_ms')}ms "
+                        f"contacto={pre_agent.get('contacto_ms')}ms "
+                        f"oportunidad={pre_agent.get('oportunidad_ms')}ms "
+                        f"normalize={pre_agent.get('normalize_ms')}ms "
+                        f"crm_create={pre_agent.get('crm_create_crud_ms')}ms "
+                        f"commit={pre_agent.get('extra_commit_ms')}ms "
+                        f"refresh={pre_agent.get('refresh_ms')}ms "
+                        f"ready={pre_agent.get('message_ready_ms')}ms"
+                    )
             if isinstance(pedido_timing, dict):
                 print(f"[Timing] llm={pedido_timing.get('llm_ms')}ms executor={pedido_timing.get('executor_ms')}ms process={pedido_timing.get('process_ms')}ms")
             if isinstance(webhook_timing, dict):

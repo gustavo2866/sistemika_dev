@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
@@ -36,10 +37,26 @@ async def verify_meta_webhook(
 
 
 async def process_raw_meta_webhook_payload(session: Session, payload: dict[str, Any]) -> None:
+    t0 = time.perf_counter()
     normalized_payloads = raw_meta_to_metaw_payloads(session, payload)
+    t_normalized = time.perf_counter()
     service = MetaWebhookService(session)
+    t_service = time.perf_counter()
     for normalized_payload in normalized_payloads:
+        t_item = time.perf_counter()
         await service.process_webhook(normalized_payload)
+        logger.info(
+            "Channel webhook item timing event_type=%s process_webhook=%sms",
+            normalized_payload.get("event_type"),
+            round((time.perf_counter() - t_item) * 1000),
+        )
+    logger.info(
+        "Channel webhook raw timing normalized_count=%s normalize=%sms service_init=%sms total=%sms",
+        len(normalized_payloads),
+        round((t_normalized - t0) * 1000),
+        round((t_service - t_normalized) * 1000),
+        round((time.perf_counter() - t0) * 1000),
+    )
 
 
 async def _process_raw_meta_background(payload: dict[str, Any]) -> None:
