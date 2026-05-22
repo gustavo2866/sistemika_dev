@@ -107,13 +107,13 @@ async def test_channel_meta_webhook_raw_message_creates_crm_message(db_session: 
     db_session.add(oportunidad)
     db_session.add(
         Setting(
-            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            clave="channels.meta.phone_number_id",
             valor="1046006975257973",
         )
     )
     db_session.add(
         CRMCelular(
-            meta_celular_id="56953906-7099-4d1a-8379-3174d732d21e",
+            meta_celular_id="d5b32193-e39d-5d27-9180-01f69e4a3911",
             numero_celular="5493816259343",
             alias="Canal test",
             activo=True,
@@ -199,13 +199,13 @@ async def test_channel_meta_webhook_audio_message_is_transcribed(db_session: Ses
     db_session.add(Setting(clave="channels.meta.access_token", valor="test-token"))
     db_session.add(
         Setting(
-            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            clave="channels.meta.phone_number_id",
             valor="1046006975257973",
         )
     )
     db_session.add(
         CRMCelular(
-            meta_celular_id="56953906-7099-4d1a-8379-3174d732d21e",
+            meta_celular_id="d5b32193-e39d-5d27-9180-01f69e4a3911",
             numero_celular="5493816259343",
             alias="Canal test audio",
             activo=True,

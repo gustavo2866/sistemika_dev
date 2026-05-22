@@ -25,7 +25,7 @@ from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, WebhookLog
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
-from app.schemas.metaw_webhook import MetaWWebhookPayload
+from app.schemas.channel_webhook import ChannelWebhookPayload
 from app.services.audio_transcription_service import audio_transcription_service
 
 logger = logging.getLogger(__name__)
@@ -469,7 +469,7 @@ class MetaWebhookService:
                     "oportunidad_id": oportunidad.id,
                     "metadata_json": {
                         "from_name": msg.from_name,
-                        "metaw_id": str(msg.id),
+                        "channel_message_id": str(msg.id),
                     },
                 },
             )
@@ -635,17 +635,17 @@ class MetaWebhookService:
 
     async def process_webhook(self, payload: dict[str, Any]) -> dict[str, Any]:
         """
-        Procesa el webhook de meta-w.
+        Procesa un payload normalizado del modulo channel.
         Registra en WebhookLog y procesa el mensaje.
         """
         t_parse_start = time.perf_counter()
-        metaw_payload = MetaWWebhookPayload(**payload)
-        msg = metaw_payload.mensaje
+        channel_payload = ChannelWebhookPayload(**payload)
+        msg = channel_payload.mensaje
         t0 = t_parse_start
         t_parse_done = time.perf_counter()
 
         log_entry = WebhookLog(
-            evento=metaw_payload.event_type,
+            evento=channel_payload.event_type,
             payload=payload,
             procesado=False,
             fecha_recepcion=current_utc_time(),

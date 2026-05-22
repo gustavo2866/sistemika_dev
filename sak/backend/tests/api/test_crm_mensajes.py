@@ -80,7 +80,7 @@ def test_responder_mensaje_guarda_source_message_id_y_fecha_causal(client, db_se
         return {"status": "sent", "meta_message_id": "meta-123"}
 
     monkeypatch.setattr(
-        "app.routers.crm_mensaje_router.metaw_client.enviar_mensaje",
+        "app.routers.crm_mensaje_router.channel_gateway.enviar_mensaje",
         _fake_enviar_mensaje,
     )
     monkeypatch.setattr(

@@ -8,8 +8,8 @@ import json
 import httpx
 from sqlmodel import Session, select
 
+from app.modules.channels.gateway import channel_gateway
 from app.services.pdf_extraction_service import OPENAI_AVAILABLE
-from app.services.metaw_client import metaw_client
 from app.crud.crm_contacto_crud import crm_contacto_crud
 from app.crud.crm_evento_crud import crm_evento_crud
 from app.crud.crm_oportunidad_crud import crm_oportunidad_crud
@@ -634,7 +634,7 @@ class CRMMensajeService:
             telefono_limpio = str(contacto_referencia).replace("+", "")
             nombre_contacto = contacto.nombre_completo if contacto else None
 
-            resultado_metaw = await metaw_client.enviar_mensaje(
+            resultado_channel = await channel_gateway.enviar_mensaje(
                 empresa_id=EMPRESA_ID,
                 celular_id=celular.meta_celular_id,
                 telefono_destino=telefono_limpio,
@@ -644,8 +644,8 @@ class CRMMensajeService:
                 template_fallback_language=payload.get("template_fallback_language", "en"),
             )
 
-            mensaje.estado_meta = resultado_metaw.get("status", "sent")
-            mensaje.origen_externo_id = resultado_metaw.get("meta_message_id")
+            mensaje.estado_meta = resultado_channel.get("status", "sent")
+            mensaje.origen_externo_id = resultado_channel.get("meta_message_id")
             mensaje.estado = EstadoMensaje.ENVIADO.value
             session.commit()
             session.refresh(mensaje)

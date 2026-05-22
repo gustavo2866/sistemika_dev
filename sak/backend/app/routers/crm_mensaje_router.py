@@ -20,8 +20,8 @@ from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
 from app.models import CRMMensaje, CRMCelular, CRMContacto, CRMOportunidad, CRMTipoOperacion, Proyecto
 from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
+from app.modules.channels.gateway import channel_gateway
 from app.services.crm_mensaje_service import crm_mensaje_service
-from app.services.metaw_client import metaw_client
 from app.schemas.crm_mensaje_responder import ResponderMensajeRequest, ResponderMensajeResponse
 
 
@@ -660,7 +660,7 @@ async def responder_mensaje_whatsapp(
         if mensaje_original.contacto:
             nombre_contacto = mensaje_original.contacto.nombre_completo
         
-        resultado_metaw = await metaw_client.enviar_mensaje(
+        resultado_channel = await channel_gateway.enviar_mensaje(
             empresa_id=EMPRESA_ID,
             celular_id=celular.meta_celular_id,
             telefono_destino=telefono_limpio,
@@ -671,8 +671,8 @@ async def responder_mensaje_whatsapp(
         )
         
         # 8. Actualizar mensaje con respuesta del provider
-        mensaje_salida.estado_meta = resultado_metaw.get("status", "sent")
-        mensaje_salida.origen_externo_id = resultado_metaw.get("meta_message_id")
+        mensaje_salida.estado_meta = resultado_channel.get("status", "sent")
+        mensaje_salida.origen_externo_id = resultado_channel.get("meta_message_id")
         mensaje_salida.estado = EstadoMensaje.ENVIADO.value
         session.commit()
         session.refresh(mensaje_salida)

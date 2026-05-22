@@ -1,11 +1,11 @@
 from app.models import Setting
-from app.modules.channels.providers.meta.webhook import raw_meta_to_metaw_payloads
+from app.modules.channels.providers.meta.webhook import raw_meta_to_channel_payloads
 
 
 def test_raw_meta_message_payload_is_normalized(db_session):
     db_session.add(
         Setting(
-            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            clave="channels.meta.phone_number_id",
             valor="1046006975257973",
         )
     )
@@ -46,7 +46,7 @@ def test_raw_meta_message_payload_is_normalized(db_session):
         ],
     }
 
-    result = raw_meta_to_metaw_payloads(db_session, payload)
+    result = raw_meta_to_channel_payloads(db_session, payload)
 
     assert len(result) == 1
     normalized = result[0]
@@ -55,19 +55,19 @@ def test_raw_meta_message_payload_is_normalized(db_session):
     assert normalized["mensaje"]["from_phone"] == "5491156384310"
     assert normalized["mensaje"]["from_name"] == "Cliente Test"
     assert normalized["mensaje"]["texto"] == "Hola"
-    assert normalized["mensaje"]["celular"]["id"] == "56953906-7099-4d1a-8379-3174d732d21e"
+    assert normalized["mensaje"]["celular"]["id"] == "d5b32193-e39d-5d27-9180-01f69e4a3911"
 
 
 def test_raw_meta_audio_payload_is_normalized(db_session):
     db_session.add(
         Setting(
-            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            clave="channels.meta.phone_number_id",
             valor="1046006975257973",
         )
     )
     db_session.commit()
 
-    result = raw_meta_to_metaw_payloads(
+    result = raw_meta_to_channel_payloads(
         db_session,
         {
             "entry": [
@@ -110,7 +110,7 @@ def test_raw_meta_audio_payload_is_normalized(db_session):
 def test_raw_meta_status_payload_is_normalized(db_session):
     db_session.add(
         Setting(
-            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            clave="channels.meta.phone_number_id",
             valor="1046006975257973",
         )
     )
@@ -141,7 +141,7 @@ def test_raw_meta_status_payload_is_normalized(db_session):
         ]
     }
 
-    result = raw_meta_to_metaw_payloads(db_session, payload)
+    result = raw_meta_to_channel_payloads(db_session, payload)
 
     assert len(result) == 1
     normalized = result[0]

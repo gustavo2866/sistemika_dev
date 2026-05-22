@@ -11,14 +11,12 @@ Uso:
 
 Variables opcionales (sobreescritas por args de linea de comandos):
   CHAT_TEST_BASE_URL=http://localhost:8000
-  CHAT_TEST_WEBHOOK_MODE=channel   # channel | legacy
   CHAT_TEST_READ_MODE=auto         # auto | db | api
   CHAT_TEST_TYPING_INDICATOR=1
   CHAT_TEST_FROM_PHONE=5491156384310
   CHAT_TEST_FROM_NAME=Encargado Test
   CHAT_TEST_TO_PHONE=5493816259343
   CHAT_TEST_META_PHONE_NUMBER_ID=1046006975257973
-  CHAT_TEST_CELULAR_ID=56953906-7099-4d1a-8379-3174d732d21e
 
 Importante:
   El telefono de prueba debe tener una oportunidad activa de proyecto/obra.
@@ -35,7 +33,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -62,13 +60,6 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Modo de lectura de mensajes (default: auto)",
     )
-    parser.add_argument(
-        "--webhook-mode",
-        dest="webhook_mode",
-        choices=["channel", "legacy"],
-        default=None,
-        help="Endpoint de webhook a usar (default: channel)",
-    )
     return parser.parse_args()
 
 
@@ -84,8 +75,6 @@ elif _args.gcp:
 else:
     BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://localhost:8000").rstrip("/")
 
-WEBHOOK_MODE = (_args.webhook_mode or os.environ.get("CHAT_TEST_WEBHOOK_MODE", "channel")).strip().lower()
-
 _read_mode_default = "api" if (BASE_URL != "http://localhost:8000" and not BASE_URL.startswith("http://127.")) else "auto"
 READ_MODE = (_args.read_mode or os.environ.get("CHAT_TEST_READ_MODE", _read_mode_default)).strip().lower()
 
@@ -94,8 +83,6 @@ FROM_NAME = os.environ.get("CHAT_TEST_FROM_NAME", "Encargado Test")
 TO_PHONE = os.environ.get("CHAT_TEST_TO_PHONE", "5493816259343")
 META_PHONE_NUMBER_ID = os.environ.get("CHAT_TEST_META_PHONE_NUMBER_ID", "1046006975257973")
 META_WABA_ID = os.environ.get("CHAT_TEST_META_WABA_ID", "1516474752918083")
-CELULAR_ID = os.environ.get("CHAT_TEST_CELULAR_ID", "56953906-7099-4d1a-8379-3174d732d21e")
-CELULAR_ALIAS = os.environ.get("CHAT_TEST_CELULAR_ALIAS", "Canal test obra")
 POLL_TIMEOUT_SECONDS = float(os.environ.get("CHAT_TEST_TIMEOUT", "30"))
 POLL_INTERVAL_SECONDS = float(os.environ.get("CHAT_TEST_POLL_INTERVAL", "0.2"))
 SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip().lower() not in {
@@ -141,11 +128,7 @@ def _request_json(method: str, path: str, payload: dict | None = None, params: d
 
 
 def _webhook_path() -> str:
-    if WEBHOOK_MODE == "channel":
-        return "/api/channel-webhooks/meta/"
-    if WEBHOOK_MODE == "legacy":
-        return "/api/webhooks/meta-whatsapp/"
-    raise ValueError("CHAT_TEST_WEBHOOK_MODE debe ser 'channel' o 'legacy'")
+    return "/api/channel-webhooks/meta/"
 
 
 def _build_raw_meta_payload(texto: str, meta_message_id: str) -> dict:
@@ -185,45 +168,9 @@ def _build_raw_meta_payload(texto: str, meta_message_id: str) -> dict:
     }
 
 
-def _build_legacy_webhook_payload(texto: str, meta_message_id: str) -> dict:
-    now = datetime.now(UTC).isoformat()
-    return {
-        "event_type": "message.received",
-        "timestamp": now,
-        "mensaje": {
-            "id": str(uuid4()),
-            "meta_message_id": meta_message_id,
-            "from_phone": FROM_PHONE,
-            "from_name": FROM_NAME,
-            "to_phone": TO_PHONE,
-            "direccion": "in",
-            "tipo": "text",
-            "texto": texto,
-            "media_id": None,
-            "caption": None,
-            "filename": None,
-            "mime_type": None,
-            "status": "received",
-            "meta_timestamp": now,
-            "created_at": now,
-            "celular": {
-                "id": CELULAR_ID,
-                "alias": CELULAR_ALIAS,
-                "phone_number": TO_PHONE,
-            },
-        },
-    }
-
-
-def _build_webhook_payload(texto: str, meta_message_id: str) -> dict:
-    if WEBHOOK_MODE == "channel":
-        return _build_raw_meta_payload(texto, meta_message_id)
-    return _build_legacy_webhook_payload(texto, meta_message_id)
-
-
 def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     meta_message_id = f"wamid.chat-test.{uuid4().hex}"
-    payload = _build_webhook_payload(texto, meta_message_id)
+    payload = _build_raw_meta_payload(texto, meta_message_id)
     started = time.time()
     response = _request_json("POST", _webhook_path(), payload)
     return meta_message_id, response, time.time() - started
@@ -443,11 +390,10 @@ def _format_quantity(value: Any) -> str:
 
 def main() -> None:
     print("=== Chat webhook pedido_obra ===")
-    print(f"Webhook: {BASE_URL}{_webhook_path()} [{WEBHOOK_MODE}]")
+    print(f"Webhook: {BASE_URL}{_webhook_path()}")
     print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
-    if WEBHOOK_MODE == "channel":
-        print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
+    print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
     print("Nota: ese contacto debe tener una oportunidad activa de proyecto/obra.")
     print("Comandos: 'limpiar' envia cancelar, 'items' envia mostrar, 'salir' termina.\n")
 

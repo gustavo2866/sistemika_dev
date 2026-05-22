@@ -53,7 +53,7 @@ def _extract_message_content(msg_data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def raw_meta_to_metaw_payloads(session: Session, payload: dict[str, Any]) -> list[dict[str, Any]]:
+def raw_meta_to_channel_payloads(session: Session, payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert raw Meta Cloud API webhook payloads to SAK's normalized payload."""
     normalized: list[dict[str, Any]] = []
 

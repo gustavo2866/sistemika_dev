@@ -11,7 +11,7 @@ from app.modules.channels.types import ChannelEventData, MarkReadCommand, SendMe
 @pytest.fixture()
 def meta_settings(db_session):
     db_session.add(Setting(clave="channels.meta.access_token", valor="test-token"))
-    db_session.add(Setting(clave="channels.meta.default_phone_number_id", valor="123456"))
+    db_session.add(Setting(clave="channels.meta.phone_number_id", valor="123456"))
     db_session.commit()
 
 

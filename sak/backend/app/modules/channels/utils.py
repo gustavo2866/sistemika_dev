@@ -19,7 +19,7 @@ def normalize_provider_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        # meta_w stored Meta timestamps as Argentina local naive datetimes.
+        # Los payloads normalizados historicos guardaban timestamps naive en hora Argentina.
         value = value.replace(tzinfo=ZoneInfo("America/Argentina/Buenos_Aires"))
     return value.astimezone(UTC)
 

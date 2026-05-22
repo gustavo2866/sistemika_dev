@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from typing import Any
 
@@ -13,8 +12,8 @@ from sqlmodel import Session
 
 from app.db import engine, get_session
 from app.modules.channels.config import meta_account_resolver
-from app.modules.channels.providers.meta.webhook import raw_meta_to_metaw_payloads
-from app.schemas.meta_webhook import WebhookResponse
+from app.modules.channels.providers.meta.webhook import raw_meta_to_channel_payloads
+from app.schemas.channel_webhook import ChannelWebhookResponse
 from app.services.agent_pending_processor import process_pending_agent_messages
 from app.services.meta_webhook_service import MetaWebhookService
 
@@ -38,7 +37,7 @@ async def verify_meta_webhook(
 
 async def process_raw_meta_webhook_payload(session: Session, payload: dict[str, Any]) -> None:
     t0 = time.perf_counter()
-    normalized_payloads = raw_meta_to_metaw_payloads(session, payload)
+    normalized_payloads = raw_meta_to_channel_payloads(session, payload)
     t_normalized = time.perf_counter()
     service = MetaWebhookService(session)
     t_service = time.perf_counter()
@@ -91,7 +90,7 @@ def _has_inbound_messages(payload: dict[str, Any]) -> bool:
     return False
 
 
-@router.post("/", response_model=WebhookResponse)
+@router.post("/", response_model=ChannelWebhookResponse)
 async def receive_meta_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -104,18 +103,16 @@ async def receive_meta_webhook(
         except Exception:
             session.rollback()
             logger.exception("Error procesando webhook directo de Meta")
-            return WebhookResponse(status="ok", message="Recibido con error")
+            return ChannelWebhookResponse(status="ok", message="Recibido con error")
         background_tasks.add_task(_process_pending_meta_background)
-        return WebhookResponse(status="ok", message="Procesado")
+        return ChannelWebhookResponse(status="ok", message="Procesado")
 
     background_tasks.add_task(_process_raw_meta_background, payload)
-    return WebhookResponse(status="ok", message="Recibido")
+    return ChannelWebhookResponse(status="ok", message="Recibido")
 
 
 def _require_internal_token(session: Session, token: str | None) -> None:
-    expected_token = os.getenv("CHANNELS_INTERNAL_TOKEN")
-    if not expected_token:
-        expected_token = meta_account_resolver.resolve_webhook_verify_token(session)
+    expected_token = meta_account_resolver.resolve_internal_token(session)
     if not expected_token or token != expected_token:
         raise HTTPException(status_code=403, detail="Token interno invalido")
 

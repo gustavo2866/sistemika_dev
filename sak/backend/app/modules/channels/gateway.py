@@ -32,7 +32,7 @@ class ChannelGateway:
             show_typing=False,
         )
         result = await meta_provider.mark_message_read(session, command)
-        return result.to_metaw_compatible_dict()
+        return result.to_provider_response_dict()
 
     async def show_typing(
         self,
@@ -55,7 +55,7 @@ class ChannelGateway:
             show_typing=True,
         )
         result = await meta_provider.mark_message_read(session, command)
-        return result.to_metaw_compatible_dict()
+        return result.to_provider_response_dict()
 
     async def enviar_mensaje(
         self,
@@ -82,7 +82,7 @@ class ChannelGateway:
         )
         with Session(engine) as session:
             result = await meta_provider.send_message(session, command)
-            return result.to_metaw_compatible_dict()
+            return result.to_provider_response_dict()
 
     def record_event(self, session: Session, event: ChannelEventData) -> None:
         channel_event_store.record(session, event)

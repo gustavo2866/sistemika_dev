@@ -41,7 +41,7 @@ class DeliveryResult:
     provider_message_type: str | None = None
     raw_response: dict[str, Any] = field(default_factory=dict)
 
-    def to_metaw_compatible_dict(self) -> dict[str, Any]:
+    def to_provider_response_dict(self) -> dict[str, Any]:
         return {
             "status": self.status,
             "meta_message_id": self.external_message_id,
