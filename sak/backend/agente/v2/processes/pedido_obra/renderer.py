@@ -65,14 +65,14 @@ def pedido_cancelado() -> str:
 
 
 def offtopic(reply: str | None, state: PedidoState) -> str:
-    base = reply or "Decime que materiales necesitas o escribi LISTO para cerrar el pedido."
     if state.items:
+        base = reply or "Decime que materiales necesitas o escribi LISTO para cerrar el pedido."
         return (
             f"{base}\n\n"
             f"Pedido abierto:\n{state.resumen_items()}\n\n"
             "Podes agregar materiales, cambiar algo, limpiar el pedido o escribir LISTO para cerrarlo."
         )
-    return base
+    return reply or "Decime que materiales necesitas."
 
 
 def aclaracion(reply: str | None, state: PedidoState) -> str:

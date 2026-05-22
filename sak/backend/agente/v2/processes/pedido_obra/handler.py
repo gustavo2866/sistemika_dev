@@ -49,6 +49,12 @@ class PedidoObraProcess:
             state.touch()
 
         fast_plan = _missing_quantity_fast_plan(ctx.message.contenido, state)
+        fast_path = "missing_quantity_number" if fast_plan is not None else None
+        if fast_plan is None:
+            command_fast_plan = _command_fast_plan(ctx.message.contenido, state)
+            if command_fast_plan is not None:
+                fast_plan, fast_path = command_fast_plan
+
         if fast_plan is not None:
             executor_started = time.perf_counter()
             result = execute_plan(state, fast_plan)
@@ -60,7 +66,7 @@ class PedidoObraProcess:
                 plan=fast_plan,
                 executor_ms=executor_ms,
                 process_ms=total_ms,
-                extra_metadata={"fast_path": "missing_quantity_number"},
+                extra_metadata={"fast_path": fast_path},
             )
 
         try:
@@ -105,6 +111,65 @@ def _missing_quantity_fast_plan(text: str | None, state: PedidoState) -> TurnPla
         raw_response={"fast_path": "missing_quantity_number", "cantidad": quantity},
         llm_ms=0,
     )
+
+
+_FINISH_COMMANDS = {
+    "listo",
+    "cerrar",
+    "terminamos",
+    "terminar",
+    "finalizar",
+    "finalizo",
+    "termine",
+    "ya esta",
+    "nada mas",
+    "eso es todo",
+    "listo gracias",
+}
+_CONFIRM_COMMANDS = {"confirmar", "confirmo", "si", "ok", "dale"}
+_PRE_CONFIRMATION_COMMANDS = {"confirmar", "confirmo"}
+
+
+def _command_fast_plan(text: str | None, state: PedidoState) -> tuple[TurnPlan, str] | None:
+    if state.etapa == "finalizado" or state.esperando in {"cantidad_faltante", "decision_pedido_previo"}:
+        return None
+
+    command = _normalize_command_text(text)
+    if not command:
+        return None
+
+    if state.esperando == "confirmacion_cierre" and command in _CONFIRM_COMMANDS:
+        fast_path = "command_confirm_order"
+        return (
+            TurnPlan(
+                operations=[PedidoOperation(type="confirm_order")],
+                raw_response={"fast_path": fast_path, "command": command},
+                llm_ms=0,
+            ),
+            fast_path,
+        )
+
+    if command in _FINISH_COMMANDS or command in _PRE_CONFIRMATION_COMMANDS:
+        fast_path = "command_finish_order"
+        return (
+            TurnPlan(
+                operations=[PedidoOperation(type="finish_order")],
+                raw_response={"fast_path": fast_path, "command": command},
+                llm_ms=0,
+            ),
+            fast_path,
+        )
+
+    return None
+
+
+def _normalize_command_text(text: str | None) -> str:
+    if not text:
+        return ""
+    value = unicodedata.normalize("NFKD", text.strip().lower())
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^a-z0-9\s]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def _parse_single_quantity_response(text: str | None) -> float | None:

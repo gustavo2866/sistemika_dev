@@ -153,7 +153,7 @@ class TestTurnDeliveryService:
 
         text = TurnDeliveryService.with_version_banner("Hola")
 
-        assert text.startswith("[sak-agent 2026-05-21.1]\n")
+        assert text.startswith("[sak-agent 2026-05-22.1]\n")
         assert text.endswith("Hola")
 
     def test_with_version_banner_can_be_disabled(self, monkeypatch):

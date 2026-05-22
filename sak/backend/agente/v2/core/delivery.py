@@ -13,7 +13,7 @@ from app.models import CRMMensaje
 from app.models.enums import TipoMensaje
 
 
-DEFAULT_AGENT_REPLY_VERSION_BANNER = "sak-agent 2026-05-21.1"
+DEFAULT_AGENT_REPLY_VERSION_BANNER = "sak-agent 2026-05-22.1"
 
 
 # ---------------------------------------------------------------------------

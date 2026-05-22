@@ -9,7 +9,7 @@ import pytest
 
 from agente.v2.processes.pedido_obra.executor import execute_plan
 from agente.v2.processes.pedido_obra.handler import PedidoObraProcess, _build_turn_result
-from agente.v2.processes.pedido_obra.llm_client import PedidoObraLLMClient
+from agente.v2.processes.pedido_obra.llm_client import PROMPTS_DIR, PedidoObraLLMClient
 from agente.v2.processes.pedido_obra.models import (
     OperationItem,
     PedidoItem,
@@ -126,6 +126,14 @@ class TestLLMParsing:
         assert plan.operations == []
         assert plan.reply == "ok"
 
+    def test_prompt_maps_natural_closing_phrases_to_finish_order(self):
+        prompt = (PROMPTS_DIR / "interpretar_turno.txt").read_text(encoding="utf-8")
+
+        assert "no quiero mas nada" in prompt
+        assert "terminar pedido" in prompt
+        assert "finish_order" in prompt
+        assert "No lo clasifiques como saludo, agradecimiento u offtopic." in prompt
+
 
 class TestExecutor:
     def test_adds_multiple_items_from_llm_plan(self):
@@ -149,6 +157,8 @@ class TestExecutor:
         assert [item.descripcion for item in result.next_state.items] == ["puertas", "ventanas", "palas"]
         assert result.next_state.etapa == "carga"
         assert "actualizado" in result.reply.lower()
+        assert "escribi LISTO" in result.reply
+        assert "escribi listo" not in result.reply
 
     def test_add_items_sums_existing_material_with_same_unit(self):
         state = PedidoState(
@@ -356,6 +366,18 @@ class TestExecutor:
         assert "Pedido abierto:" in result.reply
         assert "20 bolsas cemento" in result.reply
 
+    def test_offtopic_without_items_default_asks_for_materials(self):
+        state = PedidoState(oportunidad_id=1, etapa="inicial")
+
+        result = execute_plan(
+            state,
+            TurnPlan(operations=[PedidoOperation(type="offtopic")]),
+        )
+
+        assert result.status == "offtopic"
+        assert result.reply == "Decime que materiales necesitas."
+        assert "LISTO" not in result.reply
+
 
 class TestHandler:
     def test_priority_accepts_all_project_turns(self):
@@ -424,6 +446,64 @@ class TestHandler:
         llm.interpret_turn.assert_not_awaited()
         assert result.payload["items"][0]["cantidad"] == 35
         assert result.payload["pedido_obra"]["fast_path"] == "missing_quantity_number"
+
+    @pytest.mark.asyncio
+    async def test_handle_listo_finishes_order_without_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="cemento", cantidad=10, unidad="bolsas")],
+        )
+        llm = SimpleNamespace(interpret_turn=AsyncMock())
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="Listo", state=state.to_dict()))
+
+        llm.interpret_turn.assert_not_awaited()
+        assert result.keep_active
+        assert result.payload["esperando"] == "confirmacion_cierre"
+        assert result.payload["pedido_obra"]["operations"] == ["finish_order"]
+        assert result.payload["pedido_obra"]["llm_operations"] == ["finish_order"]
+        assert result.payload["pedido_obra"]["fast_path"] == "command_finish_order"
+        assert result.payload["reply_to_user"].endswith("Para enviarlo, responde CONFIRMAR.")
+
+    @pytest.mark.asyncio
+    async def test_handle_confirmar_before_confirmation_finishes_order_without_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="cemento", cantidad=10, unidad="bolsas")],
+        )
+        llm = SimpleNamespace(interpret_turn=AsyncMock())
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="Confirmar", state=state.to_dict()))
+
+        llm.interpret_turn.assert_not_awaited()
+        assert result.keep_active
+        assert result.payload["esperando"] == "confirmacion_cierre"
+        assert result.payload["pedido_obra"]["operations"] == ["finish_order"]
+        assert result.payload["pedido_obra"]["fast_path"] == "command_finish_order"
+
+    @pytest.mark.asyncio
+    async def test_handle_confirmar_in_confirmation_confirms_order_without_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="confirmacion",
+            esperando="confirmacion_cierre",
+            items=[PedidoItem(descripcion="cemento", cantidad=10, unidad="bolsas")],
+        )
+        llm = SimpleNamespace(interpret_turn=AsyncMock())
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="Confirmar", state=state.to_dict()))
+
+        llm.interpret_turn.assert_not_awaited()
+        assert not result.keep_active
+        assert result.payload["pedido_listo"]
+        assert result.payload["etapa"] == "finalizado"
+        assert result.payload["pedido_obra"]["operations"] == ["confirm_order"]
+        assert result.payload["pedido_obra"]["fast_path"] == "command_confirm_order"
 
     @pytest.mark.asyncio
     async def test_handle_missing_quantity_with_unit_still_uses_llm(self):
