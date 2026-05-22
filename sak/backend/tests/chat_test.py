@@ -2,9 +2,14 @@
 Chat de prueba para el agente pedido_obra simulando el webhook de Meta.
 
 Uso:
-  python backend/tests/chat_test.py
+  python backend/tests/chat_test.py              # backend local
+  python backend/tests/chat_test.py --gcp        # GCP test
+  python backend/tests/chat_test.py --prod       # GCP prod (mismo backend que usa WhatsApp real)
+  python backend/tests/chat_test.py --url https://mi-backend.run.app
+  python backend/tests/chat_test.py --timing     # mostrar timings
+  python backend/tests/chat_test.py --read-mode api
 
-Variables opcionales:
+Variables opcionales (sobreescritas por args de linea de comandos):
   CHAT_TEST_BASE_URL=http://localhost:8000
   CHAT_TEST_WEBHOOK_MODE=channel   # channel | legacy
   CHAT_TEST_READ_MODE=auto         # auto | db | api
@@ -22,6 +27,7 @@ Importante:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -38,9 +44,51 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://localhost:8000").rstrip("/")
-WEBHOOK_MODE = os.environ.get("CHAT_TEST_WEBHOOK_MODE", "channel").strip().lower()
-READ_MODE = os.environ.get("CHAT_TEST_READ_MODE", "auto").strip().lower()
+_GCP_TEST_URL = "https://sak-backend-test-94464199991.southamerica-east1.run.app"
+_GCP_PROD_URL = "https://sak-backend-3urfgqrzea-uc.a.run.app"
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Chat de prueba para el agente pedido_obra")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--gcp", action="store_true", help="Usar backend GCP test")
+    group.add_argument("--prod", action="store_true", help="Usar backend GCP prod")
+    group.add_argument("--url", default=None, help="URL base del backend custom")
+    parser.add_argument("--timing", action="store_true", help="Mostrar timings detallados")
+    parser.add_argument(
+        "--read-mode",
+        dest="read_mode",
+        choices=["auto", "db", "api"],
+        default=None,
+        help="Modo de lectura de mensajes (default: auto)",
+    )
+    parser.add_argument(
+        "--webhook-mode",
+        dest="webhook_mode",
+        choices=["channel", "legacy"],
+        default=None,
+        help="Endpoint de webhook a usar (default: channel)",
+    )
+    return parser.parse_args()
+
+
+_args = _parse_args()
+
+# CLI args always take precedence over env vars
+if _args.url:
+    BASE_URL = _args.url.rstrip("/")
+elif _args.prod:
+    BASE_URL = _GCP_PROD_URL
+elif _args.gcp:
+    BASE_URL = _GCP_TEST_URL
+else:
+    BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://localhost:8000").rstrip("/")
+
+WEBHOOK_MODE = (_args.webhook_mode or os.environ.get("CHAT_TEST_WEBHOOK_MODE", "channel")).strip().lower()
+
+_read_mode_default = "api" if (BASE_URL != "http://localhost:8000" and not BASE_URL.startswith("http://127.")) else "auto"
+READ_MODE = (_args.read_mode or os.environ.get("CHAT_TEST_READ_MODE", _read_mode_default)).strip().lower()
+
 FROM_PHONE = os.environ.get("CHAT_TEST_FROM_PHONE", "5491156384310")
 FROM_NAME = os.environ.get("CHAT_TEST_FROM_NAME", "Encargado Test")
 TO_PHONE = os.environ.get("CHAT_TEST_TO_PHONE", "5493816259343")
@@ -55,7 +103,7 @@ SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip(
     "false",
     "no",
 }
-SHOW_TIMING = os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+SHOW_TIMING = _args.timing or os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
 
 
 _DB_READ_FAILED = False
