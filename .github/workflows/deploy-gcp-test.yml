@@ -1,5 +1,6 @@
 name: Deploy to GCP Cloud Run Test
 
+# Se ejecuta cuando hay un push al branch test
 on:
   push:
     branches:

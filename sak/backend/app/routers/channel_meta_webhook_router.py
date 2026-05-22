@@ -73,12 +73,41 @@ async def _process_raw_meta_background(payload: dict[str, Any]) -> None:
             logger.exception("Error reprocesando mensajes pendientes de agente")
 
 
+async def _process_pending_meta_background() -> None:
+    with Session(engine) as session:
+        try:
+            await process_pending_agent_messages(session, limit=5)
+        except Exception:
+            session.rollback()
+            logger.exception("Error reprocesando mensajes pendientes de agente")
+
+
+def _has_inbound_messages(payload: dict[str, Any]) -> bool:
+    for entry in payload.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            value = change.get("value", {}) or {}
+            if value.get("messages"):
+                return True
+    return False
+
+
 @router.post("/", response_model=WebhookResponse)
 async def receive_meta_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
 ):
     payload = await request.json()
+    if _has_inbound_messages(payload):
+        try:
+            await process_raw_meta_webhook_payload(session, payload)
+        except Exception:
+            session.rollback()
+            logger.exception("Error procesando webhook directo de Meta")
+            return WebhookResponse(status="ok", message="Recibido con error")
+        background_tasks.add_task(_process_pending_meta_background)
+        return WebhookResponse(status="ok", message="Procesado")
+
     background_tasks.add_task(_process_raw_meta_background, payload)
     return WebhookResponse(status="ok", message="Recibido")
 

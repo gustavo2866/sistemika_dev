@@ -26,6 +26,63 @@ def test_channel_meta_webhook_verify_returns_plain_challenge(client, db_session:
     assert response.text == "abc123"
 
 
+def test_channel_meta_webhook_endpoint_processes_inbound_inline(client, monkeypatch):
+    calls: list[tuple[str, object]] = []
+
+    async def fake_process_raw(session, payload):
+        message_id = payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"]
+        calls.append(("process", message_id))
+
+    async def fake_process_pending(session, **kwargs):
+        calls.append(("pending", kwargs.get("limit")))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(
+        "app.routers.channel_meta_webhook_router.process_raw_meta_webhook_payload",
+        fake_process_raw,
+    )
+    monkeypatch.setattr(
+        "app.routers.channel_meta_webhook_router.process_pending_agent_messages",
+        fake_process_pending,
+    )
+
+    response = client.post(
+        "/api/channel-webhooks/meta/",
+        json={
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "1516474752918083",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "metadata": {
+                                    "display_phone_number": "5493816259343",
+                                    "phone_number_id": "1046006975257973",
+                                },
+                                "messages": [
+                                    {
+                                        "from": "5491156384310",
+                                        "id": "wamid.test.inline.inbound",
+                                        "timestamp": "1779282000",
+                                        "type": "text",
+                                        "text": {"body": "Hola"},
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Procesado"
+    assert calls[0] == ("process", "wamid.test.inline.inbound")
+
+
 @pytest.mark.asyncio
 async def test_channel_meta_webhook_raw_message_creates_crm_message(db_session: Session, monkeypatch):
     monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: False)
