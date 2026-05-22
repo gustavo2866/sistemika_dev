@@ -58,6 +58,55 @@ def test_raw_meta_message_payload_is_normalized(db_session):
     assert normalized["mensaje"]["celular"]["id"] == "56953906-7099-4d1a-8379-3174d732d21e"
 
 
+def test_raw_meta_audio_payload_is_normalized(db_session):
+    db_session.add(
+        Setting(
+            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            valor="1046006975257973",
+        )
+    )
+    db_session.commit()
+
+    result = raw_meta_to_metaw_payloads(
+        db_session,
+        {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "metadata": {
+                                    "display_phone_number": "5493816259343",
+                                    "phone_number_id": "1046006975257973",
+                                },
+                                "messages": [
+                                    {
+                                        "from": "5491156384310",
+                                        "id": "wamid.test.audio",
+                                        "timestamp": "1779282000",
+                                        "type": "audio",
+                                        "audio": {
+                                            "id": "media-audio-1",
+                                            "mime_type": "audio/ogg; codecs=opus",
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+
+    assert len(result) == 1
+    normalized = result[0]["mensaje"]
+    assert normalized["tipo"] == "audio"
+    assert normalized["texto"] is None
+    assert normalized["media_id"] == "media-audio-1"
+    assert normalized["mime_type"] == "audio/ogg; codecs=opus"
+
+
 def test_raw_meta_status_payload_is_normalized(db_session):
     db_session.add(
         Setting(

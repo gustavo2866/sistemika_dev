@@ -16,7 +16,9 @@ from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.runtime import should_auto_process
 from agente.v2.processes.pedido_obra.handler import build_pedido_obra_dependencies
+from app.modules.channels.config import meta_account_resolver
 from app.modules.channels.gateway import channel_gateway
+from app.modules.channels.providers.meta.client import meta_graph_client
 from app.modules.channels.types import ChannelEventData
 from app.crud.crm_contacto_crud import crm_contacto_crud
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -24,9 +26,42 @@ from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Webh
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.schemas.metaw_webhook import MetaWWebhookPayload
+from app.services.audio_transcription_service import audio_transcription_service
 
 logger = logging.getLogger(__name__)
 _typing_indicator_tasks: set[asyncio.Task[None]] = set()
+
+
+def _audio_filename(media_id: str, mime_type: str | None) -> str:
+    extension = "ogg"
+    normalized = (mime_type or "").split(";")[0].strip().lower()
+    if normalized == "audio/mpeg":
+        extension = "mp3"
+    elif normalized in {"audio/mp4", "audio/m4a"}:
+        extension = "m4a"
+    elif normalized == "audio/wav":
+        extension = "wav"
+    elif normalized == "audio/webm":
+        extension = "webm"
+    return f"{media_id}.{extension}"
+
+
+def _has_failed_audio_transcription(message: CRMMensaje) -> bool:
+    for adjunto in message.adjuntos or []:
+        if not isinstance(adjunto, dict):
+            continue
+        if adjunto.get("tipo") == "audio" and adjunto.get("transcription_status") == "failed":
+            return True
+    return False
+
+
+def _audio_transcription_failed_result(message_id: int) -> dict[str, Any]:
+    return {
+        "type": "audio_transcription_failed",
+        "message_id": message_id,
+        "skipped": True,
+        "respuesta": "No pude procesar el audio. Podes mandarme el pedido por escrito?",
+    }
 
 
 class MetaWebhookService:
@@ -214,26 +249,73 @@ class MetaWebhookService:
             .limit(1)
         ).first()
 
-    def _normalize_message_content(self, msg: Any) -> tuple[str, list[dict[str, Any]]]:
+    async def _normalize_message_content(
+        self,
+        msg: Any,
+        celular: CRMCelular | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
         contenido = msg.texto or ""
         adjuntos: list[dict[str, Any]] = []
 
         if msg.media_id:
-            adjuntos.append(
-                {
-                    "tipo": msg.tipo,
-                    "id": msg.media_id,
-                    "mime_type": msg.mime_type,
-                    "filename": msg.filename,
-                    "caption": msg.caption,
-                }
-            )
+            adjunto = {
+                "tipo": msg.tipo,
+                "id": msg.media_id,
+                "mime_type": msg.mime_type,
+                "filename": msg.filename,
+                "caption": msg.caption,
+            }
+            adjuntos.append(adjunto)
             if msg.tipo == "image":
                 contenido = msg.caption or "[Imagen recibida]"
             elif msg.tipo == "document":
                 contenido = f"[Documento: {msg.filename or 'archivo'}]"
+            elif msg.tipo == "audio":
+                contenido = await self._transcribe_audio_message(msg, celular, adjunto)
 
         return contenido, adjuntos
+
+    async def _transcribe_audio_message(
+        self,
+        msg: Any,
+        celular: CRMCelular | None,
+        adjunto: dict[str, Any],
+    ) -> str:
+        try:
+            if not celular or not celular.meta_celular_id:
+                raise ValueError("No hay cuenta Meta asociada al audio")
+            account_config = meta_account_resolver.resolve(self.session, str(celular.meta_celular_id))
+            download = await meta_graph_client.download_media(
+                access_token=account_config.access_token,
+                media_id=msg.media_id,
+            )
+            mime_type = download.mime_type or msg.mime_type
+            filename = msg.filename or _audio_filename(str(msg.media_id), mime_type)
+            transcription = await audio_transcription_service.transcribe_bytes(
+                download.content,
+                filename=filename,
+                mime_type=mime_type,
+            )
+            adjunto.update(
+                {
+                    "transcription": transcription,
+                    "transcription_status": "ok",
+                    "download_mime_type": download.mime_type,
+                    "file_size": download.file_size,
+                    "sha256": download.sha256,
+                }
+            )
+            return transcription or "[Audio recibido]"
+        except Exception as exc:
+            logger.warning(
+                "No se pudo transcribir audio meta_message_id=%s media_id=%s",
+                getattr(msg, "meta_message_id", None),
+                getattr(msg, "media_id", None),
+                exc_info=True,
+            )
+            adjunto["transcription_status"] = "failed"
+            adjunto["transcription_error"] = str(exc)
+            return "[Audio recibido]"
 
     def _resolve_or_create_oportunidad(self, contacto: CRMContacto) -> CRMOportunidad:
         t0 = time.perf_counter()
@@ -366,7 +448,7 @@ class MetaWebhookService:
             t_contact_done = time.perf_counter()
             oportunidad = self._resolve_or_create_oportunidad(contacto)
             t_oportunidad_done = time.perf_counter()
-            contenido, adjuntos = self._normalize_message_content(msg)
+            contenido, adjuntos = await self._normalize_message_content(msg, celular)
             fecha_mensaje_utc = self._normalize_timestamp_to_utc(msg.meta_timestamp)
             t_content_done = time.perf_counter()
 
@@ -489,11 +571,14 @@ class MetaWebhookService:
 
         t0 = started_at or time.perf_counter()
         t_agent_start = time.perf_counter()
-        auto_process_result = await self._orchestrator.process_turn(
-            self.session,
-            crm_mensaje.id,
-            trigger,
-        )
+        if _has_failed_audio_transcription(crm_mensaje):
+            auto_process_result = _audio_transcription_failed_result(int(crm_mensaje.id))
+        else:
+            auto_process_result = await self._orchestrator.process_turn(
+                self.session,
+                crm_mensaje.id,
+                trigger,
+            )
         t_agent_done = time.perf_counter()
         delivery = await self._delivery_service.deliver_result(
             session=self.session,

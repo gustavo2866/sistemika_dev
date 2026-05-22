@@ -231,7 +231,8 @@ class TestExecutor:
         assert result.status == "missing_quantity"
         assert result.next_state.esperando == "cantidad_faltante"
         assert result.next_state.item_cantidad_idx == 0
-        assert "cantidad de puertas" in result.reply
+        assert result.reply == "Que cantidad de puertas necesitas?"
+        assert "Antes de cerrar" not in result.reply
 
     def test_answer_missing_quantity_moves_to_confirmation(self):
         state = PedidoState(
@@ -250,6 +251,8 @@ class TestExecutor:
         assert result.status == "ready_for_confirmation"
         assert result.next_state.items[0].cantidad == 2
         assert result.next_state.esperando == "confirmacion_cierre"
+        assert result.reply.endswith("Para enviarlo, responde CONFIRMAR.")
+        assert "Tambien podes decirme que cambiar" not in result.reply
 
     def test_confirm_order_finalizes_when_complete(self):
         state = PedidoState(
@@ -265,6 +268,10 @@ class TestExecutor:
         assert result.pedido_listo
         assert not result.keep_active
         assert result.next_state.etapa == "finalizado"
+        assert result.reply.startswith("*PEDIDO CONFIRMADO*")
+        assert result.reply.endswith("2 puertas")
+        assert "Lo vamos a gestionar" not in result.reply
+        assert "Si necesitas hacer otro pedido" not in result.reply
 
     def test_update_uses_target_item_id(self):
         state = PedidoState(
@@ -337,7 +344,7 @@ class TestExecutor:
                 operations=[
                     PedidoOperation(
                         type="offtopic",
-                        reply="Hola, todo bien. Decime que materiales necesitas o escribi listo para cerrar el pedido.",
+                        reply="Hola, todo bien. Decime que materiales necesitas o escribi LISTO para cerrar el pedido.",
                     )
                 ]
             ),

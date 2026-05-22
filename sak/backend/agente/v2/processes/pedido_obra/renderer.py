@@ -11,11 +11,11 @@ def pedido_actual(state: PedidoState, *, previo: bool = False) -> str:
 
 
 def anotado(state: PedidoState) -> str:
-    return f"Anotado:\n{state.resumen_items()}\n\nCuando termines, escribi listo."
+    return f"Anotado:\n{state.resumen_items()}\n\nCuando termines, escribi LISTO."
 
 
 def actualizado(state: PedidoState) -> str:
-    return f"Pedido abierto actualizado:\n{state.resumen_items()}\n\nCuando termines, escribi listo."
+    return f"Pedido abierto actualizado:\n{state.resumen_items()}\n\nCuando termines, escribi LISTO."
 
 
 def pedido_previo(state: PedidoState) -> str:
@@ -44,12 +44,11 @@ def pedido_limpiado() -> str:
 
 
 def pedir_cantidad(item: PedidoItem, *, antes_de_confirmar: bool = True) -> str:
-    prefix = "Antes de cerrar" if antes_de_confirmar else "Anotado"
-    return f"{prefix}, que cantidad de {item.descripcion} necesitas?"
+    return f"Que cantidad de {item.descripcion} necesitas?"
 
 
 def confirmar_pedido(state: PedidoState) -> str:
-    return f"Pedido para confirmar:\n{state.resumen_items()}\n\nPara enviarlo, responde confirmar. Tambien podes decirme que cambiar."
+    return f"Pedido para confirmar:\n{state.resumen_items()}\n\nPara enviarlo, responde CONFIRMAR."
 
 
 def pedido_confirmado(state: PedidoState) -> str:
@@ -57,10 +56,7 @@ def pedido_confirmado(state: PedidoState) -> str:
         "*PEDIDO CONFIRMADO*\n"
         "━━━━━━━━━━━━━━\n\n"
         "*Materiales*\n"
-        f"{_resumen_items_bullets(state)}\n\n"
-        "━━━━━━━━━━━━━━\n"
-        "Lo vamos a gestionar.\n"
-        "Si necesitas hacer otro pedido, mandame los materiales."
+        f"{_resumen_items_bullets(state)}"
     )
 
 
@@ -69,12 +65,12 @@ def pedido_cancelado() -> str:
 
 
 def offtopic(reply: str | None, state: PedidoState) -> str:
-    base = reply or "Decime que materiales necesitas o escribi listo para cerrar el pedido."
+    base = reply or "Decime que materiales necesitas o escribi LISTO para cerrar el pedido."
     if state.items:
         return (
             f"{base}\n\n"
             f"Pedido abierto:\n{state.resumen_items()}\n\n"
-            "Podes agregar materiales, cambiar algo, limpiar el pedido o escribir listo para cerrarlo."
+            "Podes agregar materiales, cambiar algo, limpiar el pedido o escribir LISTO para cerrarlo."
         )
     return base
 

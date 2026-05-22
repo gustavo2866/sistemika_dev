@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+
+@dataclass(slots=True)
+class MetaMediaDownload:
+    content: bytes
+    mime_type: str | None = None
+    file_size: int | None = None
+    sha256: str | None = None
 
 
 class MetaGraphClient:
@@ -33,6 +42,40 @@ class MetaGraphClient:
         response = await self._get_client().post(url, headers=headers, json=payload)
         response.raise_for_status()
         return response.json()
+
+    async def get_media_metadata(
+        self,
+        *,
+        access_token: str,
+        media_id: str,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url}/{media_id}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = await self._get_client().get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+    async def download_media(
+        self,
+        *,
+        access_token: str,
+        media_id: str,
+    ) -> MetaMediaDownload:
+        metadata = await self.get_media_metadata(access_token=access_token, media_id=media_id)
+        media_url = metadata.get("url")
+        if not media_url:
+            raise ValueError("Meta no devolvio URL para el media")
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = await self._get_client().get(media_url, headers=headers)
+        response.raise_for_status()
+        mime_type = response.headers.get("content-type") or metadata.get("mime_type")
+        return MetaMediaDownload(
+            content=response.content,
+            mime_type=mime_type,
+            file_size=metadata.get("file_size"),
+            sha256=metadata.get("sha256"),
+        )
 
     async def mark_message_read(
         self,

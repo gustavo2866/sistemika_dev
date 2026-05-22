@@ -3,7 +3,9 @@ import asyncio
 from sqlmodel import Session, select
 import pytest
 
+from agente.v2.core.delivery import SendResult
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Setting, User
+from app.modules.channels.providers.meta.client import MetaMediaDownload
 from app.routers.channel_meta_webhook_router import process_raw_meta_webhook_payload
 from app.services.agent_pending_processor import process_pending_agent_messages
 from app.services.meta_webhook_service import MetaWebhookService
@@ -172,6 +174,196 @@ async def test_channel_meta_webhook_raw_message_creates_crm_message(db_session: 
     assert mensaje is not None
     assert mensaje.contenido == "Hola desde test local"
     assert mensaje.contacto_referencia == "5491156384310"
+
+
+@pytest.mark.asyncio
+async def test_channel_meta_webhook_audio_message_is_transcribed(db_session: Session, monkeypatch):
+    monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: False)
+    user = User(nombre="Tester Audio", email="tester-audio-channel@example.com")
+    db_session.add(user)
+    db_session.flush()
+    contacto = CRMContacto(
+        nombre_completo="Cliente Audio",
+        telefonos=["5491156384310"],
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+    oportunidad = CRMOportunidad(
+        titulo="Oportunidad audio",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.add(Setting(clave="channels.meta.access_token", valor="test-token"))
+    db_session.add(
+        Setting(
+            clave="channels.meta.accounts.56953906-7099-4d1a-8379-3174d732d21e.phone_number_id",
+            valor="1046006975257973",
+        )
+    )
+    db_session.add(
+        CRMCelular(
+            meta_celular_id="56953906-7099-4d1a-8379-3174d732d21e",
+            numero_celular="5493816259343",
+            alias="Canal test audio",
+            activo=True,
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        MetaWebhookService,
+        "_find_or_create_contacto",
+        lambda self, numero_telefono, nombre_from_meta=None: contacto,
+    )
+    monkeypatch.setattr(
+        MetaWebhookService,
+        "_resolve_or_create_oportunidad",
+        lambda self, contacto_arg: oportunidad,
+    )
+
+    async def fake_download_media(**kwargs):
+        assert kwargs["access_token"] == "test-token"
+        assert kwargs["media_id"] == "media-audio-1"
+        return MetaMediaDownload(
+            content=b"fake-audio",
+            mime_type="audio/ogg",
+            file_size=10,
+            sha256="sha-test",
+        )
+
+    async def fake_transcribe_bytes(audio_bytes, **kwargs):
+        assert audio_bytes == b"fake-audio"
+        assert kwargs["filename"] == "media-audio-1.ogg"
+        assert kwargs["mime_type"] == "audio/ogg"
+        return "necesito 3 placas durlock"
+
+    monkeypatch.setattr(
+        "app.services.meta_webhook_service.meta_graph_client.download_media",
+        fake_download_media,
+    )
+    monkeypatch.setattr(
+        "app.services.meta_webhook_service.audio_transcription_service.transcribe_bytes",
+        fake_transcribe_bytes,
+    )
+
+    await process_raw_meta_webhook_payload(
+        db_session,
+        {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "1516474752918083",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "metadata": {
+                                    "display_phone_number": "5493816259343",
+                                    "phone_number_id": "1046006975257973",
+                                },
+                                "contacts": [
+                                    {
+                                        "wa_id": "5491156384310",
+                                        "profile": {"name": "Cliente Audio"},
+                                    }
+                                ],
+                                "messages": [
+                                    {
+                                        "from": "5491156384310",
+                                        "id": "wamid.test.audio.inbound",
+                                        "timestamp": "1779282000",
+                                        "type": "audio",
+                                        "audio": {
+                                            "id": "media-audio-1",
+                                            "mime_type": "audio/ogg; codecs=opus",
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    mensaje = db_session.exec(
+        select(CRMMensaje).where(CRMMensaje.origen_externo_id == "wamid.test.audio.inbound")
+    ).first()
+    assert mensaje is not None
+    assert mensaje.contenido == "necesito 3 placas durlock"
+    assert mensaje.adjuntos[0]["tipo"] == "audio"
+    assert mensaje.adjuntos[0]["transcription_status"] == "ok"
+    assert mensaje.adjuntos[0]["transcription"] == "necesito 3 placas durlock"
+    assert mensaje.adjuntos[0]["sha256"] == "sha-test"
+
+
+@pytest.mark.asyncio
+async def test_failed_audio_transcription_sends_controlled_reply(db_session: Session, monkeypatch):
+    monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: True)
+    user = User(nombre="Tester Audio Fail", email="tester-audio-fail@example.com")
+    db_session.add(user)
+    db_session.flush()
+    contacto = CRMContacto(
+        nombre_completo="Cliente Audio Fail",
+        telefonos=["5491156384310"],
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+    oportunidad = CRMOportunidad(
+        titulo="Oportunidad audio fail",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.flush()
+    mensaje = CRMMensaje(
+        tipo="entrada",
+        canal="whatsapp",
+        contacto_id=contacto.id,
+        oportunidad_id=oportunidad.id,
+        contenido="[Audio recibido]",
+        estado="nuevo",
+        contacto_referencia="5491156384310",
+        origen_externo_id="wamid.test.audio.failed",
+        adjuntos=[
+            {
+                "tipo": "audio",
+                "id": "media-audio-failed",
+                "transcription_status": "failed",
+                "transcription_error": "boom",
+            }
+        ],
+    )
+    db_session.add(mensaje)
+    db_session.commit()
+    db_session.refresh(mensaje)
+
+    class FailOrchestrator:
+        async def process_turn(self, *args, **kwargs):
+            raise AssertionError("No debe ejecutar el agente si fallo la transcripcion")
+
+    service = MetaWebhookService(db_session, orchestrator=FailOrchestrator())
+    delivery_calls: list[dict[str, object]] = []
+
+    async def fake_deliver_result(*, session, message, result):
+        delivery_calls.append({"message_id": message.id, "result": result})
+        return SendResult(sent=True, status="sent", outbound_message_id=999)
+
+    monkeypatch.setattr(service._delivery_service, "deliver_result", fake_deliver_result)
+
+    result = await service.process_existing_inbound_message(mensaje, trigger="webhook")
+    db_session.refresh(mensaje)
+
+    assert result["type"] == "audio_transcription_failed"
+    assert result["respuesta"] == "No pude procesar el audio. Podes mandarme el pedido por escrito?"
+    assert delivery_calls[0]["result"]["type"] == "audio_transcription_failed"
+    assert mensaje.metadata_json["agent_v2"]["result"]["type"] == "audio_transcription_failed"
+    assert mensaje.metadata_json["agent_v2"]["delivery"]["outbound_message_id"] == 999
 
 
 def test_pending_processor_retries_inbound_message_without_agent_result(db_session: Session, monkeypatch):
