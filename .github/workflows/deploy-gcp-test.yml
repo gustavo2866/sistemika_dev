@@ -8,7 +8,7 @@ on:
 env:
   PROJECT_ID: sak-wcl
   SERVICE_NAME: sak-backend-test
-  REGION: us-central1
+  REGION: southamerica-east1
   SERVICE_ACCOUNT: sak-wcl-service@sak-wcl.iam.gserviceaccount.com
 
 jobs:
@@ -37,6 +37,11 @@ jobs:
             --project ${{ env.PROJECT_ID }} \
             --service-account ${{ env.SERVICE_ACCOUNT }} \
             --allow-unauthenticated \
+            --cpu=1 \
+            --memory=1Gi \
+            --concurrency=80 \
+            --timeout=3600 \
+            --max-instances=10 \
             --set-secrets="DATABASE_URL=DATABASE_URL_TEST:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,JWT_SECRET=JWT_SECRET:latest" \
             --set-env-vars="ENV=test,CORS_ORIGINS=https://wcl-git-test-gustavo2866s-projects.vercel.app;http://localhost:3000,CORS_ORIGINS_REGEX=https://wcl-.*-gustavo2866s-projects\\.vercel\\.app,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
 
