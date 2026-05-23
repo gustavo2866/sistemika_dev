@@ -57,6 +57,7 @@ from app.routers.proy_fase_router import proy_fase_router
 from app.routers.proy_presupuesto_router import proy_presupuesto_router
 from app.routers.nomina_router import nomina_router
 from app.routers.partediario_router import parte_diario_router
+from app.routers.constructora_pedido_router import constructora_pedido_router
 
 from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
@@ -236,6 +237,7 @@ app.include_router(proy_fase_router)
 app.include_router(proy_presupuesto_router)
 app.include_router(nomina_router)
 app.include_router(parte_diario_router)
+app.include_router(constructora_pedido_router)
 
 # Servir archivos estáticos (uploads)
 uploads_dir = "uploads"

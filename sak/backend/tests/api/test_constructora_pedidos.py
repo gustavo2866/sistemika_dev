@@ -1,0 +1,241 @@
+"""Tests de endpoint para constructora/pedidos."""
+import pytest
+from decimal import Decimal
+from sqlmodel import Session
+
+from app.models import (
+    User,
+    CRMContacto,
+    CRMOportunidad,
+    CRMTipoOperacion,
+)
+from app.models.constructora.pedido import (
+    ConstructoraPedido,
+    PedidoObraEstado,
+    PedidoObraOrigen,
+)
+
+
+@pytest.fixture()
+def seed_base(db_session: Session):
+    user = User(nombre="Tester", email="tester@example.com")
+    db_session.add(user)
+    db_session.flush()
+
+    tipo_op = CRMTipoOperacion(nombre="Venta", codigo="VNT")
+    db_session.add(tipo_op)
+    db_session.flush()
+
+    contacto = CRMContacto(
+        nombre_completo="Juan Perez",
+        email="juan@example.com",
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+
+    oportunidad = CRMOportunidad(
+        titulo="Obra Norte",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+    )
+    db_session.add(oportunidad)
+    db_session.commit()
+    db_session.refresh(oportunidad)
+    return {"user": user, "contacto": contacto, "oportunidad": oportunidad}
+
+
+# ---------------------------------------------------------------------------
+# CREATE
+# ---------------------------------------------------------------------------
+
+def test_crear_pedido_basico(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    res = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido de materiales semana 1",
+        "origen": "manual",
+        "detalles": [
+            {
+                "descripcion": "Cemento Portland",
+                "cantidad": "50.000",
+                "unidad_medida": "kg",
+            }
+        ],
+    })
+    assert res.status_code in (200, 201), res.text
+    data = res.json()
+    assert data["titulo"] == "Pedido de materiales semana 1"
+    assert data["estado"] == PedidoObraEstado.PENDIENTE.value
+    assert data["origen"] == PedidoObraOrigen.MANUAL.value
+
+    # Verificar detalles via GET
+    detail = client.get(f"/constructora/pedidos/{data['id']}").json()
+    assert len(detail["detalles"]) == 1
+    assert detail["detalles"][0]["descripcion"] == "Cemento Portland"
+
+
+def test_crear_pedido_desde_agente(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    res = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido agente chat",
+        "origen": "agente",
+        "detalles": [
+            {"descripcion_original": "5 bolsas arena", "descripcion": "Arena fina", "cantidad": "5.000"},
+        ],
+    })
+    assert res.status_code in (200, 201), res.text
+    data = res.json()
+    assert data["origen"] == PedidoObraOrigen.AGENTE.value
+    assert data["estado"] == PedidoObraEstado.PENDIENTE.value
+
+
+# ---------------------------------------------------------------------------
+# READ
+# ---------------------------------------------------------------------------
+
+def test_listar_pedidos(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido A",
+        "detalles": [{"descripcion": "Item A", "cantidad": "1.000"}],
+    })
+    client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido B",
+        "detalles": [{"descripcion": "Item B", "cantidad": "2.000"}],
+    })
+    res = client.get("/constructora/pedidos")
+    assert res.status_code == 200
+    assert len(res.json()) >= 2
+
+
+def test_obtener_pedido_por_id(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido detalle",
+        "detalles": [{"descripcion": "Varillas", "cantidad": "10.000"}],
+    }).json()
+    res = client.get(f"/constructora/pedidos/{created['id']}")
+    assert res.status_code == 200
+    assert res.json()["id"] == created["id"]
+
+
+# ---------------------------------------------------------------------------
+# UPDATE — sync detalles
+# ---------------------------------------------------------------------------
+
+def test_editar_cantidad_detalle(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido editable",
+        "detalles": [{"descripcion": "Ladrillos", "cantidad": "100.000", "id": None}],
+    }).json()
+
+    # Obtener detalle_id via GET
+    detail_res = client.get(f"/constructora/pedidos/{created['id']}").json()
+    detalle_id = detail_res["detalles"][0]["id"]
+
+    res = client.put(f"/constructora/pedidos/{created['id']}", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido editable",
+        "detalles": [{"id": detalle_id, "descripcion": "Ladrillos", "cantidad": "200.000"}],
+    })
+    assert res.status_code == 200, res.text
+    updated = client.get(f"/constructora/pedidos/{created['id']}").json()
+    assert any(float(d["cantidad"]) == 200.0 for d in updated["detalles"])
+
+
+def test_agregar_linea_en_update(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido con lineas",
+        "detalles": [{"descripcion": "Item 1", "cantidad": "1.000"}],
+    }).json()
+
+    detail_res = client.get(f"/constructora/pedidos/{created['id']}").json()
+    detalle_id = detail_res["detalles"][0]["id"]
+
+    res = client.put(f"/constructora/pedidos/{created['id']}", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido con lineas",
+        "detalles": [
+            {"id": detalle_id, "descripcion": "Item 1", "cantidad": "1.000"},
+            {"descripcion": "Item 2 nuevo", "cantidad": "3.000"},
+        ],
+    })
+    assert res.status_code == 200, res.text
+    updated = client.get(f"/constructora/pedidos/{created['id']}").json()
+    assert len(updated["detalles"]) == 2
+
+
+def test_eliminar_linea_en_update(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido 2 lineas",
+        "detalles": [
+            {"descripcion": "A", "cantidad": "1.000"},
+            {"descripcion": "B", "cantidad": "2.000"},
+        ],
+    }).json()
+
+    detail_res = client.get(f"/constructora/pedidos/{created['id']}").json()
+    primera_id = detail_res["detalles"][0]["id"]
+
+    res = client.put(f"/constructora/pedidos/{created['id']}", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido 2 lineas",
+        "detalles": [{"id": primera_id, "descripcion": "A", "cantidad": "1.000"}],
+    })
+    assert res.status_code == 200, res.text
+    updated = client.get(f"/constructora/pedidos/{created['id']}").json()
+    assert len(updated["detalles"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# DELETE (soft)
+# ---------------------------------------------------------------------------
+
+def test_soft_delete_pedido(client, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido a borrar",
+        "detalles": [{"descripcion": "Item", "cantidad": "1.000"}],
+    }).json()
+    res = client.delete(f"/constructora/pedidos/{created['id']}")
+    assert res.status_code in (200, 204)
+
+
+# ---------------------------------------------------------------------------
+# Constraint único mensaje_origen_id
+# ---------------------------------------------------------------------------
+
+def test_mensaje_origen_id_unico(client, db_session: Session, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+
+    # Insertar pedido directamente con mensaje_origen_id=999
+    pedido = ConstructoraPedido(
+        oportunidad_id=oportunidad_id,
+        titulo="Pedido original",
+        mensaje_origen_id=999,
+        origen=PedidoObraOrigen.AGENTE,
+    )
+    db_session.add(pedido)
+    db_session.commit()
+
+    # Intentar crear otro con el mismo mensaje_origen_id vía API
+    res = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido duplicado",
+        "mensaje_origen_id": 999,
+        "origen": "agente",
+        "detalles": [{"descripcion": "Item", "cantidad": "1.000"}],
+    })
+    assert res.status_code in (400, 409, 422, 500)
