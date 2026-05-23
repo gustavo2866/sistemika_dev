@@ -95,7 +95,6 @@ class ChannelEventStore:
             select(ChannelEvent)
             .where(ChannelEvent.provider == provider)
             .where(ChannelEvent.channel_type == channel_type)
-            .where(ChannelEvent.account_ref == account_ref)
             .where(ChannelEvent.direction == "inbound")
             .where(ChannelEvent.from_address == contact)
             .order_by(ChannelEvent.occurred_at.desc())
