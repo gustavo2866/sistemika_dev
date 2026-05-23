@@ -43,7 +43,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 _GCP_TEST_URL = "https://sak-backend-test-94464199991.southamerica-east1.run.app"
-_GCP_PROD_URL = "https://sak-backend-3urfgqrzea-uc.a.run.app"
+_GCP_PROD_URL = "https://sak-backend-3urfgqrzea-rj.a.run.app"
 
 
 def _parse_args() -> argparse.Namespace:
