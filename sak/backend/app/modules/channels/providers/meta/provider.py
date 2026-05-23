@@ -138,12 +138,13 @@ class MetaProvider:
             }
 
         nombre = command.contact_name or "Cliente"
+        text_for_template = command.text.replace("\n", " ").strip()
         components = [
             {
                 "type": "body",
                 "parameters": [
                     {"type": "text", "text": nombre},
-                    {"type": "text", "text": command.text},
+                    {"type": "text", "text": text_for_template},
                 ],
             }
         ]
