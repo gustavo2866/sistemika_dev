@@ -134,6 +134,8 @@ class NestedCRUD(GenericCRUD):
             model_cls: Type = relation_cfg["model"]
             fk_field: str = relation_cfg["fk_field"]
             allow_delete: bool = relation_cfg.get("allow_delete", True)
+            delete_handler = relation_cfg.get("delete_handler")
+            prepare_payload = relation_cfg.get("prepare_payload")
 
             existing_items = list(getattr(obj, relation_name, []) or [])
             existing_by_id = {item.id: item for item in existing_items if getattr(item, "id", None) is not None}
@@ -145,10 +147,19 @@ class NestedCRUD(GenericCRUD):
 
                 payload = deepcopy(item_payload)
                 item_id = payload.get("id")
+                is_new_item = not (item_id and item_id in existing_by_id)
+                if callable(prepare_payload):
+                    prepared_payload = prepare_payload(
+                        payload,
+                        is_create=is_create,
+                        is_new=is_new_item,
+                    )
+                    if isinstance(prepared_payload, dict):
+                        payload = prepared_payload
 
                 filtered_payload = self._filter_payload(model_cls, payload, exclude=(fk_field,))
 
-                if item_id and item_id in existing_by_id:
+                if not is_new_item:
                     detail_obj = existing_by_id[item_id]
                     for field, raw_value in filtered_payload.items():
                         coerced_value = self._coerce_for_model(model_cls, field, raw_value)
@@ -169,7 +180,10 @@ class NestedCRUD(GenericCRUD):
             if not is_create and allow_delete:
                 for existing_id, existing_obj in existing_by_id.items():
                     if existing_id not in seen_ids:
-                        session.delete(existing_obj)
+                        if callable(delete_handler):
+                            delete_handler(session, existing_obj)
+                        else:
+                            session.delete(existing_obj)
 
         # No hacer commit aquí - dejar que el método principal maneje la transacción
         # session.commit()

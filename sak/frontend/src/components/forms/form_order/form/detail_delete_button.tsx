@@ -11,23 +11,30 @@ export const DetailDeleteButton = ({
   iconClassName,
   title = "Eliminar linea",
   tabIndex = -1,
+  disabled = false,
 }: {
   onClick: () => void;
   className?: string;
   iconClassName?: string;
   title?: string;
   tabIndex?: number;
+  disabled?: boolean;
 }) => {
   return (
     <Button
       type="button"
       variant="ghost"
       size="icon"
-      className={cn("h-4 w-4 md:h-5 md:w-5", className)}
+      className={cn(
+        "h-4 w-4 md:h-5 md:w-5",
+        disabled && "cursor-not-allowed opacity-35 hover:bg-transparent",
+        className,
+      )}
       onClick={onClick}
       aria-label={title}
       title={title}
       tabIndex={tabIndex}
+      disabled={disabled}
     >
       <Trash2 className={cn("size-2.5 md:size-3 text-red-500/70", iconClassName)} />
     </Button>

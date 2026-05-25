@@ -5,6 +5,7 @@ import pytest
 
 from agente.v2.core.delivery import SendResult
 from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Setting, User
+from app.models.constructora.pedido import ConstructoraPedido, ConstructoraPedidoDetalle
 from app.modules.channels.providers.meta.client import MetaMediaDownload
 from app.routers.channel_meta_webhook_router import process_raw_meta_webhook_payload
 from app.services.agent_pending_processor import process_pending_agent_messages
@@ -364,6 +365,82 @@ async def test_failed_audio_transcription_sends_controlled_reply(db_session: Ses
     assert delivery_calls[0]["result"]["type"] == "audio_transcription_failed"
     assert mensaje.metadata_json["agent_v2"]["result"]["type"] == "audio_transcription_failed"
     assert mensaje.metadata_json["agent_v2"]["delivery"]["outbound_message_id"] == 999
+
+
+@pytest.mark.asyncio
+async def test_confirmed_pedido_obra_creates_constructora_pedido(db_session: Session, monkeypatch):
+    monkeypatch.setattr("app.services.meta_webhook_service.should_auto_process", lambda *args, **kwargs: True)
+    user = User(nombre="Tester Pedido", email="tester-pedido-channel@example.com")
+    db_session.add(user)
+    db_session.flush()
+    contacto = CRMContacto(
+        nombre_completo="Cliente Pedido",
+        telefonos=["5491156384310"],
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.flush()
+    oportunidad = CRMOportunidad(
+        titulo="Oportunidad pedido",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.flush()
+    mensaje = CRMMensaje(
+        tipo="entrada",
+        canal="whatsapp",
+        contacto_id=contacto.id,
+        oportunidad_id=oportunidad.id,
+        contenido="confirmar",
+        estado="nuevo",
+        contacto_referencia="5491156384310",
+        origen_externo_id="wamid.test.pedido.confirmed",
+    )
+    db_session.add(mensaje)
+    db_session.commit()
+    db_session.refresh(mensaje)
+
+    class PedidoOrchestrator:
+        async def process_turn(self, *args, **kwargs):
+            return {
+                "type": "pedido_obra_reply",
+                "pedido_listo": True,
+                "oportunidad_id": oportunidad.id,
+                "respuesta": "*PEDIDO CONFIRMADO*",
+                "items": [
+                    {"item_id": "cemento-1", "descripcion": "cemento", "cantidad": 20, "unidad": "bolsas"},
+                    {"item_id": "arena-1", "descripcion": "arena fina", "cantidad": 3, "unidad": "mts"},
+                ],
+            }
+
+    service = MetaWebhookService(db_session, orchestrator=PedidoOrchestrator())
+
+    async def fake_deliver_result(*, session, message, result):
+        return SendResult(sent=True, status="sent", outbound_message_id=1001)
+
+    monkeypatch.setattr(service._delivery_service, "deliver_result", fake_deliver_result)
+
+    result = await service.process_existing_inbound_message(mensaje, trigger="webhook")
+    db_session.refresh(mensaje)
+
+    pedido = db_session.exec(
+        select(ConstructoraPedido).where(ConstructoraPedido.mensaje_origen_id == mensaje.id)
+    ).first()
+    assert result["pedido_listo"] is True
+    assert pedido is not None
+    assert pedido.oportunidad_id == oportunidad.id
+    assert pedido.contacto_id == contacto.id
+    assert mensaje.metadata_json["agent_v2"]["pedido_obra_id"] == pedido.id
+
+    detalles = db_session.exec(
+        select(ConstructoraPedidoDetalle).where(ConstructoraPedidoDetalle.pedido_id == pedido.id)
+    ).all()
+    assert [(d.descripcion, d.cantidad, d.unidad_medida) for d in detalles] == [
+        ("cemento", 20, "bolsas"),
+        ("arena fina", 3, "mts"),
+    ]
 
 
 def test_pending_processor_retries_inbound_message_without_agent_result(db_session: Session, monkeypatch):

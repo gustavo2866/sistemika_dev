@@ -62,9 +62,12 @@ export const DetailFooterButtons = ({
       <div className="mt-1 hidden sm:flex w-full items-center gap-2">
         <Button
           type="button"
-          variant="secondary"
+          variant="outline"
           size="sm"
-          className={cn("gap-1 text-[10px] w-full sm:w-[220px] h-6", desktopClassName)}
+          className={cn(
+            "h-6 w-full gap-1 border-blue-300 bg-white text-[10px] font-medium text-blue-700 hover:bg-blue-50 hover:text-blue-700",
+            desktopClassName,
+          )}
           onClick={(event) => {
             event.stopPropagation();
             handleAdd();
@@ -73,7 +76,7 @@ export const DetailFooterButtons = ({
           disabled={disableAdd}
         >
           <PlusCircle className="h-4 w-4" />
-          Agregar
+          Agregar articulo
         </Button>
         <div className="hidden sm:block ml-auto w-[28px]" />
         <div className="hidden sm:block w-[28px]" />

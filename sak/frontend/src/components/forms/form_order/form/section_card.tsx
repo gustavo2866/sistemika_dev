@@ -16,6 +16,7 @@ export const SectionCard = ({
   showToggle = true,
   cardClassName,
   contentClassName,
+  headerClassName,
   titleClassName,
   headerTabIndex,
 }: {
@@ -27,6 +28,7 @@ export const SectionCard = ({
   showToggle?: boolean;
   cardClassName?: string;
   contentClassName?: string;
+  headerClassName?: string;
   titleClassName?: string;
   headerTabIndex?: number;
 }) => {
@@ -34,7 +36,10 @@ export const SectionCard = ({
     <Card className={cn("border border-border w-full", cardClassName)}>
       <CardContent className={cn("px-3 pt-0 pb-0", contentClassName)}>
         <div
-          className="flex items-center justify-between cursor-pointer group hover:text-primary"
+          className={cn(
+            "flex items-center justify-between cursor-pointer group hover:text-primary",
+            headerClassName,
+          )}
           onClick={onToggle}
           role="button"
           tabIndex={headerTabIndex ?? 0}

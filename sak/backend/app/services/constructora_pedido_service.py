@@ -11,6 +11,8 @@ from app.models import CRMMensaje
 from app.models.constructora.pedido import (
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
+    PedidoObraDetalleEstado,
+    PedidoObraDetalleOrigen,
     PedidoObraEstado,
     PedidoObraOrigen,
 )
@@ -92,7 +94,10 @@ class ConstructoraPedidoService:
                 descripcion_original=item.get("descripcion"),
                 descripcion=item.get("descripcion"),
                 cantidad=cantidad,
+                cantidad_original=cantidad,
                 unidad_medida=item.get("unidad"),
+                estado=PedidoObraDetalleEstado.ACTIVA,
+                origen=PedidoObraDetalleOrigen.AGENTE,
                 orden=orden,
                 metadata_json={"agent_item_id": item.get("item_id")},
             )

@@ -20,6 +20,7 @@ import {
 } from "@/components/forms/form_order";
 import { SelectField } from "@/components/select-field";
 import { CATEGORIA_CHOICES, ESTADO_CHOICES } from "./model";
+import { NominaBackButton } from "./navigation-title";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -70,32 +71,62 @@ const LIST_FILTERS = buildListFilters(
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const ListActions = () => (
+const NominaListTitle = () => (
+  <>
+    <div className="sm:hidden">
+      <NominaBackButton />
+      <div className="-mt-0.5 flex items-center justify-center">
+        <span>Nomina</span>
+      </div>
+    </div>
+    <span className="hidden items-center gap-3 sm:inline-flex">
+      <NominaBackButton />
+      <span>Nomina</span>
+    </span>
+  </>
+);
+
+type NominaListProps = {
+  embedded?: boolean;
+  rowClick?: any;
+  perPage?: number;
+  createTo?: string;
+};
+
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={LIST_FILTERS}
       size="sm"
       buttonClassName={ACTION_BUTTON_CLASS}
     />
-    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" />
+    <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" to={createTo} />
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
 
-export const NominaList = () => (
+export const NominaList = ({
+  embedded = false,
+  rowClick = "edit",
+  perPage = 5,
+  createTo,
+}: NominaListProps = {}) => (
   <List
     resource="nominas"
-    title="Nomina"
+    title={embedded ? undefined : <NominaListTitle />}
     filters={LIST_FILTERS}
-    actions={<ListActions />}
+    actions={<ListActions createTo={createTo} />}
     debounce={300}
-    perPage={5}
+    perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
-    containerClassName={LIST_CONTAINER_XL}
+    containerClassName={embedded ? "w-full max-w-none" : LIST_CONTAINER_XL}
+    disableSyncWithLocation={embedded}
+    showBreadcrumb={!embedded}
+    showHeader={!embedded}
   >
     <ResponsiveDataTable
-      rowClick="edit"
+      rowClick={rowClick}
       mobileConfig={{
         primaryField: "nombre",
         secondaryFields: ["apellido", "dni", "categoria", "idproyecto"],

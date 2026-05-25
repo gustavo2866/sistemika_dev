@@ -197,6 +197,7 @@ export type RowActionDialogConfig = {
   onConfirm: () => Promise<void> | void;
   contentClassName?: string;
   overlayClassName?: string;
+  modal?: boolean;
   portalContainer?: HTMLElement | null;
   contained?: boolean;
 };
@@ -252,6 +253,7 @@ export const RowActionDialogProvider = ({
     <RowActionDialogContext.Provider value={{ openDialog }}>
       <Dialog
         open={Boolean(dialogConfig)}
+        modal={dialogConfig?.modal ?? true}
         onOpenChange={(open) => {
           if (!open) handleDialogClose();
         }}

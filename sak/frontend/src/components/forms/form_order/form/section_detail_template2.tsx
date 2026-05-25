@@ -59,46 +59,115 @@ export type SectionDetailTemplate2Props = {
   actions?: ReactNode;
   defaultOpen?: boolean;
   focusSelector?: string;
+  focusFirstRowSignal?: number;
+  activateOnFocusFirstRow?: boolean;
   maxHeightClassName?: string;
   onActiveRowChange?: (activeIndex: number | null) => void;
   readOnly?: boolean;
+  showInfoWhenInactive?: boolean;
+  showInfoAction?: boolean;
+  showDeleteWhenInactive?: boolean;
+  saveOnlyWhenActive?: boolean;
+  showExpandActionOnMobile?: boolean;
+  showExpandAction?: boolean;
+  variant?: "compact" | "table";
+  addButtonLabel?: string;
+  detailIteratorClassName?: string;
+  canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
 };
 
 type DetailItemRowProps = {
   MainFields: ComponentType<SectionDetailFieldsProps>;
   OptionalFields?: ComponentType<SectionDetailFieldsProps>;
+  detailsSource: string;
   columns: SectionDetailColumn[];
+  showInfoWhenInactive?: boolean;
+  showInfoAction?: boolean;
+  showDeleteWhenInactive?: boolean;
+  saveOnlyWhenActive?: boolean;
+  showExpandActionOnMobile?: boolean;
+  showExpandAction?: boolean;
+  variant?: "compact" | "table";
+  canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
 };
 
-const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowProps) => {
+const DetailItemRow = ({
+  MainFields,
+  OptionalFields,
+  detailsSource,
+  columns,
+  showInfoWhenInactive,
+  showInfoAction = true,
+  showDeleteWhenInactive = false,
+  saveOnlyWhenActive = false,
+  showExpandActionOnMobile = false,
+  showExpandAction = false,
+  variant = "compact",
+  canDeleteRow,
+}: DetailItemRowProps) => {
   const detailContext = useDetailSectionContext();
   if (!detailContext) {
     throw new Error("DetailItemRow must be used within SectionDetailTemplate2");
   }
   const { rowGridClassName, rowGridStyle, activeIndex, onRowClick, setActiveIndex } =
     detailContext;
+  const { getValues } = useFormContext();
   const [showOptional, setShowOptional] = useState(false);
   const { remove, index } = useSimpleFormIteratorItem();
   const isActive = !detailContext.readOnly && activeIndex === index;
   const hasOptional = Boolean(OptionalFields);
+  const isTableVariant = variant === "table";
+  const rowValue = getValues(`${detailsSource}.${index}`) as Record<string, unknown> | undefined;
+  const canDelete = canDeleteRow ? canDeleteRow(rowValue ?? {}, index) : true;
 
-  const handleCollapse = () => {
+  const handleCollapse = useCallback(() => {
     setShowOptional(false);
     setActiveIndex(null);
-  };
+  }, [setActiveIndex]);
+  const handleCancelEdit = useCallback(() => {
+    const rowValue = getValues(`${detailsSource}.${index}`) as { id?: unknown } | undefined;
+    const isNewRow = rowValue?.id == null || rowValue.id === "";
+    setShowOptional(false);
+    setActiveIndex(null);
+    if (isNewRow) {
+      remove();
+    }
+  }, [detailsSource, getValues, index, remove, setActiveIndex]);
   const toggleOptional = () => setShowOptional((prev) => !prev);
 
   useEffect(() => {
     if (detailContext.readOnly) return;
+    if (showInfoWhenInactive) return;
     if (!isActive && showOptional) {
       setShowOptional(false);
     }
-  }, [isActive, showOptional, detailContext.readOnly]);
+  }, [isActive, showOptional, detailContext.readOnly, showInfoWhenInactive]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const handleDocumentKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleCancelEdit();
+    };
+
+    document.addEventListener("keydown", handleDocumentKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleDocumentKeyDown, true);
+    };
+  }, [handleCancelEdit, isActive]);
 
   const rowClassName = cn(
-    isActive
-      ? "is-active border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
-      : "sm:border-transparent",
+    isTableVariant
+      ? cn(
+          "rounded-none border-0 px-4 py-3 sm:min-h-[52px] sm:justify-center hover:bg-slate-50",
+          "[&>[data-detail-edit-hint]]:hidden",
+          isActive && "is-active bg-blue-50/50",
+        )
+      : isActive
+        ? "is-active border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
+        : "sm:border-transparent",
   );
 
   return (
@@ -111,11 +180,21 @@ const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowPro
         remove,
       }}
     >
-      <ResponsiveDetailRow className={rowClassName} onClick={onRowClick(index)}>
+      <ResponsiveDetailRow
+        className={rowClassName}
+        onClick={onRowClick(index)}
+        onKeyDownCapture={(event) => {
+          if (!isActive || event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          handleCancelEdit();
+        }}
+      >
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1 sm:block">
           <div
             className={cn(
               "grid grid-cols-[repeat(auto-fit,minmax(64px,1fr))] gap-1 sm:items-center sm:gap-2",
+              isTableVariant && "sm:gap-3",
               rowGridClassName,
             )}
             style={rowGridStyle}
@@ -130,7 +209,14 @@ const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowPro
               mode="desktop"
               readOnly={detailContext.readOnly}
               forceVisible={detailContext.readOnly}
-              showInfo={hasOptional}
+              showInfo={showInfoAction && hasOptional}
+              showInfoWhenInactive={showInfoWhenInactive}
+              showDeleteWhenInactive={showDeleteWhenInactive}
+              saveOnlyWhenActive={saveOnlyWhenActive}
+              showExpandActionOnMobile={showExpandActionOnMobile}
+              showExpandAction={showExpandAction}
+              variant={variant}
+              canDelete={canDelete}
             />
             <DetailRowError />
           </div>
@@ -139,7 +225,14 @@ const DetailItemRow = ({ MainFields, OptionalFields, columns }: DetailItemRowPro
               mode="mobile"
               readOnly={detailContext.readOnly}
               forceVisible={detailContext.readOnly}
-              showInfo={hasOptional}
+              showInfo={showInfoAction && hasOptional}
+              showInfoWhenInactive={showInfoWhenInactive}
+              showDeleteWhenInactive={showDeleteWhenInactive}
+              saveOnlyWhenActive={saveOnlyWhenActive}
+              showExpandActionOnMobile={showExpandActionOnMobile}
+              showExpandAction={showExpandAction}
+              variant={variant}
+              canDelete={canDelete}
             />
           </div>
         </div>
@@ -162,15 +255,29 @@ export const SectionDetailTemplate2 = ({
   actions,
   defaultOpen = true,
   focusSelector,
+  focusFirstRowSignal,
+  activateOnFocusFirstRow = true,
   maxHeightClassName,
   onActiveRowChange,
   readOnly = false,
+  showInfoWhenInactive = false,
+  showInfoAction = true,
+  showDeleteWhenInactive = false,
+  saveOnlyWhenActive = false,
+  showExpandActionOnMobile = false,
+  showExpandAction = false,
+  variant = "compact",
+  addButtonLabel = "Agregar",
+  detailIteratorClassName,
+  canDeleteRow,
 }: SectionDetailTemplate2Props) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { getValues, setValue } = useFormContext();
+  const resolvedFocusSelector = focusSelector ?? '[data-focus-field="true"]';
   const activeRow = useActiveRow({ name: detailsSource, focusSelector });
   const sectionRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusFirstRowSignalRef = useRef(focusFirstRowSignal);
   const disableAdd = readOnly || activeRow.activeIndex != null;
   const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
   const hasDetails = (detalles ?? []).length > 0;
@@ -321,6 +428,8 @@ export const SectionDetailTemplate2 = ({
     });
   };
 
+  const isTableVariant = variant === "table";
+
   const handleClear = () => {
     if (readOnly) return;
     setValue(detailsSource, [], { shouldDirty: true, shouldValidate: true });
@@ -339,7 +448,7 @@ export const SectionDetailTemplate2 = ({
       }
       activeRow.onRowClick(index)(event);
     },
-    [readOnly, activeRow.onRowClick],
+    [readOnly, activeRow],
   );
 
   useEffect(() => {
@@ -348,6 +457,36 @@ export const SectionDetailTemplate2 = ({
       onActiveRowChange?.(null);
     };
   }, [activeRow.activeIndex, onActiveRowChange]);
+
+  useEffect(() => {
+    if (focusFirstRowSignal == null) return;
+    if (previousFocusFirstRowSignalRef.current === focusFirstRowSignal) return;
+    previousFocusFirstRowSignalRef.current = focusFirstRowSignal;
+
+    const current = (getValues(detailsSource) as unknown[]) ?? [];
+    if (!current.length || readOnly) return;
+
+    if (activateOnFocusFirstRow) {
+      activeRow.setActiveIndex(0);
+    }
+    const container = activeRow.containerRef.current;
+    window.setTimeout(() => {
+      const first = container?.querySelector(resolvedFocusSelector);
+      const focusTarget =
+        (first?.querySelector('[role="combobox"]') as HTMLElement | null) ??
+        (first?.querySelector("input, textarea, button") as HTMLElement | null) ??
+        (first as HTMLElement | null);
+      focusTarget?.focus();
+    }, 0);
+  }, [
+    activeRow,
+    activateOnFocusFirstRow,
+    detailsSource,
+    focusFirstRowSignal,
+    getValues,
+    readOnly,
+    resolvedFocusSelector,
+  ]);
 
   const toggleButton = (
     <Button
@@ -420,7 +559,30 @@ export const SectionDetailTemplate2 = ({
     </DropdownMenu>
   );
 
-  const headerActions = (
+  const directAddButton = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      tabIndex={-1}
+      className="h-8 gap-2 rounded-md border-blue-300 bg-white px-3 text-[11px] font-medium text-blue-700 shadow-sm hover:bg-blue-50 hover:text-blue-700"
+      onClick={(event) => {
+        event.stopPropagation();
+        handleAdd();
+      }}
+      disabled={disableAdd}
+    >
+      <PlusCircle className="h-3.5 w-3.5" />
+      {addButtonLabel}
+    </Button>
+  );
+
+  const headerActions = isTableVariant ? (
+    <div className="flex items-center gap-2">
+      {!readOnly ? directAddButton : null}
+      {actionsMenu}
+    </div>
+  ) : (
     <div className="flex items-center gap-2">
       {actionsMenu}
       {toggleButton}
@@ -435,14 +597,21 @@ export const SectionDetailTemplate2 = ({
       onToggle={() => setIsOpen((v) => !v)}
       headerTabIndex={-1}
       headerActions={headerActions}
-      cardClassName="pt-3"
-      contentClassName="px-2 pt-0 pb-1"
-      titleClassName="mb-0"
+      cardClassName={
+        isTableVariant
+          ? "overflow-hidden rounded-lg border-slate-200 bg-white pt-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]"
+          : "pt-3"
+      }
+      contentClassName={isTableVariant ? "px-0 pt-0 pb-0" : "px-2 pt-0 pb-1"}
+      headerClassName={isTableVariant ? "px-4 pb-3" : undefined}
+      titleClassName={isTableVariant ? "mb-0 text-base font-bold" : "mb-0"}
     >
       {mainColumns?.length ? (
         <div
           className={cn(
-            "hidden sm:grid sm:gap-2 mt-2 text-[10px] font-semibold text-foreground pb-0 px-2",
+            isTableVariant
+              ? "hidden border-y border-slate-200 bg-slate-50/80 px-4 py-3 text-[11px] font-semibold text-slate-700 sm:grid sm:gap-3"
+              : "hidden sm:grid sm:gap-2 mt-2 text-[10px] font-semibold text-foreground pb-0 px-2",
             rowGridClassName,
           )}
           style={rowGridStyle}
@@ -465,27 +634,53 @@ export const SectionDetailTemplate2 = ({
           getFormElement,
         }}
       >
-        <div className="mt-1 space-y-0 w-full" onClick={handleContainerClick}>
+        <div
+          className={cn(isTableVariant ? "mt-0" : "mt-1", "space-y-0 w-full")}
+          onClick={handleContainerClick}
+        >
           <div
             ref={activeRow.containerRef}
             className={cn(
-              "w-full rounded-md border border-border px-2 pb-2 pt-0 md:overflow-y-auto",
+              isTableVariant
+                ? "w-full overflow-x-hidden px-0 pb-0 pt-0 md:overflow-y-auto"
+                : "w-full rounded-md border border-border px-2 pb-2 pt-0 md:overflow-y-auto",
               maxHeightClassName ?? "md:max-h-64",
             )}
           >
             <ArrayInput source={detailsSource} label={false}>
               <DetailIterator
+                className={
+                  cn(
+                    isTableVariant
+                      ? "[&_ul]:gap-0 [&_li]:!border-b [&_li]:!border-slate-200 [&_li:last-child]:!border-b-0"
+                      : undefined,
+                    detailIteratorClassName,
+                  )
+                }
                 addButton={
-                  <DetailFooterButtons
-                    defaultValues={getDefaultValues()}
-                    onAdd={activeRow.requestAutoActivate}
-                  />
+                  isTableVariant ? (
+                    <div />
+                  ) : (
+                    <DetailFooterButtons
+                      defaultValues={getDefaultValues()}
+                      onAdd={activeRow.requestAutoActivate}
+                    />
+                  )
                 }
               >
                 <DetailItemRow
                   MainFields={MainFields}
                   OptionalFields={OptionalFields}
+                  detailsSource={detailsSource}
                   columns={mainColumns}
+                  showInfoWhenInactive={showInfoWhenInactive}
+                  showInfoAction={showInfoAction}
+                  showDeleteWhenInactive={showDeleteWhenInactive}
+                  saveOnlyWhenActive={saveOnlyWhenActive}
+                  showExpandActionOnMobile={showExpandActionOnMobile}
+                  showExpandAction={showExpandAction}
+                  variant={variant}
+                  canDeleteRow={canDeleteRow}
                 />
               </DetailIterator>
             </ArrayInput>

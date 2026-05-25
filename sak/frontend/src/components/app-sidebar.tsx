@@ -53,14 +53,11 @@ import {
 
 const CONSTRUCTORA_RESOURCES = [
   "proy-dashboard",
-  "proyectos",
-  "proy-fases",
-  "proy-presupuestos",
-  "proyecto-avance",
   "solicitudes",
-  "recepciones",
   "tarjas",
   "parte-diario",
+  "constructora/pedidos",
+  "constructora-admin",
 ] as const;
 const COMPRAS_RESOURCES = ["po-dashboard", "po-orders-approval", "po-orders", "po-invoices", "proveedores"] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
@@ -74,7 +71,6 @@ const ADMIN_RESOURCES = [
   "po-invoices-agenda",
   "facturas",
   "orden-compra",
-  "nominas",
   "centros-costo",
 ] as const;
 const CONFIG_RESOURCES = [
@@ -133,6 +129,12 @@ const HIDDEN_RESOURCES = [
   "po-order-status",
   "po-invoice-status",
   "po-invoice-status-fin",
+  "proyectos",
+  "nominas",
+  "proy-fases",
+  "proy-presupuestos",
+  "proyecto-avance",
+  "recepciones",
   "tipos-propiedad",
   "propiedades-log-status",
   "propiedades-status",
@@ -277,6 +279,12 @@ export function AppSidebar() {
                       onClick={handleItemClick}
                     />
                   ))}
+                  <SidebarCustomMenuItem
+                    label="Setup"
+                    to="/constructora/setup"
+                    icon={Settings}
+                    onClick={handleItemClick}
+                  />
                 </GroupMenuItem>
               ) : null}
 
@@ -512,6 +520,7 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "orden-compra": ShoppingCart,
   tarjas: ClipboardCheck,
   "parte-diario": NotebookPen,
+  "constructora/pedidos": ClipboardList,
   nominas: Wallet,
 };
 
@@ -590,7 +599,7 @@ const GroupMenuItem = ({
         )}
       />
     </SidebarMenuButton>
-    {isOpen ? <SidebarMenuSub className={SIDEBAR_SUBMENU_CLASSNAME}>{children}</SidebarMenuSub> : null}
+  {isOpen ? <SidebarMenuSub className={SIDEBAR_SUBMENU_CLASSNAME}>{children}</SidebarMenuSub> : null}
   </SidebarMenuItem>
 );
 

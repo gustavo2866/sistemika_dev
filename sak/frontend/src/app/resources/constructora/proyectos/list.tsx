@@ -89,16 +89,17 @@ type ProyectoListProps = {
   embedded?: boolean;
   rowClick?: any;
   perPage?: number;
+  createTo?: string;
 };
 
-const ListActions = () => (
+const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton
       filters={LIST_FILTERS}
       size="sm"
       buttonClassName={actionButtonClass}
     />
-    <CreateButton className={actionButtonClass} label="Crear" />
+    <CreateButton className={actionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={actionButtonClass} label="Exportar" />
   </div>
 );
@@ -172,7 +173,8 @@ const ProyectoListBody = ({
 export const ProyectoList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 10,
+  perPage = 5,
+  createTo,
 }: ProyectoListProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -197,7 +199,7 @@ export const ProyectoList = ({
         size="sm"
         buttonClassName={actionButtonClass}
       />
-      <CreateButton className={actionButtonClass} label="Agregar" />
+      <CreateButton className={actionButtonClass} label="Agregar" to={createTo} />
       <ExportButton className={actionButtonClass} label="Exportar" />
     </div>
   ) : undefined;
@@ -207,7 +209,7 @@ export const ProyectoList = ({
       resource="proyectos"
       title={embedded ? undefined : <ProyectoListTitle onBack={handleBack} />}
       filters={LIST_FILTERS}
-      actions={embedded ? embeddedActions : <ListActions />}
+      actions={embedded ? embeddedActions : <ListActions createTo={createTo} />}
       debounce={300}
       perPage={perPage}
       pagination={<ListPaginator />}

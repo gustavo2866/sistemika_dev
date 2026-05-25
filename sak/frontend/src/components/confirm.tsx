@@ -31,6 +31,7 @@ export const Confirm = (props: ConfirmProps) => {
     titleTranslateOptions = translateOptions,
     contentTranslateOptions = translateOptions,
     overlayClassName,
+    modal = true,
     ...rest
   } = props;
 
@@ -49,7 +50,7 @@ export const Confirm = (props: ConfirmProps) => {
   }, []);
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => onClose()}>
+    <Dialog open={isOpen} onOpenChange={() => onClose()} modal={modal}>
       <DialogContent
         className={className}
         overlayClassName={overlayClassName}
@@ -108,6 +109,7 @@ export interface ConfirmProps {
   content: React.ReactNode;
   isOpen?: boolean;
   loading?: boolean;
+  modal?: boolean;
   overlayClassName?: string;
   onClose: () => void;
   onConfirm: MouseEventHandler;

@@ -26,6 +26,7 @@ from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Webh
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.schemas.channel_webhook import ChannelWebhookPayload
+from app.services.constructora_pedido_service import constructora_pedido_service
 from app.services.audio_transcription_service import audio_transcription_service
 
 logger = logging.getLogger(__name__)
@@ -554,6 +555,7 @@ class MetaWebhookService:
         agent_meta = dict(metadata.get("agent_v2") or {})
         cached_result = agent_meta.get("result")
         if isinstance(cached_result, dict):
+            self._ensure_constructora_pedido_from_agent_result(crm_mensaje, cached_result)
             return {**cached_result, "message_id": crm_mensaje.id, "cached": True}
         if agent_meta.get("delivery_processed_at"):
             return {
@@ -610,7 +612,39 @@ class MetaWebhookService:
         self.session.add(crm_mensaje)
         self.session.commit()
         self.session.refresh(crm_mensaje)
+        self._ensure_constructora_pedido_from_agent_result(crm_mensaje, auto_process_result)
         return auto_process_result
+
+    def _ensure_constructora_pedido_from_agent_result(
+        self,
+        crm_mensaje: CRMMensaje,
+        result: dict[str, Any],
+    ) -> None:
+        if result.get("type") != "pedido_obra_reply" or not result.get("pedido_listo"):
+            return
+
+        metadata = dict(crm_mensaje.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        if agent_meta.get("pedido_obra_id"):
+            return
+
+        try:
+            pedido = constructora_pedido_service.create_from_agent_message(
+                self.session,
+                int(crm_mensaje.id),
+            )
+            logger.info(
+                "Pedido de obra creado desde agente mensaje_id=%s pedido_id=%s",
+                crm_mensaje.id,
+                pedido.id,
+            )
+            self.session.refresh(crm_mensaje)
+        except Exception:
+            self.session.rollback()
+            logger.exception(
+                "No se pudo crear pedido de obra desde agente mensaje_id=%s",
+                crm_mensaje.id,
+            )
 
     def _handle_outbound_status(self, msg: Any) -> None:
         mensaje = self.session.exec(

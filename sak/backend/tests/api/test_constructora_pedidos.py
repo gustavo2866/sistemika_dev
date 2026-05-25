@@ -11,6 +11,9 @@ from app.models import (
 )
 from app.models.constructora.pedido import (
     ConstructoraPedido,
+    ConstructoraPedidoDetalle,
+    PedidoObraDetalleEstado,
+    PedidoObraDetalleOrigen,
     PedidoObraEstado,
     PedidoObraOrigen,
 )
@@ -73,6 +76,7 @@ def test_crear_pedido_basico(client, seed_base):
     detail = client.get(f"/constructora/pedidos/{data['id']}").json()
     assert len(detail["detalles"]) == 1
     assert detail["detalles"][0]["descripcion"] == "Cemento Portland"
+    assert Decimal(str(detail["detalles"][0]["cantidad_original"])) == Decimal("50.000")
 
 
 def test_crear_pedido_desde_agente(client, seed_base):
@@ -196,6 +200,102 @@ def test_eliminar_linea_en_update(client, seed_base):
     assert res.status_code == 200, res.text
     updated = client.get(f"/constructora/pedidos/{created['id']}").json()
     assert len(updated["detalles"]) == 1
+
+
+def test_quitar_linea_agente_no_la_borra_ni_cancela_en_update(client, db_session: Session, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido agente 2 lineas",
+        "origen": "agente",
+        "detalles": [
+            {
+                "descripcion": "A",
+                "cantidad": "1.000",
+                "origen": "agente",
+                "estado": "activa",
+            },
+            {
+                "descripcion": "B",
+                "cantidad": "2.000",
+                "origen": "agente",
+                "estado": "activa",
+            },
+        ],
+    }).json()
+
+    detail_res = client.get(f"/constructora/pedidos/{created['id']}").json()
+    primera = detail_res["detalles"][0]
+    segunda = detail_res["detalles"][1]
+
+    res = client.put(f"/constructora/pedidos/{created['id']}", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido agente 2 lineas",
+        "origen": "agente",
+        "detalles": [
+            {
+                "id": primera["id"],
+                "descripcion": primera["descripcion"],
+                "cantidad": primera["cantidad"],
+                "origen": "agente",
+                "estado": "activa",
+            }
+        ],
+    })
+    assert res.status_code == 200, res.text
+    updated = client.get(f"/constructora/pedidos/{created['id']}").json()
+    assert len(updated["detalles"]) == 2
+    conservada = next(d for d in updated["detalles"] if d["id"] == segunda["id"])
+    assert conservada["estado"] == PedidoObraDetalleEstado.ACTIVA.value
+    assert conservada["origen"] == PedidoObraDetalleOrigen.AGENTE.value
+    db_detalle = db_session.get(ConstructoraPedidoDetalle, segunda["id"])
+    assert db_detalle is not None
+    db_session.refresh(db_detalle)
+    assert db_detalle.estado == PedidoObraDetalleEstado.ACTIVA
+
+
+def test_quitar_linea_manual_la_borra_en_update(client, db_session: Session, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    created = client.post("/constructora/pedidos", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido manual 2 lineas",
+        "detalles": [
+            {
+                "descripcion": "A",
+                "cantidad": "1.000",
+                "origen": "manual",
+                "estado": "activa",
+            },
+            {
+                "descripcion": "B",
+                "cantidad": "2.000",
+                "origen": "manual",
+                "estado": "activa",
+            },
+        ],
+    }).json()
+
+    detail_res = client.get(f"/constructora/pedidos/{created['id']}").json()
+    primera = detail_res["detalles"][0]
+    segunda = detail_res["detalles"][1]
+
+    res = client.put(f"/constructora/pedidos/{created['id']}", json={
+        "oportunidad_id": oportunidad_id,
+        "titulo": "Pedido manual 2 lineas",
+        "detalles": [
+            {
+                "id": primera["id"],
+                "descripcion": primera["descripcion"],
+                "cantidad": primera["cantidad"],
+                "origen": "manual",
+                "estado": "activa",
+            }
+        ],
+    })
+    assert res.status_code == 200, res.text
+    updated = client.get(f"/constructora/pedidos/{created['id']}").json()
+    assert len(updated["detalles"]) == 1
+    assert db_session.get(ConstructoraPedidoDetalle, segunda["id"]) is None
 
 
 # ---------------------------------------------------------------------------

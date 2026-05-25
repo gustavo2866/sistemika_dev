@@ -21,12 +21,22 @@ if TYPE_CHECKING:
 
 class PedidoObraEstado(str, Enum):
     PENDIENTE = "pendiente"
-    REVISADO = "revisado"
+    CONFIRMADO = "confirmado"
     EMITIDO = "emitido"
     CANCELADO = "cancelado"
 
 
 class PedidoObraOrigen(str, Enum):
+    AGENTE = "agente"
+    MANUAL = "manual"
+
+
+class PedidoObraDetalleEstado(str, Enum):
+    ACTIVA = "activa"
+    CANCELADA = "cancelada"
+
+
+class PedidoObraDetalleOrigen(str, Enum):
     AGENTE = "agente"
     MANUAL = "manual"
 
@@ -42,6 +52,7 @@ class ConstructoraPedido(Base, table=True):
     __searchable_fields__: ClassVar[List[str]] = ["titulo", "observaciones"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
     __auto_include_relations__: ClassVar[List[str]] = [
+        "contacto",
         "solicitante",
         "responsable_revision",
         "detalles",
@@ -95,7 +106,7 @@ class ConstructoraPedido(Base, table=True):
     )
     fecha_revision: Optional[datetime] = Field(
         default=None,
-        description="Fecha en que el ingeniero marco el pedido como revisado",
+        description="Fecha en que el ingeniero marco el pedido como confirmado",
     )
     fecha_generacion_po: Optional[datetime] = Field(
         default=None,
@@ -118,6 +129,7 @@ class ConstructoraPedido(Base, table=True):
     responsable_revision: Optional["User"] = Relationship(
         sa_relationship_kwargs={"foreign_keys": "[ConstructoraPedido.responsable_revision_id]"},
     )
+    contacto: Optional["CRMContacto"] = Relationship()
 
 
 class ConstructoraPedidoDetalle(Base, table=True):
@@ -156,9 +168,24 @@ class ConstructoraPedidoDetalle(Base, table=True):
         max_length=50,
         description="Unidad de medida",
     )
+    estado: PedidoObraDetalleEstado = Field(
+        default=PedidoObraDetalleEstado.ACTIVA,
+        sa_column=Column(String(20), nullable=False, server_default="activa"),
+        description="Estado de la linea del pedido",
+    )
+    origen: PedidoObraDetalleOrigen = Field(
+        default=PedidoObraDetalleOrigen.MANUAL,
+        sa_column=Column(String(20), nullable=False, server_default="manual"),
+        description="Origen de la linea: agente o manual",
+    )
     cantidad: Decimal = Field(
         sa_column=Column(DECIMAL(12, 3), nullable=False),
-        description="Cantidad solicitada (debe ser > 0)",
+        description="Cantidad aceptada/editable",
+    )
+    cantidad_original: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 3), nullable=False, server_default="0"),
+        description="Cantidad original detectada en la solicitud",
     )
     centro_costo_id: Optional[int] = Field(
         default=None,

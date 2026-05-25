@@ -1,6 +1,8 @@
 from .pedido import (
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
+    PedidoObraDetalleEstado,
+    PedidoObraDetalleOrigen,
     PedidoObraEstado,
     PedidoObraOrigen,
 )
@@ -8,6 +10,8 @@ from .pedido import (
 __all__ = [
     "ConstructoraPedido",
     "ConstructoraPedidoDetalle",
+    "PedidoObraDetalleEstado",
+    "PedidoObraDetalleOrigen",
     "PedidoObraEstado",
     "PedidoObraOrigen",
 ]

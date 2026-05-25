@@ -1,4 +1,4 @@
-import { Kanban, Plus, ShoppingCart } from "lucide-react";
+import { ClipboardList, Plus, ShoppingCart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
   AlertKey,
@@ -66,7 +66,6 @@ type UseDashboardMainPanelParams = {
   onOpenProject: (item: ProyDashboardDetalleItem) => void;
   onNavigate: (path: string) => void;
   createProjectPath?: string;
-  projectListPath?: string;
 };
 
 const ALERT_LIST_TITLES: Record<AlertKey, string> = {
@@ -108,7 +107,6 @@ export const useDashboardMainPanel = ({
   onOpenProject,
   onNavigate,
   createProjectPath = "/proyectos/create",
-  projectListPath = "/proyectos",
 }: UseDashboardMainPanelParams): DashboardMainPanelViewModel => ({
   statusCards: Object.entries(selectorData?.por_estado ?? {})
     .sort((left, right) => left[0].localeCompare(right[0], "es"))
@@ -144,10 +142,10 @@ export const useDashboardMainPanel = ({
       onClick: () => onNavigate(createProjectPath),
     },
     {
-      key: "proyectos",
-      label: "Proyectos",
-      icon: Kanban,
-      onClick: () => onNavigate(projectListPath),
+      key: "pedidos",
+      label: "Pedidos",
+      icon: ClipboardList,
+      onClick: () => onNavigate("/constructora/pedidos"),
     },
     {
       key: "compras",

@@ -21,6 +21,7 @@ export const Edit = ({
   children,
   actions,
   className,
+  contentClassName,
   showBreadcrumb,
   showHeader,
   ...rest
@@ -34,6 +35,7 @@ export const Edit = ({
         title={title}
         actions={actions}
         className={className}
+        contentClassName={contentClassName}
         showBreadcrumb={showBreadcrumb}
         showHeader={showHeader}
       >
@@ -48,6 +50,7 @@ export interface EditViewProps {
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
+  contentClassName?: string;
   showBreadcrumb?: boolean;
   showHeader?: boolean;
 }
@@ -56,6 +59,7 @@ export const EditView = ({
   title,
   actions,
   className,
+  contentClassName,
   children,
   showBreadcrumb = true,
   showHeader = true,
@@ -114,7 +118,7 @@ export const EditView = ({
           )}
         </div>
       ) : null}
-      <div className="my-2 w-full max-w-3xl">{children}</div>
+      <div className={cn("my-2 w-full max-w-3xl", contentClassName)}>{children}</div>
     </>
   );
 };

@@ -18,6 +18,7 @@ export const Create = ({
   children,
   actions,
   className,
+  contentClassName,
   showBreadcrumb,
   showHeader,
   ...rest
@@ -27,6 +28,7 @@ export const Create = ({
       title={title}
       actions={actions}
       className={className}
+      contentClassName={contentClassName}
       showBreadcrumb={showBreadcrumb}
       showHeader={showHeader}
     >
@@ -39,6 +41,7 @@ export type CreateViewProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  contentClassName?: string;
   title?: ReactNode | string | false;
   showBreadcrumb?: boolean;
   showHeader?: boolean;
@@ -49,6 +52,7 @@ export const CreateView = ({
   title,
   children,
   className,
+  contentClassName,
   showBreadcrumb = true,
   showHeader = true,
 }: CreateViewProps) => {
@@ -93,7 +97,7 @@ export const CreateView = ({
           {actions}
         </div>
       ) : null}
-      <div className="my-2 w-full max-w-3xl">{children}</div>
+      <div className={cn("my-2 w-full max-w-3xl", contentClassName)}>{children}</div>
     </>
   );
 };

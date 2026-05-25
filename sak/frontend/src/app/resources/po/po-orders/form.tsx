@@ -45,7 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Confirm } from "@/components/confirm";
-import { FileText, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Trash2, Upload } from "lucide-react";
 import { apiUrl } from "@/lib/dataProvider";
 
 import {
@@ -267,9 +267,12 @@ const CabeceraOrdenCompra = () => {
     <SectionBaseTemplate
       title="Cabecera"
       readOnly={isReadOnly}
-      main={
+      main={({ showOptional, toggleOptional }) => (
         <>
-          <CabeceraCamposPrincipales />
+          <CabeceraCamposPrincipales
+            showOptional={showOptional}
+            toggleOptional={toggleOptional}
+          />
             {/* Always compute total for validation/payload */}
             <TotalCompute computeTotal={computePoOrderTotal} />
             <HiddenInput source="total" />
@@ -277,9 +280,10 @@ const CabeceraOrdenCompra = () => {
             <HiddenInput source="order_status_id" />
             <HiddenInput source="departamento_id" />
           </>
-        }
+        )}
         actions={accionesMenu}
         optional={<CabeceraCamposOpcionales />}
+        optionalTogglePlacement="none"
       />
       {!isLocked ? (
         <Confirm
@@ -297,10 +301,18 @@ const CabeceraOrdenCompra = () => {
 };
 
 // Campos principales de la cabecera de Orden de compra.
-const CabeceraCamposPrincipales = () => {
+const CabeceraCamposPrincipales = ({
+  showOptional,
+  toggleOptional,
+}: {
+  showOptional: boolean;
+  toggleOptional: () => void;
+}) => {
   const record = useRecordContext<PoOrderFormValues & { id?: Identifier }>();
   const isCreate = !record?.id;
   const { handleSolicitanteChange } = useSolicitanteCentroCostoSync();
+  const ToggleIcon = showOptional ? ChevronDown : ChevronRight;
+
   return (
     <div className="flex flex-col gap-0">
       <div className="flex flex-col gap-2 md:flex-row md:items-end">
@@ -346,6 +358,21 @@ const CabeceraCamposPrincipales = () => {
               widthClass="w-full"
             />
           </ReferenceInput>
+        </div>
+        <div className="flex h-5 items-center justify-center md:self-end">
+          <button
+            type="button"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleOptional();
+            }}
+            aria-label={showOptional ? "Ocultar campos optativos" : "Mostrar campos optativos"}
+            title={showOptional ? "Ocultar campos optativos" : "Mostrar campos optativos"}
+            tabIndex={-1}
+          >
+            <ToggleIcon className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>
@@ -485,96 +512,18 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
     { label: "Descripcion", width: "150px", mobileSpan: "full" },
     { label: "Cantidad", width: "64px", className: "-ml-[15px]" },
     { label: "Precio", width: "84px", className: "ml-[0px]" },
-    { label: "Importe", width: "84px", className: "ml-[30px]" },
-    { label: "", width: "28px" },
+    { label: "Importe", width: "92px", className: "ml-[18px]" },
+    { label: "", width: "minmax(64px,1fr)" },
   ];
 
   // Campos principales del detalle.
   const DetalleCamposPrincipales = useCallback(
-    ({ isActive }: SectionDetailFieldsProps) => {
-      const descripcionSource = useWrappedSource("descripcion");
-      const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
-      const hasDescripcion = Boolean(descripcion?.trim());
-
-      return (
-        <>
-          <DetailFieldCell
-            label="Articulo"
-            data-articulo-field="true"
-            data-focus-field="true"
-          >
-            <FormReferenceAutocomplete
-              referenceProps={{
-                source: "articulo_id",
-                reference: "articulos",
-                filter: articuloFilter,
-              }}
-              inputProps={{
-                optionText: "nombre",
-                label: false,
-              }}
-              widthClass="w-full"
-              className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
-            />
-          </DetailFieldCell>
-          <DetailFieldCell
-            label="Descripcion"
-            className={cn(!hasDescripcion && "hidden sm:flex")}
-          >
-            <FormText
-              source="descripcion"
-              label={false}
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
-            />
-          </DetailFieldCell>
-          <DetailFieldCell label="Cant." className="gap-0">
-            <FormNumber
-              source="cantidad"
-              label={false}
-              inputMode="decimal"
-              step="0.001"
-              widthClass="w-full"
-              validate={required()}
-              readOnly={!isActive}
-              className={cn(
-                "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
-                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
-              )}
-            />
-          </DetailFieldCell>
-          <DetailFieldCell label="Precio" className="gap-0">
-            <FormNumber
-              source="precio"
-              label={false}
-              inputMode="decimal"
-              step="0.01"
-              widthClass="w-full"
-              readOnly={!isActive}
-              className={cn(
-                "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
-                !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
-              )}
-            />
-          </DetailFieldCell>
-          <DetailFieldCell label="Importe" className="gap-0">
-            <CalculatedImporte
-              computeImporte={computeDetalleImporte}
-              className="gap-0"
-              widthClass="w-full"
-              valueClassName={
-                cn(
-                  "px-1 sm:px-2",
-                  !isActive ? FORM_VALUE_READONLY_CLASS : undefined,
-                )
-              }
-            />
-            <HiddenInput source="importe" />
-          </DetailFieldCell>
-        </>
-      );
-    },
+    (props: SectionDetailFieldsProps) => (
+      <PoOrderDetalleCamposPrincipales
+        {...props}
+        articuloFilter={articuloFilter}
+      />
+    ),
     [articuloFilter],
   );
 
@@ -623,7 +572,102 @@ const DetalleOrdenCompra = ({ articuloFilter }: { articuloFilter?: Record<string
       maxHeightClassName="md:max-h-48"
       onActiveRowChange={handleActiveRowChange}
       readOnly={isReadOnly}
+      showInfoWhenInactive
+      showInfoAction={false}
+      showDeleteWhenInactive
+      saveOnlyWhenActive
+      showExpandActionOnMobile
+      showExpandAction
+      detailIteratorClassName="[&_li]:!border-b [&_li]:!border-slate-200/70 [&_li:last-child]:!border-b-0"
     />
+  );
+};
+
+const PoOrderDetalleCamposPrincipales = ({
+  isActive,
+  articuloFilter,
+}: SectionDetailFieldsProps & {
+  articuloFilter?: Record<string, unknown>;
+}) => {
+  const descripcionSource = useWrappedSource("descripcion");
+  const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
+  const hasDescripcion = Boolean(descripcion?.trim());
+
+  return (
+    <>
+      <DetailFieldCell
+        label="Articulo"
+        data-articulo-field="true"
+        data-focus-field="true"
+      >
+        <FormReferenceAutocomplete
+          referenceProps={{
+            source: "articulo_id",
+            reference: "articulos",
+            filter: articuloFilter,
+          }}
+          inputProps={{
+            optionText: "nombre",
+            label: false,
+          }}
+          widthClass="w-full"
+          className={!isActive ? FORM_FIELD_READONLY_CLASS : undefined}
+        />
+      </DetailFieldCell>
+      <DetailFieldCell
+        label="Descripcion"
+        className={cn(!hasDescripcion && "hidden sm:flex")}
+      >
+        <FormText
+          source="descripcion"
+          label={false}
+          widthClass="w-full"
+          readOnly={!isActive}
+          className={cn(!isActive && FORM_FIELD_READONLY_CLASS)}
+        />
+      </DetailFieldCell>
+      <DetailFieldCell label="Cant." className="gap-0">
+        <FormNumber
+          source="cantidad"
+          label={false}
+          inputMode="decimal"
+          step="0.001"
+          widthClass="w-full"
+          validate={required()}
+          readOnly={!isActive}
+          className={cn(
+            "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
+            !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+          )}
+        />
+      </DetailFieldCell>
+      <DetailFieldCell label="Precio" className="gap-0">
+        <FormNumber
+          source="precio"
+          label={false}
+          inputMode="decimal"
+          step="0.01"
+          widthClass="w-full"
+          readOnly={!isActive}
+          className={cn(
+            "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
+            !isActive ? FORM_FIELD_READONLY_CLASS : undefined,
+          )}
+        />
+      </DetailFieldCell>
+      <DetailFieldCell label="Importe" className="gap-0">
+        <CalculatedImporte
+          computeImporte={computeDetalleImporte}
+          className="gap-0"
+          widthClass="w-full"
+          valueClassName={cn(
+            "px-1 sm:px-2",
+            !isActive ? FORM_VALUE_READONLY_CLASS : undefined,
+          )}
+        />
+        <HiddenInput source="importe" />
+      </DetailFieldCell>
+    </>
   );
 };
 

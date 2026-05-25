@@ -217,6 +217,12 @@ import {
   ParteDiarioShow,
 } from "@/app/resources/constructora/parte-diario";
 import {
+  PedidoList,
+  PedidoCreate,
+  PedidoEdit,
+  PedidoShow,
+} from "@/app/resources/constructora/pedidos";
+import {
   CRMTipoOperacionList,
   CRMTipoOperacionCreate,
   CRMTipoOperacionEdit,
@@ -320,6 +326,8 @@ import {
 } from "@/app/resources/inmobiliaria/emprendimientos";
 import { CRMSetupPage } from "@/app/resources/crm/crm-setup/CRMSetupPage";
 import { PoSetupPage } from "@/app/resources/po/po-setup/PoSetupPage";
+import { ConstructoraAdminPage } from "@/app/resources/constructora/constructora-admin/ConstructoraAdminPage";
+import { ConstructoraSetupPage } from "@/app/resources/constructora/constructora-setup/ConstructoraSetupPage";
 import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
 import { PropiedadesConfigPage } from "@/app/resources/inmobiliaria/propiedades-config/PropiedadesConfigPage";
 
@@ -675,6 +683,13 @@ const AdminApp = () => {
         options={{ label: "Agenda de pagos" }}
       />
       <Resource
+        name="constructora-admin"
+        list={ConstructoraAdminPage}
+        recordRepresentation="id"
+        icon={Users}
+        options={{ label: "Admin" }}
+      />
+      <Resource
         name="po-setup"
         list={PoSetupPage}
         recordRepresentation="id"
@@ -725,6 +740,16 @@ const AdminApp = () => {
         recordRepresentation="descripcion"
         icon={NotebookPen}
         options={{ label: "Parte Diario" }}
+      />
+      <Resource
+        name="constructora/pedidos"
+        list={PedidoList}
+        create={PedidoCreate}
+        edit={PedidoEdit}
+        show={PedidoShow}
+        recordRepresentation="titulo"
+        icon={ClipboardList}
+        options={{ label: "Pedidos" }}
       />
       <Resource
         name="nominas"
@@ -897,6 +922,7 @@ const AdminApp = () => {
       />
       <CustomRoutes>
         <Route path="/po/setup/*" element={<PoSetupPage />} />
+        <Route path="/constructora/setup/*" element={<ConstructoraSetupPage />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />

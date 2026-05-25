@@ -13,6 +13,8 @@ from app.models import (
 from app.models.constructora.pedido import (
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
+    PedidoObraDetalleEstado,
+    PedidoObraDetalleOrigen,
     PedidoObraEstado,
     PedidoObraOrigen,
 )
@@ -126,7 +128,10 @@ def test_create_from_agent_message_detalles(db_session: Session, seed_base):
 
     cemento = next(d for d in detalles if d.descripcion == "Cemento")
     assert cemento.cantidad == Decimal("50")
+    assert cemento.cantidad_original == Decimal("50")
     assert cemento.unidad_medida == "kg"
+    assert cemento.estado == PedidoObraDetalleEstado.ACTIVA
+    assert cemento.origen == PedidoObraDetalleOrigen.AGENTE
     assert cemento.metadata_json == {"agent_item_id": "abc01"}
 
     # Orden asignado

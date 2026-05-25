@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useCallback } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,14 @@ export const AutocompleteInput = (
 
   const [filterValue, setFilterValue] = React.useState("");
   const [open, setOpen] = React.useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // Asegurar que el tabIndex se mantenga correcto después de que Radix lo resetea al cerrar el popover
+  useEffect(() => {
+    if (triggerRef.current) {
+      triggerRef.current.tabIndex = 0;
+    }
+  });
 
   const selectedChoice = allChoices.find(
     (choice) => getChoiceValue(choice) === fieldValue,
@@ -119,6 +127,12 @@ export const AutocompleteInput = (
     // Reset the filter when the popover is closed
     if (!isOpen) {
       setFilters(filterToQuery(""));
+      // Restaurar tabIndex después de que Radix lo resetea al cerrar el popover
+      requestAnimationFrame(() => {
+        if (triggerRef.current) {
+          triggerRef.current.tabIndex = 0;
+        }
+      });
     }
   });
 
@@ -198,6 +212,7 @@ export const AutocompleteInput = (
           <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger asChild>
               <Button
+                ref={triggerRef}
                 type="button"
                 variant="outline"
                 role="combobox"

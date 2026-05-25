@@ -16,7 +16,7 @@ export type SectionBaseTemplateProps = {
   /** Title shown in the section header. */
   title: string;
   /** Main (always visible) content for the section. */
-  main: ReactNode;
+  main: ReactNode | ((props: { showOptional: boolean; toggleOptional: () => void }) => ReactNode);
   /** Optional content toggled by "more/less" action. */
   optional?: ReactNode;
   /** Optional summary content rendered in the header row. */
@@ -33,6 +33,13 @@ export type SectionBaseTemplateProps = {
   readOnly?: boolean;
   /** Optional key to persist open state across navigations. */
   persistKey?: string;
+  cardClassName?: string;
+  contentClassName?: string;
+  headerClassName?: string;
+  titleClassName?: string;
+  optionalToggleClassName?: string;
+  showCollapseToggle?: boolean;
+  optionalTogglePlacement?: "side" | "none";
 };
 
 export const SectionBaseTemplate = ({
@@ -46,6 +53,13 @@ export const SectionBaseTemplate = ({
   actions,
   readOnly = false,
   persistKey,
+  cardClassName,
+  contentClassName,
+  headerClassName,
+  titleClassName,
+  optionalToggleClassName,
+  showCollapseToggle = true,
+  optionalTogglePlacement = "side",
 }: SectionBaseTemplateProps) => {
   const resolveInitialOpen = () => {
     if (!persistKey || typeof window === "undefined") return defaultOpen;
@@ -56,9 +70,17 @@ export const SectionBaseTemplate = ({
 
   const [isOpen, setIsOpen] = useState(resolveInitialOpen);
   const [showOptional, setShowOptional] = useState(defaultOptionalOpen);
+  const toggleOptional = () => setShowOptional((v) => !v);
 
   const resolvedHeaderSummary =
     typeof headerSummary === "function" ? headerSummary(isOpen) : headerSummary;
+  const resolvedMain =
+    typeof main === "function"
+      ? (main as (props: { showOptional: boolean; toggleOptional: () => void }) => ReactNode)({
+          showOptional,
+          toggleOptional,
+        })
+      : main;
 
   useEffect(() => {
     if (!persistKey || typeof window === "undefined") return;
@@ -106,7 +128,7 @@ export const SectionBaseTemplate = ({
           <div className={headerSummaryClassName}>{resolvedHeaderSummary}</div>
         ) : null}
         {actionsMenu}
-        {toggleButton}
+        {showCollapseToggle ? toggleButton : null}
       </div>
     ) : undefined;
 
@@ -117,15 +139,16 @@ export const SectionBaseTemplate = ({
       onToggle={() => setIsOpen((v) => !v)}
       headerActions={headerActions}
       headerTabIndex={-1}
-      cardClassName="pt-3 pb-2"
-      contentClassName="px-3 pt-0 pb-2"
-      titleClassName="mb-2"
+      cardClassName={cn("pt-3 pb-2", cardClassName)}
+      contentClassName={cn("px-3 pt-0 pb-2", contentClassName)}
+      headerClassName={headerClassName}
+      titleClassName={cn("mb-2", titleClassName)}
     >
       <div className="flex flex-col gap-0">
-        {optional ? (
+        {optional && optionalTogglePlacement !== "none" ? (
           <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,max-content)_auto] items-end gap-2">
             <div className={cn("min-w-0", readOnly && "pointer-events-none")}>
-              {main}
+              {resolvedMain}
             </div>
             <div className="flex items-end justify-end md:justify-self-start">
               <button
@@ -135,9 +158,10 @@ export const SectionBaseTemplate = ({
                   showOptional
                     ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]"
                     : "text-blue-600 hover:text-blue-700 hover:bg-blue-50/60",
+                  optionalToggleClassName,
                 )}
                 tabIndex={-1}
-                onClick={() => setShowOptional((v) => !v)}
+                onClick={toggleOptional}
                 aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
                 title={showOptional ? "Ocultar datos" : "Mostrar datos"}
               >
@@ -146,7 +170,7 @@ export const SectionBaseTemplate = ({
             </div>
           </div>
         ) : (
-          <div className={cn(readOnly && "pointer-events-none")}>{main}</div>
+          <div className={cn(readOnly && "pointer-events-none")}>{resolvedMain}</div>
         )}
       </div>
       {optional && showOptional ? (
