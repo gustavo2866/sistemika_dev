@@ -102,6 +102,15 @@ export type Proyecto = {
   id?: number | string;
   nombre?: string | null;
   oportunidad_id?: number | null;
+  oportunidad?: {
+    id?: number | string | null;
+    contacto_id?: number | string | null;
+    contacto?: {
+      id?: number | string | null;
+      nombre_completo?: string | null;
+    } | null;
+  } | null;
+  encargado_contacto_id?: number | string | null;
   responsable_id?: number | null;
   fecha_inicio?: string | null;
   fecha_final?: string | null;
@@ -141,6 +150,7 @@ export const proyectoAvanceSchema = z.object({
 export const proyectoSchema = z.object({
   nombre: z.string().min(1).max(PROYECTO_VALIDATIONS.NOMBRE_MAX),
   oportunidad_id: optionalPositiveIdSchema,
+  encargado_contacto_id: optionalPositiveIdSchema,
   responsable_id: optionalPositiveIdSchema,
   estado: z.preprocess(
     normalizeProyectoEstado,
@@ -170,6 +180,7 @@ export type ProyectoAvanceFormValues = z.infer<typeof proyectoAvanceSchema>;
 export const PROYECTO_DEFAULTS: ProyectoFormValues = {
   nombre: "",
   oportunidad_id: undefined,
+  encargado_contacto_id: undefined,
   responsable_id: undefined,
   estado: "01-plan",
   fecha_inicio: "",
@@ -261,6 +272,7 @@ export const normalizeProyectoPayload = (
 ): ProyectoFormValues => ({
   nombre: trimRequiredText(data.nombre),
   oportunidad_id: resolveNumericId(data.oportunidad_id),
+  encargado_contacto_id: resolveNumericId(data.encargado_contacto_id),
   responsable_id: resolveNumericId(data.responsable_id),
   estado: PROYECTO_ESTADO_VALUES.includes(data.estado as ProyectoEstado)
     ? (data.estado as ProyectoEstado)

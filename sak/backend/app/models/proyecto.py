@@ -20,7 +20,7 @@ class Proyecto(Base, table=True):
 
     __searchable_fields__ = ["nombre", "estado"]
     __expanded_list_relations__: ClassVar[set[str]] = {"avances"}
-    __auto_include_relations__: ClassVar[List[str]] = ["avances"]
+    __auto_include_relations__: ClassVar[List[str]] = ["avances", "oportunidad"]
 
     nombre: str = Field(
         max_length=150,

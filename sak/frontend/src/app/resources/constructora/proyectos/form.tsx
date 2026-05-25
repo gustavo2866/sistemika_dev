@@ -9,12 +9,13 @@ import {
   useGetOne,
   useRecordContext,
 } from "ra-core";
-import { useWatch } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 
 import { CRMChatShow } from "@/app/resources/crm/crm-chat";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
+import { PedidoList } from "@/app/resources/constructora/pedidos";
 import { ProyectoAvanceList } from "@/app/resources/constructora/proyecto-avance";
 import { ProyPresupuestoList } from "@/app/resources/constructora/proy-presupuesto/List";
 import { PoOrderList } from "@/app/resources/po/po-orders/List";
@@ -28,6 +29,7 @@ import {
   FormErrorSummary,
   FormOrderToolbar,
   FormNumber,
+  FormReferenceAutocomplete,
   FormSelect,
   FormText,
   FormTextarea,
@@ -44,6 +46,7 @@ import {
   getProyectoUltimoAvance,
   proyectoSchema,
   type ProyectoFormValues,
+  type ProyectoRecord,
 } from "./model";
 
 const resolveNumericId = (value: unknown) => {
@@ -72,6 +75,7 @@ type ProyectoDesktopSectionId =
   | "presupuesto"
   | "certificados"
   | "ordenes"
+  | "pedidos"
   | "chat"
   | "eventos";
 
@@ -84,6 +88,7 @@ const PROYECTO_DESKTOP_SECTIONS: Array<{
   { id: "presupuesto", label: "Presupuesto" },
   { id: "certificados", label: "Certificados" },
   { id: "ordenes", label: "Ordenes" },
+  { id: "pedidos", label: "Pedidos" },
   { id: "chat", label: "Chat" },
   { id: "eventos", label: "Eventos" },
 ];
@@ -169,6 +174,66 @@ const ProyectoOportunidadField = () => {
     >
       {oportunidadLabel}
     </FormValue>
+  );
+};
+
+type TipoContactoRecord = {
+  id?: number | string;
+  nombre?: string | null;
+  codigo?: string | null;
+};
+
+const normalizeCatalogToken = (value?: string | null) =>
+  String(value ?? "").trim().toLowerCase();
+
+const ProyectoEncargadoSync = () => {
+  const record = useRecordContext<ProyectoRecord>();
+  const { setValue } = useFormContext<ProyectoFormValues>();
+  const contactoId = resolveNumericId(record?.oportunidad?.contacto_id);
+
+  useEffect(() => {
+    if (!record?.id || !contactoId) return;
+    setValue("encargado_contacto_id", contactoId, { shouldDirty: false });
+  }, [contactoId, record?.id, setValue]);
+
+  return null;
+};
+
+const ProyectoEncargadoField = () => {
+  const { data: tiposContacto = [] } = useGetList<TipoContactoRecord>(
+    "crm/catalogos/tipos-contacto",
+    {
+      pagination: { page: 1, perPage: 100 },
+      sort: { field: "nombre", order: "ASC" },
+      filter: { q: "encargado" },
+    },
+  );
+
+  const encargadoTipoContactoId = useMemo(() => {
+    const tipo = tiposContacto.find((item) => {
+      const nombre = normalizeCatalogToken(item.nombre);
+      const codigo = normalizeCatalogToken(item.codigo);
+      return nombre === "encargado" || codigo === "encargado";
+    });
+    return resolveNumericId(tipo?.id);
+  }, [tiposContacto]);
+
+  return (
+    <FormReferenceAutocomplete
+      referenceProps={{
+        source: "encargado_contacto_id",
+        reference: "crm/contactos",
+        filter: encargadoTipoContactoId ? { tipo_id: encargadoTipoContactoId } : { id: -1 },
+        sort: { field: "nombre_completo", order: "ASC" },
+        perPage: 100,
+      }}
+      inputProps={{
+        label: "Encargado",
+        optionText: "nombre_completo",
+        disabled: !encargadoTipoContactoId,
+      }}
+      widthClass="w-full"
+    />
   );
 };
 
@@ -402,6 +467,68 @@ const ProyectoOrdenesSection = ({
   );
 };
 
+const ProyectoPedidosSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
+  const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
+  const oportunidadId = resolveNumericId(record?.oportunidad_id);
+
+  if (!oportunidadId) {
+    const placeholder = (
+      <ProyectoDesktopEmptyState message="Los pedidos estaran disponibles despues de guardar el proyecto y generar la oportunidad." />
+    );
+
+    if (variant === "panel") {
+      return (
+        <ProyectoDesktopPanel
+          title="Pedidos"
+          description="Pedidos de obra pendientes vinculados a la oportunidad del proyecto."
+        >
+          {placeholder}
+        </ProyectoDesktopPanel>
+      );
+    }
+
+    return (
+      <SectionBaseTemplate
+        title="Pedidos"
+        defaultOpen={false}
+        main={placeholder}
+      />
+    );
+  }
+
+  const list = (
+    <PedidoList
+      embedded
+      filter={{ oportunidad_id: oportunidadId, estado: "pendiente" }}
+      storeKey={`constructora-pedidos-proyecto-${oportunidadId}`}
+    />
+  );
+
+  if (variant === "panel") {
+    return (
+      <ProyectoDesktopPanel
+        title="Pedidos"
+        description="Pedidos de obra pendientes vinculados a la oportunidad del proyecto."
+      >
+        {list}
+      </ProyectoDesktopPanel>
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title="Pedidos"
+      defaultOpen={false}
+      persistKey={`constructora-proyectos-pedidos-${oportunidadId}`}
+      main={list}
+    />
+  );
+};
+
 const ProyectoCertificadosSection = ({
   variant = "stacked",
 }: {
@@ -553,7 +680,6 @@ const ProyectoCabeceraMainFields = () => (
       label="Nombre"
       validate={required()}
       widthClass="w-full"
-      className="md:col-span-2"
       maxLength={PROYECTO_VALIDATIONS.NOMBRE_MAX}
     />
     <FormSelect
@@ -563,14 +689,9 @@ const ProyectoCabeceraMainFields = () => (
       validate={required()}
       widthClass="w-full"
     />
-    <ReferenceInput source="responsable_id" reference="users" label="Responsable">
-      <FormSelect
-        optionText="nombre"
-        label="Responsable"
-        validate={required()}
-        widthClass="w-full"
-      />
-    </ReferenceInput>
+    <div className="md:col-span-2">
+      <ProyectoEncargadoField />
+    </div>
   </div>
 );
 
@@ -580,6 +701,13 @@ const ProyectoCabeceraOptionalFields = () => (
       <div className="md:col-span-2">
         <ProyectoOportunidadField />
       </div>
+      <ReferenceInput source="responsable_id" reference="users" label="Responsable">
+        <FormSelect
+          optionText="nombre"
+          label="Responsable"
+          widthClass="w-full"
+        />
+      </ReferenceInput>
       <FormNumber
         source="centro_costo"
         label="Centro de costo"
@@ -756,6 +884,8 @@ const ProyectoDesktopSectionsLayout = ({
         return <ProyectoCertificadosSection variant="panel" />;
       case "ordenes":
         return <ProyectoOrdenesSection variant="panel" />;
+      case "pedidos":
+        return <ProyectoPedidosSection variant="panel" />;
       case "chat":
         return <ProyectoChatSection variant="panel" />;
       case "eventos":
@@ -823,6 +953,7 @@ export const ProyectoForm = () => {
       toolbar={<ProyectoStickyFooter />}
       defaultValues={defaultValues}
     >
+      <ProyectoEncargadoSync />
       <FormErrorSummary />
       <SectionBaseTemplate
         title="Cabecera"
@@ -840,6 +971,7 @@ export const ProyectoForm = () => {
           <ProyectoPresupuestoSection />
           <ProyectoCertificadosSection />
           <ProyectoOrdenesSection />
+          <ProyectoPedidosSection />
           <ProyectoChatSection />
           <ProyectoEventosSection />
         </>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, Info, MoreHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, MoreHorizontal } from "lucide-react";
 
 import { SectionCard } from "./section_card";
 import { Button } from "@/components/ui/button";
@@ -165,7 +165,7 @@ export const SectionBaseTemplate = ({
                 aria-label={showOptional ? "Ocultar datos" : "Mostrar datos"}
                 title={showOptional ? "Ocultar datos" : "Mostrar datos"}
               >
-                <Info className="h-4 w-4" />
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>

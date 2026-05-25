@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent } from "react";
-import { Info } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -35,7 +35,7 @@ export const DetailInfoButton = ({
       title={label}
       tabIndex={tabIndex}
     >
-      <Info className={cn("size-2.5 md:size-3", iconClassName)} />
+      <ChevronRight className={cn("size-2.5 md:size-3", iconClassName)} />
     </button>
   );
 };

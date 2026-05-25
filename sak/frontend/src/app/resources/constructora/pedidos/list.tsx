@@ -3,10 +3,11 @@
 import { useRecordContext } from "ra-core";
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { ReactNode } from "react";
 
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { FilterButton } from "@/components/filter-form";
+import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
 import { SelectField } from "@/components/select-field";
@@ -78,6 +79,31 @@ const filters = buildListFilters(
   { keyPrefix: "constructora-pedidos" },
 );
 
+const embeddedFilters = buildListFilters(
+  [
+    {
+      type: "text",
+      props: {
+        source: "q",
+        label: "Buscar",
+        placeholder: "Buscar pedidos",
+        alwaysOn: true,
+        className: "w-[120px] sm:w-[170px]",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "origen",
+        label: "Origen",
+        choices: PEDIDO_ORIGEN_CHOICES,
+        emptyText: "Todos",
+      },
+    },
+  ],
+  { keyPrefix: "constructora-pedidos-embedded" },
+);
+
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const PedidoListTitle = ({ onBack }: { onBack: () => void }) => (
@@ -119,6 +145,13 @@ const ListActions = () => (
   </div>
 );
 
+const EmbeddedListActions = () => (
+  <div className="flex items-center gap-2">
+    <FilterButton filters={embeddedFilters} size="sm" buttonClassName={actionButtonClass} />
+    <ExportButton className={actionButtonClass} label="Exportar" />
+  </div>
+);
+
 const DetalleCountField = () => {
   const record = useRecordContext<{ detalles?: Array<unknown> }>();
   const count = Array.isArray(record?.detalles) ? record.detalles.length : 0;
@@ -139,7 +172,23 @@ const PedidoListRowActions = () => {
   );
 };
 
-export const PedidoList = () => {
+export type PedidoListProps = {
+  embedded?: boolean;
+  filter?: Record<string, unknown>;
+  filterDefaultValues?: Record<string, unknown>;
+  storeKey?: string;
+  showEmbeddedHeader?: boolean;
+  embeddedTitle?: string | ReactNode | false;
+};
+
+export const PedidoList = ({
+  embedded = false,
+  filter,
+  filterDefaultValues,
+  storeKey,
+  showEmbeddedHeader = false,
+  embeddedTitle = "Pedidos",
+}: PedidoListProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = getReturnToFromLocation(location);
@@ -158,16 +207,31 @@ export const PedidoList = () => {
 
   return (
     <List
-      title={<PedidoListTitle onBack={handleBack} />}
-      filters={filters}
-      actions={<ListActions />}
+      resource="constructora/pedidos"
+      title={
+        embedded
+          ? showEmbeddedHeader
+            ? embeddedTitle
+            : undefined
+          : <PedidoListTitle onBack={handleBack} />
+      }
+      filters={embedded ? embeddedFilters : filters}
+      actions={embedded ? <EmbeddedListActions /> : <ListActions />}
+      filter={filter}
+      filterDefaultValues={filterDefaultValues}
       perPage={25}
       pagination={<ListPaginator />}
       sort={{ field: "created_at", order: "DESC" }}
-      containerClassName={LIST_CONTAINER_WIDE}
+      containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_WIDE}
+      disableSyncWithLocation={embedded}
+      storeKey={storeKey}
+      showBreadcrumb={embedded ? false : true}
+      showHeader={embedded ? showEmbeddedHeader : true}
+      filterFormComponent={embedded ? StyledFilterDiv : undefined}
     >
       <ResponsiveDataTable
         rowClick="edit"
+        compact={embedded}
         mobileConfig={{ primaryField: "titulo", secondaryFields: ["estado", "origen", "oportunidad_id"] }}
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >

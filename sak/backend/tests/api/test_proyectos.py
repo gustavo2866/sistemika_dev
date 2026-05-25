@@ -1,10 +1,32 @@
 from fastapi.testclient import TestClient
+from sqlmodel import Session
+
+from app.models.crm.contacto import CRMContacto
+from app.models.user import User
 
 
-def test_create_and_list_proyectos(client: TestClient) -> None:
+def _seed_user_and_contacto(db_session: Session, suffix: str = "1") -> tuple[User, CRMContacto]:
+    user = User(nombre=f"Proyecto Tester {suffix}", email=f"proyecto-tester-{suffix}@example.com")
+    db_session.add(user)
+    db_session.flush()
+
+    contacto = CRMContacto(
+        nombre_completo=f"Encargado Proyecto {suffix}",
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.commit()
+    db_session.refresh(user)
+    db_session.refresh(contacto)
+    return user, contacto
+
+
+def test_create_and_list_proyectos(client: TestClient, db_session: Session) -> None:
+    user, _ = _seed_user_and_contacto(db_session, "list")
     payload = {
         "nombre": "Proyecto API",
         "estado": "planeado",
+        "responsable_id": user.id,
         "fecha_inicio": "2025-01-01",
         "importe_mat": "150000.50",
         "importe_mo": "50000.00",
@@ -25,10 +47,12 @@ def test_create_and_list_proyectos(client: TestClient) -> None:
     assert any(item["nombre"] == payload["nombre"] for item in records)
 
 
-def test_update_and_delete_proyecto(client: TestClient) -> None:
+def test_update_and_delete_proyecto(client: TestClient, db_session: Session) -> None:
+    user, _ = _seed_user_and_contacto(db_session, "update-delete")
     create_payload = {
         "nombre": "Proyecto Temporal",
         "estado": "planeado",
+        "responsable_id": user.id,
         "fecha_inicio": "2025-02-10",
         "importe_mat": "200000.00",
         "importe_mo": "80000.00",
@@ -43,6 +67,7 @@ def test_update_and_delete_proyecto(client: TestClient) -> None:
         "id": proyecto_id,
         "nombre": "Proyecto Temporal",
         "estado": "en_ejecucion",
+        "responsable_id": user.id,
         "fecha_inicio": "2025-02-10",
         "fecha_final": "2025-08-15",
         "importe_mat": "225000.00",
@@ -65,3 +90,45 @@ def test_update_and_delete_proyecto(client: TestClient) -> None:
     deleted = delete_response.json()
     assert deleted["id"] == proyecto_id
     assert deleted["nombre"] == update_payload["nombre"]
+
+
+def test_proyecto_syncs_encargado_with_oportunidad(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, contacto = _seed_user_and_contacto(db_session, "create")
+
+    create_response = client.post(
+        "/proyectos",
+        json={
+            "nombre": "Proyecto con encargado",
+            "estado": "planeado",
+            "responsable_id": user.id,
+            "encargado_contacto_id": contacto.id,
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    proyecto_id = create_response.json()["id"]
+
+    detail_response = client.get(f"/proyectos/{proyecto_id}")
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+    assert detail["oportunidad"]["contacto_id"] == contacto.id
+
+    _, nuevo_contacto = _seed_user_and_contacto(db_session, "update")
+    update_response = client.put(
+        f"/proyectos/{proyecto_id}",
+        json={
+            "id": proyecto_id,
+            "nombre": "Proyecto con encargado actualizado",
+            "estado": "en_ejecucion",
+            "responsable_id": user.id,
+            "encargado_contacto_id": nuevo_contacto.id,
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+
+    updated_detail_response = client.get(f"/proyectos/{proyecto_id}")
+    assert updated_detail_response.status_code == 200, updated_detail_response.text
+    updated_detail = updated_detail_response.json()
+    assert updated_detail["oportunidad"]["contacto_id"] == nuevo_contacto.id
