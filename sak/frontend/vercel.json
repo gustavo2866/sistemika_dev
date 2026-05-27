@@ -3,6 +3,6 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://sak-backend-test-94464199991.southamerica-east1.run.app"
+    "NEXT_PUBLIC_API_URL": "https://sak-backend-94464199991.southamerica-east1.run.app"
   }
 }
