@@ -10,6 +10,7 @@ import { useFormContext } from "react-hook-form";
 import { ContactoDialog } from "@/app/resources/crm/crm-contactos/contacto_dialog";
 import { EmprendimientoDialog } from "@/app/resources/inmobiliaria/emprendimientos/emprendimiento_dialog";
 import { PropietarioCreate } from "@/app/resources/inmobiliaria/propietarios/create";
+import { PropietarioEdit } from "@/app/resources/inmobiliaria/propietarios/edit";
 import { resolveNumericId } from "@/components/forms/form_order";
 import {
   Dialog,
@@ -34,6 +35,7 @@ type PropiedadRelatedCreateContextValue = {
   emprendimientoRefreshKey: string;
   propietarioRefreshKey: string;
   openDialog: (entity: PropiedadRelatedCreateEntity) => void;
+  openPropietarioEdit: (id: number) => void;
 };
 
 const PropiedadRelatedCreateContext = createContext<PropiedadRelatedCreateContextValue | null>(null);
@@ -55,12 +57,14 @@ export const PropiedadRelatedCreateProvider = ({ children }: { children: ReactNo
   const [propietarioRefreshKey, setPropietarioRefreshKey] = useState("base");
   const [contactoRefreshKey, setContactoRefreshKey] = useState("base");
   const [emprendimientoRefreshKey, setEmprendimientoRefreshKey] = useState("base");
+  const [editingPropietarioId, setEditingPropietarioId] = useState<number | null>(null);
   const portalContainer =
     typeof document !== "undefined"
       ? document.getElementById("propiedad-form-shell") ?? document.getElementById("admin-content")
       : null;
 
   const closeDialog = () => setActiveDialog(null);
+  const closePropietarioEdit = () => setEditingPropietarioId(null);
 
   const handleCreated = (
     entity: PropiedadRelatedCreateEntity,
@@ -96,6 +100,12 @@ export const PropiedadRelatedCreateProvider = ({ children }: { children: ReactNo
     closeDialog();
   };
 
+  const handlePropietarioUpdated = () => {
+    setPropietarioRefreshKey(Date.now().toString());
+    notify("Propietario actualizado", { type: "info" });
+    closePropietarioEdit();
+  };
+
   return (
     <PropiedadRelatedCreateContext.Provider
       value={{
@@ -103,6 +113,7 @@ export const PropiedadRelatedCreateProvider = ({ children }: { children: ReactNo
         emprendimientoRefreshKey,
         propietarioRefreshKey,
         openDialog: setActiveDialog,
+        openPropietarioEdit: setEditingPropietarioId,
       }}
     >
       {children}
@@ -118,9 +129,39 @@ export const PropiedadRelatedCreateProvider = ({ children }: { children: ReactNo
         <ResourceContextProvider value="propietarios">
           <PropietarioCreate
             embedded
+            onCancel={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              closeDialog();
+            }}
             onCreated={(record) => handleCreated("propietario", record)}
           />
         </ResourceContextProvider>
+      </PropiedadRelatedCreateDialog>
+      <PropiedadRelatedCreateDialog
+        open={Boolean(editingPropietarioId)}
+        onOpenChange={(open) => {
+          if (!open) closePropietarioEdit();
+        }}
+        title="Editar propietario"
+        description="Actualiza los datos del propietario sin salir del formulario de la propiedad."
+        className="sm:max-w-4xl"
+      >
+        {editingPropietarioId ? (
+          <ResourceContextProvider value="propietarios">
+            <PropietarioEdit
+              embedded
+              id={editingPropietarioId}
+              redirect={false}
+              onCancel={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closePropietarioEdit();
+              }}
+              onSaved={handlePropietarioUpdated}
+            />
+          </ResourceContextProvider>
+        ) : null}
       </PropiedadRelatedCreateDialog>
       <ContactoDialog
         contained

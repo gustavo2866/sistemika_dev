@@ -340,10 +340,7 @@ def duplicar_contrato(id: int, session: Session = Depends(get_session)):
     return {"contrato_original_id": contrato.id, "nuevo_contrato_id": nuevo.id, "nuevo_contrato": nuevo}
 
 
-# --- Generar PDF: GET /contratos/{id}/pdf ---
-
-@contrato_router.get("/{id}/pdf", tags=["contratos"])
-def get_contrato_pdf(id: int, session: Session = Depends(get_session)):
+def _build_contrato_pdf_bytes(id: int, session: Session) -> bytes:
     from app.services.contrato_pdf_service import build_contrato_pdf
 
     contrato = _get_contrato_or_404(id, session)
@@ -367,16 +364,40 @@ def get_contrato_pdf(id: int, session: Session = Depends(get_session)):
         )
 
     try:
-        pdf_bytes = build_contrato_pdf(contrato, template)
+        return build_contrato_pdf(contrato, template)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Error generando PDF: {exc}") from exc
 
+
+# --- Generar PDF: GET /contratos/{id}/pdf ---
+
+@contrato_router.get("/{id}/pdf", tags=["contratos"])
+def get_contrato_pdf(id: int, session: Session = Depends(get_session)):
+    pdf_bytes = _build_contrato_pdf_bytes(id, session)
     filename = f"contrato_{id}.pdf"
     return StreamingResponse(
         iter([pdf_bytes]),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# --- Vista previa PDF como imagenes: GET /contratos/{id}/pdf-preview ---
+
+@contrato_router.get("/{id}/pdf-preview", tags=["contratos"])
+def get_contrato_pdf_preview(id: int, session: Session = Depends(get_session)):
+    from app.services.contrato_pdf_service import render_pdf_preview_pages
+
+    pdf_bytes = _build_contrato_pdf_bytes(id, session)
+    try:
+        preview = render_pdf_preview_pages(pdf_bytes)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Error generando vista previa PDF: {exc}") from exc
+
+    return {
+        "filename": f"contrato_{id}.pdf",
+        **preview,
+    }
 
 
 # --- Upload archivo: POST /contratos/{id}/archivos ---

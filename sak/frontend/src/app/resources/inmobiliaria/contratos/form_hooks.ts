@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useFormContext } from "react-hook-form";
 import { useGetList, useGetOne, useNotify, useRefresh } from "ra-core";
 import { apiUrl } from "@/lib/dataProvider";
@@ -34,6 +34,19 @@ type CRMContactoRecord = {
   nombre_completo?: string | null;
   telefonos?: unknown;
   email?: string | null;
+};
+
+export type ContratoPdfPreviewPage = {
+  page: number;
+  width: number;
+  height: number;
+  src: string;
+};
+
+type ContratoPdfPreviewResponse = {
+  filename?: string | null;
+  page_count?: number;
+  pages?: ContratoPdfPreviewPage[];
 };
 
 const getAuthHeaders = (): Record<string, string> => {
@@ -145,52 +158,69 @@ export const calculateFechaRenovacionFromInicio = (
 export const useContratoGenerarPdf = () => {
   const notify = useNotify();
   const [loading, setLoading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [previewPages, setPreviewPages] = useState<ContratoPdfPreviewPage[]>([]);
   const [previewName, setPreviewName] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewContratoId, setPreviewContratoId] = useState<number | null>(null);
 
   const closePreview = useCallback(() => {
     setPreviewOpen(false);
   }, []);
 
-  const downloadPreview = useCallback(() => {
-    if (!previewUrl || !previewName) return;
-    const a = document.createElement("a");
-    a.href = previewUrl;
-    a.download = previewName;
-    a.click();
-  }, [previewName, previewUrl]);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  const generarPdf = async (id: number) => {
-    setLoading(true);
+  const downloadPreview = useCallback(async () => {
+    if (!previewContratoId) return;
+    setDownloading(true);
     try {
-      const res = await fetch(`${apiUrl}/contratos/${id}/pdf`, {
+      const res = await fetch(`${apiUrl}/contratos/${previewContratoId}/pdf`, {
         method: "GET",
         headers: { ...getAuthHeaders() },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        notify(data?.detail ?? "No se pudo generar el PDF", { type: "warning" });
+        notify(data?.detail ?? "No se pudo descargar el PDF", { type: "warning" });
         return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      setPreviewUrl((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return url;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = previewName ?? `contrato_${previewContratoId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      notify("Error al descargar el PDF", { type: "warning" });
+    } finally {
+      setDownloading(false);
+    }
+  }, [notify, previewContratoId, previewName]);
+
+  const generarPdf = async (id: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/contratos/${id}/pdf-preview`, {
+        method: "GET",
+        headers: { ...getAuthHeaders() },
       });
-      setPreviewName(`contrato_${id}.pdf`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify(data?.detail ?? "No se pudo generar la vista previa del PDF", { type: "warning" });
+        return;
+      }
+      const data = (await res.json()) as ContratoPdfPreviewResponse;
+      const pages = Array.isArray(data.pages) ? data.pages : [];
+      if (pages.length === 0) {
+        notify("No se pudo generar la vista previa del PDF", { type: "warning" });
+        return;
+      }
+      setPreviewPages(pages);
+      setPreviewName(data.filename || `contrato_${id}.pdf`);
+      setPreviewContratoId(id);
       setPreviewOpen(true);
     } catch {
-      notify("Error al generar el PDF", { type: "warning" });
+      notify("Error al generar la vista previa del PDF", { type: "warning" });
     } finally {
       setLoading(false);
     }
@@ -199,7 +229,8 @@ export const useContratoGenerarPdf = () => {
   return {
     generarPdf,
     loading,
-    previewUrl,
+    downloading,
+    previewPages,
     previewName,
     previewOpen,
     closePreview,

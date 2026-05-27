@@ -19,6 +19,7 @@ Estructura esperada del template JSON:
 
 from __future__ import annotations
 
+import base64
 import io
 import unicodedata
 from datetime import date
@@ -357,11 +358,11 @@ def build_contrato_pdf(contrato: Any, template: Dict[str, Any]) -> bytes:
 
     # ── Cláusulas ──
     for clausula in template.get("clausulas", []):
-        numero = clausula.get("numero", "")
-        titulo_clausula = clausula.get("titulo", "")
+        numero = str(clausula.get("numero", "") or "").strip()
+        titulo_clausula = str(clausula.get("titulo", "") or "").strip()
         cuerpo = clausula.get("cuerpo", "")
 
-        heading = f"{numero} — {titulo_clausula}" if titulo_clausula else numero
+        heading = f"{numero} — {titulo_clausula}" if titulo_clausula and titulo_clausula != "." else numero
         elements.append(Paragraph(heading, styles["clausula_titulo"]))
 
         if cuerpo:
@@ -413,3 +414,37 @@ def build_contrato_pdf(contrato: Any, template: Dict[str, Any]) -> bytes:
 
     doc.build(elements)
     return buf.getvalue()
+
+
+def render_pdf_preview_pages(
+    pdf_bytes: bytes,
+    *,
+    dpi: int = 144,
+) -> Dict[str, Any]:
+    """Renderiza un PDF a paginas PNG para preview web sin visor PDF nativo."""
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:
+        raise RuntimeError("PyMuPDF no esta instalado para renderizar la vista previa del PDF") from exc
+
+    pages = []
+    document = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        page_count = len(document)
+        for index in range(page_count):
+            page = document.load_page(index)
+            pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+            image_bytes = pixmap.tobytes("png")
+            encoded = base64.b64encode(image_bytes).decode("ascii")
+            pages.append(
+                {
+                    "page": index + 1,
+                    "width": pixmap.width,
+                    "height": pixmap.height,
+                    "src": f"data:image/png;base64,{encoded}",
+                }
+            )
+    finally:
+        document.close()
+
+    return {"page_count": len(pages), "pages": pages}

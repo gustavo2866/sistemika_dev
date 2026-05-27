@@ -1233,11 +1233,15 @@ export default function HomeDashboard() {
       } catch (loadError) {
         if (cancelled) return;
         console.error("No se pudo cargar el home dashboard", loadError);
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "No se pudo cargar el dashboard inicial",
-        );
+        const errorMessage =
+          loadError instanceof Error ? loadError.message : "No se pudo cargar el dashboard inicial";
+        if (errorMessage.includes("401")) {
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("auth_user");
+          navigate("/login");
+          return;
+        }
+        setError(errorMessage);
       } finally {
         if (!cancelled) {
           setIsRefreshing(false);
@@ -1250,7 +1254,7 @@ export default function HomeDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken, returnTo]);
+  }, [reloadToken, returnTo, navigate]);
 
   useEffect(() => {
     if (!bundle) return;

@@ -66,6 +66,7 @@ type UseDashboardMainPanelParams = {
   onOpenProject: (item: ProyDashboardDetalleItem) => void;
   onNavigate: (path: string) => void;
   createProjectPath?: string;
+  projectListPath?: string;
 };
 
 const ALERT_LIST_TITLES: Record<AlertKey, string> = {
@@ -107,6 +108,7 @@ export const useDashboardMainPanel = ({
   onOpenProject,
   onNavigate,
   createProjectPath = "/proyectos/create",
+  projectListPath,
 }: UseDashboardMainPanelParams): DashboardMainPanelViewModel => ({
   statusCards: Object.entries(selectorData?.por_estado ?? {})
     .sort((left, right) => left[0].localeCompare(right[0], "es"))

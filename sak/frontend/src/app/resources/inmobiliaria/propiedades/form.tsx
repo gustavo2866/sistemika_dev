@@ -8,12 +8,13 @@ import {
   useRecordContext,
 } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Home, MoreHorizontal, Plus, UserRound } from "lucide-react";
+import { Home, MoreHorizontal, Pencil, Plus, UserRound } from "lucide-react";
 import { useFormContext, useWatch } from "react-hook-form";
 
 import { SimpleForm } from "@/components/simple-form";
 import {
   FormErrorSummary,
+  FORM_FIELD_LABEL_CLASS,
   FormNumber,
   FormOrderToolbar,
   FormSectionEmptyState,
@@ -437,9 +438,55 @@ const CabeceraContratoResumen = () => {
 };
 
 // Renderiza los campos principales de la cabecera del formulario.
-const CabeceraFields = () => {
-  const { propietarioRefreshKey } = usePropiedadRelatedCreate();
+const CabeceraPropietarioField = () => {
+  const { openPropietarioEdit, propietarioRefreshKey } = usePropiedadRelatedCreate();
+  const record = useRecordContext<Propiedad>();
+  const propietarioValue = useWatch({ name: "propietario_id" }) as unknown;
+  const propietarioId =
+    resolveNumericId(propietarioValue) ?? resolveNumericId(record?.propietario_id);
 
+  const handleEditPropietario = () => {
+    if (!propietarioId) return;
+    openPropietarioEdit(propietarioId);
+  };
+
+  return (
+    <div className="grid min-w-0 gap-[1px] sm:gap-[2px]">
+      <div className="flex items-center gap-0.5 leading-none">
+        <span className={FORM_FIELD_LABEL_CLASS}>Propietario</span>
+        <button
+          type="button"
+          className="-my-px inline-flex size-3 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          onClick={handleEditPropietario}
+          disabled={!propietarioId}
+          title={propietarioId ? "Editar propietario" : "Seleccione un propietario para editar"}
+          aria-label="Editar propietario"
+        >
+          <Pencil className="size-2.5" />
+        </button>
+      </div>
+      <ReferenceInput
+        key={`propietario-${propietarioRefreshKey}`}
+        source="propietario_id"
+        reference="propietarios"
+        label="Propietario"
+      >
+        <FormSelect
+          optionText="nombre"
+          label={false}
+          widthClass="w-full min-w-0"
+          emptyText="Sin asignar"
+          validate={required()}
+          triggerProps={{
+            className: `${PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME} justify-start text-left [&_[data-slot=select-value]]:text-left`,
+          }}
+        />
+      </ReferenceInput>
+    </div>
+  );
+};
+
+const CabeceraFields = () => {
   return (
     <div className="grid gap-2">
       <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_140px_minmax(0,1fr)]">
@@ -472,23 +519,7 @@ const CabeceraFields = () => {
             />
           </ReferenceInput>
         </div>
-        <ReferenceInput
-          key={`propietario-${propietarioRefreshKey}`}
-          source="propietario_id"
-          reference="propietarios"
-          label="Propietario"
-        >
-          <FormSelect
-            optionText="nombre"
-            label="Propietario"
-            widthClass="w-full min-w-0"
-            emptyText="Sin asignar"
-            validate={required()}
-            triggerProps={{
-              className: `${PROPIEDAD_FORM_SELECT_TRIGGER_CLASSNAME} justify-start text-left [&_[data-slot=select-value]]:text-left`,
-            }}
-          />
-        </ReferenceInput>
+        <CabeceraPropietarioField />
       </div>
     </div>
   );

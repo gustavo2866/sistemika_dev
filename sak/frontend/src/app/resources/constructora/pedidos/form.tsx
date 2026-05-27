@@ -82,15 +82,17 @@ export const PedidoForm = () => {
         setIsEditing,
       }}
     >
-      <SimpleForm<PedidoFormValues>
-        className="w-full max-w-3xl"
-        resolver={zodResolver(pedidoSchema) as any}
-        toolbar={<PedidoToolbar />}
-        defaultValues={PEDIDO_DEFAULTS}
-        onKeyDown={handleFormTabLoop}
-      >
-        <PedidoContenido />
-      </SimpleForm>
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div onKeyDown={handleFormTabLoop}>
+        <SimpleForm<PedidoFormValues>
+          className="w-full max-w-3xl"
+          resolver={zodResolver(pedidoSchema) as any}
+          toolbar={<PedidoToolbar />}
+          defaultValues={PEDIDO_DEFAULTS}
+        >
+          <PedidoContenido />
+        </SimpleForm>
+      </div>
     </PedidoDetailEditContext.Provider>
   );
 };

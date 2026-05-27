@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
+import type { MouseEventHandler } from "react";
 import { SimpleForm } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
 import { FormOrderToolbar } from "@/components/forms";
@@ -137,11 +138,19 @@ const PropietarioContactoFields = () => (
   </div>
 );
 
-export const PropietarioForm = () => (
+export const PropietarioForm = ({
+  onCancel,
+}: {
+  onCancel?: MouseEventHandler<HTMLButtonElement>;
+} = {}) => (
   <SimpleForm<PropietarioFormValues>
     className="w-full max-w-2xl"
     resolver={zodResolver(propietarioSchema) as any}
-    toolbar={<FormOrderToolbar />}
+    toolbar={
+      <FormOrderToolbar
+        cancelProps={onCancel ? { onClick: onCancel } : undefined}
+      />
+    }
     defaultValues={PROPIETARIO_DEFAULT}
   >
     <SectionBaseTemplate

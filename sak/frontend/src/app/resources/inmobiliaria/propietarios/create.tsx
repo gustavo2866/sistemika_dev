@@ -2,15 +2,18 @@
 
 import { Create } from "@/components/create";
 import type { SetupCreateComponentProps } from "@/components/forms/form_order";
+import type { MouseEventHandler } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { PropietarioForm } from "./form";
 
 export const PropietarioCreate = ({
   embedded = false,
+  onCancel,
   onCreated,
   redirect,
 }: SetupCreateComponentProps & {
+  onCancel?: MouseEventHandler<HTMLButtonElement>;
   onCreated?: (record: Record<string, unknown>) => void;
 }) => {
   const location = useLocation();
@@ -42,7 +45,7 @@ export const PropietarioCreate = ({
         },
       }}
     >
-      <PropietarioForm />
+      <PropietarioForm onCancel={onCancel} />
     </Create>
   );
 };

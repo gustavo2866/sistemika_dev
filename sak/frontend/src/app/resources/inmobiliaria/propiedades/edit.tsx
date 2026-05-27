@@ -4,7 +4,7 @@ import { Edit } from "@/components/edit";
 import { useRecordContext } from "ra-core";
 import { Badge } from "@/components/ui/badge";
 import { Home } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   loadDashboardReturnMarker,
   saveDashboardReturnMarker,
@@ -16,7 +16,6 @@ import { PropiedadBackButton } from "./navigation-title";
 
 export const PropiedadEdit = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
 
@@ -36,10 +35,7 @@ export const PropiedadEdit = () => {
               propiedadId: data?.id ?? existingReturnMarker?.propiedadId,
               refreshAll: true,
             });
-            navigate(returnTo, { replace: true });
-            return;
           }
-          navigate("/propiedades", { replace: true });
         },
       }}
     >

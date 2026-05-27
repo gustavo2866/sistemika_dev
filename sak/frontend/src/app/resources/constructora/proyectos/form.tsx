@@ -178,7 +178,7 @@ const ProyectoOportunidadField = () => {
 };
 
 type TipoContactoRecord = {
-  id?: number | string;
+  id: number | string;
   nombre?: string | null;
   codigo?: string | null;
 };

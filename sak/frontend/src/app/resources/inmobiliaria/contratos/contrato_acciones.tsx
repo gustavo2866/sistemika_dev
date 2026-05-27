@@ -24,6 +24,7 @@ import {
   canContratoRescindir,
 } from "./status_transitions";
 import {
+  type ContratoPdfPreviewPage,
   useContratoActivar,
   useContratoDuplicar,
   useContratoFinalizar,
@@ -59,11 +60,12 @@ export type ContratoAccionesState = {
   handleFinalizar: () => Promise<void>;
   handleRescindir: () => Promise<void>;
   handleGenerarPdf: () => Promise<void>;
-  pdfPreviewUrl: string | null;
+  pdfPreviewPages: ContratoPdfPreviewPage[];
   pdfPreviewName: string | null;
   pdfPreviewOpen: boolean;
   closePdfPreview: () => void;
-  downloadPdfPreview: () => void;
+  downloadPdfPreview: () => Promise<void>;
+  pdfDownloading: boolean;
   loading: boolean;
 };
 
@@ -94,14 +96,16 @@ export const useContratoAccionesState = (
   const { rescindir, loading: lRescindir } = useContratoRescindir();
   const {
     generarPdf,
-    previewUrl,
+    previewPages,
     previewName,
     previewOpen,
     closePreview,
     downloadPreview,
+    downloading: lPdfDownload,
+    loading: lPdfPreview,
   } = useContratoGenerarPdf();
 
-  const loading = lActivar || lDuplicar || lFinalizar || lRenovar || lRescindir;
+  const loading = lActivar || lDuplicar || lFinalizar || lRenovar || lRescindir || lPdfPreview;
   const contratoVigenteAnterior =
     contratosVigentes.find((contrato) => Number(contrato.id) !== Number(record?.id)) ?? null;
   const activationBlockedReason = (() => {
@@ -170,11 +174,12 @@ export const useContratoAccionesState = (
     handleFinalizar,
     handleRescindir,
     handleGenerarPdf,
-    pdfPreviewUrl: previewUrl,
+    pdfPreviewPages: previewPages,
     pdfPreviewName: previewName,
     pdfPreviewOpen: previewOpen,
     closePdfPreview: closePreview,
     downloadPdfPreview: downloadPreview,
+    pdfDownloading: lPdfDownload,
     loading,
   };
 };
@@ -190,7 +195,6 @@ export const ContratoAccionesMenuItems = ({
     acciones;
 
   if (!record?.id) return null;
-  if (!canActivar && !canDuplicar && !canFinalizar && !canRescindir) return null;
 
   return (
     <>
@@ -273,10 +277,11 @@ export const ContratoAccionesDialogs = ({
     isVencido,
     record,
     pdfPreviewOpen,
-    pdfPreviewUrl,
+    pdfPreviewPages,
     pdfPreviewName,
     closePdfPreview,
     downloadPdfPreview,
+    pdfDownloading,
   } = acciones;
 
   const propiedadNombre = record?.propiedad?.nombre ?? "";
@@ -496,7 +501,7 @@ export const ContratoAccionesDialogs = ({
 
       <Dialog open={pdfPreviewOpen} onOpenChange={(open) => (!open ? closePdfPreview() : null)}>
         <DialogContent
-          className="flex h-[88vh] max-w-5xl flex-col gap-3 p-4"
+          className="flex h-[88vh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-3 p-4 sm:w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)]"
           overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}
         >
           <DialogHeader>
@@ -505,21 +510,37 @@ export const ContratoAccionesDialogs = ({
               Revise el documento antes de descargarlo en su equipo.
             </DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border/60 bg-muted/20">
-            {pdfPreviewUrl ? (
-              <iframe
-                src={pdfPreviewUrl}
-                title={pdfPreviewName ?? "Contrato PDF"}
-                className="h-full w-full"
-              />
-            ) : null}
+          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-muted/20 p-3">
+            {pdfPreviewPages.length > 0 ? (
+              <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4">
+                {pdfPreviewPages.map((page) => (
+                  <div
+                    key={page.page}
+                    className="overflow-hidden rounded-sm border border-border/60 bg-white shadow-sm"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={page.src}
+                      alt={`Pagina ${page.page} - ${pdfPreviewName ?? "Contrato PDF"}`}
+                      width={page.width}
+                      height={page.height}
+                      className="block h-auto w-full"
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Sin vista previa disponible.
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={closePdfPreview}>
               Cerrar
             </Button>
-            <Button onClick={downloadPdfPreview}>
-              Descargar
+            <Button onClick={() => void downloadPdfPreview()} disabled={pdfDownloading}>
+              {pdfDownloading ? "Descargando..." : "Descargar PDF"}
             </Button>
           </DialogFooter>
         </DialogContent>
