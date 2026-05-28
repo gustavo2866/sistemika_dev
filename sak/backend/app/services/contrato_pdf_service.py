@@ -249,7 +249,7 @@ def _build_styles() -> Dict[str, ParagraphStyle]:
         parent=base["Normal"],
         fontSize=10,
         leading=14,
-        alignment=1,
+        alignment=0,  # left
         spaceAfter=12,
         textColor=colors.HexColor("#333333"),
     )
