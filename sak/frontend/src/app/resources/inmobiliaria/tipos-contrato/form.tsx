@@ -65,11 +65,11 @@ const VARIABLES_GRUPOS = [
   },
   {
     label: "Garante 1",
-    vars: ["garante1_nombre_completo", "garante1_dni", "garante1_cuit", "garante1_domicilio", "garante1_tipo_garantia"],
+    vars: ["garante1_nombre_completo", "garante1_dni", "garante1_cuit", "garante1_domicilio", "garante1_telefono", "garante1_tipo_garantia"],
   },
   {
     label: "Garante 2",
-    vars: ["garante2_nombre_completo", "garante2_dni", "garante2_cuit", "garante2_domicilio", "garante2_tipo_garantia"],
+    vars: ["garante2_nombre_completo", "garante2_dni", "garante2_cuit", "garante2_domicilio", "garante2_telefono", "garante2_tipo_garantia"],
   },
 ] as const;
 

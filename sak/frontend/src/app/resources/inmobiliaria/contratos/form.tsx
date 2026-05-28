@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
-import { required, useGetOne, useRecordContext } from "ra-core";
+import { required, ResourceContextProvider, useGetOne, useRecordContext } from "ra-core";
 import { useLocation } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Copy, FileText, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
@@ -52,6 +52,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { PROPIEDAD_DIALOG_OVERLAY_CLASS } from "../propiedades/dialog_styles";
+import { PropietarioEdit } from "../propietarios/edit";
 
 import {
   CONTRATO_DEFAULT,
@@ -265,6 +266,7 @@ const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
   const record = useRecordContext<Contrato>();
   const propiedadValue = useWatch({ name: "propiedad_id" }) as unknown;
   const propiedadId = resolveNumericId(propiedadValue) ?? resolveNumericId(record?.propiedad_id);
+  const [editingPropietarioId, setEditingPropietarioId] = useState<number | null>(null);
   const canEditPropiedad = !record?.id || record.estado === "borrador";
   const { data: propiedad } = useGetOne(
     "propiedades",
@@ -279,6 +281,9 @@ const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
     record?.propiedad?.propietario_ref?.nombre ??
     record?.propiedad?.propietario ??
     "Sin asignar";
+  const propietarioId =
+    resolveNumericId((propiedad as { propietario_id?: unknown } | undefined)?.propietario_id) ??
+    resolveNumericId(record?.propiedad?.propietario_id);
 
   return (
     <div className="grid gap-2 md:grid-cols-3">
@@ -294,13 +299,56 @@ const PropiedadTipoFields = ({ readOnly = false }: { readOnly?: boolean }) => {
       </ReferenceInput>
       <div className="flex flex-col gap-1">
         <FormValue
-          label="Propietario"
+          label={
+            <span className="flex items-center gap-0.5">
+              Propietario
+              <button
+                type="button"
+                className="-my-px inline-flex size-3 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                onClick={() => propietarioId && setEditingPropietarioId(propietarioId)}
+                disabled={!propietarioId}
+                title={propietarioId ? "Editar propietario" : "No hay propietario asignado"}
+                aria-label="Editar propietario"
+              >
+                <Pencil className="size-2.5" />
+              </button>
+            </span>
+          }
           widthClass="w-full md:w-[180px] xl:w-[210px]"
           valueClassName="justify-start text-left"
         >
           {propietarioNombre}
         </FormValue>
       </div>
+      <Dialog
+        open={Boolean(editingPropietarioId)}
+        onOpenChange={(open) => { if (!open) setEditingPropietarioId(null); }}
+      >
+        <DialogContent
+          className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-4xl"
+          overlayClassName={PROPIEDAD_DIALOG_OVERLAY_CLASS}
+        >
+          <DialogHeader className="border-b border-border/60 px-6 pb-4 pt-6">
+            <DialogTitle>Editar propietario</DialogTitle>
+            <DialogDescription>
+              Actualiza los datos del propietario sin salir del formulario.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto px-6 pb-6 pt-4 overscroll-contain">
+            {editingPropietarioId ? (
+              <ResourceContextProvider value="propietarios">
+                <PropietarioEdit
+                  embedded
+                  id={editingPropietarioId}
+                  redirect={false}
+                  onCancel={(e) => { e.preventDefault(); e.stopPropagation(); setEditingPropietarioId(null); }}
+                  onSaved={() => setEditingPropietarioId(null)}
+                />
+              </ResourceContextProvider>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
       <ReferenceInput source="tipo_contrato_id" reference="tipos-contrato" label="Tipo de contrato">
         <FormSelect
           optionText="nombre"
@@ -439,8 +487,7 @@ const GaranteGroup = ({
 
 const GaranteFields = ({ readOnly = false }: { readOnly?: boolean }) => (
   <div className="grid gap-3">
-    <GaranteGroup title="Garante 1" prefix="garante1" readOnly={readOnly} />
-    <GaranteGroup title="Garante 2" prefix="garante2" readOnly={readOnly} />
+    <GaranteGroup title="CO-LOCATARIO" prefix="garante1" readOnly={readOnly} />
   </div>
 );
 

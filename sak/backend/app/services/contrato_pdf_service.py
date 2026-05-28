@@ -168,6 +168,7 @@ def build_context(contrato: Any) -> Dict[str, Any]:
         "garante1_dni": _safe(getattr(contrato, "garante1_dni", None)),
         "garante1_cuit": _safe(getattr(contrato, "garante1_cuit", None)),
         "garante1_domicilio": _safe(getattr(contrato, "garante1_domicilio", None)),
+        "garante1_telefono": _safe(getattr(contrato, "garante1_telefono", None)),
         "garante1_tipo_garantia": _safe(getattr(contrato, "garante1_tipo_garantia", None)),
 
         # Garante 2
@@ -178,6 +179,7 @@ def build_context(contrato: Any) -> Dict[str, Any]:
         "garante2_dni": _safe(getattr(contrato, "garante2_dni", None)),
         "garante2_cuit": _safe(getattr(contrato, "garante2_cuit", None)),
         "garante2_domicilio": _safe(getattr(contrato, "garante2_domicilio", None)),
+        "garante2_telefono": _safe(getattr(contrato, "garante2_telefono", None)),
         "garante2_tipo_garantia": _safe(getattr(contrato, "garante2_tipo_garantia", None)),
 
         # Economía
@@ -378,39 +380,6 @@ def build_contrato_pdf(contrato: Any, template: Dict[str, Any]) -> bytes:
     elements.append(Paragraph(_render(cierre_texto, ctx), styles["cierre"]))
 
     elements.append(Spacer(1, 1.5 * cm))
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"), spaceAfter=16))
-
-    # ── Firmas ──
-    inquilino_nc = ctx.get("inquilino_nombre_completo", "Inquilino")
-    garante1_nc = ctx.get("garante1_nombre_completo", "")
-    propietario = ctx.get("propiedad_propietario", "Locador")
-
-    bloques = [
-        _firma_block(f"LOCADOR\n{propietario}", styles),
-        _firma_block(f"LOCATARIO\n{inquilino_nc}", styles),
-    ]
-    if garante1_nc and garante1_nc != "—":
-        bloques.append(_firma_block(f"GARANTE 1\n{garante1_nc}", styles))
-        garante2_nc = ctx.get("garante2_nombre_completo", "")
-        if garante2_nc and garante2_nc != "—":
-            bloques.append(_firma_block(f"GARANTE 2\n{garante2_nc}", styles))
-
-    # Distribuir firmas en fila de 2 o 3
-    paso = 2 if len(bloques) <= 2 else 3
-    for i in range(0, len(bloques), paso):
-        fila = bloques[i : i + paso]
-        col_w = (doc.width / paso)
-        t = Table(
-            [fila],
-            colWidths=[col_w] * len(fila),
-            rowHeights=[2.5 * cm],
-        )
-        t.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ]))
-        elements.append(t)
-        elements.append(Spacer(1, 0.5 * cm))
 
     doc.build(elements)
     return buf.getvalue()
