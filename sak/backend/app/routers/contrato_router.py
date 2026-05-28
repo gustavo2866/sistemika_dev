@@ -341,7 +341,13 @@ def duplicar_contrato(id: int, session: Session = Depends(get_session)):
 
 
 def _build_contrato_pdf_bytes(id: int, session: Session) -> bytes:
-    from app.services.contrato_pdf_service import build_contrato_pdf
+    try:
+        from app.services.contrato_pdf_service import build_contrato_pdf
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dependencia faltante para generar PDF: {exc}",
+        ) from exc
 
     contrato = _get_contrato_or_404(id, session)
 

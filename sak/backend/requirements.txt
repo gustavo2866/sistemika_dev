@@ -12,6 +12,8 @@ requests
 PyJWT
 
 # PDF Processing
+jinja2
+reportlab
 pdfplumber
 pytesseract
 PyMuPDF
