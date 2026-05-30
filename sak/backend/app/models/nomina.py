@@ -21,7 +21,7 @@ class Nomina(Base, table=True):
 
     __tablename__ = "nominas"
 
-    __searchable_fields__ = ["nombre", "apellido", "dni", "email"]
+    __searchable_fields__ = ["nombre", "apellido", "dni", "email", "nro_legajo"]
 
     nombre: str = Field(max_length=120, description="Nombre del empleado")
     apellido: str = Field(max_length=120, description="Apellido del empleado")
@@ -54,6 +54,15 @@ class Nomina(Base, table=True):
     fecha_ingreso: Optional[date] = Field(
         default=None,
         description="Fecha de ingreso a la empresa",
+    )
+    fecha_egreso: Optional[date] = Field(
+        default=None,
+        description="Fecha de egreso de la empresa",
+    )
+    nro_legajo: Optional[str] = Field(
+        default=None,
+        max_length=10,
+        description="Numero de legajo del empleado",
     )
     salario_mensual: Optional[Decimal] = Field(
         default=None,

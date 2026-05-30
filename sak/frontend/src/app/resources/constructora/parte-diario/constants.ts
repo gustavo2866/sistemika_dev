@@ -5,12 +5,6 @@ export const estadoParteChoices = [
   { id: "cerrado", name: "Cerrado" },
 ];
 
-export const tipoLicenciaChoices = [
-  { id: "enfermedad", name: "Enfermedad" },
-  { id: "sin_aviso", name: "Sin aviso" },
-  { id: "legal", name: "Legal" },
-];
-
 export const getEstadoParteLabel = (value?: string | null) =>
   estadoParteChoices.find((choice) => choice.id === value)?.name ?? "Sin estado";
 

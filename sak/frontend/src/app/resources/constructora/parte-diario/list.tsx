@@ -8,16 +8,19 @@ import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { useRecordContext } from "ra-core";
 import {
-  DateListColumn,
+  FormOrderBulkActionsToolbar,
   FormOrderListRowActions,
+  ListColumn,
   ListDate,
   ListPaginator,
   ListText,
-  NumberListColumn,
   ResponsiveDataTable,
-  TextListColumn,
   buildListFilters,
 } from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { estadoParteChoices } from "./constants";
 
 const filters = buildListFilters(
@@ -77,6 +80,21 @@ const ListActions = () => (
   </div>
 );
 
+const ParteDiarioListTitle = ({ onBack }: { onBack: () => void }) => (
+  <span className="inline-flex items-center gap-3">
+    <Button
+      type="button"
+      variant="ghost"
+      className="h-8 px-2 text-sm font-medium text-primary"
+      onClick={onBack}
+    >
+      <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+      Volver
+    </Button>
+    <span>Partes diarios</span>
+  </span>
+);
+
 const DetalleCountField = () => {
   const record = useRecordContext<{ detalles?: Array<unknown> }>();
   const count = Array.isArray(record?.detalles) ? record.detalles.length : 0;
@@ -87,45 +105,71 @@ export const ParteDiarioList = ({
   embedded = false,
   rowClick = "edit",
   perPage = 25,
-}: ParteDiarioListProps = {}) => (
-  <List
-    title="Partes diarios"
-    filters={filters}
-    actions={<ListActions />}
-    perPage={perPage}
-    pagination={<ListPaginator />}
-    sort={{ field: "fecha", order: "DESC" }}
-    containerClassName={LIST_CONTAINER_WIDE}
-    showBreadcrumb={!embedded}
-    showHeader={!embedded}
-  >
-    <ResponsiveDataTable
-      rowClick={rowClick}
-      mobileConfig={listMobileConfig}
-      className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
+}: ParteDiarioListProps = {}) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = getReturnToFromLocation(location);
+
+  const handleBack = () => {
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/parte-diario");
+  };
+
+  return (
+    <List
+      resource="parte-diario"
+      title={embedded ? undefined : <ParteDiarioListTitle onBack={handleBack} />}
+      filters={filters}
+      actions={embedded ? undefined : <ListActions />}
+      perPage={perPage}
+      pagination={<ListPaginator />}
+      sort={{ field: "fecha", order: "DESC" }}
+      containerClassName={embedded ? "w-full min-w-0" : LIST_CONTAINER_WIDE}
+      showBreadcrumb={!embedded}
+      showHeader={!embedded}
+      disableSyncWithLocation={embedded}
     >
-      <DateListColumn source="fecha" label="Fecha" className="w-[120px]">
-        <ListDate source="fecha" />
-      </DateListColumn>
-      <TextListColumn source="idproyecto" label="Proyecto" className="w-[180px]">
-        <ReferenceField source="idproyecto" reference="proyectos" link={false}>
-          <ListText source="nombre" className="whitespace-normal break-words" />
-        </ReferenceField>
-      </TextListColumn>
-      <TextListColumn source="estado" label="Estado" className="w-[110px]">
-        <SelectField source="estado" choices={estadoParteChoices} />
-      </TextListColumn>
-      <TextListColumn source="descripcion" label="Descripcion" className="w-[220px]">
-        <ListText source="descripcion" className="whitespace-normal break-words" />
-      </TextListColumn>
-      <NumberListColumn label="Registros" className="w-[80px] text-center">
-        <DetalleCountField />
-      </NumberListColumn>
-      <TextListColumn label="Acciones" className="w-[80px]">
-        <FormOrderListRowActions showShow={!embedded} />
-      </TextListColumn>
-    </ResponsiveDataTable>
-  </List>
-);
+      <ResponsiveDataTable
+        rowClick={rowClick}
+        bulkActionsToolbar={!embedded ? <FormOrderBulkActionsToolbar /> : undefined}
+        bulkActionButtons={embedded ? false : undefined}
+        compact={embedded}
+        mobileConfig={listMobileConfig}
+        className="text-[10px] [&_th]:text-[10px] [&_td]:text-[10px] xl:text-[11px] xl:[&_th]:text-[11px] xl:[&_td]:text-[11px]"
+      >
+        <ListColumn source="fecha" label="Fecha" className="w-[120px]">
+          <ListDate source="fecha" />
+        </ListColumn>
+        <ListColumn source="idproyecto" label="Proyecto" className="w-[180px]">
+          <ReferenceField source="idproyecto" reference="proyectos" link={false}>
+            <ListText source="nombre" className="whitespace-normal break-words" />
+          </ReferenceField>
+        </ListColumn>
+        <ListColumn source="estado" label="Estado" className="w-[110px]">
+          <SelectField source="estado" choices={estadoParteChoices} />
+        </ListColumn>
+        <ListColumn source="descripcion" label="Descripcion" className="w-[220px]">
+          <ListText source="descripcion" className="whitespace-normal break-words" />
+        </ListColumn>
+        <ListColumn label="Registros" className="w-[80px] text-center">
+          <DetalleCountField />
+        </ListColumn>
+        <ListColumn label="" className="w-[30px]">
+          <FormOrderListRowActions
+            showShow={!embedded}
+            className={embedded ? "h-4 w-4 sm:h-4 sm:w-4" : undefined}
+          />
+        </ListColumn>
+      </ResponsiveDataTable>
+    </List>
+  );
+};
 
 export default ParteDiarioList;

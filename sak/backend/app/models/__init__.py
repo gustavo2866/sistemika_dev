@@ -66,11 +66,11 @@ from .proyecto_avance import ProyectoAvance
 from .proy_fase import ProyFase
 from .proy_presupuesto import ProyPresupuesto
 from .nomina import Nomina, CategoriaNomina
+from .parte_diario_estado import ParteDiarioEstado
 from .partediario import (
     ParteDiario,
     ParteDiarioDetalle,
     EstadoParteDiario,
-    TipoLicencia,
 )
 
 from .enums import (

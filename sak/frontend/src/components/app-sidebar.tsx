@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import {
   House,
   List,
+  ListChecks,
   Shell,
   FileText,
   Settings,
@@ -131,6 +132,7 @@ const HIDDEN_RESOURCES = [
   "po-invoice-status-fin",
   "proyectos",
   "nominas",
+  "parte-diario-estados",
   "proy-fases",
   "proy-presupuestos",
   "proyecto-avance",
@@ -520,6 +522,7 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "orden-compra": ShoppingCart,
   tarjas: ClipboardCheck,
   "parte-diario": NotebookPen,
+  "parte-diario-estados": ListChecks,
   "constructora/pedidos": ClipboardList,
   nominas: Wallet,
 };

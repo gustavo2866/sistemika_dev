@@ -46,6 +46,12 @@ const DatosPersonalesFields = () => (
       widthClass="w-full"
       maxLength={VALIDATION_RULES.DNI.MAX_LENGTH}
     />
+    <FormText
+      source="nro_legajo"
+      label="Nro. legajo"
+      widthClass="w-full"
+      maxLength={VALIDATION_RULES.NRO_LEGAJO.MAX_LENGTH}
+    />
     <FormDate
       source="fecha_nacimiento"
       label="Fecha de nacimiento"
@@ -75,6 +81,11 @@ const DatosLaboralesFields = () => (
     <FormDate
       source="fecha_ingreso"
       label="Fecha de ingreso"
+      widthClass="w-full"
+    />
+    <FormDate
+      source="fecha_egreso"
+      label="Fecha de egreso"
       widthClass="w-full"
     />
     <FormNumber

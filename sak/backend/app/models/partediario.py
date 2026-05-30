@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import ClassVar, List, Optional, TYPE_CHECKING
@@ -10,17 +10,12 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .nomina import Nomina
+    from .parte_diario_estado import ParteDiarioEstado
 
 
 class EstadoParteDiario(str, Enum):
     PENDIENTE = "pendiente"
     CERRADO = "cerrado"
-
-
-class TipoLicencia(str, Enum):
-    ENFERMEDAD = "enfermedad"
-    SIN_AVISO = "sin_aviso"
-    LEGAL = "legal"
 
 
 class ParteDiario(Base, table=True):
@@ -77,10 +72,18 @@ class ParteDiarioDetalle(Base, table=True):
         sa_column=Column(DECIMAL(5, 2), nullable=False),
         description="Cantidad de horas trabajadas",
     )
-    tipolicencia: Optional[TipoLicencia] = Field(
+    idestado: Optional[int] = Field(
         default=None,
-        sa_column=Column(String(20), nullable=True),
-        description="Tipo de licencia registrada cuando corresponda",
+        foreign_key="parte_diario_estados.id",
+        description="Estado del empleado en el parte (presente, enfermedad, etc.)",
+    )
+    ingreso: Optional[datetime] = Field(
+        default=None,
+        description="Hora de ingreso del empleado",
+    )
+    egreso: Optional[datetime] = Field(
+        default=None,
+        description="Hora de egreso del empleado",
     )
     descripcion: Optional[str] = Field(
         default=None,
@@ -90,6 +93,7 @@ class ParteDiarioDetalle(Base, table=True):
 
     parte_diario: "ParteDiario" = Relationship(back_populates="detalles")
     nomina: Optional["Nomina"] = Relationship()
+    estado: Optional["ParteDiarioEstado"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
         return f"ParteDiarioDetalle(id={self.id}, parte_diario_id={self.parte_diario_id}, idnomina={self.idnomina})"

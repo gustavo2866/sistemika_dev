@@ -38,6 +38,15 @@ const optionalStringSchema = z.preprocess(
   z.string().optional(),
 );
 
+const optionalIdSchema = z.preprocess(
+  (value) => {
+    if (value == null || value === "") return undefined;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+  },
+  z.number().int().positive().optional(),
+);
+
 const numberFromInputSchema = z.preprocess(
   normalizeNumberInput,
   z.number().finite(),
@@ -47,7 +56,9 @@ export type ParteDiarioDetalle = {
   id?: number | string;
   idnomina?: number | null;
   horas?: number | null;
-  tipolicencia?: string | null;
+  idestado?: number | null;
+  ingreso?: string | null;
+  egreso?: string | null;
   descripcion?: string | null;
 };
 
@@ -67,15 +78,17 @@ export type ParteDiarioRecord = ParteDiario & {
 };
 
 const parteDiarioDetalleSchema = z.object({
-  id: optionalStringSchema,
+  id: optionalIdSchema,
   idnomina: numberFromInputSchema.pipe(z.number().int().positive()),
+  idestado: optionalIdSchema,
   horas: numberFromInputSchema.pipe(
     z
       .number()
       .min(VALIDATION_RULES.HORAS.MIN)
       .max(VALIDATION_RULES.HORAS.MAX),
   ),
-  tipolicencia: optionalStringSchema.pipe(z.string().optional()),
+  ingreso: optionalStringSchema,
+  egreso: optionalStringSchema,
   descripcion: optionalStringSchema.pipe(
     z
       .string()
@@ -104,20 +117,31 @@ export const PARTE_DIARIO_DEFAULTS: ParteDiarioFormValues = {
   detalles: [],
 };
 
+export const getParteDiarioDetalleDefaults = () => ({
+  idnomina: "",
+  horas: 8,
+  idestado: "",
+  ingreso: "",
+  egreso: "",
+  descripcion: "",
+});
+
 export { getEstadoParteBadgeClass, getEstadoParteLabel };
 
 export const normalizeParteDiarioPayload = (
   data: Partial<ParteDiarioFormValues>,
-): ParteDiarioFormValues => ({
+) => ({
   idproyecto: Number(data.idproyecto),
   fecha: trimRequiredText(data.fecha),
   estado: data.estado === "cerrado" ? "cerrado" : "pendiente",
   descripcion: trimOptionalText(data.descripcion),
   detalles: (data.detalles ?? []).map((detalle) => ({
-    id: detalle.id,
+    ...(detalle.id ? { id: Number(detalle.id) } : {}),
     idnomina: Number(detalle.idnomina),
     horas: Number(detalle.horas ?? 0),
-    tipolicencia: trimOptionalText(detalle.tipolicencia),
+    idestado: detalle.idestado ? Number(detalle.idestado) : null,
+    ingreso: trimOptionalText(detalle.ingreso),
+    egreso: trimOptionalText(detalle.egreso),
     descripcion: trimOptionalText(detalle.descripcion),
   })),
 });

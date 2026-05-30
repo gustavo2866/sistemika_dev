@@ -56,6 +56,7 @@ from app.routers.proyecto_avance_router import proyecto_avance_router
 from app.routers.proy_fase_router import proy_fase_router
 from app.routers.proy_presupuesto_router import proy_presupuesto_router
 from app.routers.nomina_router import nomina_router
+from app.routers.parte_diario_estado_router import parte_diario_estado_router
 from app.routers.partediario_router import parte_diario_router
 from app.routers.constructora_pedido_router import constructora_pedido_router
 
@@ -236,6 +237,7 @@ app.include_router(proyecto_avance_router)
 app.include_router(proy_fase_router)
 app.include_router(proy_presupuesto_router)
 app.include_router(nomina_router)
+app.include_router(parte_diario_estado_router)
 app.include_router(parte_diario_router)
 app.include_router(constructora_pedido_router)
 

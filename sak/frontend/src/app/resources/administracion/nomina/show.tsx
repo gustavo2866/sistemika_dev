@@ -18,6 +18,7 @@ export const NominaShow = () => (
       <TextField source="nombre" label="Nombre" />
       <TextField source="apellido" label="Apellido" />
       <TextField source="dni" label="DNI" />
+      <TextField source="nro_legajo" label="Nro. legajo" />
       <TextField source="email" label="Email" />
       <TextField source="telefono" label="Telefono" />
       <TextField source="direccion" label="Direccion" />
@@ -35,6 +36,7 @@ export const NominaShow = () => (
       />
       <DateField source="fecha_nacimiento" />
       <DateField source="fecha_ingreso" />
+      <DateField source="fecha_egreso" />
       <SelectField
         source="activo"
         choices={ESTADO_CHOICES}

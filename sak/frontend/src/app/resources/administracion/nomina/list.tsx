@@ -147,6 +147,9 @@ export const NominaList = ({
       <TextListColumn source="dni" label="DNI" className="w-[90px]">
         <ListText source="dni" />
       </TextListColumn>
+      <TextListColumn source="nro_legajo" label="Legajo" className="w-[80px]">
+        <ListText source="nro_legajo" />
+      </TextListColumn>
       <ListColumn source="categoria" label="Categoria" className="w-[110px]">
         <SelectField source="categoria" choices={CATEGORIA_CHOICES} />
       </ListColumn>
@@ -159,6 +162,7 @@ export const NominaList = ({
         <ListText source="email" className="whitespace-normal break-words" />
       </TextListColumn>
       <DateListColumn source="fecha_ingreso" label="Ingreso" className="w-[80px]" />
+      <DateListColumn source="fecha_egreso" label="Egreso" className="w-[80px]" />
       <ListColumn source="salario_mensual" label="Salario" className="w-[90px] text-right">
         <ListMoney source="salario_mensual" showCurrency={false} />
       </ListColumn>

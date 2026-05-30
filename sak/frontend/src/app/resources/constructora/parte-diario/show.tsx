@@ -9,14 +9,17 @@ import { ReferenceField } from "@/components/reference-field";
 import { NumberField } from "@/components/number-field";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { FormOrderEditButton } from "@/components/forms/form_order";
 import { RecordContextProvider, useRecordContext } from "ra-core";
-import { estadoParteChoices, tipoLicenciaChoices } from "./constants";
+import { estadoParteChoices } from "./constants";
 
 type DetalleRecord = {
   id?: number;
   idnomina?: number;
   horas?: number;
-  tipolicencia?: string | null;
+  idestado?: number | null;
+  ingreso?: string | null;
+  egreso?: string | null;
   descripcion?: string | null;
 };
 
@@ -34,8 +37,18 @@ const DetalleItem = ({ detalle }: { detalle: DetalleRecord }) => (
         <NumberField source="horas" options={{ minimumFractionDigits: 0, maximumFractionDigits: 2 }} />
       </div>
       <div>
-        <span className="text-xs font-medium text-muted-foreground block">Licencia</span>
-        <SelectField source="tipolicencia" choices={tipoLicenciaChoices} empty="Sin licencia" />
+        <span className="text-xs font-medium text-muted-foreground block">Estado</span>
+        <ReferenceField source="idestado" reference="parte-diario-estados" link={false}>
+          <TextField source="nombre" />
+        </ReferenceField>
+      </div>
+      <div>
+        <span className="text-xs font-medium text-muted-foreground block">Ingreso</span>
+        <DateField source="ingreso" showTime options={{ dateStyle: "short", timeStyle: "short" }} />
+      </div>
+      <div>
+        <span className="text-xs font-medium text-muted-foreground block">Egreso</span>
+        <DateField source="egreso" showTime options={{ dateStyle: "short", timeStyle: "short" }} />
       </div>
       <div>
         <span className="text-xs font-medium text-muted-foreground block">Descripción</span>
@@ -54,7 +67,7 @@ const DetallesSection = () => {
       <div>
         <h3 className="text-lg font-semibold">Detalle de horas</h3>
         <p className="text-sm text-muted-foreground">
-          Horas registradas y licencias asignadas a cada integrante del equipo.
+          Horas registradas y estados asignados a cada integrante del equipo.
         </p>
       </div>
       <Separator />
@@ -72,7 +85,11 @@ const DetallesSection = () => {
 };
 
 export const ParteDiarioShow = () => (
-  <Show>
+  <Show
+    className="w-full max-w-5xl"
+    title="Parte diario"
+    actions={<FormOrderEditButton />}
+  >
     <SimpleShowLayout>
       <Card className="p-6 space-y-4">
         <div>

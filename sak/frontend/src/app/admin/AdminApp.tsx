@@ -217,6 +217,12 @@ import {
   ParteDiarioShow,
 } from "@/app/resources/constructora/parte-diario";
 import {
+  ParteDiarioEstadoList,
+  ParteDiarioEstadoCreate,
+  ParteDiarioEstadoEdit,
+  ParteDiarioEstadoShow,
+} from "@/app/resources/constructora/parte-diario-estados";
+import {
   PedidoList,
   PedidoCreate,
   PedidoEdit,
@@ -740,6 +746,16 @@ const AdminApp = () => {
         recordRepresentation="descripcion"
         icon={NotebookPen}
         options={{ label: "Parte Diario" }}
+      />
+      <Resource
+        name="parte-diario-estados"
+        list={ParteDiarioEstadoList}
+        create={ParteDiarioEstadoCreate}
+        edit={ParteDiarioEstadoEdit}
+        show={ParteDiarioEstadoShow}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Estados Parte Diario" }}
       />
       <Resource
         name="constructora/pedidos"

@@ -21,6 +21,7 @@ export const VALIDATION_RULES = {
   EMAIL: { MAX_LENGTH: 255 },
   TELEFONO: { MAX_LENGTH: 20 },
   DIRECCION: { MAX_LENGTH: 255 },
+  NRO_LEGAJO: { MAX_LENGTH: 10 },
   URL_FOTO: { MAX_LENGTH: 500 },
 } as const;
 
@@ -66,8 +67,10 @@ export const nominaSchema = z.object({
   ),
   telefono: optionalString(VALIDATION_RULES.TELEFONO.MAX_LENGTH),
   direccion: optionalString(VALIDATION_RULES.DIRECCION.MAX_LENGTH),
+  nro_legajo: optionalString(VALIDATION_RULES.NRO_LEGAJO.MAX_LENGTH),
   fecha_nacimiento: optionalDate,
   fecha_ingreso: optionalDate,
+  fecha_egreso: optionalDate,
   salario_mensual: optionalAmount,
   url_foto: optionalString(VALIDATION_RULES.URL_FOTO.MAX_LENGTH).pipe(
     z.string().url().max(VALIDATION_RULES.URL_FOTO.MAX_LENGTH).optional(),
@@ -86,8 +89,10 @@ export const NOMINA_DEFAULT: NominaFormValues = {
   email: "",
   telefono: "",
   direccion: "",
+  nro_legajo: "",
   fecha_nacimiento: "",
   fecha_ingreso: "",
+  fecha_egreso: "",
   salario_mensual: undefined,
   url_foto: "",
   activo: true,
@@ -97,8 +102,10 @@ const nullableStringFields = [
   "email",
   "telefono",
   "direccion",
+  "nro_legajo",
   "fecha_nacimiento",
   "fecha_ingreso",
+  "fecha_egreso",
   "url_foto",
 ] as const;
 
