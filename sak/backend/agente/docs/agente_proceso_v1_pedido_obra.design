@@ -1,0 +1,230 @@
+# agente_proceso_v1_pedido_obra.design
+# Diseño particular del sub-proceso `pedido_obra` — Alcance v1
+# Fecha: 2026-05-30
+
+Este documento describe las reglas particulares del pedido de materiales.
+La arquitectura común, los comandos explícitos y las garantías del runtime se definen
+en [agente_proceso_v1.design](./agente_proceso_v1.design).
+
+## 1. Proceso `pedido_obra` — Pedido de materiales
+
+**Propósito:** Permite al encargado armar y enviar un pedido de materiales para su obra.
+
+**Flujo conversacional:**
+```
+Encargado: "Necesito 10 bolsas de cemento y 5 barras de hierro"
+    → Agente: agrega ítems, muestra resumen
+Encargado: "También 3 rollos de cable"
+    → Agente: agrega ítem
+Encargado: "listo"
+    → Agente: solicita confirmación explícita
+Encargado: "CONFIRMAR"
+    → Agente: persiste pedido en DB, cierra proceso
+```
+
+El flujo conserva la carga incremental actual: el encargado puede agregar, modificar,
+quitar, limpiar o consultar materiales en varios mensajes. Terminar la carga y persistir
+el pedido son acciones diferentes:
+
+1. Expresiones como `"listo"`, `"cerrar"` o `"eso es todo"` solicitan terminar la carga.
+   El backend valida el pedido y muestra el resumen final.
+2. Solamente el mensaje completo `CONFIRMAR`, recibido cuando el pedido ya está listo,
+   persiste el pedido y cierra el proceso.
+3. Solamente el mensaje completo `CANCELAR` descarta el pedido completo y cierra el
+   proceso sin persistirlo.
+
+**Estados internos (`etapa`):**
+| Estado | Descripción |
+|--------|-------------|
+| `inicial` | Proceso recién abierto |
+| `carga` | Recibiendo ítems del pedido |
+| `confirmacion` | Esperando confirmación final del encargado |
+| `finalizado` | Proceso cerrado por confirmación persistida o cancelación |
+
+**`esperando` (pausa del flujo):**
+| Valor | Motivo |
+|-------|--------|
+| `decision_pedido_previo` | Hay un pedido anterior sin confirmar; ¿continuar o empezar nuevo? |
+| `confirmacion_cierre` | Esperando el comando explícito `CONFIRMAR` o `CANCELAR` |
+| `cantidad_faltante` | El backend detectó un ítem sin cantidad al cerrar; pregunta al encargado |
+
+**Operaciones aceptadas por el executor:**
+| Operación | Descripción | Origen |
+|-----------|-------------|--------|
+| `add_items` | Agrega uno o más ítems al pedido | LLM |
+| `update_item` | Modifica descripción, cantidad o unidad de un ítem existente | LLM |
+| `remove_item` | Elimina un ítem del pedido | LLM |
+| `clear_order` | Vacía el pedido completo y reinicia | LLM, con validación del backend |
+| `show_order` | Lista los ítems actuales del pedido | LLM |
+| `answer_missing_quantity` | Responde la cantidad de un ítem que quedó pendiente | Fast path para número simple; LLM en los demás casos |
+| `finish_order` | Valida el pedido y solicita confirmación antes de cerrar | Fast path para comandos simples; LLM en lenguaje libre |
+| `solicitar_confirmacion` | Muestra resumen e instruye escribir `CONFIRMAR` o `CANCELAR` | LLM |
+| `solicitar_cancelacion` | Solicita escribir `CANCELAR` para descartar | LLM |
+| `confirm_order` | Confirma y persiste el pedido en DB | Fast path: mensaje completo `CONFIRMAR` |
+| `cancel_order` | Cancela el pedido sin guardar | Fast path: mensaje completo `CANCELAR` |
+| `continue_previous` | Retoma un pedido anterior sin confirmar | LLM, válido únicamente durante `decision_pedido_previo` |
+| `start_new_order` | Descarta el pedido anterior y empieza uno nuevo | LLM, válido únicamente durante `decision_pedido_previo` |
+| `offtopic` | Mensaje no relacionado con el pedido | LLM |
+| `request_other_process` | Encargado intenta iniciar un proceso diferente; el backend renderiza texto de bloqueo fijo | LLM |
+
+`confirm_order` y `cancel_order` son operaciones reservadas del backend: nunca las
+emite el LLM como resultado directo de interpretar texto libre. Cuando corresponda, el
+backend primero solicita una decisión explícita al encargado y luego ejecuta la
+transición únicamente ante el comando completo `CONFIRMAR` o `CANCELAR`.
+
+`clear_order`, `continue_previous` y `start_new_order` sí pueden ser interpretadas por
+el LLM. El backend las valida antes de modificar el estado. En particular,
+`continue_previous` y `start_new_order` solo se aceptan durante
+`decision_pedido_previo`; fuera de esa pausa se rechazan como operaciones inválidas.
+
+### 1.1 Reglas funcionales conservadas
+
+**Carga incremental y cantidades faltantes:**
+
+- Durante `carga`, un ítem puede incorporarse sin cantidad. El LLM no inventa valores.
+- Las cantidades faltantes no interrumpen la carga: se solicitan recién cuando el
+  encargado intenta cerrar el pedido.
+- Si hay varios ítems sin cantidad, el backend los pregunta de a uno. Solo después de
+  completar todos muestra el resumen final y pasa a `confirmacion_cierre`.
+- Durante `cantidad_faltante`, el encargado todavía puede agregar un material nuevo o
+  realizar una corrección. En ese caso el pedido vuelve a `carga`; al cerrar se validan
+  nuevamente todas las cantidades.
+- Antes de confirmar o materializar, el backend valida que cada ítem tenga una
+  descripción no vacía y una cantidad mayor que cero. La unidad es opcional.
+
+**Acumulación de materiales repetidos:**
+
+- Si el encargado agrega nuevamente un material equivalente, el backend suma las
+  cantidades en lugar de crear una línea duplicada.
+- La equivalencia se resuelve localmente normalizando descripciones y unidades conocidas,
+  por ejemplo `bolsa` / `bolsas`, `litro` / `lts` o `metro` / `mts`.
+- Solo se acumula cuando existe un único ítem compatible. Si hay más de un candidato, el
+  backend no elige al azar: conserva la información separada o solicita una aclaración,
+  según la operación.
+
+**Modificaciones, consultas y mensajes laterales:**
+
+- Para modificar o quitar un ítem, el backend resuelve una referencia estable del estado
+  actual. Si la referencia no identifica un único material, solicita aclaración sin
+  modificar el pedido.
+- Si el encargado agrega, modifica o quita materiales después de ver el resumen final,
+  el pedido vuelve a `carga` y debe validarse nuevamente antes de confirmar.
+- `show_order`, `offtopic` y `request_other_process` no modifican el borrador.
+- `clear_order` vacía el borrador en memoria y mantiene abierto el proceso para cargar un
+  pedido nuevo. No materializa información ni cierra el proceso, por lo que no requiere
+  el comando `CANCELAR`.
+
+### 1.2 Recuperación de un pedido previo
+
+`pedido_obra` conserva la recuperación pasiva existente para evitar que un borrador viejo
+se mezcle silenciosamente con un pedido nuevo. Si existe un pedido activo sin finalizar y
+han transcurrido más de 60 minutos desde su última modificación, el siguiente mensaje
+entra en `decision_pedido_previo`.
+
+El agente muestra o interpreta las siguientes alternativas:
+
+| Intención del encargado | Operación | Resultado |
+|-------------------------|-----------|-----------|
+| Continuar, seguir, usar el anterior | `continue_previous` | Retoma el borrador existente |
+| Empezar uno nuevo, limpiar o borrar el anterior | `start_new_order` | Descarta el borrador anterior y abre uno vacío |
+| Consultar qué había cargado | `show_order` | Muestra el borrador sin modificarlo |
+| Empezar uno nuevo y dictar materiales en el mismo mensaje | `start_new_order` seguido de `add_items` | Abre el pedido nuevo y carga los ítems sin pedir que repita el mensaje |
+
+La detección se realiza al recibir el siguiente turno; no requiere un job programado. Esta
+regla es específica de `pedido_obra` y no define una política general de expiración para
+otros sub-procesos.
+
+### 1.3 Fast paths particulares
+
+Los siguientes casos se resuelven localmente para reducir latencia y evitar llamadas LLM
+innecesarias:
+
+| Contexto | Mensaje completo normalizado | Acción local |
+|----------|------------------------------|--------------|
+| `cantidad_faltante` | Número positivo simple, decimal o entero expresado en palabras | `answer_missing_quantity` |
+| Pedido en carga | `listo`, `cerrar`, `terminamos`, `terminar`, `finalizar`, `finalizo`, `termine`, `ya esta`, `nada mas`, `eso es todo`, `listo gracias` | `finish_order` |
+| Pedido todavía no listo | `confirmar` | Ejecutar validación de cierre y mostrar resumen; todavía no persistir |
+| `confirmacion_cierre` | `confirmar` | `confirm_order`: persistir y cerrar |
+| Proceso activo | `cancelar` | `cancel_order`: descartar y cerrar |
+
+Si una cantidad incluye información adicional, por ejemplo `"2 bolsas"`, o si el mensaje
+usa lenguaje libre, se deriva al LLM. Las expresiones informales como `"ok"`, `"sí"`,
+`"dale"`, `"confirmo"`, `"mandalo"` o `"descartar pedido"` nunca persisten ni descartan
+directamente: el LLM puede devolver `solicitar_confirmacion` o
+`solicitar_cancelacion`, y el backend vuelve a pedir el comando explícito
+correspondiente.
+
+### 1.4 Cambios puntuales respecto del proceso actual
+
+La implementación nueva conserva la experiencia de carga existente y aplica únicamente
+estos cambios funcionales:
+
+1. La persistencia deja de aceptar respuestas informales como `"sí"`, `"ok"`, `"dale"`
+   o `"confirmo"`. Solo el mensaje completo `CONFIRMAR` ejecuta `confirm_order`.
+2. El descarte completo deja de depender de interpretación del LLM. Solo el mensaje
+   completo `CANCELAR` ejecuta `cancel_order`; una frase libre de cancelación solicita
+   escribir ese comando.
+3. `request_other_process` permite bloquear con texto fijo el intento de iniciar un parte
+   diario mientras el pedido sigue abierto.
+4. El backend valida explícitamente cantidades positivas, referencias únicas y
+   transiciones válidas antes de modificar state o materializar.
+5. La materialización ocurre antes del delivery. Los retries posteriores del envío
+   pertenecen al runtime común y no vuelven a crear el pedido.
+
+## 2. Contrato estructurado del LLM
+
+Este sub-proceso aplica el
+[contrato común para outputs del LLM](./agente_proceso_v1.design): la respuesta se
+valida mediante JSON Schema estricto antes de modificar el pedido en memoria.
+
+El LLM devuelve un objeto con una lista `operations`. Cada entrada usa `type` como
+discriminador y solo puede pertenecer al siguiente conjunto:
+
+| `type` expuesto al LLM | Payload funcional permitido |
+|------------------------|-----------------------------|
+| `add_items` | `items[]`; cada ítem contiene descripción y puede incluir cantidad y unidad |
+| `update_item` | Referencia del ítem existente y los campos a modificar |
+| `remove_item` | Referencia del ítem existente |
+| `clear_order` | Sin payload |
+| `show_order` | Sin payload |
+| `answer_missing_quantity` | Cantidad solicitada y unidad, si corresponde |
+| `finish_order` | Sin payload |
+| `solicitar_confirmacion` | Sin payload; valida el cierre y muestra resumen, pero nunca persiste |
+| `solicitar_cancelacion` | Sin payload; solicita escribir `CANCELAR`, pero nunca descarta directamente |
+| `continue_previous` | Sin payload; válido únicamente durante `decision_pedido_previo` |
+| `start_new_order` | Sin payload; válido únicamente durante `decision_pedido_previo` |
+| `offtopic` | Sin payload |
+| `request_other_process` | `requested="parte_diario"` |
+
+El schema concreto define estos tipos como enum cerrado, exige los campos requeridos por
+cada variante y usa `additionalProperties: false` en el objeto raíz, las operaciones y
+los ítems internos. Para modificar o quitar un ítem existente, el LLM puede seleccionar
+un `item_id` opaco incluido por el backend en el estado enviado al modelo. El backend
+valida que esa referencia pertenezca al pedido actual; el LLM no inventa IDs ni accede a
+FKs de negocio.
+
+Las operaciones reservadas `confirm_order` y `cancel_order` no forman parte del schema
+del LLM. Si la respuesta no valida, el proveedor devuelve `refusal` o una operación no
+es válida para el estado actual, no se modifica el pedido y se responde con un error
+recuperable.
+
+El backend aplica además las restricciones funcionales de §1.1 y §1.2. El LLM propone
+operaciones, pero no decide si una referencia es única, si una cantidad es válida, si un
+pedido está completo ni si una transición corresponde al estado actual.
+
+## 3. Materialización particular
+
+**Persistencia:** Al confirmar, el executor setea `pedido_listo=True` en el resultado
+(sin tocar DB). Antes del delivery, `meta_webhook_service` detecta el flag y llama a
+`ConstructoraPedidoService.create_from_agent_message(session, mensaje_id)`, que lee el
+payload desde `crm_mensajes.metadata_json["agent_v2"]["result"]` y hace el INSERT. Solo
+después del commit exitoso se cierra el proceso y se envía el mensaje de confirmación al
+encargado.
+
+**Idempotencia:** `ConstructoraPedidoService` busca primero si ya existe un pedido con el
+mismo `mensaje_origen_id`. Si existe, devuelve ese registro sin crear otro. Además,
+`metadata_json["agent_v2"]["pedido_obra_id"]` se escribe como referencia auxiliar y
+permite evitar llamadas innecesarias al service. La protección principal es la relación
+con `mensaje_origen_id`; el metadata no es la única garantía.
+
+---

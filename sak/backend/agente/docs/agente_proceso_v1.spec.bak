@@ -1,0 +1,757 @@
+# agente_proceso_v1.spec
+# Especificación de cambios para implementar el alcance del documento agente_proceso_v1.md
+# Fecha: 2026-05-30
+
+## Resumen del alcance
+
+Incorporar el proceso PARTE_DIARIO al agente, definir un mecanismo de routing de intención
+cuando no hay proceso activo, y aplicar la regla de proceso único por conversación.
+
+---
+
+## Estado actual vs. estado objetivo
+
+| Aspecto                        | Actual                                      | Objetivo                                     |
+|-------------------------------|---------------------------------------------|----------------------------------------------|
+| Procesos activos en webhook   | Solo `pedido_obra`                          | `pedido_obra` + `parte_diario`               |
+| Inicio de proceso              | `pedido_obra` auto-arranca si `is_project`  | Router classifica intención o muestra menú   |
+| Proceso único por conversación | No controlado explícitamente                | Bloqueo con mensaje si hay proceso activo    |
+| Proceso `parte_diario`         | No existe                                   | Nuevo proceso completo                       |
+| Estados conversacionales       | `active_process: str | None`                | Agrega estado `esperando_menu`               |
+
+---
+
+## Cambios requeridos
+
+### 1. Nuevo proceso: `parte_diario`
+
+**Directorio:** `backend/agente/v2/processes/parte_diario/`
+
+El proceso `parte_diario` sigue exactamente la misma arquitectura que `pedido_obra`:
+el LLM interpreta el turno y devuelve operaciones estructuradas; un executor local
+las aplica sobre el estado en memoria; el orquestador persiste el estado conversacional
+al finalizar el turno.
+
+**Archivos a crear:**
+- `handler.py` — `ParteDiarioProcess` implementando el protocolo `AgentProcess`
+- `models.py` — `ParteDiarioState` (estado acumulado del parte) y `NovedadPersonal` (una fila del parte)
+- `llm_client.py` — wrapper de AsyncOpenAI con structured output (JSON schema) para interpretar novedades
+- `executor.py` — aplica operaciones sobre `ParteDiarioState` sin efectos secundarios (sin DB)
+- `renderer.py` — genera los textos de respuesta al usuario (confirmaciones, resumen, errores)
+- `prompts/system.txt` — instrucciones del sistema para el LLM: contexto de obra, lista de empleados activos, estados disponibles
+- `__init__.py`
+
+**`ParteDiarioProcess.priority(ctx)`:**
+```python
+def priority(self, ctx: TurnContext) -> int | None:
+    if ctx.active_process == self.name:
+        return 100      # proceso ya activo → máxima prioridad
+    if ctx.active_process is not None:
+        return None     # otro proceso activo → no compite (regla proceso único)
+    # Sin proceso activo: el intent_router ya resolvió la intención antes de llegar aquí
+    return 40
+```
+
+**`ParteDiarioState`** (persiste en `conversation_state.process_state`):
+```python
+@dataclass
+class ParteDiarioState:
+    oportunidad_id: int
+    idproyecto: int | None = None
+    fecha: str | None = None           # ISO date del parte (default: hoy)
+    parte_id: int | None = None        # id de ParteDiario en DB (None = nuevo, int = retomado/confirmado)
+    novedades: list[NovedadPersonal] = field(default_factory=list)
+    esperando: str | None = None       # "confirmacion" | "mas_novedades" | None
+    retomado: bool = False             # True si el parte fue cargado desde DB al inicio
+    novedad_pendiente: NovedadPersonal | None = None   # novedad esperando aclaración de nombre
+    candidatos_ambiguos: list[dict] | None = None       # [{"idnomina": int, "nombre_completo": str}]
+```
+
+**Resolución de la fecha del parte — tres casos:**
+
+1. **Default hoy** — si el encargado no menciona ninguna fecha, se usa `date.today()` en
+   zona horaria `America/Argentina/Buenos_Aires`. Se setea en `ParteDiarioState.fecha`
+   al momento de la primera operación real (no al inicio del proceso, para no crear
+   un parte vacío si el encargado sólo pregunta algo).
+
+2. **El encargado menciona otra fecha** — frases como "el parte de ayer", "el del jueves",
+   "el 28 de mayo". El LLM puede devolver la operación `set_fecha` con el campo
+   `fecha: str` (ISO 8601). El executor normaliza la cadena, valida que sea una fecha
+   válida y no futura, y actualiza `ParteDiarioState.fecha`. Si el state ya tiene
+   novedades cargadas para una fecha distinta, el executor responde advirtiendo el
+   cambio y pide confirmación antes de pisar.
+
+3. **Ya existe un parte para `(idproyecto, fecha)`** — al resolver la fecha (por cualquiera
+   de los dos caminos anteriores), el executor consulta DB:
+   ```python
+   existing = session.exec(
+       select(ParteDiario).where(
+           ParteDiario.idproyecto == state.idproyecto,
+           ParteDiario.fecha == fecha_resuelta,
+           ParteDiario.deleted_at.is_(None),
+       )
+   ).first()
+   ```
+   - Si `existing` está en estado `borrador` → cargar sus detalles en `state.novedades`,
+     setear `state.parte_id = existing.id`, `state.retomado = True`.
+     Responder: *"Encontré un parte del [fecha] con X novedades. Lo retomo para que
+     puedas continuar o corregir."*
+     
+     **Esto cubre tanto retomar un borrador del mismo día como corregir al día siguiente:**
+     *"ayer, Juan Pérez hizo 4 horas extras"* → LLM extrae `fecha=ayer` + novedad →
+     handler encuentra el parte del día anterior en `borrador` → carga sus novedades
+     existentes (las 4 ausencias) + agrega la nueva (horas extras de Juan).
+     Al confirmar, `ParteDiarioService` hace `UPDATE` del parte existente con el conjunto
+     completo de novedades y regenera los presentes implícitos.
+
+   - Si `existing` está en estado `cerrado` → **no retomar**. Responder:
+     *"El parte del [fecha] ya fue cerrado por el administrador. Para hacer cambios
+     comunícate con el administrador."*
+     `keep_active=False`.
+
+   - Si no existe → continuar con parte nuevo.
+
+El campo `parte_id` se puebla **al retomar** (indicando que existe un parte en DB para esa
+fecha) o permanece `None` si es un parte nuevo. **En ningún caso el executor escribe en DB**
+— la materialización ocurre en el delivery service, igual que `pedido_obra` (ver sección 8).
+
+**`NovedadPersonal`** — una fila del parte diario en memoria:
+```python
+@dataclass
+class NovedadPersonal:
+    nombre: str                        # nombre como lo menciona el encargado
+    idnomina: int | None = None        # resuelto por NominaResolver (sección 6)
+    idestado: int | None = None        # FK a parte_diario_estados (sección 6)
+    horas: float = 8.0                 # default jornada completa
+    ingreso: str | None = None         # datetime ISO (opcional)
+    egreso: str | None = None          # datetime ISO (opcional)
+    descripcion: str | None = None
+```
+
+**Operaciones que el LLM puede devolver (JSON schema):**
+- `agregar_novedad` — nuevo empleado con su estado
+- `modificar_novedad` — cambiar horas, estado u observación de un empleado ya cargado
+- `eliminar_novedad` — quitar un empleado del parte actual
+- `mostrar_parte` — listar el parte acumulado hasta ahora
+- `mostrar_nomina` — listar los empleados activos asignados al proyecto (consulta de solo lectura)
+- `set_fecha` — cambiar la fecha del parte ("ayer", "el jueves", "28/05") → campo `fecha: str` ISO
+- `confirmar` — cerrar y persistir en DB
+- `cancelar` — abortar sin guardar
+- `offtopic` — mensaje no relacionado
+
+**Consultas genéricas (operaciones de solo lectura):**
+
+Las operaciones `mostrar_parte` y `mostrar_nomina` son *stateless*: no modifican
+`ParteDiarioState` ni `esperando`. El mismo mensaje puede llegar:
+
+- **Con proceso activo** (`active_process == "parte_diario"`) → el executor las resuelve
+  dentro del proceso activo sin necesidad de lógica adicional.
+
+- **Sin proceso activo** → el `intent_router` clasifica el mensaje como `parte_diario`
+  y el orquestador abre el handler normalmente. El handler detecta que no hay parte
+  en curso (sin novedades, sin `parte_id`) y responde la consulta sin crear ningún parte.
+  `keep_active` queda en `False` al terminar — no se inicia un proceso conversacional.
+
+- **Con otro proceso activo** (ej. `pedido_obra`) → regla de proceso único: el proceso
+  activo responde con `offtopic` y el encargado recibe el mensaje de bloqueo estándar
+  (ver sección 3). Debe cerrar la charla activa antes de consultar el parte.
+
+**Flujo `handle(ctx)`:**
+1. Fast path: detectar comandos de cancelar/confirmar sin LLM (ver sección 4)
+2. **Fast path: consulta sin parte activo** — si `state.novedades` está vacío y el mensaje
+   es una consulta de nómina o parte, responder directamente sin iniciar proceso:
+   ```python
+   if not state.novedades and not state.parte_id:
+       plan = await self._llm.interpret_turn(mensaje, state)  # puede devolver mostrar_nomina
+       if plan.is_readonly_query():
+           result = executor.execute_plan(state, plan, nominas, estados)
+           return TurnResult(..., keep_active=False)  # no inicia proceso
+   ```
+3. **Inicialización de estado con acceso a DB** (en `handler`, antes de llamar al LLM):
+   a. Resolver `fecha`: si `state.fecha` es None → usar `date.today()` en `America/Argentina/Buenos_Aires`
+   b. Si la fecha acaba de resolverse (o fue seteada en el turno anterior), consultar DB
+      por parte existente `(idproyecto, fecha)` — ver lógica completa en sección 1
+   c. Si existe parte en `borrador` → cargar sus detalles en `state.novedades`,
+      setear `state.parte_id`, `state.retomado = True`; responder con resumen del parte retomado
+   d. La carga de nómina activa del proyecto también ocurre aquí y se pasa al executor
+4. Llamar `llm_client.interpret_turn(mensaje, state)` → `TurnPlan` con lista de operaciones
+5. `executor.execute_plan(state, plan, nominas, estados)` → **executor puro, sin session**:
+   - Aplica operaciones sobre `state.novedades` en memoria
+   - Resuelve `idnomina` e `idestado` via `NominaResolver` usando las listas precargadas
+   - Si hay `set_fecha` → actualiza `state.fecha`; setea `state.fecha_changed = True`
+     para que el handler relance la búsqueda de parte existente en el próximo turno
+   - Si hay `mostrar_nomina` → retorna la lista de empleados del proyecto; `keep_active` no cambia
+   - Al `confirmar`: setea `keep_active=False`, `parte_listo=True` en `ExecutionResult`
+     **sin tocar DB**. El result serializa solo las novedades explícitas informadas
+     por el encargado — los presentes implícitos se completan en `ParteDiarioService`
+6. Al confirmar: `keep_active=False`, `parte_listo=True` → el delivery service crea el
+   `ParteDiario` en DB completando presentes implícitos (ver sección 8)
+7. Al cancelar: `keep_active=False`, vaciar state (si era retomado, no se toca la DB)
+8. Cualquier otro caso: `keep_active=True`, responder con estado actual del parte
+
+**Activación por trigger del sistema:**
+El proceso puede iniciarse sin que el encargado escriba el primer mensaje
+(ej: tarea programada que envía "¿Cómo estuvo el día hoy?").
+El campo `trigger` en `TurnContext` (`"webhook"` | `"scheduled"`) permite
+distinguir este caso y construir un mensaje de apertura diferente.
+
+---
+
+### 2. Router de intención (cuando `active_process is None`)
+
+**Archivo nuevo:** `backend/agente/v2/core/intent_router.py`
+
+Actualmente `pedido_obra` usa `is_project` como señal de activación: si la oportunidad
+está vinculada a un proyecto, el proceso arranca con prioridad 50. Con dos procesos esto
+ya no es suficiente — el sistema necesita saber cuál de los dos iniciar.
+
+El `IntentRouter` es un clasificador liviano **sin LLM** basado en keywords normalizadas.
+Se ejecuta solo cuando `active_process is None` y antes de llamar a `registry.resolve()`.
+
+```python
+class IntentRouter:
+    """Clasifica la intención del primer mensaje de una conversación."""
+
+    KEYWORDS_PEDIDO = ["necesito", "pedir", "faltan", "traer", "cemento", "hierro",
+                       "material", "bolsas", "barras", "cable", "caño"]
+    KEYWORDS_PARTE  = ["faltó", "falto", "extra", "tarde", "llegó tarde", "accidente",
+                       "parte", "asistencia", "novedad", "horas", "ausente", "licencia"]
+
+    def classify(self, text: str) -> str | None:
+        """
+        Retorna 'pedido_obra' | 'parte_diario' | None (ambiguo).
+        Normaliza el texto (sin tildes, lowercase) antes de comparar.
+        Si ambas categorías tienen matches, retorna None (ambiguo).
+        """
+        ...
+
+    def is_menu_selection(self, text: str) -> str | None:
+        """
+        Si el texto es exactamente '1' → 'pedido_obra'.
+        Si el texto es exactamente '2' → 'parte_diario'.
+        Otro texto → None (no es selección de menú).
+        """
+        ...
+```
+
+**Texto del menú** que el sistema envía cuando la intención es ambigua:
+```
+¿Qué desea realizar?
+
+1. Pedido de materiales
+2. Parte diario
+```
+
+**Cambio en `ConversationState`:**
+```python
+esperando_menu: bool = False   # True = el sistema está esperando selección 1 o 2
+```
+Este campo persiste en el JSON de estado conversacional junto con `active_process`.
+
+**Cambio en `orchestrator.py` — nueva lógica antes de `registry.resolve()`:**
+```python
+if ctx.active_process is None:
+    if ctx.conversation_state.esperando_menu:
+        # el usuario debería responder 1 o 2
+        proceso = intent_router.is_menu_selection(ctx.message.contenido)
+        if proceso:
+            ctx.conversation_state.active_process = proceso
+            ctx.conversation_state.esperando_menu = False
+            # continúa normalmente hacia registry.resolve()
+        else:
+            # respuesta inválida → mostrar menú de nuevo
+            return _menu_reply()
+    else:
+        proceso = intent_router.classify(ctx.message.contenido)
+        if proceso:
+            ctx.conversation_state.active_process = proceso
+            # continúa normalmente hacia registry.resolve()
+        else:
+            # ambiguo → enviar menú
+            ctx.conversation_state.esperando_menu = True
+            # persistir estado y retornar sin llamar a ningún proceso
+            state_store.save(ctx.conversation_state)
+            return _menu_reply()
+```
+
+**Consideración sobre `pedido_obra`:**
+El proceso `pedido_obra` actualmente setea su propio `active_process` desde dentro
+de `priority()` vía el score system. Con el intent_router, esta lógica se centraliza
+en el orquestador y `pedido_obra.priority()` puede simplificarse.
+
+---
+
+### 3. Regla de proceso único (conflicto)
+
+Actualmente el sistema no tiene ningún mecanismo que impida que `parte_diario`
+tome el control mientras hay un `pedido_obra` activo o viceversa. Con dos procesos
+registrados, esta regla debe ser explícita.
+
+**Hay dos lugares donde se aplica:**
+
+**A) En `priority()` de cada proceso** — el proceso no compite si hay otro activo:
+```python
+def priority(self, ctx: TurnContext) -> int | None:
+    if ctx.active_process is not None and ctx.active_process != self.name:
+        return None   # bloquea su propia activación mientras otro proceso corre
+    ...
+```
+Esto previene que `registry.resolve()` elija el proceso equivocado.
+
+**B) En `orchestrator.py`** — cuando `resolve()` retorna `None` y había proceso activo,
+significa que el mensaje llegó a un proceso activo pero ese proceso devolvió `None`
+en `priority()`. Esto no debería pasar con la regla de arriba, pero como salvaguarda:
+```python
+if resolved is None and ctx.active_process is not None:
+    reply = _conflict_message(ctx.active_process)
+    return {"type": "process_conflict", "reply": reply, "active_process": ctx.active_process}
+```
+
+**C) Caso especial: el proceso activo no reconoce el mensaje como suyo**
+Si `pedido_obra` está activo y recibe "faltó Juan", lo procesará igualmente
+dentro de su contexto (probablemente responderá con `offtopic`). Esto es correcto:
+el proceso activo tiene la palabra — el encargado debe cerrarlo primero.
+El mensaje de bloqueo solo aplica cuando ningún proceso quiere tomar el mensaje.
+
+**Mensajes de bloqueo por proceso activo:**
+```python
+CONFLICT_MESSAGES = {
+    "pedido_obra": (
+        "Tiene un pedido de materiales en curso.\n"
+        "Para informar el parte diario debe finalizar o cancelar el pedido actual.\n"
+        "Escriba *confirmar* para enviar el pedido o *cancelar* para descartarlo."
+    ),
+    "parte_diario": (
+        "Tiene un parte diario en curso.\n"
+        "Para realizar un pedido de materiales debe finalizar o cancelar el parte.\n"
+        "Escriba *confirmar* para cerrar el parte o *cancelar* para descartarlo."
+    ),
+}
+```
+
+---
+
+### 4. Comandos de cierre/cancelación (ambos procesos)
+
+Ambos procesos deben responder a comandos explícitos del encargado **antes de llamar al LLM**
+(fast path), igual a como `pedido_obra` ya lo hace con `_command_fast_plan()`.
+Esto reduce latencia y evita que el LLM malinterprete una cancelación como una operación.
+
+**Palabras clave a detectar (normalizado sin tildes, lowercase):**
+
+| Intención  | Keywords                                                          |
+|------------|-------------------------------------------------------------------|
+| Cancelar   | `cancelar`, `cancel`, `salir`, `limpiar`, `borrar todo`, `nuevo` |
+| Confirmar  | `confirmar`, `confirm`, `listo`, `enviar`, `ok`, `si`, `sí`      |
+
+**Implementación en `handler.py` de cada proceso:**
+```python
+async def handle(self, ctx: TurnContext) -> TurnResult:
+    text = _normalize(ctx.message.contenido)
+
+    # Fast path: cancelar
+    if any(kw in text for kw in CANCEL_KEYWORDS):
+        return TurnResult(
+            payload={"type": "..._reply", "reply": "Proceso cancelado."},
+            keep_active=False,
+            process_state={},
+        )
+
+    # Fast path: confirmar
+    if any(kw in text for kw in CONFIRM_KEYWORDS) and state.tiene_datos():
+        return await self._confirmar(ctx, state)
+
+    # Llamada al LLM
+    plan = await self._llm.interpret_turn(...)
+    ...
+```
+
+**Casos borde a contemplar:**
+- `confirmar` sin datos cargados → responder "No hay novedades registradas aún."
+- `cancelar` con estado vacío → responder "No hay proceso activo para cancelar."
+  (aunque en ese caso `active_process` ya sería `None` y no llegaría aquí)
+- Reconocer variantes con/sin tildes y errores tipográficos comunes:
+  `konfirmar`, `cancela`, `listos`, `okay`
+
+---
+
+### 5. Registro en `meta_webhook_service.py`
+
+Actualmente el servicio instancia solo `pedido_obra` mediante `build_pedido_obra_dependencies()`.
+Hay que reemplazar esa función por una genérica `build_agent_dependencies()` que registre
+ambos procesos e incorpore el `IntentRouter` al orquestador.
+
+**Cambios en `meta_webhook_service.py`:**
+
+```python
+# Antes
+from agente.v2.processes.pedido_obra.handler import build_pedido_obra_dependencies
+...
+state_store, agent = build_pedido_obra_dependencies(session=session)
+orchestrator = AgentTurnOrchestrator(
+    processes=[agent],
+    state_store=state_store,
+    history_limit=0,
+)
+
+# Después
+from agente.v2.core.dependencies import build_agent_dependencies
+...
+orchestrator = build_agent_dependencies(session=session)
+```
+
+**Nueva función `build_agent_dependencies()`** — en `agente/v2/core/dependencies.py`:
+```python
+def build_agent_dependencies(session: Session) -> AgentTurnOrchestrator:
+    state_store = JsonConversationStateStore(...)
+    pedido_obra = PedidoObraProcess(llm_client=PedidoObraLLMClient())
+    parte_diario = ParteDiarioProcess(llm_client=ParteDiarioLLMClient(), session=session)
+    intent_router = IntentRouter()
+    return AgentTurnOrchestrator(
+        processes=[pedido_obra, parte_diario],
+        intent_router=intent_router,
+        state_store=state_store,
+        history_limit=6,
+    )
+```
+
+**Cambio importante en `history_limit`:**
+El valor actual es `0` (sin historial). Para que `parte_diario` tenga contexto de
+novedades ya mencionadas en turnos anteriores del mismo parte, debe subirse a `6`.
+`pedido_obra` también se beneficia de este historial para detectar pedidos previos.
+
+**El mismo cambio aplica a `crm_mensaje_router.py`** donde también se instancia
+el orquestador para el endpoint de reprocess manual — debe usar la misma
+`build_agent_dependencies()`.
+
+---
+
+### 6. Resolución de empleados
+
+**Estrategia: el LLM resuelve el `idnomina` directamente.**
+
+El prompt del sistema incluye la lista de **todos** los empleados activos (catálogo
+completo, sin filtro de proyecto) con sus IDs, mostrando `apellido + nombre` concatenados
+(campos `nominas.apellido` + `nominas.nombre`). Un empleado puede trabajar ocasionalmente
+en una obra distinta a la suya, por lo que el catálogo no se acota por proyecto:
+
+```python
+# Construcción de la lista para el prompt y para los candidatos_ambiguos
+nombre_completo = f"{nomina.apellido} {nomina.nombre}"   # ej: "MEDINA Juan"
+```
+```
+Empleados activos en esta obra:
+- ID 5: MEDINA Juan
+- ID 12: GARCIA Juan
+- ID 23: CORBALAN Marcelo
+- ID 31: LOPEZ Héctor
+...
+```
+El LLM devuelve `idnomina` en cada operación `agregar_novedad`. No inventa IDs porque
+la lista es exhaustiva y finita. El `NominaResolver` actúa únicamente como validación:
+confirma que el `idnomina` devuelto pertenece a la lista cargada para ese proyecto.
+
+---
+
+**Caso de ambigüedad — el LLM menciona un nombre que matchea más de un empleado:**
+
+En lugar de `agregar_novedad`, el LLM devuelve una operación especial:
+```json
+{
+  "type": "nombre_ambiguo",
+  "nombre_mencionado": "Juan",
+  "idestado": 2,
+  "horas": 8.0,
+  "candidatos": [
+    {"idnomina": 5,  "nombre_completo": "MEDINA Juan"},
+    {"idnomina": 12, "nombre_completo": "GARCIA Juan"}
+  ]
+}
+```
+
+**Qué hace el executor con `nombre_ambiguo`:**
+1. Guarda la operación pendiente en `state.novedad_pendiente` (los datos completos del `agregar_novedad` que falta resolver)
+2. Guarda los candidatos en `state.candidatos_ambiguos`
+3. Setea `state.esperando = "aclarar_nombre"`
+4. Retorna `ExecutionResult` con `keep_active=True` y el texto de la pregunta
+
+**Mensaje al encargado (renderer):**
+```
+"¿A cuál Juan te referís?
+  1. Medina
+  2. García"
+```
+
+**Fast path en `handler.handle()` para responder la aclaración:**
+```python
+if state.esperando == "aclarar_nombre" and state.candidatos_ambiguos:
+    seleccion = _parse_candidate_selection(ctx.message.contenido, state.candidatos_ambiguos)
+    if seleccion is not None:
+        # Completar la novedad pendiente con el idnomina seleccionado
+        novedad = state.novedad_pendiente
+        novedad.idnomina = seleccion
+        state.novedades.append(novedad)
+        state.novedad_pendiente = None
+        state.candidatos_ambiguos = None
+        state.esperando = None
+        state.touch()
+        return _responder_novedad_agregada(state, novedad)
+```
+
+`_parse_candidate_selection()` acepta:
+- Número ordinal: "1", "2"
+- Apellido: "Medina", "medina", "el de medina"
+- Si no matchea ninguna → volver a preguntar (no ir al LLM)
+
+**Campos adicionales en `ParteDiarioState`:**
+```python
+novedad_pendiente: NovedadPersonal | None = None   # novedad esperando resolución de nombre
+candidatos_ambiguos: list[dict] | None = None       # [{"idnomina": int, "nombre_completo": str}]
+```
+
+---
+
+**`NominaResolver` — solo validación:**
+
+```python
+class NominaResolver:
+    """Valida que un idnomina devuelto por el LLM existe en el catálogo activo."""
+
+    def validate(self, idnomina: int, nominas: list[NominaItem]) -> bool:
+        """Catálogo completo — no filtra por proyecto (empleados pueden trabajar en cualquier obra)."""
+        return any(n.id == idnomina for n in nominas)
+
+    def resolve_estado(self, abreviatura: str, estados: list[EstadoItem]) -> int | None:
+        """Retorna el id del estado por abreviatura. El LLM devuelve la abreviatura."""
+        for e in estados:
+            if e.abreviatura.upper() == abreviatura.upper():
+                return e.id
+        return None
+```
+
+El LLM también recibe la lista de estados con abreviaturas en el prompt y devuelve
+`idestado` directamente. `resolve_estado` es el fallback si el LLM devuelve la
+abreviatura en texto en lugar del id numérico.
+
+**Consideración de rendimiento:**
+La lista de nómina se carga una vez en el handler al inicio del turno y se pasa
+como parámetro al executor y al llm_client (para incluirla en el prompt).
+Si la obra tiene más de ~150 empleados, la lista se trunca a los más recientes
+para no superar el context window; el límite configurable es `MAX_NOMINA_EN_PROMPT = 120`.
+
+---
+
+### 7. Cambios en modelos / DB
+
+Todos los cambios de esquema ya están aplicados en la BD. Esta sección documenta
+el estado actual y los puntos de atención para la capa de agente.
+
+**Tablas existentes y sus campos clave:**
+
+| Tabla | Campos relevantes para el agente |
+|-------|----------------------------------|
+| `partes_diario` | `id`, `idproyecto`, `fecha`, `estado` (`borrador`/`cerrado`/`anulado`), `descripcion`, `mensaje_origen_id` (FK→`crm_mensajes`), `version` |
+| `partes_diario_detalles` | `id`, `idparte`, `idnomina`, `idestado` (FK→`parte_diario_estados`), `ingreso`, `egreso`, `horas`, `descripcion`, `origen` (`agente`/`default`), `version` |
+| `parte_diario_estados` | `id`, `abreviatura` (P/ENF/ACC/…), `nombre`, `activo` |
+| `nominas` | `id`, `nombre`, `apellido`, `nro_legajo`, `idproyecto`, `fecha_egreso` |
+
+**Puntos de atención:**
+
+1. **`idproyecto` en `partes_diario`:** El proceso recibe el proyecto desde el contexto
+   de la conversación (`ctx.oportunidad.proyecto_id`). Verificar que `CRMOportunidad`
+   expose este campo. Si el encargado trabaja sobre una oportunidad directa, el
+   `proyecto_id` viene de `oportunidad.proyecto_id`. Si viene de un proyecto puro,
+   usar `proyecto.id` directamente.
+
+2. **Ciclo de vida del parte — estados:**
+
+   | Estado | Quién lo setea | Editable por agente |
+   |--------|---------------|--------------------|
+   | `borrador` | Agente (al confirmar) | Sí |
+   | `cerrado` | Administrador (desde backoffice) | No |
+
+   El agente **siempre crea y deja el parte en `borrador`**. El administrador es quien
+   lo cierra definitivamente desde el backoffice. Esto permite al encargado seguir
+   haciendo correcciones vía WhatsApp hasta que el admin lo cierre.
+
+   Si el encargado intenta modificar un parte en estado `cerrado`, el agente responde:
+   *"El parte del [fecha] ya fue cerrado por el administrador. Para hacer cambios
+   comunícate con el administrador."*
+   Y `keep_active=False` — no se inicia ningún proceso.
+
+3. **Empleados activos — catálogo completo:** Un empleado puede trabajar ocasionalmente
+   en una obra distinta a la de su proyecto asignado, por lo tanto la lista de nómina
+   que se carga para el prompt **no se filtra por `idproyecto`**. Se carga el catálogo
+   completo de empleados activos:
+   ```sql
+   SELECT id, apellido, nombre
+   FROM nominas
+   WHERE (fecha_egreso IS NULL OR fecha_egreso > CURRENT_DATE)
+     AND deleted_at IS NULL
+   ORDER BY apellido, nombre
+   ```
+   La consulta se hace una vez al inicio del turno. Para obras con más de
+   `MAX_NOMINA_EN_PROMPT = 120` empleados, se aplica el límite documentado en sección 6.
+
+   **Regla de presentes implícitos:** El encargado solo informa novedades (ausencias,
+   accidentes, horas extras, etc.). Al confirmar, `ParteDiarioService` consulta los
+   empleados **asignados al proyecto** (`nominas.idproyecto = idproyecto`) y por cada
+   uno que NO aparezca en las novedades informadas genera automáticamente un detalle
+   con `idestado = id de 'P' (PRESENTE)`. Los empleados ocasionales de otros proyectos
+   que sí fueron mencionados se incluyen con su novedad; los que no fueron mencionados
+   no se agregan (no están asignados a la obra).
+
+4. **`parte_diario_estados` — lectura estática:** La tabla cambia muy raramente.
+   Se puede cargar una vez por arranque de la aplicación y mantener en memoria
+   (dict `abreviatura → id`). Alternativamente cargar por turno; el volumen es de 8 filas.
+
+5. **Migraciones ya aplicadas** (no requieren acción):
+   - `20260530_parte_diario_estados.py` — crea tabla, añade `idestado` FK
+   - `20260530_add_ingreso_egreso_partes_diario_detalles.py` — añade `ingreso`, `egreso`
+   - `20260530_add_fecha_egreso_nro_legajo_to_nominas.py` — añade `fecha_egreso`, `nro_legajo`
+   - `20260530_add_mensaje_origen_origen_detalle_partes_diario.py` — añade `mensaje_origen_id` a `partes_diario` y `origen` a `partes_diario_detalles`
+   - `20260530_rename_pendiente_to_borrador_partes_diario.py` — renombra valor `pendiente` → `borrador`
+
+---
+
+### 8. Entrega (TurnDeliveryService)
+
+**Patrón idéntico a `pedido_obra`** — el executor es puro, la materialización en DB
+ocurre después del agente, en el ciclo de entrega.
+
+**Archivos involucrados:**
+- `backend/app/services/turn_delivery_service.py` (o `meta_webhook_service.py`) — detecta `parte_listo=True`
+- `backend/app/services/parte_diario_service.py` *(nuevo)* — análogo a `constructora_pedido_service.py`
+
+**`ParteDiarioService.create_or_update_from_agent_message(session, mensaje_id)`:**
+```python
+class ParteDiarioService:
+    def create_or_update_from_agent_message(self, session: Session, mensaje_id: int) -> ParteDiario:
+        """
+        Idempotente: si ya existe un ParteDiario para este mensaje_origen_id, lo retorna.
+        Si state.retomado=True y parte_id está en el result, hace UPDATE sobre el existente.
+        Si parte nuevo, hace INSERT.
+        """
+        ...
+```
+
+El result guardado en `crm_mensajes.metadata_json["agent_v2"]["result"]` debe incluir
+todo lo necesario para la materialización:
+```python
+{
+    "type": "parte_diario_reply",
+    "parte_listo": True,
+    "parte_id_existente": int | None,  # None = nuevo, int = retomado (UPDATE)
+    "oportunidad_id": int,
+    "idproyecto": int,
+    "fecha": "2026-05-30",             # ISO date
+    "novedades": [
+        {"idnomina": 5, "idestado": 1, "horas": 8.0, "ingreso": None, "egreso": None, "descripcion": None},
+        ...
+    ],
+    "resumen": str,                    # texto de confirmación para enviar al encargado
+    "errores": list[str],              # nombres no resueltos
+    "cancelado": False,
+}
+```
+
+**Lógica en el webhook service** (análoga a `_ensure_constructora_pedido_from_agent_result`):
+```python
+def _ensure_parte_diario_from_agent_result(self, crm_mensaje, result):
+    if result.get("type") != "parte_diario_reply":
+        return
+    if not result.get("parte_listo"):
+        return
+    parte_diario_service.create_or_update_from_agent_message(self.session, crm_mensaje.id)
+```
+
+**Lógica en `ParteDiarioService`:**
+- Idempotencia: buscar por `mensaje_origen_id` — si ya existe, retornar sin modificar
+- Si `parte_id_existente` es `int` (retomado) → cargar parte, **reemplazar** sus detalles
+  con el conjunto completo de novedades del result (informadas + implícitas), conservar `estado = 'borrador'`
+- Si `parte_id_existente` es `None` → `INSERT` nuevo `ParteDiario` con `estado = 'borrador'`
+- **Completar presentes implícitos** (en ambos casos, antes del commit):
+  ```python
+  # 1. IDs ya informados en las novedades del agente
+  ids_con_novedad = {n["idnomina"] for n in result["novedades"]}
+
+  # 2. Empleados base de la obra (asignados al proyecto)
+  empleados_base = session.exec(
+      select(Nomina).where(
+          Nomina.idproyecto == result["idproyecto"],
+          or_(Nomina.fecha_egreso.is_(None), Nomina.fecha_egreso > date.today()),
+          Nomina.deleted_at.is_(None),
+      )
+  ).all()
+
+  # 3. Generar PRESENTE para cada empleado base no informado
+  id_presente = _get_estado_id(session, "P")
+  for emp in empleados_base:
+      if emp.id not in ids_con_novedad:
+          session.add(ParteDiarioDetalle(
+              idparte=parte.id,
+              idnomina=emp.id,
+              idestado=id_presente,
+              horas=8.0,
+              origen="default",   # presente implícito
+              version=1,
+          ))
+  # Los empleados ocasionales mencionados ya tienen su detalle con origen='agente'.
+  # Los empleados ocasionales NO mencionados no se agregan.
+  ```
+- Setear `parte.mensaje_origen_id = mensaje_id` para trazabilidad con el hilo de WhatsApp
+- Escribir el `parte_diario_id` generado de vuelta en `crm_mensajes.metadata_json["agent_v2"]["parte_diario_id"]`
+
+**Log en `metadata_json["agent_v2"]`:**
+```json
+{
+  "process": "parte_diario",
+  "parte_diario_id": 42,
+  "parte_listo": true,
+  "novedades_count": 5
+}
+```
+
+---
+
+## Orden de implementación sugerido
+
+1. `parte_diario/models.py` — `ParteDiarioState`, `NovedadPersonal`
+2. `parte_diario/nomina_resolver.py`
+3. `parte_diario/llm_client.py` + prompt
+4. `parte_diario/executor.py` + `renderer.py` — executor puro, sin session
+5. `parte_diario/handler.py` — `ParteDiarioProcess` con lógica DB (carga de nómina, retomar parte)
+6. `app/services/parte_diario_service.py` — `ParteDiarioService.create_or_update_from_agent_message()`
+7. `meta_webhook_service.py` — `_ensure_parte_diario_from_agent_result()` + registrar proceso
+8. `intent_router.py` — clasificador de intención
+9. Cambios en `orchestrator.py` (menú + conflicto)
+10. Cambios en `pedido_obra/handler.py` (fast path cancel + conflict guard)
+11. Tests: `test_parte_diario_process.py`, `test_intent_router.py`
+
+---
+
+## Tests a crear
+
+- `tests/agente/test_parte_diario_handler.py`
+  - inicio por mensaje claro
+  - resolución de empleado por nombre parcial
+  - confirmación crea registros en DB
+  - cancelación limpia estado
+- `tests/agente/test_intent_router.py`
+  - mensajes claros → proceso correcto
+  - mensajes ambiguos → menú
+  - selección de menú "1" / "2"
+- `tests/agente/test_process_conflict.py`
+  - pedido activo + mensaje de parte → bloqueo
+  - parte activo + mensaje de pedido → bloqueo
+
+---
+
+## Notas
+
+- El campo `is_project` en `TurnContext` sigue siendo relevante para `pedido_obra`.
+  `parte_diario` no lo necesita pero sí necesita `idproyecto` de la oportunidad.
+- El `history_limit` debe subir de `0` a `6` para que `parte_diario` tenga contexto
+  del historial de novedades ya mencionadas.
+- El estado conversacional se persiste en JSON por archivo (un archivo por oportunidad_id).
+  No requiere cambios en la tabla de DB.

@@ -53,5 +53,7 @@ class AgentConversationState(SQLModel, table=True):
     process_state: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False, server_default="{}"))
     last_message_id: Optional[int] = Field(default=None, foreign_key="crm_mensajes.id")
     last_outbound_message_id: Optional[int] = Field(default=None)
+    lease_token: Optional[str] = Field(default=None, max_length=64)
+    lease_expires_at: Optional[datetime] = Field(default=None, index=True)
     version: int = Field(default=1)
     updated_at: datetime = Field(default_factory=_utc_now)

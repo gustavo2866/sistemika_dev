@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, Index, JSON, text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, SQLModel, Session, select
 
 from .types import ChannelEventData
@@ -18,6 +19,21 @@ def current_utc_time() -> datetime:
 
 class ChannelEvent(SQLModel, table=True):
     __tablename__ = "channel_events"
+    __table_args__ = (
+        Index(
+            "uq_channel_events_inbound_external_message_active",
+            "provider",
+            "channel_type",
+            "external_message_id",
+            unique=True,
+            postgresql_where=text(
+                "deleted_at IS NULL AND direction = 'inbound' AND external_message_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "deleted_at IS NULL AND direction = 'inbound' AND external_message_id IS NOT NULL"
+            ),
+        ),
+    )
     __searchable_fields__ = ["provider", "channel_type", "account_ref", "external_message_id"]
 
     id: int | None = Field(default=None, primary_key=True)
@@ -42,17 +58,22 @@ class ChannelEvent(SQLModel, table=True):
 
 
 class ChannelEventStore:
+    @staticmethod
+    def _find_inbound(session: Session, event: ChannelEventData) -> ChannelEvent | None:
+        if not event.external_message_id or event.direction != "inbound":
+            return None
+        return session.exec(
+            select(ChannelEvent)
+            .where(ChannelEvent.deleted_at.is_(None))
+            .where(ChannelEvent.provider == event.provider)
+            .where(ChannelEvent.channel_type == event.channel_type)
+            .where(ChannelEvent.direction == event.direction)
+            .where(ChannelEvent.external_message_id == event.external_message_id)
+            .limit(1)
+        ).first()
+
     def record(self, session: Session, event: ChannelEventData) -> ChannelEvent:
-        existing = None
-        if event.external_message_id and event.direction == "inbound":
-            existing = session.exec(
-                select(ChannelEvent)
-                .where(ChannelEvent.provider == event.provider)
-                .where(ChannelEvent.channel_type == event.channel_type)
-                .where(ChannelEvent.direction == event.direction)
-                .where(ChannelEvent.external_message_id == event.external_message_id)
-                .limit(1)
-            ).first()
+        existing = self._find_inbound(session, event)
         if existing:
             return existing
 
@@ -71,8 +92,15 @@ class ChannelEventStore:
             raw_payload=event.raw_payload or {},
             normalized_payload=event.normalized_payload or {},
         )
-        session.add(row)
-        session.flush()
+        try:
+            with session.begin_nested():
+                session.add(row)
+                session.flush()
+        except IntegrityError:
+            existing = self._find_inbound(session, event)
+            if existing:
+                return existing
+            raise
         return row
 
     def has_recent_inbound(

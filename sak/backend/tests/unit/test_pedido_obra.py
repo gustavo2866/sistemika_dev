@@ -9,7 +9,7 @@ import pytest
 
 from agente.v2.processes.pedido_obra.executor import execute_plan
 from agente.v2.processes.pedido_obra.handler import PedidoObraProcess, _build_turn_result
-from agente.v2.processes.pedido_obra.llm_client import PROMPTS_DIR, PedidoObraLLMClient
+from agente.v2.processes.pedido_obra.llm_client import PROMPTS_DIR, TURN_PLAN_RESPONSE_FORMAT, PedidoObraLLMClient
 from agente.v2.processes.pedido_obra.models import (
     OperationItem,
     PedidoItem,
@@ -133,6 +133,23 @@ class TestLLMParsing:
         assert "terminar pedido" in prompt
         assert "finish_order" in prompt
         assert "No lo clasifiques como saludo, agradecimiento u offtopic." in prompt
+
+    def test_prompt_blocks_other_process_even_when_order_has_no_items(self):
+        prompt = (PROMPTS_DIR / "interpretar_turno.txt").read_text(encoding="utf-8")
+
+        assert "Durante cualquier etapa del pedido abierto" in prompt
+        assert "pedido todavia no" in prompt
+        assert "tiene materiales cargados" in prompt
+
+    def test_llm_schema_does_not_expose_terminal_backend_operations(self):
+        operation_types = TURN_PLAN_RESPONSE_FORMAT["json_schema"]["schema"]["properties"]["operations"]["items"][
+            "properties"
+        ]["type"]["enum"]
+
+        assert "confirm_order" not in operation_types
+        assert "cancel_order" not in operation_types
+        assert "solicitar_confirmacion" in operation_types
+        assert "solicitar_cancelacion" in operation_types
 
 
 class TestExecutor:
@@ -282,6 +299,47 @@ class TestExecutor:
         assert result.reply.endswith("2 puertas")
         assert "Lo vamos a gestionar" not in result.reply
         assert "Si necesitas hacer otro pedido" not in result.reply
+
+    def test_confirm_order_is_blocked_before_confirmation(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="puertas", cantidad=2, item_id="p1")],
+        )
+
+        result = execute_plan(state, TurnPlan(operations=[PedidoOperation(type="confirm_order")]))
+
+        assert result.status == "blocked"
+        assert result.keep_active
+        assert result.next_state.etapa == "carga"
+
+    def test_solicitar_cancelacion_preserves_open_order(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="puertas", cantidad=2, item_id="p1")],
+        )
+
+        result = execute_plan(state, TurnPlan(operations=[PedidoOperation(type="solicitar_cancelacion")]))
+
+        assert result.status == "cancel_confirmation_required"
+        assert result.keep_active
+        assert result.next_state.items[0].descripcion == "puertas"
+        assert result.reply.endswith("responde CANCELAR.")
+
+    def test_request_other_process_preserves_open_order(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="carga",
+            items=[PedidoItem(descripcion="puertas", cantidad=2, item_id="p1")],
+        )
+
+        result = execute_plan(state, TurnPlan(operations=[PedidoOperation(type="request_other_process")]))
+
+        assert result.status == "other_process_blocked"
+        assert result.keep_active
+        assert result.next_state.items[0].descripcion == "puertas"
+        assert "pedido de materiales abierto" in result.reply
 
     def test_update_uses_target_item_id(self):
         state = PedidoState(
@@ -486,6 +544,23 @@ class TestHandler:
         assert result.payload["pedido_obra"]["fast_path"] == "command_finish_order"
 
     @pytest.mark.asyncio
+    async def test_handle_orphan_confirmar_does_not_finish_empty_order(self):
+        llm = SimpleNamespace(
+            interpret_turn=AsyncMock(
+                return_value=TurnPlan(
+                    operations=[PedidoOperation(type="offtopic", reply="No hay un pedido activo.")],
+                )
+            )
+        )
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="Confirmar"))
+
+        llm.interpret_turn.assert_awaited_once()
+        assert result.payload["reply_to_user"] == "No hay un pedido activo."
+        assert result.payload["pedido_obra"]["operations"] == ["offtopic"]
+
+    @pytest.mark.asyncio
     async def test_handle_confirmar_in_confirmation_confirms_order_without_llm(self):
         state = PedidoState(
             oportunidad_id=1,
@@ -504,6 +579,48 @@ class TestHandler:
         assert result.payload["etapa"] == "finalizado"
         assert result.payload["pedido_obra"]["operations"] == ["confirm_order"]
         assert result.payload["pedido_obra"]["fast_path"] == "command_confirm_order"
+
+    @pytest.mark.asyncio
+    async def test_handle_cancelar_cancels_during_missing_quantity_without_llm(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="confirmacion",
+            esperando="cantidad_faltante",
+            item_cantidad_idx=0,
+            items=[PedidoItem(descripcion="cemento", item_id="p1")],
+        )
+        llm = SimpleNamespace(interpret_turn=AsyncMock())
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="Cancelar", state=state.to_dict()))
+
+        llm.interpret_turn.assert_not_awaited()
+        assert not result.keep_active
+        assert result.payload["etapa"] == "finalizado"
+        assert result.payload["pedido_obra"]["operations"] == ["cancel_order"]
+        assert result.payload["pedido_obra"]["fast_path"] == "command_cancel_order"
+
+    @pytest.mark.asyncio
+    async def test_handle_informal_confirmation_does_not_materialize_order(self):
+        state = PedidoState(
+            oportunidad_id=1,
+            etapa="confirmacion",
+            esperando="confirmacion_cierre",
+            items=[PedidoItem(descripcion="cemento", cantidad=10, unidad="bolsas")],
+        )
+        llm = SimpleNamespace(
+            interpret_turn=AsyncMock(return_value=TurnPlan(operations=[PedidoOperation(type="confirm_order")]))
+        )
+        process = PedidoObraProcess(llm_client=llm)
+
+        result = await process.handle(_ctx(texto="Ok, mandalo", state=state.to_dict()))
+
+        llm.interpret_turn.assert_awaited_once()
+        assert result.keep_active
+        assert not result.payload["pedido_listo"]
+        assert result.payload["esperando"] == "confirmacion_cierre"
+        assert result.payload["pedido_obra"]["operations"] == ["solicitar_confirmacion"]
+        assert result.payload["reply_to_user"].endswith("Para enviarlo, responde CONFIRMAR.")
 
     @pytest.mark.asyncio
     async def test_handle_missing_quantity_with_unit_still_uses_llm(self):

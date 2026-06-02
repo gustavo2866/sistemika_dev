@@ -64,6 +64,17 @@ def pedido_cancelado() -> str:
     return "Pedido cancelado. Cuando necesites, escribime."
 
 
+def solicitar_cancelacion() -> str:
+    return "Para descartar el pedido completo, responde CANCELAR."
+
+
+def bloquear_otro_proceso() -> str:
+    return (
+        "Hay un pedido de materiales abierto. Termina el pedido o responde CANCELAR "
+        "antes de iniciar otro proceso."
+    )
+
+
 def offtopic(reply: str | None, state: PedidoState) -> str:
     if state.items:
         base = reply or "Decime que materiales necesitas o escribi LISTO para cerrar el pedido."

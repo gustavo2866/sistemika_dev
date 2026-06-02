@@ -1,13 +1,14 @@
 """
-Chat de prueba para el agente pedido_obra simulando el webhook de Meta.
+Chat de prueba para el agente de obra simulando el webhook de Meta.
 
 Uso:
-  python backend/tests/chat_test.py              # backend local
-  python backend/tests/chat_test.py --gcp        # GCP test
-  python backend/tests/chat_test.py --prod       # GCP prod (mismo backend que usa WhatsApp real)
-  python backend/tests/chat_test.py --url https://mi-backend.run.app
-  python backend/tests/chat_test.py --timing     # mostrar timings
-  python backend/tests/chat_test.py --read-mode api
+  python backend/scripts/chat_agent_smoke.py              # backend local
+  python backend/scripts/chat_agent_smoke.py --gcp        # GCP test
+  python backend/scripts/chat_agent_smoke.py --prod --allow-prod
+  python backend/scripts/chat_agent_smoke.py --url https://mi-backend.run.app
+  python backend/scripts/chat_agent_smoke.py --debug      # mostrar diagnostico tecnico
+  python backend/scripts/chat_agent_smoke.py --timing     # mostrar timings
+  python backend/scripts/chat_agent_smoke.py --read-mode api
 
 Variables opcionales (sobreescritas por args de linea de comandos):
   CHAT_TEST_BASE_URL=http://localhost:8000
@@ -20,12 +21,13 @@ Variables opcionales (sobreescritas por args de linea de comandos):
 
 Importante:
   El telefono de prueba debe tener una oportunidad activa de proyecto/obra.
-  Si el webhook crea un contacto nuevo sin oportunidad de proyecto, pedido_obra
-  no se activa.
+  Si el webhook crea un contacto nuevo sin oportunidad de proyecto, los
+  subprocesos del agente de obra no se activan.
 """
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import sys
@@ -47,12 +49,18 @@ _GCP_PROD_URL = "https://sak-backend-3urfgqrzea-rj.a.run.app"
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Chat de prueba para el agente pedido_obra")
+    parser = argparse.ArgumentParser(description="Chat de prueba para el agente de obra")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--gcp", action="store_true", help="Usar backend GCP test")
     group.add_argument("--prod", action="store_true", help="Usar backend GCP prod")
     group.add_argument("--url", default=None, help="URL base del backend custom")
+    parser.add_argument(
+        "--allow-prod",
+        action="store_true",
+        help="Confirmar explicitamente el uso del backend productivo",
+    )
     parser.add_argument("--timing", action="store_true", help="Mostrar timings detallados")
+    parser.add_argument("--debug", action="store_true", help="Mostrar diagnostico tecnico debajo de cada respuesta")
     parser.add_argument(
         "--read-mode",
         dest="read_mode",
@@ -63,7 +71,11 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-_args = _parse_args()
+_args = (
+    _parse_args()
+    if __name__ == "__main__"
+    else argparse.Namespace(url=None, prod=False, gcp=False, allow_prod=False, timing=False, debug=False, read_mode=None)
+)
 
 # CLI args always take precedence over env vars
 if _args.url:
@@ -74,6 +86,9 @@ elif _args.gcp:
     BASE_URL = _GCP_TEST_URL
 else:
     BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://localhost:8000").rstrip("/")
+
+if BASE_URL == _GCP_PROD_URL and not _args.allow_prod:
+    raise SystemExit("Para ejecutar contra produccion agrega --allow-prod.")
 
 _read_mode_default = "api" if (BASE_URL != "http://localhost:8000" and not BASE_URL.startswith("http://127.")) else "auto"
 READ_MODE = (_args.read_mode or os.environ.get("CHAT_TEST_READ_MODE", _read_mode_default)).strip().lower()
@@ -91,6 +106,7 @@ SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip(
     "no",
 }
 SHOW_TIMING = _args.timing or os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+SHOW_DEBUG = _args.debug or os.environ.get("CHAT_TEST_SHOW_DEBUG", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
 
 
 _DB_READ_FAILED = False
@@ -174,6 +190,17 @@ def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     started = time.time()
     response = _request_json("POST", _webhook_path(), payload)
     return meta_message_id, response, time.time() - started
+
+
+def enviar_webhook_con_typing(texto: str) -> tuple[str, dict, float]:
+    frame = 0
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(enviar_webhook, texto)
+        while not future.done():
+            _print_typing(frame)
+            frame += 1
+            time.sleep(POLL_INTERVAL_SECONDS)
+        return future.result()
 
 
 def _serialize_datetime(value: Any) -> str | None:
@@ -353,6 +380,9 @@ def _mostrar_estado(result: dict | None, inbound: dict | None, outbound: dict | 
         process_name = result.get("process_name") or agent_meta.get("process_name")
         if process_name:
             print(f"[Proceso: {process_name}]")
+        result_type = result.get("type")
+        if result_type:
+            print(f"[Resultado: {result_type}]")
         if result.get("type") == "no_process":
             print(f"[Sin proceso: {result.get('reason') or 'no disponible'}]")
         items = result.get("items") or []
@@ -368,6 +398,33 @@ def _mostrar_estado(result: dict | None, inbound: dict | None, outbound: dict | 
                     cantidad = _format_quantity(cant)
                     parts = [cantidad, unidad, desc]
                     print("  - " + " ".join(part for part in parts if part).strip())
+        novedades = result.get("novedades") or []
+        if novedades:
+            print(f"[Parte diario: {result.get('fecha') or 'sin fecha'}]")
+            for novedad in novedades:
+                parts = [
+                    str(novedad.get("nombre") or "?"),
+                    str(novedad.get("estado_codigo") or "sin estado"),
+                ]
+                if novedad.get("horas") is not None:
+                    parts.append(f"{_format_quantity(novedad['horas'])}h")
+                if novedad.get("fuera_de_proyecto"):
+                    parts.append("externo")
+                print("  - " + " | ".join(parts))
+        conflictos = result.get("conflictos_novedad") or []
+        if conflictos:
+            print(f"[Conflictos de novedades: {len(conflictos)}]")
+        if result.get("cancelado"):
+            print("[Operacion cancelada]")
+        if result.get("close_after_materialization"):
+            print("[Materializacion solicitada]")
+
+    pedido_id = agent_meta.get("pedido_obra_id")
+    parte_id = agent_meta.get("parte_diario_id")
+    if pedido_id is not None:
+        print(f"[Pedido materializado: {pedido_id}]")
+    if parte_id is not None:
+        print(f"[Parte diario materializado: {parte_id}]")
 
     delivery = agent_meta.get("delivery") or {}
     if delivery:
@@ -389,13 +446,14 @@ def _format_quantity(value: Any) -> str:
 
 
 def main() -> None:
-    print("=== Chat webhook pedido_obra ===")
+    print("=== Chat webhook agente de obra ===")
     print(f"Webhook: {BASE_URL}{_webhook_path()}")
     print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
     print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
     print("Nota: ese contacto debe tener una oportunidad activa de proyecto/obra.")
-    print("Comandos: 'limpiar' envia cancelar, 'items' envia mostrar, 'salir' termina.\n")
+    print("Comando local: 'salir' termina el chat.")
+    print("Envia CONFIRMAR o CANCELAR completos cuando corresponda.\n")
 
     while True:
         try:
@@ -409,15 +467,11 @@ def main() -> None:
         if texto.lower() == "salir":
             print("Chau.")
             break
-        if texto.lower() == "limpiar":
-            texto = "limpiar el pedido"
-        elif texto.lower() in {"items", "item", "lista", "listar"}:
-            texto = "mostrar"
 
         t_inicio = time.time()
         hora_envio = datetime.now().strftime("%H:%M:%S")
         try:
-            meta_message_id, webhook_response, t_post = enviar_webhook(texto)
+            meta_message_id, webhook_response, t_post = enviar_webhook_con_typing(texto)
             inbound, result, outbound = esperar_resultado(meta_message_id)
         except urllib.error.URLError as exc:
             _clear_typing()
@@ -430,7 +484,9 @@ def main() -> None:
 
         t_total = time.time() - t_inicio
         hora_respuesta = datetime.now().strftime("%H:%M:%S")
-        print(f"\n[{hora_envio} -> {hora_respuesta} | {t_total:.1f}s]")
+        print()
+        if SHOW_DEBUG or SHOW_TIMING:
+            print(f"[{hora_envio} -> {hora_respuesta} | {t_total:.1f}s]")
 
         if result is None and outbound is None:
             if inbound is None:
@@ -440,11 +496,16 @@ def main() -> None:
             continue
 
         print(f"Agente: {_reply_text(result, outbound)}\n")
-        if result is None and outbound is not None:
-            print(f"[Salida CRM: {outbound.get('estado') or '?'}]\n")
+        if SHOW_DEBUG:
+            _mostrar_estado(result, inbound, outbound)
+            print()
         if SHOW_TIMING:
             timing = result.get("_timing") if isinstance(result, dict) else None
-            pedido_timing = (result.get("pedido_obra") or {}) if isinstance(result, dict) else {}
+            process_timing = (
+                (result.get("pedido_obra") or result.get("parte_diario") or {})
+                if isinstance(result, dict)
+                else {}
+            )
             webhook_timing = webhook_response.get("_timing") if isinstance(webhook_response, dict) else None
             print(f"[Timing] post={t_post:.1f}s total={t_total:.1f}s")
             if isinstance(timing, dict):
@@ -462,8 +523,8 @@ def main() -> None:
                         f"refresh={pre_agent.get('refresh_ms')}ms "
                         f"ready={pre_agent.get('message_ready_ms')}ms"
                     )
-            if isinstance(pedido_timing, dict):
-                print(f"[Timing] llm={pedido_timing.get('llm_ms')}ms executor={pedido_timing.get('executor_ms')}ms process={pedido_timing.get('process_ms')}ms")
+            if isinstance(process_timing, dict) and process_timing:
+                print(f"[Timing] llm={process_timing.get('llm_ms')}ms executor={process_timing.get('executor_ms')}ms process={process_timing.get('process_ms')}ms")
             if isinstance(webhook_timing, dict):
                 print(f"[Timing] webhook-total={webhook_timing.get('total_ms')}ms")
             print()

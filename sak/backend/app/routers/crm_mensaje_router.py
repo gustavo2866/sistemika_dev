@@ -9,11 +9,15 @@ from sqlmodel import Session, select
 import httpx
 
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
+from agente.v2.core.dependencies import (
+    build_agent_runtime_dependencies,
+    find_pedido_obra_process,
+)
 from agente.v2.core.runtime import resolve_chat_agent_mode
+from agente.v2.processes.pedido_obra.handler import PedidoObraProcess
 from agente.v2.processes.solicitud_materiales.models import MaterialRequestState
 from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
 from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text
-from agente.v2.processes.pedido_obra.handler import build_pedido_obra_dependencies
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
@@ -37,17 +41,26 @@ V2_FAMILIES_PATH: Path | None = None
 
 
 def _reload_v2_dependencies() -> None:
-    global V2_STATE_STORE, V2_AGENT
-    V2_STATE_STORE, V2_AGENT = build_pedido_obra_dependencies()
+    global V2_STATE_STORE, V2_PROCESSES, V2_AGENT
+    V2_STATE_STORE, V2_PROCESSES = build_agent_runtime_dependencies()
+    V2_AGENT = find_pedido_obra_process(V2_PROCESSES)
 
 
 _reload_v2_dependencies()
 
 
-def _build_v2_orchestrator() -> AgentTurnOrchestrator:
+def _build_v2_orchestrator(*, session: Session | None = None) -> AgentTurnOrchestrator:
+    state_store = V2_STATE_STORE
+    processes = V2_PROCESSES
+    if not isinstance(V2_AGENT, PedidoObraProcess):
+        # Compatibilidad de los endpoints de preview y sus dobles de prueba
+        # mientras conviven el agente historico y el runtime nuevo.
+        processes = [V2_AGENT]
+    elif session is not None:
+        state_store, processes = build_agent_runtime_dependencies(session=session)
     return AgentTurnOrchestrator(
-        processes=[V2_AGENT],
-        state_store=V2_STATE_STORE,
+        processes=processes,
+        state_store=state_store,
         history_limit=0,
     )
 
@@ -102,7 +115,7 @@ def _build_v2_debug_payload(
     message_id: int,
 ) -> dict[str, Any]:
     resolved_mode, mode_source = resolve_chat_agent_mode(session)
-    orchestrator = _build_v2_orchestrator()
+    orchestrator = _build_v2_orchestrator(session=session)
 
     state = orchestrator.state_store.load(oportunidad.id)
     ctx = orchestrator.build_context(session, message_id, trigger="webhook", state=state)
@@ -373,9 +386,9 @@ async def simular_mensaje_chat(
 
     try:
         # Usa el mismo store que producción (PostgreSQL), no los JSON en disco
-        state_store, agent = build_pedido_obra_dependencies(session=session)
+        state_store, processes = build_agent_runtime_dependencies(session=session)
         orchestrator = AgentTurnOrchestrator(
-            processes=[agent],
+            processes=processes,
             state_store=state_store,
             history_limit=0,
         )
@@ -408,7 +421,7 @@ async def sugerir_respuesta_chat_ia(
 ):
     try:
         message_id = AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
-        orchestrator = _build_v2_orchestrator()
+        orchestrator = _build_v2_orchestrator(session=session)
         return await orchestrator.process_turn(
             session,
             message_id,
@@ -432,7 +445,7 @@ async def sugerir_respuesta_chat_ia_v2(
     try:
         requested_message_id = payload.get("message_id") if isinstance(payload, dict) else None
         message_id = int(requested_message_id) if requested_message_id else AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
-        orchestrator = _build_v2_orchestrator()
+        orchestrator = _build_v2_orchestrator(session=session)
         return await orchestrator.process_turn(
             session,
             message_id,

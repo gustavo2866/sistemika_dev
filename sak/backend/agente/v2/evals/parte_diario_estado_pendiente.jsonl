@@ -1,0 +1,5 @@
+{"input":"tuvo un accidente","expected":{"estado_codigo":"ACC"}}
+{"input":"se enfermo","expected":{"estado_codigo":"ENF"}}
+{"input":"pidio permiso","expected":{"estado_codigo":"PER"}}
+{"input":"se cayo y se lastimo","expected":{"estado_codigo":"ACC"}}
+{"input":"subio a un arbol","expected":{"estado_codigo":"NO_DETERMINADO"}}

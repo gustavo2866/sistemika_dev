@@ -28,8 +28,9 @@ Operaciones permitidas:
 - clear_order: borra todos los items del pedido actual.
 - show_order: muestra el pedido actual sin modificarlo.
 - finish_order: el encargado termino la carga y quiere validar/cerrar.
-- confirm_order: confirma definitivamente cuando el pedido esta en confirmacion.
-- cancel_order: descarta el pedido y cierra el proceso.
+- solicitar_confirmacion: muestra el pedido y solicita CONFIRMAR explicito.
+- solicitar_cancelacion: solicita CANCELAR explicito sin descartar todavia.
+- request_other_process: el usuario intenta iniciar otro proceso mientras el pedido sigue abierto.
 - continue_previous: continua un pedido previo sin finalizar.
 - start_new_order: descarta el pedido previo y empieza uno nuevo.
 - answer_missing_quantity: responde la cantidad del pending_item.
@@ -59,11 +60,17 @@ Reglas importantes:
   - si responde una cantidad, usa answer_missing_quantity.
   - si responde material nuevo, usa add_items.
 - Si esperando=confirmacion_cierre:
-  - "confirmar", "si", "ok", "dale" => confirm_order.
+  - "si", "ok", "dale" => solicitar_confirmacion.
   - frases afirmativas de envio/cierre definitivo como "esta bien", "mandalo",
-    "envialo", "confirmado", "si mandalo" => confirm_order.
-  - "cancelar", "descartar" => cancel_order.
+    "envialo", "confirmado", "si mandalo" => solicitar_confirmacion.
+  - "descartar", "quiero cancelar" => solicitar_cancelacion.
+  - si intenta iniciar un parte diario u otro proceso => request_other_process.
   - cualquier agregado/cambio/quita debe devolverse como operacion normal.
+- Durante cualquier etapa del pedido abierto, si intenta iniciar un parte diario u otro
+  proceso => request_other_process. Esta regla tambien aplica si el pedido todavia no
+  tiene materiales cargados.
+- Nunca devuelvas confirm_order ni cancel_order. Esas operaciones estan reservadas al backend
+  para los comandos completos CONFIRMAR y CANCELAR, que se procesan antes de invocar al LLM.
 - "listo", "cerrar", "terminamos", "finalizar" => finish_order.
 - Si el usuario expresa que no quiere agregar mas materiales o que quiere terminar el pedido,
   interpreta eso como finish_order aunque no use una palabra clave exacta.
@@ -76,8 +83,8 @@ Reglas importantes:
   operations con finish_order.
 - Si el mensaje es "listo", la salida exacta esperada es:
   {"operations":[{"type":"finish_order","items":[],"target_item_id":null,"target_descripcion":null,"nueva_descripcion":null,"cantidad":null,"unidad":null,"reply":null}],"reply":null}
-- Si esperando=confirmacion_cierre y el mensaje es "confirmar", la salida exacta esperada es:
-  {"operations":[{"type":"confirm_order","items":[],"target_item_id":null,"target_descripcion":null,"nueva_descripcion":null,"cantidad":null,"unidad":null,"reply":null}],"reply":null}
+- Si esperando=confirmacion_cierre y el usuario expresa informalmente que quiere enviar el pedido,
+  la salida debe usar solicitar_confirmacion para volver a mostrar la confirmacion explicita.
 - Si el mensaje es "no quiero mas nada", la salida exacta esperada es:
   {"operations":[{"type":"finish_order","items":[],"target_item_id":null,"target_descripcion":null,"nueva_descripcion":null,"cantidad":null,"unidad":null,"reply":null}],"reply":null}
 - Si el mensaje es un saludo como "hola como estas" y no hay items cargados, la salida esperada es:
@@ -87,7 +94,7 @@ Responde SOLO JSON valido con esta forma:
 {
   "operations": [
     {
-      "type": "add_items|update_item|remove_item|clear_order|show_order|finish_order|confirm_order|cancel_order|continue_previous|start_new_order|answer_missing_quantity|offtopic",
+      "type": "add_items|update_item|remove_item|clear_order|show_order|finish_order|solicitar_confirmacion|solicitar_cancelacion|request_other_process|continue_previous|start_new_order|answer_missing_quantity|offtopic",
       "items": [
         {"descripcion": "texto corto", "cantidad": 1, "unidad": "bolsas"}
       ],

@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.runtime import should_auto_process
 from app.models import CRMMensaje
 from app.models.base import current_utc_time
@@ -35,7 +36,12 @@ def _parse_iso_datetime(raw_value: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _skip_reason(message: CRMMensaje, *, stale_after_seconds: int) -> str | None:
+def _skip_reason(
+    message: CRMMensaje,
+    *,
+    stale_after_seconds: int,
+    allow_delivery_backoff_bypass: bool,
+) -> str | None:
     if message.deleted_at is not None:
         return "deleted"
     if message.tipo != TipoMensaje.ENTRADA.value:
@@ -50,16 +56,15 @@ def _skip_reason(message: CRMMensaje, *, stale_after_seconds: int) -> str | None
     metadata = dict(message.metadata_json or {})
     agent_meta = dict(metadata.get("agent_v2") or {})
 
-    if isinstance(agent_meta.get("result"), dict):
-        return "already_processed"
     if agent_meta.get("delivery_processed_at"):
         return "already_delivered"
-
-    processing = metadata.get(PROCESSING_KEY)
-    if isinstance(processing, dict):
-        started_at = _parse_iso_datetime(processing.get("started_at"))
-        if started_at and current_utc_time() - started_at < timedelta(seconds=stale_after_seconds):
-            return "in_progress"
+    if TurnDeliveryService.has_recent_pending_delivery(message):
+        return "delivery_in_progress"
+    if (
+        not allow_delivery_backoff_bypass
+        and TurnDeliveryService.has_recent_delivery_attempt(message)
+    ):
+        return "delivery_backoff"
 
     return None
 
@@ -109,15 +114,10 @@ def _record_processing_error(session: Session, message_id: int, exc: Exception, 
 def _load_candidate_messages(
     session: Session,
     *,
-    limit: int,
     message_id: int | None = None,
 ) -> list[CRMMensaje]:
-    if message_id is not None:
-        message = session.get(CRMMensaje, message_id)
-        return [message] if message is not None else []
-
     fecha_ref = func.coalesce(CRMMensaje.fecha_mensaje, CRMMensaje.created_at)
-    rows = list(
+    return list(
         session.exec(
             select(CRMMensaje)
             .where(CRMMensaje.deleted_at.is_(None))
@@ -125,11 +125,33 @@ def _load_candidate_messages(
             .where(CRMMensaje.canal == CanalMensaje.WHATSAPP.value)
             .where(CRMMensaje.origen_externo_id.is_not(None))
             .where(CRMMensaje.oportunidad_id.is_not(None))
-            .order_by(fecha_ref.desc(), CRMMensaje.id.desc())
-            .limit(max(limit * 20, 100))
+            .order_by(fecha_ref.asc(), CRMMensaje.id.asc())
         ).all()
     )
-    return list(reversed(rows))
+
+
+def _load_queue_heads(
+    session: Session,
+    *,
+    message_id: int | None = None,
+) -> list[CRMMensaje]:
+    """Devuelve como maximo el primer mensaje pendiente de cada oportunidad."""
+    heads: dict[int, CRMMensaje] = {}
+    for message in _load_candidate_messages(session):
+        oportunidad_id = int(message.oportunidad_id or 0)
+        if not oportunidad_id or oportunidad_id in heads:
+            continue
+        if _skip_reason(
+            message,
+            stale_after_seconds=0,
+            allow_delivery_backoff_bypass=False,
+        ) == "already_delivered":
+            continue
+        heads[oportunidad_id] = message
+    rows = list(heads.values())
+    if message_id is not None:
+        rows = [message for message in rows if message.id == message_id]
+    return rows
 
 
 async def process_pending_agent_messages(
@@ -142,10 +164,11 @@ async def process_pending_agent_messages(
     service: MetaWebhookService | None = None,
 ) -> dict[str, Any]:
     """
-    Reprocesa mensajes entrantes persistidos que no llegaron a ejecutar el agente.
+    Reprocesa mensajes entrantes persistidos cuyo turno o delivery quedo pendiente.
 
     El buffer real es `crm_mensajes`: si el webhook alcanzo a guardar el inbound,
     este proceso puede recuperar el turno sin depender del background task original.
+    Si el resultado del agente ya existe, se reutiliza sin volver a llamar al LLM.
     """
     summary: dict[str, Any] = {
         "status": "ok",
@@ -160,35 +183,61 @@ async def process_pending_agent_messages(
     resolved_service = service or MetaWebhookService(session)
     processed_count = 0
 
-    for message in _load_candidate_messages(session, limit=limit, message_id=message_id):
-        if message_id is None and processed_count >= limit:
+    visited_message_ids: set[int] = set()
+    while processed_count < limit:
+        messages = [
+            message
+            for message in _load_queue_heads(session, message_id=message_id)
+            if int(message.id) not in visited_message_ids
+        ]
+        if not messages:
             break
+        made_progress = False
 
-        reason = _skip_reason(message, stale_after_seconds=stale_after_seconds)
-        if reason is not None:
-            summary["skipped"].append({"message_id": message.id, "reason": reason})
-            continue
-
-        try:
-            _set_processing_marker(session, message, source=source)
-            result = await resolved_service.process_existing_inbound_message(
+        for message in messages:
+            if processed_count >= limit:
+                break
+            visited_message_ids.add(int(message.id))
+            reason = _skip_reason(
                 message,
-                trigger=source,
-                schedule_typing=False,
+                stale_after_seconds=stale_after_seconds,
+                allow_delivery_backoff_bypass=source == "manual_retry",
             )
-            session.refresh(message)
-            _clear_processing_marker(session, message)
-            processed_count += 1
-            summary["processed"].append(
-                {
-                    "message_id": message.id,
-                    "result_type": result.get("type") if isinstance(result, dict) else None,
-                }
-            )
-        except Exception as exc:
-            logger.exception("Error reprocesando mensaje pendiente id=%s", message.id)
-            session.rollback()
-            _record_processing_error(session, int(message.id), exc, source=source)
-            summary["errors"].append({"message_id": message.id, "error": str(exc)})
+            if reason is not None:
+                summary["skipped"].append({"message_id": message.id, "reason": reason})
+                continue
+
+            try:
+                result = await resolved_service.process_existing_inbound_message(
+                    message,
+                    trigger=source,
+                    schedule_typing=False,
+                )
+                session.refresh(message)
+                if (message.metadata_json or {}).get(PROCESSING_KEY):
+                    _clear_processing_marker(session, message)
+                if isinstance(result, dict) and result.get("retryable"):
+                    summary["skipped"].append(
+                        {
+                            "message_id": message.id,
+                            "reason": str(result.get("type") or "retryable"),
+                        }
+                    )
+                    continue
+                processed_count += 1
+                made_progress = True
+                summary["processed"].append(
+                    {
+                        "message_id": message.id,
+                        "result_type": result.get("type") if isinstance(result, dict) else None,
+                    }
+                )
+            except Exception as exc:
+                logger.exception("Error reprocesando mensaje pendiente id=%s", message.id)
+                session.rollback()
+                _record_processing_error(session, int(message.id), exc, source=source)
+                summary["errors"].append({"message_id": message.id, "error": str(exc)})
+        if not made_progress:
+            break
 
     return summary

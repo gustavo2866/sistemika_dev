@@ -4,18 +4,22 @@ Servicio para procesar webhooks de Meta WhatsApp
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import logging
 import time
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.db import engine
+from agente.v2.core.dependencies import build_agent_runtime_dependencies
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.delivery import TurnDeliveryService
 from agente.v2.core.runtime import should_auto_process
-from agente.v2.processes.pedido_obra.handler import build_pedido_obra_dependencies
+from agente.v2.core.turn_lease import AgentTurnLeaseBusy, AgentTurnLeaseService
 from app.modules.channels.config import meta_account_resolver
 from app.modules.channels.gateway import channel_gateway
 from app.modules.channels.providers.meta.client import meta_graph_client
@@ -27,6 +31,7 @@ from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.schemas.channel_webhook import ChannelWebhookPayload
 from app.services.constructora_pedido_service import constructora_pedido_service
+from app.services.parte_diario_service import parte_diario_service
 from app.services.audio_transcription_service import audio_transcription_service
 
 logger = logging.getLogger(__name__)
@@ -76,14 +81,15 @@ class MetaWebhookService:
     ) -> None:
         self.session = session
         if orchestrator is None:
-            state_store, agent = build_pedido_obra_dependencies(session=session)
+            state_store, processes = build_agent_runtime_dependencies(session=session)
             orchestrator = AgentTurnOrchestrator(
-                processes=[agent],
+                processes=processes,
                 state_store=state_store,
                 history_limit=0,
             )
         self._orchestrator = orchestrator
         self._delivery_service = TurnDeliveryService()
+        self._turn_lease_service = AgentTurnLeaseService()
 
     def _determinar_tipo_operacion_contacto(self, contacto_id: int) -> Optional[int]:
         """
@@ -254,6 +260,8 @@ class MetaWebhookService:
         self,
         msg: Any,
         celular: CRMCelular | None = None,
+        *,
+        transcribe_audio: bool = True,
     ) -> tuple[str, list[dict[str, Any]]]:
         contenido = msg.texto or ""
         adjuntos: list[dict[str, Any]] = []
@@ -272,9 +280,36 @@ class MetaWebhookService:
             elif msg.tipo == "document":
                 contenido = f"[Documento: {msg.filename or 'archivo'}]"
             elif msg.tipo == "audio":
-                contenido = await self._transcribe_audio_message(msg, celular, adjunto)
+                contenido = "[Audio recibido]"
+                if transcribe_audio:
+                    contenido = await self._transcribe_audio_message(msg, celular, adjunto)
 
         return contenido, adjuntos
+
+    async def _prepare_queued_message_content(self, message: CRMMensaje) -> None:
+        adjuntos = [dict(item) for item in message.adjuntos or []]
+        changed = False
+        for adjunto in adjuntos:
+            if adjunto.get("tipo") != "audio" or adjunto.get("transcription_status"):
+                continue
+            message_stub = SimpleNamespace(
+                meta_message_id=message.origen_externo_id,
+                media_id=adjunto.get("id"),
+                mime_type=adjunto.get("mime_type"),
+                filename=adjunto.get("filename"),
+            )
+            message.contenido = await self._transcribe_audio_message(
+                message_stub,
+                message.celular,
+                adjunto,
+            )
+            changed = True
+        if not changed:
+            return
+        message.adjuntos = adjuntos
+        self.session.add(message)
+        self.session.commit()
+        self.session.refresh(message)
 
     async def _transcribe_audio_message(
         self,
@@ -428,6 +463,7 @@ class MetaWebhookService:
         celular: CRMCelular,
         *,
         schedule_typing: bool = True,
+        enqueue_only: bool = False,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         t_lookup_start = time.perf_counter()
@@ -449,31 +485,45 @@ class MetaWebhookService:
             t_contact_done = time.perf_counter()
             oportunidad = self._resolve_or_create_oportunidad(contacto)
             t_oportunidad_done = time.perf_counter()
-            contenido, adjuntos = await self._normalize_message_content(msg, celular)
+            contenido, adjuntos = await self._normalize_message_content(
+                msg,
+                celular,
+                transcribe_audio=not enqueue_only,
+            )
             fecha_mensaje_utc = self._normalize_timestamp_to_utc(msg.meta_timestamp)
             t_content_done = time.perf_counter()
 
-            crm_mensaje = crm_mensaje_crud.create(
-                self.session,
-                {
-                    "tipo": TipoMensaje.ENTRADA.value,
-                    "canal": CanalMensaje.WHATSAPP.value,
-                    "contacto_id": contacto.id,
-                    "contacto_referencia": msg.from_phone,
-                    "estado": EstadoMensaje.NUEVO.value,
-                    "contenido": contenido,
-                    "origen_externo_id": msg.meta_message_id,
-                    "adjuntos": adjuntos,
-                    "celular_id": celular.id,
-                    "fecha_mensaje": fecha_mensaje_utc,
-                    "estado_meta": msg.status,
-                    "oportunidad_id": oportunidad.id,
-                    "metadata_json": {
-                        "from_name": msg.from_name,
-                        "channel_message_id": str(msg.id),
+            try:
+                crm_mensaje = crm_mensaje_crud.create(
+                    self.session,
+                    {
+                        "tipo": TipoMensaje.ENTRADA.value,
+                        "canal": CanalMensaje.WHATSAPP.value,
+                        "contacto_id": contacto.id,
+                        "contacto_referencia": msg.from_phone,
+                        "estado": EstadoMensaje.NUEVO.value,
+                        "contenido": contenido,
+                        "origen_externo_id": msg.meta_message_id,
+                        "adjuntos": adjuntos,
+                        "celular_id": celular.id,
+                        "fecha_mensaje": fecha_mensaje_utc,
+                        "estado_meta": msg.status,
+                        "oportunidad_id": oportunidad.id,
+                        "metadata_json": {
+                            "from_name": msg.from_name,
+                            "channel_message_id": str(msg.id),
+                        },
                     },
-                },
-            )
+                )
+            except IntegrityError:
+                self.session.rollback()
+                crm_mensaje = self._find_existing_inbound_message(msg.meta_message_id)
+                if crm_mensaje is None:
+                    raise
+                logger.info(
+                    "Mensaje entrante duplicado resuelto por constraint para meta_message_id=%s",
+                    msg.meta_message_id,
+                )
             t_crud_create_done = time.perf_counter()
             self.session.commit()
             t_extra_commit_done = time.perf_counter()
@@ -509,16 +559,18 @@ class MetaWebhookService:
             pre_agent_timing["message_ready_ms"],
         )
 
-        auto_process_result = await self.process_existing_inbound_message(
-            crm_mensaje,
-            trigger="webhook",
-            schedule_typing=schedule_typing,
-            typing_source=msg,
-            celular=celular,
-            started_at=t0,
-            message_ready_ms=round((t_message_ready - t0) * 1000),
-            pre_agent_timing=pre_agent_timing,
-        )
+        auto_process_result = None
+        if not enqueue_only:
+            auto_process_result = await self.process_existing_inbound_message(
+                crm_mensaje,
+                trigger="webhook",
+                schedule_typing=schedule_typing,
+                typing_source=msg,
+                celular=celular,
+                started_at=t0,
+                message_ready_ms=round((t_message_ready - t0) * 1000),
+                pre_agent_timing=pre_agent_timing,
+            )
 
         payload = {
             "status": "ok",
@@ -545,18 +597,98 @@ class MetaWebhookService:
         message_ready_ms: int | None = None,
         pre_agent_timing: dict[str, int] | None = None,
     ) -> dict[str, Any] | None:
+        metadata = dict(crm_mensaje.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        cached_result = agent_meta.get("result")
+        if isinstance(cached_result, dict) and self._delivery_service.has_completed_delivery(crm_mensaje):
+            self._ensure_business_materialization_from_agent_result(crm_mensaje, cached_result)
+            return {**cached_result, "message_id": crm_mensaje.id, "cached": True}
+
+        if not should_auto_process(session=self.session):
+            if isinstance(cached_result, dict):
+                return {**cached_result, "message_id": crm_mensaje.id, "cached": True}
+            return None
+
+        oportunidad_id = crm_mensaje.oportunidad_id
+        if oportunidad_id is None:
+            return await self._process_existing_inbound_message_with_lease(
+                crm_mensaje,
+                trigger=trigger,
+                schedule_typing=schedule_typing,
+                typing_source=typing_source,
+                celular=celular,
+                started_at=started_at,
+                message_ready_ms=message_ready_ms,
+                pre_agent_timing=pre_agent_timing,
+            )
+
+        try:
+            lease_token = self._turn_lease_service.acquire(self.session, oportunidad_id)
+        except AgentTurnLeaseBusy:
+            return {
+                "type": "turn_deferred",
+                "skipped": True,
+                "retryable": True,
+                "reason": "Oportunidad con otro turno en curso",
+                "message_id": crm_mensaje.id,
+            }
+
+        try:
+            return await self._process_existing_inbound_message_with_lease(
+                crm_mensaje,
+                trigger=trigger,
+                schedule_typing=schedule_typing,
+                typing_source=typing_source,
+                celular=celular,
+                started_at=started_at,
+                message_ready_ms=message_ready_ms,
+                pre_agent_timing=pre_agent_timing,
+            )
+        finally:
+            self._turn_lease_service.release(self.session, oportunidad_id, lease_token)
+
+    async def _process_existing_inbound_message_with_lease(
+        self,
+        crm_mensaje: CRMMensaje,
+        *,
+        trigger: str = "webhook_retry",
+        schedule_typing: bool = False,
+        typing_source: Any | None = None,
+        celular: CRMCelular | None = None,
+        started_at: float | None = None,
+        message_ready_ms: int | None = None,
+        pre_agent_timing: dict[str, int] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Procesa con agente un mensaje entrante ya persistido.
 
-        Es idempotente: si el mensaje ya tiene resultado o ya fue marcado como
-        entregado, no vuelve a enviar respuesta al canal.
+        Es idempotente: si el agente ya genero un resultado, lo reutiliza. Si el
+        delivery anterior fallo, reintenta solamente el envio al canal.
         """
+        # El worker de pendientes puede haber cargado el mensaje antes de esperar
+        # el lease. Releerlo evita ejecutar y entregar dos veces el mismo turno.
+        self.session.refresh(crm_mensaje)
         metadata = dict(crm_mensaje.metadata_json or {})
         agent_meta = dict(metadata.get("agent_v2") or {})
         cached_result = agent_meta.get("result")
         if isinstance(cached_result, dict):
-            self._ensure_constructora_pedido_from_agent_result(crm_mensaje, cached_result)
-            return {**cached_result, "message_id": crm_mensaje.id, "cached": True}
+            self._ensure_business_materialization_from_agent_result(crm_mensaje, cached_result)
+            if self._delivery_service.has_completed_delivery(crm_mensaje):
+                return {**cached_result, "message_id": crm_mensaje.id, "cached": True}
+            if self._delivery_service.has_recent_pending_delivery(crm_mensaje):
+                return {
+                    "type": "delivery_deferred",
+                    "skipped": True,
+                    "retryable": True,
+                    "reason": "Delivery en curso",
+                    "message_id": crm_mensaje.id,
+                    "cached": True,
+                }
+            return await self._deliver_persisted_result(
+                crm_mensaje,
+                cached_result,
+                cached=True,
+            )
         if agent_meta.get("delivery_processed_at"):
             return {
                 "type": "already_delivered",
@@ -573,6 +705,7 @@ class MetaWebhookService:
 
         t0 = started_at or time.perf_counter()
         t_agent_start = time.perf_counter()
+        await self._prepare_queued_message_content(crm_mensaje)
         if _has_failed_audio_transcription(crm_mensaje):
             auto_process_result = _audio_transcription_failed_result(int(crm_mensaje.id))
         else:
@@ -582,38 +715,68 @@ class MetaWebhookService:
                 trigger,
             )
         t_agent_done = time.perf_counter()
-        delivery = await self._delivery_service.deliver_result(
-            session=self.session,
-            message=crm_mensaje,
-            result=auto_process_result,
-        )
-        t_delivery_done = time.perf_counter()
-        self._delivery_service.mark_inbound_as_processed(self.session, crm_mensaje)
-        auto_process_result = {
-            **auto_process_result,
-            "delivery": delivery.to_dict(),
-            "_timing": {
+        self._persist_agent_result(crm_mensaje, auto_process_result)
+        self._ensure_business_materialization_from_agent_result(crm_mensaje, auto_process_result)
+        return await self._deliver_persisted_result(
+            crm_mensaje,
+            auto_process_result,
+            cached=False,
+            timing={
                 "message_ready_ms": message_ready_ms if message_ready_ms is not None else 0,
                 "pre_agent": pre_agent_timing or {},
                 "agent_ms": round((t_agent_done - t_agent_start) * 1000),
-                "delivery_ms": round((t_delivery_done - t_agent_done) * 1000),
-                "total_before_metadata_ms": round((t_delivery_done - t0) * 1000),
+                "started_at": t0,
             },
-        }
+        )
 
+    def _persist_agent_result(
+        self,
+        crm_mensaje: CRMMensaje,
+        result: dict[str, Any],
+    ) -> None:
         metadata = dict(crm_mensaje.metadata_json or {})
         agent_meta = dict(metadata.get("agent_v2") or {})
-        agent_meta["result"] = auto_process_result
-        agent_meta["delivery"] = delivery.to_dict()
-        if delivery.outbound_message_id is not None:
-            agent_meta["outbound_message_id"] = delivery.outbound_message_id
+        agent_meta["result"] = result
         metadata["agent_v2"] = agent_meta
         crm_mensaje.metadata_json = metadata
         self.session.add(crm_mensaje)
         self.session.commit()
         self.session.refresh(crm_mensaje)
-        self._ensure_constructora_pedido_from_agent_result(crm_mensaje, auto_process_result)
-        return auto_process_result
+
+    async def _deliver_persisted_result(
+        self,
+        crm_mensaje: CRMMensaje,
+        result: dict[str, Any],
+        *,
+        cached: bool,
+        timing: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self._delivery_service.mark_delivery_pending(self.session, crm_mensaje)
+        t_delivery_start = time.perf_counter()
+        delivery = await self._delivery_service.deliver_result(
+            session=self.session,
+            message=crm_mensaje,
+            result=result,
+        )
+        t_delivery_done = time.perf_counter()
+
+        result_with_delivery = {
+            **result,
+            "message_id": crm_mensaje.id,
+            "cached": cached,
+            "delivery": delivery.to_dict(),
+        }
+        if timing is not None:
+            started_at = float(timing.pop("started_at"))
+            result_with_delivery["_timing"] = {
+                **timing,
+                "delivery_ms": round((t_delivery_done - t_delivery_start) * 1000),
+                "total_before_metadata_ms": round((t_delivery_done - started_at) * 1000),
+            }
+
+        self._persist_agent_result(crm_mensaje, result_with_delivery)
+        self._delivery_service.record_delivery_result(self.session, crm_mensaje, delivery)
+        return result_with_delivery
 
     def _ensure_constructora_pedido_from_agent_result(
         self,
@@ -645,6 +808,57 @@ class MetaWebhookService:
                 "No se pudo crear pedido de obra desde agente mensaje_id=%s",
                 crm_mensaje.id,
             )
+            raise
+
+    def _ensure_business_materialization_from_agent_result(
+        self,
+        crm_mensaje: CRMMensaje,
+        result: dict[str, Any],
+    ) -> None:
+        self._ensure_constructora_pedido_from_agent_result(crm_mensaje, result)
+        self._ensure_parte_diario_from_agent_result(crm_mensaje, result)
+
+    def _ensure_parte_diario_from_agent_result(
+        self,
+        crm_mensaje: CRMMensaje,
+        result: dict[str, Any],
+    ) -> None:
+        if result.get("type") != "parte_diario_reply" or not result.get("parte_listo"):
+            return
+
+        metadata = dict(crm_mensaje.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        try:
+            if not agent_meta.get("parte_diario_id"):
+                parte = parte_diario_service.create_or_update_from_agent_message(
+                    self.session,
+                    int(crm_mensaje.id),
+                )
+                logger.info(
+                    "Parte diario materializado desde agente mensaje_id=%s parte_id=%s",
+                    crm_mensaje.id,
+                    parte.id,
+                )
+                self.session.refresh(crm_mensaje)
+            self._close_parte_diario_process_after_materialization(crm_mensaje)
+        except Exception:
+            self.session.rollback()
+            logger.exception(
+                "No se pudo materializar parte diario desde agente mensaje_id=%s",
+                crm_mensaje.id,
+            )
+            raise
+
+    def _close_parte_diario_process_after_materialization(self, crm_mensaje: CRMMensaje) -> None:
+        if crm_mensaje.oportunidad_id is None:
+            return
+        state = self._orchestrator.state_store.load(int(crm_mensaje.oportunidad_id))
+        if state.active_process != "parte_diario":
+            return
+        state.active_process = None
+        state.process_state = {}
+        self._orchestrator.state_store.save(state)
+        self.session.commit()
 
     def _handle_outbound_status(self, msg: Any) -> None:
         mensaje = self.session.exec(
@@ -655,10 +869,19 @@ class MetaWebhookService:
             return
 
         mensaje.estado_meta = msg.status
+        status_errors = list(getattr(msg, "errors", None) or [])
+        if status_errors:
+            metadata = dict(mensaje.metadata_json or {})
+            metadata["provider_status_errors"] = status_errors
+            mensaje.metadata_json = metadata
         fecha_estado_utc = self._normalize_timestamp_to_utc(msg.meta_timestamp)
         if fecha_estado_utc:
             mensaje.fecha_estado = fecha_estado_utc
         self.session.add(mensaje)
+
+        if msg.status == "failed":
+            self._mark_source_delivery_failed(mensaje, status_errors)
+
         self.session.commit()
         logger.info(
             "Estado actualizado para mensaje %s: %s a las %s",
@@ -667,7 +890,59 @@ class MetaWebhookService:
             mensaje.fecha_estado,
         )
 
-    async def process_webhook(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _mark_source_delivery_failed(
+        self,
+        outbound_message: CRMMensaje,
+        status_errors: list[dict[str, Any]],
+    ) -> None:
+        source_message_id = (outbound_message.metadata_json or {}).get("source_message_id")
+        if source_message_id is None:
+            return
+        try:
+            source_message = self.session.get(CRMMensaje, int(source_message_id))
+        except (TypeError, ValueError):
+            return
+        if source_message is None:
+            return
+
+        metadata = dict(source_message.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        if agent_meta.get("outbound_message_id") != outbound_message.id:
+            return
+
+        delivery = dict(agent_meta.get("delivery") or {})
+        delivery["sent"] = False
+        delivery["status"] = "failed"
+        error_message = self._provider_status_error_message(status_errors)
+        if error_message:
+            delivery["error_message"] = error_message
+        agent_meta["delivery"] = delivery
+        agent_meta["delivery_last_attempt_at"] = datetime.now(UTC).isoformat()
+        agent_meta.pop("delivery_processed_at", None)
+        metadata["agent_v2"] = agent_meta
+        source_message.metadata_json = metadata
+        self.session.add(source_message)
+
+    @staticmethod
+    def _provider_status_error_message(status_errors: list[dict[str, Any]]) -> str | None:
+        if not status_errors:
+            return None
+        error = status_errors[0]
+        details = (error.get("error_data") or {}).get("details")
+        message = details or error.get("message") or error.get("title")
+        code = error.get("code")
+        if code is not None and message:
+            return f"Meta {code}: {message}"
+        if code is not None:
+            return f"Meta {code}"
+        return str(message) if message else None
+
+    async def process_webhook(
+        self,
+        payload: dict[str, Any],
+        *,
+        enqueue_only: bool = False,
+    ) -> dict[str, Any]:
         """
         Procesa un payload normalizado del modulo channel.
         Registra en WebhookLog y procesa el mensaje.
@@ -729,7 +1004,12 @@ class MetaWebhookService:
             t_celular_done = time.perf_counter()
 
             if msg.direccion == "in":
-                result = await self._handle_inbound_message(msg, celular, schedule_typing=not auto_process)
+                result = await self._handle_inbound_message(
+                    msg,
+                    celular,
+                    schedule_typing=not auto_process,
+                    enqueue_only=enqueue_only,
+                )
             else:
                 self._handle_outbound_status(msg)
                 result = {"status": "ok", "message": "Webhook procesado exitosamente"}

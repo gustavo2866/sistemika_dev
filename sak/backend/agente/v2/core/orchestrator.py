@@ -109,6 +109,31 @@ class AgentTurnOrchestrator:
         session.commit()
 
         turn_result = await process.handle(ctx)
+        if turn_result.activate_process:
+            target_process = self._registry.get(turn_result.activate_process)
+            if target_process is None:
+                result = {
+                    "type": "general_reply",
+                    "reply_to_user": "Esa opcion todavia no esta disponible.",
+                    "requested_process": turn_result.activate_process,
+                }
+                state.active_process = None
+                state.process_state = {}
+                state.last_message_id = message.id
+                self._state_store.save(state)
+                self._mark_done(session, message, result=result, process_name=process.name, trigger=trigger)
+                return {
+                    **result,
+                    "message_id": message_id,
+                    "cached": False,
+                    "process_name": process.name,
+                }
+
+            state.active_process = target_process.name
+            state.process_state = {}
+            forwarded_ctx = self.build_context(session, message_id, trigger=trigger, state=state)
+            turn_result = await target_process.handle(forwarded_ctx)
+            process = target_process
 
         state.active_process = process.name if turn_result.keep_active else None
         state.process_state = turn_result.process_state if turn_result.keep_active else {}

@@ -130,6 +130,7 @@ def raw_meta_to_channel_payloads(session: Session, payload: dict[str, Any]) -> l
                             "filename": None,
                             "mime_type": None,
                             "status": status,
+                            "errors": status_data.get("errors") or [],
                             "meta_timestamp": _timestamp_from_meta(status_data.get("timestamp")),
                             "created_at": datetime.now(UTC).isoformat(),
                             "celular": celular,

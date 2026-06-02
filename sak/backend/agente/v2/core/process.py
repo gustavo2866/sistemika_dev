@@ -15,6 +15,7 @@ class TurnResult:
     payload: dict[str, Any]             # respuesta completa que recibe el caller
     keep_active: bool = True            # False = cerrar el proceso tras este turno
     process_state: dict[str, Any] = field(default_factory=dict)
+    activate_process: str | None = None # Activa otro proceso y reenvia el mensaje actual
 
 
 class AgentProcess(Protocol):
@@ -53,3 +54,6 @@ class ProcessRegistry:
             if best is None or score > best[0]:
                 best = (score, process)
         return best[1] if best else None
+
+    def get(self, process_name: str) -> AgentProcess | None:
+        return self._processes.get(process_name)

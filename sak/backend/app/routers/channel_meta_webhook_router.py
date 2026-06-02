@@ -35,7 +35,12 @@ async def verify_meta_webhook(
     raise HTTPException(status_code=403, detail="Token de verificacion invalido")
 
 
-async def process_raw_meta_webhook_payload(session: Session, payload: dict[str, Any]) -> None:
+async def process_raw_meta_webhook_payload(
+    session: Session,
+    payload: dict[str, Any],
+    *,
+    enqueue_only: bool = False,
+) -> None:
     t0 = time.perf_counter()
     normalized_payloads = raw_meta_to_channel_payloads(session, payload)
     t_normalized = time.perf_counter()
@@ -43,7 +48,7 @@ async def process_raw_meta_webhook_payload(session: Session, payload: dict[str, 
     t_service = time.perf_counter()
     for normalized_payload in normalized_payloads:
         t_item = time.perf_counter()
-        await service.process_webhook(normalized_payload)
+        await service.process_webhook(normalized_payload, enqueue_only=enqueue_only)
         logger.info(
             "Channel webhook item timing event_type=%s process_webhook=%sms",
             normalized_payload.get("event_type"),
@@ -99,13 +104,13 @@ async def receive_meta_webhook(
     payload = await request.json()
     if _has_inbound_messages(payload):
         try:
-            await process_raw_meta_webhook_payload(session, payload)
+            await process_raw_meta_webhook_payload(session, payload, enqueue_only=True)
         except Exception:
             session.rollback()
             logger.exception("Error procesando webhook directo de Meta")
             return ChannelWebhookResponse(status="ok", message="Recibido con error")
         background_tasks.add_task(_process_pending_meta_background)
-        return ChannelWebhookResponse(status="ok", message="Procesado")
+        return ChannelWebhookResponse(status="ok", message="Encolado")
 
     background_tasks.add_task(_process_raw_meta_background, payload)
     return ChannelWebhookResponse(status="ok", message="Recibido")

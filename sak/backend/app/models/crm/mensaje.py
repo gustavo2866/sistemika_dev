@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, JSON, event
+from sqlalchemy import Column, Index, JSON, event, text
 from sqlmodel import Field, SQLModel, Relationship
 
 from ..base import Base, current_utc_time
@@ -15,6 +15,19 @@ if TYPE_CHECKING:
 
 class CRMMensaje(Base, table=True):
     __tablename__ = "crm_mensajes"
+    __table_args__ = (
+        Index(
+            "uq_crm_mensajes_inbound_origen_externo_id_active",
+            "origen_externo_id",
+            unique=True,
+            postgresql_where=text(
+                "deleted_at IS NULL AND tipo = 'entrada' AND origen_externo_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "deleted_at IS NULL AND tipo = 'entrada' AND origen_externo_id IS NOT NULL"
+            ),
+        ),
+    )
     __searchable_fields__ = ["asunto", "contenido"]
     __expanded_list_relations__ = {"contacto"}
     __auto_include_relations__ = ["contacto", "oportunidad"]

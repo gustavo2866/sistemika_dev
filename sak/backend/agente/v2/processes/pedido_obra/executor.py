@@ -24,6 +24,9 @@ KNOWN_OPS = {
     "clear_order",
     "show_order",
     "finish_order",
+    "solicitar_confirmacion",
+    "solicitar_cancelacion",
+    "request_other_process",
     "confirm_order",
     "cancel_order",
     "continue_previous",
@@ -62,6 +65,8 @@ def execute_plan(state: PedidoState, plan: TurnPlan) -> ExecutionResult:
             )
 
         if op_type == "continue_previous":
+            if current.esperando != "decision_pedido_previo":
+                return _blocked(current, "No hay un pedido previo pendiente de decision.", applied)
             current.esperando = None
             current.etapa = "carga"
             current.touch()
@@ -69,6 +74,8 @@ def execute_plan(state: PedidoState, plan: TurnPlan) -> ExecutionResult:
             continue
 
         if op_type == "start_new_order":
+            if current.esperando != "decision_pedido_previo":
+                return _blocked(current, "No hay un pedido previo pendiente de decision.", applied)
             current = PedidoState.empty(current.oportunidad_id)
             current.etapa = "carga"
             current.touch()
@@ -116,7 +123,29 @@ def execute_plan(state: PedidoState, plan: TurnPlan) -> ExecutionResult:
             status = "finish_requested"
             break
 
+        if op_type == "solicitar_confirmacion":
+            status = "finish_requested"
+            break
+
+        if op_type == "solicitar_cancelacion":
+            return ExecutionResult(
+                status="cancel_confirmation_required",
+                next_state=current,
+                reply=renderer.solicitar_cancelacion(),
+                applied_operations=applied,
+            )
+
+        if op_type == "request_other_process":
+            return ExecutionResult(
+                status="other_process_blocked",
+                next_state=current,
+                reply=renderer.bloquear_otro_proceso(),
+                applied_operations=applied,
+            )
+
         if op_type == "confirm_order":
+            if current.esperando != "confirmacion_cierre":
+                return _blocked(current, "El pedido todavia no esta listo para confirmar.", applied)
             status = "confirm_requested"
             break
 
@@ -466,8 +495,8 @@ def _canonical_type(value: str) -> str:
         "show_items": "show_order",
         "close_order": "finish_order",
         "finish": "finish_order",
-        "confirm": "confirm_order",
-        "cancel": "cancel_order",
+        "confirm": "solicitar_confirmacion",
+        "cancel": "solicitar_cancelacion",
         "off_topic": "offtopic",
     }
     normalized = str(value or "").strip().lower()

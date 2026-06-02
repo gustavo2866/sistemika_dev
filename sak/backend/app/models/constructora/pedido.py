@@ -4,6 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
 from sqlalchemy import Column, DECIMAL, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship
 
 from app.models.base import Base
@@ -114,7 +115,7 @@ class ConstructoraPedido(Base, table=True):
     )
     metadata_json: Optional[Dict[str, Any]] = Field(
         default=None,
-        sa_column=Column("metadata", type_=__import__("sqlalchemy").dialects.postgresql.JSONB, nullable=True),
+        sa_column=Column("metadata", type_=JSONB, nullable=True),
         description="Datos extra (referencia agent_v2, pedido_obra_id, etc.)",
     )
 
@@ -208,7 +209,7 @@ class ConstructoraPedidoDetalle(Base, table=True):
     )
     metadata_json: Optional[Dict[str, Any]] = Field(
         default=None,
-        sa_column=Column("metadata", type_=__import__("sqlalchemy").dialects.postgresql.JSONB, nullable=True),
+        sa_column=Column("metadata", type_=JSONB, nullable=True),
         description="Datos extra (agent_item_id, etc.)",
     )
 

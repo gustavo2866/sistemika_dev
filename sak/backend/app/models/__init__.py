@@ -71,6 +71,7 @@ from .partediario import (
     ParteDiario,
     ParteDiarioDetalle,
     EstadoParteDiario,
+    OrigenDetalle,
 )
 
 from .enums import (
@@ -150,8 +151,9 @@ __all__ = [
     "CategoriaNomina",
     "ParteDiario",
     "ParteDiarioDetalle",
+    "ParteDiarioEstado",
     "EstadoParteDiario",
-    "TipoLicencia",
+    "OrigenDetalle",
 
     "EstadoOportunidad",
     "TRANSICIONES_ESTADO_OPORTUNIDAD",

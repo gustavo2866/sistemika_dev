@@ -129,9 +129,15 @@ def test_raw_meta_status_payload_is_normalized(db_session):
                             "statuses": [
                                 {
                                     "id": "wamid.test.outbound",
-                                    "status": "delivered",
+                                    "status": "failed",
                                     "timestamp": "1779282000",
                                     "recipient_id": "5491156384310",
+                                    "errors": [
+                                        {
+                                            "code": 131047,
+                                            "title": "Re-engagement message",
+                                        }
+                                    ],
                                 }
                             ],
                         }
@@ -145,8 +151,9 @@ def test_raw_meta_status_payload_is_normalized(db_session):
 
     assert len(result) == 1
     normalized = result[0]
-    assert normalized["event_type"] == "message.delivered"
+    assert normalized["event_type"] == "message.failed"
     assert normalized["mensaje"]["direccion"] == "out"
-    assert normalized["mensaje"]["status"] == "delivered"
+    assert normalized["mensaje"]["status"] == "failed"
     assert normalized["mensaje"]["meta_message_id"] == "wamid.test.outbound"
+    assert normalized["mensaje"]["errors"][0]["code"] == 131047
 

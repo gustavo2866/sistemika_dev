@@ -1,7 +1,7 @@
 """Schemas para payloads normalizados del modulo channel."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -31,6 +31,7 @@ class ChannelMessage(BaseModel):
     filename: Optional[str] = None
     mime_type: Optional[str] = None
     status: str
+    errors: list[dict[str, Any]] = Field(default_factory=list)
     meta_timestamp: datetime
     created_at: datetime
     celular: ChannelEndpoint

@@ -28,3 +28,4 @@ google-cloud-storage
 
 # Testing
 pytest
+pytest-asyncio

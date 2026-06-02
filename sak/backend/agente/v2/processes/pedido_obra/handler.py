@@ -80,6 +80,7 @@ class PedidoObraProcess:
                 used_llm=True,
             )
             return _to_turn_result(result, ctx)
+        plan = _sanitize_llm_plan(plan)
 
         executor_started = time.perf_counter()
         result = execute_plan(state, plan)
@@ -126,16 +127,31 @@ _FINISH_COMMANDS = {
     "eso es todo",
     "listo gracias",
 }
-_CONFIRM_COMMANDS = {"confirmar", "confirmo", "si", "ok", "dale"}
-_PRE_CONFIRMATION_COMMANDS = {"confirmar", "confirmo"}
+_CONFIRM_COMMANDS = {"confirmar"}
+_CANCEL_COMMANDS = {"cancelar"}
+_PRE_CONFIRMATION_COMMANDS = {"confirmar"}
 
 
 def _command_fast_plan(text: str | None, state: PedidoState) -> tuple[TurnPlan, str] | None:
-    if state.etapa == "finalizado" or state.esperando in {"cantidad_faltante", "decision_pedido_previo"}:
+    if state.etapa == "finalizado":
         return None
 
     command = _normalize_command_text(text)
     if not command:
+        return None
+
+    if command in _CANCEL_COMMANDS:
+        fast_path = "command_cancel_order"
+        return (
+            TurnPlan(
+                operations=[PedidoOperation(type="cancel_order")],
+                raw_response={"fast_path": fast_path, "command": command},
+                llm_ms=0,
+            ),
+            fast_path,
+        )
+
+    if state.esperando in {"cantidad_faltante", "decision_pedido_previo"}:
         return None
 
     if state.esperando == "confirmacion_cierre" and command in _CONFIRM_COMMANDS:
@@ -149,7 +165,9 @@ def _command_fast_plan(text: str | None, state: PedidoState) -> tuple[TurnPlan, 
             fast_path,
         )
 
-    if command in _FINISH_COMMANDS or command in _PRE_CONFIRMATION_COMMANDS:
+    if command in _FINISH_COMMANDS or (
+        command in _PRE_CONFIRMATION_COMMANDS and state.tiene_pedido_activo()
+    ):
         fast_path = "command_finish_order"
         return (
             TurnPlan(
@@ -161,6 +179,19 @@ def _command_fast_plan(text: str | None, state: PedidoState) -> tuple[TurnPlan, 
         )
 
     return None
+
+
+def _sanitize_llm_plan(plan: TurnPlan) -> TurnPlan:
+    """Impide que texto libre active operaciones reservadas del backend."""
+    sanitized_operations: list[PedidoOperation] = []
+    for operation in plan.operations:
+        if operation.type == "confirm_order":
+            operation = PedidoOperation(type="solicitar_confirmacion")
+        elif operation.type == "cancel_order":
+            operation = PedidoOperation(type="solicitar_cancelacion")
+        sanitized_operations.append(operation)
+    plan.operations = sanitized_operations
+    return plan
 
 
 def _normalize_command_text(text: str | None) -> str:

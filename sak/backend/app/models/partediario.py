@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import ClassVar, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, DECIMAL, String
+from sqlalchemy import Column, DECIMAL, String, UniqueConstraint
 from sqlmodel import Field, Relationship
 
 from .base import Base
@@ -14,14 +14,22 @@ if TYPE_CHECKING:
 
 
 class EstadoParteDiario(str, Enum):
-    PENDIENTE = "pendiente"
-    CERRADO = "cerrado"
+    BORRADOR = "borrador"   # generado por el agente, editable
+    CERRADO = "cerrado"     # cerrado por el administrador, solo lectura para el agente
+
+
+class OrigenDetalle(str, Enum):
+    AGENTE = "agente"       # informado explícitamente por el encargado
+    DEFAULT = "default"     # presente implícito generado al confirmar
 
 
 class ParteDiario(Base, table=True):
     """Cabecera del parte diario de obra."""
 
     __tablename__ = "partes_diario"
+    __table_args__ = (
+        UniqueConstraint("idproyecto", "fecha", name="uq_partes_diario_proyecto_fecha"),
+    )
 
     __searchable_fields__: ClassVar[List[str]] = ["descripcion"]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles"}
@@ -34,7 +42,7 @@ class ParteDiario(Base, table=True):
         description="Fecha del parte diario",
     )
     estado: EstadoParteDiario = Field(
-        default=EstadoParteDiario.PENDIENTE,
+        default=EstadoParteDiario.BORRADOR,
         sa_column=Column(String(20), nullable=False),
         description="Estado del parte diario",
     )
@@ -42,6 +50,11 @@ class ParteDiario(Base, table=True):
         default=None,
         max_length=1000,
         description="Descripción general de las novedades del día",
+    )
+    mensaje_origen_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_mensajes.id",
+        description="Mensaje de WhatsApp que originó o confirmó este parte (trazabilidad con el agente)",
     )
 
     detalles: List["ParteDiarioDetalle"] = Relationship(
@@ -57,6 +70,13 @@ class ParteDiarioDetalle(Base, table=True):
     """Detalle horario de un parte diario."""
 
     __tablename__ = "partes_diario_detalles"
+    __table_args__ = (
+        UniqueConstraint(
+            "parte_diario_id",
+            "idnomina",
+            name="uq_partes_diario_detalles_parte_nomina",
+        ),
+    )
 
     __searchable_fields__: ClassVar[List[str]] = ["descripcion"]
 
@@ -89,6 +109,11 @@ class ParteDiarioDetalle(Base, table=True):
         default=None,
         max_length=500,
         description="Observaciones o tareas realizadas",
+    )
+    origen: OrigenDetalle = Field(
+        default=OrigenDetalle.AGENTE,
+        sa_column=Column(String(10), nullable=False, server_default="agente"),
+        description="Indica si la línea fue informada por el encargado (agente) o generada como presente implícito (default)",
     )
 
     parte_diario: "ParteDiario" = Relationship(back_populates="detalles")

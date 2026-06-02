@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import os
 
 from sqlmodel import Session
@@ -13,7 +13,7 @@ from app.models import CRMMensaje
 from app.models.enums import TipoMensaje
 
 
-DEFAULT_AGENT_REPLY_VERSION_BANNER = "sak-agent 2026-05-22.1"
+DEFAULT_AGENT_REPLY_VERSION_BANNER = "sak-agent 2026-06-01.1"
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +71,12 @@ class SendResult:
 class TurnDeliveryService:
     """Entrega la respuesta del agente al canal saliente."""
 
+    TERMINAL_WITHOUT_SEND_STATUSES = {
+        "no_reply",
+        "missing_contact",
+        "missing_oportunidad",
+    }
+
     def __init__(self, channel_adapter: CRMOutboundChannelAdapter | None = None) -> None:
         self._channel_adapter = channel_adapter or CRMOutboundChannelAdapter()
 
@@ -114,7 +120,7 @@ class TurnDeliveryService:
 
     @staticmethod
     def with_version_banner(text: str) -> str:
-        enabled = os.getenv("AGENT_REPLY_VERSION_BANNER_ENABLED", "1").strip().lower()
+        enabled = os.getenv("AGENT_REPLY_VERSION_BANNER_ENABLED", "0").strip().lower()
         if enabled in {"0", "false", "no"}:
             return text
 
@@ -127,8 +133,92 @@ class TurnDeliveryService:
             return text
         return f"{prefix}\n{text}"
 
+    @classmethod
+    def is_terminal_result(cls, result: SendResult) -> bool:
+        return result.sent or result.status in cls.TERMINAL_WITHOUT_SEND_STATUSES
+
     @staticmethod
-    def mark_inbound_as_processed(session: Session, message: CRMMensaje) -> None:
+    def has_completed_delivery(message: CRMMensaje) -> bool:
+        agent_meta = dict((message.metadata_json or {}).get("agent_v2") or {})
+        return bool(agent_meta.get("delivery_processed_at"))
+
+    @staticmethod
+    def _parse_iso_datetime(raw_value: object) -> datetime | None:
+        if not raw_value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
+    @staticmethod
+    def _env_seconds(name: str, default: int) -> int:
+        try:
+            return max(int(os.getenv(name, str(default))), 1)
+        except ValueError:
+            return default
+
+    @classmethod
+    def pending_stale_seconds(cls) -> int:
+        return cls._env_seconds("AGENT_DELIVERY_PENDING_STALE_SECONDS", 120)
+
+    @classmethod
+    def retry_after_seconds(cls) -> int:
+        return cls._env_seconds("AGENT_DELIVERY_RETRY_AFTER_SECONDS", 60)
+
+    @classmethod
+    def has_recent_pending_delivery(
+        cls,
+        message: CRMMensaje,
+        *,
+        stale_after_seconds: int | None = None,
+    ) -> bool:
+        agent_meta = dict((message.metadata_json or {}).get("agent_v2") or {})
+        pending_at = cls._parse_iso_datetime(agent_meta.get("delivery_pending_at"))
+        if pending_at is None:
+            return False
+        stale_seconds = stale_after_seconds or cls.pending_stale_seconds()
+        return datetime.now(UTC) - pending_at < timedelta(seconds=stale_seconds)
+
+    @classmethod
+    def has_recent_delivery_attempt(
+        cls,
+        message: CRMMensaje,
+        *,
+        retry_after_seconds: int | None = None,
+    ) -> bool:
+        agent_meta = dict((message.metadata_json or {}).get("agent_v2") or {})
+        attempted_at = cls._parse_iso_datetime(agent_meta.get("delivery_last_attempt_at"))
+        if attempted_at is None:
+            return False
+        retry_seconds = retry_after_seconds or cls.retry_after_seconds()
+        return datetime.now(UTC) - attempted_at < timedelta(seconds=retry_seconds)
+
+    @staticmethod
+    def mark_delivery_pending(session: Session, message: CRMMensaje) -> None:
+        metadata = dict(message.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        attempt = int(agent_meta.get("delivery_attempts") or 0) + 1
+        agent_meta["delivery_attempts"] = attempt
+        agent_meta["delivery_pending_at"] = datetime.now(UTC).isoformat()
+        agent_meta["delivery"] = SendResult(sent=False, status="pending").to_dict()
+        agent_meta.pop("delivery_processed_at", None)
+        metadata["agent_v2"] = agent_meta
+        message.metadata_json = metadata
+        session.add(message)
+        session.commit()
+        session.refresh(message)
+
+    @classmethod
+    def record_delivery_result(
+        cls,
+        session: Session,
+        message: CRMMensaje,
+        result: SendResult,
+    ) -> None:
         if message.tipo != TipoMensaje.ENTRADA.value:
             return
 
@@ -137,11 +227,45 @@ class TurnDeliveryService:
         # llame explicitamente a /acciones/marcar-leidos.
         metadata = dict(message.metadata_json or {})
         agent_meta = dict(metadata.get("agent_v2") or {})
-        agent_meta["delivery_processed_at"] = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC).isoformat()
+        agent_meta["delivery"] = result.to_dict()
+        agent_meta["delivery_last_attempt_at"] = now
+        agent_meta.pop("delivery_pending_at", None)
+        if result.outbound_message_id is not None:
+            agent_meta["outbound_message_id"] = result.outbound_message_id
+        if cls.is_terminal_result(result):
+            agent_meta["delivery_processed_at"] = now
+        else:
+            agent_meta.pop("delivery_processed_at", None)
         metadata["agent_v2"] = agent_meta
         message.metadata_json = metadata
         session.add(message)
         session.commit()
         session.refresh(message)
+
+    @staticmethod
+    def mark_delivery_superseded(
+        session: Session,
+        message: CRMMensaje,
+        *,
+        superseded_by_message_id: int,
+    ) -> None:
+        metadata = dict(message.metadata_json or {})
+        agent_meta = dict(metadata.get("agent_v2") or {})
+        now = datetime.now(UTC).isoformat()
+        agent_meta["delivery"] = SendResult(sent=False, status="superseded").to_dict()
+        agent_meta["delivery_superseded_by_message_id"] = superseded_by_message_id
+        agent_meta["delivery_processed_at"] = now
+        agent_meta.pop("delivery_pending_at", None)
+        metadata["agent_v2"] = agent_meta
+        message.metadata_json = metadata
+        session.add(message)
+        session.commit()
+        session.refresh(message)
+
+    @classmethod
+    def mark_inbound_as_processed(cls, session: Session, message: CRMMensaje) -> None:
+        """Compatibilidad para callers existentes que ya entregaron la respuesta."""
+        cls.record_delivery_result(session, message, SendResult(sent=True, status="sent"))
 
 

@@ -25,7 +25,8 @@ class DbConversationStateStore:
     """
     Reemplaza JsonConversationStateStore.
     Persiste ConversationState en agente_conversation_states.
-    Usa SELECT FOR UPDATE para serializar acceso por oportunidad.
+    La serializacion durable de turnos completos pertenece a AgentTurnLeaseService.
+    SELECT FOR UPDATE se conserva para operaciones transaccionales puntuales.
     """
 
     def __init__(self, session: Session) -> None:
@@ -45,7 +46,7 @@ class DbConversationStateStore:
         )
 
     def load_for_update(self, oportunidad_id: int) -> ConversationState:
-        """Carga con SELECT FOR UPDATE — serializa turnos concurrentes del mismo contacto."""
+        """Carga con SELECT FOR UPDATE para operaciones transaccionales puntuales."""
         stmt = (
             select(AgentConversationState)
             .where(AgentConversationState.oportunidad_id == oportunidad_id)

@@ -147,13 +147,18 @@ class TestTurnResult:
 # ===========================================================================
 
 class TestTurnDeliveryService:
-    def test_with_version_banner_prefixes_reply(self, monkeypatch):
+    def test_with_version_banner_is_disabled_by_default(self, monkeypatch):
         monkeypatch.delenv("AGENT_REPLY_VERSION_BANNER_ENABLED", raising=False)
         monkeypatch.delenv("AGENT_REPLY_VERSION_BANNER", raising=False)
 
+        assert TurnDeliveryService.with_version_banner("Hola") == "Hola"
+
+    def test_with_version_banner_can_be_enabled(self, monkeypatch):
+        monkeypatch.setenv("AGENT_REPLY_VERSION_BANNER_ENABLED", "1")
+
         text = TurnDeliveryService.with_version_banner("Hola")
 
-        assert text.startswith("[sak-agent 2026-05-22.1]\n")
+        assert text.startswith("[sak-agent 2026-06-01.1]\n")
         assert text.endswith("Hola")
 
     def test_with_version_banner_can_be_disabled(self, monkeypatch):
