@@ -7,7 +7,7 @@ import os
 import logging
 import traceback
 
-# Configurar logging xxx22
+# Configurar logging xxx223344
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
