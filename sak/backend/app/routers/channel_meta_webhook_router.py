@@ -14,6 +14,8 @@ from app.db import engine, get_session
 from app.modules.channels.config import meta_account_resolver
 from app.modules.channels.providers.meta.webhook import raw_meta_to_channel_payloads
 from app.schemas.channel_webhook import ChannelWebhookResponse
+from app.services.agent_queue_state import DEFAULT_QUEUE_NAME, normalize_queue_name
+from app.services.agent_queue_worker import enqueue_agent_message
 from app.services.agent_pending_processor import process_pending_agent_messages
 from app.services.meta_webhook_service import MetaWebhookService
 
@@ -40,15 +42,22 @@ async def process_raw_meta_webhook_payload(
     payload: dict[str, Any],
     *,
     enqueue_only: bool = False,
-) -> None:
+    queue_name: str = DEFAULT_QUEUE_NAME,
+) -> list[dict[str, Any]]:
     t0 = time.perf_counter()
     normalized_payloads = raw_meta_to_channel_payloads(session, payload)
     t_normalized = time.perf_counter()
     service = MetaWebhookService(session)
     t_service = time.perf_counter()
+    results: list[dict[str, Any]] = []
     for normalized_payload in normalized_payloads:
         t_item = time.perf_counter()
-        await service.process_webhook(normalized_payload, enqueue_only=enqueue_only)
+        result = await service.process_webhook(
+            normalized_payload,
+            enqueue_only=enqueue_only,
+            queue_name=queue_name,
+        )
+        results.append(result)
         logger.info(
             "Channel webhook item timing event_type=%s process_webhook=%sms",
             normalized_payload.get("event_type"),
@@ -61,29 +70,16 @@ async def process_raw_meta_webhook_payload(
         round((t_service - t_normalized) * 1000),
         round((time.perf_counter() - t0) * 1000),
     )
+    return results
 
 
-async def _process_raw_meta_background(payload: dict[str, Any]) -> None:
+async def _process_raw_meta_background(payload: dict[str, Any], *, queue_name: str = DEFAULT_QUEUE_NAME) -> None:
     with Session(engine) as session:
         try:
-            await process_raw_meta_webhook_payload(session, payload)
+            await process_raw_meta_webhook_payload(session, payload, queue_name=queue_name)
         except Exception:
             session.rollback()
             logger.exception("Error procesando webhook directo de Meta")
-        try:
-            await process_pending_agent_messages(session, limit=5)
-        except Exception:
-            session.rollback()
-            logger.exception("Error reprocesando mensajes pendientes de agente")
-
-
-async def _process_pending_meta_background() -> None:
-    with Session(engine) as session:
-        try:
-            await process_pending_agent_messages(session, limit=5)
-        except Exception:
-            session.rollback()
-            logger.exception("Error reprocesando mensajes pendientes de agente")
 
 
 def _has_inbound_messages(payload: dict[str, Any]) -> bool:
@@ -99,20 +95,34 @@ def _has_inbound_messages(payload: dict[str, Any]) -> bool:
 async def receive_meta_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
+    queue: str = Query(default=DEFAULT_QUEUE_NAME),
     session: Session = Depends(get_session),
 ):
     payload = await request.json()
+    try:
+        queue_name = normalize_queue_name(queue)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if _has_inbound_messages(payload):
         try:
-            await process_raw_meta_webhook_payload(session, payload, enqueue_only=True)
+            results = await process_raw_meta_webhook_payload(
+                session,
+                payload,
+                enqueue_only=True,
+                queue_name=queue_name,
+            )
         except Exception:
             session.rollback()
             logger.exception("Error procesando webhook directo de Meta")
             return ChannelWebhookResponse(status="ok", message="Recibido con error")
-        background_tasks.add_task(_process_pending_meta_background)
+        for result in results:
+            message_id = result.get("mensaje_id")
+            if message_id is not None:
+                enqueue_agent_message(int(message_id))
         return ChannelWebhookResponse(status="ok", message="Encolado")
 
-    background_tasks.add_task(_process_raw_meta_background, payload)
+    background_tasks.add_task(_process_raw_meta_background, payload, queue_name=queue_name)
     return ChannelWebhookResponse(status="ok", message="Recibido")
 
 

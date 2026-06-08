@@ -30,6 +30,7 @@ from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Webh
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.schemas.channel_webhook import ChannelWebhookPayload
+from app.services.agent_queue_state import DEFAULT_QUEUE_NAME, apply_queued_metadata
 from app.services.constructora_pedido_service import constructora_pedido_service
 from app.services.parte_diario_service import parte_diario_service
 from app.services.audio_transcription_service import audio_transcription_service
@@ -464,6 +465,7 @@ class MetaWebhookService:
         *,
         schedule_typing: bool = True,
         enqueue_only: bool = False,
+        queue_name: str = DEFAULT_QUEUE_NAME,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         t_lookup_start = time.perf_counter()
@@ -494,6 +496,13 @@ class MetaWebhookService:
             t_content_done = time.perf_counter()
 
             try:
+                metadata_json = apply_queued_metadata(
+                    {
+                        "from_name": msg.from_name,
+                        "channel_message_id": str(msg.id),
+                    },
+                    queue_name=queue_name,
+                )
                 crm_mensaje = crm_mensaje_crud.create(
                     self.session,
                     {
@@ -509,10 +518,7 @@ class MetaWebhookService:
                         "fecha_mensaje": fecha_mensaje_utc,
                         "estado_meta": msg.status,
                         "oportunidad_id": oportunidad.id,
-                        "metadata_json": {
-                            "from_name": msg.from_name,
-                            "channel_message_id": str(msg.id),
-                        },
+                        "metadata_json": metadata_json,
                     },
                 )
             except IntegrityError:
@@ -942,6 +948,7 @@ class MetaWebhookService:
         payload: dict[str, Any],
         *,
         enqueue_only: bool = False,
+        queue_name: str = DEFAULT_QUEUE_NAME,
     ) -> dict[str, Any]:
         """
         Procesa un payload normalizado del modulo channel.
@@ -1009,6 +1016,7 @@ class MetaWebhookService:
                     celular,
                     schedule_typing=not auto_process,
                     enqueue_only=enqueue_only,
+                    queue_name=queue_name,
                 )
             else:
                 self._handle_outbound_status(msg)

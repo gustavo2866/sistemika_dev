@@ -14,6 +14,15 @@ from agente.v2.core.runtime import should_auto_process
 from app.models import CRMMensaje
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, TipoMensaje
+from app.services.agent_queue_state import (
+    message_queue_name,
+    mark_error_metadata,
+    mark_pending_metadata,
+    mark_processed_metadata,
+    mark_processing_metadata,
+    normalize_queue_name,
+    worker_queue_name,
+)
 from app.services.meta_webhook_service import MetaWebhookService
 
 logger = logging.getLogger(__name__)
@@ -71,6 +80,7 @@ def _skip_reason(
 
 def _set_processing_marker(session: Session, message: CRMMensaje, *, source: str) -> None:
     metadata = dict(message.metadata_json or {})
+    metadata = mark_processing_metadata(metadata, source=source)
     attempt = int(metadata.get(RETRY_ATTEMPTS_KEY) or 0) + 1
     metadata[RETRY_ATTEMPTS_KEY] = attempt
     metadata[PROCESSING_KEY] = {
@@ -100,6 +110,7 @@ def _record_processing_error(session: Session, message_id: int, exc: Exception, 
         return
     metadata = dict(message.metadata_json or {})
     metadata.pop(PROCESSING_KEY, None)
+    metadata = mark_error_metadata(metadata, source=source, error=str(exc))
     metadata[LAST_ERROR_KEY] = {
         "source": source,
         "message": str(exc),
@@ -111,22 +122,39 @@ def _record_processing_error(session: Session, message_id: int, exc: Exception, 
     session.commit()
 
 
+def _mark_queue_pending(session: Session, message: CRMMensaje) -> None:
+    message.metadata_json = mark_pending_metadata(message.metadata_json or {})
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+
+
+def _mark_queue_processed(session: Session, message: CRMMensaje) -> None:
+    message.metadata_json = mark_processed_metadata(message.metadata_json or {})
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+
+
 def _load_candidate_messages(
     session: Session,
     *,
     message_id: int | None = None,
 ) -> list[CRMMensaje]:
     fecha_ref = func.coalesce(CRMMensaje.fecha_mensaje, CRMMensaje.created_at)
+    stmt = (
+        select(CRMMensaje)
+        .where(CRMMensaje.deleted_at.is_(None))
+        .where(CRMMensaje.tipo == TipoMensaje.ENTRADA.value)
+        .where(CRMMensaje.canal == CanalMensaje.WHATSAPP.value)
+        .where(CRMMensaje.origen_externo_id.is_not(None))
+        .where(CRMMensaje.oportunidad_id.is_not(None))
+        .order_by(fecha_ref.asc(), CRMMensaje.id.asc())
+    )
+    if message_id is not None:
+        stmt = stmt.where(CRMMensaje.id == message_id)
     return list(
-        session.exec(
-            select(CRMMensaje)
-            .where(CRMMensaje.deleted_at.is_(None))
-            .where(CRMMensaje.tipo == TipoMensaje.ENTRADA.value)
-            .where(CRMMensaje.canal == CanalMensaje.WHATSAPP.value)
-            .where(CRMMensaje.origen_externo_id.is_not(None))
-            .where(CRMMensaje.oportunidad_id.is_not(None))
-            .order_by(fecha_ref.asc(), CRMMensaje.id.asc())
-        ).all()
+        session.exec(stmt).all()
     )
 
 
@@ -134,10 +162,14 @@ def _load_queue_heads(
     session: Session,
     *,
     message_id: int | None = None,
+    queue_name: str | None = None,
 ) -> list[CRMMensaje]:
     """Devuelve como maximo el primer mensaje pendiente de cada oportunidad."""
+    resolved_queue_name = normalize_queue_name(queue_name or worker_queue_name())
     heads: dict[int, CRMMensaje] = {}
     for message in _load_candidate_messages(session):
+        if message_queue_name(message) != resolved_queue_name:
+            continue
         oportunidad_id = int(message.oportunidad_id or 0)
         if not oportunidad_id or oportunidad_id in heads:
             continue
@@ -152,6 +184,91 @@ def _load_queue_heads(
     if message_id is not None:
         rows = [message for message in rows if message.id == message_id]
     return rows
+
+
+async def process_agent_message_by_id(
+    session: Session,
+    message_id: int,
+    *,
+    source: str = "queue_worker",
+    queue_name: str | None = None,
+    stale_after_seconds: int = 300,
+    service: MetaWebhookService | None = None,
+) -> dict[str, Any]:
+    resolved_queue_name = normalize_queue_name(queue_name or worker_queue_name())
+    summary: dict[str, Any] = {
+        "status": "ok",
+        "mode": "automatic" if should_auto_process(session=session) else "manual",
+        "message_id": message_id,
+        "queue": resolved_queue_name,
+    }
+    if summary["mode"] != "automatic":
+        summary.update({"status": "skipped", "reason": "manual_mode"})
+        return summary
+
+    message = session.get(CRMMensaje, message_id)
+    if message is None:
+        summary.update({"status": "skipped", "reason": "missing_message"})
+        return summary
+
+    if message_queue_name(message) != resolved_queue_name:
+        summary.update(
+            {
+                "status": "skipped",
+                "reason": "queue_mismatch",
+                "message_queue": message_queue_name(message),
+            }
+        )
+        return summary
+
+    reason = _skip_reason(
+        message,
+        stale_after_seconds=stale_after_seconds,
+        allow_delivery_backoff_bypass=source == "manual_retry",
+    )
+    if reason is not None:
+        if reason == "already_delivered":
+            _mark_queue_processed(session, message)
+        summary.update({"status": "skipped", "reason": reason})
+        return summary
+
+    resolved_service = service or MetaWebhookService(session)
+    try:
+        _set_processing_marker(session, message, source=source)
+        result = await resolved_service.process_existing_inbound_message(
+            message,
+            trigger=source,
+            schedule_typing=False,
+        )
+        session.refresh(message)
+        if (message.metadata_json or {}).get(PROCESSING_KEY):
+            _clear_processing_marker(session, message)
+
+        if isinstance(result, dict) and result.get("retryable"):
+            _mark_queue_pending(session, message)
+            summary.update(
+                {
+                    "status": "skipped",
+                    "reason": str(result.get("type") or "retryable"),
+                    "retryable": True,
+                }
+            )
+            return summary
+
+        _mark_queue_processed(session, message)
+        summary.update(
+            {
+                "status": "processed",
+                "result_type": result.get("type") if isinstance(result, dict) else None,
+            }
+        )
+        return summary
+    except Exception as exc:
+        logger.exception("Error procesando mensaje de cola id=%s", message_id)
+        session.rollback()
+        _record_processing_error(session, message_id, exc, source=source)
+        summary.update({"status": "error", "error": str(exc)})
+        return summary
 
 
 async def process_pending_agent_messages(
@@ -173,11 +290,29 @@ async def process_pending_agent_messages(
     summary: dict[str, Any] = {
         "status": "ok",
         "mode": "automatic" if should_auto_process(session=session) else "manual",
+        "queue": worker_queue_name(),
         "processed": [],
         "skipped": [],
         "errors": [],
     }
     if summary["mode"] != "automatic":
+        return summary
+
+    if message_id is not None:
+        result = await process_agent_message_by_id(
+            session,
+            message_id,
+            source=source,
+            queue_name=str(summary["queue"]),
+            stale_after_seconds=stale_after_seconds,
+            service=service,
+        )
+        if result["status"] == "processed":
+            summary["processed"].append(result)
+        elif result["status"] == "error":
+            summary["errors"].append(result)
+        else:
+            summary["skipped"].append(result)
         return summary
 
     resolved_service = service or MetaWebhookService(session)
@@ -187,7 +322,11 @@ async def process_pending_agent_messages(
     while processed_count < limit:
         messages = [
             message
-            for message in _load_queue_heads(session, message_id=message_id)
+            for message in _load_queue_heads(
+                session,
+                message_id=message_id,
+                queue_name=str(summary["queue"]),
+            )
             if int(message.id) not in visited_message_ids
         ]
         if not messages:
@@ -208,6 +347,7 @@ async def process_pending_agent_messages(
                 continue
 
             try:
+                _set_processing_marker(session, message, source=source)
                 result = await resolved_service.process_existing_inbound_message(
                     message,
                     trigger=source,
@@ -217,6 +357,7 @@ async def process_pending_agent_messages(
                 if (message.metadata_json or {}).get(PROCESSING_KEY):
                     _clear_processing_marker(session, message)
                 if isinstance(result, dict) and result.get("retryable"):
+                    _mark_queue_pending(session, message)
                     summary["skipped"].append(
                         {
                             "message_id": message.id,
@@ -224,6 +365,7 @@ async def process_pending_agent_messages(
                         }
                     )
                     continue
+                _mark_queue_processed(session, message)
                 processed_count += 1
                 made_progress = True
                 summary["processed"].append(

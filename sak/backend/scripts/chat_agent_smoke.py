@@ -13,6 +13,7 @@ Uso:
 Variables opcionales (sobreescritas por args de linea de comandos):
   CHAT_TEST_BASE_URL=http://localhost:8000
   CHAT_TEST_READ_MODE=auto         # auto | db | api
+  CHAT_TEST_QUEUE=test             # cola enviada al webhook
   CHAT_TEST_TYPING_INDICATOR=1
   CHAT_TEST_FROM_PHONE=5491156384310
   CHAT_TEST_FROM_NAME=Encargado Test
@@ -92,6 +93,8 @@ if BASE_URL == _GCP_PROD_URL and not _args.allow_prod:
 
 _read_mode_default = "api" if (BASE_URL != "http://localhost:8000" and not BASE_URL.startswith("http://127.")) else "auto"
 READ_MODE = (_args.read_mode or os.environ.get("CHAT_TEST_READ_MODE", _read_mode_default)).strip().lower()
+_queue_default = "test" if BASE_URL.startswith("http://localhost") or BASE_URL.startswith("http://127.") else "prod"
+QUEUE_NAME = os.environ.get("CHAT_TEST_QUEUE", _queue_default).strip().lower() or _queue_default
 
 FROM_PHONE = os.environ.get("CHAT_TEST_FROM_PHONE", "5491156384310")
 FROM_NAME = os.environ.get("CHAT_TEST_FROM_NAME", "Encargado Test")
@@ -188,7 +191,7 @@ def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     meta_message_id = f"wamid.chat-test.{uuid4().hex}"
     payload = _build_raw_meta_payload(texto, meta_message_id)
     started = time.time()
-    response = _request_json("POST", _webhook_path(), payload)
+    response = _request_json("POST", _webhook_path(), payload, params={"queue": QUEUE_NAME})
     return meta_message_id, response, time.time() - started
 
 
@@ -448,6 +451,7 @@ def _format_quantity(value: Any) -> str:
 def main() -> None:
     print("=== Chat webhook agente de obra ===")
     print(f"Webhook: {BASE_URL}{_webhook_path()}")
+    print(f"Cola agente: {QUEUE_NAME}")
     print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
     print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
