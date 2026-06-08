@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
 
 from app.models import CRMMensaje
 from app.models.base import current_utc_time
@@ -15,6 +18,7 @@ QUEUE_STATUS_KEY = "agent_queue_status"
 QUEUE_ATTEMPTS_KEY = "agent_queue_attempts"
 QUEUE_ERROR_KEY = "agent_queue_error"
 QUEUE_QUEUED_AT_KEY = "agent_queue_queued_at"
+QUEUE_ENQUEUED_AT_KEY = "agent_queue_enqueued_at"
 QUEUE_STARTED_AT_KEY = "agent_queue_started_at"
 QUEUE_PROCESSED_AT_KEY = "agent_queue_processed_at"
 QUEUE_SOURCE_KEY = "agent_queue_source"
@@ -25,6 +29,9 @@ STATUS_PROCESSED = "procesado"
 STATUS_ERROR = "error"
 
 _QUEUE_RE = re.compile(r"^[a-z0-9_-]+$")
+_BACKEND_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_BACKEND_ENV_PATH)
+_runtime_enqueued_at: dict[int, str] = {}
 
 
 def normalize_queue_name(raw_value: Any | None) -> str:
@@ -79,6 +86,20 @@ def mark_pending_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     result[QUEUE_STATUS_KEY] = STATUS_PENDING
     result.setdefault(QUEUE_QUEUED_AT_KEY, current_utc_time().isoformat())
     return result
+
+
+def mark_enqueued_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    result = dict(metadata or {})
+    result[QUEUE_ENQUEUED_AT_KEY] = current_utc_time().isoformat()
+    return result
+
+
+def record_runtime_enqueued_at(message_id: int) -> None:
+    _runtime_enqueued_at[int(message_id)] = current_utc_time().isoformat()
+
+
+def pop_runtime_enqueued_at(message_id: int) -> str | None:
+    return _runtime_enqueued_at.pop(int(message_id), None)
 
 
 def mark_processed_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:

@@ -17,6 +17,7 @@ from app.services.agent_queue_state import (
     STATUS_PROCESSING,
     message_queue_name,
     message_queue_status,
+    record_runtime_enqueued_at,
     worker_queue_name,
 )
 
@@ -47,6 +48,7 @@ def _get_queue() -> asyncio.Queue[int]:
 
 def enqueue_agent_message(message_id: int) -> None:
     """Encola un mensaje persistido para procesamiento asincronico."""
+    record_runtime_enqueued_at(int(message_id))
     _get_queue().put_nowait(int(message_id))
 
 

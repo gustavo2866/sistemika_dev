@@ -19,15 +19,17 @@ logger = logging.getLogger(__name__)
 class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
     """CRUD extendido para CRMMensaje con actualización automática de ultimo_mensaje."""
     
-    def create(self, session: Session, data: Dict[str, Any]) -> CRMMensaje:
+    def create(self, session: Session, data: Dict[str, Any], auto_commit: bool = True) -> CRMMensaje:
         """Crear mensaje y actualizar ultimo_mensaje en oportunidad."""
         # Crear el mensaje usando el método padre
         t0 = time.perf_counter()
-        mensaje = super().create(session, data)
+        mensaje = super().create(session, data, auto_commit=auto_commit)
         t_create = time.perf_counter()
         
         # Actualizar ultimo_mensaje en oportunidad si corresponde
-        self._actualizar_ultimo_mensaje_oportunidad(session, mensaje)
+        self._actualizar_ultimo_mensaje_oportunidad(session, mensaje, auto_commit=auto_commit)
+        if auto_commit:
+            session.refresh(mensaje)
         logger.info(
             "CRM mensaje create timing mensaje_id=%s oportunidad_id=%s generic_create_commit_refresh=%sms update_ultimo=%sms total=%sms",
             mensaje.id,
@@ -95,7 +97,13 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
         
         return resultado
     
-    def _actualizar_ultimo_mensaje_oportunidad(self, session: Session, mensaje: CRMMensaje):
+    def _actualizar_ultimo_mensaje_oportunidad(
+        self,
+        session: Session,
+        mensaje: CRMMensaje,
+        *,
+        auto_commit: bool = True,
+    ):
         """
         Actualiza los campos ultimo_mensaje de una oportunidad con el mensaje dado.
         Solo actualiza si es más reciente que el último mensaje actual.
@@ -128,7 +136,8 @@ class CRMMensajeCRUD(GenericCRUD[CRMMensaje]):
             print(f"Actualizado ultimo_mensaje para oportunidad {mensaje.oportunidad_id}: "
                   f"mensaje_id={mensaje.id}, fecha={mensaje.fecha_mensaje}")
             # IMPORTANTE: Hacer commit para persistir la actualización
-            session.commit()
+            if auto_commit:
+                session.commit()
             logger.info(
                 "CRM mensaje update_ultimo timing oportunidad_id=%s mensaje_id=%s execute=%sms commit=%sms total=%sms",
                 mensaje.oportunidad_id,

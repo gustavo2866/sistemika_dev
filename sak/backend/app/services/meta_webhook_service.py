@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import logging
 import time
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +30,13 @@ from app.models import CRMCelular, CRMContacto, CRMMensaje, CRMOportunidad, Webh
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.schemas.channel_webhook import ChannelWebhookPayload
-from app.services.agent_queue_state import DEFAULT_QUEUE_NAME, apply_queued_metadata
+from app.services.agent_queue_state import (
+    DEFAULT_QUEUE_NAME,
+    QUEUE_ENQUEUED_AT_KEY,
+    QUEUE_QUEUED_AT_KEY,
+    QUEUE_STARTED_AT_KEY,
+    apply_queued_metadata,
+)
 from app.services.constructora_pedido_service import constructora_pedido_service
 from app.services.parte_diario_service import parte_diario_service
 from app.services.audio_transcription_service import audio_transcription_service
@@ -68,6 +74,62 @@ def _audio_transcription_failed_result(message_id: int) -> dict[str, Any]:
         "message_id": message_id,
         "skipped": True,
         "respuesta": "No pude procesar el audio. Podes mandarme el pedido por escrito?",
+    }
+
+
+def _parse_queue_datetime(raw_value: Any) -> datetime | None:
+    if not raw_value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _ms_between(start: datetime | None, end: datetime | None) -> int | None:
+    if start is None or end is None:
+        return None
+    return round((end - start).total_seconds() * 1000)
+
+
+def _queue_timing_metadata(message: CRMMensaje) -> dict[str, int | None]:
+    metadata = dict(message.metadata_json or {})
+    queued_at = _parse_queue_datetime(metadata.get(QUEUE_QUEUED_AT_KEY))
+    enqueued_at = _parse_queue_datetime(metadata.get(QUEUE_ENQUEUED_AT_KEY))
+    worker_started_at = _parse_queue_datetime(metadata.get(QUEUE_STARTED_AT_KEY))
+    now = datetime.now(UTC)
+    return {
+        "pending_to_enqueued_ms": _ms_between(queued_at, enqueued_at),
+        "enqueued_to_worker_started_ms": _ms_between(enqueued_at, worker_started_at),
+        "queued_to_worker_started_ms": _ms_between(queued_at, worker_started_at),
+        "enqueued_to_agent_started_ms": _ms_between(enqueued_at, now),
+        "queued_to_agent_started_ms": _ms_between(queued_at, now),
+        "worker_started_to_agent_started_ms": _ms_between(worker_started_at, now),
+    }
+
+
+def _append_sub_mock_timing(result: dict[str, Any], timing: dict[str, Any] | None) -> dict[str, Any]:
+    if result.get("type") != "sub_mock_reply" or not timing:
+        return result
+    reply = str(result.get("reply_to_user") or "")
+    queue_timing = timing.get("queue") if isinstance(timing.get("queue"), dict) else {}
+    lines = [
+        "",
+        "Timing pipeline:",
+        f"- Webhook antes de encolar: {queue_timing.get('pending_to_enqueued_ms')} ms",
+        f"- Espera real en cola: {queue_timing.get('enqueued_to_worker_started_ms')} ms",
+        f"- Cola hasta agente: {queue_timing.get('enqueued_to_agent_started_ms')} ms",
+        f"- Preparacion mensaje: {timing.get('prepare_queued_message_ms')} ms",
+        f"- Orquestador/agente: {timing.get('orchestrator_ms')} ms",
+        f"- Persistir resultado: {timing.get('persist_agent_result_ms')} ms",
+        f"- Materializacion: {timing.get('materialization_ms')} ms",
+    ]
+    return {
+        **result,
+        "reply_to_user": reply + "\n" + "\n".join(lines),
     }
 
 
@@ -520,7 +582,13 @@ class MetaWebhookService:
                         "oportunidad_id": oportunidad.id,
                         "metadata_json": metadata_json,
                     },
+                    auto_commit=False,
                 )
+                t_crud_create_done = time.perf_counter()
+                self.session.commit()
+                t_extra_commit_done = time.perf_counter()
+                self.session.refresh(crm_mensaje)
+                t_refresh_done = time.perf_counter()
             except IntegrityError:
                 self.session.rollback()
                 crm_mensaje = self._find_existing_inbound_message(msg.meta_message_id)
@@ -530,11 +598,6 @@ class MetaWebhookService:
                     "Mensaje entrante duplicado resuelto por constraint para meta_message_id=%s",
                     msg.meta_message_id,
                 )
-            t_crud_create_done = time.perf_counter()
-            self.session.commit()
-            t_extra_commit_done = time.perf_counter()
-            self.session.refresh(crm_mensaje)
-            t_refresh_done = time.perf_counter()
             logger.info(
                 "Mensaje entrante creado: %s de contacto %s con oportunidad %s",
                 crm_mensaje.id,
@@ -711,7 +774,9 @@ class MetaWebhookService:
 
         t0 = started_at or time.perf_counter()
         t_agent_start = time.perf_counter()
+        queue_timing = _queue_timing_metadata(crm_mensaje)
         await self._prepare_queued_message_content(crm_mensaje)
+        t_prepare_done = time.perf_counter()
         if _has_failed_audio_transcription(crm_mensaje):
             auto_process_result = _audio_transcription_failed_result(int(crm_mensaje.id))
         else:
@@ -720,9 +785,12 @@ class MetaWebhookService:
                 crm_mensaje.id,
                 trigger,
             )
-        t_agent_done = time.perf_counter()
+        t_orchestrator_done = time.perf_counter()
+        t_persist_start = time.perf_counter()
         self._persist_agent_result(crm_mensaje, auto_process_result)
+        t_persist_done = time.perf_counter()
         self._ensure_business_materialization_from_agent_result(crm_mensaje, auto_process_result)
+        t_materialization_done = time.perf_counter()
         return await self._deliver_persisted_result(
             crm_mensaje,
             auto_process_result,
@@ -730,7 +798,12 @@ class MetaWebhookService:
             timing={
                 "message_ready_ms": message_ready_ms if message_ready_ms is not None else 0,
                 "pre_agent": pre_agent_timing or {},
-                "agent_ms": round((t_agent_done - t_agent_start) * 1000),
+                "queue": queue_timing,
+                "prepare_queued_message_ms": round((t_prepare_done - t_agent_start) * 1000),
+                "orchestrator_ms": round((t_orchestrator_done - t_prepare_done) * 1000),
+                "agent_ms": round((t_orchestrator_done - t_agent_start) * 1000),
+                "persist_agent_result_ms": round((t_persist_done - t_persist_start) * 1000),
+                "materialization_ms": round((t_materialization_done - t_persist_done) * 1000),
                 "started_at": t0,
             },
         )
@@ -757,7 +830,10 @@ class MetaWebhookService:
         cached: bool,
         timing: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        result = _append_sub_mock_timing(result, timing)
+        t_mark_pending_start = time.perf_counter()
         self._delivery_service.mark_delivery_pending(self.session, crm_mensaje)
+        t_mark_pending_done = time.perf_counter()
         t_delivery_start = time.perf_counter()
         delivery = await self._delivery_service.deliver_result(
             session=self.session,
@@ -776,6 +852,7 @@ class MetaWebhookService:
             started_at = float(timing.pop("started_at"))
             result_with_delivery["_timing"] = {
                 **timing,
+                "mark_delivery_pending_ms": round((t_mark_pending_done - t_mark_pending_start) * 1000),
                 "delivery_ms": round((t_delivery_done - t_delivery_start) * 1000),
                 "total_before_metadata_ms": round((t_delivery_done - started_at) * 1000),
             }
@@ -949,6 +1026,7 @@ class MetaWebhookService:
         *,
         enqueue_only: bool = False,
         queue_name: str = DEFAULT_QUEUE_NAME,
+        enqueue_message_callback: Callable[[int], None] | None = None,
     ) -> dict[str, Any]:
         """
         Procesa un payload normalizado del modulo channel.
@@ -1018,6 +1096,8 @@ class MetaWebhookService:
                     enqueue_only=enqueue_only,
                     queue_name=queue_name,
                 )
+                if enqueue_only and enqueue_message_callback is not None and result.get("mensaje_id") is not None:
+                    enqueue_message_callback(int(result["mensaje_id"]))
             else:
                 self._handle_outbound_status(msg)
                 result = {"status": "ok", "message": "Webhook procesado exitosamente"}

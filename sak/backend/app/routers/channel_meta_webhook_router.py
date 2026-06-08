@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -43,6 +43,7 @@ async def process_raw_meta_webhook_payload(
     *,
     enqueue_only: bool = False,
     queue_name: str = DEFAULT_QUEUE_NAME,
+    enqueue_message_callback: Callable[[int], None] | None = None,
 ) -> list[dict[str, Any]]:
     t0 = time.perf_counter()
     normalized_payloads = raw_meta_to_channel_payloads(session, payload)
@@ -56,6 +57,7 @@ async def process_raw_meta_webhook_payload(
             normalized_payload,
             enqueue_only=enqueue_only,
             queue_name=queue_name,
+            enqueue_message_callback=enqueue_message_callback,
         )
         results.append(result)
         logger.info(
@@ -111,15 +113,12 @@ async def receive_meta_webhook(
                 payload,
                 enqueue_only=True,
                 queue_name=queue_name,
+                enqueue_message_callback=enqueue_agent_message,
             )
         except Exception:
             session.rollback()
             logger.exception("Error procesando webhook directo de Meta")
             return ChannelWebhookResponse(status="ok", message="Recibido con error")
-        for result in results:
-            message_id = result.get("mensaje_id")
-            if message_id is not None:
-                enqueue_agent_message(int(message_id))
         return ChannelWebhookResponse(status="ok", message="Encolado")
 
     background_tasks.add_task(_process_raw_meta_background, payload, queue_name=queue_name)

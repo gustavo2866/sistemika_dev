@@ -5,11 +5,13 @@ from __future__ import annotations
 from agente.v2.processes.general.handler import GeneralProcess
 from agente.v2.processes.parte_diario.handler import ParteDiarioProcess
 from agente.v2.processes.pedido_obra.handler import PedidoObraProcess, build_pedido_obra_dependencies
+from agente.v2.processes.sub_mock.handler import SubMockProcess
 
 
 def build_agent_runtime_dependencies(*, session=None):
     state_store, pedido_obra = build_pedido_obra_dependencies(session=session)
     return state_store, [
+        SubMockProcess(),
         GeneralProcess(session=session),
         pedido_obra,
         ParteDiarioProcess(session=session),

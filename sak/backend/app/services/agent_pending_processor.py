@@ -15,12 +15,14 @@ from app.models import CRMMensaje
 from app.models.base import current_utc_time
 from app.models.enums import CanalMensaje, TipoMensaje
 from app.services.agent_queue_state import (
+    QUEUE_ENQUEUED_AT_KEY,
     message_queue_name,
     mark_error_metadata,
     mark_pending_metadata,
     mark_processed_metadata,
     mark_processing_metadata,
     normalize_queue_name,
+    pop_runtime_enqueued_at,
     worker_queue_name,
 )
 from app.services.meta_webhook_service import MetaWebhookService
@@ -80,6 +82,9 @@ def _skip_reason(
 
 def _set_processing_marker(session: Session, message: CRMMensaje, *, source: str) -> None:
     metadata = dict(message.metadata_json or {})
+    enqueued_at = pop_runtime_enqueued_at(int(message.id))
+    if enqueued_at:
+        metadata[QUEUE_ENQUEUED_AT_KEY] = enqueued_at
     metadata = mark_processing_metadata(metadata, source=source)
     attempt = int(metadata.get(RETRY_ATTEMPTS_KEY) or 0) + 1
     metadata[RETRY_ATTEMPTS_KEY] = attempt

@@ -624,8 +624,6 @@ class CRMMensajeService:
         }
         mensaje = crm_mensaje_crud.create(session, mensaje_payload)
 
-        session.commit()
-        session.refresh(mensaje)
         try:
             if not celular.meta_celular_id:
                 raise ValueError(f"Celular {celular.id} no tiene meta_celular_id configurado")
@@ -648,7 +646,6 @@ class CRMMensajeService:
             mensaje.origen_externo_id = resultado_channel.get("meta_message_id")
             mensaje.estado = EstadoMensaje.ENVIADO.value
             session.commit()
-            session.refresh(mensaje)
 
             return {
                 "mensaje_salida": mensaje,
