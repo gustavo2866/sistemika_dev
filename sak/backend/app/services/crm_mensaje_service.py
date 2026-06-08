@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, Optional
+import logging
 import os
 import json
+import time
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from sqlmodel import Session, select
@@ -622,7 +626,9 @@ class CRMMensajeService:
             "estado_meta": "pending",
             "metadata_json": metadata_json,
         }
+        t_create_start = time.perf_counter()
         mensaje = crm_mensaje_crud.create(session, mensaje_payload)
+        t_create_done = time.perf_counter()
 
         try:
             if not celular.meta_celular_id:
@@ -632,6 +638,7 @@ class CRMMensajeService:
             telefono_limpio = str(contacto_referencia).replace("+", "")
             nombre_contacto = contacto.nombre_completo if contacto else None
 
+            t_gateway_start = time.perf_counter()
             resultado_channel = await channel_gateway.enviar_mensaje(
                 empresa_id=EMPRESA_ID,
                 celular_id=celular.meta_celular_id,
@@ -641,11 +648,26 @@ class CRMMensajeService:
                 template_fallback_name=payload.get("template_fallback_name", "notificacion_general"),
                 template_fallback_language=payload.get("template_fallback_language", "en"),
             )
+            t_gateway_done = time.perf_counter()
 
             mensaje.estado_meta = resultado_channel.get("status", "sent")
             mensaje.origen_externo_id = resultado_channel.get("meta_message_id")
             mensaje.estado = EstadoMensaje.ENVIADO.value
+            t_commit_start = time.perf_counter()
             session.commit()
+            t_commit_done = time.perf_counter()
+
+            logger.info(
+                "enviar_mensaje timing mensaje_id=%s oportunidad_id=%s "
+                "create_ms=%s gateway_ms=%s final_commit_ms=%s total_ms=%s status=%s",
+                mensaje.id,
+                mensaje.oportunidad_id,
+                round((t_create_done - t_create_start) * 1000),
+                round((t_gateway_done - t_gateway_start) * 1000),
+                round((t_commit_done - t_commit_start) * 1000),
+                round((t_commit_done - t_create_start) * 1000),
+                mensaje.estado_meta,
+            )
 
             return {
                 "mensaje_salida": mensaje,
