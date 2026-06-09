@@ -528,6 +528,7 @@ class MetaWebhookService:
         schedule_typing: bool = True,
         enqueue_only: bool = False,
         queue_name: str = DEFAULT_QUEUE_NAME,
+        enqueue_message_callback: Callable[[int], None] | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         t_lookup_start = time.perf_counter()
@@ -615,6 +616,12 @@ class MetaWebhookService:
             "refresh_ms": round((t_refresh_done - t_extra_commit_done) * 1000),
             "message_ready_ms": round((t_message_ready - t0) * 1000),
         }
+        if enqueue_only and enqueue_message_callback is not None:
+            t_enqueue_start = time.perf_counter()
+            enqueue_message_callback(int(crm_mensaje.id))
+            t_enqueue_done = time.perf_counter()
+            pre_agent_timing["enqueue_callback_ms"] = round((t_enqueue_done - t_enqueue_start) * 1000)
+            pre_agent_timing["ready_to_enqueue_ms"] = round((t_enqueue_start - t_message_ready) * 1000)
         logger.info(
             "Webhook inbound pre-agent timing meta_message_id=%s find_existing=%sms contacto=%sms oportunidad=%sms normalize=%sms crm_create_crud=%sms extra_commit=%sms refresh=%sms ready=%sms",
             msg.meta_message_id,
@@ -650,6 +657,7 @@ class MetaWebhookService:
             "_timing": {
                 "message_ready_ms": round((t_message_ready - t0) * 1000),
                 "total_ms": round((time.perf_counter() - t0) * 1000),
+                "pre_agent": pre_agent_timing,
             },
         }
         return payload
@@ -813,14 +821,21 @@ class MetaWebhookService:
         crm_mensaje: CRMMensaje,
         result: dict[str, Any],
     ) -> None:
+        self._apply_agent_result_metadata(crm_mensaje, result)
+        self.session.add(crm_mensaje)
+        self.session.commit()
+        self.session.refresh(crm_mensaje)
+
+    @staticmethod
+    def _apply_agent_result_metadata(
+        crm_mensaje: CRMMensaje,
+        result: dict[str, Any],
+    ) -> None:
         metadata = dict(crm_mensaje.metadata_json or {})
         agent_meta = dict(metadata.get("agent_v2") or {})
         agent_meta["result"] = result
         metadata["agent_v2"] = agent_meta
         crm_mensaje.metadata_json = metadata
-        self.session.add(crm_mensaje)
-        self.session.commit()
-        self.session.refresh(crm_mensaje)
 
     async def _deliver_persisted_result(
         self,
@@ -857,7 +872,7 @@ class MetaWebhookService:
                 "total_before_metadata_ms": round((t_delivery_done - started_at) * 1000),
             }
 
-        self._persist_agent_result(crm_mensaje, result_with_delivery)
+        self._apply_agent_result_metadata(crm_mensaje, result_with_delivery)
         self._delivery_service.record_delivery_result(self.session, crm_mensaje, delivery)
         return result_with_delivery
 
@@ -1027,6 +1042,7 @@ class MetaWebhookService:
         enqueue_only: bool = False,
         queue_name: str = DEFAULT_QUEUE_NAME,
         enqueue_message_callback: Callable[[int], None] | None = None,
+        record_channel_event: bool = True,
     ) -> dict[str, Any]:
         """
         Procesa un payload normalizado del modulo channel.
@@ -1063,23 +1079,24 @@ class MetaWebhookService:
                 task.add_done_callback(_typing_indicator_tasks.discard)
             t_typing_scheduled = time.perf_counter()
 
-            event_direction = "inbound" if msg.direccion == "in" else "status"
-            channel_gateway.record_event(
-                self.session,
-                ChannelEventData(
-                    provider="meta",
-                    channel_type="whatsapp",
-                    account_ref=str(msg.celular.id),
-                    direction=event_direction,
-                    from_address=msg.from_phone,
-                    to_address=msg.to_phone,
-                    external_message_id=msg.meta_message_id,
-                    status=msg.status,
-                    occurred_at=self._normalize_timestamp_to_utc(msg.meta_timestamp),
-                    raw_payload=payload,
-                    normalized_payload=msg.model_dump(mode="json"),
-                ),
-            )
+            if record_channel_event:
+                event_direction = "inbound" if msg.direccion == "in" else "status"
+                channel_gateway.record_event(
+                    self.session,
+                    ChannelEventData(
+                        provider="meta",
+                        channel_type="whatsapp",
+                        account_ref=str(msg.celular.id),
+                        direction=event_direction,
+                        from_address=msg.from_phone,
+                        to_address=msg.to_phone,
+                        external_message_id=msg.meta_message_id,
+                        status=msg.status,
+                        occurred_at=self._normalize_timestamp_to_utc(msg.meta_timestamp),
+                        raw_payload=payload,
+                        normalized_payload=msg.model_dump(mode="json"),
+                    ),
+                )
             t_record_event_done = time.perf_counter()
 
             celular = self._ensure_crm_celular(
@@ -1095,9 +1112,8 @@ class MetaWebhookService:
                     schedule_typing=not auto_process,
                     enqueue_only=enqueue_only,
                     queue_name=queue_name,
+                    enqueue_message_callback=enqueue_message_callback,
                 )
-                if enqueue_only and enqueue_message_callback is not None and result.get("mensaje_id") is not None:
-                    enqueue_message_callback(int(result["mensaje_id"]))
             else:
                 self._handle_outbound_status(msg)
                 result = {"status": "ok", "message": "Webhook procesado exitosamente"}

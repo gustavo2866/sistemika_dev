@@ -6,7 +6,6 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import and_, func, or_, update
 from sqlmodel import Session, select
-import httpx
 
 from agente.v2.core.orchestrator import AgentTurnOrchestrator
 from agente.v2.core.dependencies import (
@@ -22,9 +21,8 @@ from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
-from app.models import CRMMensaje, CRMCelular, CRMContacto, CRMOportunidad, CRMTipoOperacion, Proyecto
-from app.models.enums import TipoMensaje, CanalMensaje, EstadoMensaje
-from app.modules.channels.gateway import channel_gateway
+from app.models import CRMMensaje, CRMContacto, CRMOportunidad, CRMTipoOperacion, Proyecto
+from app.models.enums import TipoMensaje, EstadoMensaje
 from app.services.crm_mensaje_service import crm_mensaje_service
 from app.schemas.crm_mensaje_responder import ResponderMensajeRequest, ResponderMensajeResponse
 
@@ -553,194 +551,21 @@ async def responder_mensaje_whatsapp(
     Returns:
         ResponderMensajeResponse con ID del mensaje creado y estado
     """
-    # 1. Buscar mensaje original
-    mensaje_original = session.get(CRMMensaje, mensaje_id)
-    if not mensaje_original:
-        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
-    
-    # 2. Validar que tenga contacto y referencia (teléfono)
-    if not mensaje_original.contacto_referencia:
-        raise HTTPException(
-            status_code=400,
-            detail="Mensaje no tiene contacto_referencia (teléfono)"
-        )
-    
-    # 3. Crear oportunidad si no existe
-    oportunidad_creada = False
-    if not mensaje_original.oportunidad_id and mensaje_original.contacto_id:
-        from app.models import CRMOportunidad
-        from app.crud.crm_oportunidad_crud import crm_oportunidad_crud
-        
-        # Obtener responsable del contacto o del mensaje
-        responsable_id = None
-        if mensaje_original.contacto:
-            responsable_id = mensaje_original.contacto.responsable_id
-        if not responsable_id:
-            responsable_id = mensaje_original.responsable_id
-        
-        if responsable_id:
-            oportunidad_payload = {
-                "contacto_id": mensaje_original.contacto_id,
-                "estado": "0-prospect",
-                "fecha_estado": datetime.now(UTC),
-                "tipo_operacion_id": 1,  # TODO: obtener de configuración
-                "propiedad_id": 4,  # TODO: permitir NULL o solicitar al usuario
-                "titulo": "Nueva oportunidad desde WhatsApp",
-                "descripcion": mensaje_original.contenido or "Consulta por WhatsApp",
-                "descripcion_estado": "Nueva oportunidad desde WhatsApp",
-                "responsable_id": responsable_id,
-                "activo": True,
-            }
-            oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
-            mensaje_original.oportunidad_id = oportunidad.id
-            oportunidad_creada = True
-            logger.info(f"Oportunidad {oportunidad.id} creada para mensaje {mensaje_id}")
-    
-    # 4. Actualizar estado del mensaje original a 'recibido'
-    if mensaje_original.estado in [EstadoMensaje.NUEVO.value, "descartado"]:
-        mensaje_original.estado = EstadoMensaje.RECIBIDO.value
-        logger.info(f"Mensaje {mensaje_id} actualizado a estado 'recibido'")
-    
-    session.commit()
-    session.refresh(mensaje_original)
-    
-    # 5. Obtener celular para respuesta (priorizar el del mensaje original)
-    celular = None
-    
-    # Intentar usar el mismo celular del mensaje original
-    if mensaje_original.celular_id:
-        celular = session.get(CRMCelular, mensaje_original.celular_id)
-        if celular and not celular.activo:
-            celular = None  # Fallback si el celular original está inactivo
-    
-    # Si no hay celular del mensaje original, buscar uno activo
-    if not celular:
-        stmt = select(CRMCelular).where(CRMCelular.activo == True).limit(1)
-        celular = session.exec(stmt).first()
-    
-    if not celular:
-        raise HTTPException(
-            status_code=404,
-            detail="No hay celular (canal WhatsApp) activo configurado"
-        )
-    
-    fecha_salida = datetime.now(UTC)
-    fecha_origen = mensaje_original.fecha_mensaje
-    if fecha_origen is not None and fecha_origen.tzinfo is None:
-        fecha_origen = fecha_origen.replace(tzinfo=UTC)
-    if fecha_origen is not None and fecha_origen >= fecha_salida:
-        fecha_salida = fecha_origen + timedelta(milliseconds=1)
-
-    # 6. Crear mensaje de salida en crm_mensajes
-    mensaje_salida = CRMMensaje(
-        tipo=TipoMensaje.SALIDA.value,
-        canal=CanalMensaje.WHATSAPP.value,
-        contacto_id=mensaje_original.contacto_id,
-        contacto_referencia=mensaje_original.contacto_referencia,
-        oportunidad_id=mensaje_original.oportunidad_id,
-        estado=EstadoMensaje.PENDIENTE_ENVIO.value,
-        contenido=request.texto,
-        fecha_mensaje=fecha_salida,
-        celular_id=celular.id,
-        estado_meta="pending",
-        metadata_json={"source_message_id": mensaje_original.id},
-    )
-    session.add(mensaje_salida)
-    session.commit()
-    session.refresh(mensaje_salida)
-    
-    # Actualizar ultimo_mensaje en oportunidad
-    from app.services.crm_mensaje_service import CRMMensajeService
-    CRMMensajeService.actualizar_ultimo_mensaje_oportunidad(session, mensaje_salida)
-    
-    # 7. Enviar a través del modulo de canales
     try:
-        # La fachada conserva empresa_id/celular_id para mantener el contrato anterior.
-        if not celular.meta_celular_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Celular {celular.id} no tiene meta_celular_id configurado"
-            )
-        
-        # Necesitamos empresa_id - por ahora hardcodeado (TODO: obtener de configuración)
-        EMPRESA_ID = "692d787d-06c4-432e-a94e-cf0686e593eb"
-        
-        # Limpiar teléfono (remover + si existe)
-        telefono_limpio = mensaje_original.contacto_referencia.replace("+", "")
-        
-        # Obtener nombre del contacto si existe
-        nombre_contacto = None
-        if mensaje_original.contacto:
-            nombre_contacto = mensaje_original.contacto.nombre_completo
-        
-        resultado_channel = await channel_gateway.enviar_mensaje(
-            empresa_id=EMPRESA_ID,
-            celular_id=celular.meta_celular_id,
-            telefono_destino=telefono_limpio,
+        return await crm_mensaje_service.responder_mensaje_whatsapp(
+            session,
+            mensaje_id,
             texto=request.texto,
-            nombre_contacto=nombre_contacto,
             template_fallback_name=request.template_fallback_name,
-            template_fallback_language=request.template_fallback_language
+            template_fallback_language=request.template_fallback_language,
         )
-        
-        # 8. Actualizar mensaje con respuesta del provider
-        mensaje_salida.estado_meta = resultado_channel.get("status", "sent")
-        mensaje_salida.origen_externo_id = resultado_channel.get("meta_message_id")
-        mensaje_salida.estado = EstadoMensaje.ENVIADO.value
-        session.commit()
-        session.refresh(mensaje_salida)
-        
-        logger.info(
-            f"Respuesta enviada: mensaje {mensaje_salida.id}, "
-            f"oportunidad_creada={oportunidad_creada}, "
-            f"meta_id={mensaje_salida.origen_externo_id}"
-        )
-        
-        return ResponderMensajeResponse(
-            mensaje_id=mensaje_salida.id,
-            status=mensaje_salida.estado_meta,
-            meta_message_id=mensaje_salida.origen_externo_id
-        )
-        
-    except httpx.HTTPStatusError as e:
-        # Error del provider de canales
-        error_msg = f"Error channels/meta: {e.response.status_code} - {e.response.text}"
-        logger.error(error_msg)
-        
-        mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
-        mensaje_salida.estado_meta = "failed"
-        mensaje_salida.metadata_json = {
-            **(mensaje_salida.metadata_json or {}),
-            "error": error_msg,
-            "error_code": e.response.status_code,
-        }
-        session.commit()
-        
-        return ResponderMensajeResponse(
-            mensaje_id=mensaje_salida.id,
-            status="failed",
-            error_message=error_msg
-        )
-        
-    except Exception as e:
-        # Error general
-        error_msg = f"Error al enviar mensaje: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        
-        mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
-        mensaje_salida.estado_meta = "failed"
-        mensaje_salida.metadata_json = {
-            **(mensaje_salida.metadata_json or {}),
-            "error": error_msg,
-        }
-        session.commit()
-        
-        return ResponderMensajeResponse(
-            mensaje_id=mensaje_salida.id,
-            status="failed",
-            error_message=error_msg
-        )
-
+    except ValueError as e:
+        detail = str(e)
+        status_code = 404 if detail in {
+            "Mensaje no encontrado",
+            "No hay celular (canal WhatsApp) activo configurado",
+        } else 400
+        raise HTTPException(status_code=status_code, detail=detail)
 
 @router.post("/{mensaje_id}/responder-legacy")
 def responder_mensaje(

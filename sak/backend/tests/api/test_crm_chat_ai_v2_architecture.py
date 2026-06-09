@@ -699,17 +699,20 @@ def test_process_registry_returns_explicit_no_match_resolution(db_session, tmp_p
 
 
 def test_chat_ai_v2_channel_adapter_forwards_source_message_id(monkeypatch):
-    captured_payload: dict[str, object] = {}
+    captured_call: dict[str, object] = {}
 
-    async def fake_send_message(session, payload):
-        captured_payload.update(payload)
+    async def fake_reply_message(session, mensaje_id, *, texto, **kwargs):
+        captured_call.update({"mensaje_id": mensaje_id, "texto": texto, **kwargs})
         return {
             "status": "sent",
             "mensaje_salida": SimpleNamespace(id=321),
             "meta_message_id": "wamid.agent.v2.test",
         }
 
-    monkeypatch.setattr("agente.v2.infrastructure.channels.crm_channel_adapter.crm_mensaje_service.enviar_mensaje", fake_send_message)
+    monkeypatch.setattr(
+        "agente.v2.infrastructure.channels.crm_channel_adapter.crm_mensaje_service.responder_mensaje_whatsapp",
+        fake_reply_message,
+    )
 
     adapter = CRMOutboundChannelAdapter()
     result = asyncio.run(
@@ -727,7 +730,9 @@ def test_chat_ai_v2_channel_adapter_forwards_source_message_id(monkeypatch):
         )
     )
 
-    assert captured_payload["metadata"] == {"source_message_id": 99}
+    assert captured_call["mensaje_id"] == 99
+    assert captured_call["texto"] == "Perfecto, sigo con la solicitud."
+    assert captured_call["send_policy"] == "text_only"
     assert result.outbound_message_id == 321
     assert result.meta_message_id == "wamid.agent.v2.test"
 

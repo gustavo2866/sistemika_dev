@@ -93,9 +93,12 @@ class AgentTurnOrchestrator:
             return {**cached, "message_id": message_id, "cached": True}
 
         state = self._state_store.load(message.oportunidad_id)
-        ctx = self.build_context(session, message_id, trigger=trigger, state=state)
-
-        process = self._registry.resolve(ctx)
+        process = self._registry.get(state.active_process) if state.active_process else None
+        if process is not None:
+            ctx = self._build_active_process_context(message, trigger=trigger, state=state)
+        else:
+            ctx = self.build_context(session, message_id, trigger=trigger, state=state)
+            process = self._registry.resolve(ctx)
         if not process:
             result: dict[str, Any] = {"type": "no_process", "skipped": True, "reason": "No hay procesos disponibles"}
             state.last_message_id = message.id
@@ -222,6 +225,24 @@ class AgentTurnOrchestrator:
     # ------------------------------------------------------------------
     # Helpers internos
     # ------------------------------------------------------------------
+
+    def _build_active_process_context(
+        self,
+        message: CRMMensaje,
+        *,
+        trigger: str,
+        state: ConversationState,
+    ) -> TurnContext:
+        return TurnContext(
+            oportunidad_id=message.oportunidad_id,
+            contacto_id=message.contacto_id,
+            canal=message.canal,
+            trigger=trigger,
+            message=self._to_message_info(message),
+            history=[],
+            conversation_state=state,
+            is_project=True,
+        )
 
     def _load_history(self, session: Session, oportunidad_id: int) -> list[MessageInfo]:
         if self._history_limit == 0:

@@ -313,6 +313,180 @@ class CRMMensajeService:
         mensaje = crm_mensaje_crud.update(session, mensaje.id, {"estado": EstadoMensaje.PENDIENTE_ENVIO.value})
         return mensaje
 
+    async def responder_mensaje_whatsapp(
+        self,
+        session: Session,
+        mensaje_id: int,
+        *,
+        texto: str,
+        template_fallback_name: str | None = "notificacion_general",
+        template_fallback_language: str | None = "en",
+        send_policy: str = "auto",
+    ) -> Dict[str, Any]:
+        """
+        Responde a un mensaje entrante de WhatsApp usando el mismo contexto del origen.
+
+        Este metodo es la ruta compartida para respuestas manuales del crm-chat y
+        respuestas automaticas del agente.
+        """
+        contenido = (texto or "").strip()
+        if not contenido:
+            raise ValueError("El texto de la respuesta es obligatorio")
+
+        mensaje_original = session.get(CRMMensaje, mensaje_id)
+        if not mensaje_original:
+            raise ValueError("Mensaje no encontrado")
+
+        if not mensaje_original.contacto_referencia:
+            raise ValueError("Mensaje no tiene contacto_referencia (telefono)")
+
+        oportunidad_creada = False
+        mensaje_original_modificado = False
+        if not mensaje_original.oportunidad_id and mensaje_original.contacto_id:
+            responsable_id = None
+            if mensaje_original.contacto:
+                responsable_id = mensaje_original.contacto.responsable_id
+            if not responsable_id:
+                responsable_id = mensaje_original.responsable_id
+
+            if responsable_id:
+                oportunidad_payload = {
+                    "contacto_id": mensaje_original.contacto_id,
+                    "estado": "0-prospect",
+                    "fecha_estado": datetime.now(UTC),
+                    "tipo_operacion_id": 1,  # TODO: obtener de configuracion
+                    "propiedad_id": 4,  # TODO: permitir NULL o solicitar al usuario
+                    "titulo": "Nueva oportunidad desde WhatsApp",
+                    "descripcion": mensaje_original.contenido or "Consulta por WhatsApp",
+                    "descripcion_estado": "Nueva oportunidad desde WhatsApp",
+                    "responsable_id": responsable_id,
+                    "activo": True,
+                }
+                oportunidad = crm_oportunidad_crud.create(session, oportunidad_payload)
+                mensaje_original.oportunidad_id = oportunidad.id
+                oportunidad_creada = True
+                mensaje_original_modificado = True
+                logger.info("Oportunidad %s creada para mensaje %s", oportunidad.id, mensaje_id)
+
+        if mensaje_original.estado in [EstadoMensaje.NUEVO.value, "descartado"]:
+            mensaje_original.estado = EstadoMensaje.RECIBIDO.value
+            mensaje_original_modificado = True
+            logger.info("Mensaje %s actualizado a estado 'recibido'", mensaje_id)
+
+        celular = None
+        if mensaje_original.celular_id:
+            celular = session.get(CRMCelular, mensaje_original.celular_id)
+            if celular and not celular.activo:
+                celular = None
+
+        if not celular:
+            celular = session.exec(
+                select(CRMCelular).where(CRMCelular.activo == True).limit(1)  # noqa: E712
+            ).first()
+
+        if not celular:
+            raise ValueError("No hay celular (canal WhatsApp) activo configurado")
+
+        fecha_salida = datetime.now(UTC)
+        fecha_origen = mensaje_original.fecha_mensaje
+        if fecha_origen is not None and fecha_origen.tzinfo is None:
+            fecha_origen = fecha_origen.replace(tzinfo=UTC)
+        if fecha_origen is not None and fecha_origen >= fecha_salida:
+            fecha_salida = fecha_origen + timedelta(milliseconds=1)
+
+        mensaje_salida = CRMMensaje(
+            tipo=TipoMensaje.SALIDA.value,
+            canal=CanalMensaje.WHATSAPP.value,
+            contacto_id=mensaje_original.contacto_id,
+            contacto_referencia=mensaje_original.contacto_referencia,
+            oportunidad_id=mensaje_original.oportunidad_id,
+            estado=EstadoMensaje.PENDIENTE_ENVIO.value,
+            contenido=contenido,
+            fecha_mensaje=fecha_salida,
+            celular_id=celular.id,
+            estado_meta="pending",
+            metadata_json={"source_message_id": mensaje_original.id},
+        )
+        session.add(mensaje_salida)
+        if mensaje_original_modificado:
+            session.add(mensaje_original)
+        session.flush()
+        self.actualizar_ultimo_mensaje_oportunidad(session, mensaje_salida, auto_commit=False)
+        session.commit()
+        session.refresh(mensaje_salida)
+
+        try:
+            if not celular.meta_celular_id:
+                raise ValueError(f"Celular {celular.id} no tiene meta_celular_id configurado")
+
+            empresa_id = "692d787d-06c4-432e-a94e-cf0686e593eb"
+            telefono_limpio = mensaje_original.contacto_referencia.replace("+", "")
+            nombre_contacto = mensaje_original.contacto.nombre_completo if mensaje_original.contacto else None
+
+            resultado_channel = await channel_gateway.enviar_mensaje(
+                empresa_id=empresa_id,
+                celular_id=celular.meta_celular_id,
+                telefono_destino=telefono_limpio,
+                texto=contenido,
+                nombre_contacto=nombre_contacto,
+                template_fallback_name=template_fallback_name or "notificacion_general",
+                template_fallback_language=template_fallback_language or "en",
+                policy=send_policy,
+            )
+
+            mensaje_salida.estado_meta = resultado_channel.get("status", "sent")
+            mensaje_salida.origen_externo_id = resultado_channel.get("meta_message_id")
+            mensaje_salida.estado = EstadoMensaje.ENVIADO.value
+            session.commit()
+            session.refresh(mensaje_salida)
+
+            logger.info(
+                "Respuesta enviada: mensaje %s, oportunidad_creada=%s, meta_id=%s",
+                mensaje_salida.id,
+                oportunidad_creada,
+                mensaje_salida.origen_externo_id,
+            )
+
+            return {
+                "mensaje_salida": mensaje_salida,
+                "mensaje_id": mensaje_salida.id,
+                "status": mensaje_salida.estado_meta,
+                "meta_message_id": mensaje_salida.origen_externo_id,
+            }
+        except httpx.HTTPStatusError as exc:
+            error_msg = f"Error channels/meta: {exc.response.status_code} - {exc.response.text}"
+            logger.error(error_msg)
+            mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
+            mensaje_salida.estado_meta = "failed"
+            mensaje_salida.metadata_json = {
+                **(mensaje_salida.metadata_json or {}),
+                "error": error_msg,
+                "error_code": exc.response.status_code,
+            }
+            session.commit()
+            return {
+                "mensaje_salida": mensaje_salida,
+                "mensaje_id": mensaje_salida.id,
+                "status": "failed",
+                "error_message": error_msg,
+            }
+        except Exception as exc:
+            error_msg = f"Error al enviar mensaje: {str(exc)}"
+            logger.error(error_msg, exc_info=True)
+            mensaje_salida.estado = EstadoMensaje.ERROR_ENVIO.value
+            mensaje_salida.estado_meta = "failed"
+            mensaje_salida.metadata_json = {
+                **(mensaje_salida.metadata_json or {}),
+                "error": error_msg,
+            }
+            session.commit()
+            return {
+                "mensaje_salida": mensaje_salida,
+                "mensaje_id": mensaje_salida.id,
+                "status": "failed",
+                "error_message": error_msg,
+            }
+
     def responder_mensaje(
         self,
         session: Session,
@@ -647,6 +821,7 @@ class CRMMensajeService:
                 nombre_contacto=nombre_contacto,
                 template_fallback_name=payload.get("template_fallback_name", "notificacion_general"),
                 template_fallback_language=payload.get("template_fallback_language", "en"),
+                policy=str(payload.get("send_policy") or "auto"),
             )
             t_gateway_done = time.perf_counter()
 
@@ -858,7 +1033,12 @@ class CRMMensajeService:
         }
 
     @staticmethod
-    def actualizar_ultimo_mensaje_oportunidad(session: Session, mensaje: CRMMensaje):
+    def actualizar_ultimo_mensaje_oportunidad(
+        session: Session,
+        mensaje: CRMMensaje,
+        *,
+        auto_commit: bool = True,
+    ):
         """
         Función utilitaria para actualizar ultimo_mensaje cuando se crea un mensaje
         directamente (sin pasar por CRUD).
@@ -871,7 +1051,11 @@ class CRMMensajeService:
         
         # Usar la misma lógica que el CRUD extendido
         from app.crud.crm_mensaje_crud import crm_mensaje_crud
-        crm_mensaje_crud._actualizar_ultimo_mensaje_oportunidad(session, mensaje)
+        crm_mensaje_crud._actualizar_ultimo_mensaje_oportunidad(
+            session,
+            mensaje,
+            auto_commit=auto_commit,
+        )
 
 
 crm_mensaje_service = CRMMensajeService()

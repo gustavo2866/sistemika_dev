@@ -12,16 +12,47 @@ from sqlmodel import Session
 
 from app.db import engine, get_session
 from app.modules.channels.config import meta_account_resolver
+from app.modules.channels.persistence import channel_event_store
 from app.modules.channels.providers.meta.webhook import raw_meta_to_channel_payloads
+from app.modules.channels.types import ChannelEventData
 from app.schemas.channel_webhook import ChannelWebhookResponse
+from app.schemas.channel_webhook import ChannelWebhookPayload
 from app.services.agent_queue_state import DEFAULT_QUEUE_NAME, normalize_queue_name
-from app.services.agent_queue_worker import enqueue_agent_message
+from app.services.channel_event_queue_worker import enqueue_channel_event
 from app.services.agent_pending_processor import process_pending_agent_messages
 from app.services.meta_webhook_service import MetaWebhookService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/channel-webhooks/meta", tags=["channel-webhooks"])
+
+
+def _record_inbound_channel_event(
+    session: Session,
+    normalized_payload: dict[str, Any],
+) -> int:
+    channel_payload = ChannelWebhookPayload(**normalized_payload)
+    msg = channel_payload.mensaje
+    row = channel_event_store.record(
+        session,
+        ChannelEventData(
+            provider="meta",
+            channel_type="whatsapp",
+            account_ref=str(msg.celular.id),
+            direction="inbound",
+            from_address=msg.from_phone,
+            to_address=msg.to_phone,
+            external_message_id=msg.meta_message_id,
+            status=msg.status,
+            occurred_at=MetaWebhookService._normalize_timestamp_to_utc(msg.meta_timestamp),
+            raw_payload=normalized_payload,
+            normalized_payload=normalized_payload,
+        ),
+    )
+    session.commit()
+    if row.id is None:
+        raise RuntimeError("No se pudo persistir channel_event")
+    return int(row.id)
 
 
 @router.get("/", response_class=PlainTextResponse)
@@ -53,12 +84,21 @@ async def process_raw_meta_webhook_payload(
     results: list[dict[str, Any]] = []
     for normalized_payload in normalized_payloads:
         t_item = time.perf_counter()
-        result = await service.process_webhook(
-            normalized_payload,
-            enqueue_only=enqueue_only,
-            queue_name=queue_name,
-            enqueue_message_callback=enqueue_message_callback,
-        )
+        if enqueue_only:
+            channel_event_id = _record_inbound_channel_event(session, normalized_payload)
+            enqueue_channel_event(channel_event_id)
+            result = {
+                "status": "ok",
+                "message": "Evento de canal encolado",
+                "channel_event_id": channel_event_id,
+            }
+        else:
+            result = await service.process_webhook(
+                normalized_payload,
+                enqueue_only=enqueue_only,
+                queue_name=queue_name,
+                enqueue_message_callback=enqueue_message_callback,
+            )
         results.append(result)
         logger.info(
             "Channel webhook item timing event_type=%s process_webhook=%sms",
@@ -113,7 +153,6 @@ async def receive_meta_webhook(
                 payload,
                 enqueue_only=True,
                 queue_name=queue_name,
-                enqueue_message_callback=enqueue_agent_message,
             )
         except Exception:
             session.rollback()

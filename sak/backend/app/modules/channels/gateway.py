@@ -67,6 +67,7 @@ class ChannelGateway:
         nombre_contacto: str | None = None,
         template_fallback_name: str = "notificacion_general",
         template_fallback_language: str = "en",
+        policy: str = "auto",
     ) -> dict:
         command = SendMessageCommand(
             provider="meta",
@@ -78,7 +79,7 @@ class ChannelGateway:
             contact_name=nombre_contacto,
             template_fallback_name=template_fallback_name,
             template_fallback_language=template_fallback_language,
-            policy="auto",
+            policy=policy,  # type: ignore[arg-type]
         )
         with Session(engine) as session:
             result = await meta_provider.send_message(session, command)

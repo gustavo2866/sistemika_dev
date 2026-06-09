@@ -23,6 +23,7 @@ else:
 
 from app.db import init_db
 from app.services.agent_queue_worker import start_agent_queue_worker, stop_agent_queue_worker
+from app.services.channel_event_queue_worker import start_channel_event_queue_worker, stop_channel_event_queue_worker
 from app.routers.item_router import item_router
 from app.routers.user_router import user_router
 from app.routers.pais_router import pais_router
@@ -259,10 +260,12 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 @app.on_event("startup")
 async def on_startup():
     init_db()
+    start_channel_event_queue_worker()
     start_agent_queue_worker()
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    await stop_channel_event_queue_worker()
     await stop_agent_queue_worker()
 
 @app.get("/health")

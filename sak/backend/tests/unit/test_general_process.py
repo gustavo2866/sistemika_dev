@@ -143,3 +143,54 @@ async def test_orchestrator_activate_and_forward_reuses_original_message(db_sess
     assert result["type"] == "pedido_obra_reply"
     assert result["process_name"] == "pedido_obra"
     assert store.load(1).active_process == "pedido_obra"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_active_process_uses_minimal_context(db_session, tmp_path):
+    message = CRMMensaje(
+        tipo="entrada",
+        contenido="agrega 10 bolsas de cemento",
+        oportunidad_id=1,
+        contacto_id=2,
+        canal="whatsapp",
+    )
+    db_session.add(message)
+    db_session.commit()
+    db_session.refresh(message)
+
+    class Pedido:
+        name = "pedido_obra"
+
+        def priority(self, ctx):
+            raise AssertionError("No debe resolver prioridad si ya hay proceso activo")
+
+        async def handle(self, ctx):
+            assert ctx.active_process == self.name
+            assert ctx.oportunidad_id == 1
+            assert ctx.contacto_id == 2
+            assert ctx.history == []
+            assert ctx.is_project is True
+            assert ctx.message.contenido == "agrega 10 bolsas de cemento"
+            return TurnResult(
+                payload={"type": "pedido_obra_reply", "items": ["cemento"]},
+                keep_active=True,
+                process_state={"items": ["cemento"]},
+            )
+
+    store = JsonConversationStateStore(root_dir=tmp_path)
+    store.save(ConversationState(oportunidad_id=1, active_process="pedido_obra", process_state={"items": []}))
+    orchestrator = AgentTurnOrchestrator(
+        processes=[Pedido()],
+        state_store=store,
+    )
+
+    def fail_build_context(*args, **kwargs):
+        raise AssertionError("No debe construir contexto completo si ya hay proceso activo")
+
+    orchestrator.build_context = fail_build_context  # type: ignore[method-assign]
+
+    result = await orchestrator.process_turn(db_session, message.id, "webhook")
+
+    assert result["type"] == "pedido_obra_reply"
+    assert result["process_name"] == "pedido_obra"
+    assert store.load(1).active_process == "pedido_obra"

@@ -9,18 +9,28 @@ class CRMOutboundChannelAdapter:
     """Adaptador de salida que reutiliza el servicio CRM existente."""
 
     async def send_text(self, session: Session, command) -> object:
-        send_result = await crm_mensaje_service.enviar_mensaje(
-            session,
-            {
-                "contenido": command.contenido,
-                "contacto_id": command.contacto_id,
-                "oportunidad_id": command.oportunidad_id,
-                "responsable_id": command.responsable_id,
-                "contacto_referencia": command.contacto_referencia,
-                "canal": command.canal,
-                "metadata": command.metadata,
-            },
-        )
+        source_message_id = (command.metadata or {}).get("source_message_id")
+        if source_message_id is not None:
+            send_result = await crm_mensaje_service.responder_mensaje_whatsapp(
+                session,
+                int(source_message_id),
+                texto=command.contenido,
+                send_policy="text_only",
+            )
+        else:
+            send_result = await crm_mensaje_service.enviar_mensaje(
+                session,
+                {
+                    "contenido": command.contenido,
+                    "contacto_id": command.contacto_id,
+                    "oportunidad_id": command.oportunidad_id,
+                    "responsable_id": command.responsable_id,
+                    "contacto_referencia": command.contacto_referencia,
+                    "canal": command.canal,
+                    "metadata": command.metadata,
+                    "send_policy": "text_only",
+                },
+            )
         # Import here to avoid circular dependency (delivery.py → crm_channel_adapter.py → delivery.py)
         from agente.v2.core.delivery import SendResult
         sent_status = str(send_result.get("status") or "")

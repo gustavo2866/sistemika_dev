@@ -49,7 +49,7 @@ def test_channel_meta_webhook_verify_returns_plain_challenge(client, db_session:
 def test_channel_meta_webhook_endpoint_enqueues_inbound_before_background_processing(client, monkeypatch):
     calls: list[tuple[str, object]] = []
 
-    async def fake_process_raw(session, payload, *, enqueue_only=False):
+    async def fake_process_raw(session, payload, *, enqueue_only=False, **kwargs):
         message_id = payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"]
         calls.append(("enqueue" if enqueue_only else "process", message_id))
 
@@ -101,7 +101,6 @@ def test_channel_meta_webhook_endpoint_enqueues_inbound_before_background_proces
     assert response.status_code == 200
     assert response.json()["message"] == "Encolado"
     assert calls[0] == ("enqueue", "wamid.test.inline.inbound")
-    assert calls[1] == ("pending", 5)
 
 
 @pytest.mark.asyncio
