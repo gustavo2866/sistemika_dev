@@ -97,6 +97,7 @@ from app.routers.crm import (
 )
 from app.routers.crm_celular_router import router as crm_celular_router
 from app.routers.channel_meta_webhook_router import router as channel_meta_webhook_router
+from app.routers.agente_v3_router import router as agente_v3_router
 from app.routers.calculadora_router import router as calculadora_router
 from app.api.upload import router as upload_router
 from app.api.factura_processing import router as factura_processing_router
@@ -221,6 +222,7 @@ app.include_router(crm_evento_router)
 app.include_router(crm_mensaje_router)
 app.include_router(crm_celular_router)
 app.include_router(channel_meta_webhook_router, prefix="/api")
+app.include_router(agente_v3_router, prefix="/api")
 app.include_router(calculadora_router)
 app.include_router(emprendimiento_router)
 # Routers módulo de compras (PO)

@@ -2,7 +2,8 @@
 Chat de prueba para el agente de obra simulando el webhook de Meta.
 
 Uso:
-  python backend/scripts/chat_agent_smoke.py              # backend local
+  python backend/scripts/chat_agent_smoke.py              # backend local con agente v3
+  python backend/scripts/chat_agent_smoke.py --v2         # usar flujo actual v2
   python backend/scripts/chat_agent_smoke.py --gcp        # GCP test
   python backend/scripts/chat_agent_smoke.py --prod --allow-prod
   python backend/scripts/chat_agent_smoke.py --url https://mi-backend.run.app
@@ -11,7 +12,8 @@ Uso:
   python backend/scripts/chat_agent_smoke.py --read-mode api
 
 Variables opcionales (sobreescritas por args de linea de comandos):
-  CHAT_TEST_BASE_URL=http://localhost:8000
+  CHAT_TEST_BASE_URL=http://127.0.0.1:8000
+  CHAT_TEST_AGENT_VERSION=v3       # v2 | v3
   CHAT_TEST_READ_MODE=auto         # auto | db | api
   CHAT_TEST_QUEUE=test             # cola enviada al webhook
   CHAT_TEST_TYPING_INDICATOR=1
@@ -36,7 +38,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -62,6 +64,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--timing", action="store_true", help="Mostrar timings detallados")
     parser.add_argument("--debug", action="store_true", help="Mostrar diagnostico tecnico debajo de cada respuesta")
+    version_group = parser.add_mutually_exclusive_group()
+    version_group.add_argument("--v2", action="store_true", help="Usar el flujo actual agente v2")
+    version_group.add_argument("--v3", action="store_true", help="Usar el pipeline experimental agente v3")
     parser.add_argument(
         "--read-mode",
         dest="read_mode",
@@ -75,7 +80,17 @@ def _parse_args() -> argparse.Namespace:
 _args = (
     _parse_args()
     if __name__ == "__main__"
-    else argparse.Namespace(url=None, prod=False, gcp=False, allow_prod=False, timing=False, debug=False, read_mode=None)
+    else argparse.Namespace(
+        url=None,
+        prod=False,
+        gcp=False,
+        allow_prod=False,
+        timing=False,
+        debug=False,
+        v2=False,
+        v3=False,
+        read_mode=None,
+    )
 )
 
 # CLI args always take precedence over env vars
@@ -86,13 +101,25 @@ elif _args.prod:
 elif _args.gcp:
     BASE_URL = _GCP_TEST_URL
 else:
-    BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://localhost:8000").rstrip("/")
+    BASE_URL = os.environ.get("CHAT_TEST_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
 if BASE_URL == _GCP_PROD_URL and not _args.allow_prod:
     raise SystemExit("Para ejecutar contra produccion agrega --allow-prod.")
 
-_read_mode_default = "api" if (BASE_URL != "http://localhost:8000" and not BASE_URL.startswith("http://127.")) else "auto"
+_read_mode_default = (
+    "auto"
+    if BASE_URL.startswith("http://localhost") or BASE_URL.startswith("http://127.0.0.1")
+    else "api"
+)
 READ_MODE = (_args.read_mode or os.environ.get("CHAT_TEST_READ_MODE", _read_mode_default)).strip().lower()
+if _args.v2:
+    AGENT_VERSION = "v2"
+elif _args.v3:
+    AGENT_VERSION = "v3"
+else:
+    AGENT_VERSION = os.environ.get("CHAT_TEST_AGENT_VERSION", "v3").strip().lower()
+if AGENT_VERSION not in {"v2", "v3"}:
+    raise SystemExit("CHAT_TEST_AGENT_VERSION debe ser 'v2' o 'v3'.")
 _queue_default = "test" if BASE_URL.startswith("http://localhost") or BASE_URL.startswith("http://127.") else "prod"
 QUEUE_NAME = os.environ.get("CHAT_TEST_QUEUE", _queue_default).strip().lower() or _queue_default
 
@@ -120,6 +147,8 @@ def _is_local_base_url() -> bool:
 
 
 def _use_db_read_mode() -> bool:
+    if _is_v3():
+        return False
     if READ_MODE == "db":
         return True
     if READ_MODE == "api":
@@ -127,6 +156,10 @@ def _use_db_read_mode() -> bool:
     if READ_MODE == "auto":
         return _is_local_base_url()
     raise ValueError("CHAT_TEST_READ_MODE debe ser 'auto', 'db' o 'api'")
+
+
+def _is_v3() -> bool:
+    return AGENT_VERSION == "v3"
 
 
 def _request_json(method: str, path: str, payload: dict | None = None, params: dict | None = None) -> dict:
@@ -147,6 +180,8 @@ def _request_json(method: str, path: str, payload: dict | None = None, params: d
 
 
 def _webhook_path() -> str:
+    if _is_v3():
+        return "/api/agente/v3/channel/meta"
     return "/api/channel-webhooks/meta/"
 
 
@@ -191,7 +226,8 @@ def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     meta_message_id = f"wamid.chat-test.{uuid4().hex}"
     payload = _build_raw_meta_payload(texto, meta_message_id)
     started = time.time()
-    response = _request_json("POST", _webhook_path(), payload, params={"queue": QUEUE_NAME})
+    params = None if _is_v3() else {"queue": QUEUE_NAME}
+    response = _request_json("POST", _webhook_path(), payload, params=params)
     return meta_message_id, response, time.time() - started
 
 
@@ -330,6 +366,9 @@ def _clear_typing() -> None:
 
 
 def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
+    if _is_v3():
+        return esperar_resultado_v3(meta_message_id)
+
     deadline = time.time() + POLL_TIMEOUT_SECONDS
     inbound = None
     latest_result = None
@@ -366,6 +405,106 @@ def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, d
     return inbound, latest_result, latest_outbound
 
 
+def esperar_resultado_v3(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
+    deadline = time.time() + POLL_TIMEOUT_SECONDS
+    frame = 0
+    sent_after = datetime.now(UTC) - timedelta(seconds=5)
+
+    while time.time() < deadline:
+        _print_typing(frame)
+        frame += 1
+        outbound = _find_channel_outbound_db(sent_after=sent_after)
+        if outbound:
+            _clear_typing()
+            inbound = {
+                "id": None,
+                "tipo": "entrada",
+                "canal": "whatsapp",
+                "contenido": None,
+                "contacto_referencia": FROM_PHONE,
+                "origen_externo_id": meta_message_id,
+                "metadata_json": {"agent_v3": {"observed_channel_outbound": outbound}},
+            }
+            text = _channel_outbound_text(outbound)
+            result = {
+                "type": "v3_ok",
+                "respuesta": text or "(sin texto)",
+                "status": outbound.get("status"),
+                "_timing": {},
+                "agent_v3": {"observed_channel_outbound": outbound},
+            }
+            outbound_message = {
+                "id": outbound.get("id"),
+                "tipo": "salida",
+                "canal": "whatsapp",
+                "estado": outbound.get("status"),
+                "contenido": text,
+                "contacto_referencia": outbound.get("to_address"),
+                "origen_externo_id": outbound.get("external_message_id"),
+                "metadata_json": outbound.get("normalized_payload") or {},
+            }
+            return inbound, result, outbound_message
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+    _clear_typing()
+    return None, None, None
+
+
+def _find_channel_outbound_db(*, sent_after: datetime) -> dict | None:
+    from sqlmodel import Session, select
+
+    from app.db import engine
+    from app.modules.channels.persistence import ChannelEvent
+
+    with Session(engine) as session:
+        rows = session.exec(
+            select(ChannelEvent)
+            .where(ChannelEvent.deleted_at.is_(None))
+            .where(ChannelEvent.provider == "meta")
+            .where(ChannelEvent.channel_type == "whatsapp")
+            .where(ChannelEvent.direction == "outbound")
+            .where(ChannelEvent.to_address == FROM_PHONE)
+            .where(ChannelEvent.created_at >= sent_after)
+            .order_by(ChannelEvent.created_at.desc(), ChannelEvent.id.desc())
+            .limit(10)
+        ).all()
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "id": row.id,
+            "external_message_id": row.external_message_id,
+            "status": row.status,
+            "from_address": row.from_address,
+            "to_address": row.to_address,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
+            "raw_payload": row.raw_payload or {},
+            "normalized_payload": row.normalized_payload or {},
+        }
+
+
+def _channel_outbound_text(event: dict) -> str | None:
+    normalized = event.get("normalized_payload") if isinstance(event, dict) else {}
+    request = normalized.get("request") if isinstance(normalized, dict) else {}
+    if isinstance(request, dict):
+        text = request.get("text")
+        if isinstance(text, dict) and text.get("body"):
+            return str(text["body"])
+        template = request.get("template")
+        components = template.get("components") if isinstance(template, dict) else []
+        for component in components or []:
+            for parameter in component.get("parameters") or []:
+                if parameter.get("type") == "text" and parameter.get("text"):
+                    return str(parameter["text"])
+    raw = event.get("raw_payload") if isinstance(event, dict) else {}
+    if isinstance(raw, dict):
+        text = raw.get("text")
+        if isinstance(text, dict) and text.get("body"):
+            return str(text["body"])
+    return None
+
+
 def _reply_text(result: dict | None, outbound: dict | None) -> str:
     if outbound and outbound.get("contenido"):
         return str(outbound["contenido"])
@@ -378,6 +517,24 @@ def _reply_text(result: dict | None, outbound: dict | None) -> str:
 
 
 def _mostrar_estado(result: dict | None, inbound: dict | None, outbound: dict | None) -> None:
+    if _is_v3():
+        agent_v3 = (result or {}).get("agent_v3") or (_metadata(inbound or {}).get("agent_v3") or {})
+        if agent_v3:
+            print("[Agente: v3]")
+            print(f"[Resultado: {(result or {}).get('type') or 'v3'}]")
+            timings = agent_v3.get("timings_ms") or {}
+            if timings:
+                print(
+                    "[Timing v3] "
+                    f"queued={timings.get('queued')}ms "
+                    f"orquesador={timings.get('orquesador')}ms "
+                    f"channel_send={timings.get('channel_send')}ms "
+                    f"total={timings.get('total')}ms"
+                )
+        elif inbound:
+            print("[Agente: v3 pendiente]")
+        return
+
     agent_meta = (_metadata(inbound or {}).get("agent_v2") or {}) if inbound else {}
     if result:
         process_name = result.get("process_name") or agent_meta.get("process_name")
@@ -450,14 +607,21 @@ def _format_quantity(value: Any) -> str:
 
 def main() -> None:
     print("=== Chat webhook agente de obra ===")
+    print(f"Agente: {AGENT_VERSION}")
     print(f"Webhook: {BASE_URL}{_webhook_path()}")
-    print(f"Cola agente: {QUEUE_NAME}")
-    print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")
+    if _is_v3():
+        print("Lectura: channel_events outbound")
+    else:
+        print(f"Cola agente: {QUEUE_NAME}")
+        print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
     print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
-    print("Nota: ese contacto debe tener una oportunidad activa de proyecto/obra.")
+    if not _is_v3():
+        print("Nota: ese contacto debe tener una oportunidad activa de proyecto/obra.")
     print("Comando local: 'salir' termina el chat.")
-    print("Envia CONFIRMAR o CANCELAR completos cuando corresponda.\n")
+    if not _is_v3():
+        print("Envia CONFIRMAR o CANCELAR completos cuando corresponda.")
+    print()
 
     while True:
         try:
@@ -512,7 +676,15 @@ def main() -> None:
             )
             webhook_timing = webhook_response.get("_timing") if isinstance(webhook_response, dict) else None
             print(f"[Timing] post={t_post:.1f}s total={t_total:.1f}s")
-            if isinstance(timing, dict):
+            if _is_v3() and isinstance(timing, dict):
+                print(
+                    "[Timing v3] "
+                    f"queued={timing.get('queued')}ms "
+                    f"orquesador={timing.get('orquesador')}ms "
+                    f"channel_send={timing.get('channel_send')}ms "
+                    f"total={timing.get('total')}ms"
+                )
+            elif isinstance(timing, dict):
                 print(f"[Timing] webhook-agent={timing.get('agent_ms')}ms delivery={timing.get('delivery_ms')}ms")
                 pre_agent = timing.get("pre_agent")
                 if isinstance(pre_agent, dict) and pre_agent:
