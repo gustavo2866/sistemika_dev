@@ -413,7 +413,11 @@ def esperar_resultado_v3(meta_message_id: str) -> tuple[dict | None, dict | None
     while time.time() < deadline:
         _print_typing(frame)
         frame += 1
-        outbound = _find_channel_outbound_db(sent_after=sent_after)
+
+        outbound = _find_channel_outbound_db(
+            sent_after=sent_after,
+            source_external_message_id=meta_message_id,
+        )
         if outbound:
             _clear_typing()
             inbound = {
@@ -450,7 +454,11 @@ def esperar_resultado_v3(meta_message_id: str) -> tuple[dict | None, dict | None
     return None, None, None
 
 
-def _find_channel_outbound_db(*, sent_after: datetime) -> dict | None:
+def _find_channel_outbound_db(
+    *,
+    sent_after: datetime,
+    source_external_message_id: str | None = None,
+) -> dict | None:
     from sqlmodel import Session, select
 
     from app.db import engine
@@ -466,11 +474,26 @@ def _find_channel_outbound_db(*, sent_after: datetime) -> dict | None:
             .where(ChannelEvent.to_address == FROM_PHONE)
             .where(ChannelEvent.created_at >= sent_after)
             .order_by(ChannelEvent.created_at.desc(), ChannelEvent.id.desc())
-            .limit(10)
+            .limit(50)
         ).all()
         if not rows:
             return None
+
         row = rows[0]
+        if source_external_message_id:
+            row = next(
+                (
+                    candidate
+                    for candidate in rows
+                    if ((candidate.normalized_payload or {}).get("agent_v3") or {}).get(
+                        "source_external_message_id"
+                    )
+                    == source_external_message_id
+                ),
+                None,
+            )
+            if row is None:
+                return None
         return {
             "id": row.id,
             "external_message_id": row.external_message_id,

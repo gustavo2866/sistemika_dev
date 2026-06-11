@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import time
 from typing import Any
 
-from agente.v3.models import V3OutboundMessage, utc_now
+from agente.v3.contracts import V3OutboundMessage, utc_now
 
 
 class V3Outbox:
@@ -35,12 +35,18 @@ class V3Outbox:
         started_at = datetime.now(UTC)
         t0 = time.perf_counter()
 
-        from agente.v3.channel import default_meta_channel
+        from app.modules.channels.v3.meta_channel import default_meta_channel
 
-        await default_meta_channel.send_text(message)
+        error: str | None = None
+        try:
+            await default_meta_channel.send_text(message)
+            message.status = "sent"
+        except Exception as exc:
+            error = str(exc)
+            message.status = "failed"
+            message.raw_response = {"error": error}
         t_send = time.perf_counter()
         message.sent_at = datetime.now(UTC)
-        message.status = "sent"
 
         async with self._lock:
             self._sent.append(message)
@@ -52,10 +58,12 @@ class V3Outbox:
         return {
             "message_id": message.id,
             "source_message_id": message.source_message_id,
+            "source_external_message_id": message.source_external_message_id,
             "to_address": message.to_address,
             "text": message.text,
             "status": message.status,
             "external_message_id": message.external_message_id,
+            "error": error,
             "started_at": started_at.isoformat(),
             "sent_at": message.sent_at.isoformat() if message.sent_at else None,
             "timings_ms": {
@@ -95,10 +103,12 @@ class V3Outbox:
                 {
                     "message_id": message.id,
                     "source_message_id": message.source_message_id,
+                    "source_external_message_id": message.source_external_message_id,
                     "to_address": message.to_address,
                     "text": message.text,
                     "status": message.status,
                     "external_message_id": message.external_message_id,
+                    "raw_response": message.raw_response,
                     "enqueued_at": message.enqueued_at.isoformat() if message.enqueued_at else None,
                 }
                 for message in pending
@@ -106,10 +116,12 @@ class V3Outbox:
             "last_sent": {
                 "message_id": sent[-1].id,
                 "source_message_id": sent[-1].source_message_id,
+                "source_external_message_id": sent[-1].source_external_message_id,
                 "to_address": sent[-1].to_address,
                 "text": sent[-1].text,
                 "status": sent[-1].status,
                 "external_message_id": sent[-1].external_message_id,
+                "raw_response": sent[-1].raw_response,
                 "sent_at": sent[-1].sent_at.isoformat() if sent[-1].sent_at else None,
             }
             if sent

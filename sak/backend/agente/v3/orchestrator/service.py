@@ -1,32 +1,37 @@
-"""Orquesador minimo del agente v3."""
+"""Orquestador minimo del agente v3."""
 
 from __future__ import annotations
 
-from agente.v3.context import V3ContextStore, default_context_store
-from agente.v3.models import V3InboundMessage, V3OrchestratorResult, V3OutboundMessage
-from agente.v3.outbox import default_outbox
-from agente.v3.process_selector import PROCESS_GENERAL, V3ProcessSelection, V3ProcessSelector, default_process_selector
-from agente.v3.processes import V3ProcessRegistry, default_process_registry
+from agente.v3.contracts import V3InboundMessage, V3OrchestratorResult, V3OutboundMessage
+from agente.v3.orchestrator.context_store import V3ContextStore, default_context_store
+from agente.v3.orchestrator.process_selector import (
+    PROCESS_GENERAL,
+    V3ProcessSelection,
+    V3ProcessSelector,
+    default_process_selector,
+)
+from agente.v3.outbox.queue import default_outbox
+from agente.v3.subprocesses.registry import V3SubprocessRegistry, default_subprocess_registry
 
 
-class V3Orquesador:
+class V3Orchestrator:
     """Carga contexto, deriva a subproceso y encola respuesta en outbox."""
 
     def __init__(
         self,
         *,
         context_store: V3ContextStore = default_context_store,
-        process_registry: V3ProcessRegistry = default_process_registry,
+        subprocess_registry: V3SubprocessRegistry = default_subprocess_registry,
         process_selector: V3ProcessSelector = default_process_selector,
     ) -> None:
         self._context_store = context_store
-        self._process_registry = process_registry
+        self._subprocess_registry = subprocess_registry
         self._process_selector = process_selector
 
     async def process_message(self, message: V3InboundMessage) -> tuple[V3OrchestratorResult, str]:
         context = await self._context_store.load_or_create(message.conversation_id)
         selection = await self._resolve_process(message, context)
-        process = self._process_registry.get(selection.process_name)
+        process = self._subprocess_registry.get(selection.process_name)
         if process is None:
             selection = V3ProcessSelection(
                 process_name=PROCESS_GENERAL,
@@ -34,7 +39,7 @@ class V3Orquesador:
                 confidence=0.0,
                 reason=f"Subproceso no registrado: {selection.process_name}",
             )
-            process = self._process_registry.get(PROCESS_GENERAL)
+            process = self._subprocess_registry.get(PROCESS_GENERAL)
         if process is None:
             raise RuntimeError("No hay subproceso general registrado")
 
@@ -81,4 +86,5 @@ class V3Orquesador:
         return await self._process_selector.resolve(message, context)
 
 
-default_orquesador = V3Orquesador()
+default_orchestrator = V3Orchestrator()
+

@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import time
 import logging
+import time
 from typing import Any, Callable
 from uuid import uuid4
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from agente.v3.inbox import default_inbox
-from agente.v3.models import (
+from agente.v3.contracts import (
     V3InboundMessage,
     V3OutboundMessage,
     utc_now,
 )
+from agente.v3.inbox import default_inbox
 from app.db import engine
 from app.modules.channels.gateway import channel_gateway
-from app.modules.channels.persistence import channel_event_store
+from app.modules.channels.persistence import ChannelEvent, channel_event_store
 from app.modules.channels.types import ChannelEventData
 
 logger = logging.getLogger(__name__)
@@ -123,10 +123,42 @@ class V3MetaChannel:
         outbound.status = str(result.get("status") or "sent")
         outbound.external_message_id = result.get("meta_message_id")
         outbound.raw_response = dict(result)
+        _annotate_sent_channel_event(outbound)
         return outbound
 
 
 default_meta_channel = V3MetaChannel()
+
+
+def _annotate_sent_channel_event(outbound: V3OutboundMessage) -> None:
+    """Agrega correlacion v3 al channel_event outbound persistido por el gateway."""
+
+    if not outbound.external_message_id:
+        return
+
+    with Session(engine) as session:
+        row = session.exec(
+            select(ChannelEvent)
+            .where(ChannelEvent.deleted_at.is_(None))
+            .where(ChannelEvent.provider == outbound.provider)
+            .where(ChannelEvent.channel_type == outbound.channel_type)
+            .where(ChannelEvent.direction == "outbound")
+            .where(ChannelEvent.external_message_id == outbound.external_message_id)
+            .order_by(ChannelEvent.created_at.desc(), ChannelEvent.id.desc())
+            .limit(1)
+        ).first()
+        if row is None:
+            return
+
+        normalized = dict(row.normalized_payload or {})
+        normalized["agent_v3"] = {
+            "outbound_message_id": outbound.id,
+            "source_message_id": outbound.source_message_id,
+            "source_external_message_id": outbound.source_external_message_id,
+        }
+        row.normalized_payload = normalized
+        session.add(row)
+        session.commit()
 
 
 def persist_received_channel_events(messages: list[V3InboundMessage]) -> None:

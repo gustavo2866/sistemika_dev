@@ -1,4 +1,4 @@
-"""Modelos livianos para el pipeline experimental v3."""
+"""Contratos livianos para el pipeline experimental v3."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class V3InboundMessage:
 
 @dataclass(slots=True)
 class V3OrchestratorResult:
-    """Respuesta minima del orquesador v3."""
+    """Respuesta minima del orquestador v3."""
 
     status: str
     reply_text: str
@@ -86,6 +86,7 @@ class V3OutboundMessage:
     to_address: str
     text: str
     source_message_id: str
+    source_external_message_id: str | None = None
     created_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime | None = None
     sent_at: datetime | None = None
@@ -103,6 +104,7 @@ class V3OutboundMessage:
             to_address=source.from_address,
             text=text,
             source_message_id=source.id,
+            source_external_message_id=source.external_message_id,
         )
 
 

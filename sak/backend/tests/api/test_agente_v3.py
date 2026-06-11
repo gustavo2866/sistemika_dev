@@ -1,7 +1,8 @@
 from sqlmodel import Session, select
 
-from app.models import Setting
+from app.models import CRMContacto, CRMOportunidad, Proyecto, Setting, User
 from app.modules.channels.persistence import ChannelEvent
+from agente.v3.subprocesses.pedido_obra.interpreter import PedidoObraOperation
 
 
 def _meta_text_payload(*, external_message_id: str = "wamid.test.v3.inbound") -> dict:
@@ -46,8 +47,46 @@ def _set_meta_text(payload: dict, text: str) -> dict:
     return payload
 
 
+def _seed_obra(
+    db_session: Session,
+    *,
+    telefono: str = "5491156384310",
+    nombre: str = "La Rioja",
+) -> Proyecto:
+    user = User(nombre=f"Tester {nombre}", email=f"tester-{nombre.lower().replace(' ', '-')}-v3@example.com")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    contacto = CRMContacto(
+        nombre_completo=f"Encargado {nombre}",
+        telefonos=[telefono],
+        responsable_id=user.id,
+    )
+    db_session.add(contacto)
+    db_session.commit()
+    db_session.refresh(contacto)
+    oportunidad = CRMOportunidad(
+        titulo=f"Oportunidad {nombre}",
+        contacto_id=contacto.id,
+        responsable_id=user.id,
+        activo=True,
+    )
+    db_session.add(oportunidad)
+    db_session.commit()
+    db_session.refresh(oportunidad)
+    proyecto = Proyecto(
+        nombre=nombre,
+        oportunidad_id=oportunidad.id,
+        responsable_id=user.id,
+    )
+    db_session.add(proyecto)
+    db_session.commit()
+    db_session.refresh(proyecto)
+    return proyecto
+
+
 def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: Session, test_engine, monkeypatch):
-    monkeypatch.setattr("agente.v3.channel.engine", test_engine)
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
     sent_calls: list[dict] = []
 
     async def fake_enviar_mensaje(**kwargs):
@@ -59,7 +98,7 @@ def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: 
             "raw_response": {"messages": [{"id": "wamid.test.v3.outbound"}]},
         }
 
-    monkeypatch.setattr("agente.v3.channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
     client.post("/api/agente/v3/inbox/reset")
     db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
     db_session.commit()
@@ -115,7 +154,7 @@ def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: 
 
 
 def test_agente_v3_cancelar_cierra_conversacion_activa(client, db_session: Session, test_engine, monkeypatch):
-    monkeypatch.setattr("agente.v3.channel.engine", test_engine)
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
 
     async def fake_enviar_mensaje(**kwargs):
         return {
@@ -125,7 +164,7 @@ def test_agente_v3_cancelar_cierra_conversacion_activa(client, db_session: Sessi
             "raw_response": {"messages": [{"id": "out.test"}]},
         }
 
-    monkeypatch.setattr("agente.v3.channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
     client.post("/api/agente/v3/inbox/reset")
     db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
     db_session.commit()
@@ -146,6 +185,272 @@ def test_agente_v3_cancelar_cierra_conversacion_activa(client, db_session: Sessi
     assert context.json()["contexts"][0]["process_state"] == {}
     assert "Conversacion cancelada" in outbox.json()["last_sent"]["text"]
     assert "sub_proceso: general" in outbox.json()["last_sent"]["text"]
+
+
+def test_agente_v3_pedido_obra_carga_cierra_y_confirma(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
+    monkeypatch.setattr("agente.v3.subprocesses.pedido_obra.handler.engine", test_engine)
+
+    async def fake_enviar_mensaje(**kwargs):
+        return {
+            "status": "sent",
+            "meta_message_id": f"out.{kwargs['texto'][:8]}",
+            "provider_message_type": "text",
+            "raw_response": {"messages": [{"id": "out.test"}]},
+        }
+
+    async def fake_interpret_carga(self, message, state):
+        return [PedidoObraOperation(type="insert", descripcion="cemento", cantidad=10, unidad="bolsas")], 1
+
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    monkeypatch.setattr(
+        "agente.v3.subprocesses.pedido_obra.llm_client.PedidoObraCargaLLMClient.interpret_carga",
+        fake_interpret_carga,
+    )
+    client.post("/api/agente/v3/inbox/reset")
+    _seed_obra(db_session)
+    db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
+    db_session.commit()
+
+    carga = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(
+            _meta_text_payload(external_message_id="wamid.test.v3.pedido.carga"),
+            "pedido de obra: 10 bolsas cemento",
+        ),
+    )
+    fin = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.pedido.fin"), "FIN"),
+    )
+    confirmar = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(
+            _meta_text_payload(external_message_id="wamid.test.v3.pedido.confirmar"),
+            "1",
+        ),
+    )
+
+    assert carga.status_code == 200
+    assert fin.status_code == 200
+    assert confirmar.status_code == 200
+
+    context = client.get("/api/agente/v3/context/status")
+    outbox = client.get("/api/agente/v3/outbox/status")
+
+    assert context.json()["contexts"][0]["active_process"] is None
+    assert context.json()["contexts"][0]["process_state"] == {}
+    assert "*PEDIDO CONFIRMADO*" in outbox.json()["last_sent"]["text"]
+    assert "*Materiales*" in outbox.json()["last_sent"]["text"]
+    assert "10 bolsas cemento" in outbox.json()["last_sent"]["text"]
+
+    nuevo = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(
+            _meta_text_payload(external_message_id="wamid.test.v3.pedido.nuevo"),
+            "necesito 10 bolsas cemento",
+        ),
+    )
+
+    assert nuevo.status_code == 200
+    context = client.get("/api/agente/v3/context/status")
+    state = context.json()["contexts"][0]["process_state"]
+    assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
+    assert state["etapa"] == "carga"
+    assert len(state["items"]) == 1
+    assert state["items"][0]["descripcion"] == "cemento"
+
+
+def test_agente_v3_pedido_obra_valida_cantidad_faltante(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
+    monkeypatch.setattr("agente.v3.subprocesses.pedido_obra.handler.engine", test_engine)
+
+    async def fake_enviar_mensaje(**kwargs):
+        return {
+            "status": "sent",
+            "meta_message_id": f"out.{kwargs['texto'][:8]}",
+            "provider_message_type": "text",
+            "raw_response": {"messages": [{"id": "out.test"}]},
+        }
+
+    async def fake_interpret_carga(self, message, state):
+        return [PedidoObraOperation(type="insert", descripcion="arena", cantidad=None, unidad=None)], 1
+
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    monkeypatch.setattr(
+        "agente.v3.subprocesses.pedido_obra.llm_client.PedidoObraCargaLLMClient.interpret_carga",
+        fake_interpret_carga,
+    )
+    client.post("/api/agente/v3/inbox/reset")
+    _seed_obra(db_session)
+    db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
+    db_session.commit()
+
+    carga = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.validacion.carga"), "pedido de obra: arena"),
+    )
+    fin = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.validacion.fin"), "FIN"),
+    )
+
+    assert carga.status_code == 200
+    assert fin.status_code == 200
+
+    context = client.get("/api/agente/v3/context/status")
+    outbox = client.get("/api/agente/v3/outbox/status")
+
+    assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
+    assert context.json()["contexts"][0]["process_state"]["etapa"] == "validacion"
+    assert context.json()["contexts"][0]["process_state"]["pendientes_validacion"][0]["type"] == "cantidad_faltante"
+    assert "Indica cantidad de arena." in outbox.json()["last_sent"]["text"]
+
+    cantidad = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.validacion.cantidad"), "3mts"),
+    )
+    confirmar = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.validacion.confirmar"), "1"),
+    )
+
+    assert cantidad.status_code == 200
+    assert confirmar.status_code == 200
+
+    context = client.get("/api/agente/v3/context/status")
+    outbox = client.get("/api/agente/v3/outbox/status")
+
+    assert context.json()["contexts"][0]["active_process"] is None
+    assert context.json()["contexts"][0]["process_state"] == {}
+    assert "*PEDIDO CONFIRMADO*" in outbox.json()["last_sent"]["text"]
+    assert "3 mts arena" in outbox.json()["last_sent"]["text"]
+
+
+def test_agente_v3_pedido_obra_cierre_permite_modificar_y_mostrar(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
+    monkeypatch.setattr("agente.v3.subprocesses.pedido_obra.handler.engine", test_engine)
+
+    async def fake_enviar_mensaje(**kwargs):
+        return {
+            "status": "sent",
+            "meta_message_id": f"out.{kwargs['texto'][:8]}",
+            "provider_message_type": "text",
+            "raw_response": {"messages": [{"id": "out.test"}]},
+        }
+
+    async def fake_interpret_carga(self, message, state):
+        return [
+            PedidoObraOperation(type="insert", descripcion="puertas", cantidad=3, unidad=None),
+            PedidoObraOperation(type="insert", descripcion="baños", cantidad=4, unidad=None),
+            PedidoObraOperation(type="insert", descripcion="arena fina", cantidad=3, unidad=None),
+        ], 1
+
+    async def fake_interpret_cierre(self, message, state):
+        if "duchas" in message:
+            return [PedidoObraOperation(type="insert", descripcion="duchas", cantidad=3, unidad=None)], 1
+        return [PedidoObraOperation(type="show")], 1
+
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    monkeypatch.setattr(
+        "agente.v3.subprocesses.pedido_obra.llm_client.PedidoObraCargaLLMClient.interpret_carga",
+        fake_interpret_carga,
+    )
+    monkeypatch.setattr(
+        "agente.v3.subprocesses.pedido_obra.llm_client.PedidoObraCargaLLMClient.interpret_cierre",
+        fake_interpret_cierre,
+    )
+    client.post("/api/agente/v3/inbox/reset")
+    _seed_obra(db_session)
+    db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
+    db_session.commit()
+
+    client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.cierre.carga"), "pedido de obra"),
+    )
+    client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.cierre.fin"), "FIN"),
+    )
+    agrega = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.cierre.agrega"), "agrega 3 duchas"),
+    )
+    muestra = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.cierre.mostrar"), "mostrar pedido"),
+    )
+
+    assert agrega.status_code == 200
+    assert muestra.status_code == 200
+
+    context = client.get("/api/agente/v3/context/status")
+    outbox = client.get("/api/agente/v3/outbox/status")
+
+    assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
+    assert context.json()["contexts"][0]["process_state"]["etapa"] == "cierre"
+    assert any(item["descripcion"] == "duchas" for item in context.json()["contexts"][0]["process_state"]["items"])
+    assert "Pedido validado" in outbox.json()["last_sent"]["text"]
+    assert "3 duchas" in outbox.json()["last_sent"]["text"]
+    assert "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR." in outbox.json()["last_sent"]["text"]
+
+
+def test_agente_v3_pedido_obra_pide_obra_si_hay_multiples_asociadas(
+    client,
+    db_session: Session,
+    test_engine,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
+    monkeypatch.setattr("agente.v3.subprocesses.pedido_obra.handler.engine", test_engine)
+
+    async def fake_enviar_mensaje(**kwargs):
+        return {
+            "status": "sent",
+            "meta_message_id": f"out.{kwargs['texto'][:8]}",
+            "provider_message_type": "text",
+            "raw_response": {"messages": [{"id": "out.test"}]},
+        }
+
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    client.post("/api/agente/v3/inbox/reset")
+    _seed_obra(db_session, nombre="La Rioja")
+    _seed_obra(db_session, nombre="Axion Avenida")
+    db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
+    db_session.commit()
+
+    inicio = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(
+            _meta_text_payload(external_message_id="wamid.test.v3.obra.multiple.inicio"),
+            "pedido de obra: 10 bolsas cemento",
+        ),
+    )
+
+    assert inicio.status_code == 200
+
+    context = client.get("/api/agente/v3/context/status")
+    outbox = client.get("/api/agente/v3/outbox/status")
+
+    assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
+    assert context.json()["contexts"][0]["process_state"]["etapa"] == "inicial"
+    assert "1: La Rioja" in outbox.json()["last_sent"]["text"]
+    assert "2: Axion Avenida" in outbox.json()["last_sent"]["text"]
+
+    seleccion = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.obra.multiple.sel"), "2"),
+    )
+
+    assert seleccion.status_code == 200
+
+    context = client.get("/api/agente/v3/context/status")
+    outbox = client.get("/api/agente/v3/outbox/status")
+
+    assert context.json()["contexts"][0]["process_state"]["etapa"] == "carga"
+    assert context.json()["contexts"][0]["process_state"]["proyecto_id"] is not None
+    assert "Obra seleccionada" in outbox.json()["last_sent"]["text"]
 
 
 def test_agente_v3_meta_webhook_verify_returns_challenge(client, db_session: Session):

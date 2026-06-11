@@ -11,7 +11,7 @@ from typing import Any
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AuthenticationError
 
-from agente.v3.models import V3ConversationContext, V3InboundMessage
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage
 
 
 PROCESS_GENERAL = "general"
@@ -171,3 +171,4 @@ def _normalize(value: str | None) -> str:
 
 
 default_process_selector = V3ProcessSelector()
+

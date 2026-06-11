@@ -6,13 +6,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from fastapi.responses import PlainTextResponse
 from sqlmodel import Session
 
-from agente.v3.channel import default_meta_channel, persist_received_channel_events
-from agente.v3.context import default_context_store
 from agente.v3.inbox import default_inbox
+from agente.v3.orchestrator import default_context_store
 from agente.v3.outbox import default_outbox
 from agente.v3.runtime import process_pending_once
 from app.db import get_session
 from app.modules.channels.config import meta_account_resolver
+from app.modules.channels.v3.meta_channel import default_meta_channel, persist_received_channel_events
 
 router = APIRouter(prefix="/agente/v3", tags=["agente-v3"])
 

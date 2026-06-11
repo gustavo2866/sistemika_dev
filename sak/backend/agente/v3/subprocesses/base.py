@@ -1,4 +1,4 @@
-"""Subprocesos minimos del agente v3."""
+"""Contrato y comportamiento base para subprocesos v3."""
 
 from __future__ import annotations
 
@@ -7,29 +7,23 @@ import unicodedata
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from agente.v3.models import V3ConversationContext, V3InboundMessage, V3ProcessResult, utc_now
-from agente.v3.process_selector import PROCESS_GENERAL, PROCESS_PARTE_DIARIO, PROCESS_PEDIDO_OBRA
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult, utc_now
 
 
 DISPLAY_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 
-def _time_label(value) -> str:
-    return value.astimezone(DISPLAY_TZ).strftime("%H:%M:%S")
-
-
-class V3Process(Protocol):
+class V3Subprocess(Protocol):
     name: str
 
     async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
         ...
 
 
-class V3TimingProcess:
+class V3TimingSubprocess:
     """Subproceso minimo: responde tiempos y conserva contexto simple."""
 
-    def __init__(self, name: str) -> None:
-        self.name = name
+    name: str
 
     async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
         updated = context.copy()
@@ -85,23 +79,8 @@ class V3TimingProcess:
         )
 
 
-class V3ProcessRegistry:
-    """Registro simple de subprocesos v3."""
-
-    def __init__(self, processes: list[V3Process]) -> None:
-        self._processes = {process.name: process for process in processes}
-
-    def get(self, process_name: str) -> V3Process | None:
-        return self._processes.get(process_name)
-
-
-default_process_registry = V3ProcessRegistry(
-    [
-        V3TimingProcess(PROCESS_GENERAL),
-        V3TimingProcess(PROCESS_PEDIDO_OBRA),
-        V3TimingProcess(PROCESS_PARTE_DIARIO),
-    ]
-)
+def _time_label(value) -> str:
+    return value.astimezone(DISPLAY_TZ).strftime("%H:%M:%S")
 
 
 def _normalize(value: str | None) -> str:
@@ -109,3 +88,4 @@ def _normalize(value: str | None) -> str:
     raw = "".join(char for char in raw if not unicodedata.combining(char))
     raw = re.sub(r"[^a-z0-9\s]+", " ", raw)
     return re.sub(r"\s+", " ", raw).strip()
+

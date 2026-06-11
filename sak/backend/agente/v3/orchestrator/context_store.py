@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from agente.v3.models import V3ConversationContext, utc_now
+from agente.v3.contracts import V3ConversationContext, utc_now
 
 
 class V3ContextStore:

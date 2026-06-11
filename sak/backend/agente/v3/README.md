@@ -2,26 +2,34 @@
 
 Version experimental para medir el flujo paso a paso.
 
-## Capas iniciales
+## Organizacion
 
-- `channel.py`: recepcion de payloads Meta, normalizacion y encolado. El POST agenda persistencia asincronica en `channel_events` con `BackgroundTasks`, sin crear otra cola. El envio usa `channel_gateway.enviar_mensaje(..., policy="text_only")`.
-- `inbox.py`: cola FIFO en memoria de mensajes recibidos. Procesa inbound y llama al orquesador.
-- `context.py`: store en memoria de contexto conversacional por `conversation_id`.
-- `process_selector.py`: selector inicial de subproceso cuando no existe `active_process`.
-- `processes.py`: subprocesos v3. Cada subproceso recibe mensaje + contexto y devuelve contexto actualizado + respuesta.
-- `orquesador.py`: orquesador minimo. Carga/crea contexto, deriva al subproceso, guarda contexto actualizado y encola respuesta en outbox.
-- `outbox.py`: cola FIFO en memoria de respuestas pendientes. Procesa outbound y solicita envio al channel.
+- `app.modules.channels.v3.meta_channel`: recepcion de payloads Meta, normalizacion y encolado. El POST agenda persistencia asincronica en `channel_events` con `BackgroundTasks`, sin crear otra cola. El envio usa `channel_gateway.enviar_mensaje(..., policy="text_only")`.
+- `contracts.py`: contratos compartidos del pipeline v3.
+- `inbox/`: capa 01-inbox. Cola FIFO en memoria de mensajes recibidos.
+- `orchestrator/`: capa 02-orquestador. Contexto conversacional, selector de subproceso y servicio de orquestacion.
+- `subprocesses/`: capa 03-sub-proceso. Contrato, registro y subprocesos `general`, `pedidoObra` y `parteDiario`.
+- `outbox/`: capa 04-outbox. Cola FIFO en memoria de respuestas pendientes.
+- `runtime.py`: ejecuta una vuelta completa `inbox -> outbox`.
+
+`pedidoObra` ya tiene una implementacion minima por etapas:
+
+- `carga`: interpreta comandos `FIN` / `SALIR` y aplica operaciones locales sobre materiales.
+- `validacion`: consulta datos obligatorios pendientes.
+- `confirmar_salida`: confirma descarte con `VOLVER` / `CONFIRMAR`.
+- `cierre`: pide confirmacion final con `CONFIRMAR`, permite `VOLVER` o `SALIR`.
+- `finalizado`: cierra el subproceso.
 
 ## Secuencia
 
-1. `channel.receive()` recibe Meta y encola `V3InboundMessage` en inbox.
-2. `inbox.process_pending()` procesa la cola y llama al orquesador.
-3. `orquesador.process_message()` carga/crea contexto por `conversation_id`.
+1. `app.modules.channels.v3.meta_channel.receive()` recibe Meta y encola `V3InboundMessage` en inbox.
+2. `inbox.process_pending()` procesa la cola y llama al orquestador.
+3. `orchestrator.process_message()` carga/crea contexto por `conversation_id`.
 4. Si no hay `active_process`, el selector elige `general`, `pedidoObra` o `parteDiario`.
 5. El subproceso devuelve contexto actualizado + respuesta.
-6. El orquesador guarda contexto y encola `V3OutboundMessage` en outbox.
+6. El orquestador guarda contexto y encola `V3OutboundMessage` en outbox.
 7. `outbox.process_pending()` procesa respuestas pendientes.
-8. `channel.send_text()` realiza el envio real de la respuesta por channel.
+8. `app.modules.channels.v3.meta_channel.send_text()` realiza el envio real de la respuesta por channel.
 
 ## Endpoints
 
@@ -33,4 +41,4 @@ Version experimental para medir el flujo paso a paso.
 - `GET /api/agente/v3/context/status`: muestra contextos conversacionales en memoria.
 - `POST /api/agente/v3/inbox/reset`: limpia la memoria v3 para repetir una prueba.
 
-La v3 no reemplaza el flujo v2 ni sus workers. Es una ruta paralela para medir tiempos de recepcion, persistencia DB channel, cola, orquesador y envio simulado.
+La v3 no reemplaza el flujo v2 ni sus workers. Es una ruta paralela para medir tiempos de recepcion, persistencia DB channel, cola, orquestador y envio simulado.

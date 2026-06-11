@@ -8,12 +8,12 @@ from datetime import UTC, datetime
 import time
 from typing import Any
 
-from agente.v3.models import (
+from agente.v3.contracts import (
     V3InboundMessage,
     V3ProcessedMessage,
     utc_now,
 )
-from agente.v3.orquesador import V3Orquesador, default_orquesador
+from agente.v3.orchestrator.service import V3Orchestrator, default_orchestrator
 
 
 class V3Inbox:
@@ -34,7 +34,7 @@ class V3Inbox:
     async def process_next(
         self,
         *,
-        orquesador: V3Orquesador = default_orquesador,
+        orchestrator: V3Orchestrator = default_orchestrator,
     ) -> V3ProcessedMessage | None:
         async with self._lock:
             if not self._queue:
@@ -43,8 +43,8 @@ class V3Inbox:
 
         started_at = datetime.now(UTC)
         t0 = time.perf_counter()
-        result, outbound_message_id = await orquesador.process_message(message)
-        t_orquesador = time.perf_counter()
+        result, outbound_message_id = await orchestrator.process_message(message)
+        t_orchestrator = time.perf_counter()
         finished_at = datetime.now(UTC)
         queued_ms = 0.0
         if message.enqueued_at is not None:
@@ -58,8 +58,8 @@ class V3Inbox:
             finished_at=finished_at,
             timings_ms={
                 "queued": round(queued_ms, 3),
-                "orquesador": round((t_orquesador - t0) * 1000, 3),
-                "total": round((t_orquesador - t0) * 1000, 3),
+                "orquesador": round((t_orchestrator - t0) * 1000, 3),
+                "total": round((t_orchestrator - t0) * 1000, 3),
             },
         )
         async with self._lock:
