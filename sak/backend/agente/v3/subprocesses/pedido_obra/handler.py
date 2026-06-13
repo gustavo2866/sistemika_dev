@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from sqlmodel import Session, select
@@ -18,6 +19,9 @@ from agente.v3.subprocesses.pedido_obra.llm_client import PedidoObraCargaLLMClie
 from agente.v3.subprocesses.pedido_obra.state import PedidoObraItem, PedidoObraOption, PedidoObraState
 from app.db import engine
 from app.models import CRMContacto, CRMOportunidad, Proyecto
+from app.services.constructora_pedido_service import constructora_pedido_service
+
+logger = logging.getLogger(__name__)
 
 
 class PedidoObraSubprocess:
@@ -33,18 +37,18 @@ class PedidoObraSubprocess:
         if state.etapa == "inicial" and not state.has_resolved_obra():
             initial_result = self._handle_inicial(message, command, context, state)
             if initial_result is not None:
-                return self._with_debug_result(initial_result, message)
+                return initial_result
 
         if state.etapa == "confirmar_salida":
-            return self._with_debug_result(self._handle_confirmar_salida(command, context, state), message)
+            return self._handle_confirmar_salida(command, context, state)
 
         if state.etapa == "validacion":
-            return self._with_debug_result(self._handle_validacion(message, command, context, state), message)
+            return self._handle_validacion(message, command, context, state)
 
         if state.etapa == "cierre":
-            return self._with_debug_result(await self._handle_cierre(message, command, context, state), message)
+            return await self._handle_cierre(message, command, context, state)
 
-        return self._with_debug_result(await self._handle_carga(message, command, context, state), message)
+        return await self._handle_carga(message, command, context, state)
 
     def _handle_inicial(
         self,
@@ -198,17 +202,25 @@ class PedidoObraSubprocess:
         state: PedidoObraState,
     ) -> V3ProcessResult:
         if command in {"confirmar", "1"}:
+            try:
+                pedido = self._crear_pedido_confirmado(message, context, state)
+            except Exception:
+                logger.exception("Error creando pedido de obra confirmado desde agente v3")
+                return self._active_result(context, state, renderer.error_confirmacion(), "persistence_error")
+
             state.etapa = "finalizado"
             updated = context.copy()
             updated.active_process = None
             updated.process_state = {}
             return V3ProcessResult(
                 context=updated,
-                reply_text=renderer.confirmado(state),
+                reply_text=renderer.confirmado(state, pedido.id),
                 metadata={
                     "process_name": self.name,
                     "status": "confirmed",
                     "pedido_listo": True,
+                    "pedido_obra_id": pedido.id,
+                    "mensaje_origen_id": pedido.mensaje_origen_id,
                     "items": [item.to_dict() for item in state.items],
                 },
             )
@@ -301,44 +313,6 @@ class PedidoObraSubprocess:
             metadata.update(extra_metadata)
         return V3ProcessResult(context=updated, reply_text=reply, metadata=metadata)
 
-    def _with_debug_result(self, result: V3ProcessResult, message: V3InboundMessage) -> V3ProcessResult:
-        if result.reply_text:
-            status = str(result.metadata.get("status") or result.status)
-            result.reply_text = self._with_context_debug(result.reply_text, result.context, status, message)
-        return result
-
-    def _with_context_debug(
-        self,
-        reply: str,
-        context: V3ConversationContext,
-        status: str,
-        message: V3InboundMessage,
-    ) -> str:
-        process_state = context.process_state or {}
-        items = process_state.get("items") or []
-        pendientes = process_state.get("pendientes_validacion") or []
-        active_process = context.active_process or "-"
-        etapa = process_state.get("etapa") or "-"
-        pendiente_item_id = process_state.get("pendiente_item_id") or "-"
-        contacto_id = process_state.get("contacto_id") or "-"
-        oportunidad_id = process_state.get("oportunidad_id") or "-"
-        proyecto_id = process_state.get("proyecto_id") or "-"
-        debug = (
-            "\n\n[debug contexto]\n"
-            f"input_external_id={message.external_message_id}\n"
-            f"input_text={message.text or ''}\n"
-            f"active_process={active_process}\n"
-            f"etapa={etapa}\n"
-            f"status={status}\n"
-            f"items={len(items)}\n"
-            f"pendientes={len(pendientes)}\n"
-            f"pendiente_item_id={pendiente_item_id}\n"
-            f"contacto_id={contacto_id}\n"
-            f"oportunidad_id={oportunidad_id}\n"
-            f"proyecto_id={proyecto_id}"
-        )
-        return f"{reply}{debug}"
-
     def _apply_operations(self, state: PedidoObraState, operations: list[PedidoObraOperation]) -> list[str]:
         applied: list[str] = []
         for operation in operations:
@@ -363,6 +337,33 @@ class PedidoObraSubprocess:
             elif operation.type == "show":
                 applied.append("show")
         return applied
+
+    @staticmethod
+    def _crear_pedido_confirmado(
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: PedidoObraState,
+    ):
+        with Session(engine) as session:
+            return constructora_pedido_service.create_from_agent_v3_confirmation(
+                session,
+                contacto_id=int(state.contacto_id or 0),
+                oportunidad_id=int(state.oportunidad_id or 0),
+                proyecto_id=state.proyecto_id,
+                items=[item.to_dict() for item in state.items],
+                conversation_id=context.conversation_id,
+                provider=message.provider,
+                channel_type=message.channel_type,
+                account_ref=message.account_ref,
+                from_address=message.from_address,
+                to_address=message.to_address,
+                external_message_id=message.external_message_id,
+                text=message.text,
+                message_type=message.message_type,
+                raw_payload=message.raw_payload,
+                normalized_payload=message.normalized_payload,
+                received_at=message.received_at,
+            )
 
     @staticmethod
     def _delete_item(state: PedidoObraState, target: str) -> bool:

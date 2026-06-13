@@ -10,14 +10,18 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from fastapi.responses import PlainTextResponse
 from sqlmodel import Session
 
+from agente.v3.runtime import process_pending_once as process_pending_once_v3
+from agente.v3.runtime_registry import get_v3_runtime
+from agente.v3.runtime_registry import normalize_queue_name as normalize_v3_queue_name
 from app.db import engine, get_session
 from app.modules.channels.config import meta_account_resolver
 from app.modules.channels.persistence import channel_event_store
 from app.modules.channels.providers.meta.webhook import raw_meta_to_channel_payloads
 from app.modules.channels.types import ChannelEventData
+from app.modules.channels.v3.meta_channel import default_meta_channel, persist_received_channel_events
 from app.schemas.channel_webhook import ChannelWebhookResponse
 from app.schemas.channel_webhook import ChannelWebhookPayload
-from app.services.agent_queue_state import DEFAULT_QUEUE_NAME, normalize_queue_name
+from app.services.agent_queue_state import DEFAULT_QUEUE_NAME, normalize_queue_name as normalize_v2_queue_name
 from app.services.channel_event_queue_worker import enqueue_channel_event
 from app.services.agent_pending_processor import process_pending_agent_messages
 from app.services.meta_webhook_service import MetaWebhookService
@@ -133,33 +137,47 @@ def _has_inbound_messages(payload: dict[str, Any]) -> bool:
     return False
 
 
+def _resolve_v3_public_queue(queue: str | None) -> str:
+    value = str(queue or "").strip().lower()
+    if value in {"", DEFAULT_QUEUE_NAME}:
+        value = None
+    try:
+        return normalize_v3_queue_name(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="queue invalida: solo se permite 'smoke'") from exc
+
+
 @router.post("/", response_model=ChannelWebhookResponse)
 async def receive_meta_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    queue: str = Query(default=DEFAULT_QUEUE_NAME),
+    queue: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ):
     payload = await request.json()
-    try:
-        queue_name = normalize_queue_name(queue)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if _has_inbound_messages(payload):
+        queue_name = _resolve_v3_public_queue(queue)
+        runtime = get_v3_runtime(queue_name)
         try:
-            results = await process_raw_meta_webhook_payload(
-                session,
+            await default_meta_channel.receive(
                 payload,
-                enqueue_only=True,
-                queue_name=queue_name,
+                inbox=runtime.inbox,
+                after_enqueue=lambda messages: (
+                    background_tasks.add_task(process_pending_once_v3, limit=len(messages), queue=queue_name),
+                    background_tasks.add_task(persist_received_channel_events, list(messages)),
+                ),
             )
         except Exception:
             session.rollback()
-            logger.exception("Error procesando webhook directo de Meta")
+            logger.exception("Error derivando webhook directo de Meta a agente v3")
             return ChannelWebhookResponse(status="ok", message="Recibido con error")
-        return ChannelWebhookResponse(status="ok", message="Encolado")
+        return ChannelWebhookResponse(status="ok", message="Encolado v3")
 
+    try:
+        queue_name = normalize_v2_queue_name(queue or DEFAULT_QUEUE_NAME)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     background_tasks.add_task(_process_raw_meta_background, payload, queue_name=queue_name)
     return ChannelWebhookResponse(status="ok", message="Recibido")
 

@@ -8,6 +8,7 @@ import pytest
 from agente.v2.core.delivery import SendResult
 from agente.v2.core.state import ConversationState
 from agente.v2.core.turn_lease import AgentTurnLeaseBusy
+from agente.v3.runtime_registry import get_v3_runtime
 from app.models import (
     CRMCelular,
     CRMContacto,
@@ -46,61 +47,96 @@ def test_channel_meta_webhook_verify_returns_plain_challenge(client, db_session:
     assert response.text == "abc123"
 
 
-def test_channel_meta_webhook_endpoint_enqueues_inbound_before_background_processing(client, monkeypatch):
+def _meta_text_payload(message_id: str = "wamid.test.inline.inbound") -> dict:
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "1516474752918083",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "metadata": {
+                                "display_phone_number": "5493816259343",
+                                "phone_number_id": "1046006975257973",
+                            },
+                            "messages": [
+                                {
+                                    "from": "5491156384310",
+                                    "id": message_id,
+                                    "timestamp": "1779282000",
+                                    "type": "text",
+                                    "text": {"body": "Hola"},
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_channel_meta_webhook_endpoint_derives_inbound_to_v3(client, monkeypatch):
     calls: list[tuple[str, object]] = []
 
-    async def fake_process_raw(session, payload, *, enqueue_only=False, **kwargs):
+    async def fake_receive(payload, *, inbox, after_enqueue=None):
         message_id = payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"]
-        calls.append(("enqueue" if enqueue_only else "process", message_id))
-
-    async def fake_process_pending(session, **kwargs):
-        calls.append(("pending", kwargs.get("limit")))
+        calls.append(("v3_receive", message_id))
+        calls.append(("default_inbox", inbox is get_v3_runtime().inbox))
         return {"status": "ok"}
 
     monkeypatch.setattr(
-        "app.routers.channel_meta_webhook_router.process_raw_meta_webhook_payload",
-        fake_process_raw,
-    )
-    monkeypatch.setattr(
-        "app.routers.channel_meta_webhook_router.process_pending_agent_messages",
-        fake_process_pending,
+        "app.routers.channel_meta_webhook_router.default_meta_channel.receive",
+        fake_receive,
     )
 
     response = client.post(
         "/api/channel-webhooks/meta/",
-        json={
-            "object": "whatsapp_business_account",
-            "entry": [
-                {
-                    "id": "1516474752918083",
-                    "changes": [
-                        {
-                            "field": "messages",
-                            "value": {
-                                "metadata": {
-                                    "display_phone_number": "5493816259343",
-                                    "phone_number_id": "1046006975257973",
-                                },
-                                "messages": [
-                                    {
-                                        "from": "5491156384310",
-                                        "id": "wamid.test.inline.inbound",
-                                        "timestamp": "1779282000",
-                                        "type": "text",
-                                        "text": {"body": "Hola"},
-                                    }
-                                ],
-                            },
-                        }
-                    ],
-                }
-            ],
-        },
+        json=_meta_text_payload(),
     )
 
     assert response.status_code == 200
-    assert response.json()["message"] == "Encolado"
-    assert calls[0] == ("enqueue", "wamid.test.inline.inbound")
+    assert response.json()["message"] == "Encolado v3"
+    assert calls == [
+        ("v3_receive", "wamid.test.inline.inbound"),
+        ("default_inbox", True),
+    ]
+
+
+def test_channel_meta_webhook_endpoint_accepts_smoke_queue_for_v3(client, monkeypatch):
+    calls: list[tuple[str, object]] = []
+
+    async def fake_receive(payload, *, inbox, after_enqueue=None):
+        calls.append(("smoke_inbox", inbox is get_v3_runtime("smoke").inbox))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(
+        "app.routers.channel_meta_webhook_router.default_meta_channel.receive",
+        fake_receive,
+    )
+
+    response = client.post(
+        "/api/channel-webhooks/meta/",
+        params={"queue": "smoke"},
+        json=_meta_text_payload("wamid.test.inline.smoke"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Encolado v3"
+    assert calls == [("smoke_inbox", True)]
+
+
+def test_channel_meta_webhook_endpoint_rejects_unknown_v3_queue(client):
+    response = client.post(
+        "/api/channel-webhooks/meta/",
+        params={"queue": "test"},
+        json=_meta_text_payload("wamid.test.inline.invalid"),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "queue invalida: solo se permite 'smoke'"
 
 
 @pytest.mark.asyncio

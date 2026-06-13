@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 
-from app.models import CRMContacto, CRMOportunidad, Proyecto, Setting, User
+from app.models import CRMContacto, CRMMensaje, CRMOportunidad, Proyecto, Setting, User
+from app.models.constructora.pedido import ConstructoraPedido, ConstructoraPedidoDetalle
 from app.modules.channels.persistence import ChannelEvent
 from agente.v3.subprocesses.pedido_obra.interpreter import PedidoObraOperation
 
@@ -153,6 +154,43 @@ def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: 
     assert sent_calls[0]["policy"] == "text_only"
 
 
+def test_agente_v3_queue_smoke_aisla_contexto_default(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
+
+    async def fake_enviar_mensaje(**kwargs):
+        return {
+            "status": "sent",
+            "meta_message_id": "wamid.test.v3.queue.outbound",
+            "provider_message_type": "text",
+            "raw_response": {"messages": [{"id": "wamid.test.v3.queue.outbound"}]},
+        }
+
+    monkeypatch.setattr("app.modules.channels.v3.meta_channel.channel_gateway.enviar_mensaje", fake_enviar_mensaje)
+    client.post("/api/agente/v3/inbox/reset")
+    client.post("/api/agente/v3/inbox/reset", params={"queue": "smoke"})
+    db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
+    db_session.commit()
+
+    received = client.post(
+        "/api/agente/v3/channel/meta",
+        params={"queue": "smoke"},
+        json=_set_meta_text(_meta_text_payload(external_message_id="wamid.test.v3.queue.smoke"), "Hola v3"),
+    )
+
+    assert received.status_code == 200
+    assert client.get("/api/agente/v3/context/status").json()["count"] == 0
+    smoke_context = client.get("/api/agente/v3/context/status", params={"queue": "smoke"}).json()
+    assert smoke_context["queue"] == "smoke"
+    assert smoke_context["count"] == 1
+    assert smoke_context["contexts"][0]["conversation_id"] == "meta:1046006975257973:5491156384310"
+
+
+def test_agente_v3_rechaza_queue_invalida(client, db_session: Session):
+    response = client.get("/api/agente/v3/context/status", params={"queue": "test"})
+
+    assert response.status_code == 400
+
+
 def test_agente_v3_cancelar_cierra_conversacion_activa(client, db_session: Session, test_engine, monkeypatch):
     monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
 
@@ -208,7 +246,7 @@ def test_agente_v3_pedido_obra_carga_cierra_y_confirma(client, db_session: Sessi
         fake_interpret_carga,
     )
     client.post("/api/agente/v3/inbox/reset")
-    _seed_obra(db_session)
+    proyecto = _seed_obra(db_session)
     db_session.add(Setting(clave="channels.meta.phone_number_id", valor="1046006975257973"))
     db_session.commit()
 
@@ -241,14 +279,47 @@ def test_agente_v3_pedido_obra_carga_cierra_y_confirma(client, db_session: Sessi
     assert context.json()["contexts"][0]["active_process"] is None
     assert context.json()["contexts"][0]["process_state"] == {}
     assert "*PEDIDO CONFIRMADO*" in outbox.json()["last_sent"]["text"]
+    assert "Pedido #" in outbox.json()["last_sent"]["text"]
     assert "*Materiales*" in outbox.json()["last_sent"]["text"]
     assert "10 bolsas cemento" in outbox.json()["last_sent"]["text"]
+
+    mensaje_confirmacion = db_session.exec(
+        select(CRMMensaje).where(CRMMensaje.origen_externo_id == "wamid.test.v3.pedido.confirmar")
+    ).first()
+    assert mensaje_confirmacion is not None
+    agent_v3 = mensaje_confirmacion.metadata_json["agent_v3"]
+    assert agent_v3["conversation_id"] == "meta:1046006975257973:5491156384310"
+    assert agent_v3["external_message_id"] == "wamid.test.v3.pedido.confirmar"
+    assert agent_v3["result"]["pedido_listo"] is True
+    assert agent_v3["result"]["items"][0]["descripcion"] == "cemento"
+    assert agent_v3["channel_event_id"] is not None
+
+    channel_event = db_session.get(ChannelEvent, agent_v3["channel_event_id"])
+    assert channel_event is not None
+    assert channel_event.external_message_id == "wamid.test.v3.pedido.confirmar"
+    assert channel_event.normalized_payload["conversation_id"] == "meta:1046006975257973:5491156384310"
+
+    pedido = db_session.exec(
+        select(ConstructoraPedido).where(ConstructoraPedido.mensaje_origen_id == mensaje_confirmacion.id)
+    ).first()
+    assert pedido is not None
+    assert pedido.oportunidad_id == proyecto.oportunidad_id
+    assert pedido.contacto_id == mensaje_confirmacion.contacto_id
+    assert pedido.metadata_json["agent_source"] == "agent_v3"
+    assert mensaje_confirmacion.metadata_json["agent_v3"]["pedido_obra_id"] == pedido.id
+
+    detalles = db_session.exec(
+        select(ConstructoraPedidoDetalle).where(ConstructoraPedidoDetalle.pedido_id == pedido.id)
+    ).all()
+    assert len(detalles) == 1
+    assert detalles[0].descripcion == "cemento"
+    assert detalles[0].unidad_medida == "bolsas"
 
     nuevo = client.post(
         "/api/agente/v3/channel/meta",
         json=_set_meta_text(
             _meta_text_payload(external_message_id="wamid.test.v3.pedido.nuevo"),
-            "necesito 10 bolsas cemento",
+            "pedido de obra: necesito 10 bolsas cemento",
         ),
     )
 

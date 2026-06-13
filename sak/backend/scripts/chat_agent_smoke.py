@@ -120,7 +120,10 @@ else:
     AGENT_VERSION = os.environ.get("CHAT_TEST_AGENT_VERSION", "v3").strip().lower()
 if AGENT_VERSION not in {"v2", "v3"}:
     raise SystemExit("CHAT_TEST_AGENT_VERSION debe ser 'v2' o 'v3'.")
-_queue_default = "test" if BASE_URL.startswith("http://localhost") or BASE_URL.startswith("http://127.") else "prod"
+if AGENT_VERSION == "v3":
+    _queue_default = "smoke"
+else:
+    _queue_default = "test" if BASE_URL.startswith("http://localhost") or BASE_URL.startswith("http://127.") else "prod"
 QUEUE_NAME = os.environ.get("CHAT_TEST_QUEUE", _queue_default).strip().lower() or _queue_default
 
 FROM_PHONE = os.environ.get("CHAT_TEST_FROM_PHONE", "5491156384310")
@@ -226,7 +229,7 @@ def enviar_webhook(texto: str) -> tuple[str, dict, float]:
     meta_message_id = f"wamid.chat-test.{uuid4().hex}"
     payload = _build_raw_meta_payload(texto, meta_message_id)
     started = time.time()
-    params = None if _is_v3() else {"queue": QUEUE_NAME}
+    params = {"queue": QUEUE_NAME}
     response = _request_json("POST", _webhook_path(), payload, params=params)
     return meta_message_id, response, time.time() - started
 
@@ -634,6 +637,7 @@ def main() -> None:
     print(f"Webhook: {BASE_URL}{_webhook_path()}")
     if _is_v3():
         print("Lectura: channel_events outbound")
+        print(f"Cola agente: {QUEUE_NAME}")
     else:
         print(f"Cola agente: {QUEUE_NAME}")
         print(f"Lectura: {'db' if _use_db_read_mode() else 'api'} [{READ_MODE}]")

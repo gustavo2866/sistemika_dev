@@ -14,6 +14,7 @@ from agente.v3.contracts import (
     utc_now,
 )
 from agente.v3.orchestrator.service import V3Orchestrator, default_orchestrator
+from app.modules.channels.v3.typing import show_typing_for_inbound_message
 
 
 class V3Inbox:
@@ -43,6 +44,8 @@ class V3Inbox:
 
         started_at = datetime.now(UTC)
         t0 = time.perf_counter()
+        await show_typing_for_inbound_message(message)
+        t_typing = time.perf_counter()
         result, outbound_message_id = await orchestrator.process_message(message)
         t_orchestrator = time.perf_counter()
         finished_at = datetime.now(UTC)
@@ -58,7 +61,8 @@ class V3Inbox:
             finished_at=finished_at,
             timings_ms={
                 "queued": round(queued_ms, 3),
-                "orquesador": round((t_orchestrator - t0) * 1000, 3),
+                "typing": round((t_typing - t0) * 1000, 3),
+                "orquesador": round((t_orchestrator - t_typing) * 1000, 3),
                 "total": round((t_orchestrator - t0) * 1000, 3),
             },
         )
@@ -66,10 +70,15 @@ class V3Inbox:
             self._processed.append(processed)
         return processed
 
-    async def process_pending(self, *, limit: int = 10) -> dict[str, Any]:
+    async def process_pending(
+        self,
+        *,
+        limit: int = 10,
+        orchestrator: V3Orchestrator = default_orchestrator,
+    ) -> dict[str, Any]:
         processed: list[V3ProcessedMessage] = []
         for _ in range(limit):
-            item = await self.process_next()
+            item = await self.process_next(orchestrator=orchestrator)
             if item is None:
                 break
             processed.append(item)

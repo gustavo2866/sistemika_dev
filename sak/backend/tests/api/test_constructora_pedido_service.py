@@ -270,3 +270,37 @@ def test_oportunidad_id_desde_mensaje(db_session: Session, seed_base):
 
     pedido = constructora_pedido_service.create_from_agent_message(db_session, mensaje.id)
     assert pedido.oportunidad_id == oportunidad_id
+
+
+def test_create_from_agent_message_soporta_metadata_agent_v3(db_session: Session, seed_base):
+    oportunidad_id = seed_base["oportunidad"].id
+    contacto_id = seed_base["contacto"].id
+
+    metadata = {
+        "agent_v3": {
+            "result": {
+                "type": "pedido_obra_reply",
+                "pedido_listo": True,
+                "oportunidad_id": oportunidad_id,
+                "proyecto_id": 123,
+                "items": [{"item_id": "v3-1", "descripcion": "Cemento", "cantidad": 20, "unidad": "bolsas"}],
+            },
+            "conversation_id": "meta:phone:contact",
+            "channel_event_id": 55,
+        }
+    }
+    mensaje = CRMMensaje(
+        contacto_id=contacto_id,
+        oportunidad_id=oportunidad_id,
+        contenido="Pedido confirmado desde v3",
+        metadata_json=metadata,
+    )
+    db_session.add(mensaje)
+    db_session.commit()
+    db_session.refresh(mensaje)
+
+    pedido = constructora_pedido_service.create_from_agent_message(db_session, mensaje.id)
+
+    assert pedido.metadata_json["agent_source"] == "agent_v3"
+    db_session.refresh(mensaje)
+    assert mensaje.metadata_json["agent_v3"]["pedido_obra_id"] == pedido.id

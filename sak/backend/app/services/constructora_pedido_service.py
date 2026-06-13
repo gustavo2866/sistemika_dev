@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Any
 
 from sqlmodel import Session, select
 
 from app.models import CRMMensaje
+from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.models.constructora.pedido import (
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
@@ -16,6 +17,8 @@ from app.models.constructora.pedido import (
     PedidoObraEstado,
     PedidoObraOrigen,
 )
+from app.modules.channels.persistence import channel_event_store
+from app.modules.channels.types import ChannelEventData
 
 
 class ConstructoraPedidoService:
@@ -48,8 +51,7 @@ class ConstructoraPedidoService:
 
         # Leer result del agente
         metadata = mensaje.metadata_json or {}
-        agent_v2 = metadata.get("agent_v2") or {}
-        result = agent_v2.get("result") or {}
+        agent_key, result = self._extract_agent_result(metadata)
 
         if result.get("type") != "pedido_obra_reply":
             raise ValueError(
@@ -77,6 +79,10 @@ class ConstructoraPedidoService:
             origen=PedidoObraOrigen.AGENTE,
             titulo=f"Pedido de obra — oportunidad #{oportunidad_id}",
             fecha_confirmacion_agente=datetime.now(UTC),
+            metadata_json={
+                "agent_source": agent_key,
+                "agent_result": result,
+            },
         )
         session.add(pedido)
         session.flush()  # obtener pedido.id
@@ -109,13 +115,201 @@ class ConstructoraPedidoService:
         from sqlalchemy.orm.attributes import flag_modified
 
         new_metadata = copy.deepcopy(metadata)
-        new_metadata["agent_v2"]["pedido_obra_id"] = pedido.id
+        new_metadata.setdefault(agent_key, {})
+        new_metadata[agent_key]["pedido_obra_id"] = pedido.id
         mensaje.metadata_json = new_metadata
         flag_modified(mensaje, "metadata_json")
 
         session.commit()
         session.refresh(pedido)
         return pedido
+
+    def create_from_agent_v3_confirmation(
+        self,
+        session: Session,
+        *,
+        contacto_id: int,
+        oportunidad_id: int,
+        proyecto_id: int | None,
+        items: list[dict[str, Any]],
+        conversation_id: str,
+        provider: str,
+        channel_type: str,
+        account_ref: str,
+        from_address: str,
+        to_address: str,
+        external_message_id: str,
+        text: str | None,
+        message_type: str,
+        raw_payload: dict[str, Any],
+        normalized_payload: dict[str, Any],
+        received_at: datetime,
+    ) -> ConstructoraPedido:
+        """Materializa el pedido confirmado por agente v3.
+
+        Solo crea el CRMMensaje final de confirmacion y deja trazabilidad hacia
+        channel_events por conversation_id y channel_event_id.
+        """
+        if contacto_id <= 0:
+            raise ValueError("contacto_id requerido")
+        if oportunidad_id <= 0:
+            raise ValueError("oportunidad_id requerido")
+        valid_items = self._validate_agent_items(items)
+
+        channel_event = channel_event_store.record(
+            session,
+            ChannelEventData(
+                provider=provider,
+                channel_type=channel_type,
+                account_ref=account_ref,
+                direction="inbound",
+                from_address=from_address,
+                to_address=to_address,
+                external_message_id=external_message_id,
+                status="received",
+                occurred_at=received_at,
+                raw_payload=raw_payload,
+                normalized_payload=normalized_payload,
+            ),
+        )
+
+        mensaje = self._find_or_create_v3_confirmation_message(
+            session,
+            contacto_id=contacto_id,
+            oportunidad_id=oportunidad_id,
+            proyecto_id=proyecto_id,
+            items=valid_items,
+            conversation_id=conversation_id,
+            provider=provider,
+            channel_type=channel_type,
+            account_ref=account_ref,
+            from_address=from_address,
+            to_address=to_address,
+            external_message_id=external_message_id,
+            text=text,
+            message_type=message_type,
+            received_at=received_at,
+            channel_event_id=channel_event.id,
+        )
+        return self.create_from_agent_message(session, int(mensaje.id))
+
+    @staticmethod
+    def _extract_agent_result(metadata: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        for agent_key in ("agent_v3", "agent_v2"):
+            agent_metadata = metadata.get(agent_key) or {}
+            result = agent_metadata.get("result") or {}
+            if result:
+                return agent_key, result
+        return "agent_v2", {}
+
+    @staticmethod
+    def _validate_agent_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not items:
+            raise ValueError("items requerido")
+
+        valid_items: list[dict[str, Any]] = []
+        for item in items:
+            descripcion = str(item.get("descripcion") or "").strip()
+            if not descripcion:
+                raise ValueError("descripcion requerida")
+
+            cantidad_raw = item.get("cantidad")
+            try:
+                cantidad = Decimal(str(cantidad_raw))
+            except Exception as exc:
+                raise ValueError(f"cantidad invalida para {descripcion}") from exc
+            if cantidad <= 0:
+                raise ValueError(f"cantidad invalida para {descripcion}")
+
+            valid_items.append(
+                {
+                    "item_id": item.get("item_id"),
+                    "descripcion": descripcion,
+                    "cantidad": str(cantidad),
+                    "unidad": item.get("unidad"),
+                }
+            )
+        return valid_items
+
+    def _find_or_create_v3_confirmation_message(
+        self,
+        session: Session,
+        *,
+        contacto_id: int,
+        oportunidad_id: int,
+        proyecto_id: int | None,
+        items: list[dict[str, Any]],
+        conversation_id: str,
+        provider: str,
+        channel_type: str,
+        account_ref: str,
+        from_address: str,
+        to_address: str,
+        external_message_id: str,
+        text: str | None,
+        message_type: str,
+        received_at: datetime,
+        channel_event_id: int | None,
+    ) -> CRMMensaje:
+        existing = session.exec(
+            select(CRMMensaje)
+            .where(CRMMensaje.deleted_at.is_(None))
+            .where(CRMMensaje.tipo == TipoMensaje.ENTRADA.value)
+            .where(CRMMensaje.origen_externo_id == external_message_id)
+            .limit(1)
+        ).first()
+        if existing:
+            return existing
+
+        result = {
+            "type": "pedido_obra_reply",
+            "pedido_listo": True,
+            "contacto_id": contacto_id,
+            "oportunidad_id": oportunidad_id,
+            "proyecto_id": proyecto_id,
+            "items": items,
+        }
+        mensaje = CRMMensaje(
+            tipo=TipoMensaje.ENTRADA.value,
+            canal=CanalMensaje.WHATSAPP.value,
+            contacto_id=contacto_id,
+            contacto_referencia=from_address,
+            oportunidad_id=oportunidad_id,
+            estado=EstadoMensaje.RECIBIDO.value,
+            asunto="Pedido de obra confirmado",
+            contenido=self._build_v3_confirmation_content(items),
+            fecha_mensaje=received_at,
+            origen_externo_id=external_message_id,
+            metadata_json={
+                "agent_v3": {
+                    "result": result,
+                    "channel_event_id": channel_event_id,
+                    "conversation_id": conversation_id,
+                    "external_message_id": external_message_id,
+                    "provider": provider,
+                    "channel_type": channel_type,
+                    "account_ref": account_ref,
+                    "from_address": from_address,
+                    "to_address": to_address,
+                    "message_type": message_type,
+                    "confirmation_text": text,
+                }
+            },
+        )
+        session.add(mensaje)
+        session.flush()
+        return mensaje
+
+    @staticmethod
+    def _build_v3_confirmation_content(items: list[dict[str, Any]]) -> str:
+        lines: list[str] = []
+        for item in items:
+            parts = [str(item["cantidad"])]
+            if item.get("unidad"):
+                parts.append(str(item["unidad"]))
+            parts.append(str(item["descripcion"]))
+            lines.append(" ".join(parts))
+        return "Pedido de obra confirmado:\n" + "\n".join(f"- {line}" for line in lines)
 
 
 constructora_pedido_service = ConstructoraPedidoService()

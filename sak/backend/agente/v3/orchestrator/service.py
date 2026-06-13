@@ -11,6 +11,7 @@ from agente.v3.orchestrator.process_selector import (
     default_process_selector,
 )
 from agente.v3.outbox.queue import default_outbox
+from agente.v3.outbox.queue import V3Outbox
 from agente.v3.subprocesses.registry import V3SubprocessRegistry, default_subprocess_registry
 
 
@@ -21,10 +22,12 @@ class V3Orchestrator:
         self,
         *,
         context_store: V3ContextStore = default_context_store,
+        outbox=default_outbox,
         subprocess_registry: V3SubprocessRegistry = default_subprocess_registry,
         process_selector: V3ProcessSelector = default_process_selector,
     ) -> None:
         self._context_store = context_store
+        self._outbox: V3Outbox = outbox
         self._subprocess_registry = subprocess_registry
         self._process_selector = process_selector
 
@@ -49,7 +52,7 @@ class V3Orchestrator:
         outbound_id = ""
         if process_result.reply_text:
             outbound = V3OutboundMessage.recorded_meta_reply(source=message, text=process_result.reply_text)
-            outbound_id = await default_outbox.enqueue(outbound)
+            outbound_id = await self._outbox.enqueue(outbound)
             updated_context.last_outbound_message_id = outbound_id
             await self._context_store.save(updated_context)
 
@@ -87,4 +90,3 @@ class V3Orchestrator:
 
 
 default_orchestrator = V3Orchestrator()
-

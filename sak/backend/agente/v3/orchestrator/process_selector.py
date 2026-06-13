@@ -26,7 +26,6 @@ PROCESS_CATALOG: dict[str, str] = {
     PROCESS_PARTE_DIARIO: "Asistencia, ausencias, horas, novedades o estado del personal de obra.",
 }
 
-
 @dataclass(slots=True)
 class V3ProcessSelection:
     process_name: str
@@ -85,14 +84,14 @@ class V3ProcessSelector:
         if not text:
             return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 1.0, "Mensaje sin texto.")
 
-        if re.fullmatch(r"(hola|buen dia|buenas|buenas tardes|buenas noches)(\s+.*)?", text):
-            return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 0.95, "Saludo claro.")
-
         if "parte diario" in text or "asistencia" in text:
             return V3ProcessSelection(PROCESS_PARTE_DIARIO, "fast_path", 0.9, "Referencia clara a parte diario.")
 
         if "pedido" in text and ("material" in text or "obra" in text):
             return V3ProcessSelection(PROCESS_PEDIDO_OBRA, "fast_path", 0.9, "Referencia clara a pedido de obra.")
+
+        if re.fullmatch(r"(hola|buen dia|buenas|buenas tardes|buenas noches)", text):
+            return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 0.95, "Saludo claro.")
 
         return None
 
@@ -107,6 +106,10 @@ class V3ProcessSelector:
         system_prompt = (
             "Clasifica el mensaje inicial en un unico subproceso. "
             "No resuelvas la solicitud ni ejecutes comandos. "
+            "Si el mensaje combina un saludo con un pedido de materiales, insumos, artefactos o equipos para obra, "
+            "clasificalo como pedidoObra, no como general. "
+            "Ejemplos: 'hola necesito 20 bolsas de cemento' => pedidoObra; "
+            "'hola necesito 2 juegos de ducha' => pedidoObra. "
             "Procesos disponibles:\n"
             + "\n".join(f"- {name}: {description}" for name, description in PROCESS_CATALOG.items())
         )
@@ -171,4 +174,3 @@ def _normalize(value: str | None) -> str:
 
 
 default_process_selector = V3ProcessSelector()
-

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from agente.v3.inbox import default_inbox
-from agente.v3.outbox import default_outbox
+from agente.v3.runtime_registry import get_v3_runtime
 
 
-async def process_pending_once(*, limit: int = 10) -> dict:
+async def process_pending_once(*, limit: int = 10, queue: str | None = None) -> dict:
     """Procesa inbox y luego outbox una vez."""
 
-    inbox_result = await default_inbox.process_pending(limit=limit)
-    outbox_result = await default_outbox.process_pending(limit=limit)
+    runtime = get_v3_runtime(queue)
+    inbox_result = await runtime.inbox.process_pending(limit=limit, orchestrator=runtime.orchestrator)
+    outbox_result = await runtime.outbox.process_pending(limit=limit)
     return {
         "status": "ok",
+        "queue": runtime.queue_name,
         "inbox": inbox_result,
         "outbox": outbox_result,
     }
-

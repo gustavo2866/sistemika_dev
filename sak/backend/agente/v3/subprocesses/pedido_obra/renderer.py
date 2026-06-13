@@ -52,13 +52,19 @@ def cierre_pedido(state: PedidoObraState) -> str:
     return f"Pedido validado:\n{state.resumen_items()}\n\nOpciones: 1:CONFIRMAR 2:VOLVER 3:SALIR."
 
 
-def confirmado(state: PedidoObraState) -> str:
+def confirmado(state: PedidoObraState, pedido_id: int | None = None) -> str:
+    pedido_line = f"Pedido #{pedido_id}\n" if pedido_id is not None else ""
     return (
         "*PEDIDO CONFIRMADO*\n"
+        f"{pedido_line}"
         "____________________\n\n"
         "*Materiales*\n"
         f"{_resumen_items_confirmados(state)}"
     )
+
+
+def error_confirmacion() -> str:
+    return "No pude guardar el pedido confirmado. Intenta confirmar nuevamente en unos segundos."
 
 
 def comando_invalido(etapa: str) -> str:

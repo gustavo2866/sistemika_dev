@@ -15,6 +15,7 @@ from agente.v3.contracts import (
     utc_now,
 )
 from agente.v3.inbox import default_inbox
+from agente.v3.inbox.queue import V3Inbox
 from app.db import engine
 from app.modules.channels.gateway import channel_gateway
 from app.modules.channels.persistence import ChannelEvent, channel_event_store
@@ -89,13 +90,14 @@ class V3MetaChannel:
         self,
         payload: dict[str, Any],
         *,
+        inbox: V3Inbox = default_inbox,
         after_enqueue: Callable[[list[V3InboundMessage]], None] | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
         inbound_messages = _raw_meta_to_v3_inbound_messages(payload)
         t_normalized = time.perf_counter()
 
-        enqueued_ids = await default_inbox.enqueue_many(inbound_messages)
+        enqueued_ids = await inbox.enqueue_many(inbound_messages)
         t_enqueued = time.perf_counter()
         if after_enqueue is not None and inbound_messages:
             after_enqueue(inbound_messages)
