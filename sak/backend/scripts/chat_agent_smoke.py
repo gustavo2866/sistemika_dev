@@ -488,10 +488,7 @@ def _find_channel_outbound_db(
                 (
                     candidate
                     for candidate in rows
-                    if ((candidate.normalized_payload or {}).get("agent_v3") or {}).get(
-                        "source_external_message_id"
-                    )
-                    == source_external_message_id
+                    if _matches_v3_outbound(candidate, source_external_message_id)
                 ),
                 None,
             )
@@ -508,6 +505,14 @@ def _find_channel_outbound_db(
             "raw_payload": row.raw_payload or {},
             "normalized_payload": row.normalized_payload or {},
         }
+
+
+def _matches_v3_outbound(row: Any, source_external_message_id: str) -> bool:
+    agent_v3 = ((row.normalized_payload or {}).get("agent_v3") or {})
+    if agent_v3.get("source_external_message_id") != source_external_message_id:
+        return False
+    event_queue = str(agent_v3.get("queue") or "").strip().lower()
+    return not event_queue or event_queue == QUEUE_NAME
 
 
 def _channel_outbound_text(event: dict) -> str | None:

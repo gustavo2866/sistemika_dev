@@ -30,6 +30,7 @@ class V3InboundMessage:
     normalized_payload: dict[str, Any]
     received_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime | None = None
+    queue_name: str | None = None
 
 
 @dataclass(slots=True)
@@ -89,6 +90,7 @@ class V3OutboundMessage:
     text: str
     source_message_id: str
     source_external_message_id: str | None = None
+    queue_name: str | None = None
     created_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime | None = None
     sent_at: datetime | None = None
@@ -107,6 +109,7 @@ class V3OutboundMessage:
             text=text,
             source_message_id=source.id,
             source_external_message_id=source.external_message_id,
+            queue_name=source.queue_name,
         )
 
 
@@ -126,6 +129,7 @@ class V3ProcessedMessage:
             "message_id": self.inbound.id,
             "conversation_id": self.inbound.conversation_id,
             "external_message_id": self.inbound.external_message_id,
+            "queue": self.inbound.queue_name,
             "from_address": self.inbound.from_address,
             "to_address": self.inbound.to_address,
             "orchestrator": {
@@ -158,4 +162,5 @@ def message_from_normalized_meta_payload(payload: dict[str, Any]) -> V3InboundMe
         message_type=str(msg.get("tipo") or "unknown"),
         raw_payload=dict(payload.get("raw_meta_payload") or payload),
         normalized_payload=payload,
+        queue_name=payload.get("queue_name"),
     )

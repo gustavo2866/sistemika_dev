@@ -106,6 +106,7 @@ class V3Inbox:
                     "message_id": message.id,
                     "conversation_id": message.conversation_id,
                     "external_message_id": message.external_message_id,
+                    "queue": message.queue_name,
                     "from_address": message.from_address,
                     "to_address": message.to_address,
                     "text": message.text,

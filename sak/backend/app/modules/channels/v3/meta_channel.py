@@ -34,7 +34,7 @@ def _extract_text(msg_data: dict[str, Any]) -> str | None:
     return None
 
 
-def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any]) -> list[V3InboundMessage]:
+def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str | None = None) -> list[V3InboundMessage]:
     messages: list[V3InboundMessage] = []
     for entry in payload.get("entry", []) or []:
         for change in entry.get("changes", []) or []:
@@ -52,6 +52,9 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any]) -> list[V3InboundM
                     "event_type": "message.received",
                     "timestamp": utc_now().isoformat(),
                     "conversation_id": conversation_id,
+                    "agent_v3": {
+                        "queue": queue_name,
+                    },
                     "mensaje": {
                         "meta_message_id": external_message_id,
                         "from_phone": from_phone,
@@ -74,6 +77,7 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any]) -> list[V3InboundM
                         message_type=str(msg_data.get("type") or "unknown"),
                         raw_payload=payload,
                         normalized_payload=normalized_payload,
+                        queue_name=queue_name,
                     )
                 )
     return messages
@@ -91,10 +95,11 @@ class V3MetaChannel:
         payload: dict[str, Any],
         *,
         inbox: V3Inbox = default_inbox,
+        queue_name: str | None = None,
         after_enqueue: Callable[[list[V3InboundMessage]], None] | None = None,
     ) -> dict[str, Any]:
         t0 = time.perf_counter()
-        inbound_messages = _raw_meta_to_v3_inbound_messages(payload)
+        inbound_messages = _raw_meta_to_v3_inbound_messages(payload, queue_name=queue_name)
         t_normalized = time.perf_counter()
 
         enqueued_ids = await inbox.enqueue_many(inbound_messages)
@@ -180,6 +185,7 @@ def _annotate_sent_channel_event(outbound: V3OutboundMessage) -> None:
             "outbound_message_id": outbound.id,
             "source_message_id": outbound.source_message_id,
             "source_external_message_id": outbound.source_external_message_id,
+            "queue": outbound.queue_name,
         }
         row.normalized_payload = normalized
         session.add(row)

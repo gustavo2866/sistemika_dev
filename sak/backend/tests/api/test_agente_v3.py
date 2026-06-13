@@ -183,6 +183,10 @@ def test_agente_v3_queue_smoke_aisla_contexto_default(client, db_session: Sessio
     assert smoke_context["queue"] == "smoke"
     assert smoke_context["count"] == 1
     assert smoke_context["contexts"][0]["conversation_id"] == "meta:1046006975257973:5491156384310"
+    smoke_inbox = client.get("/api/agente/v3/inbox/status", params={"queue": "smoke"}).json()
+    smoke_outbox = client.get("/api/agente/v3/outbox/status", params={"queue": "smoke"}).json()
+    assert smoke_inbox["last_processed"]["queue"] == "smoke"
+    assert smoke_outbox["last_sent"]["queue"] == "smoke"
 
 
 def test_agente_v3_rechaza_queue_invalida(client, db_session: Session):

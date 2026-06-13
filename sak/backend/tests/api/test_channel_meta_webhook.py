@@ -81,10 +81,11 @@ def _meta_text_payload(message_id: str = "wamid.test.inline.inbound") -> dict:
 def test_channel_meta_webhook_endpoint_derives_inbound_to_v3(client, monkeypatch):
     calls: list[tuple[str, object]] = []
 
-    async def fake_receive(payload, *, inbox, after_enqueue=None):
+    async def fake_receive(payload, *, inbox, queue_name=None, after_enqueue=None):
         message_id = payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"]
         calls.append(("v3_receive", message_id))
         calls.append(("default_inbox", inbox is get_v3_runtime().inbox))
+        calls.append(("queue", queue_name))
         return {"status": "ok"}
 
     monkeypatch.setattr(
@@ -102,14 +103,16 @@ def test_channel_meta_webhook_endpoint_derives_inbound_to_v3(client, monkeypatch
     assert calls == [
         ("v3_receive", "wamid.test.inline.inbound"),
         ("default_inbox", True),
+        ("queue", "default"),
     ]
 
 
 def test_channel_meta_webhook_endpoint_accepts_smoke_queue_for_v3(client, monkeypatch):
     calls: list[tuple[str, object]] = []
 
-    async def fake_receive(payload, *, inbox, after_enqueue=None):
+    async def fake_receive(payload, *, inbox, queue_name=None, after_enqueue=None):
         calls.append(("smoke_inbox", inbox is get_v3_runtime("smoke").inbox))
+        calls.append(("queue", queue_name))
         return {"status": "ok"}
 
     monkeypatch.setattr(
@@ -125,7 +128,7 @@ def test_channel_meta_webhook_endpoint_accepts_smoke_queue_for_v3(client, monkey
 
     assert response.status_code == 200
     assert response.json()["message"] == "Encolado v3"
-    assert calls == [("smoke_inbox", True)]
+    assert calls == [("smoke_inbox", True), ("queue", "smoke")]
 
 
 def test_channel_meta_webhook_endpoint_rejects_unknown_v3_queue(client):

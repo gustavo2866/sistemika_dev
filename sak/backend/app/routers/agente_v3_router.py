@@ -47,6 +47,7 @@ async def receive_meta_webhook_v3(
     return await default_meta_channel.receive(
         payload,
         inbox=runtime.inbox,
+        queue_name=queue_name,
         after_enqueue=lambda messages: (
             background_tasks.add_task(process_pending_once, limit=len(messages), queue=queue_name),
             background_tasks.add_task(persist_received_channel_events, list(messages)),
