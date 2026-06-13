@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 from typing import Any
@@ -12,6 +14,8 @@ from typing import Any
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AuthenticationError
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
+
+logger = logging.getLogger(__name__)
 
 
 PROCESS_GENERAL = "general"
@@ -56,27 +60,63 @@ class V3ProcessSelector:
         message: V3InboundMessage,
         context: V3ConversationContext,
     ) -> V3ProcessSelection:
+        started = time.perf_counter()
         fast_path = self._fast_path(message)
         if fast_path is not None:
+            logger.info(
+                "v3_selector_timing conversation_id=%s external_message_id=%s mode=%s process=%s total_ms=%s",
+                message.conversation_id,
+                message.external_message_id,
+                fast_path.mode,
+                fast_path.process_name,
+                round((time.perf_counter() - started) * 1000, 3),
+            )
             return fast_path
 
         if self.api_key:
             try:
-                return await self._resolve_with_llm(message, context)
+                selection = await self._resolve_with_llm(message, context)
+                logger.info(
+                    "v3_selector_timing conversation_id=%s external_message_id=%s mode=%s process=%s total_ms=%s",
+                    message.conversation_id,
+                    message.external_message_id,
+                    selection.mode,
+                    selection.process_name,
+                    round((time.perf_counter() - started) * 1000, 3),
+                )
+                return selection
             except Exception as exc:
-                return V3ProcessSelection(
+                selection = V3ProcessSelection(
                     process_name=PROCESS_GENERAL,
                     mode="llm_fallback",
                     confidence=0.0,
                     reason=f"No se pudo clasificar con LLM: {exc}",
                 )
+                logger.info(
+                    "v3_selector_timing conversation_id=%s external_message_id=%s mode=%s process=%s total_ms=%s",
+                    message.conversation_id,
+                    message.external_message_id,
+                    selection.mode,
+                    selection.process_name,
+                    round((time.perf_counter() - started) * 1000, 3),
+                )
+                return selection
 
-        return V3ProcessSelection(
+        selection = V3ProcessSelection(
             process_name=PROCESS_GENERAL,
             mode="fallback",
             confidence=0.0,
             reason="Sin fast_path y sin OPENAI_API_KEY configurada.",
         )
+        logger.info(
+            "v3_selector_timing conversation_id=%s external_message_id=%s mode=%s process=%s total_ms=%s",
+            message.conversation_id,
+            message.external_message_id,
+            selection.mode,
+            selection.process_name,
+            round((time.perf_counter() - started) * 1000, 3),
+        )
+        return selection
 
     @staticmethod
     def _fast_path(message: V3InboundMessage) -> V3ProcessSelection | None:
@@ -117,6 +157,7 @@ class V3ProcessSelector:
             "conversation_id": context.conversation_id,
             "message_text": message.text or "",
         }
+        started = time.perf_counter()
 
         try:
             completion = await self._client.chat.completions.create(
@@ -158,6 +199,15 @@ class V3ProcessSelector:
         process_name = str(raw.get("process_name") or "")
         if process_name not in PROCESS_NAMES:
             raise ValueError("LLM devolvio un subproceso invalido")
+        llm_ms = round((time.perf_counter() - started) * 1000, 3)
+        logger.info(
+            "v3_selector_llm_timing conversation_id=%s external_message_id=%s model=%s process=%s llm_ms=%s",
+            message.conversation_id,
+            message.external_message_id,
+            self.model,
+            process_name,
+            llm_ms,
+        )
         return V3ProcessSelection(
             process_name=process_name,
             mode="llm",

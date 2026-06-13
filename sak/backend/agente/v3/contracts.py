@@ -48,6 +48,7 @@ class V3ConversationContext:
     conversation_id: str
     active_process: str | None = None
     process_state: dict[str, Any] = field(default_factory=dict)
+    debug_timings: dict[str, Any] = field(default_factory=dict)
     last_inbound_message_id: str | None = None
     last_outbound_message_id: str | None = None
     created_at: datetime = field(default_factory=utc_now)
@@ -58,6 +59,7 @@ class V3ConversationContext:
             conversation_id=self.conversation_id,
             active_process=self.active_process,
             process_state=dict(self.process_state),
+            debug_timings=dict(self.debug_timings),
             last_inbound_message_id=self.last_inbound_message_id,
             last_outbound_message_id=self.last_outbound_message_id,
             created_at=self.created_at,

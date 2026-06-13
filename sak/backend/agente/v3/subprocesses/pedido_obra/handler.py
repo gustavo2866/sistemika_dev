@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 from sqlmodel import Session, select
 
@@ -140,6 +141,12 @@ class PedidoObraSubprocess:
         state: PedidoObraState,
     ) -> tuple[list[PedidoObraOperation], dict]:
         operations, llm_ms = await self._llm.interpret_carga(message.text, state)
+        logger.info(
+            "v3_pedido_obra_llm_timing external_message_id=%s etapa=carga operations=%s llm_ms=%s",
+            message.external_message_id,
+            len(operations),
+            llm_ms,
+        )
         return operations, {"interpreter": "llm", "llm_ms": llm_ms}
 
     def _handle_confirmar_salida(
@@ -272,6 +279,12 @@ class PedidoObraSubprocess:
         state: PedidoObraState,
     ) -> tuple[list[PedidoObraOperation], dict]:
         operations, llm_ms = await self._llm.interpret_cierre(message.text, state)
+        logger.info(
+            "v3_pedido_obra_llm_timing external_message_id=%s etapa=cierre operations=%s llm_ms=%s",
+            message.external_message_id,
+            len(operations),
+            llm_ms,
+        )
         return operations, {"interpreter": "llm", "llm_ms": llm_ms}
 
     def _run_validation(self, context: V3ConversationContext, state: PedidoObraState) -> V3ProcessResult:
@@ -344,8 +357,9 @@ class PedidoObraSubprocess:
         context: V3ConversationContext,
         state: PedidoObraState,
     ):
+        started = time.perf_counter()
         with Session(engine) as session:
-            return constructora_pedido_service.create_from_agent_v3_confirmation(
+            pedido = constructora_pedido_service.create_from_agent_v3_confirmation(
                 session,
                 contacto_id=int(state.contacto_id or 0),
                 oportunidad_id=int(state.oportunidad_id or 0),
@@ -364,6 +378,14 @@ class PedidoObraSubprocess:
                 normalized_payload=message.normalized_payload,
                 received_at=message.received_at,
             )
+        logger.info(
+            "v3_pedido_obra_persist_timing external_message_id=%s pedido_obra_id=%s items=%s persist_ms=%s",
+            message.external_message_id,
+            pedido.id,
+            len(state.items),
+            round((time.perf_counter() - started) * 1000, 3),
+        )
+        return pedido
 
     @staticmethod
     def _delete_item(state: PedidoObraState, target: str) -> bool:
@@ -390,16 +412,21 @@ class PedidoObraSubprocess:
 
     @staticmethod
     def _resolve_obra_options(phone: str) -> list[PedidoObraOption]:
+        started = time.perf_counter()
         normalized_phone = _normalize_phone(phone)
         if not normalized_phone:
+            logger.info("v3_pedido_obra_resolve_obra_timing phone_empty=true total_ms=%s", 0)
             return []
         with Session(engine) as session:
+            t_session = time.perf_counter()
             contacts = session.exec(select(CRMContacto)).all()
+            t_contacts = time.perf_counter()
             matched_contacts = [
                 contact
                 for contact in contacts
                 if any(_normalize_phone(value) == normalized_phone for value in (contact.telefonos or []))
             ]
+            t_match = time.perf_counter()
             options: list[PedidoObraOption] = []
             for contact in matched_contacts:
                 oportunidades = session.exec(
@@ -420,6 +447,20 @@ class PedidoObraSubprocess:
                             proyecto_id=int(proyecto.id),
                         )
                     )
+            finished = time.perf_counter()
+            logger.info(
+                "v3_pedido_obra_resolve_obra_timing phone=%s contacts=%s matched_contacts=%s options=%s "
+                "session_ms=%s contacts_query_ms=%s match_ms=%s options_ms=%s total_ms=%s",
+                normalized_phone,
+                len(contacts),
+                len(matched_contacts),
+                len(options),
+                round((t_session - started) * 1000, 3),
+                round((t_contacts - t_session) * 1000, 3),
+                round((t_match - t_contacts) * 1000, 3),
+                round((finished - t_match) * 1000, 3),
+                round((finished - started) * 1000, 3),
+            )
             return options
 
 

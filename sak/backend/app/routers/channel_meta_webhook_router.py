@@ -154,19 +154,30 @@ async def receive_meta_webhook(
     queue: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ):
+    t0 = time.perf_counter()
     payload = await request.json()
+    t_json = time.perf_counter()
 
     if _has_inbound_messages(payload):
         queue_name = _resolve_v3_public_queue(queue)
         runtime = get_v3_runtime(queue_name)
         try:
-            await default_meta_channel.receive(
+            result = await default_meta_channel.receive(
                 payload,
                 inbox=runtime.inbox,
                 after_enqueue=lambda messages: (
                     background_tasks.add_task(process_pending_once_v3, limit=len(messages), queue=queue_name),
                     background_tasks.add_task(persist_received_channel_events, list(messages)),
                 ),
+            )
+            t_receive = time.perf_counter()
+            logger.info(
+                "v3_public_webhook_timing queue=%s received_count=%s json_ms=%s receive_enqueue_ms=%s total_ms=%s",
+                queue_name,
+                result.get("received_count"),
+                round((t_json - t0) * 1000, 3),
+                round((t_receive - t_json) * 1000, 3),
+                round((t_receive - t0) * 1000, 3),
             )
         except Exception:
             session.rollback()

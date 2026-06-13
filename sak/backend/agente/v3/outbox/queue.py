@@ -5,10 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from datetime import UTC, datetime
+import logging
 import time
 from typing import Any
 
 from agente.v3.contracts import V3OutboundMessage, utc_now
+
+logger = logging.getLogger(__name__)
 
 
 class V3Outbox:
@@ -55,6 +58,21 @@ class V3Outbox:
         if message.enqueued_at is not None:
             queued_ms = max((started_at - message.enqueued_at).total_seconds() * 1000, 0.0)
 
+        timings_ms = {
+            "queued": round(queued_ms, 3),
+            "channel_send": round((t_send - t0) * 1000, 3),
+            "total": round((t_send - t0) * 1000, 3),
+        }
+        logger.info(
+            "v3_outbox_timing message_id=%s source_external_message_id=%s status=%s "
+            "queued_ms=%s channel_send_ms=%s total_ms=%s",
+            message.id,
+            message.source_external_message_id,
+            message.status,
+            timings_ms["queued"],
+            timings_ms["channel_send"],
+            timings_ms["total"],
+        )
         return {
             "message_id": message.id,
             "source_message_id": message.source_message_id,
@@ -66,11 +84,7 @@ class V3Outbox:
             "error": error,
             "started_at": started_at.isoformat(),
             "sent_at": message.sent_at.isoformat() if message.sent_at else None,
-            "timings_ms": {
-                "queued": round(queued_ms, 3),
-                "channel_send": round((t_send - t0) * 1000, 3),
-                "total": round((t_send - t0) * 1000, 3),
-            },
+            "timings_ms": timings_ms,
         }
 
     async def process_pending(self, *, limit: int = 10) -> dict[str, Any]:

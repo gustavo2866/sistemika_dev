@@ -101,20 +101,30 @@ class V3MetaChannel:
         t_enqueued = time.perf_counter()
         if after_enqueue is not None and inbound_messages:
             after_enqueue(inbound_messages)
+        timings_ms = {
+            "normalize": round((t_normalized - t0) * 1000, 3),
+            "enqueue": round((t_enqueued - t_normalized) * 1000, 3),
+            "total": round((t_enqueued - t0) * 1000, 3),
+        }
+        logger.info(
+            "v3_meta_receive_timing received_count=%s enqueued_count=%s normalize_ms=%s enqueue_ms=%s total_ms=%s",
+            len(inbound_messages),
+            len(enqueued_ids),
+            timings_ms["normalize"],
+            timings_ms["enqueue"],
+            timings_ms["total"],
+        )
 
         return {
             "status": "ok",
             "received_count": len(inbound_messages),
             "enqueued_count": len(enqueued_ids),
             "message_ids": enqueued_ids,
-            "timings_ms": {
-                "normalize": round((t_normalized - t0) * 1000, 3),
-                "enqueue": round((t_enqueued - t_normalized) * 1000, 3),
-                "total": round((t_enqueued - t0) * 1000, 3),
-            },
+            "timings_ms": timings_ms,
         }
 
     async def send_text(self, outbound: V3OutboundMessage) -> V3OutboundMessage:
+        t0 = time.perf_counter()
         result = await channel_gateway.enviar_mensaje(
             empresa_id="v3",
             celular_id=outbound.account_ref,
@@ -122,10 +132,23 @@ class V3MetaChannel:
             texto=outbound.text,
             policy="text_only",
         )
+        t_send = time.perf_counter()
         outbound.status = str(result.get("status") or "sent")
         outbound.external_message_id = result.get("meta_message_id")
         outbound.raw_response = dict(result)
         _annotate_sent_channel_event(outbound)
+        t_annotate = time.perf_counter()
+        logger.info(
+            "v3_meta_send_timing source_external_message_id=%s outbound_external_message_id=%s "
+            "to_address=%s status=%s send_ms=%s annotate_ms=%s total_ms=%s",
+            outbound.source_external_message_id,
+            outbound.external_message_id,
+            outbound.to_address,
+            outbound.status,
+            round((t_send - t0) * 1000, 3),
+            round((t_annotate - t_send) * 1000, 3),
+            round((t_annotate - t0) * 1000, 3),
+        )
         return outbound
 
 
@@ -168,6 +191,7 @@ def persist_received_channel_events(messages: list[V3InboundMessage]) -> None:
 
     if not messages:
         return
+    started = time.perf_counter()
     with Session(engine) as session:
         try:
             for message in messages:
@@ -188,6 +212,15 @@ def persist_received_channel_events(messages: list[V3InboundMessage]) -> None:
                     ),
                 )
             session.commit()
+            logger.info(
+                "v3_channel_events_persist_timing count=%s persist_ms=%s",
+                len(messages),
+                round((time.perf_counter() - started) * 1000, 3),
+            )
         except Exception:
             session.rollback()
-            logger.exception("Error persistiendo channel_events desde agente v3")
+            logger.exception(
+                "Error persistiendo channel_events desde agente v3 count=%s persist_ms=%s",
+                len(messages),
+                round((time.perf_counter() - started) * 1000, 3),
+            )

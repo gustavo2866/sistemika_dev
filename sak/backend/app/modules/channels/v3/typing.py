@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlmodel import Session
 
@@ -19,6 +20,7 @@ async def show_typing_for_inbound_message(message: V3InboundMessage) -> None:
     if message.provider != "meta" or message.channel_type != "whatsapp" or not message.external_message_id:
         return
 
+    started = time.perf_counter()
     try:
         with Session(engine) as session:
             await channel_gateway.show_typing(
@@ -30,9 +32,16 @@ async def show_typing_for_inbound_message(message: V3InboundMessage) -> None:
                 contact_address=message.from_address,
                 business_address=message.to_address,
             )
+        logger.info(
+            "v3_typing_timing conversation_id=%s external_message_id=%s typing_ms=%s",
+            message.conversation_id,
+            message.external_message_id,
+            round((time.perf_counter() - started) * 1000, 3),
+        )
     except Exception:
         logger.warning(
-            "No se pudo mostrar typing indicator v3 para external_message_id=%s",
+            "No se pudo mostrar typing indicator v3 para external_message_id=%s typing_ms=%s",
             message.external_message_id,
+            round((time.perf_counter() - started) * 1000, 3),
             exc_info=True,
         )

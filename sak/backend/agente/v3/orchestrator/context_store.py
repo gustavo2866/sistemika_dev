@@ -39,6 +39,7 @@ class V3ContextStore:
                     "conversation_id": item.conversation_id,
                     "active_process": item.active_process,
                     "process_state": item.process_state,
+                    "debug_timings": item.debug_timings,
                     "last_inbound_message_id": item.last_inbound_message_id,
                     "last_outbound_message_id": item.last_outbound_message_id,
                     "created_at": item.created_at.isoformat(),
@@ -54,4 +55,3 @@ class V3ContextStore:
 
 
 default_context_store = V3ContextStore()
-
