@@ -272,7 +272,58 @@ async def on_shutdown():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    import socket
+    return {
+        "status": "ok",
+        "llm_model": os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini"),
+        "region": os.getenv("CLOUD_RUN_REGION", os.getenv("GCP_REGION", "local")),
+        "hostname": socket.gethostname(),
+    }
+
+
+@app.get("/diagnostics/llm-latency")
+async def llm_latency_probe():
+    """Mide la latencia de red pura a la API de OpenAI (sin inferencia LLM)."""
+    import socket
+    import ssl
+    import time
+
+    results: dict = {"host": "api.openai.com", "port": 443}
+
+    # DNS
+    t0 = time.perf_counter()
+    try:
+        addr = socket.getaddrinfo("api.openai.com", 443, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+        results["dns_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        results["resolved_ip"] = addr
+    except Exception as exc:
+        results["dns_error"] = str(exc)
+        return results
+
+    # TCP connect
+    t1 = time.perf_counter()
+    try:
+        sock = socket.create_connection(("api.openai.com", 443), timeout=5)
+        results["tcp_ms"] = round((time.perf_counter() - t1) * 1000, 1)
+    except Exception as exc:
+        results["tcp_error"] = str(exc)
+        return results
+
+    # TLS handshake
+    t2 = time.perf_counter()
+    try:
+        ctx = ssl.create_default_context()
+        tls_sock = ctx.wrap_socket(sock, server_hostname="api.openai.com")
+        results["tls_ms"] = round((time.perf_counter() - t2) * 1000, 1)
+        tls_sock.close()
+    except Exception as exc:
+        results["tls_error"] = str(exc)
+        sock.close()
+
+    results["total_connect_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    results["llm_model"] = os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
+    return results
+
 
 if __name__ == "__main__":
     import uvicorn

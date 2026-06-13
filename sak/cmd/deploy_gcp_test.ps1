@@ -1,10 +1,10 @@
-# Deploy Backend a GCP Cloud Run (PRODUCCION - rama master)
-Write-Host "Desplegando backend a GCP Cloud Run [PRODUCCION]..." -ForegroundColor Cyan
+# Deploy Backend a GCP Cloud Run (TEST - rama test)
+Write-Host "Desplegando backend a GCP Cloud Run [TEST]..." -ForegroundColor Yellow
 
 Set-Location "$PSScriptRoot\..\backend"
 
-# Deploy a Cloud Run
-gcloud run deploy sak-backend `
+# Deploy a Cloud Run - servicio separado para test
+gcloud run deploy sak-backend-test `
     --source . `
     --region southamerica-east1 `
     --platform managed `
@@ -15,9 +15,9 @@ gcloud run deploy sak-backend `
     --update-env-vars "OPENAI_CHAT_REPLY_MODEL=gpt-4.1-mini"
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Backend PRODUCCION desplegado correctamente!" -ForegroundColor Green
+    Write-Host "Backend TEST desplegado correctamente!" -ForegroundColor Green
 } else {
-    Write-Host "Error al desplegar backend PRODUCCION" -ForegroundColor Red
+    Write-Host "Error al desplegar backend TEST" -ForegroundColor Red
 }
 
 Set-Location "$PSScriptRoot"
