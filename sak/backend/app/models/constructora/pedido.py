@@ -116,7 +116,7 @@ class ConstructoraPedido(Base, table=True):
     metadata_json: Optional[Dict[str, Any]] = Field(
         default=None,
         sa_column=Column("metadata", type_=JSONB, nullable=True),
-        description="Datos extra (referencia agent_v2, pedido_obra_id, etc.)",
+        description="Datos extra (referencia agente, pedido_obra_id, etc.)",
     )
 
     # Relaciones

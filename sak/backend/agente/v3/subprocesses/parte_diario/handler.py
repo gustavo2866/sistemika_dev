@@ -346,12 +346,13 @@ class ParteDiarioSubprocess:
                     "empty_part",
                 )
             if _has_pending_validations(draft):
+                state.etapa = "validacion"
                 return None
             state.etapa = "cierre"
             return self._active_result(
                 context,
                 state,
-                _replace_tail(renderer.solicitar_confirmacion(draft), "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR."),
+                _replace_tail(renderer.solicitar_confirmacion(draft), _close_menu()),
                 "confirmation_required",
             )
 
@@ -455,7 +456,6 @@ class ParteDiarioSubprocess:
                 )
 
         if process_result.keep_active and not payload.get("cancelado"):
-            state.etapa = "carga"
             state.parte_state = dict(process_result.process_state or {})
             return self._active_result(
                 context,
@@ -641,8 +641,10 @@ def _map_menu_text(text: str, state: ParteDiarioV3State) -> str:
         return text
     if _is_waiting_for_resolution(draft):
         return text
-    if (state.etapa == "cierre" or _has_pending_validations(draft)) and command in {"confirmar", "1"}:
+    if state.etapa in {"validacion", "cierre"} and command in {"confirmar", "fin", "1"}:
         return "CONFIRMAR"
+    if state.etapa == "cierre" and command in {"cerrar", "4"}:
+        return "CERRAR"
     return text
 
 
@@ -651,11 +653,12 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
     if draft.esperando == "confirmacion_cambio_fecha":
         return _replace_tail(reply, "Opciones: 1:CAMBIAR FECHA 2:MANTENER FECHA.")
     if draft.esperando in {"confirmacion_ambiguos", "resolucion_conflictos"}:
+        state.etapa = "validacion"
         return reply
     status = _status_from_payload(payload)
-    if status == "confirmation_required" or reply.startswith("Parte diario para confirmar:"):
+    if status == "confirmation_required" or "Parte diario para confirmar:" in reply:
         state.etapa = "cierre"
-        return _replace_tail(reply, "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR.")
+        return _replace_tail(reply, _close_menu())
     if status == "cancel_confirmation_required":
         state.etapa = "confirmar_salida"
         return _salida_confirmacion(draft)
@@ -667,6 +670,10 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
 
 def _with_load_menu(reply: str) -> str:
     return _replace_tail(reply, "Opciones: 1:FIN 2:SALIR.")
+
+
+def _close_menu() -> str:
+    return "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR."
 
 
 def _salida_confirmacion(draft) -> str:

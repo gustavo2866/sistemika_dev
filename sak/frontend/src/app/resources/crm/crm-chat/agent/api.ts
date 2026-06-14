@@ -2,6 +2,10 @@
 
 import type { AIReplyResult, MaterialFamily } from "./types";
 
+const legacyAgentRemoved = (): never => {
+  throw new Error("El agente legacy fue retirado. Usar el flujo v3 desde WhatsApp/channel.");
+};
+
 type RequestChatAIReplyParams = {
   apiUrl: string;
   oportunidadId: number;
@@ -9,35 +13,10 @@ type RequestChatAIReplyParams = {
   authHeaders: HeadersInit;
 };
 
-export const requestChatAIReply = async ({
-  apiUrl,
-  oportunidadId,
-  messageId,
-  authHeaders,
-}: RequestChatAIReplyParams): Promise<AIReplyResult> => {
-  const response = await fetch(
-    `${apiUrl}/crm/mensajes/acciones/chat/${oportunidadId}/ia-respuesta-v2`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify({
-        message_id: messageId ?? undefined,
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    let errorMessage = `Error al generar respuesta IA (HTTP ${response.status})`;
-    try {
-      const errorBody = await response.json();
-      errorMessage = errorBody?.detail || errorMessage;
-    } catch {
-      // ignore invalid error payloads
-    }
-    throw new Error(errorMessage);
-  }
-
-  return (await response.json()) as AIReplyResult;
+export const requestChatAIReply = async (
+  _params: RequestChatAIReplyParams,
+): Promise<AIReplyResult> => {
+  legacyAgentRemoved();
 };
 
 type RequestCurrentSolicitudParams = {
@@ -46,31 +25,10 @@ type RequestCurrentSolicitudParams = {
   authHeaders: HeadersInit;
 };
 
-export const requestCurrentSolicitud = async ({
-  apiUrl,
-  oportunidadId,
-  authHeaders,
-}: RequestCurrentSolicitudParams): Promise<AIReplyResult> => {
-  const response = await fetch(
-    `${apiUrl}/crm/mensajes/acciones/chat/${oportunidadId}/solicitud-v2`,
-    {
-      method: "GET",
-      headers: { ...authHeaders },
-    },
-  );
-
-  if (!response.ok) {
-    let errorMessage = `Error al cargar la solicitud (HTTP ${response.status})`;
-    try {
-      const errorBody = await response.json();
-      errorMessage = errorBody?.detail || errorMessage;
-    } catch {
-      // ignore invalid error payloads
-    }
-    throw new Error(errorMessage);
-  }
-
-  return (await response.json()) as AIReplyResult;
+export const requestCurrentSolicitud = async (
+  _params: RequestCurrentSolicitudParams,
+): Promise<AIReplyResult> => {
+  legacyAgentRemoved();
 };
 
 type RequestMaterialFamilyParams = {
@@ -79,35 +37,10 @@ type RequestMaterialFamilyParams = {
   authHeaders: HeadersInit;
 };
 
-export const requestMaterialFamily = async ({
-  apiUrl,
-  familyKey,
-  authHeaders,
-}: RequestMaterialFamilyParams): Promise<MaterialFamily> => {
-  const response = await fetch(
-    `${apiUrl}/crm/mensajes/acciones/chat/ia-familias/${encodeURIComponent(familyKey)}`,
-    {
-      method: "GET",
-      headers: { ...authHeaders },
-    },
-  );
-
-  if (!response.ok) {
-    let errorMessage = `Error al cargar familia (HTTP ${response.status})`;
-    try {
-      const errorBody = await response.json();
-      errorMessage = errorBody?.detail || errorMessage;
-    } catch {
-      // ignore invalid error payloads
-    }
-    throw new Error(errorMessage);
-  }
-
-  const payload = (await response.json()) as { family?: MaterialFamily };
-  if (!payload.family) {
-    throw new Error("La API no devolvio una familia valida");
-  }
-  return payload.family;
+export const requestMaterialFamily = async (
+  _params: RequestMaterialFamilyParams,
+): Promise<MaterialFamily> => {
+  legacyAgentRemoved();
 };
 
 type SaveMaterialFamilyParams = {
@@ -117,42 +50,8 @@ type SaveMaterialFamilyParams = {
   family: MaterialFamily;
 };
 
-export const saveMaterialFamily = async ({
-  apiUrl,
-  familyKey,
-  authHeaders,
-  family,
-}: SaveMaterialFamilyParams): Promise<{ family: MaterialFamily; created: boolean }> => {
-  const response = await fetch(
-    `${apiUrl}/crm/mensajes/acciones/chat/ia-familias/${encodeURIComponent(familyKey)}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify(family),
-    },
-  );
-
-  if (!response.ok) {
-    let errorMessage = `Error al guardar familia (HTTP ${response.status})`;
-    try {
-      const errorBody = await response.json();
-      errorMessage = errorBody?.detail || errorMessage;
-    } catch {
-      // ignore invalid error payloads
-    }
-    throw new Error(errorMessage);
-  }
-
-  const payload = (await response.json()) as {
-    family?: MaterialFamily;
-    created?: boolean;
-  };
-  if (!payload.family) {
-    throw new Error("La API no devolvio la familia guardada");
-  }
-
-  return {
-    family: payload.family,
-    created: Boolean(payload.created),
-  };
+export const saveMaterialFamily = async (
+  _params: SaveMaterialFamilyParams,
+): Promise<{ family: MaterialFamily; created: boolean }> => {
+  legacyAgentRemoved();
 };

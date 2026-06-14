@@ -1,27 +1,16 @@
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import and_, func, or_, update
 from sqlmodel import Session, select
 
-from agente.v2.core.orchestrator import AgentTurnOrchestrator
-from agente.v2.core.dependencies import (
-    build_agent_runtime_dependencies,
-    find_pedido_obra_process,
-)
-from agente.v2.core.runtime import resolve_chat_agent_mode
-from agente.v2.processes.pedido_obra.handler import PedidoObraProcess
-from agente.v2.processes.solicitud_materiales.models import MaterialRequestState
-from agente.v2.processes.solicitud_materiales.family_catalog import get_familia_material, save_familia_material
-from agente.v2.processes.solicitud_materiales.handler import build_request_reply_text
 from app.core.router import create_generic_router, flatten_nested_filters
 from app.models.base import filtrar_respuesta, serialize_datetime
 from app.crud.crm_mensaje_crud import crm_mensaje_crud
 from app.db import get_session
-from app.models import CRMMensaje, CRMContacto, CRMOportunidad, CRMTipoOperacion, Proyecto
+from app.models import CRMMensaje, CRMContacto, CRMOportunidad, CRMTipoOperacion
 from app.models.enums import TipoMensaje, EstadoMensaje
 from app.services.crm_mensaje_service import crm_mensaje_service
 from app.schemas.crm_mensaje_responder import ResponderMensajeRequest, ResponderMensajeResponse
@@ -35,151 +24,6 @@ router = create_generic_router(
 )
 
 logger = logging.getLogger(__name__)
-V2_FAMILIES_PATH: Path | None = None
-
-
-def _reload_v2_dependencies() -> None:
-    global V2_STATE_STORE, V2_PROCESSES, V2_AGENT
-    V2_STATE_STORE, V2_PROCESSES = build_agent_runtime_dependencies()
-    V2_AGENT = find_pedido_obra_process(V2_PROCESSES)
-
-
-_reload_v2_dependencies()
-
-
-def _build_v2_orchestrator(*, session: Session | None = None) -> AgentTurnOrchestrator:
-    state_store = V2_STATE_STORE
-    processes = V2_PROCESSES
-    if not isinstance(V2_AGENT, PedidoObraProcess):
-        # Compatibilidad de los endpoints de preview y sus dobles de prueba
-        # mientras conviven el agente historico y el runtime nuevo.
-        processes = [V2_AGENT]
-    elif session is not None:
-        state_store, processes = build_agent_runtime_dependencies(session=session)
-    return AgentTurnOrchestrator(
-        processes=processes,
-        state_store=state_store,
-        history_limit=0,
-    )
-
-
-def _load_v2_material_request_state(oportunidad_id: int) -> MaterialRequestState | None:
-    if not hasattr(V2_AGENT, "load_request_state"):
-        return None
-    return V2_AGENT.load_request_state(oportunidad_id)
-
-
-def _build_v2_request_workflow(request_state: MaterialRequestState) -> dict[str, Any]:
-    active_query_item = request_state.active_query_item()
-    ready_for_confirmation = bool(
-        request_state.items
-        and request_state.estado_solicitud == "ready"
-        and active_query_item is None
-    )
-    return {
-        "mode": "completa_atributos" if active_query_item else ("revision" if ready_for_confirmation else "normal"),
-        "active_query": (
-            {
-                "item_id": active_query_item.item_id,
-                "consulta": active_query_item.consulta,
-                "consulta_atributo": active_query_item.consulta_atributo,
-                "consulta_intentos": active_query_item.consulta_intentos,
-            }
-            if active_query_item
-            else None
-        ),
-        "awaiting_user_decision": "continue_or_close" if ready_for_confirmation else None,
-        "ready_for_confirmation": ready_for_confirmation,
-    }
-
-
-def _build_v2_request_payload(request_state: MaterialRequestState) -> dict[str, Any]:
-    return {
-        "type": "material_request",
-        "request_action": "show",
-        "respuesta": build_request_reply_text(request_state) or None,
-        "analysis": request_state.to_analysis_dict(),
-        "solicitud": request_state.to_state_dict(),
-        "modelo": "agente-v2",
-        "warnings": [],
-        "workflow": _build_v2_request_workflow(request_state),
-    }
-
-
-def _build_v2_debug_payload(
-    *,
-    session: Session,
-    oportunidad: CRMOportunidad,
-    message_id: int,
-) -> dict[str, Any]:
-    resolved_mode, mode_source = resolve_chat_agent_mode(session)
-    orchestrator = _build_v2_orchestrator(session=session)
-
-    state = orchestrator.state_store.load(oportunidad.id)
-    ctx = orchestrator.build_context(session, message_id, trigger="webhook", state=state)
-
-    process = orchestrator.registry.resolve(ctx)
-    process_info = None
-    if process:
-        score = process.priority(ctx)
-        if ctx.active_process == process.name and score is not None:
-            score += 1000
-        process_info = {"process_name": process.name, "priority": score}
-
-    latest_inbound_message = session.get(CRMMensaje, message_id)
-    message_agent_meta = (
-        dict((latest_inbound_message.metadata_json or {}).get("agent_v2") or {})
-        if latest_inbound_message is not None
-        else None
-    )
-
-    outbound_message_id = (message_agent_meta or {}).get("outbound_message_id")
-    if outbound_message_id is None:
-        delivery_meta = (message_agent_meta or {}).get("delivery")
-        if isinstance(delivery_meta, dict):
-            outbound_message_id = delivery_meta.get("outbound_message_id")
-    if outbound_message_id is None:
-        outbound_message_id = state.last_outbound_message_id
-    latest_outbound_message = session.get(CRMMensaje, int(outbound_message_id)) if outbound_message_id else None
-
-    request_state = _load_v2_material_request_state(oportunidad.id)
-
-    return {
-        "oportunidad_id": oportunidad.id,
-        "message_id": message_id,
-        "agent_mode": resolved_mode.value,
-        "agent_mode_source": mode_source,
-        "context": {
-            "opportunity_kind": "project" if ctx.is_project else "generic",
-            "is_project_opportunity": ctx.is_project,
-            "recent_messages": [msg.to_prompt_dict() for msg in ctx.history],
-            "active_process_state": ctx.process_state,
-        },
-        "process_resolution": {
-            "activation": process_info,
-            "error": None if process else "No hay procesos disponibles para resolver el turno",
-        },
-        "conversation_state": state.to_dict(),
-        "request_state": request_state.to_state_dict() if request_state else None,
-        "turn_execution": (
-            {
-                **message_agent_meta,
-                "response_payload": message_agent_meta.get("result"),
-            }
-            if message_agent_meta
-            else None
-        ),
-        "message_agent_metadata": message_agent_meta,
-        "latest_inbound_message": filtrar_respuesta(latest_inbound_message) if latest_inbound_message else None,
-        "latest_outbound_message": filtrar_respuesta(latest_outbound_message) if latest_outbound_message else None,
-        "summary": {
-            "last_result_type": (message_agent_meta or {}).get("type"),
-            "delivery_status": str(((message_agent_meta or {}).get("delivery") or {}).get("status") or "").strip() or None,
-            "has_execution_record": bool(message_agent_meta),
-            "has_request_state": request_state is not None,
-            "has_outbound_message": latest_outbound_message is not None,
-        },
-    }
 
 
 def _fetch_event_rows_dynamic(session: Session, oportunidad_id: int) -> list[dict[str, Any]]:
@@ -345,6 +189,7 @@ async def simular_mensaje_chat(
     payload: dict = Body(...),
     session: Session = Depends(get_session),
 ):
+    raise HTTPException(status_code=410, detail="Endpoint legacy de agente retirado")
     """
     Endpoint de prueba: simula recibir un mensaje del encargado sin pasar por WhatsApp/Meta.
 
@@ -384,13 +229,7 @@ async def simular_mensaje_chat(
 
     try:
         # Usa el mismo store que producción (PostgreSQL), no los JSON en disco
-        state_store, processes = build_agent_runtime_dependencies(session=session)
-        orchestrator = AgentTurnOrchestrator(
-            processes=processes,
-            state_store=state_store,
-            history_limit=0,
-        )
-        result = await orchestrator.process_turn(session, mensaje.id, "simulated")
+        result = {"type": "legacy_removed"}
         t_total = time.perf_counter()
         timing = {
             "db_insert_ms": round((t_db_insert - t0) * 1000),
@@ -410,109 +249,6 @@ async def simular_mensaje_chat(
     except Exception as e:
         logger.error("Error procesando mensaje simulado", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al procesar: {str(e)}")
-
-
-@router.post("/acciones/chat/{oportunidad_id}/ia-respuesta")
-async def sugerir_respuesta_chat_ia(
-    oportunidad_id: int,
-    session: Session = Depends(get_session),
-):
-    try:
-        message_id = AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
-        orchestrator = _build_v2_orchestrator(session=session)
-        return await orchestrator.process_turn(
-            session,
-            message_id,
-            "manual_button",
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        logger.error("Error generando sugerencia IA para chat", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"No se pudo generar la respuesta IA: {str(e)}")
-
-
-@router.post("/acciones/chat/{oportunidad_id}/ia-respuesta-v2")
-async def sugerir_respuesta_chat_ia_v2(
-    oportunidad_id: int,
-    payload: dict = Body(default={}),
-    session: Session = Depends(get_session),
-):
-    try:
-        requested_message_id = payload.get("message_id") if isinstance(payload, dict) else None
-        message_id = int(requested_message_id) if requested_message_id else AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
-        orchestrator = _build_v2_orchestrator(session=session)
-        return await orchestrator.process_turn(
-            session,
-            message_id,
-            "manual_button",
-        )
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        logger.error("Error generando sugerencia IA v2 para chat", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"No se pudo generar la respuesta IA v2: {str(e)}")
-
-
-@router.get("/acciones/chat/{oportunidad_id}/solicitud-v2")
-def obtener_solicitud_chat_ia_v2(
-    oportunidad_id: int,
-    session: Session = Depends(get_session),
-):
-    oportunidad = session.get(CRMOportunidad, oportunidad_id)
-    if not oportunidad:
-        raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
-
-    request_state = _load_v2_material_request_state(oportunidad_id)
-    if request_state is None:
-        raise HTTPException(status_code=404, detail="No hay solicitud v2 para la oportunidad")
-
-    return _build_v2_request_payload(request_state)
-
-
-@router.get("/acciones/chat/{oportunidad_id}/diagnostico-v2")
-def obtener_diagnostico_chat_ia_v2(
-    oportunidad_id: int,
-    message_id: int | None = None,
-    session: Session = Depends(get_session),
-):
-    oportunidad = session.get(CRMOportunidad, oportunidad_id)
-    if not oportunidad:
-        raise HTTPException(status_code=404, detail="Oportunidad no encontrada")
-
-    resolved_message_id = int(message_id) if message_id else AgentTurnOrchestrator.resolve_latest_message_id(session, oportunidad_id)
-    return _build_v2_debug_payload(
-        session=session,
-        oportunidad=oportunidad,
-        message_id=resolved_message_id,
-    )
-
-
-@router.get("/acciones/chat/ia-familias/{family_key}")
-def obtener_familia_material_ia(
-    family_key: str,
-):
-    familia = get_familia_material(family_key, path=V2_FAMILIES_PATH)
-    if not familia:
-        raise HTTPException(status_code=404, detail="Familia no encontrada")
-    return {"family": familia}
-
-
-@router.put("/acciones/chat/ia-familias/{family_key}")
-def guardar_familia_material_ia(
-    family_key: str,
-    payload: dict = Body(...),
-):
-    try:
-        familia, created = save_familia_material(family_key, payload, path=V2_FAMILIES_PATH)
-        _reload_v2_dependencies()
-        return {"family": familia, "created": created}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{mensaje_id}/crear-oportunidad")

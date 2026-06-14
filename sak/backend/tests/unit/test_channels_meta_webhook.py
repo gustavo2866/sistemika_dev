@@ -153,6 +153,8 @@ def test_raw_meta_status_payload_is_normalized(db_session):
     normalized = result[0]
     assert normalized["event_type"] == "message.failed"
     assert normalized["mensaje"]["direccion"] == "out"
+    assert normalized["mensaje"]["from_phone"] == "5493816259343"
+    assert normalized["mensaje"]["to_phone"] == "5491156384310"
     assert normalized["mensaje"]["status"] == "failed"
     assert normalized["mensaje"]["meta_message_id"] == "wamid.test.outbound"
     assert normalized["mensaje"]["errors"][0]["code"] == 131047

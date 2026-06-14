@@ -101,7 +101,7 @@ def measure_message(session: Session, message_id: int | None = None) -> dict[str
         raise RuntimeError(f"El mensaje {inbound.id} no es de entrada")
 
     metadata = dict(inbound.metadata_json or {})
-    agent_meta = dict(metadata.get("agent_v2") or {})
+    agent_meta = dict(metadata.get("agent_v3") or {})
     result = dict(agent_meta.get("result") or {})
     timing = dict(result.get("_timing") or {})
     pedido_obra = dict(result.get("pedido_obra") or {})

@@ -13,6 +13,7 @@ Comandos exactos reservados al backend:
 - 1 o CONFIRMAR: confirma y guarda el parte.
 - 2 o VOLVER: vuelve a carga.
 - 3 o SALIR: pide confirmacion para descartar.
+- 4 o CERRAR: confirma, guarda y deja el parte cerrado.
 
 Si el usuario escribe otra cosa, interpreta si quiere ver, agregar, quitar,
 modificar novedades o cambiar la fecha antes de confirmar.

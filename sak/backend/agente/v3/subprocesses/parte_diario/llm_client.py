@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import os
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AuthenticationError
-
+from agente.v3.llm import OpenAIChatClient, compact_json, load_prompt
 from agente.v3.subprocesses.parte_diario.models import (
     EstadoItem,
     NominaItem,
@@ -23,7 +20,6 @@ from agente.v3.subprocesses.parte_diario.models import (
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
-_PROMPT_CACHE: dict[Path, tuple[float, str]] = {}
 
 OPERATION_TYPES = [
     "agregar_novedad",
@@ -47,20 +43,15 @@ class ParteDiarioLLMClient:
         model: str | None = None,
         *,
         stage: str = "carga",
-        client: AsyncOpenAI | None = None,
+        chat_client: OpenAIChatClient | None = None,
     ) -> None:
-        api_key_raw = api_key or os.getenv("OPENAI_API_KEY") or ""
-        self.api_key = api_key_raw.strip() or None
-        self.model = model or os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
         self.stage = stage
-        self._client: AsyncOpenAI | None = client
+        self._chat = chat_client or OpenAIChatClient(api_key=api_key, model=model)
 
     def for_stage(self, stage: str) -> "ParteDiarioLLMClient":
         return ParteDiarioLLMClient(
-            api_key=self.api_key,
-            model=self.model,
             stage=stage,
-            client=self._client,
+            chat_client=self._chat,
         )
 
     async def interpret_turn(
@@ -70,12 +61,7 @@ class ParteDiarioLLMClient:
         nominas_proyecto: list[NominaItem],
         estados: list[EstadoItem],
     ) -> TurnPlan:
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY no configurada")
-        if self._client is None:
-            self._client = AsyncOpenAI(api_key=self.api_key)
-
-        prompt = _load_prompt(PROMPTS_DIR / _prompt_name_for_stage(self.stage))
+        prompt = load_prompt(PROMPTS_DIR / _prompt_name_for_stage(self.stage))
         payload = {
             "mensaje": mensaje,
             "fecha_actual": datetime.now(BUENOS_AIRES).date().isoformat(),
@@ -88,80 +74,41 @@ class ParteDiarioLLMClient:
             ],
         }
         system_prompt = (
-            prompt.replace("{turno}", _compact(payload))
-            .replace("{estado}", _compact(state.to_dict()))
+            prompt.replace("{turno}", compact_json(payload))
+            .replace("{estado}", compact_json(state.to_dict()))
             .replace("{etapa}", self.stage)
         )
         started = time.perf_counter()
-        raw = await self._call(system_prompt, _turn_schema(estados))
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            response_format=_turn_schema(estados),
+            max_tokens=1000,
+        )
         plan = _parse_turn_plan(raw)
         plan.llm_ms = round((time.perf_counter() - started) * 1000)
         return plan
 
     async def interpretar_estado_pendiente(self, mensaje: str, estados: list[EstadoItem]) -> str:
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY no configurada")
-        if self._client is None:
-            self._client = AsyncOpenAI(api_key=self.api_key)
-
-        prompt = _load_prompt(PROMPTS_DIR / "estado_pendiente.txt")
+        prompt = load_prompt(PROMPTS_DIR / "estado_pendiente.txt")
         system_prompt = (
             prompt.replace(
                 "{estados}",
-                _compact([{"codigo": item.abreviatura, "nombre": item.nombre} for item in estados]),
+                compact_json([{"codigo": item.abreviatura, "nombre": item.nombre} for item in estados]),
             )
             .replace("{mensaje}", mensaje)
         )
-        raw = await self._call(system_prompt, _pending_state_schema(estados))
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            response_format=_pending_state_schema(estados),
+            max_tokens=1000,
+        )
         return str(raw.get("estado_codigo") or "NO_DETERMINADO").upper()
-
-    async def _call(self, system_prompt: str, response_format: dict[str, Any]) -> dict[str, Any]:
-        try:
-            completion = await self._client.chat.completions.create(
-                model=self.model,
-                response_format=response_format,
-                max_tokens=1000,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Interpreta el turno y responde solo JSON."},
-                ],
-            )
-        except APIConnectionError as exc:
-            raise ValueError("No se pudo conectar a OpenAI") from exc
-        except AuthenticationError as exc:
-            raise ValueError("OPENAI_API_KEY invalida") from exc
-        except APIStatusError as exc:
-            raise ValueError(f"OpenAI error HTTP {exc.status_code}") from exc
-
-        message = completion.choices[0].message
-        refusal = getattr(message, "refusal", None)
-        if refusal:
-            raise ValueError("LLM rechazo interpretar el turno")
-        try:
-            parsed = json.loads((message.content or "").strip())
-        except json.JSONDecodeError as exc:
-            raise ValueError("LLM no devolvio JSON valido") from exc
-        if not isinstance(parsed, dict):
-            raise ValueError("LLM debe devolver un objeto JSON")
-        return parsed
 
 
 def _prompt_name_for_stage(stage: str) -> str:
     if stage == "cierre":
         return "cierre.txt"
     return "carga.txt"
-
-
-def _load_prompt(path: Path) -> str:
-    mtime = path.stat().st_mtime
-    cached = _PROMPT_CACHE.get(path)
-    if cached is None or cached[0] != mtime:
-        _PROMPT_CACHE[path] = (mtime, path.read_text(encoding="utf-8").strip())
-    return _PROMPT_CACHE[path][1]
-
-
-def _compact(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _parse_turn_plan(raw: dict[str, Any]) -> TurnPlan:

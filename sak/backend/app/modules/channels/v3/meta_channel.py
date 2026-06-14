@@ -17,9 +17,12 @@ from agente.v3.contracts import (
 from agente.v3.inbox import default_inbox
 from agente.v3.inbox.queue import V3Inbox
 from app.db import engine
+from app.modules.channels.config import meta_account_resolver
 from app.modules.channels.gateway import channel_gateway
 from app.modules.channels.persistence import ChannelEvent, channel_event_store
+from app.modules.channels.providers.meta.client import meta_graph_client
 from app.modules.channels.types import ChannelEventData
+from app.services.audio_transcription_service import audio_transcription_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,33 @@ def _extract_text(msg_data: dict[str, Any]) -> str | None:
     return None
 
 
+def _extract_media_data(msg_data: dict[str, Any]) -> dict[str, Any]:
+    msg_type = str(msg_data.get("type") or "")
+    media_data = msg_data.get(msg_type) if msg_type else None
+    if not isinstance(media_data, dict):
+        return {}
+    return {
+        "id": media_data.get("id"),
+        "caption": media_data.get("caption"),
+        "filename": media_data.get("filename"),
+        "mime_type": media_data.get("mime_type"),
+    }
+
+
+def _audio_filename(media_id: str, mime_type: str | None) -> str:
+    extension = "ogg"
+    normalized = (mime_type or "").split(";")[0].strip().lower()
+    if normalized == "audio/mpeg":
+        extension = "mp3"
+    elif normalized in {"audio/mp4", "audio/m4a"}:
+        extension = "m4a"
+    elif normalized == "audio/wav":
+        extension = "wav"
+    elif normalized == "audio/webm":
+        extension = "webm"
+    return f"{media_id}.{extension}"
+
+
 def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str | None = None) -> list[V3InboundMessage]:
     messages: list[V3InboundMessage] = []
     for entry in payload.get("entry", []) or []:
@@ -46,6 +76,9 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str
                 external_message_id = msg_data.get("id")
                 if not external_message_id:
                     continue
+                msg_type = str(msg_data.get("type") or "unknown")
+                media_data = _extract_media_data(msg_data)
+                extracted_text = _extract_text(msg_data)
                 from_phone = str(msg_data.get("from") or "")
                 conversation_id = f"meta:{account_ref}:{from_phone}"
                 normalized_payload = {
@@ -59,8 +92,12 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str
                         "meta_message_id": external_message_id,
                         "from_phone": from_phone,
                         "to_phone": to_phone,
-                        "tipo": msg_data.get("type") or "unknown",
-                        "texto": _extract_text(msg_data),
+                        "tipo": msg_type,
+                        "texto": extracted_text,
+                        "media_id": media_data.get("id"),
+                        "caption": media_data.get("caption"),
+                        "filename": media_data.get("filename"),
+                        "mime_type": media_data.get("mime_type"),
                     },
                 }
                 messages.append(
@@ -73,8 +110,8 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str
                         external_message_id=str(external_message_id),
                         from_address=from_phone,
                         to_address=to_phone,
-                        text=_extract_text(msg_data),
-                        message_type=str(msg_data.get("type") or "unknown"),
+                        text=extracted_text,
+                        message_type=msg_type,
                         raw_payload=payload,
                         normalized_payload=normalized_payload,
                         queue_name=queue_name,
@@ -101,6 +138,8 @@ class V3MetaChannel:
         t0 = time.perf_counter()
         inbound_messages = _raw_meta_to_v3_inbound_messages(payload, queue_name=queue_name)
         t_normalized = time.perf_counter()
+        await _prepare_audio_messages(inbound_messages)
+        t_audio = time.perf_counter()
 
         enqueued_ids = await inbox.enqueue_many(inbound_messages)
         t_enqueued = time.perf_counter()
@@ -108,14 +147,16 @@ class V3MetaChannel:
             after_enqueue(inbound_messages)
         timings_ms = {
             "normalize": round((t_normalized - t0) * 1000, 3),
-            "enqueue": round((t_enqueued - t_normalized) * 1000, 3),
+            "audio": round((t_audio - t_normalized) * 1000, 3),
+            "enqueue": round((t_enqueued - t_audio) * 1000, 3),
             "total": round((t_enqueued - t0) * 1000, 3),
         }
         logger.info(
-            "v3_meta_receive_timing received_count=%s enqueued_count=%s normalize_ms=%s enqueue_ms=%s total_ms=%s",
+            "v3_meta_receive_timing received_count=%s enqueued_count=%s normalize_ms=%s audio_ms=%s enqueue_ms=%s total_ms=%s",
             len(inbound_messages),
             len(enqueued_ids),
             timings_ms["normalize"],
+            timings_ms["audio"],
             timings_ms["enqueue"],
             timings_ms["total"],
         )
@@ -158,6 +199,76 @@ class V3MetaChannel:
 
 
 default_meta_channel = V3MetaChannel()
+
+
+async def _prepare_audio_messages(messages: list[V3InboundMessage]) -> None:
+    for message in messages:
+        if message.message_type != "audio":
+            continue
+        await _prepare_audio_message(message)
+
+
+async def _prepare_audio_message(message: V3InboundMessage) -> None:
+    mensaje = dict((message.normalized_payload or {}).get("mensaje") or {})
+    media_id = str(mensaje.get("media_id") or "").strip()
+    mime_type = mensaje.get("mime_type")
+    filename = mensaje.get("filename")
+    audio_meta = {
+        "tipo": "audio",
+        "id": media_id or None,
+        "mime_type": mime_type,
+        "filename": filename,
+        "caption": mensaje.get("caption"),
+    }
+    try:
+        if not media_id:
+            raise ValueError("Audio sin media_id")
+        with Session(engine) as session:
+            account_config = meta_account_resolver.resolve(session, message.account_ref)
+        download = await meta_graph_client.download_media(
+            access_token=account_config.access_token,
+            media_id=media_id,
+        )
+        resolved_mime_type = download.mime_type or mime_type
+        transcription = await audio_transcription_service.transcribe_bytes(
+            download.content,
+            filename=str(filename or _audio_filename(media_id, resolved_mime_type)),
+            mime_type=resolved_mime_type,
+        )
+        audio_meta.update(
+            {
+                "transcription": transcription,
+                "transcription_status": "ok",
+                "download_mime_type": download.mime_type,
+                "file_size": download.file_size,
+                "sha256": download.sha256,
+            }
+        )
+        _apply_audio_text(message, transcription or "[Audio recibido]", audio_meta)
+    except Exception as exc:
+        logger.warning(
+            "No se pudo transcribir audio v3 external_message_id=%s media_id=%s",
+            message.external_message_id,
+            media_id or None,
+            exc_info=True,
+        )
+        audio_meta.update(
+            {
+                "transcription_status": "failed",
+                "transcription_error": str(exc),
+            }
+        )
+        _apply_audio_text(message, "[Audio recibido]", audio_meta)
+
+
+def _apply_audio_text(message: V3InboundMessage, text: str, audio_meta: dict[str, Any]) -> None:
+    message.text = text
+    normalized = dict(message.normalized_payload or {})
+    mensaje = dict(normalized.get("mensaje") or {})
+    mensaje["texto"] = text
+    mensaje["audio"] = audio_meta
+    normalized["mensaje"] = mensaje
+    message.normalized_payload = normalized
 
 
 def _annotate_sent_channel_event(outbound: V3OutboundMessage) -> None:

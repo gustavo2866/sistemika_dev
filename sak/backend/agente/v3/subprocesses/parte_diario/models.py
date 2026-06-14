@@ -258,6 +258,7 @@ class ExecutionResult:
     reply: str
     keep_active: bool = True
     parte_listo: bool = False
+    cerrar_parte: bool = False
     cancelado: bool = False
     errors: list[str] = field(default_factory=list)
     applied_operations: list[str] = field(default_factory=list)

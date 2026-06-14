@@ -195,12 +195,8 @@ class ConstructoraPedidoService:
 
     @staticmethod
     def _extract_agent_result(metadata: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        for agent_key in ("agent_v3", "agent_v2"):
-            agent_metadata = metadata.get(agent_key) or {}
-            result = agent_metadata.get("result") or {}
-            if result:
-                return agent_key, result
-        return "agent_v2", {}
+        agent_metadata = metadata.get("agent_v3") or {}
+        return "agent_v3", agent_metadata.get("result") or {}
 
     @staticmethod
     def _validate_agent_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

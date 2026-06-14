@@ -33,7 +33,7 @@ CRM_DUPLICATES_SQL = text(
             ROW_NUMBER() OVER (
                 PARTITION BY origen_externo_id
                 ORDER BY
-                    CASE WHEN metadata->'agent_v2' IS NOT NULL THEN 0 ELSE 1 END,
+                    CASE WHEN metadata->'agent_v3' IS NOT NULL THEN 0 ELSE 1 END,
                     CASE WHEN oportunidad_id IS NOT NULL THEN 0 ELSE 1 END,
                     id
             ) AS position
@@ -63,7 +63,7 @@ CRM_REFERENCES_SQL = text(
             ROW_NUMBER() OVER (
                 PARTITION BY origen_externo_id
                 ORDER BY
-                    CASE WHEN metadata->'agent_v2' IS NOT NULL THEN 0 ELSE 1 END,
+                    CASE WHEN metadata->'agent_v3' IS NOT NULL THEN 0 ELSE 1 END,
                     CASE WHEN oportunidad_id IS NOT NULL THEN 0 ELSE 1 END,
                     id
             ) AS position

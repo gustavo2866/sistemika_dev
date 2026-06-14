@@ -131,6 +131,7 @@ class ParteDiarioService:
         idproyecto = int(result.get("idproyecto") or 0)
         fecha = date.fromisoformat(str(result.get("fecha") or ""))
         novedades = list(result.get("novedades") or [])
+        target_estado = EstadoParteDiario.CERRADO if result.get("cerrar_parte") else EstadoParteDiario.BORRADOR
         if not novedades and not result.get("sin_novedades_informado"):
             raise ValueError("El parte diario vacio requiere declaracion explicita de sin novedades")
         present_id = None
@@ -151,7 +152,7 @@ class ParteDiarioService:
             parte = ParteDiario(
                 idproyecto=idproyecto,
                 fecha=fecha,
-                estado=EstadoParteDiario.BORRADOR,
+                estado=target_estado,
                 mensaje_origen_id=mensaje_id,
             )
             session.add(parte)
@@ -165,6 +166,9 @@ class ParteDiarioService:
             session.exec(
                 delete(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
             )
+
+        parte.estado = target_estado
+        session.add(parte)
 
         for novedad in novedades:
             idnomina = int(novedad["idnomina"])
@@ -185,11 +189,7 @@ class ParteDiarioService:
 
     @staticmethod
     def _extract_agent_metadata(metadata: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        for agent_key in ("agent_v3", "agent_v2"):
-            agent_metadata = metadata.get(agent_key) or {}
-            if agent_metadata.get("result") or agent_metadata.get("parte_diario_id"):
-                return agent_key, agent_metadata
-        return "agent_v2", {}
+        return "agent_v3", metadata.get("agent_v3") or {}
 
     def _find_or_create_v3_confirmation_message(
         self,

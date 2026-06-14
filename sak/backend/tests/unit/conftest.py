@@ -30,7 +30,6 @@ from sqlmodel import Session, SQLModel, create_engine  # noqa: E402
 
 # Importar todos los modelos para que SQLModel.metadata los registre
 import_module("app.models")
-import_module("agente.v2.db.models")
 
 
 @pytest.fixture()

@@ -57,6 +57,25 @@ class V3Orchestrator:
         t_registry = time.perf_counter()
 
         process_result = await process.handle(message, context)
+        final_process_name = selection.process_name
+        handoff_metadata: dict[str, str] = {}
+        handoff_target = _handoff_target(process_result.metadata)
+        if handoff_target:
+            target_process = self._subprocess_registry.get(handoff_target)
+            if target_process is not None:
+                logger.info(
+                    "v3_orchestrator_handoff conversation_id=%s external_message_id=%s from_process=%s to_process=%s",
+                    message.conversation_id,
+                    message.external_message_id,
+                    selection.process_name,
+                    handoff_target,
+                )
+                handoff_metadata = {
+                    "handoff_from_process": selection.process_name,
+                    "handoff_to_process": handoff_target,
+                }
+                final_process_name = handoff_target
+                process_result = await target_process.handle(message, process_result.context)
         t_process = time.perf_counter()
         updated_context = await self._context_store.save(process_result.context)
         t_context_save = time.perf_counter()
@@ -68,7 +87,7 @@ class V3Orchestrator:
         reply_text = _append_process_timing(
             process_result.reply_text,
             response_timings_ms,
-            selected_process=selection.process_name,
+            selected_process=final_process_name,
         )
 
         outbound_id = ""
@@ -98,7 +117,7 @@ class V3Orchestrator:
             "context_save_ms=%s outbox_enqueue_ms=%s total_ms=%s",
             message.conversation_id,
             message.external_message_id,
-            selection.process_name,
+            final_process_name,
             selection.mode,
             timings_ms["context_load"],
             timings_ms["selector"],
@@ -117,6 +136,8 @@ class V3Orchestrator:
             },
             "orchestrator": timings_ms,
             "process_selection": selection.to_dict(),
+            "final_process": final_process_name,
+            **handoff_metadata,
         }
         updated_context = await self._context_store.save(updated_context)
 
@@ -131,8 +152,10 @@ class V3Orchestrator:
                     "external_message_id": message.external_message_id,
                     "conversation_id": message.conversation_id,
                     "active_process": updated_context.active_process,
-                    "selected_process": selection.process_name,
+                    "selected_process": final_process_name,
+                    "initial_selected_process": selection.process_name,
                     "process_selection": selection.to_dict(),
+                    **handoff_metadata,
                     "orchestrator_timings_ms": timings_ms,
                 },
             ),
@@ -152,6 +175,13 @@ class V3Orchestrator:
                 reason="La conversacion ya tenia subproceso activo.",
             )
         return await self._process_selector.resolve(message, context)
+
+
+def _handoff_target(metadata: dict) -> str | None:
+    if metadata.get("status") != "handoff":
+        return None
+    target = metadata.get("target_process")
+    return target if isinstance(target, str) and target else None
 
 
 def _append_process_timing(

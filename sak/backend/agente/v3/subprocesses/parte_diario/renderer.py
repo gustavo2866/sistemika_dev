@@ -81,9 +81,10 @@ def sin_novedades_rechazado() -> str:
     return "Ya hay novedades cargadas. Las conserve. Eliminalas o responde CANCELAR antes de informar todos presentes."
 
 
-def confirmado(state: ParteDiarioState) -> str:
+def confirmado(state: ParteDiarioState, *, cerrado: bool = False) -> str:
+    title = "*PARTE DIARIO CERRADO*" if cerrado else "*PARTE DIARIO REGISTRADO*"
     return (
-        "*PARTE DIARIO REGISTRADO*\n"
+        f"{title}\n"
         "━━━━━━━━━━━━━━\n\n"
         f"*Fecha:* {state.fecha}\n\n"
         "*Novedades*\n"
@@ -102,10 +103,13 @@ def preguntar_pendiente(pending: PendienteAmbiguo, estados: list[EstadoItem]) ->
     if pending.nombre_no_encontrado:
         return f"No encontre a {pending.nombre} en la nomina activa. Indica el nombre correcto."
     if pending.nombre_pendiente:
+        candidates = pending.candidatos or []
         options = "\n".join(
             f"{index}. {_candidate_label(candidate)}"
-            for index, candidate in enumerate(pending.candidatos or [], start=1)
+            for index, candidate in enumerate(candidates, start=1)
         )
+        unvalidated_option = f"{len(candidates) + 1}. Registrar como {pending.nombre} sin validar"
+        options = f"{options}\n{unvalidated_option}" if options else unvalidated_option
         return f"A cual {pending.nombre} te referis?\n{options}"
     return preguntar_estado(pending, estados)
 
@@ -154,8 +158,8 @@ def parte_cerrado(fecha: str) -> str:
 
 def preguntar_cambio_fecha(fecha_actual: str | None, fecha_propuesta: str) -> str:
     return (
-        f"Hay un borrador retomado del {fecha_actual}. Para mover sus novedades al {fecha_propuesta}, "
-        "responde CAMBIAR FECHA. Para conservarlo, responde MANTENER FECHA."
+        f"El parte en carga corresponde al {fecha_actual}. Para cambiarlo al {fecha_propuesta}, "
+        "responde CAMBIAR FECHA. Para conservar la fecha actual, responde MANTENER FECHA."
     )
 
 

@@ -1,5 +1,0 @@
-{"input":"necesito 20 bolsas de cemento","expected":{"type":"start_pedido_obra"}}
-{"input":"falto Garcia y Perez hizo dos horas extra","expected":{"type":"start_parte_diario"}}
-{"input":"mostrame la nomina de la obra","expected":{"type":"mostrar_nomina"}}
-{"input":"ya cargamos el parte de hoy?","expected":{"type":"mostrar_parte_hoy"}}
-{"input":"hola buen dia","expected":{"type":"saludo"}}

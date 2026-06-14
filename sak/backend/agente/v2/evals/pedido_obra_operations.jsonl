@@ -1,6 +1,0 @@
-{"input":"necesito 20 bolsas de cemento y 3 palas","expected":{"operations":["add_items"]}}
-{"input":"saca las palas","expected":{"operations":["remove_item"]}}
-{"input":"eso seria todo","expected":{"operations":["finish_order"]}}
-{"input":"ok mandalo","state":{"esperando":"confirmacion_cierre"},"expected":{"operations":["solicitar_confirmacion"]}}
-{"input":"quiero cancelar el pedido","expected":{"operations":["solicitar_cancelacion"]}}
-{"input":"quiero cargar el parte diario","expected":{"operations":["request_other_process"]}}

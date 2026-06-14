@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from agente.v3.subprocesses.parte_diario.models import EstadoItem, NominaItem
 
@@ -58,6 +59,24 @@ class NominaResolver:
         return ResolveResult(error=f"No encontre a {nombre} en la nomina activa.")
 
     @staticmethod
+    def find_similar(
+        nombre: str,
+        nominas_proyecto: list[NominaItem],
+        nominas_completas: list[NominaItem],
+    ) -> list[NominaItem]:
+        project_similar = NominaResolver._similar_matches(nombre, nominas_proyecto)
+        if project_similar:
+            return project_similar
+        project_ids = {item.idnomina for item in nominas_proyecto}
+        external_similar = [
+            item for item in NominaResolver._similar_matches(nombre, nominas_completas)
+            if item.idnomina not in project_ids
+        ]
+        for item in external_similar:
+            item.fuera_de_proyecto = True
+        return external_similar
+
+    @staticmethod
     def _matches(nombre: str, candidates: list[NominaItem]) -> list[NominaItem]:
         searched = _tokens(nombre)
         if not searched:
@@ -67,6 +86,26 @@ class NominaResolver:
             for item in candidates
             if searched <= _tokens(f"{item.apellido} {item.nombre}")
         ]
+
+    @staticmethod
+    def _similar_matches(nombre: str, candidates: list[NominaItem]) -> list[NominaItem]:
+        searched_tokens = _tokens(nombre)
+        if not searched_tokens:
+            return []
+        scored: list[tuple[float, NominaItem]] = []
+        for item in candidates:
+            candidate_tokens = _tokens(f"{item.apellido} {item.nombre}")
+            if not candidate_tokens:
+                continue
+            score = max(
+                SequenceMatcher(None, searched, candidate).ratio()
+                for searched in searched_tokens
+                for candidate in candidate_tokens
+            )
+            if score >= 0.78:
+                scored.append((score, item))
+        scored.sort(key=lambda pair: (-pair[0], pair[1].apellido, pair[1].nombre))
+        return [item for _, item in scored[:5]]
 
 
 def resolve_estado_codigo(codigo: str | None, estados: list[EstadoItem]) -> EstadoItem | None:

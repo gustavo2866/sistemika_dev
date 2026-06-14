@@ -123,7 +123,7 @@ class ParteDiarioProcess:
             )
 
         if state.esperando == "resolucion_conflictos":
-            return self._handle_conflict_selection(state, command, estados)
+            return self._handle_conflict_selection(state, command, estados, nominas_proyecto, nominas_completas)
 
         if state.esperando == "confirmacion_ambiguos":
             return await self._handle_pending_selection(
@@ -135,7 +135,16 @@ class ParteDiarioProcess:
             )
 
         if command == "confirmar":
-            return self._handle_exact_confirmation(state, estados)
+            return self._handle_exact_confirmation(state, estados, nominas_proyecto, nominas_completas)
+
+        if command == "cerrar":
+            return self._handle_exact_confirmation(
+                state,
+                estados,
+                nominas_proyecto,
+                nominas_completas,
+                cerrar_parte=True,
+            )
 
         self._session.commit()
         try:
@@ -158,7 +167,7 @@ class ParteDiarioProcess:
                 return self._state_reply(state, "No pude interpretar la fecha del parte diario.")
             if new_date > _today():
                 return self._state_reply(state, "No se pueden registrar partes diarios de fechas futuras.")
-            if state.retomado and state.fecha and state.fecha != new_date.isoformat():
+            if state.fecha and state.fecha != new_date.isoformat() and not plan.is_readonly():
                 state.fecha_propuesta = new_date.isoformat()
                 state.esperando = "confirmacion_cambio_fecha"
                 return self._state_reply(state, renderer.preguntar_cambio_fecha(state.fecha, state.fecha_propuesta))
@@ -184,20 +193,30 @@ class ParteDiarioProcess:
             result.keep_active = False
         return self._from_execution(result, plan=plan)
 
-    def _handle_exact_confirmation(self, state: ParteDiarioState, estados: list[EstadoItem]) -> TurnResult:
+    def _handle_exact_confirmation(
+        self,
+        state: ParteDiarioState,
+        estados: list[EstadoItem],
+        nominas_proyecto: list[NominaItem],
+        nominas_completas: list[NominaItem],
+        *,
+        cerrar_parte: bool = False,
+    ) -> TurnResult:
         if state.conflictos_novedad:
             state.esperando = "resolucion_conflictos"
             return self._state_reply(state, renderer.preguntar_conflicto(state.conflictos_novedad[0]))
         if state.pendientes_ambiguos:
             state.esperando = "confirmacion_ambiguos"
+            _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
         if not state.novedades and not state.sin_novedades_informado:
             return self._state_reply(state, renderer.falta_informacion())
         result = ExecutionResult(
             status="confirmed",
             next_state=state,
-            reply=renderer.confirmado(state),
+            reply=renderer.confirmado(state, cerrado=cerrar_parte),
             parte_listo=True,
+            cerrar_parte=cerrar_parte,
             applied_operations=["confirmar"],
         )
         return self._from_execution(result)
@@ -218,6 +237,7 @@ class ParteDiarioProcess:
             resolved = NominaResolver.resolve(text, nominas_proyecto, nominas_completas)
             pending.nombre = text.strip() or pending.nombre
             if resolved.error:
+                _prepare_pending_validation(pending, nominas_proyecto, nominas_completas)
                 return self._state_reply(
                     state,
                     renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
@@ -238,6 +258,22 @@ class ParteDiarioProcess:
                 return self._state_reply(state, renderer.preguntar_estado(pending, estados))
 
         if pending.nombre_pendiente:
+            if _is_unvalidated_selection(text, pending):
+                skipped_name = pending.nombre
+                state.pendientes_ambiguos.pop(0)
+                if state.pendientes_ambiguos:
+                    _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
+                    return self._state_reply(
+                        state,
+                        f"{skipped_name} quedo sin validar y no se registrara en el parte.\n\n"
+                        f"{renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados)}",
+                    )
+                state.esperando = None
+                return self._state_reply(
+                    state,
+                    f"{skipped_name} quedo sin validar y no se registrara en el parte.\n\n"
+                    f"{renderer.solicitar_confirmacion(state)}",
+                )
             selected = parse_candidate_selection(text, pending.candidatos or [])
             if selected is None:
                 return self._state_reply(
@@ -284,6 +320,7 @@ class ParteDiarioProcess:
             state.esperando = "resolucion_conflictos"
             return self._state_reply(state, renderer.preguntar_conflicto(state.conflictos_novedad[0]))
         if state.pendientes_ambiguos:
+            _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
         state.esperando = None
         return self._state_reply(state, renderer.solicitar_confirmacion(state))
@@ -293,6 +330,8 @@ class ParteDiarioProcess:
         state: ParteDiarioState,
         command: str,
         estados: list[EstadoItem],
+        nominas_proyecto: list[NominaItem],
+        nominas_completas: list[NominaItem],
     ) -> TurnResult:
         if not state.conflictos_novedad:
             state.esperando = None
@@ -312,6 +351,7 @@ class ParteDiarioProcess:
             return self._state_reply(state, renderer.preguntar_conflicto(state.conflictos_novedad[0]))
         if state.pendientes_ambiguos:
             state.esperando = "confirmacion_ambiguos"
+            _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
         state.esperando = None
         return self._state_reply(state, renderer.solicitar_confirmacion(state))
@@ -476,6 +516,7 @@ def _payload(result: ExecutionResult, *, plan: TurnPlan | None = None) -> dict:
         "type": "parte_diario_reply",
         "reply_to_user": result.reply,
         "parte_listo": result.parte_listo,
+        "cerrar_parte": result.cerrar_parte,
         "close_after_materialization": result.parte_listo,
         "cancelado": result.cancelado,
         "oportunidad_id": state.oportunidad_id,
@@ -531,6 +572,34 @@ def _validate_pending_business_rules(pending: PendienteAmbiguo) -> str | None:
     ):
         return f"Para {pending.nombre}, una jornada menor a 9 horas requiere indicar el motivo."
     return None
+
+
+def _prepare_pending_validation(
+    pending: PendienteAmbiguo,
+    nominas_proyecto: list[NominaItem],
+    nominas_completas: list[NominaItem],
+) -> None:
+    if not pending.nombre_no_encontrado or pending.candidatos:
+        return
+    candidates = NominaResolver.find_similar(pending.nombre, nominas_proyecto, nominas_completas)
+    if candidates:
+        pending.candidatos = candidates
+        pending.nombre_no_encontrado = False
+
+
+def _is_unvalidated_selection(text: str, pending: PendienteAmbiguo) -> bool:
+    command = _normalize_command(text)
+    candidates = pending.candidatos or []
+    numbers = re.findall(r"\d+", command)
+    if len(numbers) == 1 and int(numbers[0]) == len(candidates) + 1:
+        return True
+    pending_name = _normalize_command(pending.nombre)
+    return command in {
+        "registrar sin validar",
+        "sin validar",
+        "aceptar sin validar",
+        f"registrar como {pending_name} sin validar",
+    }
 
 
 def _normalize_command(text: str | None) -> str:

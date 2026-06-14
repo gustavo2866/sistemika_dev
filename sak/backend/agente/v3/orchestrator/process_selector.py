@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import time
 import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AuthenticationError
-
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
+from agente.v3.llm import OpenAIChatClient
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +48,7 @@ class V3ProcessSelector:
     """Resuelve el subproceso inicial sin ejecutar logica de negocio."""
 
     def __init__(self, *, api_key: str | None = None, model: str | None = None) -> None:
-        api_key_raw = api_key or os.getenv("OPENAI_API_KEY") or ""
-        self.api_key = api_key_raw.strip() or None
-        self.model = model or os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
-        self._client: AsyncOpenAI | None = None
+        self._chat = OpenAIChatClient(api_key=api_key, model=model)
 
     async def resolve(
         self,
@@ -73,7 +68,7 @@ class V3ProcessSelector:
             )
             return fast_path
 
-        if self.api_key:
+        if self._chat.is_configured:
             try:
                 selection = await self._resolve_with_llm(message, context)
                 logger.info(
@@ -140,9 +135,6 @@ class V3ProcessSelector:
         message: V3InboundMessage,
         context: V3ConversationContext,
     ) -> V3ProcessSelection:
-        if self._client is None:
-            self._client = AsyncOpenAI(api_key=self.api_key)
-
         system_prompt = (
             "Clasifica el mensaje inicial en un unico subproceso. "
             "No resuelvas la solicitud ni ejecutes comandos. "
@@ -159,43 +151,28 @@ class V3ProcessSelector:
         }
         started = time.perf_counter()
 
-        try:
-            completion = await self._client.chat.completions.create(
-                model=self.model,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "v3_process_selection",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "process_name": {"type": "string", "enum": sorted(PROCESS_NAMES)},
-                                "confidence": {"type": "number"},
-                                "reason": {"type": "string"},
-                            },
-                            "required": ["process_name", "confidence", "reason"],
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            user_content=json.dumps(payload, ensure_ascii=True),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "v3_process_selection",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "process_name": {"type": "string", "enum": sorted(PROCESS_NAMES)},
+                            "confidence": {"type": "number"},
+                            "reason": {"type": "string"},
                         },
+                        "required": ["process_name", "confidence", "reason"],
                     },
                 },
-                max_tokens=120,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=True)},
-                ],
-            )
-        except APIConnectionError as exc:
-            raise ValueError("No se pudo conectar a OpenAI") from exc
-        except AuthenticationError as exc:
-            raise ValueError("OPENAI_API_KEY invalida") from exc
-        except APIStatusError as exc:
-            raise ValueError(f"OpenAI error HTTP {exc.status_code}") from exc
-
-        content = (completion.choices[0].message.content or "").strip()
-        if not content:
-            raise ValueError("LLM no devolvio contenido")
-        raw = json.loads(content)
+            },
+            max_tokens=120,
+        )
         process_name = str(raw.get("process_name") or "")
         if process_name not in PROCESS_NAMES:
             raise ValueError("LLM devolvio un subproceso invalido")
@@ -204,7 +181,7 @@ class V3ProcessSelector:
             "v3_selector_llm_timing conversation_id=%s external_message_id=%s model=%s process=%s llm_ms=%s",
             message.conversation_id,
             message.external_message_id,
-            self.model,
+            self._chat.model,
             process_name,
             llm_ms,
         )

@@ -31,6 +31,7 @@ Estados posibles:
 - `cargar_fecha`
 - `seleccionar_fecha`
 - `carga`
+- `validacion`
 - `cierre`
 - `confirmar_salida`
 - `finalizado`
@@ -76,7 +77,7 @@ Estructura tecnica actual:
 - las respuestas deterministicas viven en `renderer.py`;
 - los modelos serializables del draft viven en `models.py`.
 
-El subproceso `parteDiario` v3 no depende de `agente.v2.processes.parte_diario`.
+El subproceso `parteDiario` es autocontenido dentro de v3.
 
 ## Flujo por Estado
 
@@ -203,23 +204,23 @@ Opciones: 1:FIN 2:SALIR.
 
 Comandos locales:
 
-- `1` o `FIN`: intenta pasar a cierre.
+- `1` o `FIN`: intenta cerrar la carga.
 - `2` o `SALIR`: pasa a `confirmar_salida`.
 
 Regla importante:
 
-Si hay validaciones pendientes, `1:FIN` no pasa a `cierre`; primero activa las preguntas de validacion.
+Si hay validaciones pendientes, `1:FIN` no pasa a `cierre`; pasa a `validacion`.
 
 Transiciones:
 
 - carga normal -> permanece en `carga`;
 - `1:FIN` sin pendientes -> `cierre`;
-- `1:FIN` con pendientes -> permanece en `carga` o estado interno de validacion;
+- `1:FIN` con pendientes -> `validacion`;
 - `2:SALIR` -> `confirmar_salida`.
 
-### Validaciones Dentro de `carga`
+### `validacion`
 
-Las validaciones no son una etapa principal de `ParteDiarioV3State.etapa`; se representan dentro del estado conversacional del parte.
+Resuelve las validaciones pendientes antes del cierre.
 
 Casos:
 
@@ -229,15 +230,27 @@ Casos:
 - motivo faltante;
 - conflicto por persona repetida.
 
-Mientras hay validacion pendiente, las respuestas numericas pertenecen a esa validacion, no al menu general.
+Comportamiento:
+
+- Para personas no encontradas, busca nombres similares recien en esta etapa.
+- Si encuentra similares, presenta opciones para seleccionar.
+- Agrega una opcion adicional para aceptar el valor informado sin validar.
+- Por ahora, lo aceptado sin validar no se registra en DB al confirmar.
+- Mientras hay validacion pendiente, las respuestas numericas pertenecen a esa validacion, no al menu general.
 
 Ejemplo:
 
 ```text
-A cual Vera te referis?
-1. Vera, Juan
-2. Vera, Pedro
+A cual Petro te referis?
+1. Perez, Pedro
+2. Registrar como Petro sin validar
 ```
+
+Transiciones:
+
+- validacion resuelta y sin pendientes -> `cierre`;
+- quedan pendientes -> permanece en `validacion`;
+- seleccion sin validar -> se descarta del registro final por ahora y continua validacion o pasa a `cierre`.
 
 ### `cierre`
 
@@ -246,7 +259,7 @@ Muestra resumen final y pide confirmacion explicita.
 Menu:
 
 ```text
-Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR.
+Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR.
 ```
 
 Comandos locales:
@@ -254,10 +267,12 @@ Comandos locales:
 - `1` o `CONFIRMAR`: persiste el parte.
 - `2` o `VOLVER`: vuelve a `carga`.
 - `3` o `SALIR`: pasa a `confirmar_salida`.
+- `4` o `CERRAR`: persiste el parte y lo deja en estado `cerrado`.
 
 Transiciones:
 
 - confirmar exitoso -> `finalizado`;
+- cerrar exitoso -> `finalizado`;
 - volver -> `carga`;
 - salir -> `confirmar_salida`.
 
@@ -356,19 +371,33 @@ Opciones: 1:FIN 2:SALIR.
 - `1` o `FIN`: intenta cerrar el parte.
 - `2` o `SALIR`: pide confirmacion para descartar.
 
-Si hay validaciones pendientes, `1:FIN` no muestra el cierre todavia. Primero activa las preguntas necesarias.
+Si hay validaciones pendientes, `1:FIN` pasa a la etapa `validacion`.
+
+### Validacion
+
+Durante la validacion se resuelven pendientes antes del cierre:
+
+- nombres ambiguos;
+- personas no encontradas;
+- estados o motivos faltantes;
+- conflictos por novedades repetidas.
+
+La busqueda por nombres similares se ejecuta aca, no durante la carga.
+
+Cuando no quedan pendientes, el flujo pasa a `cierre`.
 
 ### Cierre
 
 Cuando no hay pendientes:
 
 ```text
-Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR.
+Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR.
 ```
 
 - `1` o `CONFIRMAR`: guarda en DB.
 - `2` o `VOLVER`: vuelve a carga.
 - `3` o `SALIR`: pide confirmacion para descartar.
+- `4` o `CERRAR`: guarda en DB y deja el parte cerrado.
 
 ### Confirmar Salida
 

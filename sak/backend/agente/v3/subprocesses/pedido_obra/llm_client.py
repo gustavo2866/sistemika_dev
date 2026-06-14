@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import json
-import os
 import time
 from pathlib import Path
 from typing import Any
 
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AuthenticationError
-
+from agente.v3.llm import OpenAIChatClient, compact_json, load_prompt
 from agente.v3.subprocesses.pedido_obra.interpreter import PedidoObraOperation
 from agente.v3.subprocesses.pedido_obra.state import PedidoObraState
 
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
-_PROMPT_CACHE: dict[Path, tuple[float, str]] = {}
 
 OPERATIONS_RESPONSE_FORMAT = {
     "type": "json_schema",
@@ -49,79 +45,42 @@ OPERATIONS_RESPONSE_FORMAT = {
 
 
 class PedidoObraCargaLLMClient:
-    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
-        api_key_raw = api_key or os.getenv("OPENAI_API_KEY") or ""
-        self.api_key = api_key_raw.strip() or None
-        self.model = model or os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
-        self._client: AsyncOpenAI | None = None
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        *,
+        chat_client: OpenAIChatClient | None = None,
+    ) -> None:
+        self._chat = chat_client or OpenAIChatClient(api_key=api_key, model=model)
 
     async def interpret_carga(self, message: str | None, state: PedidoObraState) -> tuple[list[PedidoObraOperation], int]:
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY no configurada")
-        if self._client is None:
-            self._client = AsyncOpenAI(api_key=self.api_key)
-
-        prompt = _load_prompt(PROMPTS_DIR / "carga.txt")
+        prompt = load_prompt(PROMPTS_DIR / "carga.txt")
         system_prompt = (
-            prompt.replace("{turno}", _compact({"mensaje": message or ""}))
-            .replace("{estado}", _compact(state.to_dict()))
+            prompt.replace("{turno}", compact_json({"mensaje": message or ""}))
+            .replace("{estado}", compact_json(state.to_dict()))
         )
         started = time.perf_counter()
-        raw = await self._call(system_prompt)
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            response_format=OPERATIONS_RESPONSE_FORMAT,
+            max_tokens=500,
+        )
         return _parse_operations(raw), round((time.perf_counter() - started) * 1000)
 
     async def interpret_cierre(self, message: str | None, state: PedidoObraState) -> tuple[list[PedidoObraOperation], int]:
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY no configurada")
-        if self._client is None:
-            self._client = AsyncOpenAI(api_key=self.api_key)
-
-        prompt = _load_prompt(PROMPTS_DIR / "cierre.txt")
+        prompt = load_prompt(PROMPTS_DIR / "cierre.txt")
         system_prompt = (
-            prompt.replace("{turno}", _compact({"mensaje": message or ""}))
-            .replace("{estado}", _compact(state.to_dict()))
+            prompt.replace("{turno}", compact_json({"mensaje": message or ""}))
+            .replace("{estado}", compact_json(state.to_dict()))
         )
         started = time.perf_counter()
-        raw = await self._call(system_prompt)
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            response_format=OPERATIONS_RESPONSE_FORMAT,
+            max_tokens=500,
+        )
         return _parse_operations(raw), round((time.perf_counter() - started) * 1000)
-
-    async def _call(self, system_prompt: str) -> dict[str, Any]:
-        try:
-            completion = await self._client.chat.completions.create(
-                model=self.model,
-                response_format=OPERATIONS_RESPONSE_FORMAT,
-                max_tokens=500,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": "Interpreta el turno y responde solo JSON."},
-                ],
-            )
-        except APIConnectionError as exc:
-            raise ValueError("No se pudo conectar a OpenAI") from exc
-        except AuthenticationError as exc:
-            raise ValueError("OPENAI_API_KEY invalida") from exc
-        except APIStatusError as exc:
-            raise ValueError(f"OpenAI error HTTP {exc.status_code}") from exc
-
-        content = (completion.choices[0].message.content or "").strip()
-        if not content:
-            raise ValueError("LLM no devolvio contenido")
-        parsed = json.loads(content)
-        if not isinstance(parsed, dict):
-            raise ValueError("LLM debe devolver un objeto JSON")
-        return parsed
-
-
-def _load_prompt(path: Path) -> str:
-    mtime = path.stat().st_mtime
-    cached = _PROMPT_CACHE.get(path)
-    if cached is None or cached[0] != mtime:
-        _PROMPT_CACHE[path] = (mtime, path.read_text(encoding="utf-8").strip())
-    return _PROMPT_CACHE[path][1]
-
-
-def _compact(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _parse_operations(raw: dict[str, Any]) -> list[PedidoObraOperation]:

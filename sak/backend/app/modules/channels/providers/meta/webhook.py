@@ -119,9 +119,9 @@ def raw_meta_to_channel_payloads(session: Session, payload: dict[str, Any]) -> l
                         "mensaje": {
                             "id": _stable_uuid(f"status:{meta_message_id}:{status_data.get('timestamp')}"),
                             "meta_message_id": meta_message_id,
-                            "from_phone": status_data.get("recipient_id") or "",
+                            "from_phone": display_phone_number,
                             "from_name": None,
-                            "to_phone": display_phone_number,
+                            "to_phone": status_data.get("recipient_id") or "",
                             "direccion": "out",
                             "tipo": "status",
                             "texto": None,

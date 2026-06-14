@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlmodel import Session, select
 
-from agente.v2.core.runtime import (
+from app.services.chat_agent_mode_service import (
     CHAT_AGENT_MODE_SETTING_KEY,
     ChatAgentMode,
     get_env_chat_agent_mode,

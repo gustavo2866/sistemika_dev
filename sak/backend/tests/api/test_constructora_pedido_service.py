@@ -68,7 +68,7 @@ def _make_mensaje(
             {"item_id": "abc02", "descripcion": "Arena", "cantidad": 10, "unidad": "m3"},
         ]
     metadata = {
-        "agent_v2": {
+        "agent_v3": {
             "result": {
                 "type": tipo,
                 "pedido_listo": pedido_listo,
@@ -148,8 +148,8 @@ def test_create_writes_back_pedido_obra_id(db_session: Session, seed_base):
     pedido = constructora_pedido_service.create_from_agent_message(db_session, mensaje.id)
 
     db_session.refresh(mensaje)
-    agent_v2 = mensaje.metadata_json.get("agent_v2", {})
-    assert agent_v2.get("pedido_obra_id") == pedido.id
+    agent_v3 = mensaje.metadata_json.get("agent_v3", {})
+    assert agent_v3.get("pedido_obra_id") == pedido.id
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ def test_oportunidad_id_desde_mensaje(db_session: Session, seed_base):
     contacto_id = seed_base["contacto"].id
 
     metadata = {
-        "agent_v2": {
+        "agent_v3": {
             "result": {
                 "type": "pedido_obra_reply",
                 "pedido_listo": True,

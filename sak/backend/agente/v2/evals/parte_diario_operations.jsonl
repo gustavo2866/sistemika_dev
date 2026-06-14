@@ -1,6 +1,0 @@
-{"input":"falto Garcia","expected":{"operations":[{"type":"agregar_novedad","nombre":"Garcia","estado_codigo":"FAL"}]}}
-{"input":"Perez hizo dos horas extra","expected":{"operations":[{"type":"agregar_novedad","nombre":"Perez","horas_extra":2}]}}
-{"input":"Medina trabajo cinco horas","expected":{"operations":[{"type":"agregar_novedad","nombre":"Medina","horas":5,"estado_codigo":null}]}}
-{"input":"todos presentes","expected":{"operations":[{"type":"sin_novedades"}]}}
-{"input":"mostrame el parte","expected":{"operations":[{"type":"mostrar_parte"}]}}
-{"input":"quiero hacer un pedido de materiales","expected":{"operations":[{"type":"request_other_process","requested":"pedido_obra"}]}}
