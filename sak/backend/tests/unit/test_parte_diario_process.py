@@ -639,7 +639,7 @@ def _context(seeded_partes, state: ParteDiarioState, text: str):
     )
 
 
-def test_materialization_adds_implicit_present(db_session: Session, seeded_partes):
+def test_materialization_only_adds_explicit_novedades(db_session: Session, seeded_partes):
     status = db_session.exec(select(ParteDiarioDetalle)).all()
     assert status == []
     falta = db_session.exec(
@@ -665,13 +665,10 @@ def test_materialization_adds_implicit_present(db_session: Session, seeded_parte
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
     ).all()
 
-    assert len(details) == 2
+    assert len(details) == 1
     explicit = next(item for item in details if item.idnomina == seeded_partes["employee_1"].id)
-    implicit = next(item for item in details if item.idnomina == seeded_partes["employee_2"].id)
     assert explicit.origen == OrigenDetalle.AGENTE
     assert explicit.horas == Decimal("0")
-    assert implicit.origen == OrigenDetalle.DEFAULT
-    assert implicit.horas == Decimal("9")
     db_session.refresh(message)
     assert message.metadata_json["agent_v2"]["parte_diario_id"] == parte.id
 
@@ -683,7 +680,7 @@ def test_materialization_rejects_empty_part_without_explicit_sin_novedades(db_se
         parte_diario_service.create_or_update_from_agent_message(db_session, message.id)
 
 
-def test_update_replaces_details_and_regenerates_defaults(db_session: Session, seeded_partes):
+def test_update_replaces_details_without_generating_defaults(db_session: Session, seeded_partes):
     first = _agent_message(db_session, seeded_partes, novedades=[], sin_novedades_informado=True)
     parte = parte_diario_service.create_or_update_from_agent_message(db_session, first.id)
     present = db_session.exec(
@@ -710,7 +707,7 @@ def test_update_replaces_details_and_regenerates_defaults(db_session: Session, s
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == updated.id)
     ).all()
 
-    assert len(details) == 2
+    assert len(details) == 1
     explicit = next(item for item in details if item.idnomina == seeded_partes["employee_1"].id)
     assert explicit.origen == OrigenDetalle.AGENTE
     assert explicit.horas == Decimal("11")

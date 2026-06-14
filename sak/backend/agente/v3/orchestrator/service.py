@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from agente.v3.contracts import V3InboundMessage, V3OrchestratorResult, V3OutboundMessage
@@ -161,6 +162,8 @@ def _append_process_timing(
 ) -> str | None:
     if not reply_text:
         return reply_text
+    if not _show_timing_in_reply():
+        return reply_text
     return (
         f"{reply_text}\n\n"
         "*Timing proceso*\n"
@@ -177,6 +180,16 @@ def _format_ms(value: float | None) -> str:
     if value >= 1000:
         return f"{value / 1000:.2f}s"
     return f"{round(value)}ms"
+
+
+def _show_timing_in_reply() -> bool:
+    return os.getenv("AGENTE_V3_SHOW_TIMING_IN_REPLY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "si",
+        "sí",
+    }
 
 
 default_orchestrator = V3Orchestrator()

@@ -87,6 +87,8 @@ def _seed_obra(
 
 
 def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AGENTE_V3_SHOW_TIMING_IN_REPLY", raising=False)
     monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
     sent_calls: list[dict] = []
 
@@ -144,17 +146,15 @@ def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: 
     assert outbox.json()["sent_count"] == 1
     assert outbox.json()["last_sent"]["status"] == "sent"
     assert outbox.json()["last_sent"]["external_message_id"] == "wamid.test.v3.outbound"
-    assert "recibido:" in outbox.json()["last_sent"]["text"]
-    assert "sub_proceso: general" in outbox.json()["last_sent"]["text"]
-    assert "conversation_id: meta:1046006975257973:5491156384310" in outbox.json()["last_sent"]["text"]
-    assert "mensaje_origen: wamid.test.v3.inbound" in outbox.json()["last_sent"]["text"]
-    assert "texto_origen: Hola v3" in outbox.json()["last_sent"]["text"]
+    assert outbox.json()["last_sent"]["text"] == "Hola. Puedo ayudarte con pedidos de materiales o partes diarios."
+    assert "*Timing proceso*" not in outbox.json()["last_sent"]["text"]
     assert sent_calls[0]["celular_id"] == "1046006975257973"
     assert sent_calls[0]["telefono_destino"] == "5491156384310"
     assert sent_calls[0]["policy"] == "text_only"
 
 
 def test_agente_v3_queue_smoke_aisla_contexto_default(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
 
     async def fake_enviar_mensaje(**kwargs):
@@ -196,6 +196,7 @@ def test_agente_v3_rechaza_queue_invalida(client, db_session: Session):
 
 
 def test_agente_v3_cancelar_cierra_conversacion_activa(client, db_session: Session, test_engine, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr("app.modules.channels.v3.meta_channel.engine", test_engine)
 
     async def fake_enviar_mensaje(**kwargs):
@@ -226,7 +227,6 @@ def test_agente_v3_cancelar_cierra_conversacion_activa(client, db_session: Sessi
     assert context.json()["contexts"][0]["active_process"] is None
     assert context.json()["contexts"][0]["process_state"] == {}
     assert "Conversacion cancelada" in outbox.json()["last_sent"]["text"]
-    assert "sub_proceso: general" in outbox.json()["last_sent"]["text"]
 
 
 def test_agente_v3_pedido_obra_carga_cierra_y_confirma(client, db_session: Session, test_engine, monkeypatch):

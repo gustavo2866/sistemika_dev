@@ -9,7 +9,6 @@ import time
 from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
-from agente.v3.orchestrator.process_selector import PROCESS_PEDIDO_OBRA
 from agente.v3.subprocesses.pedido_obra import renderer
 from agente.v3.subprocesses.pedido_obra.interpreter import (
     PedidoObraOperation,
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class PedidoObraSubprocess:
-    name = PROCESS_PEDIDO_OBRA
+    name = "pedidoObra"
 
     def __init__(self, llm_client: PedidoObraCargaLLMClient | None = None) -> None:
         self._llm = llm_client or PedidoObraCargaLLMClient()

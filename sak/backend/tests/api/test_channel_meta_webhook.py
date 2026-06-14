@@ -1027,9 +1027,9 @@ async def test_confirmed_parte_diario_materializes_before_delivery_and_closes_st
     assert delivery_observations == [None]
     assert state.active_process is None
     assert state.process_state == {}
-    assert len(details) == 2
+    assert len(details) == 1
     assert next(item for item in details if item.idnomina == juan.id).origen == OrigenDetalle.AGENTE
-    assert next(item for item in details if item.idnomina == pedro.id).origen == OrigenDetalle.DEFAULT
+    assert all(item.idnomina != pedro.id for item in details)
     assert mensaje.metadata_json["agent_v2"]["parte_diario_id"]
 
 

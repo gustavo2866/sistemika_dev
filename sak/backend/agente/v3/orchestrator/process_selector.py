@@ -124,7 +124,7 @@ class V3ProcessSelector:
         if not text:
             return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 1.0, "Mensaje sin texto.")
 
-        if "parte diario" in text or "asistencia" in text:
+        if "parte diario" in text or "partes diarios" in text or "asistencia" in text:
             return V3ProcessSelection(PROCESS_PARTE_DIARIO, "fast_path", 0.9, "Referencia clara a parte diario.")
 
         if "pedido" in text and ("material" in text or "obra" in text):

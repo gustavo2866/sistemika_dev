@@ -1,0 +1,14 @@
+Interpreta el motivo de asistencia informado por el usuario.
+
+Estados permitidos:
+{estados}
+
+Mensaje:
+{mensaje}
+
+Reglas:
+- Devolve solo un codigo permitido si el motivo es claro.
+- Si no se puede determinar, devolve NO_DETERMINADO.
+- No inventes codigos.
+
+Responde solo JSON valido segun el schema provisto.
