@@ -7,7 +7,12 @@ import re
 import unicodedata
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
-from agente.v3.subprocesses.general_agent import GeneralAgentClient, GeneralAgentOutput, fallback_general_response
+from agente.v3.subprocesses.general_agent import (
+    GENERAL_MENU_TEXT,
+    GeneralAgentClient,
+    GeneralAgentOutput,
+    fallback_general_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,27 @@ class GeneralSubprocess:
                     "status": "cancelled",
                     "closed_conversation": True,
                     "command": "cancelar",
+                },
+            )
+
+        menu_selection = _menu_selection(command)
+        if menu_selection is not None:
+            target_process, handoff_text = menu_selection
+            updated = context.copy()
+            updated.active_process = target_process
+            updated.process_state = {}
+            updated.last_inbound_message_id = message.id
+            return V3ProcessResult(
+                context=updated,
+                reply_text="",
+                metadata={
+                    "process_name": self.name,
+                    "status": "handoff",
+                    "agent_source": "menu",
+                    "response_type": "handoff",
+                    "target_process": target_process,
+                    "handoff_text": handoff_text,
+                    "reason": "general_menu_selection",
                 },
             )
 
@@ -71,6 +97,8 @@ class GeneralSubprocess:
                 "agent_source": source,
             }
             status = "general_reply"
+            if _is_greeting_or_empty(command):
+                output.respuesta = GENERAL_MENU_TEXT
 
         return V3ProcessResult(
             context=updated,
@@ -97,3 +125,15 @@ def _normalize(value: str | None) -> str:
     raw = "".join(char for char in raw if not unicodedata.combining(char))
     raw = re.sub(r"[^a-z0-9\s]+", " ", raw)
     return re.sub(r"\s+", " ", raw).strip()
+
+
+def _menu_selection(command: str) -> tuple[str, str] | None:
+    if command == "1":
+        return "pedidoObra", "pedido obra"
+    if command == "2":
+        return "parteDiario", "parte diario"
+    return None
+
+
+def _is_greeting_or_empty(command: str) -> bool:
+    return command in {"", "hola", "buen dia", "buenas", "buenas tardes", "buenas noches"}

@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 from agente.v3.llm import AgentSDKClient
 
 
+GENERAL_MENU_TEXT = "Hola. Puedo ayudarte con:\n1: PEDIDO OBRA\n2: PARTE DIARIO"
+
+
 class GeneralAgentOutput(BaseModel):
     type: Literal["general_reply", "handoff"] = Field(description="Tipo de respuesta del agente general.")
     target_process: Literal["pedidoObra", "parteDiario"] | None = Field(
@@ -68,7 +71,7 @@ Estilo:
 - Si haces handoff, la respuesta debe guiar el proximo paso.
 
 Ejemplos:
-- "hola" => general_reply: "Hola. Puedo ayudarte con pedidos de materiales o partes diarios."
+- "hola" => general_reply: "Hola. Puedo ayudarte con:\n1: PEDIDO OBRA\n2: PARTE DIARIO"
 - "necesito cemento" => handoff pedidoObra: "Perfecto. Decime que materiales necesitas y para que obra."
 - "quiero cargar asistencia" => handoff parteDiario: "Perfecto. Pasame la asistencia o novedades del dia."
 """.strip()
@@ -78,6 +81,6 @@ def fallback_general_response() -> GeneralAgentOutput:
     return GeneralAgentOutput(
         type="general_reply",
         target_process=None,
-        respuesta="Hola. Puedo ayudarte con pedidos de materiales o partes diarios.",
+        respuesta=GENERAL_MENU_TEXT,
         reason="fallback_local",
     )

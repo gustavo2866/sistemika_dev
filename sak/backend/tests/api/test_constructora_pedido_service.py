@@ -102,7 +102,7 @@ def test_create_from_agent_message_happy_path(db_session: Session, seed_base):
     pedido = constructora_pedido_service.create_from_agent_message(db_session, mensaje.id)
 
     assert pedido.id is not None
-    assert pedido.estado == PedidoObraEstado.PENDIENTE
+    assert pedido.estado == PedidoObraEstado.BORRADOR
     assert pedido.origen == PedidoObraOrigen.AGENTE
     assert pedido.oportunidad_id == oportunidad_id
     assert pedido.contacto_id == contacto_id

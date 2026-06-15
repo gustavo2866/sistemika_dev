@@ -30,9 +30,10 @@ async def test_prompt_includes_local_date_and_weekday_resolution_rules():
     )
 
     prompt = chat.calls[0]["system_prompt"]
-    assert '"fecha_actual":"' in prompt
+    assert '"fecha_referencia":"' in prompt
     assert '"zona_horaria":"America/Argentina/Buenos_Aires"' in prompt
     assert '"mensaje":"mostrame el parte diario del viernes"' in prompt
+    assert "`fecha_referencia` representa HOY" in prompt
     assert '"el viernes pasado"' in prompt
     assert "set_fecha para el viernes correspondiente y luego mostrar_parte" in prompt
 
@@ -52,12 +53,15 @@ async def test_prompt_requires_preserving_active_date_without_new_temporal_refer
     prompt = chat.calls[0]["system_prompt"]
     assert '"mensaje":"cabrera trabajo 3 hs"' in prompt
     assert '"fecha":"2026-05-29"' in prompt
-    assert "Nunca agregues set_fecha si el mensaje actual no menciona una referencia temporal." in prompt
-    assert "conserva esa fecha sin emitir set_fecha" in prompt
+    assert "`parte.fecha` es la fecha operativa del parte en carga" in prompt
+    assert "Nunca agregues set_fecha si el mensaje actual no menciona una fecha explicita o" in prompt
+    assert "conserva esa fecha sin" in prompt
+    assert "emitir set_fecha" in prompt
+    assert "Tiempos verbales como" in prompt
 
 
 @pytest.mark.asyncio
-async def test_cierre_prompt_reserves_exact_confirmation_commands():
+async def test_cierre_prompt_reserves_exact_save_close_commands():
     chat = FakeChatClient()
     client = ParteDiarioLLMClient(chat_client=chat).for_stage("cierre")
 
@@ -70,5 +74,6 @@ async def test_cierre_prompt_reserves_exact_confirmation_commands():
 
     prompt = chat.calls[0]["system_prompt"]
     assert "Etapa actual: cierre." in prompt
-    assert "1 o CONFIRMAR: confirma y guarda el parte" in prompt
-    assert "No confirmes ni descartes desde aca" in prompt
+    assert "1 o GUARDAR: guarda el borrador y sale del proceso" in prompt
+    assert "2 o CERRAR: intenta cerrar el parte" in prompt
+    assert "No guardes, cierres ni descartes desde aca" in prompt

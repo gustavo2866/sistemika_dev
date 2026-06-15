@@ -1,10 +1,12 @@
 """Servicio para gestión de pedidos de obra (constructora)."""
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, select
 
 from app.models import CRMMensaje
@@ -69,13 +71,14 @@ class ConstructoraPedidoService:
             )
 
         items = result.get("items") or []
+        estado_pedido = PedidoObraEstado.CERRADO if result.get("cerrar_pedido") else PedidoObraEstado.BORRADOR
 
         # Crear pedido
         pedido = ConstructoraPedido(
             oportunidad_id=oportunidad_id,
             contacto_id=mensaje.contacto_id,
             mensaje_origen_id=mensaje_id,
-            estado=PedidoObraEstado.PENDIENTE,
+            estado=estado_pedido,
             origen=PedidoObraOrigen.AGENTE,
             titulo=f"Pedido de obra — oportunidad #{oportunidad_id}",
             fecha_confirmacion_agente=datetime.now(UTC),
@@ -110,15 +113,7 @@ class ConstructoraPedidoService:
             session.add(detalle)
 
         # Escribir pedido_obra_id de vuelta en el mensaje
-        # Construimos un dict nuevo para forzar el change-tracking de SQLAlchemy
-        import copy
-        from sqlalchemy.orm.attributes import flag_modified
-
-        new_metadata = copy.deepcopy(metadata)
-        new_metadata.setdefault(agent_key, {})
-        new_metadata[agent_key]["pedido_obra_id"] = pedido.id
-        mensaje.metadata_json = new_metadata
-        flag_modified(mensaje, "metadata_json")
+        self._write_pedido_obra_id_to_message(mensaje, int(pedido.id), agent_key=agent_key)
 
         session.commit()
         session.refresh(pedido)
@@ -128,6 +123,7 @@ class ConstructoraPedidoService:
         self,
         session: Session,
         *,
+        pedido_id: int | None = None,
         contacto_id: int,
         oportunidad_id: int,
         proyecto_id: int | None,
@@ -144,6 +140,7 @@ class ConstructoraPedidoService:
         raw_payload: dict[str, Any],
         normalized_payload: dict[str, Any],
         received_at: datetime,
+        cerrar_pedido: bool = False,
     ) -> ConstructoraPedido:
         """Materializa el pedido confirmado por agente v3.
 
@@ -190,13 +187,125 @@ class ConstructoraPedidoService:
             message_type=message_type,
             received_at=received_at,
             channel_event_id=channel_event.id,
+            cerrar_pedido=cerrar_pedido,
         )
+        if pedido_id is not None:
+            return self.update_existing_from_agent_v3_confirmation(
+                session,
+                pedido_id=pedido_id,
+                mensaje_id=int(mensaje.id),
+                contacto_id=contacto_id,
+                oportunidad_id=oportunidad_id,
+                items=valid_items,
+                cerrar_pedido=cerrar_pedido,
+            )
         return self.create_from_agent_message(session, int(mensaje.id))
+
+    def update_existing_from_agent_v3_confirmation(
+        self,
+        session: Session,
+        *,
+        pedido_id: int,
+        mensaje_id: int,
+        contacto_id: int,
+        oportunidad_id: int,
+        items: list[dict[str, Any]],
+        cerrar_pedido: bool = False,
+    ) -> ConstructoraPedido:
+        """Actualiza un pedido borrador ya seleccionado por el agente v3."""
+        pedido = session.get(ConstructoraPedido, pedido_id)
+        if pedido is None or pedido.deleted_at is not None:
+            raise ValueError(f"Pedido {pedido_id} no encontrado")
+        if int(pedido.oportunidad_id) != oportunidad_id:
+            raise ValueError("El pedido no pertenece a la oportunidad seleccionada")
+        estado_actual = pedido.estado.value if hasattr(pedido.estado, "value") else str(pedido.estado)
+        if estado_actual != PedidoObraEstado.BORRADOR.value:
+            raise ValueError("Solo se puede actualizar un pedido en borrador")
+
+        mensaje = session.get(CRMMensaje, mensaje_id)
+        if mensaje is None:
+            raise ValueError(f"Mensaje {mensaje_id} no encontrado")
+
+        linked = session.exec(
+            select(ConstructoraPedido)
+            .where(ConstructoraPedido.mensaje_origen_id == mensaje_id)
+            .where(ConstructoraPedido.id != pedido_id)
+            .limit(1)
+        ).first()
+        if linked is not None:
+            raise ValueError("El mensaje de confirmacion ya esta vinculado a otro pedido")
+
+        now = datetime.now(UTC)
+        pedido.contacto_id = contacto_id
+        pedido.mensaje_origen_id = mensaje_id
+        pedido.estado = PedidoObraEstado.CERRADO if cerrar_pedido else PedidoObraEstado.BORRADOR
+        pedido.fecha_confirmacion_agente = now
+        pedido.updated_at = now
+        pedido.metadata_json = {
+            **(pedido.metadata_json or {}),
+            "agent_source": "agent_v3",
+            "agent_result": self._agent_v3_result_from_message(mensaje),
+        }
+        flag_modified(pedido, "metadata_json")
+
+        detalles = session.exec(
+            select(ConstructoraPedidoDetalle)
+            .where(ConstructoraPedidoDetalle.pedido_id == pedido_id)
+            .where(ConstructoraPedidoDetalle.deleted_at.is_(None))
+        ).all()
+        for detalle in detalles:
+            detalle.deleted_at = now
+            detalle.estado = PedidoObraDetalleEstado.CANCELADA
+            detalle.updated_at = now
+            session.add(detalle)
+
+        for orden, item in enumerate(items):
+            cantidad = Decimal(str(item["cantidad"]))
+            session.add(
+                ConstructoraPedidoDetalle(
+                    pedido_id=pedido_id,
+                    descripcion_original=item["descripcion"],
+                    descripcion=item["descripcion"],
+                    cantidad=cantidad,
+                    cantidad_original=cantidad,
+                    unidad_medida=item.get("unidad"),
+                    estado=PedidoObraDetalleEstado.ACTIVA,
+                    origen=PedidoObraDetalleOrigen.AGENTE,
+                    orden=orden,
+                    metadata_json={"agent_item_id": item.get("item_id")},
+                )
+            )
+
+        self._write_pedido_obra_id_to_message(mensaje, pedido_id)
+
+        session.add(pedido)
+        session.commit()
+        session.refresh(pedido)
+        return pedido
 
     @staticmethod
     def _extract_agent_result(metadata: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         agent_metadata = metadata.get("agent_v3") or {}
         return "agent_v3", agent_metadata.get("result") or {}
+
+    @staticmethod
+    def _agent_v3_result_from_message(mensaje: CRMMensaje) -> dict[str, Any]:
+        metadata = mensaje.metadata_json or {}
+        agent_metadata = metadata.get("agent_v3") or {}
+        return agent_metadata.get("result") or {}
+
+    @staticmethod
+    def _write_pedido_obra_id_to_message(
+        mensaje: CRMMensaje,
+        pedido_id: int,
+        *,
+        agent_key: str = "agent_v3",
+    ) -> None:
+        new_metadata = copy.deepcopy(mensaje.metadata_json or {})
+        new_metadata.setdefault(agent_key, {})
+        new_metadata[agent_key]["pedido_obra_id"] = pedido_id
+        mensaje.metadata_json = new_metadata
+        flag_modified(mensaje, "metadata_json")
 
     @staticmethod
     def _validate_agent_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -246,6 +355,7 @@ class ConstructoraPedidoService:
         message_type: str,
         received_at: datetime,
         channel_event_id: int | None,
+        cerrar_pedido: bool = False,
     ) -> CRMMensaje:
         existing = session.exec(
             select(CRMMensaje)
@@ -264,6 +374,7 @@ class ConstructoraPedidoService:
             "oportunidad_id": oportunidad_id,
             "proyecto_id": proyecto_id,
             "items": items,
+            "cerrar_pedido": cerrar_pedido,
         }
         mensaje = CRMMensaje(
             tipo=TipoMensaje.ENTRADA.value,

@@ -7,8 +7,18 @@ from typing import Any, Literal
 from uuid import uuid4
 
 
-PedidoObraStage = Literal["inicial", "carga", "validacion", "confirmar_salida", "cierre", "finalizado"]
+PedidoObraStage = Literal[
+    "inicial",
+    "seleccionar_pedido",
+    "pedido_readonly",
+    "carga",
+    "validacion",
+    "confirmar_salida",
+    "cierre",
+    "finalizado",
+]
 ValidationType = Literal["cantidad_faltante"]
+PedidoObraAction = Literal["guardar", "cerrar"]
 
 
 @dataclass(slots=True)
@@ -109,12 +119,50 @@ class PedidoObraOption:
 
 
 @dataclass(slots=True)
+class PedidoObraPedidoOption:
+    opcion: int
+    pedido_id: int
+    estado: str
+    created_at: str | None = None
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "PedidoObraPedidoOption | None":
+        try:
+            opcion = int(raw.get("opcion") or 0)
+            pedido_id = int(raw.get("pedido_id") or 0)
+        except (TypeError, ValueError):
+            return None
+        estado = str(raw.get("estado") or "").strip()
+        if opcion <= 0 or pedido_id <= 0 or not estado:
+            return None
+        return cls(
+            opcion=opcion,
+            pedido_id=pedido_id,
+            estado=estado,
+            created_at=str(raw.get("created_at") or "").strip() or None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opcion": self.opcion,
+            "pedido_id": self.pedido_id,
+            "estado": self.estado,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass(slots=True)
 class PedidoObraState:
     etapa: PedidoObraStage = "inicial"
     contacto_id: int | None = None
     oportunidad_id: int | None = None
     proyecto_id: int | None = None
+    pedido_id: int | None = None
+    pedido_estado: str | None = None
     opciones_obra: list[PedidoObraOption] = field(default_factory=list)
+    opciones_pedido: list[PedidoObraPedidoOption] = field(default_factory=list)
+    pedido_menu_pendiente: bool = False
+    accion_pendiente: PedidoObraAction | None = None
     items: list[PedidoObraItem] = field(default_factory=list)
     pendiente_item_id: str | None = None
     pendientes_validacion: list[PedidoObraValidationPending] = field(default_factory=list)
@@ -123,7 +171,16 @@ class PedidoObraState:
     def from_dict(cls, raw: dict[str, Any] | None) -> "PedidoObraState":
         data = raw or {}
         etapa = str(data.get("etapa") or "inicial")
-        if etapa not in {"inicial", "carga", "validacion", "confirmar_salida", "cierre", "finalizado"}:
+        if etapa not in {
+            "inicial",
+            "seleccionar_pedido",
+            "pedido_readonly",
+            "carga",
+            "validacion",
+            "confirmar_salida",
+            "cierre",
+            "finalizado",
+        }:
             etapa = "inicial"
         pendientes: list[PedidoObraValidationPending] = []
         for pending in data.get("pendientes_validacion", []):
@@ -137,12 +194,23 @@ class PedidoObraState:
                 parsed = PedidoObraOption.from_dict(option)
                 if parsed is not None:
                     opciones_obra.append(parsed)
+        opciones_pedido: list[PedidoObraPedidoOption] = []
+        for option in data.get("opciones_pedido", []):
+            if isinstance(option, dict):
+                parsed = PedidoObraPedidoOption.from_dict(option)
+                if parsed is not None:
+                    opciones_pedido.append(parsed)
         return cls(
             etapa=etapa,  # type: ignore[arg-type]
             contacto_id=_parse_int(data.get("contacto_id")),
             oportunidad_id=_parse_int(data.get("oportunidad_id")),
             proyecto_id=_parse_int(data.get("proyecto_id")),
+            pedido_id=_parse_int(data.get("pedido_id")),
+            pedido_estado=str(data.get("pedido_estado") or "").strip() or None,
             opciones_obra=opciones_obra,
+            opciones_pedido=opciones_pedido,
+            pedido_menu_pendiente=bool(data.get("pedido_menu_pendiente")),
+            accion_pendiente=_parse_action(data.get("accion_pendiente")),
             items=[
                 PedidoObraItem.from_dict(item)
                 for item in data.get("items", [])
@@ -158,7 +226,12 @@ class PedidoObraState:
             "contacto_id": self.contacto_id,
             "oportunidad_id": self.oportunidad_id,
             "proyecto_id": self.proyecto_id,
+            "pedido_id": self.pedido_id,
+            "pedido_estado": self.pedido_estado,
             "opciones_obra": [option.to_dict() for option in self.opciones_obra],
+            "opciones_pedido": [option.to_dict() for option in self.opciones_pedido],
+            "pedido_menu_pendiente": self.pedido_menu_pendiente,
+            "accion_pendiente": self.accion_pendiente,
             "items": [item.to_dict() for item in self.items],
             "pendiente_item_id": self.pendiente_item_id,
             "pendientes_validacion": [pending.to_dict() for pending in self.pendientes_validacion],
@@ -172,6 +245,10 @@ class PedidoObraState:
         self.oportunidad_id = option.oportunidad_id
         self.proyecto_id = option.proyecto_id
         self.opciones_obra = []
+        self.pedido_menu_pendiente = False
+        self.accion_pendiente = None
+        self.pedido_id = None
+        self.pedido_estado = None
         self.etapa = "carga"
 
     def resumen_items(self) -> str:
@@ -231,6 +308,13 @@ def _parse_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _parse_action(value: Any) -> PedidoObraAction | None:
+    action = str(value or "").strip()
+    if action in {"guardar", "cerrar"}:
+        return action  # type: ignore[return-value]
+    return None
 
 
 def _format_quantity(value: float) -> str:

@@ -146,7 +146,7 @@ def test_agente_v3_meta_flow_enqueues_and_processes_message(client, db_session: 
     assert outbox.json()["sent_count"] == 1
     assert outbox.json()["last_sent"]["status"] == "sent"
     assert outbox.json()["last_sent"]["external_message_id"] == "wamid.test.v3.outbound"
-    assert outbox.json()["last_sent"]["text"] == "Hola. Puedo ayudarte con pedidos de materiales o partes diarios."
+    assert outbox.json()["last_sent"]["text"] == "Hola. Puedo ayudarte con:\n1: PEDIDO OBRA\n2: PARTE DIARIO"
     assert "*Timing proceso*" not in outbox.json()["last_sent"]["text"]
     assert sent_calls[0]["celular_id"] == "1046006975257973"
     assert sent_calls[0]["telefono_destino"] == "5491156384310"
@@ -280,12 +280,13 @@ def test_agente_v3_pedido_obra_carga_cierra_y_confirma(client, db_session: Sessi
     context = client.get("/api/agente/v3/context/status")
     outbox = client.get("/api/agente/v3/outbox/status")
 
-    assert context.json()["contexts"][0]["active_process"] is None
-    assert context.json()["contexts"][0]["process_state"] == {}
-    assert "*PEDIDO CONFIRMADO*" in outbox.json()["last_sent"]["text"]
+    assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
+    assert context.json()["contexts"][0]["process_state"]["etapa"] == "seleccionar_pedido"
+    assert "*PEDIDO CERRADO*" in outbox.json()["last_sent"]["text"]
     assert "Pedido #" in outbox.json()["last_sent"]["text"]
     assert "*Materiales*" in outbox.json()["last_sent"]["text"]
     assert "10 bolsas cemento" in outbox.json()["last_sent"]["text"]
+    assert "Responde con el numero de un pedido, NUEVO o SALIR" in outbox.json()["last_sent"]["text"]
 
     mensaje_confirmacion = db_session.exec(
         select(CRMMensaje).where(CRMMensaje.origen_externo_id == "wamid.test.v3.pedido.confirmar")
@@ -323,11 +324,19 @@ def test_agente_v3_pedido_obra_carga_cierra_y_confirma(client, db_session: Sessi
         "/api/agente/v3/channel/meta",
         json=_set_meta_text(
             _meta_text_payload(external_message_id="wamid.test.v3.pedido.nuevo"),
-            "pedido de obra: necesito 10 bolsas cemento",
+            "NUEVO",
+        ),
+    )
+    nuevo_carga = client.post(
+        "/api/agente/v3/channel/meta",
+        json=_set_meta_text(
+            _meta_text_payload(external_message_id="wamid.test.v3.pedido.nuevo.carga"),
+            "necesito 10 bolsas cemento",
         ),
     )
 
     assert nuevo.status_code == 200
+    assert nuevo_carga.status_code == 200
     context = client.get("/api/agente/v3/context/status")
     state = context.json()["contexts"][0]["process_state"]
     assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
@@ -396,10 +405,11 @@ def test_agente_v3_pedido_obra_valida_cantidad_faltante(client, db_session: Sess
     context = client.get("/api/agente/v3/context/status")
     outbox = client.get("/api/agente/v3/outbox/status")
 
-    assert context.json()["contexts"][0]["active_process"] is None
-    assert context.json()["contexts"][0]["process_state"] == {}
-    assert "*PEDIDO CONFIRMADO*" in outbox.json()["last_sent"]["text"]
+    assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
+    assert context.json()["contexts"][0]["process_state"]["etapa"] == "seleccionar_pedido"
+    assert "*PEDIDO CERRADO*" in outbox.json()["last_sent"]["text"]
     assert "3 mts arena" in outbox.json()["last_sent"]["text"]
+    assert "Responde con el numero de un pedido, NUEVO o SALIR" in outbox.json()["last_sent"]["text"]
 
 
 def test_agente_v3_pedido_obra_cierre_permite_modificar_y_mostrar(client, db_session: Session, test_engine, monkeypatch):
@@ -466,9 +476,9 @@ def test_agente_v3_pedido_obra_cierre_permite_modificar_y_mostrar(client, db_ses
     assert context.json()["contexts"][0]["active_process"] == "pedidoObra"
     assert context.json()["contexts"][0]["process_state"]["etapa"] == "cierre"
     assert any(item["descripcion"] == "duchas" for item in context.json()["contexts"][0]["process_state"]["items"])
-    assert "Pedido validado" in outbox.json()["last_sent"]["text"]
+    assert "Pedido para cerrar:" in outbox.json()["last_sent"]["text"]
     assert "3 duchas" in outbox.json()["last_sent"]["text"]
-    assert "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR." in outbox.json()["last_sent"]["text"]
+    assert "Opciones: 1:OK 2:VOLVER." in outbox.json()["last_sent"]["text"]
 
 
 def test_agente_v3_pedido_obra_pide_obra_si_hay_multiples_asociadas(

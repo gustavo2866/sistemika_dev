@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import logging
 import os
 import time
@@ -75,7 +76,8 @@ class V3Orchestrator:
                     "handoff_to_process": handoff_target,
                 }
                 final_process_name = handoff_target
-                process_result = await target_process.handle(message, process_result.context)
+                target_message = _message_for_handoff(message, process_result.metadata)
+                process_result = await target_process.handle(target_message, process_result.context)
         t_process = time.perf_counter()
         updated_context = await self._context_store.save(process_result.context)
         t_context_save = time.perf_counter()
@@ -182,6 +184,13 @@ def _handoff_target(metadata: dict) -> str | None:
         return None
     target = metadata.get("target_process")
     return target if isinstance(target, str) and target else None
+
+
+def _message_for_handoff(message: V3InboundMessage, metadata: dict) -> V3InboundMessage:
+    handoff_text = metadata.get("handoff_text")
+    if not isinstance(handoff_text, str) or not handoff_text.strip():
+        return message
+    return replace(message, text=handoff_text)
 
 
 def _append_process_timing(

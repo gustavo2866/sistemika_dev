@@ -38,7 +38,7 @@ export type PedidoEstadoAction = "confirmar" | "cancelar";
 export const PEDIDO_ESTADO_ACTIONS: Record<
   PedidoEstadoAction,
   {
-    estado: "confirmado" | "cancelado";
+    estado: "cerrado" | "cancelado";
     label: string;
     title: string;
     content: string;
@@ -47,10 +47,10 @@ export const PEDIDO_ESTADO_ACTIONS: Record<
   }
 > = {
   confirmar: {
-    estado: "confirmado",
-    label: "Confirmar",
-    title: "Confirmar pedido",
-    content: "Seguro que deseas confirmar este pedido?",
+    estado: "cerrado",
+    label: "Cerrar",
+    title: "Cerrar pedido",
+    content: "Seguro que deseas cerrar este pedido?",
     confirmColor: "primary",
     icon: CheckCircle2,
   },
@@ -204,17 +204,17 @@ export const PedidoStatusActions = ({ className }: { className?: string }) => {
 
   return (
     <div className={cn("flex flex-wrap items-center justify-end gap-2", className)}>
-      {record.estado !== "pendiente" ? (
+      {record.estado !== "borrador" ? (
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="h-7 px-2 text-[10px]"
           disabled={loading !== null}
-          onClick={() => updateEstado("pendiente")}
+          onClick={() => updateEstado("borrador")}
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Pendiente
+          Borrador
         </Button>
       ) : null}
     </div>

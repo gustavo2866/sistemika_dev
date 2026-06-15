@@ -21,7 +21,7 @@ def resumen(state: ParteDiarioState) -> str:
     for novedad in state.novedades:
         horas = f"{novedad.horas:g}h" if novedad.horas is not None else "horas pendientes"
         estado = novedad.estado_codigo or "estado pendiente"
-        externo = f" (asignado a {novedad.nombre_proyecto})" if novedad.fuera_de_proyecto else ""
+        externo = _external_label(novedad)
         motivo = (
             f", motivo: {novedad.descripcion}"
             if novedad.descripcion and str(novedad.estado_codigo or "").upper() != "P"
@@ -40,6 +40,14 @@ def resumen(state: ParteDiarioState) -> str:
 
 def _resumen_pendiente(pending: PendienteAmbiguo) -> str:
     return f"- {pending.nombre} (**a validar)"
+
+
+def _external_label(novedad) -> str:
+    if novedad.idnomina is None:
+        return " (sin validar)"
+    if novedad.fuera_de_proyecto and novedad.nombre_proyecto:
+        return f" (asignado a {novedad.nombre_proyecto})"
+    return ""
 
 
 def actualizado(state: ParteDiarioState, errors: list[str] | None = None) -> str:

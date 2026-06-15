@@ -2,7 +2,7 @@ import pytest
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
 from agente.v3.subprocesses.general import GeneralSubprocess
-from agente.v3.subprocesses.general_agent import GeneralAgentOutput
+from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT, GeneralAgentOutput
 
 
 class FakeGeneralAgent:
@@ -48,7 +48,7 @@ async def test_general_v3_responde_general_con_agent_sdk():
     process = GeneralSubprocess(agent_client=client)
     result = await process.handle(_message("hola"), V3ConversationContext(conversation_id="conv-1"))
 
-    assert result.reply_text == "Hola. Puedo ayudarte con pedidos o partes diarios."
+    assert result.reply_text == GENERAL_MENU_TEXT
     assert result.context.active_process == "general"
     assert result.context.process_state["agent_source"] == "agent_sdk"
     assert result.metadata["status"] == "general_reply"
@@ -93,11 +93,34 @@ async def test_general_v3_deriva_a_parte_diario():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "target_process", "handoff_text"),
+    [
+        ("1", "pedidoObra", "pedido obra"),
+        ("2", "parteDiario", "parte diario"),
+    ],
+)
+async def test_general_v3_menu_numerico_deriva_sin_llamar_sdk(text, target_process, handoff_text):
+    client = FakeGeneralAgent()
+    process = GeneralSubprocess(agent_client=client)
+    result = await process.handle(
+        _message(text),
+        V3ConversationContext(conversation_id="conv-1", active_process="general"),
+    )
+
+    assert result.context.active_process == target_process
+    assert result.metadata["status"] == "handoff"
+    assert result.metadata["target_process"] == target_process
+    assert result.metadata["handoff_text"] == handoff_text
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
 async def test_general_v3_usa_fallback_si_falla_agent_sdk():
     process = GeneralSubprocess(agent_client=FakeGeneralAgent(exc=RuntimeError("sin sdk")))
     result = await process.handle(_message("hola"), V3ConversationContext(conversation_id="conv-1"))
 
-    assert "Puedo ayudarte" in result.reply_text
+    assert result.reply_text == GENERAL_MENU_TEXT
     assert result.context.active_process == "general"
     assert result.metadata["agent_source"] == "fallback"
 

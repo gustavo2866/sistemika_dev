@@ -389,7 +389,7 @@ def main() -> None:
     print(f"Cola agente: {QUEUE_NAME}")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
     print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
-    print("Comando local: 'salir' termina el chat.")
+    print("Comando local: '/salir' termina el chat.")
     print()
 
     while True:
@@ -401,7 +401,7 @@ def main() -> None:
 
         if not texto:
             continue
-        if texto.lower() == "salir":
+        if texto.lower() == "/salir":
             print("Chau.")
             break
 

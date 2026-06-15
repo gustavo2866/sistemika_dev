@@ -125,14 +125,16 @@ class ParteDiarioService:
     ) -> ParteDiario:
         if not result.get("parte_listo"):
             raise ValueError("El mensaje no tiene parte_listo=True")
-        if result.get("pendientes_ambiguos") or result.get("conflictos_novedad"):
+        target_estado = EstadoParteDiario.CERRADO if result.get("cerrar_parte") else EstadoParteDiario.BORRADOR
+        if target_estado == EstadoParteDiario.CERRADO and (
+            result.get("pendientes_ambiguos") or result.get("conflictos_novedad")
+        ):
             raise ValueError("El parte diario tiene resoluciones pendientes")
 
         idproyecto = int(result.get("idproyecto") or 0)
         fecha = date.fromisoformat(str(result.get("fecha") or ""))
         novedades = list(result.get("novedades") or [])
-        target_estado = EstadoParteDiario.CERRADO if result.get("cerrar_parte") else EstadoParteDiario.BORRADOR
-        if not novedades and not result.get("sin_novedades_informado"):
+        if target_estado == EstadoParteDiario.CERRADO and not novedades and not result.get("sin_novedades_informado"):
             raise ValueError("El parte diario vacio requiere declaracion explicita de sin novedades")
         present_id = None
         if novedades:
@@ -145,7 +147,11 @@ class ParteDiarioService:
             if present is None:
                 raise ValueError("No existe el estado activo PRESENTE (P)")
             present_id = int(present.id)
-        self._validate_novedades(novedades, present_id=present_id)
+        self._validate_novedades(
+            novedades,
+            present_id=present_id,
+            require_close_rules=target_estado == EstadoParteDiario.CERRADO,
+        )
 
         parte = self._resolve_parte(session, result, idproyecto=idproyecto, fecha=fecha)
         if parte is None:
@@ -289,7 +295,12 @@ class ParteDiarioService:
         ).first()
 
     @staticmethod
-    def _validate_novedades(novedades: list[dict[str, Any]], *, present_id: int | None) -> None:
+    def _validate_novedades(
+        novedades: list[dict[str, Any]],
+        *,
+        present_id: int | None,
+        require_close_rules: bool,
+    ) -> None:
         ids: set[int] = set()
         for item in novedades:
             idnomina = item.get("idnomina")
@@ -304,10 +315,11 @@ class ParteDiarioService:
             hours = Decimal(str(item["horas"]))
             if hours < 0 or hours > 24:
                 raise ValueError("Hay novedades con horas fuera de rango")
-            if not item.get("fuera_de_proyecto") and item.get("idestado") is None:
+            if require_close_rules and not item.get("fuera_de_proyecto") and item.get("idestado") is None:
                 raise ValueError("Hay novedades internas sin estado resuelto")
             if (
-                not item.get("fuera_de_proyecto")
+                require_close_rules
+                and not item.get("fuera_de_proyecto")
                 and present_id is not None
                 and item.get("idestado") == present_id
                 and hours < 9

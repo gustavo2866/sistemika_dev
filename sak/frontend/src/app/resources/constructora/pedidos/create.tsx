@@ -24,10 +24,10 @@ const PedidoCreateTitle = () => (
     <div className="flex flex-wrap items-center gap-3">
       <Badge
         variant="secondary"
-        className={`h-8 gap-2 rounded-md px-4 text-[11px] font-medium shadow-sm ${getPedidoEstadoBadgeClass("pendiente")}`}
+        className={`h-8 gap-2 rounded-md px-4 text-[11px] font-medium shadow-sm ${getPedidoEstadoBadgeClass("borrador")}`}
       >
         <Circle className="h-2 w-2 fill-current" />
-        Pendiente
+        Borrador
       </Badge>
       <Badge variant="outline" className="h-8 gap-2 rounded-md border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 shadow-sm">
         <CalendarDays className="h-3.5 w-3.5 text-slate-500" />

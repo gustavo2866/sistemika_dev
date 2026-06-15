@@ -23,8 +23,7 @@ import os
 # Agregar el directorio backend al sys.path para imports correctos
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app.models import Base
-from sqlmodel import SQLModel
-target_metadata = [Base.metadata, SQLModel.metadata]
+target_metadata = Base.metadata
 
 # --- (4) Leer DATABASE_URL del entorno y setearla en Alembic ---
 db_url = os.getenv("DATABASE_URL")

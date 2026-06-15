@@ -20,7 +20,7 @@ type PedidoEditProps = {
 };
 
 const getEstadoLabel = (estado?: string | null) =>
-  String(estado ?? "pendiente").replace(/^\w/, (char) => char.toUpperCase());
+  String(estado ?? "borrador").replace(/^\w/, (char) => char.toUpperCase());
 
 const formatPedidoDate = (value?: string | null) => {
   if (!value) return null;

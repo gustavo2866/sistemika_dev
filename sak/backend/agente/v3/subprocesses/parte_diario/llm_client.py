@@ -64,7 +64,7 @@ class ParteDiarioLLMClient:
         prompt = load_prompt(PROMPTS_DIR / _prompt_name_for_stage(self.stage))
         payload = {
             "mensaje": mensaje,
-            "fecha_actual": datetime.now(BUENOS_AIRES).date().isoformat(),
+            "fecha_referencia": datetime.now(BUENOS_AIRES).date().isoformat(),
             "zona_horaria": "America/Argentina/Buenos_Aires",
             "parte": state.to_dict(),
             "nomina_proyecto": [item.nombre_completo for item in nominas_proyecto],

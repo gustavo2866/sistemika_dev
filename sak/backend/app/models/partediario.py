@@ -84,9 +84,15 @@ class ParteDiarioDetalle(Base, table=True):
         foreign_key="partes_diario.id",
         description="Identificador del parte diario padre",
     )
-    idnomina: int = Field(
+    idnomina: Optional[int] = Field(
+        default=None,
         foreign_key="nominas.id",
-        description="Empleado asociado al parte diario",
+        description="Empleado asociado al parte diario (None si es persona no registrada en nómina)",
+    )
+    nombre_provisorio: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Nombre de la persona cuando aún no está registrada en nómina",
     )
     horas: Decimal = Field(
         sa_column=Column(DECIMAL(5, 2), nullable=False),

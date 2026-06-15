@@ -16,6 +16,7 @@ ParteDiarioStage = Literal[
     "validacion",
     "cierre",
     "confirmar_salida",
+    "menu",
     "finalizado",
 ]
 
@@ -110,6 +111,7 @@ class ParteDiarioV3State:
             "validacion",
             "cierre",
             "confirmar_salida",
+            "menu",
             "finalizado",
         }:
             etapa = "inicial"

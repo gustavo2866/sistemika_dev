@@ -211,6 +211,12 @@ class ParteDiarioProcess:
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
         if not state.novedades and not state.sin_novedades_informado:
             return self._state_reply(state, renderer.falta_informacion())
+        business_errors = _validate_state_business_rules(state)
+        if business_errors:
+            return self._state_reply(
+                state,
+                "\n".join(business_errors) + "\n\n" + renderer.solicitar_confirmacion(state),
+            )
         result = ExecutionResult(
             status="confirmed",
             next_state=state,
@@ -420,8 +426,24 @@ class ParteDiarioProcess:
         ).all()
         result = []
         for row in rows:
-            nomina = self._session.get(Nomina, row.idnomina)
+            nomina = self._session.get(Nomina, row.idnomina) if row.idnomina is not None else None
             if nomina is None:
+                provisional_name = str(row.nombre_provisorio or "").strip()
+                if not provisional_name:
+                    continue
+                result.append(
+                    NovedadPersonal(
+                        nombre=provisional_name,
+                        idnomina=None,
+                        idestado=row.idestado,
+                        estado_codigo=status_by_id.get(row.idestado),
+                        horas=float(row.horas),
+                        ingreso=row.ingreso.isoformat() if row.ingreso else None,
+                        egreso=row.egreso.isoformat() if row.egreso else None,
+                        descripcion=row.descripcion,
+                        fuera_de_proyecto=True,
+                    )
+                )
                 continue
             external = nomina.idproyecto != idproyecto
             result.append(
@@ -572,6 +594,21 @@ def _validate_pending_business_rules(pending: PendienteAmbiguo) -> str | None:
     ):
         return f"Para {pending.nombre}, una jornada menor a 9 horas requiere indicar el motivo."
     return None
+
+
+def _validate_state_business_rules(state: ParteDiarioState) -> list[str]:
+    errors: list[str] = []
+    for novedad in state.novedades:
+        code = str(novedad.estado_codigo or "").upper()
+        if (
+            not novedad.fuera_de_proyecto
+            and code == "P"
+            and novedad.horas is not None
+            and novedad.horas < 9
+            and not str(novedad.descripcion or "").strip()
+        ):
+            errors.append(f"Para {novedad.nombre}, una jornada menor a 9 horas requiere indicar el motivo.")
+    return errors
 
 
 def _prepare_pending_validation(

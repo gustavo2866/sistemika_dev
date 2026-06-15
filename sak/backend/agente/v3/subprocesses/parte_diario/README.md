@@ -4,7 +4,7 @@ Este documento describe el flujo esperado del subproceso `parteDiario` en agente
 
 ## Objetivo
 
-Registrar el parte diario de una obra desde WhatsApp, manteniendo el estado conversacional en v3 y guardando en DB solo al confirmar.
+Registrar el parte diario de una obra desde WhatsApp, manteniendo el estado conversacional en v3 y guardando en DB al elegir `GUARDAR` o `CERRAR`.
 
 El parte diario debe contener solo novedades explicitas. Si el usuario informa que no hubo novedades o que todos trabajaron normalmente, se crea el parte sin detalles.
 
@@ -199,24 +199,26 @@ El handler v3 decide como aplicar la fecha detectada:
 Menu:
 
 ```text
-Opciones: 1:FIN 2:SALIR.
+Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
 ```
 
 Comandos locales:
 
-- `1` o `FIN`: intenta cerrar la carga.
-- `2` o `SALIR`: pasa a `confirmar_salida`.
+- `1` o `GUARDAR`: guarda el parte como `borrador` y finaliza.
+- `2` o `CERRAR`: valida pendientes y reglas de cierre; si todo esta correcto, guarda el parte como `cerrado`.
+- `3` o `SALIR`: pasa a `confirmar_salida`.
 
 Regla importante:
 
-Si hay validaciones pendientes, `1:FIN` no pasa a `cierre`; pasa a `validacion`.
+No se validan reglas de cierre durante la carga. Las validaciones se disparan con `2:CERRAR`.
 
 Transiciones:
 
 - carga normal -> permanece en `carga`;
-- `1:FIN` sin pendientes -> `cierre`;
-- `1:FIN` con pendientes -> `validacion`;
-- `2:SALIR` -> `confirmar_salida`.
+- `1:GUARDAR` -> `seleccionar_fecha` con parte `borrador`;
+- `2:CERRAR` sin pendientes -> `seleccionar_fecha` con parte `cerrado`;
+- `2:CERRAR` con pendientes -> `validacion`;
+- `3:SALIR` -> `confirmar_salida`.
 
 ### `validacion`
 
@@ -254,26 +256,25 @@ Transiciones:
 
 ### `cierre`
 
-Muestra resumen final y pide confirmacion explicita.
+Estado tecnico usado cuando el parte ya supero validaciones y vuelve a mostrar el resumen.
+El menu visible se mantiene igual que en carga.
 
 Menu:
 
 ```text
-Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR.
+Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
 ```
 
 Comandos locales:
 
-- `1` o `CONFIRMAR`: persiste el parte.
-- `2` o `VOLVER`: vuelve a `carga`.
+- `1` o `GUARDAR`: persiste el parte como `borrador`.
+- `2` o `CERRAR`: valida reglas de cierre y persiste el parte como `cerrado`.
 - `3` o `SALIR`: pasa a `confirmar_salida`.
-- `4` o `CERRAR`: persiste el parte y lo deja en estado `cerrado`.
 
 Transiciones:
 
-- confirmar exitoso -> `finalizado`;
-- cerrar exitoso -> `finalizado`;
-- volver -> `carga`;
+- guardar exitoso -> `seleccionar_fecha`;
+- cerrar exitoso -> `seleccionar_fecha`;
 - salir -> `confirmar_salida`.
 
 ### `confirmar_salida`
@@ -283,18 +284,20 @@ Pide confirmacion para descartar el parte en carga.
 Menu:
 
 ```text
-Opciones: 1:VOLVER 2:CONFIRMAR.
+Se perderan los cambios no guardados.
+
+Opciones: 1:OK 2:VOLVER.
 ```
 
 Comandos locales:
 
-- `1` o `VOLVER`: vuelve a `carga`.
-- `2` o `CONFIRMAR`: descarta el estado en memoria.
+- `1` o `OK`: descarta el estado en memoria.
+- `2` o `VOLVER`: vuelve a `carga`.
 
 Transiciones:
 
-- volver -> `carga`;
-- confirmar descarte -> `finalizado`.
+- ok -> `seleccionar_fecha`;
+- volver -> `carga`.
 
 ### `finalizado`
 
@@ -365,13 +368,14 @@ Resultado:
 Durante la carga:
 
 ```text
-Opciones: 1:FIN 2:SALIR.
+Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
 ```
 
-- `1` o `FIN`: intenta cerrar el parte.
-- `2` o `SALIR`: pide confirmacion para descartar.
+- `1` o `GUARDAR`: guarda el borrador y finaliza.
+- `2` o `CERRAR`: intenta cerrar el parte y ejecuta validaciones.
+- `3` o `SALIR`: pide confirmacion para descartar.
 
-Si hay validaciones pendientes, `1:FIN` pasa a la etapa `validacion`.
+Si hay validaciones pendientes, `2:CERRAR` pasa a la etapa `validacion`.
 
 ### Validacion
 
@@ -388,25 +392,26 @@ Cuando no quedan pendientes, el flujo pasa a `cierre`.
 
 ### Cierre
 
-Cuando no hay pendientes:
+Cuando no hay pendientes, el menu visible sigue siendo el menu principal:
 
 ```text
-Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR.
+Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
 ```
 
-- `1` o `CONFIRMAR`: guarda en DB.
-- `2` o `VOLVER`: vuelve a carga.
+- `1` o `GUARDAR`: guarda en DB como `borrador`.
+- `2` o `CERRAR`: guarda en DB como `cerrado`.
 - `3` o `SALIR`: pide confirmacion para descartar.
-- `4` o `CERRAR`: guarda en DB y deja el parte cerrado.
+
+Luego de guardar o cerrar, el flujo vuelve al selector de fechas de `parteDiario`.
 
 ### Confirmar Salida
 
 ```text
-Opciones: 1:VOLVER 2:CONFIRMAR.
+Opciones: 1:OK 2:VOLVER.
 ```
 
-- `1` o `VOLVER`: vuelve a la carga.
-- `2` o `CONFIRMAR`: descarta el parte en carga y limpia contexto.
+- `1` o `OK`: descarta el parte en carga y vuelve al selector de fechas de `parteDiario`.
+- `2` o `VOLVER`: vuelve a la carga.
 
 ## Texto Libre
 
@@ -433,7 +438,7 @@ El LLM detecta la referencia semantica a fecha, pero el handler v3 decide como a
 
 ## Regla de Persistencia
 
-El parte diario confirmado guarda:
+El parte diario guardado o cerrado guarda:
 
 - cabecera `ParteDiario`;
 - detalles solo para novedades explicitas.

@@ -118,7 +118,7 @@ async def test_parte_diario_v3_first_load_resolves_project_and_sets_today(seeded
     assert draft["fecha"] == _today().isoformat()
     assert draft["novedades"][0]["idnomina"] == seeded_parte_v3["employee_1"].id
     assert draft["novedades"][0]["estado_codigo"] == "FAL"
-    assert "Opciones: 1:FIN 2:SALIR." in (result.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -152,6 +152,13 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     assert "1: 16/05/2026 sab (borrador)" in (result.reply_text or "")
     assert "2: 15/05/2026 vie (cerrado)" in (result.reply_text or "")
     assert "3: 14/05/2026 jue (sin cargar)" in (result.reply_text or "")
+    assert "Responde con el numero de una fecha o SALIR" in (result.reply_text or "")
+
+    exited = await process.handle(_message("salir"), result.context)
+
+    assert exited.context.active_process == "general"
+    assert "1: PEDIDO OBRA" in (exited.reply_text or "")
+    assert "2: PARTE DIARIO" in (exited.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -194,7 +201,46 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     assert draft["novedades"][0]["idnomina"] == seeded_parte_v3["employee_1"].id
     assert draft["novedades"][0]["estado_codigo"] == "FAL"
     assert "Parte diario borrador recuperado" in (selected.reply_text or "")
-    assert "Opciones: 1:FIN 2:SALIR." in (selected.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (selected.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_date_selection_recovers_provisional_name_detail(
+    db_session: Session,
+    monkeypatch,
+    seeded_parte_v3,
+):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 5, 16))
+    falta = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
+    ).one()
+    parte = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 5, 16),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add(parte)
+    db_session.flush()
+    db_session.add(
+        ParteDiarioDetalle(
+            parte_diario_id=parte.id,
+            idnomina=None,
+            nombre_provisorio="Petro",
+            idestado=falta.id,
+            horas=Decimal("0"),
+            origen=OrigenDetalle.AGENTE,
+        )
+    )
+    db_session.commit()
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    menu = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-select-date"))
+    selected = await process.handle(_message("1"), menu.context)
+
+    draft = selected.context.process_state["parte_state"]
+    assert draft["novedades"][0]["idnomina"] is None
+    assert draft["novedades"][0]["nombre"] == "Petro"
+    assert "Petro (sin validar): FAL, 0h" in (selected.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -249,7 +295,7 @@ async def test_parte_diario_v3_initial_inferred_date_is_loaded_before_today(
     assert result.context.process_state["etapa"] == "carga"
     assert result.context.process_state["parte_state"]["fecha"] == target_date
     assert result.context.process_state["parte_state"]["sin_novedades_informado"] is True
-    assert "Opciones: 1:FIN 2:SALIR." in (result.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -296,6 +342,58 @@ async def test_parte_diario_v3_active_selected_date_is_not_overwritten_by_today_
 
 
 @pytest.mark.asyncio
+async def test_parte_diario_v3_load_does_not_validate_short_workday(seeded_parte_v3):
+    fal_id = 2
+    state = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 10).isoformat(),
+        novedades=[
+            NovedadPersonal(
+                nombre="Garcia, Juan",
+                idnomina=seeded_parte_v3["employee_1"].id,
+                idestado=fal_id,
+                estado_codigo="FAL",
+                horas=0,
+            )
+        ],
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="modificar_novedad",
+                        nombre="Garcia, Juan",
+                        estado_codigo="P",
+                        horas=4,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("garcia trabajo 4hs"), context)
+
+    assert "jornada menor a 9 horas" not in (result.reply_text or "")
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"][0]["estado_codigo"] == "P"
+    assert draft["novedades"][0]["horas"] == 4
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
 async def test_parte_diario_v3_multiple_projects_selection_does_not_interpret_option_as_part(
     db_session: Session,
     seeded_parte_v3,
@@ -329,7 +427,38 @@ async def test_parte_diario_v3_multiple_projects_selection_does_not_interpret_op
     assert selected.context.process_state["parte_state"]["fecha"] == _today().isoformat()
     assert selected.context.process_state["parte_state"]["novedades"] == []
     assert "Parte diario en carga" in (selected.reply_text or "")
-    assert "Opciones: 1:FIN 2:SALIR." in (selected.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (selected.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_empty_part_close_marks_sin_novedades_and_closes(seeded_parte_v3):
+    state = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 10).isoformat(),
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("2"), context)
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.metadata["parte_listo"] is True
+    assert result.metadata["result"]["cerrar_parte"] is True
+    assert result.metadata["result"]["sin_novedades_informado"] is True
+    assert "*PARTE DIARIO CERRADO*" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -364,7 +493,7 @@ async def test_parte_diario_v3_command_with_multiple_projects_keeps_date_menu_in
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_menu_fin_moves_to_confirmation(seeded_parte_v3):
+async def test_parte_diario_v3_menu_guardar_persists_draft(seeded_parte_v3):
     state = ParteDiarioState(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
@@ -387,12 +516,15 @@ async def test_parte_diario_v3_menu_fin_moves_to_confirmation(seeded_parte_v3):
     result = await process.handle(_message("1"), context)
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "cierre"
-    assert "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR." in (result.reply_text or "")
+    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.metadata["parte_listo"] is True
+    assert result.metadata["result"]["cerrar_parte"] is False
+    assert "*PARTE DIARIO REGISTRADO*" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_menu_fin_activates_pending_validation(seeded_parte_v3):
+async def test_parte_diario_v3_menu_cerrar_activates_pending_validation(seeded_parte_v3):
     state = ParteDiarioState(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
@@ -431,7 +563,7 @@ async def test_parte_diario_v3_menu_fin_activates_pending_validation(seeded_part
     )
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
-    result = await process.handle(_message("1"), context)
+    result = await process.handle(_message("2"), context)
 
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["parte_state"]["esperando"] == "confirmacion_ambiguos"
@@ -460,7 +592,7 @@ def test_parte_diario_v3_resolver_keeps_similar_search_out_of_load(seeded_parte_
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_fin_asks_to_select_similar_pending_name(seeded_parte_v3):
+async def test_parte_diario_v3_cerrar_asks_to_select_similar_pending_name(seeded_parte_v3):
     process = ParteDiarioSubprocess(
         llm_client=FakeParteDiarioLLM(
             TurnPlan(
@@ -479,7 +611,7 @@ async def test_parte_diario_v3_fin_asks_to_select_similar_pending_name(seeded_pa
     assert loaded_draft["pendientes_ambiguos"][0]["candidatos"] is None
     assert "Petro (**a validar)" in (loaded.reply_text or "")
 
-    result = await process.handle(_message("fin", external_id="wamid-test-2"), loaded.context)
+    result = await process.handle(_message("2", external_id="wamid-test-2"), loaded.context)
 
     assert result.context.process_state["etapa"] == "validacion"
     assert result.context.process_state["parte_state"]["esperando"] == "confirmacion_ambiguos"
@@ -503,7 +635,7 @@ async def test_parte_diario_v3_unvalidated_selection_is_not_registered(seeded_pa
     context = V3ConversationContext(conversation_id="meta:account:549111111")
 
     loaded = await process.handle(_message("Petro falto"), context)
-    validating = await process.handle(_message("fin", external_id="wamid-test-2"), loaded.context)
+    validating = await process.handle(_message("2", external_id="wamid-test-2"), loaded.context)
     result = await process.handle(_message("2", external_id="wamid-test-3"), validating.context)
 
     assert result.context.process_state["etapa"] == "cierre"
@@ -514,7 +646,7 @@ async def test_parte_diario_v3_unvalidated_selection_is_not_registered(seeded_pa
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_menu_cierre_volver_y_salir(seeded_parte_v3):
+async def test_parte_diario_v3_menu_salir_confirms_discard(seeded_parte_v3):
     state = ParteDiarioState(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
@@ -534,16 +666,26 @@ async def test_parte_diario_v3_menu_cierre_volver_y_salir(seeded_parte_v3):
     )
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
-    back = await process.handle(_message("2"), context)
     exit_confirmation = await process.handle(_message("3"), context)
-    discarded = await process.handle(_message("2"), exit_confirmation.context)
+    back = await process.handle(_message("2"), exit_confirmation.context)
+    discarded = await process.handle(_message("1"), exit_confirmation.context)
 
-    assert back.context.process_state["etapa"] == "carga"
-    assert "Opciones: 1:FIN 2:SALIR." in (back.reply_text or "")
     assert exit_confirmation.context.process_state["etapa"] == "confirmar_salida"
-    assert "Opciones: 1:VOLVER 2:CONFIRMAR." in (exit_confirmation.reply_text or "")
-    assert discarded.context.active_process is None
+    assert "Se perderan los cambios no guardados." in (exit_confirmation.reply_text or "")
+    assert "Opciones: 1:OK 2:VOLVER." in (exit_confirmation.reply_text or "")
+    assert "Fecha: 2026-05-30" not in (exit_confirmation.reply_text or "")
+    assert back.context.process_state["etapa"] == "carga"
+    assert "Volvemos a la carga" in (back.reply_text or "")
+    assert discarded.context.active_process == "parteDiario"
+    assert discarded.context.process_state["etapa"] == "seleccionar_fecha"
     assert "descartado" in (discarded.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" in (discarded.reply_text or "")
+
+    returned = await process.handle(_message("salir"), discarded.context)
+
+    assert returned.context.active_process == "general"
+    assert "1: PEDIDO OBRA" in (returned.reply_text or "")
+    assert "2: PARTE DIARIO" in (returned.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -569,7 +711,8 @@ async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session:
 
     result = await process.handle(_message("1", external_id="wamid-confirm-parte"), context)
 
-    assert result.context.active_process is None
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "seleccionar_fecha"
     assert result.metadata["parte_listo"] is True
     parte = db_session.exec(select(ParteDiario)).one()
     assert parte.id == result.metadata["parte_diario_id"]
@@ -578,6 +721,7 @@ async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session:
     message = db_session.get(CRMMensaje, parte.mensaje_origen_id)
     assert message is not None
     assert message.metadata_json["agent_v3"]["result"]["parte_listo"] is True
+    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
     details = db_session.exec(
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
     ).all()
@@ -605,13 +749,15 @@ async def test_parte_diario_v3_close_persists_closed_part(db_session: Session, s
     )
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
-    result = await process.handle(_message("4", external_id="wamid-close-parte"), context)
+    result = await process.handle(_message("2", external_id="wamid-close-parte"), context)
 
-    assert result.context.active_process is None
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "seleccionar_fecha"
     assert result.metadata["parte_listo"] is True
     parte = db_session.exec(select(ParteDiario)).one()
     assert parte.estado == EstadoParteDiario.CERRADO
     assert "*PARTE DIARIO CERRADO*" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
     message = db_session.get(CRMMensaje, parte.mensaje_origen_id)
     assert message is not None
     assert message.metadata_json["agent_v3"]["result"]["cerrar_parte"] is True

@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
 
 class PedidoObraEstado(str, Enum):
-    PENDIENTE = "pendiente"
-    CONFIRMADO = "confirmado"
+    BORRADOR = "borrador"
+    CERRADO = "cerrado"
     EMITIDO = "emitido"
     CANCELADO = "cancelado"
 
@@ -74,8 +74,8 @@ class ConstructoraPedido(Base, table=True):
         description="Mensaje del agente que origino este pedido",
     )
     estado: PedidoObraEstado = Field(
-        default=PedidoObraEstado.PENDIENTE,
-        sa_column=Column(String(20), nullable=False, server_default="pendiente"),
+        default=PedidoObraEstado.BORRADOR,
+        sa_column=Column(String(20), nullable=False, server_default="borrador"),
         description="Estado del pedido",
     )
     origen: PedidoObraOrigen = Field(

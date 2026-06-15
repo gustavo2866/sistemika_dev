@@ -503,7 +503,7 @@ const ProyectoPedidosSection = ({
   const list = (
     <PedidoList
       embedded
-      filter={{ oportunidad_id: oportunidadId, estado: "pendiente" }}
+      filter={{ oportunidad_id: oportunidadId, estado: "borrador" }}
       storeKey={`constructora-pedidos-proyecto-${oportunidadId}`}
     />
   );

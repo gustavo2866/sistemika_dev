@@ -19,6 +19,9 @@ class FakeSelector:
 
 
 class FakeGeneralProcess:
+    def __init__(self, *, handoff_text: str | None = None) -> None:
+        self.handoff_text = handoff_text
+
     name = PROCESS_GENERAL
 
     async def handle(self, message, context):
@@ -32,6 +35,7 @@ class FakeGeneralProcess:
                 "process_name": self.name,
                 "status": "handoff",
                 "target_process": updated.active_process,
+                **({"handoff_text": self.handoff_text} if self.handoff_text else {}),
             },
         )
 
@@ -92,3 +96,21 @@ async def test_orchestrator_executes_general_handoff_with_same_message(target_pr
     assert result.metadata["handoff_to_process"] == target_process
     assert target.messages[0][0].text == "necesito 20 bolsas cemento"
     assert target.messages[0][1].active_process == target_process
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_executes_general_handoff_with_forwarded_text():
+    target = FakeTargetProcess("pedidoObra")
+    registry = V3SubprocessRegistry([FakeGeneralProcess(handoff_text="pedido obra"), target])
+    orchestrator = V3Orchestrator(
+        context_store=V3ContextStore(),
+        outbox=V3Outbox(),
+        subprocess_registry=registry,
+        process_selector=FakeSelector(),
+    )
+
+    result, outbound_id = await orchestrator.process_message(_message("1", "pedidoObra"))
+
+    assert outbound_id
+    assert result.reply_text == "pedidoObra proceso: pedido obra"
+    assert target.messages[0][0].text == "pedido obra"

@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 import re
 import time
+from decimal import Decimal
 
 from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.pedido_obra import renderer
 from agente.v3.subprocesses.pedido_obra.interpreter import (
     PedidoObraOperation,
@@ -16,9 +18,20 @@ from agente.v3.subprocesses.pedido_obra.interpreter import (
     parse_quantity_answer,
 )
 from agente.v3.subprocesses.pedido_obra.llm_client import PedidoObraCargaLLMClient
-from agente.v3.subprocesses.pedido_obra.state import PedidoObraItem, PedidoObraOption, PedidoObraState
+from agente.v3.subprocesses.pedido_obra.state import (
+    PedidoObraItem,
+    PedidoObraOption,
+    PedidoObraPedidoOption,
+    PedidoObraState,
+)
 from app.db import engine
 from app.models import CRMContacto, CRMOportunidad, Proyecto
+from app.models.constructora.pedido import (
+    ConstructoraPedido,
+    ConstructoraPedidoDetalle,
+    PedidoObraDetalleEstado,
+    PedidoObraEstado,
+)
 from app.services.constructora_pedido_service import constructora_pedido_service
 
 logger = logging.getLogger(__name__)
@@ -33,11 +46,31 @@ class PedidoObraSubprocess:
     async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
         state = PedidoObraState.from_dict(context.process_state)
         command = normalize_command(message.text)
+        is_pedido_menu_command = _is_pedido_menu_command(command)
 
         if state.etapa == "inicial" and not state.has_resolved_obra():
-            initial_result = self._handle_inicial(message, command, context, state)
+            initial_result = self._handle_inicial(
+                message,
+                command,
+                context,
+                state,
+                show_pedido_menu=is_pedido_menu_command,
+            )
             if initial_result is not None:
                 return initial_result
+
+        if state.pedido_id is not None and state.pedido_estado == PedidoObraEstado.CERRADO.value:
+            state.etapa = "pedido_readonly"
+            return self._handle_pedido_readonly(command, context, state)
+
+        if state.etapa == "pedido_readonly":
+            return self._handle_pedido_readonly(command, context, state)
+
+        if is_pedido_menu_command:
+            return self._show_pedido_menu(context, state)
+
+        if state.etapa == "seleccionar_pedido":
+            return self._handle_pedido_selection(command, context, state)
 
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(command, context, state)
@@ -56,6 +89,8 @@ class PedidoObraSubprocess:
         command: str,
         context: V3ConversationContext,
         state: PedidoObraState,
+        *,
+        show_pedido_menu: bool,
     ) -> V3ProcessResult | None:
         if state.opciones_obra:
             try:
@@ -65,7 +100,10 @@ class PedidoObraSubprocess:
 
             for option in state.opciones_obra:
                 if option.opcion == selected_option:
+                    should_show_pedido_menu = show_pedido_menu or state.pedido_menu_pendiente
                     state.set_obra(option)
+                    if should_show_pedido_menu:
+                        return self._show_pedido_menu(context, state)
                     return self._active_result(context, state, renderer.obra_seleccionada(state), "obra_selected")
             return self._active_result(context, state, renderer.comando_invalido(state.etapa), "invalid_obra_selection")
 
@@ -83,11 +121,150 @@ class PedidoObraSubprocess:
 
         if len(options) == 1:
             state.set_obra(options[0])
+            if show_pedido_menu:
+                return self._show_pedido_menu(context, state)
             return None
 
         state.etapa = "inicial"
         state.opciones_obra = options
+        state.pedido_menu_pendiente = show_pedido_menu
         return self._active_result(context, state, renderer.seleccionar_obra(state), "obra_selection_required")
+
+    def _show_pedido_menu(
+        self,
+        context: V3ConversationContext,
+        state: PedidoObraState,
+        *,
+        prefix: str | None = None,
+        status: str = "pedido_selection_required",
+        extra_metadata: dict | None = None,
+    ) -> V3ProcessResult:
+        if not state.oportunidad_id:
+            return self._closed_result(context, renderer.obra_no_encontrada(), "obra_not_found")
+        state.etapa = "seleccionar_pedido"
+        state.pedido_menu_pendiente = False
+        state.opciones_pedido = self._build_pedido_options(int(state.oportunidad_id))
+        return self._active_result(
+            context,
+            state,
+            renderer.menu_pedidos(state.opciones_pedido, prefix=prefix),
+            status,
+            extra_metadata,
+        )
+
+    def _handle_pedido_selection(
+        self,
+        command: str,
+        context: V3ConversationContext,
+        state: PedidoObraState,
+    ) -> V3ProcessResult:
+        if command in {"salir"}:
+            updated = context.copy()
+            updated.active_process = None
+            updated.process_state = {}
+            return V3ProcessResult(
+                context=updated,
+                reply_text=GENERAL_MENU_TEXT,
+                metadata={"process_name": self.name, "status": "returned_to_general"},
+            )
+
+        if command in {"nuevo"}:
+            state.etapa = "carga"
+            state.pedido_id = None
+            state.pedido_estado = None
+            state.opciones_pedido = []
+            state.items = []
+            return self._active_result(context, state, renderer.obra_seleccionada(state), "new_order")
+
+        try:
+            selected_option = int(command)
+        except ValueError:
+            return self._active_result(
+                context,
+                state,
+                renderer.menu_pedidos(state.opciones_pedido, prefix="No pude interpretar la opcion."),
+                "invalid_pedido_selection",
+            )
+
+        selected = next((option for option in state.opciones_pedido if option.opcion == selected_option), None)
+        if selected is None:
+            return self._active_result(
+                context,
+                state,
+                renderer.menu_pedidos(state.opciones_pedido, prefix="Opcion invalida."),
+                "invalid_pedido_selection",
+            )
+
+        with Session(engine) as session:
+            pedido = session.get(ConstructoraPedido, selected.pedido_id)
+            if pedido is None or pedido.deleted_at is not None:
+                state.opciones_pedido = self._build_pedido_options(int(state.oportunidad_id or 0))
+                return self._active_result(
+                    context,
+                    state,
+                    renderer.menu_pedidos(state.opciones_pedido, prefix="El pedido seleccionado ya no existe."),
+                    "pedido_not_found",
+                )
+            items = self._load_pedido_items(session, int(pedido.id))
+
+        state.pedido_id = int(selected.pedido_id)
+        state.pedido_estado = selected.estado
+        state.items = items
+        state.opciones_pedido = []
+        if selected.estado == PedidoObraEstado.BORRADOR.value:
+            state.etapa = "carga"
+            return self._active_result(
+                context,
+                state,
+                renderer.pedido_borrador_recuperado(state),
+                "pedido_loaded",
+                {"pedido_obra_id": selected.pedido_id},
+            )
+
+        if selected.estado == PedidoObraEstado.CERRADO.value:
+            state.etapa = "pedido_readonly"
+            return self._active_result(
+                context,
+                state,
+                renderer.consulta_pedido_readonly(selected.pedido_id, selected.estado, items),
+                "pedido_readonly",
+                {"pedido_obra_id": selected.pedido_id},
+            )
+
+        state.etapa = "seleccionar_pedido"
+        return self._active_result(
+            context,
+            state,
+            renderer.consulta_pedido(selected.pedido_id, selected.estado, items),
+            "pedido_readonly",
+            {"pedido_obra_id": selected.pedido_id},
+        )
+
+    def _handle_pedido_readonly(
+        self,
+        command: str,
+        context: V3ConversationContext,
+        state: PedidoObraState,
+    ) -> V3ProcessResult:
+        if command in {"salir", "3"}:
+            state.pedido_id = None
+            state.pedido_estado = None
+            state.items = []
+            state.opciones_pedido = []
+            return self._show_pedido_menu(
+                context,
+                state,
+                status="pedido_readonly_exit_to_menu",
+                prefix=None,
+            )
+
+        return self._active_result(
+            context,
+            state,
+            renderer.pedido_no_modificable(),
+            "pedido_readonly_invalid_command",
+            {"pedido_obra_id": state.pedido_id},
+        )
 
     async def _handle_carga(
         self,
@@ -96,10 +273,28 @@ class PedidoObraSubprocess:
         context: V3ConversationContext,
         state: PedidoObraState,
     ) -> V3ProcessResult:
-        if command in {"fin", "1"}:
+        if command in {"guardar", "grabar", "1"}:
+            state.accion_pendiente = "guardar"
             return self._run_validation(context, state)
 
-        if command in {"salir", "2"}:
+        if command in {"cerrar", "fin", "2"}:
+            state.accion_pendiente = "cerrar"
+            return self._run_validation(context, state)
+
+        if command in {"salir", "3"}:
+            if state.pedido_id is not None and state.pedido_estado == PedidoObraEstado.BORRADOR.value:
+                state.pedido_id = None
+                state.pedido_estado = None
+                state.items = []
+                state.opciones_pedido = []
+                state.accion_pendiente = None
+                state.pendiente_item_id = None
+                state.pendientes_validacion = []
+                return self._show_pedido_menu(
+                    context,
+                    state,
+                    status="pedido_draft_exit_to_menu",
+                )
             state.etapa = "confirmar_salida"
             return self._active_result(context, state, renderer.pedir_confirmacion_salida(state), "exit_confirmation")
 
@@ -154,11 +349,7 @@ class PedidoObraSubprocess:
         context: V3ConversationContext,
         state: PedidoObraState,
     ) -> V3ProcessResult:
-        if command in {"volver", "1"}:
-            state.etapa = "carga"
-            return self._active_result(context, state, renderer.salida_cancelada(state), "exit_cancelled")
-
-        if command in {"confirmar", "2"}:
+        if command in {"ok", "1"}:
             state.etapa = "finalizado"
             updated = context.copy()
             updated.active_process = None
@@ -169,6 +360,10 @@ class PedidoObraSubprocess:
                 metadata={"process_name": self.name, "status": "discarded"},
             )
 
+        if command in {"volver", "2"}:
+            state.etapa = "carga"
+            return self._active_result(context, state, renderer.salida_cancelada(state), "exit_cancelled")
+
         return self._active_result(context, state, renderer.comando_invalido(state.etapa), "invalid_command")
 
     def _handle_validacion(
@@ -178,14 +373,15 @@ class PedidoObraSubprocess:
         context: V3ConversationContext,
         state: PedidoObraState,
     ) -> V3ProcessResult:
-        if command in {"salir", "2"}:
+        if command in {"salir"}:
             state.etapa = "confirmar_salida"
             return self._active_result(context, state, renderer.pedir_confirmacion_salida(state), "exit_confirmation")
 
-        if command in {"volver", "1"}:
+        if command in {"volver"}:
             state.etapa = "carga"
             state.pendiente_item_id = None
             state.pendientes_validacion = []
+            state.accion_pendiente = None
             return self._active_result(context, state, renderer.salida_cancelada(state), "back_to_load")
 
         pending_validation = state.current_validation_pending()
@@ -207,37 +403,48 @@ class PedidoObraSubprocess:
         context: V3ConversationContext,
         state: PedidoObraState,
     ) -> V3ProcessResult:
-        if command in {"confirmar", "1"}:
+        if command in {"ok", "confirmar", "1"}:
+            cerrar_pedido = state.accion_pendiente != "guardar"
             try:
-                pedido = self._crear_pedido_confirmado(message, context, state)
+                pedido = self._crear_pedido_confirmado(message, context, state, cerrar_pedido=cerrar_pedido)
             except Exception:
                 logger.exception("Error creando pedido de obra confirmado desde agente v3")
                 return self._active_result(context, state, renderer.error_confirmacion(), "persistence_error")
 
-            state.etapa = "finalizado"
-            updated = context.copy()
-            updated.active_process = None
-            updated.process_state = {}
-            return V3ProcessResult(
-                context=updated,
-                reply_text=renderer.confirmado(state, pedido.id),
-                metadata={
-                    "process_name": self.name,
-                    "status": "confirmed",
-                    "pedido_listo": True,
-                    "pedido_obra_id": pedido.id,
-                    "mensaje_origen_id": pedido.mensaje_origen_id,
-                    "items": [item.to_dict() for item in state.items],
-                },
+            status = "closed" if cerrar_pedido else "saved"
+            confirmation = renderer.confirmado(state, pedido.id, cerrado=cerrar_pedido)
+            metadata = {
+                "process_name": self.name,
+                "status": status,
+                "pedido_listo": True,
+                "cerrar_pedido": cerrar_pedido,
+                "pedido_obra_id": pedido.id,
+                "mensaje_origen_id": pedido.mensaje_origen_id,
+                "items": [item.to_dict() for item in state.items],
+            }
+            state.pedido_id = None
+            state.pedido_estado = None
+            state.items = []
+            state.opciones_pedido = []
+            state.accion_pendiente = None
+            state.pendiente_item_id = None
+            state.pendientes_validacion = []
+            return self._show_pedido_menu(
+                context=context,
+                state=state,
+                prefix=confirmation,
+                status=status,
+                extra_metadata=metadata,
             )
 
         if command in {"volver", "2"}:
             state.etapa = "carga"
             state.pendiente_item_id = None
             state.pendientes_validacion = []
+            state.accion_pendiente = None
             return self._active_result(context, state, renderer.salida_cancelada(state), "back_to_load")
 
-        if command in {"salir", "3"}:
+        if command in {"salir"}:
             state.etapa = "confirmar_salida"
             return self._active_result(context, state, renderer.pedir_confirmacion_salida(state), "exit_confirmation")
 
@@ -305,6 +512,8 @@ class PedidoObraSubprocess:
             return self._active_result(context, state, renderer.pedir_cantidad(missing), "missing_required")
 
         state.etapa = "cierre"
+        if state.accion_pendiente is None:
+            state.accion_pendiente = "cerrar"
         state.pendiente_item_id = None
         state.pendientes_validacion = []
         return self._active_result(context, state, renderer.cierre_pedido(state), "ready_to_confirm")
@@ -324,6 +533,16 @@ class PedidoObraSubprocess:
         if extra_metadata:
             metadata.update(extra_metadata)
         return V3ProcessResult(context=updated, reply_text=reply, metadata=metadata)
+
+    def _closed_result(self, context: V3ConversationContext, reply: str, status: str) -> V3ProcessResult:
+        updated = context.copy()
+        updated.active_process = None
+        updated.process_state = {}
+        return V3ProcessResult(
+            context=updated,
+            reply_text=reply,
+            metadata={"process_name": self.name, "status": status},
+        )
 
     def _apply_operations(self, state: PedidoObraState, operations: list[PedidoObraOperation]) -> list[str]:
         applied: list[str] = []
@@ -355,11 +574,14 @@ class PedidoObraSubprocess:
         message: V3InboundMessage,
         context: V3ConversationContext,
         state: PedidoObraState,
+        *,
+        cerrar_pedido: bool,
     ):
         started = time.perf_counter()
         with Session(engine) as session:
             pedido = constructora_pedido_service.create_from_agent_v3_confirmation(
                 session,
+                pedido_id=state.pedido_id,
                 contacto_id=int(state.contacto_id or 0),
                 oportunidad_id=int(state.oportunidad_id or 0),
                 proyecto_id=state.proyecto_id,
@@ -376,6 +598,7 @@ class PedidoObraSubprocess:
                 raw_payload=message.raw_payload,
                 normalized_payload=message.normalized_payload,
                 received_at=message.received_at,
+                cerrar_pedido=cerrar_pedido,
             )
         logger.info(
             "v3_pedido_obra_persist_timing external_message_id=%s pedido_obra_id=%s items=%s persist_ms=%s",
@@ -462,6 +685,58 @@ class PedidoObraSubprocess:
             )
             return options
 
+    @staticmethod
+    def _build_pedido_options(oportunidad_id: int) -> list[PedidoObraPedidoOption]:
+        if oportunidad_id <= 0:
+            return []
+        with Session(engine) as session:
+            pedidos = session.exec(
+                select(ConstructoraPedido)
+                .where(ConstructoraPedido.oportunidad_id == oportunidad_id)
+                .where(ConstructoraPedido.deleted_at.is_(None))
+                .order_by(ConstructoraPedido.created_at.desc())
+                .limit(10)
+            ).all()
+        return [
+            PedidoObraPedidoOption(
+                opcion=index,
+                pedido_id=int(pedido.id),
+                estado=str(pedido.estado.value if hasattr(pedido.estado, "value") else pedido.estado),
+                created_at=pedido.created_at.isoformat() if pedido.created_at else None,
+            )
+            for index, pedido in enumerate(pedidos, start=1)
+            if pedido.id is not None
+        ]
+
+    @staticmethod
+    def _load_pedido_items(session: Session, pedido_id: int) -> list[PedidoObraItem]:
+        detalles = session.exec(
+            select(ConstructoraPedidoDetalle)
+            .where(ConstructoraPedidoDetalle.pedido_id == pedido_id)
+            .where(ConstructoraPedidoDetalle.deleted_at.is_(None))
+            .where(ConstructoraPedidoDetalle.estado == PedidoObraDetalleEstado.ACTIVA)
+            .order_by(ConstructoraPedidoDetalle.orden.asc(), ConstructoraPedidoDetalle.id.asc())
+        ).all()
+        items: list[PedidoObraItem] = []
+        for detalle in detalles:
+            descripcion = str(detalle.descripcion or detalle.descripcion_original or "").strip()
+            if not descripcion:
+                continue
+            cantidad = float(detalle.cantidad) if isinstance(detalle.cantidad, Decimal) else float(detalle.cantidad or 0)
+            items.append(
+                PedidoObraItem(
+                    descripcion=descripcion,
+                    cantidad=cantidad,
+                    unidad=detalle.unidad_medida,
+                    item_id=str((detalle.metadata_json or {}).get("agent_item_id") or detalle.id or ""),
+                )
+            )
+        return items
+
 
 def _normalize_phone(value: str | None) -> str:
     return re.sub(r"\D+", "", str(value or ""))
+
+
+def _is_pedido_menu_command(command: str) -> bool:
+    return command in {"pedido obra", "pedido obras", "pedidos obra", "pedidos de obra"}

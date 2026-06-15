@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario import renderer
 from agente.v3.subprocesses.parte_diario.process import ParteDiarioProcess, _normalize_command, _today
@@ -70,7 +71,12 @@ class ParteDiarioSubprocess:
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(command, context, state)
 
-        local_result = self._handle_local_menu_command(command, context, state)
+        if state.etapa == "menu":
+            if command in {"3", "salir"}:
+                return _return_to_general(context, source="parte_diario_legacy_menu")
+            return self._show_date_menu(context, state)
+
+        local_result = await self._handle_local_menu_command(command, message, context, state)
         if local_result is not None:
             return local_result
 
@@ -158,6 +164,10 @@ class ParteDiarioSubprocess:
         self,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
+        *,
+        prefix: str | None = None,
+        status: str = "date_selection_required",
+        extra_metadata: dict | None = None,
     ) -> V3ProcessResult:
         if not state.proyecto_id:
             return self._closed_result(
@@ -171,8 +181,9 @@ class ParteDiarioSubprocess:
         return self._active_result(
             context,
             state,
-            _render_fecha_menu(state.opciones_fecha),
-            "date_selection_required",
+            _render_fecha_menu(state.opciones_fecha, prefix=prefix),
+            status,
+            extra_metadata,
         )
 
     def _handle_fecha_selection(
@@ -181,6 +192,9 @@ class ParteDiarioSubprocess:
         context: V3ConversationContext,
         state: ParteDiarioV3State,
     ) -> V3ProcessResult:
+        if command in {"salir"}:
+            return _return_to_general(context, source="parte_diario_fecha_menu")
+
         try:
             selected_option = int(command)
         except ValueError:
@@ -257,7 +271,7 @@ class ParteDiarioSubprocess:
         return self._active_result(
             context,
             state,
-            _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft))),
+            _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft)), draft),
             "date_loaded",
             {"fecha": draft.fecha, "parte_id": draft.parte_id},
         )
@@ -282,35 +296,34 @@ class ParteDiarioSubprocess:
         context: V3ConversationContext,
         state: ParteDiarioV3State,
     ) -> V3ProcessResult:
-        if command in {"volver", "1"}:
+        if command in {"ok", "1"}:
+            return self._post_action_result(
+                context,
+                state,
+                "Parte diario descartado.",
+                "discarded",
+            )
+
+        if command in {"volver", "2"}:
             state.etapa = "carga"
             return self._active_result(
                 context,
                 state,
-                _with_load_menu("Volvemos a la carga del parte diario."),
+                _with_load_menu("Volvemos a la carga del parte diario.", state.draft()),
                 "exit_cancelled",
-            )
-
-        if command in {"confirmar", "2"}:
-            updated = context.copy()
-            updated.active_process = None
-            updated.process_state = {}
-            return V3ProcessResult(
-                context=updated,
-                reply_text="Parte diario descartado. Cuando necesites, podes iniciar otro parte.",
-                metadata={"process_name": self.name, "status": "discarded"},
             )
 
         return self._active_result(
             context,
             state,
-            "Responde 1:VOLVER o 2:CONFIRMAR.",
+            _salida_confirmacion(),
             "invalid_exit_confirmation",
         )
 
-    def _handle_local_menu_command(
+    async def _handle_local_menu_command(
         self,
         command: str,
+        message: V3InboundMessage,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
     ) -> V3ProcessResult | None:
@@ -318,50 +331,21 @@ class ParteDiarioSubprocess:
         if _is_waiting_for_resolution(draft):
             return None
 
-        if state.etapa == "cierre":
-            if command in {"volver", "2"}:
-                state.etapa = "carga"
-                return self._active_result(
-                    context,
-                    state,
-                    _with_load_menu("Volvemos a la carga del parte diario. Indica nuevas novedades o modificaciones."),
-                    "back_to_load",
-                )
-            if command in {"salir", "3"}:
-                state.etapa = "confirmar_salida"
-                return self._active_result(
-                    context,
-                    state,
-                    _salida_confirmacion(draft),
-                    "exit_confirmation",
-                )
-            return None
+        if command in {"guardar", "1"}:
+            return await self._guardar_borrador(message, context, state)
 
-        if command in {"fin", "1"}:
-            if not _has_conversational_draft(draft):
-                return self._active_result(
-                    context,
-                    state,
-                    _with_load_menu(renderer.falta_informacion()),
-                    "empty_part",
-                )
-            if _has_pending_validations(draft):
-                state.etapa = "validacion"
-                return None
-            state.etapa = "cierre"
-            return self._active_result(
-                context,
-                state,
-                _replace_tail(renderer.solicitar_confirmacion(draft), _close_menu()),
-                "confirmation_required",
-            )
+        if command in {"cerrar", "2"}:
+            if _is_empty_draft(draft):
+                draft.sin_novedades_informado = True
+                state.set_draft(draft)
+            return await self._handle_parte_diario(message, context, state, forced_text="CERRAR")
 
-        if command in {"salir", "2"}:
+        if command in {"salir", "3"}:
             state.etapa = "confirmar_salida"
             return self._active_result(
                 context,
                 state,
-                _salida_confirmacion(draft),
+                _salida_confirmacion(),
                 "exit_confirmation",
             )
 
@@ -370,17 +354,86 @@ class ParteDiarioSubprocess:
             return self._active_result(
                 context,
                 state,
-                _with_load_menu("Volvemos a la carga del parte diario. Indica nuevas novedades o modificaciones."),
+                _with_load_menu("Volvemos a la carga del parte diario. Indica nuevas novedades o modificaciones.", draft),
                 "back_to_load",
             )
 
         return None
+
+    async def _guardar_borrador(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        draft = state.draft()
+        if not draft.fecha:
+            return self._active_result(
+                context,
+                state,
+                _with_load_menu("No hay una fecha cargada para guardar el parte.", draft),
+                "missing_date",
+            )
+
+        payload = _save_payload(draft, cerrar_parte=False)
+        started = time.perf_counter()
+        with Session(engine) as session:
+            try:
+                parte = parte_diario_service.create_or_update_from_agent_v3_confirmation(
+                    session,
+                    contacto_id=int(state.contacto_id or 0),
+                    oportunidad_id=int(state.oportunidad_id or 0),
+                    result=payload,
+                    conversation_id=context.conversation_id,
+                    provider=message.provider,
+                    channel_type=message.channel_type,
+                    account_ref=message.account_ref,
+                    from_address=message.from_address,
+                    to_address=message.to_address,
+                    external_message_id=message.external_message_id,
+                    text=message.text,
+                    message_type=message.message_type,
+                    raw_payload=message.raw_payload,
+                    normalized_payload=message.normalized_payload,
+                    received_at=message.received_at,
+                )
+            except Exception:
+                logger.exception("Error guardando borrador de parte diario desde agente v3")
+                return self._active_result(
+                    context,
+                    state,
+                    _with_load_menu("No pude guardar el parte diario. Proba nuevamente.", draft),
+                    "persistence_error",
+                )
+
+        payload["parte_diario_id"] = parte.id
+        logger.info(
+            "v3_parte_diario_save_draft_timing external_message_id=%s parte_diario_id=%s persist_total_ms=%s",
+            message.external_message_id,
+            parte.id,
+            round((time.perf_counter() - started) * 1000, 3),
+        )
+        return self._post_action_result(
+            context,
+            state,
+            payload["reply_to_user"],
+            "saved",
+            {
+                "process_name": self.name,
+                "parte_listo": True,
+                "parte_diario_id": parte.id,
+                "mensaje_origen_id": parte.mensaje_origen_id,
+                "result": payload,
+            },
+        )
 
     async def _handle_parte_diario(
         self,
         message: V3InboundMessage,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
+        *,
+        forced_text: str | None = None,
     ) -> V3ProcessResult:
         if not state.contacto_id or not state.oportunidad_id or not state.proyecto_id:
             return self._closed_result(
@@ -391,7 +444,7 @@ class ParteDiarioSubprocess:
 
         started = time.perf_counter()
         with Session(engine) as session:
-            mapped_text = _map_menu_text(message.text or "", state)
+            mapped_text = forced_text or _map_menu_text(message.text or "", state)
             process_context = SimpleNamespace(
                 oportunidad_id=state.oportunidad_id,
                 is_project=True,
@@ -432,9 +485,6 @@ class ParteDiarioSubprocess:
                         "persistence_error",
                     )
 
-                updated = context.copy()
-                updated.active_process = None
-                updated.process_state = {}
                 payload["parte_diario_id"] = parte.id
                 logger.info(
                     "v3_parte_diario_persist_timing external_message_id=%s parte_diario_id=%s persist_total_ms=%s",
@@ -442,12 +492,13 @@ class ParteDiarioSubprocess:
                     parte.id,
                     round((time.perf_counter() - started) * 1000, 3),
                 )
-                return V3ProcessResult(
-                    context=updated,
-                    reply_text=payload.get("reply_to_user") or f"Parte diario registrado #{parte.id}.",
-                    metadata={
+                return self._post_action_result(
+                    context,
+                    state,
+                    payload.get("reply_to_user") or f"Parte diario registrado #{parte.id}.",
+                    "confirmed",
+                    {
                         "process_name": self.name,
-                        "status": "confirmed",
                         "parte_listo": True,
                         "parte_diario_id": parte.id,
                         "mensaje_origen_id": parte.mensaje_origen_id,
@@ -476,6 +527,29 @@ class ParteDiarioSubprocess:
                 "status": _status_from_payload(payload),
                 "result": payload,
             },
+        )
+
+    def _post_action_result(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        reply: str,
+        status: str,
+        extra_metadata: dict | None = None,
+    ) -> V3ProcessResult:
+        state.opciones_fecha = []
+        state.fecha_menu_pendiente = False
+        state.parte_state = {}
+        metadata = {"process_name": self.name, "status": status}
+        if extra_metadata:
+            metadata.update(extra_metadata)
+            metadata["status"] = status
+        return self._show_date_menu(
+            context,
+            state,
+            prefix=reply,
+            status=status,
+            extra_metadata=metadata,
         )
 
     def _active_result(
@@ -593,6 +667,7 @@ def _render_fecha_menu(options: list[ParteDiarioFechaOption], *, prefix: str | N
     if prefix:
         lines.insert(0, prefix)
     lines.extend(_format_fecha_option(option) for option in options)
+    lines.append("Responde con el numero de una fecha o SALIR para volver al menu general.")
     return "\n".join(lines)
 
 
@@ -641,10 +716,6 @@ def _map_menu_text(text: str, state: ParteDiarioV3State) -> str:
         return text
     if _is_waiting_for_resolution(draft):
         return text
-    if state.etapa in {"validacion", "cierre"} and command in {"confirmar", "fin", "1"}:
-        return "CONFIRMAR"
-    if state.etapa == "cierre" and command in {"cerrar", "4"}:
-        return "CERRAR"
     return text
 
 
@@ -661,30 +732,78 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
         return _replace_tail(reply, _close_menu())
     if status == "cancel_confirmation_required":
         state.etapa = "confirmar_salida"
-        return _salida_confirmacion(draft)
+        return _salida_confirmacion()
     if status in {"updated", "sin_novedades", "shown", "shown_nomina", "clarification", "waiting"}:
         state.etapa = "carga"
-        return _with_load_menu(reply)
+        return _with_load_menu(reply, state.draft())
     return reply
 
 
-def _with_load_menu(reply: str) -> str:
-    return _replace_tail(reply, "Opciones: 1:FIN 2:SALIR.")
+def _with_load_menu(reply: str, draft=None) -> str:
+    return _replace_tail(reply, _main_menu())
+
+
+def _is_empty_draft(draft) -> bool:
+    return not (
+        draft.novedades
+        or draft.pendientes_ambiguos
+        or draft.conflictos_novedad
+        or draft.sin_novedades_informado
+    )
 
 
 def _close_menu() -> str:
-    return "Opciones: 1:CONFIRMAR 2:VOLVER 3:SALIR 4:CERRAR."
+    return _main_menu()
 
 
-def _salida_confirmacion(draft) -> str:
-    summary = ""
-    if _has_conversational_draft(draft):
-        summary = f"\n{_draft_summary(draft)}\n"
-    return (
-        "Si salis se perderan los cambios del parte diario en carga."
-        f"{summary}\n"
-        "Opciones: 1:VOLVER 2:CONFIRMAR."
+def _main_menu() -> str:
+    return "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR."
+
+
+def _general_greeting() -> str:
+    return GENERAL_MENU_TEXT
+
+
+def _return_to_general(context: V3ConversationContext, *, source: str) -> V3ProcessResult:
+    updated = context.copy()
+    updated.active_process = "general"
+    updated.process_state = {
+        "last_text": "salir parteDiario",
+        "agent_source": source,
+    }
+    return V3ProcessResult(
+        context=updated,
+        reply_text=_general_greeting(),
+        metadata={"process_name": "parteDiario", "status": "returned_to_general"},
     )
+
+
+def _salida_confirmacion() -> str:
+    return "Se perderan los cambios no guardados.\n\nOpciones: 1:OK 2:VOLVER."
+
+
+def _save_payload(draft, *, cerrar_parte: bool) -> dict:
+    return {
+        "type": "parte_diario_reply",
+        "reply_to_user": renderer.confirmado(draft, cerrado=cerrar_parte),
+        "parte_listo": True,
+        "cerrar_parte": cerrar_parte,
+        "close_after_materialization": True,
+        "cancelado": False,
+        "oportunidad_id": draft.oportunidad_id,
+        "idproyecto": draft.idproyecto,
+        "fecha": draft.fecha,
+        "parte_id_existente": draft.parte_id,
+        "sin_novedades_informado": draft.sin_novedades_informado,
+        "novedades": [item.to_dict() for item in draft.novedades],
+        "pendientes_ambiguos": [item.to_dict() for item in draft.pendientes_ambiguos],
+        "conflictos_novedad": [item.to_dict() for item in draft.conflictos_novedad],
+        "errores": [],
+        "parte_diario": {
+            "status": "saved" if not cerrar_parte else "confirmed",
+            "operations": ["guardar" if not cerrar_parte else "cerrar"],
+        },
+    }
 
 
 def _draft_summary(draft) -> str:
@@ -739,10 +858,6 @@ def _has_conversational_draft(draft) -> bool:
         or draft.conflictos_novedad
         or draft.sin_novedades_informado
     )
-
-
-def _has_pending_validations(draft) -> bool:
-    return bool(draft.pendientes_ambiguos or draft.conflictos_novedad)
 
 
 def _normalize_phone(value: str | None) -> str:

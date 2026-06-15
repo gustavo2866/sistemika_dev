@@ -3,8 +3,8 @@
 import { z } from "zod";
 
 export const PEDIDO_ESTADO_CHOICES = [
-  { id: "pendiente", name: "Pendiente" },
-  { id: "confirmado", name: "Confirmado" },
+  { id: "borrador", name: "Borrador" },
+  { id: "cerrado", name: "Cerrado" },
   { id: "emitido", name: "Emitido" },
   { id: "cancelado", name: "Cancelado" },
 ];
@@ -25,8 +25,8 @@ export const PEDIDO_DETALLE_ORIGEN_CHOICES = [
 ];
 
 export const PEDIDO_ESTADO_BADGES: Record<string, string> = {
-  pendiente: "bg-amber-100 text-amber-800",
-  confirmado: "bg-emerald-100 text-emerald-800",
+  borrador: "bg-amber-100 text-amber-800",
+  cerrado: "bg-emerald-100 text-emerald-800",
   emitido: "bg-sky-100 text-sky-800",
   cancelado: "bg-zinc-100 text-zinc-800",
 };
@@ -107,7 +107,7 @@ export const pedidoSchema = z.object({
   oportunidad_id: requiredId,
   contacto_id: optionalId,
   mensaje_origen_id: optionalId,
-  estado: z.enum(["pendiente", "confirmado", "emitido", "cancelado"]).default("pendiente"),
+  estado: z.enum(["borrador", "cerrado", "emitido", "cancelado"]).default("borrador"),
   origen: z.enum(["agente", "manual"]).default("manual"),
   titulo: z.string().min(1).max(300),
   observaciones: optionalString,
@@ -134,7 +134,7 @@ export const getPedidoDetalleDefaults = () => ({
 
 export const PEDIDO_DEFAULTS: PedidoFormValues = {
   oportunidad_id: undefined as unknown as number,
-  estado: "pendiente",
+  estado: "borrador",
   origen: "manual",
   titulo: "",
   observaciones: "",
@@ -149,7 +149,7 @@ export const isPedidoReadOnly = (estado?: string | null) =>
 
 export const normalizePedidoPayload = (data: Partial<PedidoFormValues>) => ({
   ...data,
-  estado: data.estado ?? "pendiente",
+  estado: data.estado ?? "borrador",
   origen: data.origen ?? "manual",
   titulo: String(data.titulo ?? "").trim(),
   observaciones: String(data.observaciones ?? "").trim() || null,

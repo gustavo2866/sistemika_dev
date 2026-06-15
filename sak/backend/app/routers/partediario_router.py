@@ -46,6 +46,7 @@ def get_detalles_nomina_proyecto(
         "data": [
             {
                 "idnomina": empleado.id,
+                "nombre_provisorio": None,
                 "horas": 8,
                 "idestado": None,
                 "ingreso": None,

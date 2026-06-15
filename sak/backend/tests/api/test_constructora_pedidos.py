@@ -69,7 +69,7 @@ def test_crear_pedido_basico(client, seed_base):
     assert res.status_code in (200, 201), res.text
     data = res.json()
     assert data["titulo"] == "Pedido de materiales semana 1"
-    assert data["estado"] == PedidoObraEstado.PENDIENTE.value
+    assert data["estado"] == PedidoObraEstado.BORRADOR.value
     assert data["origen"] == PedidoObraOrigen.MANUAL.value
 
     # Verificar detalles via GET
@@ -92,7 +92,7 @@ def test_crear_pedido_desde_agente(client, seed_base):
     assert res.status_code in (200, 201), res.text
     data = res.json()
     assert data["origen"] == PedidoObraOrigen.AGENTE.value
-    assert data["estado"] == PedidoObraEstado.PENDIENTE.value
+    assert data["estado"] == PedidoObraEstado.BORRADOR.value
 
 
 # ---------------------------------------------------------------------------

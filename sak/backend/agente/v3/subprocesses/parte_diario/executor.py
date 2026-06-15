@@ -234,19 +234,6 @@ def _agregar_novedad(
         estado_codigo=estado.abreviatura if estado else None,
         fuera_de_proyecto=item.fuera_de_proyecto,
     )
-    if not item.fuera_de_proyecto and estado and estado.abreviatura.upper() == "P" and normalized_hours < 9:
-        state.pendientes_ambiguos.append(
-            PendienteAmbiguo(
-                nombre=nombre,
-                horas=operation.horas,
-                horas_extra=operation.horas_extra,
-                descripcion=operation.descripcion,
-                idnomina_resuelto=item.idnomina,
-            )
-        )
-        state.sin_novedades_informado = False
-        return None
-
     novedad = _build_novedad(nombre, item, estado, operation.horas, operation.horas_extra, operation.descripcion)
     _registrar_o_encolar_conflicto(state, novedad)
     state.sin_novedades_informado = False
@@ -415,13 +402,6 @@ def _modificar_novedad(
     )
     if operation.horas_extra is not None and str(proposed_code or "").upper() != "P":
         return f"Para {novedad.nombre}, las horas extra solo pueden registrarse como PRESENTE."
-    if (
-        not novedad.fuera_de_proyecto
-        and str(proposed_code or "").upper() == "P"
-        and proposed_hours is not None
-        and proposed_hours < 9
-    ):
-        return f"Para {novedad.nombre}, una jornada menor a 9 horas requiere indicar el motivo."
     if estado:
         novedad.idestado = estado.id
         novedad.estado_codigo = estado.abreviatura

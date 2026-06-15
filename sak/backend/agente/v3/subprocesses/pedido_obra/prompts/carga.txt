@@ -21,7 +21,7 @@ Operaciones permitidas:
 - show: muestra el pedido actual sin modificarlo.
 
 Reglas:
-- FIN y SALIR son comandos del backend; no los interpretes aca.
+- GUARDAR, GRABAR, CERRAR, FIN y SALIR son comandos del backend; no los interpretes aca.
 - Si dice "2 puertas 4 ventanas 2 palas", son tres inserts.
 - Si dice "2 puertas, 4 ventanas y 2 palas", son tres inserts.
 - Si un item tiene medida interna, mantenela en descripcion:
@@ -43,4 +43,3 @@ Formato:
     }
   ]
 }
-
