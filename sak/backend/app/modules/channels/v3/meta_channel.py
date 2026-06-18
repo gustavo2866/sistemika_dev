@@ -278,7 +278,7 @@ def _annotate_sent_channel_event(outbound: V3OutboundMessage) -> None:
         return
 
     with Session(engine) as session:
-        row = session.exec(
+        rows = session.exec(
             select(ChannelEvent)
             .where(ChannelEvent.deleted_at.is_(None))
             .where(ChannelEvent.provider == outbound.provider)
@@ -286,8 +286,16 @@ def _annotate_sent_channel_event(outbound: V3OutboundMessage) -> None:
             .where(ChannelEvent.direction == "outbound")
             .where(ChannelEvent.external_message_id == outbound.external_message_id)
             .order_by(ChannelEvent.created_at.desc(), ChannelEvent.id.desc())
-            .limit(1)
-        ).first()
+            .limit(20)
+        ).all()
+        row = next(
+            (
+                candidate
+                for candidate in rows
+                if isinstance((candidate.normalized_payload or {}).get("request"), dict)
+            ),
+            None,
+        )
         if row is None:
             return
 

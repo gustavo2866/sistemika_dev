@@ -290,14 +290,7 @@ def _find_channel_outbound_db(
 
         row = rows[0]
         if source_external_message_id:
-            row = next(
-                (
-                    candidate
-                    for candidate in rows
-                    if _matches_v3_outbound(candidate, source_external_message_id)
-                ),
-                None,
-            )
+            row = _find_v3_outbound_with_text(rows, source_external_message_id)
             if row is None:
                 return None
         return {
@@ -321,8 +314,39 @@ def _matches_v3_outbound(row: Any, source_external_message_id: str) -> bool:
     return not event_queue or event_queue == QUEUE_NAME
 
 
+def _find_v3_outbound_with_text(rows: list[Any], source_external_message_id: str) -> Any | None:
+    matched = [row for row in rows if _matches_v3_outbound(row, source_external_message_id)]
+    for row in matched:
+        if _channel_event_text(row):
+            return row
+
+    # Some Meta status callbacks share the outbound external_message_id but do
+    # not carry request.text.body. Older backends could annotate that callback
+    # instead of the original request row, so recover the sibling request event.
+    matched_external_ids = {
+        row.external_message_id
+        for row in matched
+        if getattr(row, "external_message_id", None)
+    }
+    for row in rows:
+        if row.external_message_id in matched_external_ids and _channel_event_text(row):
+            return row
+    return None
+
+
+def _channel_event_text(row: Any) -> str | None:
+    normalized = row.normalized_payload or {}
+    raw = row.raw_payload or {}
+    return _extract_channel_text(normalized, raw)
+
+
 def _channel_outbound_text(event: dict) -> str | None:
     normalized = event.get("normalized_payload") if isinstance(event, dict) else {}
+    raw = event.get("raw_payload") if isinstance(event, dict) else {}
+    return _extract_channel_text(normalized, raw)
+
+
+def _extract_channel_text(normalized: Any, raw: Any) -> str | None:
     request = normalized.get("request") if isinstance(normalized, dict) else {}
     if isinstance(request, dict):
         text = request.get("text")
@@ -334,7 +358,6 @@ def _channel_outbound_text(event: dict) -> str | None:
             for parameter in component.get("parameters") or []:
                 if parameter.get("type") == "text" and parameter.get("text"):
                     return str(parameter["text"])
-    raw = event.get("raw_payload") if isinstance(event, dict) else {}
     if isinstance(raw, dict):
         text = raw.get("text")
         if isinstance(text, dict) and text.get("body"):

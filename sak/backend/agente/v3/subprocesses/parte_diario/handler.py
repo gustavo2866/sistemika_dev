@@ -232,6 +232,7 @@ class ParteDiarioSubprocess:
             if error:
                 state.etapa = "seleccionar_fecha"
                 return self._active_result(context, state, error, "date_selection_blocked")
+            draft = state.draft()
             updated = context.copy()
             updated.active_process = None
             updated.process_state = {}
@@ -785,7 +786,11 @@ def _salida_confirmacion() -> str:
 def _save_payload(draft, *, cerrar_parte: bool) -> dict:
     return {
         "type": "parte_diario_reply",
-        "reply_to_user": renderer.confirmado(draft, cerrado=cerrar_parte),
+        "reply_to_user": (
+            renderer.confirmado(draft, cerrado=True)
+            if cerrar_parte
+            else _borrador_guardado_reply(draft)
+        ),
         "parte_listo": True,
         "cerrar_parte": cerrar_parte,
         "close_after_materialization": True,
@@ -806,6 +811,11 @@ def _save_payload(draft, *, cerrar_parte: bool) -> dict:
     }
 
 
+def _borrador_guardado_reply(draft) -> str:
+    fecha = f" para {draft.fecha}" if draft.fecha else ""
+    return f"Parte diario guardado como borrador{fecha}."
+
+
 def _draft_summary(draft) -> str:
     lines: list[str] = []
     if draft.fecha:
@@ -817,7 +827,10 @@ def _draft_summary(draft) -> str:
         state = novelty.estado_codigo or "estado pendiente"
         lines.append(f"- {novelty.nombre}: {state}, {hours}")
     for pending in draft.pendientes_ambiguos:
-        lines.append(f"- {pending.nombre} (a validar)")
+        hours_value = renderer._pending_hours(pending)
+        hours = f"{hours_value:g}h" if hours_value is not None else "horas pendientes"
+        state = pending.estado_codigo or "estado pendiente"
+        lines.append(f"- {pending.nombre} (a validar): {state}, {hours}")
     return "\n".join(lines)
 
 

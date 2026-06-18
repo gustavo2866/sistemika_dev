@@ -133,7 +133,14 @@ class ParteDiarioService:
 
         idproyecto = int(result.get("idproyecto") or 0)
         fecha = date.fromisoformat(str(result.get("fecha") or ""))
-        novedades = list(result.get("novedades") or [])
+        raw_novedades = list(result.get("novedades") or [])
+        novedades = [item for item in raw_novedades if item.get("idnomina") is not None]
+        pendientes_provisorios = list(result.get("pendientes_ambiguos") or [])
+        novedades_provisorias = [item for item in raw_novedades if item.get("idnomina") is None]
+        if target_estado == EstadoParteDiario.CERRADO and novedades_provisorias:
+            raise ValueError("El parte diario tiene novedades sin validar")
+        if target_estado == EstadoParteDiario.BORRADOR:
+            pendientes_provisorios.extend(novedades_provisorias)
         if target_estado == EstadoParteDiario.CERRADO and not novedades and not result.get("sin_novedades_informado"):
             raise ValueError("El parte diario vacio requiere declaracion explicita de sin novedades")
         present_id = None
@@ -187,6 +194,22 @@ class ParteDiarioService:
                     ingreso=_parse_datetime(novedad.get("ingreso")),
                     egreso=_parse_datetime(novedad.get("egreso")),
                     descripcion=novedad.get("descripcion"),
+                    origen=OrigenDetalle.AGENTE,
+                )
+            )
+
+        for pending in pendientes_provisorios:
+            nombre = str(pending.get("nombre") or "").strip()
+            if not nombre:
+                continue
+            session.add(
+                ParteDiarioDetalle(
+                    parte_diario_id=int(parte.id),
+                    idnomina=None,
+                    nombre_provisorio=nombre,
+                    idestado=pending.get("idestado"),
+                    horas=Decimal(str(_provisional_hours(pending))),
+                    descripcion=pending.get("descripcion"),
                     origen=OrigenDetalle.AGENTE,
                 )
             )
@@ -261,7 +284,8 @@ class ParteDiarioService:
     def _build_v3_confirmation_content(result: dict[str, Any]) -> str:
         fecha = result.get("fecha") or "sin fecha"
         novedades = result.get("novedades") or []
-        if result.get("sin_novedades_informado") and not novedades:
+        pendientes = result.get("pendientes_ambiguos") or []
+        if result.get("sin_novedades_informado") and not novedades and not pendientes:
             return f"Parte diario confirmado para {fecha}: sin novedades."
         lines = []
         for item in novedades:
@@ -269,6 +293,11 @@ class ParteDiarioService:
             estado = item.get("estado_codigo") or "sin estado"
             horas = item.get("horas")
             lines.append(f"- {nombre}: {estado}, {horas}h")
+        for item in pendientes:
+            nombre = item.get("nombre") or "persona"
+            estado = item.get("estado_codigo") or "sin estado"
+            horas = _provisional_hours(item)
+            lines.append(f"- {nombre} (a validar): {estado}, {horas}h")
         return f"Parte diario confirmado para {fecha}:\n" + "\n".join(lines)
 
     @staticmethod
@@ -331,6 +360,17 @@ def _parse_datetime(value: Any) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(str(value))
+
+
+def _provisional_hours(item: dict[str, Any]) -> float:
+    if item.get("horas") is not None:
+        return float(item["horas"])
+    if item.get("horas_extra") is not None:
+        return 9.0 + float(item["horas_extra"])
+    normalized_code = str(item.get("estado_codigo") or "").upper()
+    if normalized_code == "P":
+        return 9.0
+    return 0.0
 
 
 parte_diario_service = ParteDiarioService()

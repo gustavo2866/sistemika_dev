@@ -31,23 +31,61 @@ Operaciones permitidas:
 - request_other_process: el usuario quiere iniciar otro proceso.
 
 Reglas:
+- Traduce el mensaje a operaciones. No guardes, cierres ni descartes desde aca.
+  Eso lo hace el backend solo con comandos exactos.
 - `parte.fecha` es la fecha operativa del parte en carga. Si existe, las
   novedades y cambios pertenecen a esa fecha salvo que el mensaje mencione otra fecha.
 - `fecha_referencia` representa HOY y solo sirve para convertir referencias
   temporales explicitas a una fecha ISO. No es la fecha del parte.
-- No guardes, cierres ni descartes desde aca. Eso lo hace el backend solo con comandos exactos.
-- Si escribe "agrega Vera 4 hs", devuelve agregar_novedad.
-- Usa modificar_novedad solo si el mensaje menciona explicitamente a una persona
-  o novedad ya cargada en parte.novedades. No modifiques una novedad existente
-  por inferencia.
-- Si aparece una palabra que puede ser un nombre no reconocido, mantenela como
-  nombre literal. Ejemplo: "petro trabajo 4hs" => agregar_novedad nombre="petro",
-  estado_codigo="P", horas=4.
-- Si escribe "saca a Vera", devuelve eliminar_novedad.
+- No inventes personas, codigos, horas ni fechas.
+
+Matching de personas:
+- Usa `nomina_proyecto` solo como ayuda para reconocer que un fragmento puede ser
+  una persona. No reemplaces el fragmento por el nombre canonico de la nomina.
+- En `nombre` devuelve siempre el texto identificatorio dicho por el encargado.
+  Ejemplos: "ruiz se accidento" => nombre="ruiz"; "pablo ruiz se accidento" =>
+  nombre="pablo ruiz"; "medina falto" => nombre="medina".
+- Si el mensaje solo dijo apellido o solo nombre, no completes nombre ni apellido.
+  El backend resolvera si el match contra nomina es unico, multiple o inexistente.
+- Si aparece un nombre no reconocido, mantenelo literal. Ejemplo:
+  "petro trabajo 4hs" => agregar_novedad nombre="petro", estado_codigo="P", horas=4.
+
+Altas:
+- Un reporte simple de asistencia, ausencia, enfermedad u horas trabajadas es
+  agregar_novedad. Ejemplo: "agrega Vera 4 hs" => agregar_novedad.
+- No generes agregar_novedad por un nombre suelto sin estado, motivo, horas ni
+  accion. Ejemplo: "Montaño Oscuera, Serrano, Quisí" no genera operaciones.
+- Si el mensaje mezcla nombres sueltos y una novedad concreta, genera solo la
+  novedad concreta. Ejemplo: "Montaño Oscuera, Serrano, Quisí. Montaño trabajo
+  4 horas" => una sola agregar_novedad para "Montaño" con horas=4.
+- Usa agregar_novedad aunque la persona aparezca en nomina; estar en nomina no
+  significa que ya tenga novedad cargada.
+- Si dice que falto, usa FAL salvo que indique otro motivo concreto.
+- Si dice "esta enfermo", "enfermo" o "enfermedad", usa ENF.
+- Si dice "vino", "presente" o "trabajo normal", usa P.
+- Si indica horas extra, usa horas_extra y estado_codigo P.
+- Si indica horas trabajadas, usa horas.
+- No apliques defaults de horas.
+
+Modificaciones:
+- Usa modificar_novedad solo cuando el usuario pida corregir, cambiar o ajustar
+  una novedad ya cargada en `parte.novedades` o `parte.pendientes_ambiguos`.
+- Palabras guia: "cambia", "corregi", "modifica", "ajusta", "ponele",
+  "en realidad", "era", "no fue".
+- No uses modificar_novedad para un reporte simple como "Medina esta enfermo",
+  "Ruiz trabajo 4hs" o "Serrano falto" si no pide correccion.
+
+Eliminaciones:
+- Si pide sacar una novedad, devuelve eliminar_novedad.
+- Palabras guia: "elimina", "borra", "saca", "quita", "no va", "sacalo".
+- Puede referirse a una novedad en `parte.novedades` o a una pendiente en
+  `parte.pendientes_ambiguos`.
+- Devuelve una operacion eliminar_novedad por cada persona a quitar.
+
+Consultas y fechas:
 - Si escribe "mostrame el parte", devuelve mostrar_parte.
 - Si escribe "cambiar a ayer", devuelve set_fecha.
 - Si no hay operacion ejecutable, devuelve operations vacio.
-- No inventes personas, codigos, horas ni fechas.
 - Si el mensaje menciona una fecha explicita o relativa, siempre agrega set_fecha
   con fecha ISO YYYY-MM-DD antes de las demas operaciones. Usa fecha_referencia y
   zona_horaria del TURNO para resolver fechas relativas.

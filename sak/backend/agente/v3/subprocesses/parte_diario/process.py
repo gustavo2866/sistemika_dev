@@ -32,6 +32,7 @@ from agente.v3.subprocesses.parte_diario.models import (
 )
 from agente.v3.subprocesses.parte_diario.resolver import (
     NominaResolver,
+    normalize_text,
     parse_candidate_selection,
     parse_estado_local,
     resolve_estado_codigo,
@@ -147,8 +148,13 @@ class ParteDiarioProcess:
             )
 
         self._session.commit()
+        message_text = _normalize_attendance_transcription(
+            ctx.message.contenido,
+            nominas_proyecto,
+            nominas_completas,
+        )
         try:
-            plan = await self._llm.interpret_turn(ctx.message.contenido, state, nominas_proyecto, estados)
+            plan = await self._llm.interpret_turn(message_text, state, nominas_proyecto, estados)
         except Exception:
             logger.exception("No se pudo interpretar el turno de parte_diario")
             return self._state_reply(
@@ -203,9 +209,13 @@ class ParteDiarioProcess:
         cerrar_parte: bool = False,
     ) -> TurnResult:
         if state.conflictos_novedad:
+            if not cerrar_parte:
+                return self._build_confirmation_result(state, cerrar_parte=False)
             state.esperando = "resolucion_conflictos"
             return self._state_reply(state, renderer.preguntar_conflicto(state.conflictos_novedad[0]))
         if state.pendientes_ambiguos:
+            if not cerrar_parte:
+                return self._build_confirmation_result(state, cerrar_parte=False)
             state.esperando = "confirmacion_ambiguos"
             _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
@@ -217,15 +227,19 @@ class ParteDiarioProcess:
                 state,
                 "\n".join(business_errors) + "\n\n" + renderer.solicitar_confirmacion(state),
             )
-        result = ExecutionResult(
-            status="confirmed",
-            next_state=state,
-            reply=renderer.confirmado(state, cerrado=cerrar_parte),
-            parte_listo=True,
-            cerrar_parte=cerrar_parte,
-            applied_operations=["confirmar"],
+        return self._build_confirmation_result(state, cerrar_parte=cerrar_parte)
+
+    def _build_confirmation_result(self, state: ParteDiarioState, *, cerrar_parte: bool) -> TurnResult:
+        return self._from_execution(
+            ExecutionResult(
+                status="confirmed",
+                next_state=state,
+                reply=renderer.confirmado(state, cerrado=cerrar_parte),
+                parte_listo=True,
+                cerrar_parte=cerrar_parte,
+                applied_operations=["confirmar"],
+            )
         )
-        return self._from_execution(result)
 
     async def _handle_pending_selection(
         self,
@@ -236,8 +250,7 @@ class ParteDiarioProcess:
         nominas_completas: list[NominaItem],
     ) -> TurnResult:
         if not state.pendientes_ambiguos:
-            state.esperando = None
-            return self._state_reply(state, renderer.solicitar_confirmacion(state))
+            return self._after_validation_completed(state, estados, nominas_proyecto, nominas_completas)
         pending = state.pendientes_ambiguos[0]
         if pending.nombre_no_encontrado:
             resolved = NominaResolver.resolve(text, nominas_proyecto, nominas_completas)
@@ -275,10 +288,12 @@ class ParteDiarioProcess:
                         f"{renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados)}",
                     )
                 state.esperando = None
-                return self._state_reply(
+                return self._after_validation_completed(
                     state,
-                    f"{skipped_name} quedo sin validar y no se registrara en el parte.\n\n"
-                    f"{renderer.solicitar_confirmacion(state)}",
+                    estados,
+                    nominas_proyecto,
+                    nominas_completas,
+                    prefix=f"{skipped_name} quedo sin validar y no se registrara en el parte.",
                 )
             selected = parse_candidate_selection(text, pending.candidatos or [])
             if selected is None:
@@ -328,8 +343,7 @@ class ParteDiarioProcess:
         if state.pendientes_ambiguos:
             _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
-        state.esperando = None
-        return self._state_reply(state, renderer.solicitar_confirmacion(state))
+        return self._after_validation_completed(state, estados, nominas_proyecto, nominas_completas)
 
     def _handle_conflict_selection(
         self,
@@ -340,8 +354,7 @@ class ParteDiarioProcess:
         nominas_completas: list[NominaItem],
     ) -> TurnResult:
         if not state.conflictos_novedad:
-            state.esperando = None
-            return self._state_reply(state, renderer.solicitar_confirmacion(state))
+            return self._after_validation_completed(state, estados, nominas_proyecto, nominas_completas)
         conflict = state.conflictos_novedad[0]
         numbers = re.findall(r"\d+", command)
         if len(numbers) != 1:
@@ -359,8 +372,22 @@ class ParteDiarioProcess:
             state.esperando = "confirmacion_ambiguos"
             _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
+        return self._after_validation_completed(state, estados, nominas_proyecto, nominas_completas)
+
+    def _after_validation_completed(
+        self,
+        state: ParteDiarioState,
+        estados: list[EstadoItem],
+        nominas_proyecto: list[NominaItem],
+        nominas_completas: list[NominaItem],
+        *,
+        prefix: str | None = None,
+    ) -> TurnResult:
         state.esperando = None
-        return self._state_reply(state, renderer.solicitar_confirmacion(state))
+        result = self._handle_exact_confirmation(state, estados, nominas_proyecto, nominas_completas, cerrar_parte=True)
+        if prefix and result.payload.get("reply_to_user"):
+            result.payload["reply_to_user"] = f"{prefix}\n\n{result.payload['reply_to_user']}"
+        return result
 
     def _apply_confirmed_date_change(self, state: ParteDiarioState, estados: list[EstadoItem]) -> TurnResult:
         proposed = state.fecha_propuesta
@@ -392,12 +419,14 @@ class ParteDiarioProcess:
             state.parte_id = None
             state.retomado = False
             return None
-        loaded = self._load_explicit_novedades(existing, estados, int(state.idproyecto or 0))
-        if not state.novedades:
+        loaded, loaded_pending = self._load_explicit_items(existing, estados, int(state.idproyecto or 0))
+        if not state.novedades and not state.pendientes_ambiguos:
             state.novedades = loaded
+            state.pendientes_ambiguos = loaded_pending
         else:
             for novedad in loaded:
                 _registrar_o_encolar_conflicto(state, novedad)
+            state.pendientes_ambiguos.extend(loaded_pending)
         state.parte_id = existing.id
         state.retomado = True
         return None
@@ -410,12 +439,12 @@ class ParteDiarioProcess:
             .where(ParteDiario.deleted_at.is_(None))
         ).first()
 
-    def _load_explicit_novedades(
+    def _load_explicit_items(
         self,
         parte: ParteDiario,
         estados: list[EstadoItem],
         idproyecto: int,
-    ) -> list[NovedadPersonal]:
+    ) -> tuple[list[NovedadPersonal], list[PendienteAmbiguo]]:
         status_by_id = {item.id: item.abreviatura for item in estados}
         projects = {item.id: item.nombre for item in self._session.exec(select(Proyecto)).all()}
         rows = self._session.exec(
@@ -424,29 +453,27 @@ class ParteDiarioProcess:
             .where(ParteDiarioDetalle.origen == OrigenDetalle.AGENTE)
             .where(ParteDiarioDetalle.deleted_at.is_(None))
         ).all()
-        result = []
+        novedades: list[NovedadPersonal] = []
+        pendientes: list[PendienteAmbiguo] = []
         for row in rows:
             nomina = self._session.get(Nomina, row.idnomina) if row.idnomina is not None else None
             if nomina is None:
                 provisional_name = str(row.nombre_provisorio or "").strip()
                 if not provisional_name:
                     continue
-                result.append(
-                    NovedadPersonal(
+                pendientes.append(
+                    PendienteAmbiguo(
                         nombre=provisional_name,
-                        idnomina=None,
                         idestado=row.idestado,
                         estado_codigo=status_by_id.get(row.idestado),
                         horas=float(row.horas),
-                        ingreso=row.ingreso.isoformat() if row.ingreso else None,
-                        egreso=row.egreso.isoformat() if row.egreso else None,
                         descripcion=row.descripcion,
-                        fuera_de_proyecto=True,
+                        nombre_no_encontrado=True,
                     )
                 )
                 continue
             external = nomina.idproyecto != idproyecto
-            result.append(
+            novedades.append(
                 NovedadPersonal(
                     nombre=f"{nomina.apellido}, {nomina.nombre}",
                     idnomina=nomina.id,
@@ -460,7 +487,7 @@ class ParteDiarioProcess:
                     nombre_proyecto=projects.get(nomina.idproyecto) if external else None,
                 )
             )
-        return result
+        return novedades, pendientes
 
     def _resolve_project(self, oportunidad_id: int) -> Proyecto | None:
         return self._session.exec(
@@ -659,6 +686,25 @@ def _parse_local_readonly_operation(command: str) -> str | None:
     if "nomina" in tokens or "personal" in tokens or "empleado" in tokens or "empleados" in tokens:
         return "mostrar_nomina"
     return None
+
+
+def _normalize_attendance_transcription(
+    text: str | None,
+    nominas_proyecto: list[NominaItem],
+    nominas_completas: list[NominaItem],
+) -> str:
+    normalized = _normalize_command(text)
+    if "falcon" not in normalized.split():
+        return str(text or "")
+
+    active_tokens = {
+        token
+        for item in [*nominas_proyecto, *nominas_completas]
+        for token in normalize_text(f"{item.apellido} {item.nombre}").split()
+    }
+    if "falcon" in active_tokens:
+        return str(text or "")
+    return re.sub(r"\bfalc[oó]n\b", "falto", str(text or ""), flags=re.IGNORECASE)
 
 
 def _today() -> date:

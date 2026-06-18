@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
-import unicodedata
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
 from agente.v3.subprocesses.general_agent import (
@@ -13,6 +11,7 @@ from agente.v3.subprocesses.general_agent import (
     GeneralAgentOutput,
     fallback_general_response,
 )
+from agente.v3.subprocesses.general_fastpath import is_pure_greeting, normalize_general_command
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +64,28 @@ class GeneralSubprocess:
                 },
             )
 
+        if is_pure_greeting(message.text):
+            updated = context.copy()
+            updated.active_process = self.name
+            updated.process_state = {
+                "last_text": message.text,
+                "last_external_message_id": message.external_message_id,
+                "agent_source": "fast_path",
+            }
+            updated.last_inbound_message_id = message.id
+            return V3ProcessResult(
+                context=updated,
+                reply_text=GENERAL_MENU_TEXT,
+                metadata={
+                    "process_name": self.name,
+                    "status": "general_reply",
+                    "agent_source": "fast_path",
+                    "response_type": "general_reply",
+                    "target_process": None,
+                    "reason": "pure_greeting",
+                },
+            )
+
         try:
             output = await self._agent_client.respond(
                 message_text=message.text or "",
@@ -97,8 +118,6 @@ class GeneralSubprocess:
                 "agent_source": source,
             }
             status = "general_reply"
-            if _is_greeting_or_empty(command):
-                output.respuesta = GENERAL_MENU_TEXT
 
         return V3ProcessResult(
             context=updated,
@@ -121,10 +140,7 @@ def _valid_target_process(output: GeneralAgentOutput) -> str | None:
 
 
 def _normalize(value: str | None) -> str:
-    raw = unicodedata.normalize("NFKD", str(value or "").strip().lower())
-    raw = "".join(char for char in raw if not unicodedata.combining(char))
-    raw = re.sub(r"[^a-z0-9\s]+", " ", raw)
-    return re.sub(r"\s+", " ", raw).strip()
+    return normalize_general_command(value)
 
 
 def _menu_selection(command: str) -> tuple[str, str] | None:
@@ -133,7 +149,3 @@ def _menu_selection(command: str) -> tuple[str, str] | None:
     if command == "2":
         return "parteDiario", "parte diario"
     return None
-
-
-def _is_greeting_or_empty(command: str) -> bool:
-    return command in {"", "hola", "buen dia", "buenas", "buenas tardes", "buenas noches"}

@@ -41,18 +41,66 @@ async def test_general_v3_responde_general_con_agent_sdk():
         GeneralAgentOutput(
             type="general_reply",
             target_process=None,
-            respuesta="Hola. Puedo ayudarte con pedidos o partes diarios.",
-            reason="saludo",
+            respuesta="Puedo ayudarte con pedidos de obra o partes diarios.",
+            reason="consulta_general",
         )
     )
     process = GeneralSubprocess(agent_client=client)
-    result = await process.handle(_message("hola"), V3ConversationContext(conversation_id="conv-1"))
+    result = await process.handle(_message("que podes hacer"), V3ConversationContext(conversation_id="conv-1"))
 
-    assert result.reply_text == GENERAL_MENU_TEXT
+    assert result.reply_text == "Puedo ayudarte con pedidos de obra o partes diarios."
     assert result.context.active_process == "general"
     assert result.context.process_state["agent_source"] == "agent_sdk"
     assert result.metadata["status"] == "general_reply"
-    assert client.calls[0]["message_text"] == "hola"
+    assert client.calls[0]["message_text"] == "que podes hacer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hola",
+        "Hola!",
+        "buen dia",
+        "buenos dias",
+        "buenas tardes",
+        "hola buen dia",
+        "hola como estas",
+        "",
+    ],
+)
+async def test_general_v3_saludo_puro_responde_menu_sin_agent_sdk(text):
+    client = FakeGeneralAgent()
+    process = GeneralSubprocess(agent_client=client)
+    result = await process.handle(_message(text), V3ConversationContext(conversation_id="conv-1"))
+
+    assert result.reply_text == GENERAL_MENU_TEXT
+    assert result.context.active_process == "general"
+    assert result.context.process_state["agent_source"] == "fast_path"
+    assert result.metadata["agent_source"] == "fast_path"
+    assert result.metadata["reason"] == "pure_greeting"
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_general_v3_saludo_con_solicitud_no_usa_fastpath():
+    client = FakeGeneralAgent(
+        GeneralAgentOutput(
+            type="handoff",
+            target_process="pedidoObra",
+            respuesta="Perfecto. Decime que materiales necesitas y para que obra.",
+            reason="pedido_materiales",
+        )
+    )
+    process = GeneralSubprocess(agent_client=client)
+    result = await process.handle(
+        _message("hola necesito cemento"),
+        V3ConversationContext(conversation_id="conv-1"),
+    )
+
+    assert result.context.active_process == "pedidoObra"
+    assert result.metadata["status"] == "handoff"
+    assert client.calls[0]["message_text"] == "hola necesito cemento"
 
 
 @pytest.mark.asyncio
@@ -118,7 +166,7 @@ async def test_general_v3_menu_numerico_deriva_sin_llamar_sdk(text, target_proce
 @pytest.mark.asyncio
 async def test_general_v3_usa_fallback_si_falla_agent_sdk():
     process = GeneralSubprocess(agent_client=FakeGeneralAgent(exc=RuntimeError("sin sdk")))
-    result = await process.handle(_message("hola"), V3ConversationContext(conversation_id="conv-1"))
+    result = await process.handle(_message("ayuda"), V3ConversationContext(conversation_id="conv-1"))
 
     assert result.reply_text == GENERAL_MENU_TEXT
     assert result.context.active_process == "general"

@@ -39,7 +39,28 @@ def resumen(state: ParteDiarioState) -> str:
 
 
 def _resumen_pendiente(pending: PendienteAmbiguo) -> str:
-    return f"- {pending.nombre} (**a validar)"
+    estado = pending.estado_codigo or "estado pendiente"
+    horas = _pending_hours(pending)
+    horas_text = f"{horas:g}h" if horas is not None else "horas pendientes"
+    motivo = (
+        f", motivo: {pending.descripcion}"
+        if pending.descripcion and str(pending.estado_codigo or "").upper() != "P"
+        else ""
+    )
+    return f"- {pending.nombre} (**a validar): {estado}, {horas_text}{motivo}"
+
+
+def _pending_hours(pending: PendienteAmbiguo) -> float | None:
+    if pending.horas_extra is not None:
+        return 9.0 + pending.horas_extra
+    if pending.horas is not None:
+        return pending.horas
+    normalized_code = str(pending.estado_codigo or "").upper()
+    if normalized_code and normalized_code != "P":
+        return 0.0
+    if pending.fuera_de_proyecto or normalized_code == "P":
+        return 9.0
+    return None
 
 
 def _external_label(novedad) -> str:

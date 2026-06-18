@@ -61,7 +61,7 @@ def execute_plan(
             continue
 
         if op_type == "modificar_novedad":
-            error = _modificar_novedad(current, operation, estados)
+            error = _modificar_novedad(current, operation, estados, nominas_proyecto, nominas_completas)
             if error:
                 errors.append(error)
             else:
@@ -164,6 +164,8 @@ def _agregar_novedad(
     nombre = str(operation.nombre or "").strip()
     if not nombre:
         return "No pude identificar a que persona corresponde una novedad."
+    if not _has_concrete_attendance_update(operation):
+        return f"No pude identificar la novedad para {nombre}. Indica si falto, trabajo horas o el motivo."
     estado = resolve_estado_codigo(operation.estado_codigo, estados)
     if estado is None and (
         operation.horas_extra is not None
@@ -380,13 +382,41 @@ def _find_novedad(state: ParteDiarioState, nombre: str | None) -> NovedadPersona
     return matches[0] if len(matches) == 1 else None
 
 
+def _find_pending(state: ParteDiarioState, nombre: str | None) -> PendienteAmbiguo | None:
+    searched = set(normalize_text(nombre).split())
+    matches = [
+        item for item in state.pendientes_ambiguos
+        if searched and searched <= set(normalize_text(item.nombre).split())
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _find_conflict(state: ParteDiarioState, nombre: str | None) -> ConflictoNovedad | None:
+    searched = set(normalize_text(nombre).split())
+    matches = [
+        item for item in state.conflictos_novedad
+        if searched and searched <= set(normalize_text(item.nombre).split())
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _modificar_novedad(
     state: ParteDiarioState,
     operation: ParteDiarioOperation,
     estados: list[EstadoItem],
+    nominas_proyecto: list[NominaItem],
+    nominas_completas: list[NominaItem],
 ) -> str | None:
     novedad = _find_novedad(state, operation.nombre)
     if novedad is None:
+        pending = _find_pending(state, operation.nombre)
+        if pending is not None:
+            error = _modificar_pendiente(pending, operation, estados)
+            if error is None:
+                state.sin_novedades_informado = False
+            return error
+        if _has_concrete_attendance_update(operation):
+            return _agregar_novedad(state, operation, nominas_proyecto, nominas_completas, estados)
         return f"No encontre una unica novedad para {operation.nombre or 'esa persona'}."
     estado = resolve_estado_codigo(operation.estado_codigo, estados) if operation.estado_codigo else None
     proposed_code = estado.abreviatura if estado else novedad.estado_codigo
@@ -413,9 +443,46 @@ def _modificar_novedad(
     return None
 
 
+def _modificar_pendiente(
+    pending: PendienteAmbiguo,
+    operation: ParteDiarioOperation,
+    estados: list[EstadoItem],
+) -> str | None:
+    estado = resolve_estado_codigo(operation.estado_codigo, estados) if operation.estado_codigo else None
+    proposed_code = estado.abreviatura if estado else pending.estado_codigo
+    if operation.horas_extra is not None and str(proposed_code or "").upper() != "P":
+        return f"Para {pending.nombre}, las horas extra solo pueden registrarse como PRESENTE."
+    if estado:
+        pending.idestado = estado.id
+        pending.estado_codigo = estado.abreviatura
+    if operation.horas is not None:
+        pending.horas = operation.horas
+    if operation.horas_extra is not None:
+        pending.horas_extra = operation.horas_extra
+    if operation.descripcion:
+        pending.descripcion = operation.descripcion
+    return None
+
+
+def _has_concrete_attendance_update(operation: ParteDiarioOperation) -> bool:
+    return bool(
+        str(operation.estado_codigo or "").strip()
+        or operation.horas is not None
+        or operation.horas_extra is not None
+    )
+
+
 def _eliminar_novedad(state: ParteDiarioState, operation: ParteDiarioOperation) -> str | None:
     novedad = _find_novedad(state, operation.nombre)
     if novedad is None:
+        pending = _find_pending(state, operation.nombre)
+        if pending is not None:
+            state.pendientes_ambiguos.remove(pending)
+            return None
+        conflict = _find_conflict(state, operation.nombre)
+        if conflict is not None:
+            state.conflictos_novedad.remove(conflict)
+            return None
         return f"No encontre una unica novedad para {operation.nombre or 'esa persona'}."
     state.novedades.remove(novedad)
     state.conflictos_novedad = [

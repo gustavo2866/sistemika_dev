@@ -36,12 +36,13 @@ async def test_selector_no_toma_pedido_de_materiales_con_saludo_como_general_fas
 
 
 @pytest.mark.asyncio
-async def test_selector_mantiene_saludo_simple_como_general(monkeypatch):
+@pytest.mark.parametrize("text", ["hola", "buenos dias", "hola buen dia", "hola como estas"])
+async def test_selector_mantiene_saludo_simple_como_general(monkeypatch, text):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     selector = V3ProcessSelector()
     context = V3ConversationContext(conversation_id="conv-1")
 
-    selection = await selector.resolve(_message("hola"), context)
+    selection = await selector.resolve(_message(text), context)
 
     assert selection.process_name == PROCESS_GENERAL
     assert selection.mode == "fast_path"

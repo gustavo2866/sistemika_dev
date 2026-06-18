@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from agente.v3.contracts import V3OutboundMessage
 from agente.v3.inbox.queue import V3Inbox
 from app.models import Setting
+from app.modules.channels.persistence import ChannelEvent
 from app.modules.channels.providers.meta.client import MetaMediaDownload
 from app.modules.channels.v3 import meta_channel
 from app.modules.channels.v3.meta_channel import V3MetaChannel
@@ -102,3 +104,60 @@ async def test_v3_meta_channel_marks_audio_transcription_failure(db_session, mon
     audio_meta = captured[0].normalized_payload["mensaje"]["audio"]
     assert audio_meta["transcription_status"] == "failed"
     assert "boom" in audio_meta["transcription_error"]
+
+
+def test_v3_meta_channel_annotates_request_event_not_status_callback(db_session, monkeypatch):
+    monkeypatch.setattr(meta_channel, "engine", db_session.bind)
+    request_event = ChannelEvent(
+        provider="meta",
+        channel_type="whatsapp",
+        account_ref="account-1",
+        direction="outbound",
+        from_address="1046006975257973",
+        to_address="5491156384310",
+        external_message_id="wamid.outbound.same",
+        status="sent",
+        normalized_payload={
+            "request": {
+                "type": "text",
+                "text": {"body": "Parte diario actualizado"},
+            },
+            "message_type": "text",
+        },
+    )
+    status_event = ChannelEvent(
+        provider="meta",
+        channel_type="whatsapp",
+        account_ref="account-1",
+        direction="outbound",
+        from_address="1046006975257973",
+        to_address="5491156384310",
+        external_message_id="wamid.outbound.same",
+        status="sent",
+        normalized_payload={"event_type": "message.sent", "mensaje": {"texto": None}},
+    )
+    db_session.add(request_event)
+    db_session.add(status_event)
+    db_session.commit()
+
+    meta_channel._annotate_sent_channel_event(
+        V3OutboundMessage(
+            id="outbox-1",
+            provider="meta",
+            channel_type="whatsapp",
+            account_ref="account-1",
+            to_address="5491156384310",
+            text="Parte diario actualizado",
+            source_message_id="inbox-1",
+            source_external_message_id="wamid.inbound.source",
+            external_message_id="wamid.outbound.same",
+            queue_name="smoke",
+        )
+    )
+
+    db_session.expire_all()
+    request_event = db_session.get(ChannelEvent, request_event.id)
+    status_event = db_session.get(ChannelEvent, status_event.id)
+
+    assert request_event.normalized_payload["agent_v3"]["source_external_message_id"] == "wamid.inbound.source"
+    assert "agent_v3" not in status_event.normalized_payload

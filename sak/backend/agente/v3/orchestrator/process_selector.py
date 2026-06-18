@@ -12,6 +12,7 @@ from typing import Any
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
 from agente.v3.llm import OpenAIChatClient
+from agente.v3.subprocesses.general_fastpath import is_pure_greeting
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ class V3ProcessSelector:
         if "pedido" in text and ("material" in text or "obra" in text):
             return V3ProcessSelection(PROCESS_PEDIDO_OBRA, "fast_path", 0.9, "Referencia clara a pedido de obra.")
 
-        if re.fullmatch(r"(hola|buen dia|buenas|buenas tardes|buenas noches)", text):
+        if is_pure_greeting(message.text):
             return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 0.95, "Saludo claro.")
 
         return None
