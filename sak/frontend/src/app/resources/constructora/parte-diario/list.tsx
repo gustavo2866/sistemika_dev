@@ -18,7 +18,7 @@ import {
   buildListFilters,
 } from "@/components/forms/form_order";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getReturnToFromLocation } from "@/lib/oportunidad-context";
 import { estadoParteChoices } from "./constants";
@@ -72,13 +72,26 @@ type ParteDiarioListProps = {
   perPage?: number;
 };
 
-const ListActions = () => (
-  <div className="flex items-center gap-2">
-    <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
-    <CreateButton className={actionButtonClass} label="Crear" />
-    <ExportButton className={actionButtonClass} label="Exportar" />
-  </div>
-);
+const ListActions = () => {
+  const navigate = useNavigate();
+
+  return (
+    <div className="flex items-center gap-2">
+      <FilterButton filters={filters} size="sm" buttonClassName={actionButtonClass} />
+      <Button
+        type="button"
+        variant="outline"
+        className={actionButtonClass}
+        onClick={() => navigate("/parte-diario/panel")}
+      >
+        <CalendarDays className="h-3.5 w-3.5" />
+        Semana
+      </Button>
+      <CreateButton className={actionButtonClass} label="Crear" />
+      <ExportButton className={actionButtonClass} label="Exportar" />
+    </div>
+  );
+};
 
 const ParteDiarioListTitle = ({ onBack }: { onBack: () => void }) => (
   <span className="inline-flex items-center gap-3">
@@ -104,7 +117,7 @@ const DetalleCountField = () => {
 export const ParteDiarioList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 25,
+  perPage = 10,
 }: ParteDiarioListProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();

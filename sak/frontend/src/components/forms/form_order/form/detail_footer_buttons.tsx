@@ -10,11 +10,13 @@ import { useDetailSectionContext } from "./detail_section_context";
 export const DetailFooterButtons = ({
   defaultValues = {},
   desktopClassName,
+  label = "Agregar articulo",
   mobileClassName,
   onAdd,
 }: {
   defaultValues?: Record<string, unknown>;
   desktopClassName?: string;
+  label?: string;
   mobileClassName?: string;
   onAdd?: () => void;
 }) => {
@@ -76,7 +78,7 @@ export const DetailFooterButtons = ({
           disabled={disableAdd}
         >
           <PlusCircle className="h-4 w-4" />
-          Agregar articulo
+          {label}
         </Button>
         <div className="hidden sm:block ml-auto w-[28px]" />
         <div className="hidden sm:block w-[28px]" />

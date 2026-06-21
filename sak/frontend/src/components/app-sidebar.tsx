@@ -50,13 +50,13 @@ import {
   LayoutGrid,
   MessageCircle,
   Calculator,
+  CalendarDays,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = [
   "proy-dashboard",
   "solicitudes",
   "tarjas",
-  "parte-diario",
   "constructora/pedidos",
   "constructora-admin",
 ] as const;
@@ -281,6 +281,12 @@ export function AppSidebar() {
                       onClick={handleItemClick}
                     />
                   ))}
+                  <SidebarCustomMenuItem
+                    label="Parte Diario"
+                    to="/parte-diario/panel"
+                    icon={CalendarDays}
+                    onClick={handleItemClick}
+                  />
                   <SidebarCustomMenuItem
                     label="Setup"
                     to="/constructora/setup"

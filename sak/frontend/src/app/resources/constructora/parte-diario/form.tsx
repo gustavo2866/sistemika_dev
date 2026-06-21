@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { fetchUtils, required, useNotify, useWrappedSource } from "ra-core";
 import { useCallback, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
-import { UserPlus, UserX } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import {
@@ -12,10 +12,11 @@ import {
   FORM_FIELD_READONLY_CLASS,
   FormDate,
   FormErrorSummary,
+  FormReferenceAutocomplete,
   FormNumber,
   FormSelect,
+  FormSelectFijo,
   FormText,
-  FormTextarea,
   resolveNumericId,
   SectionDetailColumn,
   SectionDetailFieldsProps,
@@ -69,16 +70,16 @@ const fetchJsonWithAuth = async <T,>(url: string): Promise<T> => {
   return json as T;
 };
 
-const formatDateTimeInput = (date: Date | string | null | undefined) => {
-  if (!date) return "";
-  const parsed = typeof date === "string" ? new Date(date) : date;
-  if (Number.isNaN(parsed.getTime())) return "";
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const hours = String(parsed.getHours()).padStart(2, "0");
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+const getNominaLabel = (record?: Record<string, unknown>) => {
+  if (!record) return "";
+  const proyecto = record.proyecto as { nombre?: string | null } | null | undefined;
+  const nombre = [record.nombre, record.apellido]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .trim();
+  const empleado = nombre || (typeof record.dni === "string" ? record.dni : "");
+  const obra = proyecto?.nombre?.trim().slice(0, 5);
+  return obra ? `${empleado} (${obra})` : empleado;
 };
 
 const ParteDiarioMainFields = () => (
@@ -97,11 +98,10 @@ const ParteDiarioMainFields = () => (
       validate={required()}
       widthClass="w-full md:w-[130px]"
     />
-    <FormTextarea
+    <FormText
       source="descripcion"
       label="Descripcion"
       widthClass="w-full"
-      className="[&_textarea]:min-h-[38px] [&_textarea]:max-h-[56px]"
       maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
     />
   </div>
@@ -114,13 +114,10 @@ const ParteDiarioDetalleFields = () => {
   const [loadingNomina, setLoadingNomina] = useState(false);
   const [confirmCargarNomina, setConfirmCargarNomina] = useState(false);
   const columns: SectionDetailColumn[] = [
-    { label: "Empleado", width: "minmax(170px,0.8fr)", mobileSpan: "full" },
-    { label: "Horas", width: "72px" },
-    { label: "Estado", width: "110px" },
-    { label: "Ingreso", width: "136px" },
-    { label: "Egreso", width: "136px" },
-    { label: "Descripcion", width: "minmax(130px,0.7fr)", mobileSpan: "full" },
-    { label: "Ausente", width: "54px" },
+    { label: "Empleado", width: "180px", mobileSpan: "full" },
+    { label: "Horas", width: "54px" },
+    { label: "Estado", width: "122px" },
+    { label: "Descripcion", width: "minmax(150px,1fr)", mobileSpan: "full" },
     { label: "", width: "minmax(54px,auto)" },
   ];
 
@@ -162,7 +159,7 @@ const ParteDiarioDetalleFields = () => {
         detallesParaAgregar.push({
           idnomina,
           horas: Number.isFinite(horas) ? horas : 8,
-          idestado: resolveNumericId(empleado.idestado) ?? "",
+          idestado: resolveNumericId(empleado.idestado),
           ingreso: empleado.ingreso ?? "",
           egreso: empleado.egreso ?? "",
           descripcion: empleado.descripcion ?? "",
@@ -204,19 +201,27 @@ const ParteDiarioDetalleFields = () => {
         mainColumns={columns}
         mainFields={DetalleCamposPrincipales}
         defaults={getParteDiarioDetalleDefaults}
-        maxHeightClassName="md:max-h-64"
+        maxHeightClassName="md:max-h-[calc(100vh-460px)]"
         saveOnlyWhenActive
+        showDeleteWhenInactive
         showExpandActionOnMobile
         showExpandAction={false}
         showInfoAction={false}
-        addButtonLabel="Agregar empleado"
+        addButtonLabel="Agregar novedad"
         actions={
           <ParteDiarioCargarNominaAction
             loading={loadingNomina}
             onRequestConfirm={() => setConfirmCargarNomina(true)}
           />
         }
-        detailIteratorClassName="[&_li]:!border-b [&_li]:!border-slate-200/70 [&_li:last-child]:!border-b-0"
+        detailIteratorClassName={
+          "[&_li]:!border-b [&_li]:!border-slate-200/70 [&_li:last-child]:!border-b-0 " +
+          "[&_[data-focus-scope=detail-row]]:text-[9px] " +
+          "[&_[data-focus-scope=detail-row]]:sm:text-[10px] " +
+          "[&_[data-focus-scope=detail-row]]:!py-0 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!p-1 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!py-0.5"
+        }
       />
       <Confirm
         isOpen={confirmCargarNomina}
@@ -256,37 +261,65 @@ const ParteDiarioCargarNominaAction = ({
 };
 
 const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) => {
+  const [buscarTodaNomina, setBuscarTodaNomina] = useState(false);
   const descripcionSource = useWrappedSource("descripcion");
-  const horasSource = useWrappedSource("horas");
   const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
-  const horas = useWatch({ name: horasSource }) as unknown;
-  const { setValue } = useFormContext<ParteDiarioFormValues>();
+  const proyectoValue = useWatch({ name: "idproyecto" });
+  const proyectoId = resolveNumericId(proyectoValue);
   const hasDescripcion = Boolean(descripcion?.trim());
-  const isAusente = Number(horas ?? 0) === 0;
   const readOnlyClassName = !isActive ? FORM_FIELD_READONLY_CLASS : undefined;
-
-  const handleAusente = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setValue(horasSource as keyof ParteDiarioFormValues, (isAusente ? 8 : 0) as any, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
+  const nominaFilter = {
+    activo: true,
+    ...(!buscarTodaNomina && proyectoId ? { idproyecto: proyectoId } : {}),
   };
 
   return (
     <>
       <DetailFieldCell label="Empleado" data-focus-field="true">
-        <ReferenceInput source="idnomina" reference="nominas">
-          <FormSelect
-            optionText="nombre"
-            label={false}
-            widthClass="w-full"
-            emptyText="Seleccionar"
-            validate={required()}
-            className={readOnlyClassName}
+        <div className="flex w-[180px] items-center gap-1">
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "idnomina",
+              reference: "nominas",
+              filter: nominaFilter,
+              sort: { field: "apellido", order: "ASC" },
+            }}
+            inputProps={{
+              optionText: getNominaLabel,
+              inputText: getNominaLabel,
+              label: false,
+              validate: required(),
+              placeholder: "Seleccionar",
+            }}
+            widthClass={isActive ? "w-[144px]" : "w-[180px]"}
+            className={cn(
+              "[&_button[role=combobox]]:h-4 [&_button[role=combobox]]:px-1 [&_button[role=combobox]]:py-0 [&_button[role=combobox]]:text-[9px] " +
+                "sm:[&_button[role=combobox]]:h-4.5 sm:[&_button[role=combobox]]:px-1.5 sm:[&_button[role=combobox]]:text-[10px] " +
+                "[&_button[role=combobox]>span]:text-[9px] sm:[&_button[role=combobox]>span]:text-[10px]",
+              readOnlyClassName,
+            )}
           />
-        </ReferenceInput>
+          {isActive ? (
+            <button
+              type="button"
+              aria-pressed={buscarTodaNomina}
+              title="Buscar empleados de todas las obras"
+              className={cn(
+                "h-4.5 w-8 shrink-0 rounded border px-1 text-[7px] font-medium leading-none transition-colors",
+                buscarTodaNomina
+                  ? "border-blue-300 bg-blue-50 text-blue-700"
+                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
+              )}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setBuscarTodaNomina((current) => !current);
+              }}
+            >
+              Todas
+            </button>
+          ) : null}
+        </div>
       </DetailFieldCell>
       <DetailFieldCell label="Horas" className="gap-0">
         <FormNumber
@@ -300,7 +333,7 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
           validate={required()}
           readOnly={!isActive}
           className={cn(
-            "gap-0 [&_input]:h-4.5 [&_input]:px-1 sm:[&_input]:h-5 sm:[&_input]:px-2",
+            "gap-0 [&_input]:h-4 [&_input]:px-1 [&_input]:text-[9px] sm:[&_input]:h-4.5 sm:[&_input]:px-1.5 sm:[&_input]:text-[10px]",
             readOnlyClassName,
           )}
         />
@@ -311,36 +344,23 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
           reference="parte-diario-estados"
           filter={{ activo: true }}
         >
-          <FormSelect
+          <FormSelectFijo
             optionText="nombre"
             label={false}
             emptyText="Sin estado"
-            widthClass="w-full"
+            fixedWidth="122px"
+            widthClass="w-[122px]"
             className={readOnlyClassName}
+            triggerProps={{
+              className:
+                "min-h-4 h-auto px-1 py-0 text-left text-[9px] whitespace-normal sm:min-h-4.5 sm:text-[10px] " +
+                "*:data-[slot=select-value]:line-clamp-none " +
+                "*:data-[slot=select-value]:whitespace-normal " +
+                "*:data-[slot=select-value]:break-words " +
+                "*:data-[slot=select-value]:leading-tight",
+            }}
           />
         </ReferenceInput>
-      </DetailFieldCell>
-      <DetailFieldCell label="Ingreso">
-        <FormText
-          source="ingreso"
-          label={false}
-          type="datetime-local"
-          format={formatDateTimeInput}
-          widthClass="w-full"
-          readOnly={!isActive}
-          className={cn("gap-0 [&_input]:h-5 [&_input]:px-1", readOnlyClassName)}
-        />
-      </DetailFieldCell>
-      <DetailFieldCell label="Egreso">
-        <FormText
-          source="egreso"
-          label={false}
-          type="datetime-local"
-          format={formatDateTimeInput}
-          widthClass="w-full"
-          readOnly={!isActive}
-          className={cn("gap-0 [&_input]:h-5 [&_input]:px-1", readOnlyClassName)}
-        />
       </DetailFieldCell>
       <DetailFieldCell
         label="Descripcion"
@@ -353,25 +373,11 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
           widthClass="w-full"
           readOnly={!isActive}
           maxLength={VALIDATION_RULES.DETALLE_DESCRIPCION.MAX_LENGTH}
-          className={readOnlyClassName}
-        />
-      </DetailFieldCell>
-      <DetailFieldCell label="Ausente" className="items-center justify-center">
-        <button
-          type="button"
           className={cn(
-            "inline-flex h-5 w-5 items-center justify-center rounded-md transition",
-            isAusente
-              ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            "[&_input]:h-4 [&_input]:px-1 [&_input]:text-[9px] sm:[&_input]:h-4.5 sm:[&_input]:px-1.5 sm:[&_input]:text-[10px]",
+            readOnlyClassName,
           )}
-          onClick={handleAusente}
-          aria-label={isAusente ? "Asignar 8 horas" : "Marcar ausente"}
-          title={isAusente ? "Asignar 8 horas" : "Marcar ausente"}
-          tabIndex={-1}
-        >
-          <UserX className="h-3 w-3" />
-        </button>
+        />
       </DetailFieldCell>
     </>
   );
@@ -402,26 +408,30 @@ const ParteDiarioResumenTotales = () => {
   }).length;
 
   return (
-    <div className="flex flex-row flex-nowrap items-center justify-start gap-2 rounded-md border border-muted/60 bg-muted/30 px-2 py-1 text-[8px] text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3 sm:px-3 sm:py-2 sm:text-[10px]">
-      <span className="flex items-center gap-1.5 rounded-full bg-foreground/90 px-2 py-0.5 text-[8px] font-semibold text-background whitespace-nowrap sm:px-2.5 sm:py-1 sm:text-[10px]">
+    <div className="flex flex-row flex-nowrap items-center justify-end gap-1.5 rounded-md border border-muted/50 bg-muted/15 px-2 py-0.5 text-[8px] text-muted-foreground sm:flex-wrap sm:gap-2 sm:px-2.5 sm:py-1 sm:text-[9px]">
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
         Empleados: {cantidadEmpleados}
       </span>
-      <span className="flex items-center gap-1.5 rounded-full bg-foreground/90 px-2 py-0.5 text-[8px] font-semibold text-background whitespace-nowrap sm:px-2.5 sm:py-1 sm:text-[10px]">
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
         Horas: {totalHoras.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
       </span>
-      <span className="flex items-center gap-1.5 rounded-full bg-foreground/90 px-2 py-0.5 text-[8px] font-semibold text-background whitespace-nowrap sm:px-2.5 sm:py-1 sm:text-[10px]">
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
         Ausencias: {cantidadAusencias}
       </span>
     </div>
   );
 };
 
-export const ParteDiarioForm = () => (
+export const ParteDiarioForm = ({
+  defaultValues = PARTE_DIARIO_DEFAULTS,
+}: {
+  defaultValues?: Partial<ParteDiarioFormValues>;
+} = {}) => (
   <SimpleForm<ParteDiarioFormValues>
     className="w-full max-w-5xl"
     resolver={zodResolver(parteDiarioSchema) as any}
     toolbar={<ParteDiarioToolbar />}
-    defaultValues={PARTE_DIARIO_DEFAULTS}
+    defaultValues={{ ...PARTE_DIARIO_DEFAULTS, ...defaultValues }}
   >
     <FormErrorSummary />
     <SectionBaseTemplate

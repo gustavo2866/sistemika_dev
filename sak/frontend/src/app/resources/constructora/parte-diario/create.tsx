@@ -6,6 +6,7 @@ import { NotebookPen } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ParteDiarioForm } from "./form";
 import {
+  PARTE_DIARIO_DEFAULTS,
   getEstadoParteBadgeClass,
   getEstadoParteLabel,
   normalizeParteDiarioPayload,
@@ -36,6 +37,14 @@ export const ParteDiarioCreate = ({
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
+  const idproyectoParam = params.get("idproyecto");
+  const fechaParam = params.get("fecha");
+  const idproyecto = idproyectoParam ? Number(idproyectoParam) : undefined;
+  const defaultValues = {
+    ...PARTE_DIARIO_DEFAULTS,
+    ...(Number.isFinite(idproyecto) && idproyecto ? { idproyecto } : {}),
+    ...(fechaParam ? { fecha: fechaParam } : {}),
+  };
 
   return (
     <Create
@@ -59,7 +68,7 @@ export const ParteDiarioCreate = ({
             }
       }
     >
-      <ParteDiarioForm />
+      <ParteDiarioForm defaultValues={defaultValues} />
     </Create>
   );
 };

@@ -1,12 +1,15 @@
 from datetime import date
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
+from typing import ClassVar, List, Optional, TYPE_CHECKING
 
 from sqlalchemy import DECIMAL, Column, String
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 
 from .base import Base
+
+if TYPE_CHECKING:
+    from .proyecto import Proyecto
 
 
 class CategoriaNomina(str, Enum):
@@ -22,6 +25,7 @@ class Nomina(Base, table=True):
     __tablename__ = "nominas"
 
     __searchable_fields__ = ["nombre", "apellido", "dni", "email", "nro_legajo"]
+    __auto_include_relations__: ClassVar[List[str]] = ["proyecto"]
 
     nombre: str = Field(max_length=120, description="Nombre del empleado")
     apellido: str = Field(max_length=120, description="Apellido del empleado")
@@ -88,6 +92,8 @@ class Nomina(Base, table=True):
         default=True,
         description="Indicador de empleado activo en la nomina",
     )
+
+    proyecto: Optional["Proyecto"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Nomina(id={self.id}, nombre='{self.nombre} {self.apellido}', categoria='{self.categoria}')"

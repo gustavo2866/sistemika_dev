@@ -663,6 +663,7 @@ export const SectionDetailTemplate2 = ({
                   ) : (
                     <DetailFooterButtons
                       defaultValues={getDefaultValues()}
+                      label={addButtonLabel}
                       onAdd={activeRow.requestAutoActivate}
                     />
                   )

@@ -166,6 +166,9 @@ class ParteDiarioProcess:
         if validation_error:
             return self._state_reply(state, validation_error)
 
+        if not _has_explicit_date_reference(message_text):
+            plan.operations = [operation for operation in plan.operations if operation.type != "set_fecha"]
+
         date_operations = [operation for operation in plan.operations if operation.type == "set_fecha"]
         if date_operations:
             new_date = _parse_date_reference(date_operations[-1].fecha)
@@ -686,6 +689,37 @@ def _parse_local_readonly_operation(command: str) -> str | None:
     if "nomina" in tokens or "personal" in tokens or "empleado" in tokens or "empleados" in tokens:
         return "mostrar_nomina"
     return None
+
+
+def _has_explicit_date_reference(text: str | None) -> bool:
+    command = _normalize_command(text)
+    if not command:
+        return False
+    tokens = set(command.split())
+    relative_terms = {
+        "hoy",
+        "ayer",
+        "anteayer",
+        "anteanoche",
+        "manana",
+        "pasado",
+        "pasada",
+        "anterior",
+        "fecha",
+        "dia",
+    }
+    weekdays = {"lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"}
+    if tokens & relative_terms or tokens & weekdays:
+        return True
+    if re.search(r"\b\d{1,2}\s*(?:/|-)\s*\d{1,2}(?:\s*(?:/|-)\s*\d{2,4})?\b", command):
+        return True
+    if re.search(
+        r"\b\d{1,2}\s+de\s+"
+        r"(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b",
+        command,
+    ):
+        return True
+    return False
 
 
 def _normalize_attendance_transcription(

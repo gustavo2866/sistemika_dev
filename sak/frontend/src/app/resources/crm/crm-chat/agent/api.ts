@@ -16,7 +16,7 @@ type RequestChatAIReplyParams = {
 export const requestChatAIReply = async (
   _params: RequestChatAIReplyParams,
 ): Promise<AIReplyResult> => {
-  legacyAgentRemoved();
+  return legacyAgentRemoved();
 };
 
 type RequestCurrentSolicitudParams = {
@@ -28,7 +28,7 @@ type RequestCurrentSolicitudParams = {
 export const requestCurrentSolicitud = async (
   _params: RequestCurrentSolicitudParams,
 ): Promise<AIReplyResult> => {
-  legacyAgentRemoved();
+  return legacyAgentRemoved();
 };
 
 type RequestMaterialFamilyParams = {
@@ -40,7 +40,7 @@ type RequestMaterialFamilyParams = {
 export const requestMaterialFamily = async (
   _params: RequestMaterialFamilyParams,
 ): Promise<MaterialFamily> => {
-  legacyAgentRemoved();
+  return legacyAgentRemoved();
 };
 
 type SaveMaterialFamilyParams = {
@@ -53,5 +53,5 @@ type SaveMaterialFamilyParams = {
 export const saveMaterialFamily = async (
   _params: SaveMaterialFamilyParams,
 ): Promise<{ family: MaterialFamily; created: boolean }> => {
-  legacyAgentRemoved();
+  return legacyAgentRemoved();
 };

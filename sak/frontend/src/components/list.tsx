@@ -82,6 +82,7 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
     topContent,
     showBreadcrumb = true,
     showHeader = true,
+    showFilters = true,
     containerClassName,
     filterFormComponent,
   } = props;
@@ -143,20 +144,22 @@ export const ListView = <RecordType extends RaRecord = RaRecord>(
             {topContent}
           </div>
         ) : null}
-        <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full min-w-0">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <FilterForm
-              className="list-filters pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-3"
-              debounce={filterDebounce}
-              formComponent={filterFormComponent}
-            />
-            {!showHeader && actions ? (
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                {actions}
-              </div>
-            ) : null}
+        {showFilters ? (
+          <div className="bg-muted/30 rounded-lg p-1 sm:p-2 mb-1 sm:mb-2 w-full min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <FilterForm
+                className="list-filters pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-3"
+                debounce={filterDebounce}
+                formComponent={filterFormComponent}
+              />
+              {!showHeader && actions ? (
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  {actions}
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         <div className={cn(props.className, "w-full min-w-0")}>{children}</div>
         {shouldRenderPagination ? (
           <div className="w-full min-w-0">{pagination}</div>
@@ -180,8 +183,8 @@ export interface ListViewProps<RecordType extends RaRecord = RaRecord> {
   filterDebounce?: number | false;
   showBreadcrumb?: boolean;
   showHeader?: boolean;
+  showFilters?: boolean;
   containerClassName?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   filterFormComponent?: React.ComponentType<any>;
 }
 

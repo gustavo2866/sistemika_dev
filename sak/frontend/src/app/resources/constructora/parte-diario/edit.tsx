@@ -27,30 +27,30 @@ const ParteDiarioEditTitle = () => {
   if (!record) return "Editar parte diario";
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
         <span className="inline-flex items-center gap-2">
           <NotebookPen className="h-4 w-4" />
           Editar parte diario
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="h-8 gap-2 rounded-md border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-700 shadow-sm">
-          <Hash className="h-3.5 w-3.5 text-slate-500" />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline" className="h-6 gap-1.5 rounded-md border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 shadow-sm">
+          <Hash className="h-3 w-3 text-slate-500" />
           #{String(record.id ?? "").padStart(6, "0")}
         </Badge>
         <Badge
           variant="secondary"
           className={cn(
-            "h-8 gap-2 rounded-md px-4 text-[11px] font-medium shadow-sm",
+            "h-6 gap-1.5 rounded-md px-2.5 text-[10px] font-medium shadow-sm",
             getEstadoParteBadgeClass(record.estado),
           )}
         >
           <Circle className="h-2 w-2 fill-current" />
           {getEstadoParteLabel(record.estado)}
         </Badge>
-        <Badge variant="outline" className="h-8 gap-2 rounded-md border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-700 shadow-sm">
-          <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
+        <Badge variant="outline" className="h-6 gap-1.5 rounded-md border-slate-200 bg-white px-2 text-[10px] font-medium text-slate-700 shadow-sm">
+          <CalendarDays className="h-3 w-3 text-slate-500" />
           <DateField source="fecha" record={record} />
         </Badge>
       </div>

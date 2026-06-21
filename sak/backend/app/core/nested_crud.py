@@ -115,6 +115,16 @@ class NestedCRUD(GenericCRUD):
 
         return value
 
+    def _normalize_existing_id(self, value: Any) -> Any:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            try:
+                return int(value)
+            except Exception:
+                return value
+        return value
+
     def _sync_nested_relations(
         self,
         session: Session,
@@ -146,7 +156,7 @@ class NestedCRUD(GenericCRUD):
                     continue
 
                 payload = deepcopy(item_payload)
-                item_id = payload.get("id")
+                item_id = self._normalize_existing_id(payload.get("id"))
                 is_new_item = not (item_id and item_id in existing_by_id)
                 if callable(prepare_payload):
                     prepared_payload = prepare_payload(

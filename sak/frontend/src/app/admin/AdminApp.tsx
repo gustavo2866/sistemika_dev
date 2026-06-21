@@ -212,6 +212,7 @@ import {
 } from "@/app/resources/administracion/nomina";
 import {
   ParteDiarioList,
+  ParteDiarioPanel,
   ParteDiarioCreate,
   ParteDiarioEdit,
   ParteDiarioShow,
@@ -943,6 +944,7 @@ const AdminApp = () => {
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
+        <Route path="/parte-diario/panel" element={<ParteDiarioPanel />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />
         <Route path="/crm/oportunidades/:id/accion_agendar" element={<CRMOportunidadAccionAgendar />} />

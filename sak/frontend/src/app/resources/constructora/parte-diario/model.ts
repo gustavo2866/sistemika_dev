@@ -21,9 +21,9 @@ const normalizeOptionalString = (value: unknown) =>
 
 const trimRequiredText = (value?: string | null) => (value ?? "").trim();
 
-const trimOptionalText = (value?: string | null) => {
+const trimNullableText = (value?: string | null) => {
   const normalizedValue = (value ?? "").trim();
-  return normalizedValue.length > 0 ? normalizedValue : undefined;
+  return normalizedValue.length > 0 ? normalizedValue : null;
 };
 
 const normalizeNumberInput = (value: unknown) => {
@@ -119,7 +119,7 @@ export const PARTE_DIARIO_DEFAULTS: ParteDiarioFormValues = {
 
 export const getParteDiarioDetalleDefaults = () => ({
   idnomina: "",
-  horas: 8,
+  horas: 0,
   idestado: "",
   ingreso: "",
   egreso: "",
@@ -134,14 +134,14 @@ export const normalizeParteDiarioPayload = (
   idproyecto: Number(data.idproyecto),
   fecha: trimRequiredText(data.fecha),
   estado: data.estado === "cerrado" ? "cerrado" : "pendiente",
-  descripcion: trimOptionalText(data.descripcion),
+  descripcion: trimNullableText(data.descripcion),
   detalles: (data.detalles ?? []).map((detalle) => ({
     ...(detalle.id ? { id: Number(detalle.id) } : {}),
     idnomina: Number(detalle.idnomina),
     horas: Number(detalle.horas ?? 0),
     idestado: detalle.idestado ? Number(detalle.idestado) : null,
-    ingreso: trimOptionalText(detalle.ingreso),
-    egreso: trimOptionalText(detalle.egreso),
-    descripcion: trimOptionalText(detalle.descripcion),
+    ingreso: trimNullableText(detalle.ingreso),
+    egreso: trimNullableText(detalle.egreso),
+    descripcion: trimNullableText(detalle.descripcion),
   })),
 });
