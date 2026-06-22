@@ -73,6 +73,13 @@ from .partediario import (
     EstadoParteDiario,
     OrigenDetalle,
 )
+from .tarja_estado import TarjaEstado
+from .tarja import (
+    Tarja,
+    TarjaDetalle,
+    TarjaNovedad,
+    EstadoTarja,
+)
 
 from .enums import (
     EstadoOportunidad,
@@ -154,6 +161,11 @@ __all__ = [
     "ParteDiarioEstado",
     "EstadoParteDiario",
     "OrigenDetalle",
+    "TarjaEstado",
+    "Tarja",
+    "TarjaDetalle",
+    "TarjaNovedad",
+    "EstadoTarja",
 
     "EstadoOportunidad",
     "TRANSICIONES_ESTADO_OPORTUNIDAD",
