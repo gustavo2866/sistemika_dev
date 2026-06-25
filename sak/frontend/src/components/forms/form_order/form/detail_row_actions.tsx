@@ -292,9 +292,11 @@ export const DetailRowActions = ({
         type="button"
         variant="secondary"
         className={cn(
-          "flex-col gap-0 rounded-md px-1 text-[6px] font-medium leading-none shadow-sm focus-visible:ring-2 focus-visible:ring-blue-500",
-          isTableVariant ? "h-7 min-w-7" : "h-6 min-w-6",
-          !isTableVariant && "sm:ml-auto",
+          "flex-col gap-0 font-medium leading-none shadow-sm focus-visible:ring-2 focus-visible:ring-blue-500",
+          isTableVariant
+            ? "h-7 min-w-7 px-1 text-[6px] has-[>svg]:px-1"
+            : "h-4 min-w-5 rounded px-0.5 py-0 text-[5px] has-[>svg]:px-0.5",
+          !isTableVariant && "sm:ml-auto sm:mr-6",
         )}
         onClick={(event) => {
           event.stopPropagation();
@@ -304,7 +306,7 @@ export const DetailRowActions = ({
         aria-label="Guardar linea"
         title="Guardar linea"
       >
-        <Save className={cn(isTableVariant ? "h-3 w-3" : "h-2.5 w-2.5")} />
+        <Save className={cn(isTableVariant ? "size-3" : "size-2.5")} />
         <span>Guardar</span>
       </Button>
     );

@@ -11,8 +11,8 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .nomina import Nomina
+    from .parte_diario_estado import ParteDiarioEstado
     from .partediario import ParteDiarioDetalle
-    from .tarja_estado import TarjaEstado
 
 
 class EstadoTarja(str, Enum):
@@ -83,7 +83,7 @@ class TarjaDetalle(Base, table=True):
     )
     idestado: Optional[int] = Field(
         default=None,
-        foreign_key="tarja_estados.id",
+        foreign_key="parte_diario_estados.id",
         description="Estado diario del empleado",
     )
     horas: Decimal = Field(
@@ -103,7 +103,7 @@ class TarjaDetalle(Base, table=True):
 
     tarja: "Tarja" = Relationship(back_populates="detalles")
     nomina: Optional["Nomina"] = Relationship()
-    estado: Optional["TarjaEstado"] = Relationship()
+    estado: Optional["ParteDiarioEstado"] = Relationship()
     parte_diario_detalle: Optional["ParteDiarioDetalle"] = Relationship()
 
 

@@ -274,19 +274,40 @@ export function AppSidebar() {
                   isOpen={constructoraOpen}
                   onToggle={() => setConstructoraOpen((open) => !open)}
                 >
-                  {constructoraResources.map((name) => (
+                  {constructoraResources
+                    .filter((name) => name === "proy-dashboard")
+                    .map((name) => (
                     <ResourceSubMenuItem
                       key={name}
                       name={name}
                       onClick={handleItemClick}
                     />
-                  ))}
+                    ))}
                   <SidebarCustomMenuItem
                     label="Parte Diario"
                     to="/parte-diario/panel"
                     icon={CalendarDays}
                     onClick={handleItemClick}
                   />
+                  {constructoraResources.includes("tarjas") ? (
+                    <SidebarCustomMenuItem
+                      label="Tarjas"
+                      to="/tarjas/panel"
+                      icon={ClipboardCheck}
+                      onClick={handleItemClick}
+                    />
+                  ) : null}
+                  {constructoraResources
+                    .filter(
+                      (name) => name !== "proy-dashboard" && name !== "tarjas",
+                    )
+                    .map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                    ))}
                   <SidebarCustomMenuItem
                     label="Setup"
                     to="/constructora/setup"

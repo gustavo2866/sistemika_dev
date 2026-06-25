@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { fetchUtils, required, useNotify, useWrappedSource } from "ra-core";
 import { useCallback, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
-import { UserPlus } from "lucide-react";
+import { PlusCircle, UserPlus } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import {
@@ -113,6 +113,8 @@ const ParteDiarioDetalleFields = () => {
   const { getValues, setValue } = useFormContext<ParteDiarioFormValues>();
   const [loadingNomina, setLoadingNomina] = useState(false);
   const [confirmCargarNomina, setConfirmCargarNomina] = useState(false);
+  const [addRequestSignal, setAddRequestSignal] = useState(0);
+  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
   const columns: SectionDetailColumn[] = [
     { label: "Empleado", width: "180px", mobileSpan: "full" },
     { label: "Horas", width: "54px" },
@@ -195,19 +197,24 @@ const ParteDiarioDetalleFields = () => {
   }, [getValues, notify, proyectoValue, setValue]);
 
   return (
-    <>
+    <div className="flex flex-col gap-0">
       <SectionDetailTemplate2
         title="Detalle de horas"
         mainColumns={columns}
         mainFields={DetalleCamposPrincipales}
         defaults={getParteDiarioDetalleDefaults}
-        maxHeightClassName="md:max-h-[calc(100vh-460px)]"
+        maxHeightClassName="md:h-36 md:min-h-36 md:max-h-36"
         saveOnlyWhenActive
         showDeleteWhenInactive
         showExpandActionOnMobile
         showExpandAction={false}
         showInfoAction={false}
         addButtonLabel="Agregar novedad"
+        addRequestSignal={addRequestSignal}
+        hideFooterAddButton
+        onActiveRowChange={setActiveRowIndex}
+        cardClassName="pb-0"
+        detailContainerClassName="px-1 pb-0"
         actions={
           <ParteDiarioCargarNominaAction
             loading={loadingNomina}
@@ -216,11 +223,18 @@ const ParteDiarioDetalleFields = () => {
         }
         detailIteratorClassName={
           "[&_li]:!border-b [&_li]:!border-slate-200/70 [&_li:last-child]:!border-b-0 " +
-          "[&_[data-focus-scope=detail-row]]:text-[9px] " +
-          "[&_[data-focus-scope=detail-row]]:sm:text-[10px] " +
+          "[&_li]:!min-h-0 [&_li]:!py-0 " +
+          "[&_[data-focus-scope=detail-row]]:text-[8px] " +
+          "[&_[data-focus-scope=detail-row]]:sm:text-[9px] " +
           "[&_[data-focus-scope=detail-row]]:!py-0 " +
-          "[&_[data-focus-scope=detail-row].is-active]:sm:!p-1 " +
-          "[&_[data-focus-scope=detail-row].is-active]:sm:!py-0.5"
+          "[&_[data-focus-scope=detail-row]>div]:!gap-0.5 " +
+          "[&_[data-focus-scope=detail-row]>div>div]:sm:!gap-1 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!border-0 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!ring-1 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!ring-inset " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!ring-primary/30 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!p-0.5 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!py-[3px]"
         }
       />
       <Confirm
@@ -237,7 +251,11 @@ const ParteDiarioDetalleFields = () => {
           void handleCargarNomina();
         }}
       />
-    </>
+      <ParteDiarioResumenTotales
+        addDisabled={activeRowIndex != null}
+        onAdd={() => setAddRequestSignal((current) => current + 1)}
+      />
+    </div>
   );
 };
 
@@ -293,9 +311,9 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
             }}
             widthClass={isActive ? "w-[144px]" : "w-[180px]"}
             className={cn(
-              "[&_button[role=combobox]]:h-4 [&_button[role=combobox]]:px-1 [&_button[role=combobox]]:py-0 [&_button[role=combobox]]:text-[9px] " +
-                "sm:[&_button[role=combobox]]:h-4.5 sm:[&_button[role=combobox]]:px-1.5 sm:[&_button[role=combobox]]:text-[10px] " +
-                "[&_button[role=combobox]>span]:text-[9px] sm:[&_button[role=combobox]>span]:text-[10px]",
+              "[&_button[role=combobox]]:h-3.5 [&_button[role=combobox]]:px-0.5 [&_button[role=combobox]]:py-0 [&_button[role=combobox]]:text-[8px] " +
+                "sm:[&_button[role=combobox]]:h-4 sm:[&_button[role=combobox]]:px-1 sm:[&_button[role=combobox]]:text-[9px] " +
+                "[&_button[role=combobox]>span]:text-[8px] sm:[&_button[role=combobox]>span]:text-[9px]",
               readOnlyClassName,
             )}
           />
@@ -305,7 +323,7 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
               aria-pressed={buscarTodaNomina}
               title="Buscar empleados de todas las obras"
               className={cn(
-                "h-4.5 w-8 shrink-0 rounded border px-1 text-[7px] font-medium leading-none transition-colors",
+                "h-4 w-7 shrink-0 rounded border px-0.5 text-[6px] font-medium leading-none transition-colors",
                 buscarTodaNomina
                   ? "border-blue-300 bg-blue-50 text-blue-700"
                   : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
@@ -333,7 +351,7 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
           validate={required()}
           readOnly={!isActive}
           className={cn(
-            "gap-0 [&_input]:h-4 [&_input]:px-1 [&_input]:text-[9px] sm:[&_input]:h-4.5 sm:[&_input]:px-1.5 sm:[&_input]:text-[10px]",
+            "gap-0 [&_input]:h-3.5 [&_input]:px-0.5 [&_input]:text-[8px] sm:[&_input]:h-4 sm:[&_input]:px-1 sm:[&_input]:text-[9px]",
             readOnlyClassName,
           )}
         />
@@ -352,12 +370,20 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
             widthClass="w-[122px]"
             className={readOnlyClassName}
             triggerProps={{
+              style: {
+                height: "16px",
+                minHeight: "16px",
+                maxHeight: "16px",
+                paddingTop: 0,
+                paddingBottom: 0,
+              },
               className:
-                "min-h-4 h-auto px-1 py-0 text-left text-[9px] whitespace-normal sm:min-h-4.5 sm:text-[10px] " +
-                "*:data-[slot=select-value]:line-clamp-none " +
-                "*:data-[slot=select-value]:whitespace-normal " +
-                "*:data-[slot=select-value]:break-words " +
-                "*:data-[slot=select-value]:leading-tight",
+                "px-0.5 text-left text-[8px] whitespace-nowrap sm:px-1 sm:text-[9px] " +
+                "[&_svg]:size-2.5 " +
+                "*:data-[slot=select-value]:line-clamp-1 " +
+                "*:data-[slot=select-value]:truncate " +
+                "*:data-[slot=select-value]:whitespace-nowrap " +
+                "*:data-[slot=select-value]:leading-none",
             }}
           />
         </ReferenceInput>
@@ -374,7 +400,7 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
           readOnly={!isActive}
           maxLength={VALIDATION_RULES.DETALLE_DESCRIPCION.MAX_LENGTH}
           className={cn(
-            "[&_input]:h-4 [&_input]:px-1 [&_input]:text-[9px] sm:[&_input]:h-4.5 sm:[&_input]:px-1.5 sm:[&_input]:text-[10px]",
+            "[&_input]:h-3.5 [&_input]:px-0.5 [&_input]:text-[8px] sm:[&_input]:h-4 sm:[&_input]:px-1 sm:[&_input]:text-[9px]",
             readOnlyClassName,
           )}
         />
@@ -390,7 +416,13 @@ const ParteDiarioToolbar = () => (
   </div>
 );
 
-const ParteDiarioResumenTotales = () => {
+const ParteDiarioResumenTotales = ({
+  addDisabled,
+  onAdd,
+}: {
+  addDisabled: boolean;
+  onAdd: () => void;
+}) => {
   const detalles = useWatch({ name: "detalles" }) as
     | Array<{ idnomina?: unknown; horas?: unknown }>
     | undefined;
@@ -408,16 +440,27 @@ const ParteDiarioResumenTotales = () => {
   }).length;
 
   return (
-    <div className="flex flex-row flex-nowrap items-center justify-end gap-1.5 rounded-md border border-muted/50 bg-muted/15 px-2 py-0.5 text-[8px] text-muted-foreground sm:flex-wrap sm:gap-2 sm:px-2.5 sm:py-1 sm:text-[9px]">
-      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
-        Empleados: {cantidadEmpleados}
-      </span>
-      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
-        Horas: {totalHoras.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
-      </span>
-      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
-        Ausencias: {cantidadAusencias}
-      </span>
+    <div className="flex flex-row flex-nowrap items-center justify-between gap-1.5 rounded-md border border-muted/50 bg-muted/15 px-2 py-0.5 text-[8px] text-muted-foreground sm:gap-2 sm:px-2.5 sm:py-1 sm:text-[9px]">
+      <button
+        type="button"
+        className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border border-blue-300 bg-white px-1.5 text-[8px] font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[9px]"
+        disabled={addDisabled}
+        onClick={onAdd}
+      >
+        <PlusCircle className="size-3" />
+        Agregar novedad
+      </button>
+      <div className="flex flex-row flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
+        <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+          Empleados: {cantidadEmpleados}
+        </span>
+        <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+          Horas: {totalHoras.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+        </span>
+        <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+          Ausencias: {cantidadAusencias}
+        </span>
+      </div>
     </div>
   );
 };
@@ -440,6 +483,5 @@ export const ParteDiarioForm = ({
       defaultOpen
     />
     <ParteDiarioDetalleFields />
-    <ParteDiarioResumenTotales />
   </SimpleForm>
 );

@@ -27,7 +27,7 @@ const PROYECTO_SETUP_ITEMS: SetupItem[] = [
 const TARJA_SETUP_ITEMS: SetupItem[] = [
   {
     key: "parte-diario-estados",
-    label: "Estados parte diario",
+    label: "Estados de tarja",
     description: "Configurar estados disponibles para los detalles de tarja.",
     resource: "parte-diario-estados",
     listComponent: ParteDiarioEstadoList,

@@ -73,7 +73,6 @@ from .partediario import (
     EstadoParteDiario,
     OrigenDetalle,
 )
-from .tarja_estado import TarjaEstado
 from .tarja import (
     Tarja,
     TarjaDetalle,
@@ -161,7 +160,6 @@ __all__ = [
     "ParteDiarioEstado",
     "EstadoParteDiario",
     "OrigenDetalle",
-    "TarjaEstado",
     "Tarja",
     "TarjaDetalle",
     "TarjaNovedad",

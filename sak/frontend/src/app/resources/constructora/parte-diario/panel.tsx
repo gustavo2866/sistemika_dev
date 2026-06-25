@@ -5,8 +5,6 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { useGetList, useListContext } from "ra-core";
 import {
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   List as ListIcon,
   Loader2,
   Plus,
@@ -21,6 +19,13 @@ import { cn } from "@/lib/utils";
 import {
   buildListFilters,
 } from "@/components/forms/form_order";
+import {
+  QuincenaNavigator,
+  getQuincenaRange,
+  moveQuincena,
+  parseDateOnly,
+  toISODate,
+} from "@/components/forms/quincena-navigator";
 import type { ProyectoRecord } from "../proyectos/model";
 import { estadoParteChoices, getEstadoParteBadgeClass, getEstadoParteLabel } from "./constants";
 import type { ParteDiarioDetalle, ParteDiarioRecord } from "./model";
@@ -81,42 +86,14 @@ const PANEL_FILTERS = buildListFilters(
   { keyPrefix: "parte-diario-panel" },
 );
 
-const parseDateOnly = (value?: string | null) => {
-  const [year, month, day] = String(value ?? "").split("-").map(Number);
-  if (!year || !month || !day) return new Date();
-  return new Date(year, month - 1, day);
-};
-
-const toISODate = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
 const addDays = (date: Date, days: number) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
 };
 
-const getWeekStart = (date: Date) => {
-  const start = new Date(date);
-  const diff = (start.getDay() + 6) % 7;
-  start.setDate(start.getDate() - diff);
-  start.setHours(0, 0, 0, 0);
-  return start;
-};
-
 const formatShortDate = (date: Date) =>
   date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
-
-const formatWeekRange = (start: Date, end: Date) => {
-  const startDay = start.toLocaleDateString("es-AR", { day: "2-digit" });
-  const endDay = end.toLocaleDateString("es-AR", { day: "2-digit" });
-  const month = end.toLocaleDateString("es-AR", { month: "short" });
-  return `${startDay}-${endDay} ${month} ${end.getFullYear()}`;
-};
 
 const getProjectColor = (idproyecto?: number | string | null) => {
   const id = Number(idproyecto ?? 0);
@@ -164,18 +141,20 @@ const buildCreateUrl = (
 };
 
 const ParteDiarioPanelToolbar = ({
-  weekStart,
-  weekEnd,
+  rangeStart,
+  rangeEnd,
+  quincenaNumber,
   selectedDate,
-  onPreviousWeek,
-  onNextWeek,
+  onPrevious,
+  onNext,
   onSelectedDateChange,
 }: {
-  weekStart: Date;
-  weekEnd: Date;
+  rangeStart: Date;
+  rangeEnd: Date;
+  quincenaNumber: number;
   selectedDate: string;
-  onPreviousWeek: () => void;
-  onNextWeek: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
   onSelectedDateChange: (value: string) => void;
 }) => {
   const { filterValues } = useListContext();
@@ -187,50 +166,14 @@ const ParteDiarioPanelToolbar = ({
   return (
     <div className="bg-muted/30 rounded-lg p-1 sm:p-2">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center rounded-md border border-slate-200 bg-white shadow-xs">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 rounded-r-none"
-            onClick={onPreviousWeek}
-            aria-label="Semana anterior"
-            title="Semana anterior"
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </Button>
-          <div className="min-w-[104px] border-x border-slate-200 px-2 text-center text-[10px] font-semibold text-slate-700 sm:min-w-[118px]">
-            {formatWeekRange(weekStart, weekEnd)}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 rounded-l-none"
-            onClick={onNextWeek}
-            aria-label="Semana siguiente"
-            title="Semana siguiente"
-          >
-            <ChevronRight className="h-3 w-3" />
-          </Button>
-        </div>
-
-        <input
-          type="date"
-          aria-label="Dia"
-          value={selectedDate}
-          onChange={(event) => onSelectedDateChange(event.target.value)}
-          onClick={(event) => {
-            const input = event.currentTarget as HTMLInputElement & {
-              showPicker?: () => void;
-            };
-            try {
-              input.showPicker?.();
-            } catch {
-              // El navegador puede abrir el picker nativo sin showPicker().
-            }
-          }}
-          className="h-6 w-[116px] rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-[10px] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70"
+        <QuincenaNavigator
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          quincenaNumber={quincenaNumber}
+          selectedDate={selectedDate}
+          onPrevious={onPrevious}
+          onNext={onNext}
+          onSelectedDateChange={onSelectedDateChange}
         />
 
         <Button
@@ -576,11 +519,11 @@ const ParteDiarioPanelBody = ({
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Cargando semana
+              Cargando quincena
             </span>
           </div>
         ) : null}
-        <div className="grid grid-flow-col auto-cols-[260px] overflow-x-auto md:grid-flow-row md:grid-cols-7 md:overflow-x-hidden md:divide-x md:divide-slate-200">
+        <div className="grid grid-flow-col auto-cols-[220px] divide-x divide-slate-200 overflow-x-auto sm:auto-cols-[190px]">
           {days.map((day) => (
             <ParteDiarioDayColumn
               key={day.iso}
@@ -607,31 +550,35 @@ export const ParteDiarioPanel = () => {
   const todayIso = useMemo(() => toISODate(new Date()), []);
   const initialDate = searchParams.get("fecha") ?? todayIso;
   const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(parseDateOnly(initialDate)));
+  const [range, setRange] = useState(() =>
+    getQuincenaRange(parseDateOnly(initialDate)),
+  );
 
-  const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
-  const weekStartIso = useMemo(() => toISODate(weekStart), [weekStart]);
-  const weekEndIso = useMemo(() => toISODate(weekEnd), [weekEnd]);
+  const rangeStartIso = useMemo(() => toISODate(range.start), [range.start]);
+  const rangeEndIso = useMemo(() => toISODate(range.end), [range.end]);
   const returnTo = useMemo(() => {
     const query = searchParams.toString();
     return `/parte-diario/panel${query ? `?${query}` : ""}`;
   }, [searchParams]);
 
   const days = useMemo<PanelDay[]>(
-    () =>
-      Array.from({ length: 7 }, (_, index) => {
-        const date = addDays(weekStart, index);
+    () => {
+      const length =
+        Math.floor((range.end.getTime() - range.start.getTime()) / 86_400_000) + 1;
+      return Array.from({ length }, (_, index) => {
+        const date = addDays(range.start, index);
         return { date, iso: toISODate(date) };
-      }),
-    [weekStart],
+      });
+    },
+    [range.end, range.start],
   );
 
-  const setWeekFromDate = useCallback(
+  const setQuincenaFromDate = useCallback(
     (value: string) => {
       const nextDate = parseDateOnly(value);
       const nextIso = toISODate(nextDate);
       setSelectedDate(nextIso);
-      setWeekStart(getWeekStart(nextDate));
+      setRange(getQuincenaRange(nextDate));
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -644,14 +591,8 @@ export const ParteDiarioPanel = () => {
     [setSearchParams],
   );
 
-  const handlePreviousWeek = () => {
-    const next = addDays(weekStart, -7);
-    setWeekFromDate(toISODate(next));
-  };
-
-  const handleNextWeek = () => {
-    const next = addDays(weekStart, 7);
-    setWeekFromDate(toISODate(next));
+  const moveTo = (direction: -1 | 1) => {
+    setQuincenaFromDate(toISODate(moveQuincena(range.start, direction)));
   };
 
   return (
@@ -660,25 +601,26 @@ export const ParteDiarioPanel = () => {
       title={
         <span className="inline-flex items-center gap-2">
           <CalendarDays className="h-5 w-5" />
-          Parte Diario - Semana
+          Parte Diario - Quincena
         </span>
       }
       filters={PANEL_FILTERS}
       actions={<ParteDiarioPanelActions />}
-      perPage={200}
+      perPage={1000}
       pagination={false}
       sort={{ field: "fecha", order: "ASC" }}
-      filter={{ fecha: { gte: weekStartIso, lte: weekEndIso } }}
+      filter={{ fecha: { gte: rangeStartIso, lte: rangeEndIso } }}
       containerClassName={LIST_CONTAINER_WIDE}
       showFilters={false}
       topContent={
         <ParteDiarioPanelToolbar
-          weekStart={weekStart}
-          weekEnd={weekEnd}
+          rangeStart={range.start}
+          rangeEnd={range.end}
+          quincenaNumber={range.number}
           selectedDate={selectedDate}
-          onPreviousWeek={handlePreviousWeek}
-          onNextWeek={handleNextWeek}
-          onSelectedDateChange={setWeekFromDate}
+          onPrevious={() => moveTo(-1)}
+          onNext={() => moveTo(1)}
+          onSelectedDateChange={setQuincenaFromDate}
         />
       }
       filterDebounce={300}

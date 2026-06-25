@@ -19,19 +19,19 @@ import {
   Wallet,
   NotebookPen,
   FileStack,
-  Building,
-  Coins,
-  GitBranch,
-  AlertTriangle,
-  CalendarDays,
-  ListChecks,
-  Mail,
-  LineChart,
-  Target,
-  CalendarCheck,
   UserRound,
   Factory,
   HandCoins,
+  Coins,
+  CalendarDays,
+  LineChart,
+  ListChecks,
+  CalendarCheck,
+  Building,
+  GitBranch,
+  AlertTriangle,
+  Target,
+  Mail,
   MessageCircle,
   Phone,
   Settings,
@@ -203,7 +203,13 @@ import {
 } from "@/app/resources/configuracion/tipos-solicitud";
 import RecepcionesList from "@/app/resources/constructora/recepciones/list";
 import DashboardCrmList from "@/app/resources/crm/crm-dashboard/list";
-import TarjasList from "@/app/resources/constructora/tarjas/list";
+import {
+  TarjaList,
+  TarjaPanel,
+  TarjaCreate,
+  TarjaEdit,
+  TarjaShow,
+} from "@/app/resources/constructora/tarjas";
 import {
   NominaList,
   NominaCreate,
@@ -733,8 +739,11 @@ const AdminApp = () => {
       />
       <Resource
         name="tarjas"
-        list={TarjasList}
-        recordRepresentation="id"
+        list={TarjaList}
+        create={TarjaCreate}
+        edit={TarjaEdit}
+        show={TarjaShow}
+        recordRepresentation="descripcion"
         icon={ClipboardCheck}
         options={{ label: "Tarjas" }}
       />
@@ -945,6 +954,7 @@ const AdminApp = () => {
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/parte-diario/panel" element={<ParteDiarioPanel />} />
+        <Route path="/tarjas/panel" element={<TarjaPanel />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />
         <Route path="/crm/oportunidades/:id/accion_agendar" element={<CRMOportunidadAccionAgendar />} />

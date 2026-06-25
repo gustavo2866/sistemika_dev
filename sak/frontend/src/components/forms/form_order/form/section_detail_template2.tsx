@@ -60,6 +60,7 @@ export type SectionDetailTemplate2Props = {
   defaultOpen?: boolean;
   focusSelector?: string;
   focusFirstRowSignal?: number;
+  addRequestSignal?: number;
   activateOnFocusFirstRow?: boolean;
   maxHeightClassName?: string;
   onActiveRowChange?: (activeIndex: number | null) => void;
@@ -72,7 +73,10 @@ export type SectionDetailTemplate2Props = {
   showExpandAction?: boolean;
   variant?: "compact" | "table";
   addButtonLabel?: string;
+  hideFooterAddButton?: boolean;
   detailIteratorClassName?: string;
+  detailContainerClassName?: string;
+  cardClassName?: string;
   canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
 };
 
@@ -256,6 +260,7 @@ export const SectionDetailTemplate2 = ({
   defaultOpen = true,
   focusSelector,
   focusFirstRowSignal,
+  addRequestSignal,
   activateOnFocusFirstRow = true,
   maxHeightClassName,
   onActiveRowChange,
@@ -268,7 +273,10 @@ export const SectionDetailTemplate2 = ({
   showExpandAction = false,
   variant = "compact",
   addButtonLabel = "Agregar",
+  hideFooterAddButton = false,
   detailIteratorClassName,
+  detailContainerClassName,
+  cardClassName,
   canDeleteRow,
 }: SectionDetailTemplate2Props) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -278,6 +286,7 @@ export const SectionDetailTemplate2 = ({
   const activeRow = useActiveRow({ name: detailsSource, focusSelector });
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const previousFocusFirstRowSignalRef = useRef(focusFirstRowSignal);
+  const previousAddRequestSignalRef = useRef(addRequestSignal);
   const disableAdd = readOnly || activeRow.activeIndex != null;
   const detalles = useWatch({ name: detailsSource }) as unknown[] | undefined;
   const hasDetails = (detalles ?? []).length > 0;
@@ -417,16 +426,23 @@ export const SectionDetailTemplate2 = ({
 
   const getDefaultValues = () => (defaults ? defaults() : {});
 
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     if (readOnly) return;
     const current = (getValues(detailsSource) as unknown[]) ?? [];
-    const nextItem = getDefaultValues();
+    const nextItem = defaults ? defaults() : {};
     activeRow.requestAutoActivate();
     setValue(detailsSource, [...current, nextItem], {
       shouldDirty: true,
       shouldValidate: true,
     });
-  };
+  }, [activeRow, defaults, detailsSource, getValues, readOnly, setValue]);
+
+  useEffect(() => {
+    if (addRequestSignal == null) return;
+    if (previousAddRequestSignalRef.current === addRequestSignal) return;
+    previousAddRequestSignalRef.current = addRequestSignal;
+    handleAdd();
+  }, [addRequestSignal, handleAdd]);
 
   const isTableVariant = variant === "table";
 
@@ -597,11 +613,12 @@ export const SectionDetailTemplate2 = ({
       onToggle={() => setIsOpen((v) => !v)}
       headerTabIndex={-1}
       headerActions={headerActions}
-      cardClassName={
+      cardClassName={cn(
         isTableVariant
           ? "overflow-hidden rounded-lg border-slate-200 bg-white pt-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)]"
-          : "pt-3"
-      }
+          : "pt-3",
+        cardClassName,
+      )}
       contentClassName={isTableVariant ? "px-0 pt-0 pb-0" : "px-2 pt-0 pb-1"}
       headerClassName={isTableVariant ? "px-4 pb-3" : undefined}
       titleClassName={isTableVariant ? "mb-0 text-base font-bold" : "mb-0"}
@@ -645,6 +662,7 @@ export const SectionDetailTemplate2 = ({
                 ? "w-full overflow-x-hidden px-0 pb-0 pt-0 md:overflow-y-auto"
                 : "w-full rounded-md border border-border px-2 pb-2 pt-0 md:overflow-y-auto",
               maxHeightClassName ?? "md:max-h-64",
+              detailContainerClassName,
             )}
           >
             <ArrayInput source={detailsSource} label={false}>
@@ -658,7 +676,7 @@ export const SectionDetailTemplate2 = ({
                   )
                 }
                 addButton={
-                  isTableVariant ? (
+                  isTableVariant || hideFooterAddButton ? (
                     <div />
                   ) : (
                     <DetailFooterButtons
