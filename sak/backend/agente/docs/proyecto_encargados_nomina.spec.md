@@ -49,3 +49,7 @@ Es valido que `crm_mensajes.contacto_id` sea distinto de `crm_oportunidades.cont
 - Usa el flujo comun para resolver el proyecto habilitado.
 - El guardado debe mantener `crm_mensajes.contacto_id` como el contacto que reporto.
 - El menu de ultimos pedidos debe filtrar por oportunidad/proyecto y por `contacto_id`.
+
+## 7. Resources
+
+- Actualizar resources de `parteDiario`, `pedidoObra` y `tarja` para incluir `contacto_id`.
