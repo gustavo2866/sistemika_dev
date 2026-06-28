@@ -66,6 +66,18 @@ const filters = buildListFilters(
     {
       type: "reference",
       referenceProps: {
+        source: "contacto_id",
+        reference: "crm/contactos",
+        label: "Contacto",
+      },
+      selectProps: {
+        optionText: "nombre_completo",
+        emptyText: "Todos",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
         source: "oportunidad_id",
         reference: "crm/oportunidades",
         label: "Oportunidad",
@@ -232,7 +244,7 @@ export const PedidoList = ({
       <ResponsiveDataTable
         rowClick="edit"
         compact={embedded}
-        mobileConfig={{ primaryField: "titulo", secondaryFields: ["estado", "origen", "oportunidad_id"] }}
+        mobileConfig={{ primaryField: "titulo", secondaryFields: ["estado", "origen", "oportunidad_id", "contacto_id"] }}
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
         <TextListColumn source="estado" label="Estado" className="w-[110px]">
@@ -244,6 +256,11 @@ export const PedidoList = ({
         <TextListColumn source="oportunidad_id" label="Oportunidad" className="w-[180px]">
           <ReferenceField source="oportunidad_id" reference="crm/oportunidades" link={false}>
             <ListText source="titulo" className="whitespace-normal break-words" />
+          </ReferenceField>
+        </TextListColumn>
+        <TextListColumn source="contacto_id" label="Contacto" className="w-[170px]">
+          <ReferenceField source="contacto_id" reference="crm/contactos" link={false}>
+            <ListText source="nombre_completo" className="whitespace-normal break-words" />
           </ReferenceField>
         </TextListColumn>
         <TextListColumn source="origen" label="Origen" className="w-[90px]">

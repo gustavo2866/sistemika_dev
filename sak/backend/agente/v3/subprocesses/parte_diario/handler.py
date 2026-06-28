@@ -21,7 +21,7 @@ from agente.v3.subprocesses.parte_diario.state import (
     ParteDiarioV3State,
 )
 from app.db import engine
-from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, ParteDiario, Proyecto
+from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, ParteDiario, Proyecto, ProyectoEncargado
 from app.services.parte_diario_service import parte_diario_service
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,10 @@ class ParteDiarioSubprocess:
         with Session(engine) as session:
             process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))
             estados = process._load_estados()
-            nominas_proyecto, _ = process._load_nominas(int(state.proyecto_id or 0))
+            nominas_proyecto, _ = process._load_nominas(
+                int(state.proyecto_id or 0),
+                contacto_id=state.contacto_id,
+            )
             try:
                 plan = await _llm_for_stage(self._llm, "carga").interpret_turn(
                     message.text or "",
@@ -177,7 +180,7 @@ class ParteDiarioSubprocess:
             )
         state.etapa = "seleccionar_fecha"
         state.fecha_menu_pendiente = False
-        state.opciones_fecha = self._build_fecha_options(int(state.proyecto_id))
+        state.opciones_fecha = self._build_fecha_options(int(state.proyecto_id), contacto_id=state.contacto_id)
         return self._active_result(
             context,
             state,
@@ -259,7 +262,11 @@ class ParteDiarioSubprocess:
         error = self._prepare_cargar_fecha(state)
         if error:
             state.etapa = "seleccionar_fecha"
-            state.opciones_fecha = self._build_fecha_options(int(state.proyecto_id or 0)) if state.proyecto_id else []
+            state.opciones_fecha = (
+                self._build_fecha_options(int(state.proyecto_id or 0), contacto_id=state.contacto_id)
+                if state.proyecto_id
+                else []
+            )
             return self._active_result(
                 context,
                 state,
@@ -377,6 +384,7 @@ class ParteDiarioSubprocess:
             )
 
         payload = _save_payload(draft, cerrar_parte=False)
+        payload["contacto_id"] = int(state.contacto_id or 0)
         started = time.perf_counter()
         with Session(engine) as session:
             try:
@@ -448,6 +456,7 @@ class ParteDiarioSubprocess:
             mapped_text = forced_text or _map_menu_text(message.text or "", state)
             process_context = SimpleNamespace(
                 oportunidad_id=state.oportunidad_id,
+                contacto_id=state.contacto_id,
                 is_project=True,
                 active_process="parte_diario",
                 process_state=state.parte_state,
@@ -456,6 +465,8 @@ class ParteDiarioSubprocess:
             process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, state.etapa))
             process_result = await process.handle(process_context)
             payload = dict(process_result.payload or {})
+            if state.contacto_id:
+                payload["contacto_id"] = int(state.contacto_id)
 
             if payload.get("parte_listo"):
                 try:
@@ -595,6 +606,33 @@ class ParteDiarioSubprocess:
             ]
             options: list[ParteDiarioOption] = []
             for contact in matched_contacts:
+                asignaciones = session.exec(
+                    select(ProyectoEncargado)
+                    .where(ProyectoEncargado.contacto_id == contact.id)
+                    .where(ProyectoEncargado.activo.is_(True))
+                    .where(ProyectoEncargado.deleted_at.is_(None))
+                ).all()
+                for asignacion in asignaciones:
+                    proyecto = session.get(Proyecto, asignacion.proyecto_id)
+                    if (
+                        proyecto is None
+                        or proyecto.id is None
+                        or proyecto.oportunidad_id is None
+                        or proyecto.deleted_at is not None
+                        or contact.id is None
+                    ):
+                        continue
+                    options.append(
+                        ParteDiarioOption(
+                            opcion=len(options) + 1,
+                            nombre=proyecto.nombre or f"Obra {proyecto.id}",
+                            contacto_id=int(contact.id),
+                            oportunidad_id=int(proyecto.oportunidad_id),
+                            proyecto_id=int(proyecto.id),
+                        )
+                    )
+                if asignaciones:
+                    continue
                 oportunidades = session.exec(
                     select(CRMOportunidad).where(CRMOportunidad.contacto_id == contact.id)
                 ).all()
@@ -624,16 +662,27 @@ class ParteDiarioSubprocess:
             return options
 
     @staticmethod
-    def _build_fecha_options(proyecto_id: int) -> list[ParteDiarioFechaOption]:
+    def _build_fecha_options(
+        proyecto_id: int,
+        *,
+        contacto_id: int | None = None,
+    ) -> list[ParteDiarioFechaOption]:
         today = _today()
         dates = [today - timedelta(days=offset) for offset in range(7)]
         with Session(engine) as session:
-            partes = session.exec(
+            base_query = (
                 select(ParteDiario)
                 .where(ParteDiario.idproyecto == proyecto_id)
                 .where(ParteDiario.fecha.in_(dates))
                 .where(ParteDiario.deleted_at.is_(None))
-            ).all()
+            )
+            partes = (
+                session.exec(base_query.where(ParteDiario.contacto_id == contacto_id)).all()
+                if contacto_id
+                else session.exec(base_query).all()
+            )
+            if contacto_id and not partes:
+                partes = session.exec(base_query.where(ParteDiario.contacto_id.is_(None))).all()
         by_date = {parte.fecha: parte for parte in partes}
         options: list[ParteDiarioFechaOption] = []
         for index, target_date in enumerate(dates, start=1):

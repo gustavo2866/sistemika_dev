@@ -9,6 +9,7 @@ from sqlmodel import Field, Relationship
 from .base import Base
 
 if TYPE_CHECKING:
+    from .crm.contacto import CRMContacto
     from .nomina import Nomina
     from .parte_diario_estado import ParteDiarioEstado
 
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 class EstadoParteDiario(str, Enum):
     BORRADOR = "borrador"   # generado por el agente, editable
     CERRADO = "cerrado"     # cerrado por el administrador, solo lectura para el agente
+    REGISTRADO = "registrado"  # tarja generada desde el parte diario
 
 
 class OrigenDetalle(str, Enum):
@@ -28,7 +30,7 @@ class ParteDiario(Base, table=True):
 
     __tablename__ = "partes_diario"
     __table_args__ = (
-        UniqueConstraint("idproyecto", "fecha", name="uq_partes_diario_proyecto_fecha"),
+        UniqueConstraint("idproyecto", "fecha", "contacto_id", name="uq_partes_diario_proyecto_fecha_contacto"),
     )
 
     __searchable_fields__: ClassVar[List[str]] = ["descripcion"]
@@ -37,6 +39,11 @@ class ParteDiario(Base, table=True):
     idproyecto: int = Field(
         foreign_key="proyectos.id",
         description="Proyecto asociado al parte diario",
+    )
+    contacto_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_contactos.id",
+        description="Contacto encargado que reporto el parte diario",
     )
     fecha: date = Field(
         description="Fecha del parte diario",
@@ -61,6 +68,7 @@ class ParteDiario(Base, table=True):
         back_populates="parte_diario",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    contacto: Optional["CRMContacto"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
         return f"ParteDiario(id={self.id}, proyecto={self.idproyecto}, fecha={self.fecha})"

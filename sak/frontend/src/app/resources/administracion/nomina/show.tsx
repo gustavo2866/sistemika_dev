@@ -29,6 +29,9 @@ export const NominaShow = () => (
       <ReferenceField source="idproyecto" reference="proyectos" label="Proyecto">
         <TextField source="nombre" />
       </ReferenceField>
+      <ReferenceField source="encargado_contacto_id" reference="crm/contactos" label="Encargado">
+        <TextField source="nombre_completo" />
+      </ReferenceField>
       <NumberField
         source="salario_mensual"
         label="Salario Mensual"

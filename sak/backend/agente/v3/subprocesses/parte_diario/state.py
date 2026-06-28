@@ -161,13 +161,16 @@ class ParteDiarioV3State:
         self.etapa = "cargar_fecha"
 
     def draft(self) -> ParteDiarioDraftState:
-        return ParteDiarioDraftState.from_dict(
+        draft = ParteDiarioDraftState.from_dict(
             self.parte_state,
             oportunidad_id=int(self.oportunidad_id or 0),
             idproyecto=self.proyecto_id,
         )
+        draft.contacto_id = self.contacto_id
+        return draft
 
     def set_draft(self, draft: ParteDiarioDraftState) -> None:
+        draft.contacto_id = self.contacto_id
         self.parte_state = draft.to_dict()
 
 

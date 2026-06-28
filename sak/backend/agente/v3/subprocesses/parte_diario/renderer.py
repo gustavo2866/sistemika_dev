@@ -153,6 +153,8 @@ def _candidate_label(candidate: NominaItem) -> str:
         details.append(f"legajo {candidate.nro_legajo}")
     if candidate.fuera_de_proyecto and candidate.nombre_proyecto:
         details.append(f"asignado a {candidate.nombre_proyecto}")
+    if candidate.encargado_nombre:
+        details.append(f"encargado {candidate.encargado_nombre}")
     suffix = f" ({', '.join(details)})" if details else ""
     return f"{candidate.nombre_completo}{suffix}"
 
@@ -178,7 +180,7 @@ def preguntar_conflicto(conflict: ConflictoNovedad) -> str:
 def mostrar_nomina(items: list[NominaItem]) -> str:
     if not items:
         return "No hay personal activo asignado a la obra."
-    return "*NOMINA ACTIVA*\n" + "\n".join(f"- {item.nombre_completo}" for item in items)
+    return "*NOMINA ACTIVA*\n" + "\n".join(f"- {_candidate_label(item)}" for item in items)
 
 
 def parte_cerrado(fecha: str) -> str:

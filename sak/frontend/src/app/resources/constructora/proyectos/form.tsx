@@ -13,11 +13,12 @@ import { useFormContext, useWatch } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 
-import { CRMChatShow } from "@/app/resources/crm/crm-chat";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
 import { PedidoList } from "@/app/resources/constructora/pedidos";
+import { ProyectoEncargadoList } from "@/app/resources/constructora/proyecto-encargados";
 import { ProyectoAvanceList } from "@/app/resources/constructora/proyecto-avance";
 import { ProyPresupuestoList } from "@/app/resources/constructora/proy-presupuesto/List";
+import { NominaList } from "@/app/resources/administracion/nomina";
 import { PoOrderList } from "@/app/resources/po/po-orders/List";
 import { CreateButton } from "@/components/create-button";
 import { appendFilterParam, buildOportunidadFilter } from "@/lib/oportunidad-context";
@@ -76,7 +77,8 @@ type ProyectoDesktopSectionId =
   | "certificados"
   | "ordenes"
   | "pedidos"
-  | "chat"
+  | "nomina"
+  | "encargados"
   | "eventos";
 
 type ProyectoSectionVariant = "stacked" | "panel";
@@ -89,7 +91,8 @@ const PROYECTO_DESKTOP_SECTIONS: Array<{
   { id: "certificados", label: "Certificados" },
   { id: "ordenes", label: "Ordenes" },
   { id: "pedidos", label: "Pedidos" },
-  { id: "chat", label: "Chat" },
+  { id: "nomina", label: "Nomina" },
+  { id: "encargados", label: "Encargados" },
   { id: "eventos", label: "Eventos" },
 ];
 
@@ -237,25 +240,30 @@ const ProyectoEncargadoField = () => {
   );
 };
 
-const ProyectoChatSection = ({
+const ProyectoNominaSection = ({
   variant = "stacked",
 }: {
   variant?: ProyectoSectionVariant;
 }) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
-  const oportunidadId = resolveNumericId(record?.oportunidad_id);
+  const proyectoId = resolveNumericId(record?.id);
 
-  const content = oportunidadId ? (
-    <CRMChatShow forcedId={`op-${oportunidadId}`} embedded />
+  const content = proyectoId ? (
+    <NominaList
+      embedded
+      filter={{ idproyecto: proyectoId }}
+      storeKey={`nominas-proyecto-${proyectoId}`}
+      perPage={25}
+    />
   ) : (
-    <ProyectoDesktopEmptyState message="El chat estara disponible despues de guardar el proyecto y generar la oportunidad." />
+    <ProyectoDesktopEmptyState message="La nomina estara disponible despues de guardar el proyecto." />
   );
 
   if (variant === "panel") {
     return (
       <ProyectoDesktopPanel
-        title="Chat"
-        description="Conversacion y seguimiento contextual vinculado a la oportunidad del proyecto."
+        title="Nomina"
+        description="Personal asignado al proyecto."
       >
         {content}
       </ProyectoDesktopPanel>
@@ -264,9 +272,49 @@ const ProyectoChatSection = ({
 
   return (
     <SectionBaseTemplate
-      title="Chat"
+      title="Nomina"
       defaultOpen={false}
-      persistKey={`constructora-proyectos-chat-${record?.id ?? "nuevo"}`}
+      persistKey={`constructora-proyectos-nomina-${record?.id ?? "nuevo"}`}
+      main={content}
+    />
+  );
+};
+
+const ProyectoEncargadosSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
+  const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
+  const proyectoId = resolveNumericId(record?.id);
+
+  const content = proyectoId ? (
+    <ProyectoEncargadoList
+      embedded
+      filter={{ proyecto_id: proyectoId }}
+      storeKey={`proyecto-encargados-proyecto-${proyectoId}`}
+      perPage={25}
+    />
+  ) : (
+    <ProyectoDesktopEmptyState message="Los encargados estaran disponibles despues de guardar el proyecto." />
+  );
+
+  if (variant === "panel") {
+    return (
+      <ProyectoDesktopPanel
+        title="Encargados"
+        description="Contactos habilitados para reportar partes diarios y pedidos de obra."
+      >
+        {content}
+      </ProyectoDesktopPanel>
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title="Encargados"
+      defaultOpen={false}
+      persistKey={`constructora-proyectos-encargados-${record?.id ?? "nuevo"}`}
       main={content}
     />
   );
@@ -886,8 +934,10 @@ const ProyectoDesktopSectionsLayout = ({
         return <ProyectoOrdenesSection variant="panel" />;
       case "pedidos":
         return <ProyectoPedidosSection variant="panel" />;
-      case "chat":
-        return <ProyectoChatSection variant="panel" />;
+      case "nomina":
+        return <ProyectoNominaSection variant="panel" />;
+      case "encargados":
+        return <ProyectoEncargadosSection variant="panel" />;
       case "eventos":
         return <ProyectoEventosSection variant="panel" />;
       default:
@@ -972,7 +1022,8 @@ export const ProyectoForm = () => {
           <ProyectoCertificadosSection />
           <ProyectoOrdenesSection />
           <ProyectoPedidosSection />
-          <ProyectoChatSection />
+          <ProyectoNominaSection />
+          <ProyectoEncargadosSection />
           <ProyectoEventosSection />
         </>
       )}

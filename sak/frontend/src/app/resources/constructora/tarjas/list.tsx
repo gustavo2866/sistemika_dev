@@ -43,6 +43,19 @@ const LIST_FILTERS = buildListFilters(
       },
     },
     {
+      type: "reference",
+      referenceProps: {
+        source: "contacto_id",
+        reference: "crm/contactos",
+        label: "Contacto",
+      },
+      selectProps: {
+        optionText: "nombre_completo",
+        emptyText: "Todos",
+        className: "w-[170px] sm:w-[210px]",
+      },
+    },
+    {
       type: "select",
       props: {
         source: "estado",
@@ -61,7 +74,7 @@ const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const LIST_MOBILE_CONFIG = {
   primaryField: "idproyecto",
-  secondaryFields: ["fechainicio", "fechafinal", "estado"],
+  secondaryFields: ["contacto_id", "fechainicio", "fechafinal", "estado"],
 };
 
 type TarjaListProps = {
@@ -145,6 +158,11 @@ export const TarjaList = ({
       <TextListColumn source="idproyecto" label="Proyecto" className="w-[180px]">
         <ReferenceField source="idproyecto" reference="proyectos" link={false}>
           <ListText source="nombre" className="whitespace-normal break-words" />
+        </ReferenceField>
+      </TextListColumn>
+      <TextListColumn source="contacto_id" label="Contacto" className="w-[180px]">
+        <ReferenceField source="contacto_id" reference="crm/contactos" link={false}>
+          <ListText source="nombre_completo" className="whitespace-normal break-words" />
         </ReferenceField>
       </TextListColumn>
       <DateListColumn source="fechainicio" label="Inicio" className="w-[86px]">

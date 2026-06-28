@@ -1,9 +1,18 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { fetchUtils, required, useNotify, useWrappedSource } from "ra-core";
+import {
+  fetchUtils,
+  required,
+  useCreatePath,
+  useNotify,
+  useRecordContext,
+  useResourceContext,
+  useWrappedSource,
+} from "ra-core";
 import { useCallback, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 import { PlusCircle, UserPlus } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
@@ -17,11 +26,13 @@ import {
   FormSelect,
   FormSelectFijo,
   FormText,
+  FormOrderHeaderMenuActions,
   resolveNumericId,
   SectionDetailColumn,
   SectionDetailFieldsProps,
   SectionDetailTemplate2,
   SectionBaseTemplate,
+  useConfirmDelete,
 } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
@@ -33,6 +44,7 @@ import {
   getParteDiarioDetalleDefaults,
   parteDiarioSchema,
   VALIDATION_RULES,
+  type ParteDiarioRecord,
   type ParteDiarioFormValues,
 } from "./model";
 
@@ -83,29 +95,97 @@ const getNominaLabel = (record?: Record<string, unknown>) => {
 };
 
 const ParteDiarioMainFields = () => (
-  <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_130px_minmax(220px,0.9fr)] md:items-start">
+  <div className="grid gap-2 md:grid-cols-[190px_210px_120px] md:items-start">
     <ReferenceInput source="idproyecto" reference="proyectos" label="Proyecto">
-      <FormSelect
+      <FormSelectFijo
         optionText="nombre"
-        widthClass="w-full"
+        fixedWidth="190px"
+        widthClass="w-full md:w-[190px]"
         emptyText="Seleccionar"
         validate={required()}
+      />
+    </ReferenceInput>
+    <ReferenceInput source="contacto_id" reference="crm/contactos" label="Contacto">
+      <FormSelectFijo
+        optionText="nombre_completo"
+        fixedWidth="210px"
+        widthClass="w-full md:w-[210px]"
+        emptyText="Sin contacto"
       />
     </ReferenceInput>
     <FormDate
       source="fecha"
       label="Fecha"
       validate={required()}
-      widthClass="w-full md:w-[130px]"
+      widthClass="w-full md:w-[120px]"
     />
+  </div>
+);
+
+const ParteDiarioOptionalFields = () => (
+  <div className="mt-1 rounded-md border border-muted/60 bg-muted/30 p-2">
     <FormText
       source="descripcion"
       label="Descripcion"
-      widthClass="w-full"
+      widthClass="w-full md:w-[260px]"
       maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
     />
   </div>
 );
+
+const ParteDiarioHeaderSection = ({ returnTo }: { returnTo?: string | null }) => {
+  const record = useRecordContext<ParteDiarioRecord>();
+  const resource = useResourceContext();
+  const createPath = useCreatePath();
+  const navigate = useNavigate();
+  const canDelete = Boolean(record?.id && resource);
+  const { confirmDelete, setConfirmDelete, deleting, handleDelete } = useConfirmDelete({
+    record,
+    resource,
+    onSuccess: () => {
+      if (returnTo) {
+        navigate(returnTo, { replace: true });
+        return;
+      }
+      if (resource) {
+        navigate(createPath({ resource, type: "list" }));
+      }
+    },
+  });
+
+  return (
+    <>
+      <SectionBaseTemplate
+        title="Informacion general"
+        main={<ParteDiarioMainFields />}
+        optional={<ParteDiarioOptionalFields />}
+        actions={
+          canDelete ? (
+            <FormOrderHeaderMenuActions
+              canDelete
+              onDelete={() => setConfirmDelete(true)}
+            />
+          ) : null
+        }
+        defaultOpen
+      />
+      {canDelete ? (
+        <Confirm
+          isOpen={confirmDelete}
+          loading={deleting}
+          title="Eliminar registro"
+          content="Seguro que deseas eliminar este registro?"
+          confirm="Eliminar"
+          confirmColor="warning"
+          cancel="Cancelar"
+          overlayClassName="bg-transparent backdrop-blur-0"
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+        />
+      ) : null}
+    </>
+  );
+};
 
 const ParteDiarioDetalleFields = () => {
   const notify = useNotify();
@@ -467,8 +547,10 @@ const ParteDiarioResumenTotales = ({
 
 export const ParteDiarioForm = ({
   defaultValues = PARTE_DIARIO_DEFAULTS,
+  returnTo,
 }: {
   defaultValues?: Partial<ParteDiarioFormValues>;
+  returnTo?: string | null;
 } = {}) => (
   <SimpleForm<ParteDiarioFormValues>
     className="w-full max-w-5xl"
@@ -477,11 +559,7 @@ export const ParteDiarioForm = ({
     defaultValues={{ ...PARTE_DIARIO_DEFAULTS, ...defaultValues }}
   >
     <FormErrorSummary />
-    <SectionBaseTemplate
-      title="Informacion general"
-      main={<ParteDiarioMainFields />}
-      defaultOpen
-    />
+    <ParteDiarioHeaderSection returnTo={returnTo} />
     <ParteDiarioDetalleFields />
   </SimpleForm>
 );

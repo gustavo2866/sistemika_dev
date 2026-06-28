@@ -23,8 +23,8 @@ const ParteDiarioCreateTitle = () => (
       <NotebookPen className="h-4 w-4" />
       Registrar parte diario
     </span>
-    <Badge variant="secondary" className={getEstadoParteBadgeClass("pendiente")}>
-      {getEstadoParteLabel("pendiente")}
+    <Badge variant="secondary" className={getEstadoParteBadgeClass("borrador")}>
+      {getEstadoParteLabel("borrador")}
     </Badge>
   </div>
 );
@@ -39,16 +39,20 @@ export const ParteDiarioCreate = ({
   const returnTo = params.get("returnTo");
   const idproyectoParam = params.get("idproyecto");
   const fechaParam = params.get("fecha");
+  const contactoIdParam = params.get("contacto_id");
   const idproyecto = idproyectoParam ? Number(idproyectoParam) : undefined;
+  const contactoId = contactoIdParam ? Number(contactoIdParam) : undefined;
   const defaultValues = {
     ...PARTE_DIARIO_DEFAULTS,
     ...(Number.isFinite(idproyecto) && idproyecto ? { idproyecto } : {}),
+    ...(Number.isFinite(contactoId) && contactoId ? { contacto_id: contactoId } : {}),
     ...(fechaParam ? { fecha: fechaParam } : {}),
   };
 
   return (
     <Create
       redirect={redirect ?? false}
+      record={defaultValues}
       title={<ParteDiarioCreateTitle />}
       className="max-w-5xl w-full"
       transform={normalizeParteDiarioPayload}

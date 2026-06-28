@@ -138,6 +138,11 @@ import {
   ProyectoShow,
 } from "@/app/resources/constructora/proyectos";
 import {
+  ProyectoEncargadoList,
+  ProyectoEncargadoCreate,
+  ProyectoEncargadoEdit,
+} from "@/app/resources/constructora/proyecto-encargados";
+import {
   ProyFaseList,
   ProyFaseCreate,
   ProyFaseEdit,
@@ -766,6 +771,15 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={ListChecks}
         options={{ label: "Estados Parte Diario" }}
+      />
+      <Resource
+        name="proyecto-encargados"
+        list={ProyectoEncargadoList}
+        create={ProyectoEncargadoCreate}
+        edit={ProyectoEncargadoEdit}
+        recordRepresentation="id"
+        icon={UserRound}
+        options={{ label: "Encargados de Proyecto" }}
       />
       <Resource
         name="constructora/pedidos"

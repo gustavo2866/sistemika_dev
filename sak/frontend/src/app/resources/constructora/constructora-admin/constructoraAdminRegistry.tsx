@@ -7,6 +7,11 @@ import {
   ProyectoList,
 } from "@/app/resources/constructora/proyectos";
 import {
+  ProyectoEncargadoCreate,
+  ProyectoEncargadoEdit,
+  ProyectoEncargadoList,
+} from "@/app/resources/constructora/proyecto-encargados";
+import {
   NominaCreate,
   NominaEdit,
   NominaList,
@@ -21,6 +26,15 @@ export const CONSTRUCTORA_ADMIN_ITEMS: SetupItem[] = [
     listComponent: ProyectoList,
     createComponent: ProyectoCreate,
     editComponent: ProyectoEdit,
+  },
+  {
+    key: "proyecto-encargados",
+    label: "Encargados",
+    description: "Administra los contactos autorizados por proyecto.",
+    resource: "proyecto-encargados",
+    listComponent: ProyectoEncargadoList,
+    createComponent: ProyectoEncargadoCreate,
+    editComponent: ProyectoEncargadoEdit,
   },
   {
     key: "nominas",

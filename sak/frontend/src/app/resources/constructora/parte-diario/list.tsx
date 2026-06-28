@@ -48,6 +48,18 @@ const filters = buildListFilters(
       },
     },
     {
+      type: "reference",
+      referenceProps: {
+        source: "contacto_id",
+        reference: "crm/contactos",
+        label: "Contacto",
+      },
+      selectProps: {
+        optionText: "nombre_completo",
+        emptyText: "Todos",
+      },
+    },
+    {
       type: "select",
       props: {
         source: "estado",
@@ -63,7 +75,7 @@ const filters = buildListFilters(
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 const listMobileConfig = {
   primaryField: "fecha",
-  secondaryFields: ["idproyecto", "estado", "descripcion"],
+  secondaryFields: ["idproyecto", "contacto_id", "estado", "descripcion"],
 };
 
 type ParteDiarioListProps = {
@@ -163,6 +175,11 @@ export const ParteDiarioList = ({
         <ListColumn source="idproyecto" label="Proyecto" className="w-[180px]">
           <ReferenceField source="idproyecto" reference="proyectos" link={false}>
             <ListText source="nombre" className="whitespace-normal break-words" />
+          </ReferenceField>
+        </ListColumn>
+        <ListColumn source="contacto_id" label="Contacto" className="w-[180px]">
+          <ReferenceField source="contacto_id" reference="crm/contactos" link={false}>
+            <ListText source="nombre_completo" className="whitespace-normal break-words" />
           </ReferenceField>
         </ListColumn>
         <ListColumn source="estado" label="Estado" className="w-[110px]">

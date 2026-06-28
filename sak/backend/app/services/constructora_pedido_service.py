@@ -218,6 +218,8 @@ class ConstructoraPedidoService:
             raise ValueError(f"Pedido {pedido_id} no encontrado")
         if int(pedido.oportunidad_id) != oportunidad_id:
             raise ValueError("El pedido no pertenece a la oportunidad seleccionada")
+        if int(pedido.contacto_id or 0) != contacto_id:
+            raise ValueError("El pedido no pertenece al contacto que reporta")
         estado_actual = pedido.estado.value if hasattr(pedido.estado, "value") else str(pedido.estado)
         if estado_actual != PedidoObraEstado.BORRADOR.value:
             raise ValueError("Solo se puede actualizar un pedido en borrador")

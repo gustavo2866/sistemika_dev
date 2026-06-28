@@ -52,6 +52,7 @@ from app.routers.contrato_router import contrato_router
 from app.routers.centro_costo_router import centro_costo_router
 from app.routers.propietario_router import propietario_router
 from app.routers.proyecto_router import proyecto_router
+from app.routers.proyecto_encargado_router import proyecto_encargado_router
 from app.routers.proyecto_avance_router import proyecto_avance_router
 from app.routers.proy_fase_router import proy_fase_router
 from app.routers.proy_presupuesto_router import proy_presupuesto_router
@@ -236,6 +237,7 @@ app.include_router(po_bandeja_router)
 app.include_router(po_dashboard_router)
 app.include_router(tax_profile_router)
 app.include_router(proyecto_router)
+app.include_router(proyecto_encargado_router)
 app.include_router(proyecto_avance_router)
 app.include_router(proy_fase_router)
 app.include_router(proy_presupuesto_router)

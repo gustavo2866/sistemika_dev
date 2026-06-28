@@ -52,6 +52,17 @@ const optionalNumberFromInputSchema = z.preprocess(
 export type TarjaDetalle = {
   id?: number | string;
   idnomina?: number | null;
+  nomina?: {
+    id?: number | string;
+    nombre?: string | null;
+    apellido?: string | null;
+    dni?: string | null;
+    idproyecto?: number | string | null;
+    proyecto?: {
+      id?: number | string;
+      nombre?: string | null;
+    } | null;
+  } | null;
   fecha?: string | null;
   idestado?: number | null;
   horas?: number | null;
@@ -71,6 +82,7 @@ export type TarjaNovedad = {
 export type Tarja = {
   id?: number | string;
   idproyecto?: number | null;
+  contacto_id?: number | null;
   fechainicio?: string | null;
   fechafinal?: string | null;
   estado?: string | null;
@@ -114,8 +126,9 @@ const tarjaNovedadSchema = z.object({
 
 export const tarjaSchema = z.object({
   idproyecto: numberFromInputSchema.pipe(z.number().int().positive()),
+  contacto_id: optionalIdSchema,
   fechainicio: z.string().min(1),
-  fechafinal: z.string().min(1),
+  fechafinal: z.preprocess(normalizeOptionalString, z.string().optional()),
   estado: z.enum(["borrador", "cerrado"]).default("borrador"),
   descripcion: z.preprocess(
     normalizeOptionalString,
@@ -129,6 +142,7 @@ export type TarjaFormValues = z.infer<typeof tarjaSchema>;
 
 export const TARJA_DEFAULTS: TarjaFormValues = {
   idproyecto: undefined as unknown as number,
+  contacto_id: undefined,
   fechainicio: "",
   fechafinal: "",
   estado: "borrador",
@@ -158,11 +172,14 @@ export const normalizeTarjaPayload = (data: Partial<TarjaFormValues>) => {
   const novedades = data.novedades?.length
     ? data.novedades
     : TARJA_DEFAULTS.novedades;
+  const fechainicio = trimRequiredText(data.fechainicio);
+  const fechafinal = trimRequiredText(data.fechafinal) || fechainicio;
 
   return {
     idproyecto: Number(data.idproyecto),
-    fechainicio: trimRequiredText(data.fechainicio),
-    fechafinal: trimRequiredText(data.fechafinal),
+    contacto_id: data.contacto_id ? Number(data.contacto_id) : null,
+    fechainicio,
+    fechafinal,
     estado: data.estado === "cerrado" ? "cerrado" : "borrador",
     descripcion: trimNullableText(data.descripcion),
     detalles: (data.detalles ?? []).map((detalle) => ({

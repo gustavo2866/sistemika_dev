@@ -114,6 +114,12 @@ export const ParteDiarioShow = () => (
               <TextField source="nombre" />
             </ReferenceField>
           </div>
+          <div className="md:col-span-2">
+            <span className="text-xs font-medium text-muted-foreground block">Contacto</span>
+            <ReferenceField source="contacto_id" reference="crm/contactos">
+              <TextField source="nombre_completo" />
+            </ReferenceField>
+          </div>
         </div>
         <div>
           <span className="text-xs font-medium text-muted-foreground block">Descripción</span>

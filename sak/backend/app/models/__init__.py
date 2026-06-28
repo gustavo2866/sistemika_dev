@@ -62,6 +62,7 @@ from .tipo_solicitud import TipoSolicitud
 from .centro_costo import CentroCosto
 from .propietario import Propietario
 from .proyecto import Proyecto
+from .proyecto_encargado import ProyectoEncargado
 from .proyecto_avance import ProyectoAvance
 from .proy_fase import ProyFase
 from .proy_presupuesto import ProyPresupuesto
@@ -151,6 +152,7 @@ __all__ = [
     "CentroCosto",
     "Propietario",
     "Proyecto",
+    "ProyectoEncargado",
     "ProyectoAvance",
     "ProyPresupuesto",
     "Nomina",

@@ -9,6 +9,7 @@ from sqlmodel import Field, Relationship
 from .base import Base
 
 if TYPE_CHECKING:
+    from .crm.contacto import CRMContacto
     from .proyecto import Proyecto
 
 
@@ -88,12 +89,18 @@ class Nomina(Base, table=True):
         foreign_key="proyectos.id",
         description="Proyecto asociado al empleado",
     )
+    encargado_contacto_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_contactos.id",
+        description="Contacto encargado al que reporta el empleado",
+    )
     activo: bool = Field(
         default=True,
         description="Indicador de empleado activo en la nomina",
     )
 
     proyecto: Optional["Proyecto"] = Relationship()
+    encargado_contacto: Optional["CRMContacto"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Nomina(id={self.id}, nombre='{self.nombre} {self.apellido}', categoria='{self.categoria}')"

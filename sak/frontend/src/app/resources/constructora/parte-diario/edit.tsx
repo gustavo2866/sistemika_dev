@@ -1,7 +1,6 @@
 "use client";
 
 import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
-import { FormOrderDeleteButton } from "@/components/forms/form_order";
 import { Badge } from "@/components/ui/badge";
 import { useEditContext } from "ra-core";
 import { CalendarDays, Circle, Hash, NotebookPen } from "lucide-react";
@@ -58,12 +57,6 @@ const ParteDiarioEditTitle = () => {
   );
 };
 
-const ParteDiarioEditActions = () => (
-  <div className="flex justify-end">
-    <FormOrderDeleteButton />
-  </div>
-);
-
 export const ParteDiarioEdit = ({
   embedded = false,
   id,
@@ -82,7 +75,7 @@ export const ParteDiarioEdit = ({
       mutationMode="pessimistic"
       title={<ParteDiarioEditTitle />}
       className="max-w-5xl w-full"
-      actions={<ParteDiarioEditActions />}
+      actions={false}
       transform={normalizeParteDiarioPayload}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
@@ -100,7 +93,7 @@ export const ParteDiarioEdit = ({
             }
       }
     >
-      <ParteDiarioForm />
+      <ParteDiarioForm returnTo={returnTo} />
     </Edit>
   );
 };

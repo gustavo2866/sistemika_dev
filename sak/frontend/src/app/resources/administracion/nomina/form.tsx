@@ -78,6 +78,18 @@ const DatosLaboralesFields = () => (
       }}
       widthClass="w-full"
     />
+    <FormReferenceAutocomplete
+      referenceProps={{
+        source: "encargado_contacto_id",
+        reference: "crm/contactos",
+      }}
+      inputProps={{
+        optionText: "nombre_completo",
+        label: "Encargado",
+        placeholder: "Seleccionar",
+      }}
+      widthClass="w-full"
+    />
     <FormDate
       source="fecha_ingreso"
       label="Fecha de ingreso"

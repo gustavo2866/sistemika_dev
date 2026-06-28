@@ -34,6 +34,8 @@ class NominaItem:
     nombre_proyecto: str | None = None
     fuera_de_proyecto: bool = False
     nro_legajo: str | None = None
+    encargado_contacto_id: int | None = None
+    encargado_nombre: str | None = None
 
     @property
     def nombre_completo(self) -> str:
@@ -52,6 +54,8 @@ class NominaItem:
             nombre_proyecto=raw.get("nombre_proyecto"),
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nro_legajo=raw.get("nro_legajo"),
+            encargado_contacto_id=raw.get("encargado_contacto_id"),
+            encargado_nombre=raw.get("encargado_nombre"),
         )
 
 
@@ -160,6 +164,7 @@ class ConflictoNovedad:
 class ParteDiarioState:
     oportunidad_id: int
     idproyecto: int | None = None
+    contacto_id: int | None = None
     fecha: str | None = None
     parte_id: int | None = None
     novedades: list[NovedadPersonal] = field(default_factory=list)
@@ -174,6 +179,7 @@ class ParteDiarioState:
         return {
             "oportunidad_id": self.oportunidad_id,
             "idproyecto": self.idproyecto,
+            "contacto_id": self.contacto_id,
             "fecha": self.fecha,
             "parte_id": self.parte_id,
             "novedades": [item.to_dict() for item in self.novedades],
@@ -197,6 +203,7 @@ class ParteDiarioState:
         return cls(
             oportunidad_id=oportunidad_id,
             idproyecto=data.get("idproyecto") or idproyecto,
+            contacto_id=data.get("contacto_id"),
             fecha=data.get("fecha"),
             parte_id=data.get("parte_id"),
             novedades=[NovedadPersonal.from_dict(item) for item in data.get("novedades") or []],

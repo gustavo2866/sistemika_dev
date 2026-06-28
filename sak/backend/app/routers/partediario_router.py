@@ -1,9 +1,11 @@
 from app.core.nested_crud import NestedCRUD
+from app.models.base import filtrar_respuesta
 from app.core.router import create_generic_router
 from app.db import get_session
 from app.models.nomina import Nomina
 from app.models.partediario import ParteDiario, ParteDiarioDetalle
-from fastapi import Depends, Query
+from app.services.parte_diario_tarja_service import parte_diario_tarja_service
+from fastapi import Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 # Define NestedCRUD for ParteDiario with its nested detalles
@@ -63,3 +65,39 @@ def get_detalles_nomina_proyecto(
         ],
         "total": len(empleados),
     }
+
+
+@parte_diario_router.post("/{parte_id}/abrir")
+def abrir_parte_diario(
+    parte_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        parte = parte_diario_tarja_service.abrir_parte(session, parte_id)
+        return filtrar_respuesta(parte)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@parte_diario_router.post("/{parte_id}/cerrar")
+def cerrar_parte_diario(
+    parte_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        parte = parte_diario_tarja_service.cerrar_parte(session, parte_id)
+        return filtrar_respuesta(parte)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@parte_diario_router.post("/{parte_id}/registrar-tarja")
+def registrar_tarja_desde_parte_diario(
+    parte_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        tarja = parte_diario_tarja_service.registrar_tarja(session, parte_id)
+        return filtrar_respuesta(tarja)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

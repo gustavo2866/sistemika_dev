@@ -132,6 +132,10 @@ class ParteDiarioService:
             raise ValueError("El parte diario tiene resoluciones pendientes")
 
         idproyecto = int(result.get("idproyecto") or 0)
+        contacto_id = int(result.get("contacto_id") or 0)
+        if contacto_id <= 0 and mensaje_id is not None:
+            mensaje = session.get(CRMMensaje, mensaje_id)
+            contacto_id = int(mensaje.contacto_id or 0) if mensaje is not None else 0
         fecha = date.fromisoformat(str(result.get("fecha") or ""))
         raw_novedades = list(result.get("novedades") or [])
         novedades = [item for item in raw_novedades if item.get("idnomina") is not None]
@@ -160,10 +164,17 @@ class ParteDiarioService:
             require_close_rules=target_estado == EstadoParteDiario.CERRADO,
         )
 
-        parte = self._resolve_parte(session, result, idproyecto=idproyecto, fecha=fecha)
+        parte = self._resolve_parte(
+            session,
+            result,
+            idproyecto=idproyecto,
+            fecha=fecha,
+            contacto_id=contacto_id,
+        )
         if parte is None:
             parte = ParteDiario(
                 idproyecto=idproyecto,
+                contacto_id=contacto_id or None,
                 fecha=fecha,
                 estado=target_estado,
                 mensaje_origen_id=mensaje_id,
@@ -173,6 +184,8 @@ class ParteDiarioService:
         else:
             if parte.estado == EstadoParteDiario.CERRADO:
                 raise ValueError("El parte diario ya fue cerrado por el administrador")
+            if contacto_id > 0:
+                parte.contacto_id = contacto_id
             parte.mensaje_origen_id = mensaje_id
             session.add(parte)
             session.flush()
@@ -307,6 +320,7 @@ class ParteDiarioService:
         *,
         idproyecto: int,
         fecha: date,
+        contacto_id: int = 0,
     ) -> ParteDiario | None:
         requested_id = result.get("parte_id_existente")
         if requested_id:
@@ -315,13 +329,21 @@ class ParteDiarioService:
                 raise ValueError("El borrador retomado ya no existe")
             if parte.idproyecto != idproyecto or parte.fecha != fecha:
                 raise ValueError("El borrador retomado no coincide con el proyecto y fecha informados")
+            if contacto_id > 0 and parte.contacto_id not in {None, contacto_id}:
+                raise ValueError("El borrador retomado no corresponde al contacto que reporta")
             return parte
-        return session.exec(
+        base_query = (
             select(ParteDiario)
             .where(ParteDiario.idproyecto == idproyecto)
             .where(ParteDiario.fecha == fecha)
             .where(ParteDiario.deleted_at.is_(None))
-        ).first()
+        )
+        if contacto_id > 0:
+            parte = session.exec(base_query.where(ParteDiario.contacto_id == contacto_id)).first()
+            if parte is not None:
+                return parte
+            return session.exec(base_query.where(ParteDiario.contacto_id.is_(None))).first()
+        return session.exec(base_query).first()
 
     @staticmethod
     def _validate_novedades(

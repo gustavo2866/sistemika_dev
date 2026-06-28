@@ -30,6 +30,7 @@ from app.models import (
     ParteDiarioDetalle,
     ParteDiarioEstado,
     Proyecto,
+    ProyectoEncargado,
     User,
 )
 from app.services.parte_diario_estado_service import seed_parte_diario_estados
@@ -46,7 +47,12 @@ class FakeParteDiarioLLM:
         return "PER"
 
 
-def _message(text: str, *, external_id: str = "wamid-test-1") -> V3InboundMessage:
+def _message(
+    text: str,
+    *,
+    external_id: str = "wamid-test-1",
+    from_address: str = "549111111",
+) -> V3InboundMessage:
     return V3InboundMessage(
         id="msg-1",
         provider="meta",
@@ -54,7 +60,7 @@ def _message(text: str, *, external_id: str = "wamid-test-1") -> V3InboundMessag
         account_ref="account",
         conversation_id="meta:account:549111111",
         external_message_id=external_id,
-        from_address="549111111",
+        from_address=from_address,
         to_address="549999999",
         text=text,
         message_type="text",
@@ -122,15 +128,123 @@ async def test_parte_diario_v3_first_load_resolves_project_and_sets_today(seeded
 
 
 @pytest.mark.asyncio
+async def test_parte_diario_v3_contacto_encargado_un_proyecto_selecciona_automatico(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    principal = CRMContacto(
+        nombre_completo="Contacto principal",
+        telefonos=["549222222"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(principal)
+    db_session.flush()
+    seeded_parte_v3["opportunity"].contacto_id = principal.id
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(TurnPlan(operations=[ParteDiarioOperation(type="sin_novedades")]))
+    )
+
+    result = await process.handle(_message("sin novedades"), V3ConversationContext(conversation_id="conv-asignado"))
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["contacto_id"] == seeded_parte_v3["contact"].id
+    assert result.context.process_state["oportunidad_id"] == seeded_parte_v3["opportunity"].id
+    assert result.context.process_state["proyecto_id"] == seeded_parte_v3["project"].id
+    assert "En que obra" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_contacto_encargado_varios_proyectos_muestra_menu(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    user_id = seeded_parte_v3["contact"].responsable_id
+    principal = CRMContacto(nombre_completo="Principal", telefonos=["549222222"], responsable_id=user_id)
+    db_session.add(principal)
+    db_session.flush()
+    seeded_parte_v3["opportunity"].contacto_id = principal.id
+    second_opportunity = CRMOportunidad(contacto_id=principal.id, responsable_id=user_id, activo=True)
+    db_session.add(second_opportunity)
+    db_session.flush()
+    second_project = Proyecto(nombre="Obra Norte", responsable_id=user_id, oportunidad_id=second_opportunity.id)
+    db_session.add(second_project)
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=second_project.id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("parte diario"), V3ConversationContext(conversation_id="conv-varios"))
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "inicial"
+    assert "En que obra" in (result.reply_text or "")
+    assert "Obra Centro" in (result.reply_text or "")
+    assert "Obra Norte" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_contacto_no_habilitado_no_encuentra_obra(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    contact = CRMContacto(
+        nombre_completo="Sin asignacion",
+        telefonos=["549333333"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(contact)
+    db_session.commit()
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(
+        _message("parte diario", from_address="549333333"),
+        V3ConversationContext(conversation_id="conv-no-habilitado"),
+    )
+
+    assert result.context.active_process is None
+    assert result.metadata["status"] == "obra_not_found"
+    assert "No encontre una obra asociada" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
 async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     db_session: Session,
     monkeypatch,
     seeded_parte_v3,
 ):
     monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 5, 16))
+    other_contact = CRMContacto(
+        nombre_completo="Otro Encargado",
+        telefonos=["549222222"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(other_contact)
+    db_session.flush()
     db_session.add(
         ParteDiario(
             idproyecto=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
             fecha=date(2026, 5, 16),
             estado=EstadoParteDiario.BORRADOR,
         )
@@ -138,8 +252,17 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     db_session.add(
         ParteDiario(
             idproyecto=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
             fecha=date(2026, 5, 15),
             estado=EstadoParteDiario.CERRADO,
+        )
+    )
+    db_session.add(
+        ParteDiario(
+            idproyecto=seeded_parte_v3["project"].id,
+            contacto_id=other_contact.id,
+            fecha=date(2026, 5, 14),
+            estado=EstadoParteDiario.BORRADOR,
         )
     )
     db_session.commit()
@@ -1183,15 +1306,70 @@ async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session:
     parte = db_session.exec(select(ParteDiario)).one()
     assert parte.id == result.metadata["parte_diario_id"]
     assert parte.estado == EstadoParteDiario.BORRADOR
+    assert parte.contacto_id == seeded_parte_v3["contact"].id
     assert parte.mensaje_origen_id is not None
     message = db_session.get(CRMMensaje, parte.mensaje_origen_id)
     assert message is not None
+    assert message.contacto_id == seeded_parte_v3["contact"].id
+    assert message.metadata_json["agent_v3"]["result"]["contacto_id"] == seeded_parte_v3["contact"].id
     assert message.metadata_json["agent_v3"]["result"]["parte_listo"] is True
     assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
     details = db_session.exec(
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
     ).all()
     assert details == []
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_crm_mensaje_contacto_puede_diferir_de_oportunidad(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    principal = CRMContacto(
+        nombre_completo="Contacto principal oportunidad",
+        telefonos=["549222222"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(principal)
+    db_session.flush()
+    seeded_parte_v3["opportunity"].contacto_id = principal.id
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    state = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 1).isoformat(),
+        sin_novedades_informado=True,
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "cierre",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("1", external_id="wamid-contacto-diferente"), context)
+
+    parte = db_session.get(ParteDiario, result.metadata["parte_diario_id"])
+    mensaje = db_session.get(CRMMensaje, parte.mensaje_origen_id)
+    db_session.refresh(seeded_parte_v3["opportunity"])
+    assert parte.contacto_id == seeded_parte_v3["contact"].id
+    assert mensaje.contacto_id == seeded_parte_v3["contact"].id
+    assert mensaje.oportunidad_id == seeded_parte_v3["opportunity"].id
+    assert seeded_parte_v3["opportunity"].contacto_id == principal.id
+    assert mensaje.contacto_id != seeded_parte_v3["opportunity"].contacto_id
 
 
 @pytest.mark.asyncio

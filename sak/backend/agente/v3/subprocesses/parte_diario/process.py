@@ -38,6 +38,7 @@ from agente.v3.subprocesses.parte_diario.resolver import (
     resolve_estado_codigo,
 )
 from app.models import (
+    CRMContacto,
     EstadoParteDiario,
     Nomina,
     OrigenDetalle,
@@ -77,13 +78,15 @@ class ParteDiarioProcess:
         project = self._resolve_project(ctx.oportunidad_id)
         if project is None:
             return self._simple_reply("No encontre un proyecto asociado para cargar el parte diario.", keep_active=False)
+        contacto_id = _parse_optional_int(getattr(ctx, "contacto_id", None))
         estados = self._load_estados()
-        nominas_proyecto, nominas_completas = self._load_nominas(project.id)
+        nominas_proyecto, nominas_completas = self._load_nominas(project.id, contacto_id=contacto_id)
         state = ParteDiarioState.from_dict(
             ctx.process_state,
             oportunidad_id=ctx.oportunidad_id,
             idproyecto=project.id,
         )
+        state.contacto_id = contacto_id
         had_conversational_draft = _has_conversational_draft(state)
         limpiar_conflictos_repetidos(state)
         command = _normalize_command(ctx.message.contenido)
@@ -411,7 +414,7 @@ class ParteDiarioProcess:
         *,
         allow_closed: bool = False,
     ) -> str | None:
-        existing = self._find_parte(int(state.idproyecto or 0), target_date)
+        existing = self._find_parte(int(state.idproyecto or 0), target_date, contacto_id=state.contacto_id)
         if existing and existing.estado == EstadoParteDiario.CERRADO and not allow_closed:
             return renderer.parte_cerrado(target_date)
         if existing and state.parte_id == existing.id and state.fecha == target_date:
@@ -434,13 +437,19 @@ class ParteDiarioProcess:
         state.retomado = True
         return None
 
-    def _find_parte(self, idproyecto: int, fecha: str) -> ParteDiario | None:
-        return self._session.exec(
+    def _find_parte(self, idproyecto: int, fecha: str, *, contacto_id: int | None = None) -> ParteDiario | None:
+        base_query = (
             select(ParteDiario)
             .where(ParteDiario.idproyecto == idproyecto)
             .where(ParteDiario.fecha == date.fromisoformat(fecha))
             .where(ParteDiario.deleted_at.is_(None))
-        ).first()
+        )
+        if contacto_id:
+            parte = self._session.exec(base_query.where(ParteDiario.contacto_id == contacto_id)).first()
+            if parte is not None:
+                return parte
+            return self._session.exec(base_query.where(ParteDiario.contacto_id.is_(None))).first()
+        return self._session.exec(base_query).first()
 
     def _load_explicit_items(
         self,
@@ -508,7 +517,12 @@ class ParteDiarioProcess:
         ).all()
         return [EstadoItem(id=int(item.id), abreviatura=item.abreviatura, nombre=item.nombre) for item in rows]
 
-    def _load_nominas(self, idproyecto: int) -> tuple[list[NominaItem], list[NominaItem]]:
+    def _load_nominas(
+        self,
+        idproyecto: int,
+        *,
+        contacto_id: int | None = None,
+    ) -> tuple[list[NominaItem], list[NominaItem]]:
         projects = {item.id: item.nombre for item in self._session.exec(select(Proyecto)).all()}
         today = _today()
         rows = self._session.exec(
@@ -518,6 +532,19 @@ class ParteDiarioProcess:
             .where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= today))
             .order_by(Nomina.apellido, Nomina.nombre)
         ).all()
+        encargado_ids = {
+            int(item.encargado_contacto_id)
+            for item in rows
+            if item.encargado_contacto_id is not None
+        }
+        encargados = {}
+        if encargado_ids:
+            contacts = self._session.exec(select(CRMContacto).where(CRMContacto.id.in_(encargado_ids))).all()
+            encargados = {
+                int(contact.id): _contact_label(contact)
+                for contact in contacts
+                if contact.id is not None
+            }
         all_items = [
             NominaItem(
                 idnomina=int(item.id),
@@ -527,6 +554,12 @@ class ParteDiarioProcess:
                 nombre_proyecto=projects.get(item.idproyecto),
                 fuera_de_proyecto=item.idproyecto != idproyecto,
                 nro_legajo=item.nro_legajo,
+                encargado_contacto_id=item.encargado_contacto_id,
+                encargado_nombre=(
+                    encargados.get(int(item.encargado_contacto_id))
+                    if item.encargado_contacto_id is not None and item.encargado_contacto_id != contacto_id
+                    else None
+                ),
             )
             for item in rows
         ]
@@ -573,6 +606,7 @@ def _payload(result: ExecutionResult, *, plan: TurnPlan | None = None) -> dict:
         "cancelado": result.cancelado,
         "oportunidad_id": state.oportunidad_id,
         "idproyecto": state.idproyecto,
+        "contacto_id": state.contacto_id,
         "fecha": state.fecha,
         "parte_id_existente": state.parte_id,
         "sin_novedades_informado": state.sin_novedades_informado,
@@ -759,3 +793,15 @@ def _parse_date_reference(value: str | None) -> date | None:
 
 def _append_description(current: str | None, incoming: str) -> str:
     return f"{current}. {incoming}" if current else incoming
+
+
+def _parse_optional_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _contact_label(contact: CRMContacto) -> str:
+    return str(contact.nombre_completo or contact.email or contact.id)

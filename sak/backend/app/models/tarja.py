@@ -10,6 +10,7 @@ from sqlmodel import Field, Relationship
 from .base import Base
 
 if TYPE_CHECKING:
+    from .crm.contacto import CRMContacto
     from .nomina import Nomina
     from .parte_diario_estado import ParteDiarioEstado
     from .partediario import ParteDiarioDetalle
@@ -24,13 +25,26 @@ class Tarja(Base, table=True):
     """Cabecera de tarja consolidada por proyecto y rango de fechas."""
 
     __tablename__ = "tarjas"
+    __table_args__ = (
+        UniqueConstraint("idproyecto", "contacto_id", "fechainicio", "fechafinal", name="uq_tarjas_proyecto_contacto_rango"),
+    )
 
     __searchable_fields__: ClassVar[List[str]] = ["descripcion"]
+    __auto_include_relations__: ClassVar[List[str]] = [
+        "detalles.nomina.proyecto",
+        "detalles.estado",
+        "novedades",
+    ]
     __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "novedades"}
 
     idproyecto: int = Field(
         foreign_key="proyectos.id",
         description="Proyecto asociado a la tarja",
+    )
+    contacto_id: Optional[int] = Field(
+        default=None,
+        foreign_key="crm_contactos.id",
+        description="Contacto encargado que reporto la tarja",
     )
     fechainicio: date = Field(
         description="Fecha de inicio del rango de la tarja",
@@ -57,6 +71,7 @@ class Tarja(Base, table=True):
         back_populates="tarja",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    contacto: Optional["CRMContacto"] = Relationship()
 
 
 class TarjaDetalle(Base, table=True):

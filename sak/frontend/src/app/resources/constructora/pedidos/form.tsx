@@ -82,7 +82,6 @@ export const PedidoForm = () => {
         setIsEditing,
       }}
     >
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div onKeyDown={handleFormTabLoop}>
         <SimpleForm<PedidoFormValues>
           className="w-full max-w-3xl"
@@ -204,7 +203,6 @@ const CabeceraPedido = () => {
               showOptional={showOptional}
               toggleOptional={toggleOptional}
             />
-            <HiddenInput source="contacto_id" />
             <HiddenInput source="estado" />
             <HiddenInput source="mensaje_origen_id" />
             <HiddenInput source="origen" />
@@ -264,6 +262,21 @@ const CabeceraCamposPrincipales = ({
               optionText: "titulo",
               label: "Oportunidad",
               validate: required(),
+            }}
+            widthClass="w-full"
+            className={isReadOnly ? FORM_FIELD_READONLY_CLASS : undefined}
+          />
+        </div>
+        <div className="w-full md:w-[220px]">
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "contacto_id",
+              reference: "crm/contactos",
+            }}
+            inputProps={{
+              optionText: "nombre_completo",
+              label: "Contacto",
+              placeholder: "Seleccionar",
             }}
             widthClass="w-full"
             className={isReadOnly ? FORM_FIELD_READONLY_CLASS : undefined}

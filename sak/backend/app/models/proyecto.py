@@ -9,6 +9,7 @@ from .base import Base
 
 if TYPE_CHECKING:
     from .proyecto_avance import ProyectoAvance
+    from .proyecto_encargado import ProyectoEncargado
     from .crm import CRMOportunidad
     from .user import User
 
@@ -19,7 +20,7 @@ class Proyecto(Base, table=True):
     __tablename__ = "proyectos"
 
     __searchable_fields__ = ["nombre", "estado"]
-    __expanded_list_relations__: ClassVar[set[str]] = {"avances"}
+    __expanded_list_relations__: ClassVar[set[str]] = {"avances", "encargados"}
     __auto_include_relations__: ClassVar[List[str]] = ["avances", "oportunidad"]
 
     nombre: str = Field(
@@ -90,6 +91,10 @@ class Proyecto(Base, table=True):
 
     # Relaciones
     avances: List["ProyectoAvance"] = Relationship(
+        back_populates="proyecto",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    encargados: List["ProyectoEncargado"] = Relationship(
         back_populates="proyecto",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )

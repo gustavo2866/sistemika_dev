@@ -62,6 +62,10 @@ export const nominaSchema = z.object({
     "administrativo",
   ]),
   idproyecto: requiredId,
+  encargado_contacto_id: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().optional(),
+  ),
   email: optionalString(VALIDATION_RULES.EMAIL.MAX_LENGTH).pipe(
     z.string().email().max(VALIDATION_RULES.EMAIL.MAX_LENGTH).optional(),
   ),
@@ -86,6 +90,7 @@ export const NOMINA_DEFAULT: NominaFormValues = {
   dni: "",
   categoria: "ayudante",
   idproyecto: 0,
+  encargado_contacto_id: undefined,
   email: "",
   telefono: "",
   direccion: "",
@@ -127,6 +132,11 @@ export const normalizeNominaPayload = (data: unknown) => {
 
   if (payload.idproyecto != null && payload.idproyecto !== "") {
     payload.idproyecto = Number(payload.idproyecto);
+  }
+  if (payload.encargado_contacto_id === "") {
+    payload.encargado_contacto_id = null;
+  } else if (payload.encargado_contacto_id != null) {
+    payload.encargado_contacto_id = Number(payload.encargado_contacto_id);
   }
 
   payload.activo = Boolean(payload.activo);

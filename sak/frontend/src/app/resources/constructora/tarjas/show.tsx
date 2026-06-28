@@ -159,6 +159,11 @@ export const TarjaShow = () => (
               <TextField source="nombre" />
             </ReferenceField>
           </FieldBlock>
+          <FieldBlock label="Contacto">
+            <ReferenceField source="contacto_id" reference="crm/contactos" link={false}>
+              <TextField source="nombre_completo" />
+            </ReferenceField>
+          </FieldBlock>
           <FieldBlock label="Estado">
             <EstadoTarjaShowField />
           </FieldBlock>

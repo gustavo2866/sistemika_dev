@@ -9,6 +9,7 @@ from .factura_router import factura_router
 from .factura_detalle_router import factura_detalle_router
 from .factura_impuesto_router import factura_impuesto_router
 from .proyecto_router import proyecto_router
+from .proyecto_encargado_router import proyecto_encargado_router
 from .proyecto_avance_router import proyecto_avance_router
 from .nomina_router import nomina_router
 from .partediario_router import parte_diario_router
@@ -38,6 +39,7 @@ __all__ = [
     "factura_detalle_router",
     "factura_impuesto_router",
     "proyecto_router",
+    "proyecto_encargado_router",
     "proyecto_avance_router",
     "nomina_router",
     "parte_diario_router",

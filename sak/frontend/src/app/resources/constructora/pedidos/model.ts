@@ -149,6 +149,7 @@ export const isPedidoReadOnly = (estado?: string | null) =>
 
 export const normalizePedidoPayload = (data: Partial<PedidoFormValues>) => ({
   ...data,
+  contacto_id: data.contacto_id ? Number(data.contacto_id) : null,
   estado: data.estado ?? "borrador",
   origen: data.origen ?? "manual",
   titulo: String(data.titulo ?? "").trim(),

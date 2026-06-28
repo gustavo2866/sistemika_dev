@@ -53,3 +53,50 @@ Es valido que `crm_mensajes.contacto_id` sea distinto de `crm_oportunidades.cont
 ## 7. Resources
 
 - Actualizar resources de `parteDiario`, `pedidoObra` y `tarja` para incluir `contacto_id`.
+
+## 8. Plan de implementacion
+
+1. Modelo de datos
+   - Crear tabla `proyecto_encargados` con FK a `proyectos` y `crm_contactos`.
+   - Agregar `encargado_contacto_id` en `nominas`.
+   - Agregar `contacto_id` en `partes_diario`.
+   - Agregar `contacto_id` en `tarjas`.
+   - Verificar que `constructora_pedidos.contacto_id` ya existe.
+
+2. Migracion de datos
+   - Crear encargados de proyecto iniciales desde `proyectos.oportunidad_id -> crm_oportunidades.contacto_id`.
+   - Poblar `nominas.encargado_contacto_id` desde datos de nomina disponibles.
+   - Poblar `partes_diario.contacto_id` desde `mensaje_origen_id -> crm_mensajes.contacto_id` cuando exista.
+   - Poblar `tarjas.contacto_id` si existe una fuente confiable.
+
+3. Agente: flujo comun
+   - Cambiar resolucion de obras en `parte_diario` y `pedido_obra` para usar `proyecto_encargados`.
+   - Mantener sin cambios la key de conversacion, la resolucion de contacto y la seleccion de obra.
+
+4. Agente: parte diario
+   - Guardar `contacto_id` en `partes_diario`.
+   - Filtrar menu de partes por proyecto y `contacto_id`.
+   - Cargar encargado asignado en nomina.
+   - Mostrar encargado entre parentesis solo cuando difiere del contacto que reporta.
+
+5. Agente: pedido obra
+   - Mantener `constructora_pedidos.contacto_id` al guardar.
+   - Filtrar menu de ultimos pedidos por oportunidad/proyecto y `contacto_id`.
+
+6. Resources/API
+   - Exponer `contacto_id` en resources de `parteDiario`, `pedidoObra` y `tarja`.
+   - Exponer administracion de `proyecto_encargados`.
+   - Exponer `encargado_contacto_id` en nomina.
+
+7. Validaciones
+   - Validar que contactos usados como encargados sean de tipo `Encargado`.
+   - Validar que un contacto solo opere proyectos donde exista en `proyecto_encargados`.
+   - Validar que `nominas.encargado_contacto_id`, si existe, apunte a un contacto encargado.
+
+8. Tests
+   - Contacto encargado con un proyecto: seleccion automatica.
+   - Contacto encargado con varios proyectos: menu de seleccion.
+   - Contacto no habilitado: no encuentra obra.
+   - Parte diario filtra menu por `contacto_id`.
+   - Pedido obra filtra menu por `contacto_id`.
+   - `crm_mensajes.contacto_id` puede diferir de `crm_oportunidades.contacto_id`.

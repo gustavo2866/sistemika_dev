@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { required, useWrappedSource } from "ra-core";
+import { required, useGetList, useGetOne, useWrappedSource } from "ra-core";
 import { useCallback } from "react";
 import { useWatch } from "react-hook-form";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
@@ -11,11 +11,11 @@ import {
   FormDate,
   FormErrorSummary,
   FormNumber,
+  FormValue,
   FormReferenceAutocomplete,
   FormSelect,
   FormSelectFijo,
   FormText,
-  HiddenInput,
   resolveNumericId,
   SectionBaseTemplate,
   SectionDetailColumn,
@@ -31,20 +31,67 @@ import {
   getTarjaDetalleDefaults,
   tarjaSchema,
   VALIDATION_RULES,
+  type TarjaDetalle,
   type TarjaFormValues,
 } from "./model";
 
-const getNominaLabel = (record?: Record<string, unknown>) => {
+const getNominaLabel = (
+  record?: Record<string, unknown>,
+  tarjaProyectoId?: number | null,
+) => {
   if (!record) return "";
+  const proyecto = record.proyecto as { nombre?: string | null } | null | undefined;
+  const empleadoProyectoId = resolveNumericId(record.idproyecto);
   const nombre = [record.nombre, record.apellido]
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .join(" ")
     .trim();
-  return nombre || (typeof record.dni === "string" ? record.dni : "");
+  const empleado = nombre || (typeof record.dni === "string" ? record.dni : "");
+  const obra = proyecto?.nombre?.trim().slice(0, 15);
+  const showObra = Boolean(
+    obra &&
+      tarjaProyectoId != null &&
+      empleadoProyectoId != null &&
+      empleadoProyectoId !== tarjaProyectoId,
+  );
+  return showObra ? `${empleado} (${obra})` : empleado;
+};
+
+type ParteDiarioEstadoRecord = {
+  id: number | string;
+  nombre?: string | null;
+  abreviatura?: string | null;
+};
+
+const TarjaEmpleadoValue = ({
+  idnomina,
+  nomina,
+  proyectoId,
+  className,
+}: {
+  idnomina?: unknown;
+  nomina?: TarjaDetalle["nomina"];
+  proyectoId?: number | null;
+  className?: string;
+}) => {
+  const nominaId = resolveNumericId(idnomina);
+  const { data: fetchedNomina } = useGetOne<Record<string, unknown>>(
+    "nominas",
+    { id: nominaId ?? 0 },
+    { enabled: nominaId != null && !nomina },
+  );
+  const record = (nomina ?? fetchedNomina) as Record<string, unknown> | undefined;
+  const label = getNominaLabel(record, proyectoId) || (nominaId ? `Empleado #${nominaId}` : "Sin empleado");
+
+  return (
+    <FormValue widthClass="w-[190px]" valueClassName={className}>
+      <span className="block min-w-0 truncate">{label}</span>
+    </FormValue>
+  );
 };
 
 const TarjaMainFields = () => (
-  <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_130px_130px_120px_minmax(180px,0.8fr)] md:items-start">
+  <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_160px_130px_120px] md:items-start">
     <ReferenceInput source="idproyecto" reference="proyectos" label="Proyecto">
       <FormSelect
         optionText="nombre"
@@ -53,15 +100,17 @@ const TarjaMainFields = () => (
         validate={required()}
       />
     </ReferenceInput>
+    <ReferenceInput source="contacto_id" reference="crm/contactos" label="Encargado">
+      <FormSelectFijo
+        optionText="nombre_completo"
+        fixedWidth="160px"
+        widthClass="w-[160px]"
+        emptyText="Sin encargado"
+      />
+    </ReferenceInput>
     <FormDate
       source="fechainicio"
       label="Inicio"
-      validate={required()}
-      widthClass="w-full md:w-[130px]"
-    />
-    <FormDate
-      source="fechafinal"
-      label="Final"
       validate={required()}
       widthClass="w-full md:w-[130px]"
     />
@@ -72,12 +121,24 @@ const TarjaMainFields = () => (
       widthClass="w-full md:w-[120px]"
       validate={required()}
     />
-    <FormText
-      source="descripcion"
-      label="Descripcion"
-      widthClass="w-full"
-      maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
-    />
+  </div>
+);
+
+const TarjaOptionalFields = () => (
+  <div className="mt-1 rounded-md border border-muted/60 bg-muted/30 p-2">
+    <div className="grid gap-2 md:grid-cols-[130px_260px] md:items-start">
+      <FormDate
+        source="fechafinal"
+        label="Final"
+        widthClass="w-full md:w-[130px]"
+      />
+      <FormText
+        source="descripcion"
+        label="Descripcion"
+        widthClass="w-full md:w-[260px]"
+        maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
+      />
+    </div>
   </div>
 );
 
@@ -97,67 +158,89 @@ const TarjaDetalleFields = () => {
   );
 
   return (
-    <SectionDetailTemplate2
-      title="Detalle"
-      mainColumns={columns}
-      mainFields={DetalleCamposPrincipales}
-      defaults={getTarjaDetalleDefaults}
-      maxHeightClassName="md:max-h-[calc(100vh-500px)]"
-      saveOnlyWhenActive
-      showDeleteWhenInactive
-      showExpandActionOnMobile
-      showExpandAction={false}
-      showInfoAction={false}
-      addButtonLabel="Agregar detalle"
-      detailIteratorClassName={
-        "[&_li]:!border-b [&_li]:!border-slate-200/70 [&_li:last-child]:!border-b-0 " +
-        "[&_[data-focus-scope=detail-row]]:text-[9px] " +
-        "[&_[data-focus-scope=detail-row]]:sm:text-[10px] " +
-        "[&_[data-focus-scope=detail-row]]:!py-0 " +
-        "[&_[data-focus-scope=detail-row].is-active]:sm:!p-1 " +
-        "[&_[data-focus-scope=detail-row].is-active]:sm:!py-0.5"
-      }
-    />
+    <div className="flex flex-col gap-0">
+      <SectionDetailTemplate2
+        title="Detalle"
+        mainColumns={columns}
+        mainFields={DetalleCamposPrincipales}
+        defaults={getTarjaDetalleDefaults}
+        maxHeightClassName="md:h-[calc((100vh-430px)*0.6)] md:min-h-[156px] md:max-h-[calc((100vh-430px)*0.6)]"
+        saveOnlyWhenActive
+        showDeleteWhenInactive
+        showExpandActionOnMobile
+        showExpandAction={false}
+        showInfoAction={false}
+        addButtonLabel="Agregar detalle"
+        detailIteratorClassName={
+          "[&_li]:!border-b [&_li]:!border-slate-200/70 [&_li:last-child]:!border-b-0 " +
+          "[&_[data-focus-scope=detail-row]]:text-[9px] " +
+          "[&_[data-focus-scope=detail-row]]:sm:text-[10px] " +
+          "[&_[data-focus-scope=detail-row]]:!py-0 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!p-1 " +
+          "[&_[data-focus-scope=detail-row].is-active]:sm:!py-0.5"
+        }
+      />
+      <TarjaResumenTotales />
+    </div>
   );
 };
 
 const TarjaDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) => {
   const descripcionSource = useWrappedSource("descripcion");
+  const nominaSource = useWrappedSource("nomina");
+  const idnominaSource = useWrappedSource("idnomina");
   const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
+  const nomina = useWatch({ name: nominaSource }) as TarjaDetalle["nomina"] | undefined;
+  const idnomina = useWatch({ name: idnominaSource });
   const proyectoValue = useWatch({ name: "idproyecto" });
   const proyectoId = resolveNumericId(proyectoValue);
   const hasDescripcion = Boolean(descripcion?.trim());
   const readOnlyClassName = !isActive ? FORM_FIELD_READONLY_CLASS : undefined;
   const nominaFilter = {
     activo: true,
-    ...(proyectoId ? { idproyecto: proyectoId } : {}),
   };
+  const getEmpleadoLabel = useCallback(
+    (record?: Record<string, unknown>) => getNominaLabel(record, proyectoId),
+    [proyectoId],
+  );
 
   return (
     <>
       <DetailFieldCell label="Empleado" data-focus-field="true">
-        <FormReferenceAutocomplete
-          referenceProps={{
-            source: "idnomina",
-            reference: "nominas",
-            filter: nominaFilter,
-            sort: { field: "apellido", order: "ASC" },
-          }}
-          inputProps={{
-            optionText: getNominaLabel,
-            inputText: getNominaLabel,
-            label: false,
-            validate: required(),
-            placeholder: "Seleccionar",
-          }}
-          widthClass="w-[190px]"
-          className={cn(
-            "[&_button[role=combobox]]:h-4 [&_button[role=combobox]]:px-1 [&_button[role=combobox]]:py-0 [&_button[role=combobox]]:text-[9px] " +
-              "sm:[&_button[role=combobox]]:h-4.5 sm:[&_button[role=combobox]]:px-1.5 sm:[&_button[role=combobox]]:text-[10px] " +
-              "[&_button[role=combobox]>span]:text-[9px] sm:[&_button[role=combobox]>span]:text-[10px]",
-            readOnlyClassName,
-          )}
-        />
+        {!isActive ? (
+          <TarjaEmpleadoValue
+            idnomina={idnomina}
+            nomina={nomina}
+            proyectoId={proyectoId}
+            className={cn(
+              "h-4 justify-start px-1 text-left text-[9px] sm:h-4.5 sm:px-1.5 sm:text-[10px]",
+              readOnlyClassName,
+            )}
+          />
+        ) : (
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "idnomina",
+              reference: "nominas",
+              filter: nominaFilter,
+              sort: { field: "apellido", order: "ASC" },
+            }}
+            inputProps={{
+              optionText: getEmpleadoLabel,
+              inputText: getEmpleadoLabel,
+              label: false,
+              validate: required(),
+              placeholder: "Seleccionar",
+            }}
+            widthClass="w-[190px]"
+            className={cn(
+              "[&_button[role=combobox]]:h-4 [&_button[role=combobox]]:px-1 [&_button[role=combobox]]:py-0 [&_button[role=combobox]]:text-[9px] " +
+                "sm:[&_button[role=combobox]]:h-4.5 sm:[&_button[role=combobox]]:px-1.5 sm:[&_button[role=combobox]]:text-[10px] " +
+                "[&_button[role=combobox]]:text-left [&_button[role=combobox]>span]:text-left [&_button[role=combobox]>span]:text-[9px] sm:[&_button[role=combobox]>span]:text-[10px]",
+              readOnlyClassName,
+            )}
+          />
+        )}
       </DetailFieldCell>
       <DetailFieldCell label="Fecha">
         <FormDate
@@ -234,48 +317,65 @@ const TarjaDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) => {
   );
 };
 
-const TarjaNovedadesFields = () => (
-  <SectionBaseTemplate
-    title="Novedades"
-    main={
-      <div className="grid gap-2 md:grid-cols-[150px_130px_130px_minmax(220px,1fr)]">
-        <HiddenInput source="novedades.0.id" />
-        <FormNumber
-          source="novedades.0.horas_enfermedad_justif"
-          label="Hs enf. justif."
-          widthClass="w-full"
-          min={0}
-        />
-        <FormNumber
-          source="novedades.0.presentismo"
-          label="Presentismo"
-          widthClass="w-full"
-          min={0}
-        />
-        <FormNumber
-          source="novedades.0.premio"
-          label="Premio"
-          widthClass="w-full"
-          min={0}
-        />
-        <FormText
-          source="novedades.0.observaciones"
-          label="Observaciones"
-          widthClass="w-full"
-          maxLength={VALIDATION_RULES.OBSERVACIONES.MAX_LENGTH}
-        />
-      </div>
-    }
-    defaultOpen
-  />
-);
-
 const TarjaToolbar = () => (
   <div className="flex w-full items-center justify-end gap-2">
     <FormOrderCancelButton />
     <FormOrderSaveButton variant="secondary" />
   </div>
 );
+
+const TarjaResumenTotales = () => {
+  const detalles = useWatch({ name: "detalles" }) as
+    | Array<{ idnomina?: unknown; horas?: unknown; idestado?: unknown }>
+    | undefined;
+  const { data: estados = [] } = useGetList<ParteDiarioEstadoRecord>(
+    "parte-diario-estados",
+    {
+      pagination: { page: 1, perPage: 100 },
+      sort: { field: "orden", order: "ASC" },
+      filter: { activo: true },
+    },
+  );
+  const presenteIds = new Set(
+    estados
+      .filter((estado) => {
+        const abreviatura = String(estado.abreviatura ?? "").trim().toUpperCase();
+        const nombre = String(estado.nombre ?? "").trim().toUpperCase();
+        return abreviatura === "P" || nombre === "PRESENTE";
+      })
+      .map((estado) => resolveNumericId(estado.id))
+      .filter((id): id is number => id != null),
+  );
+  const registros = (detalles ?? []).filter(
+    (detalle) => detalle?.idnomina != null && detalle.idnomina !== "",
+  );
+  const totalHoras = registros.reduce((total, detalle) => {
+    const horas = Number(detalle.horas ?? 0);
+    return total + (Number.isFinite(horas) ? horas : 0);
+  }, 0);
+  const presentes = registros.filter((detalle) => {
+    const idestado = resolveNumericId(detalle.idestado);
+    return idestado != null && presenteIds.has(idestado);
+  }).length;
+  const ausentes = Math.max(0, registros.length - presentes);
+
+  return (
+    <div className="flex flex-row flex-nowrap items-center justify-end gap-1.5 rounded-md border border-muted/50 bg-muted/15 px-2 py-0.5 text-[8px] text-muted-foreground sm:gap-2 sm:px-2.5 sm:py-1 sm:text-[9px]">
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+        Registros: {registros.length}
+      </span>
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+        Horas: {totalHoras.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+      </span>
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+        Presentes: {presentes}
+      </span>
+      <span className="flex items-center gap-1 rounded-full border border-muted-foreground/15 bg-background px-1.5 py-0 text-[8px] font-medium text-muted-foreground whitespace-nowrap sm:px-2 sm:text-[9px]">
+        Ausentes: {ausentes}
+      </span>
+    </div>
+  );
+};
 
 export const TarjaForm = ({
   defaultValues = TARJA_DEFAULTS,
@@ -292,9 +392,9 @@ export const TarjaForm = ({
     <SectionBaseTemplate
       title="Informacion general"
       main={<TarjaMainFields />}
+      optional={<TarjaOptionalFields />}
       defaultOpen
     />
     <TarjaDetalleFields />
-    <TarjaNovedadesFields />
   </SimpleForm>
 );

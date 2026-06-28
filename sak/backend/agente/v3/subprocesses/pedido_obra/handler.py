@@ -25,7 +25,7 @@ from agente.v3.subprocesses.pedido_obra.state import (
     PedidoObraState,
 )
 from app.db import engine
-from app.models import CRMContacto, CRMOportunidad, Proyecto
+from app.models import CRMContacto, CRMOportunidad, Proyecto, ProyectoEncargado
 from app.models.constructora.pedido import (
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
@@ -143,7 +143,10 @@ class PedidoObraSubprocess:
             return self._closed_result(context, renderer.obra_no_encontrada(), "obra_not_found")
         state.etapa = "seleccionar_pedido"
         state.pedido_menu_pendiente = False
-        state.opciones_pedido = self._build_pedido_options(int(state.oportunidad_id))
+        state.opciones_pedido = self._build_pedido_options(
+            int(state.oportunidad_id),
+            contacto_id=state.contacto_id,
+        )
         return self._active_result(
             context,
             state,
@@ -198,11 +201,28 @@ class PedidoObraSubprocess:
         with Session(engine) as session:
             pedido = session.get(ConstructoraPedido, selected.pedido_id)
             if pedido is None or pedido.deleted_at is not None:
-                state.opciones_pedido = self._build_pedido_options(int(state.oportunidad_id or 0))
+                state.opciones_pedido = self._build_pedido_options(
+                    int(state.oportunidad_id or 0),
+                    contacto_id=state.contacto_id,
+                )
                 return self._active_result(
                     context,
                     state,
                     renderer.menu_pedidos(state.opciones_pedido, prefix="El pedido seleccionado ya no existe."),
+                    "pedido_not_found",
+                )
+            if (
+                pedido.oportunidad_id != state.oportunidad_id
+                or pedido.contacto_id != state.contacto_id
+            ):
+                state.opciones_pedido = self._build_pedido_options(
+                    int(state.oportunidad_id or 0),
+                    contacto_id=state.contacto_id,
+                )
+                return self._active_result(
+                    context,
+                    state,
+                    renderer.menu_pedidos(state.opciones_pedido, prefix="El pedido seleccionado ya no corresponde a esta obra."),
                     "pedido_not_found",
                 )
             items = self._load_pedido_items(session, int(pedido.id))
@@ -651,6 +671,33 @@ class PedidoObraSubprocess:
             t_match = time.perf_counter()
             options: list[PedidoObraOption] = []
             for contact in matched_contacts:
+                asignaciones = session.exec(
+                    select(ProyectoEncargado)
+                    .where(ProyectoEncargado.contacto_id == contact.id)
+                    .where(ProyectoEncargado.activo.is_(True))
+                    .where(ProyectoEncargado.deleted_at.is_(None))
+                ).all()
+                for asignacion in asignaciones:
+                    proyecto = session.get(Proyecto, asignacion.proyecto_id)
+                    if (
+                        proyecto is None
+                        or proyecto.id is None
+                        or proyecto.oportunidad_id is None
+                        or proyecto.deleted_at is not None
+                        or contact.id is None
+                    ):
+                        continue
+                    options.append(
+                        PedidoObraOption(
+                            opcion=len(options) + 1,
+                            nombre=proyecto.nombre or f"Obra {proyecto.id}",
+                            contacto_id=int(contact.id),
+                            oportunidad_id=int(proyecto.oportunidad_id),
+                            proyecto_id=int(proyecto.id),
+                        )
+                    )
+                if asignaciones:
+                    continue
                 oportunidades = session.exec(
                     select(CRMOportunidad).where(CRMOportunidad.contacto_id == contact.id)
                 ).all()
@@ -686,17 +733,24 @@ class PedidoObraSubprocess:
             return options
 
     @staticmethod
-    def _build_pedido_options(oportunidad_id: int) -> list[PedidoObraPedidoOption]:
+    def _build_pedido_options(
+        oportunidad_id: int,
+        *,
+        contacto_id: int | None = None,
+    ) -> list[PedidoObraPedidoOption]:
         if oportunidad_id <= 0:
             return []
         with Session(engine) as session:
-            pedidos = session.exec(
+            query = (
                 select(ConstructoraPedido)
                 .where(ConstructoraPedido.oportunidad_id == oportunidad_id)
                 .where(ConstructoraPedido.deleted_at.is_(None))
                 .order_by(ConstructoraPedido.created_at.desc())
                 .limit(10)
-            ).all()
+            )
+            if contacto_id:
+                query = query.where(ConstructoraPedido.contacto_id == contacto_id)
+            pedidos = session.exec(query).all()
         return [
             PedidoObraPedidoOption(
                 opcion=index,

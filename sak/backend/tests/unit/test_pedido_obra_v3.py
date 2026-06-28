@@ -9,7 +9,7 @@ import agente.v3.subprocesses.pedido_obra.handler as pedido_obra_handler
 from agente.v3.subprocesses.pedido_obra.handler import PedidoObraSubprocess
 from agente.v3.subprocesses.pedido_obra.interpreter import PedidoObraOperation
 from agente.v3.subprocesses.pedido_obra.state import PedidoObraItem
-from app.models import CRMContacto, CRMOportunidad, Proyecto, User
+from app.models import CRMContacto, CRMOportunidad, Proyecto, ProyectoEncargado, User
 from app.models.constructora.pedido import (
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
@@ -182,8 +182,119 @@ def _add_pedido(
 
 
 @pytest.mark.asyncio
+async def test_pedido_obra_v3_contacto_encargado_un_proyecto_selecciona_automatico(
+    db_session: Session,
+    seeded_pedido_obra_v3,
+):
+    principal = CRMContacto(
+        nombre_completo="Contacto principal",
+        telefonos=["549222222"],
+        responsable_id=seeded_pedido_obra_v3["contact"].responsable_id,
+    )
+    db_session.add(principal)
+    db_session.flush()
+    seeded_pedido_obra_v3["opportunity"].contacto_id = principal.id
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=seeded_pedido_obra_v3["project"].id,
+            contacto_id=seeded_pedido_obra_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    process = PedidoObraSubprocess(llm_client=FakeCargaLLM())
+
+    result = await process.handle(
+        _message("necesito cemento", from_address="549111111"),
+        V3ConversationContext(conversation_id="conv-pedido-asignado"),
+    )
+
+    assert result.context.active_process == "pedidoObra"
+    assert result.context.process_state["contacto_id"] == seeded_pedido_obra_v3["contact"].id
+    assert result.context.process_state["oportunidad_id"] == seeded_pedido_obra_v3["opportunity"].id
+    assert result.context.process_state["proyecto_id"] == seeded_pedido_obra_v3["project"].id
+    assert "En que obra" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_pedido_obra_v3_contacto_encargado_varios_proyectos_muestra_menu(
+    db_session: Session,
+    seeded_pedido_obra_v3,
+):
+    user_id = seeded_pedido_obra_v3["contact"].responsable_id
+    principal = CRMContacto(nombre_completo="Principal", telefonos=["549222222"], responsable_id=user_id)
+    db_session.add(principal)
+    db_session.flush()
+    seeded_pedido_obra_v3["opportunity"].contacto_id = principal.id
+    second_opportunity = CRMOportunidad(contacto_id=principal.id, responsable_id=user_id, activo=True)
+    db_session.add(second_opportunity)
+    db_session.flush()
+    second_project = Proyecto(nombre="Obra Norte", responsable_id=user_id, oportunidad_id=second_opportunity.id)
+    db_session.add(second_project)
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=seeded_pedido_obra_v3["project"].id,
+            contacto_id=seeded_pedido_obra_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=second_project.id,
+            contacto_id=seeded_pedido_obra_v3["contact"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    process = PedidoObraSubprocess(llm_client=FakeCargaLLM())
+
+    result = await process.handle(
+        _message("pedido obra", from_address="549111111"),
+        V3ConversationContext(conversation_id="conv-pedido-varios"),
+    )
+
+    assert result.context.active_process == "pedidoObra"
+    assert result.context.process_state["etapa"] == "inicial"
+    assert "mas de una obra asociada" in (result.reply_text or "")
+    assert "Obra Centro" in (result.reply_text or "")
+    assert "Obra Norte" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_pedido_obra_v3_contacto_no_habilitado_no_encuentra_obra(
+    db_session: Session,
+    seeded_pedido_obra_v3,
+):
+    contact = CRMContacto(
+        nombre_completo="Sin asignacion",
+        telefonos=["549333333"],
+        responsable_id=seeded_pedido_obra_v3["contact"].responsable_id,
+    )
+    db_session.add(contact)
+    db_session.commit()
+    process = PedidoObraSubprocess(llm_client=FakeCargaLLM())
+
+    result = await process.handle(
+        _message("pedido obra", from_address="549333333"),
+        V3ConversationContext(conversation_id="conv-pedido-no-habilitado"),
+    )
+
+    assert result.context.active_process is None
+    assert result.metadata["status"] == "obra_not_found"
+    assert "No encontre una obra asociada" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
 async def test_pedido_obra_v3_command_lists_last_ten_orders_any_status(db_session: Session, seeded_pedido_obra_v3):
     now = datetime.now(UTC)
+    other_contact = CRMContacto(
+        nombre_completo="Otro Encargado",
+        telefonos=["549222222"],
+        responsable_id=seeded_pedido_obra_v3["contact"].responsable_id,
+    )
+    db_session.add(other_contact)
+    db_session.flush()
     draft = _add_pedido(
         db_session,
         seeded_pedido_obra_v3,
@@ -205,6 +316,16 @@ async def test_pedido_obra_v3_command_lists_last_ten_orders_any_status(db_sessio
         created_at=now - timedelta(days=20),
         descripcion="hierro",
     )
+    other_contact_order = ConstructoraPedido(
+        oportunidad_id=seeded_pedido_obra_v3["opportunity"].id,
+        contacto_id=other_contact.id,
+        estado=PedidoObraEstado.BORRADOR,
+        origen=PedidoObraOrigen.AGENTE,
+        titulo="Pedido otro contacto",
+        created_at=now,
+    )
+    db_session.add(other_contact_order)
+    db_session.commit()
     process = PedidoObraSubprocess(llm_client=FakeCargaLLM())
 
     result = await process.handle(
@@ -217,6 +338,7 @@ async def test_pedido_obra_v3_command_lists_last_ten_orders_any_status(db_sessio
     assert f"Pedido #{draft.id}" in (result.reply_text or "")
     assert f"Pedido #{recent_closed.id}" in (result.reply_text or "")
     assert f"Pedido #{old_closed.id}" in (result.reply_text or "")
+    assert f"Pedido #{other_contact_order.id}" not in (result.reply_text or "")
     assert "NUEVO o SALIR" in (result.reply_text or "")
 
 
@@ -393,6 +515,7 @@ async def test_pedido_obra_v3_guardar_crea_borrador(db_session: Session, seeded_
     assert "Pedido para guardar:" in (confirmation.reply_text or "")
     assert pedido is not None
     assert pedido.estado == PedidoObraEstado.BORRADOR
+    assert pedido.contacto_id == seeded_pedido_obra_v3["contact"].id
     assert "*PEDIDO GUARDADO*" in (saved.reply_text or "")
     assert saved.metadata["status"] == "saved"
     assert saved.context.active_process == "pedidoObra"

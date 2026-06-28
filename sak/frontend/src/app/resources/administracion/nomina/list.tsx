@@ -2,7 +2,7 @@
 
 import { List, LIST_CONTAINER_XL } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
-import { FilterButton } from "@/components/filter-form";
+import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import {
@@ -32,6 +32,19 @@ const LIST_FILTERS = buildListFilters(
         placeholder: "Buscar empleados",
         alwaysOn: true,
         className: "w-[130px] sm:w-[180px]",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "encargado_contacto_id",
+        reference: "crm/contactos",
+        label: "Encargado",
+      },
+      selectProps: {
+        optionText: "nombre_completo",
+        className: "w-full",
+        emptyText: "Todos",
       },
     },
     {
@@ -91,6 +104,9 @@ type NominaListProps = {
   rowClick?: any;
   perPage?: number;
   createTo?: string;
+  filter?: Record<string, unknown>;
+  filterDefaultValues?: Record<string, unknown>;
+  storeKey?: string;
 };
 
 const ListActions = ({ createTo }: { createTo?: string }) => (
@@ -110,18 +126,25 @@ export const NominaList = ({
   rowClick = "edit",
   perPage = 5,
   createTo,
+  filter,
+  filterDefaultValues,
+  storeKey,
 }: NominaListProps = {}) => (
   <List
     resource="nominas"
     title={embedded ? undefined : <NominaListTitle />}
     filters={LIST_FILTERS}
+    filterFormComponent={embedded ? StyledFilterDiv : undefined}
     actions={<ListActions createTo={createTo} />}
+    filter={filter}
+    filterDefaultValues={filterDefaultValues}
     debounce={300}
     perPage={perPage}
     pagination={<ListPaginator />}
     sort={{ field: "id", order: "DESC" }}
     containerClassName={embedded ? "w-full max-w-none" : LIST_CONTAINER_XL}
     disableSyncWithLocation={embedded}
+    storeKey={storeKey}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
@@ -129,7 +152,7 @@ export const NominaList = ({
       rowClick={rowClick}
       mobileConfig={{
         primaryField: "nombre",
-        secondaryFields: ["apellido", "dni", "categoria", "idproyecto"],
+        secondaryFields: ["apellido", "dni", "categoria", "idproyecto", "encargado_contacto_id"],
       }}
       className="text-[10px] [&_th]:text-[10px] [&_td]:text-[10px] xl:text-[11px] xl:[&_th]:text-[11px] xl:[&_td]:text-[11px]"
     >
@@ -156,6 +179,11 @@ export const NominaList = ({
       <ListColumn source="idproyecto" label="Proyecto" className="w-[160px]">
         <ReferenceField source="idproyecto" reference="proyectos">
           <ListText source="nombre" className="whitespace-normal break-words" />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn source="encargado_contacto_id" label="Encargado" className="w-[160px]">
+        <ReferenceField source="encargado_contacto_id" reference="crm/contactos">
+          <ListText source="nombre_completo" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
       <TextListColumn source="email" label="Email" className="w-[170px]">

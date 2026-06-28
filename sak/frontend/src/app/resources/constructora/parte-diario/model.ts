@@ -65,6 +65,8 @@ export type ParteDiarioDetalle = {
 export type ParteDiario = {
   id?: number | string;
   idproyecto?: number | null;
+  contacto_id?: number | null;
+  contacto?: { id?: number | string | null; nombre_completo?: string | null } | null;
   fecha?: string | null;
   estado?: string | null;
   descripcion?: string | null;
@@ -99,8 +101,9 @@ const parteDiarioDetalleSchema = z.object({
 
 export const parteDiarioSchema = z.object({
   idproyecto: numberFromInputSchema.pipe(z.number().int().positive()),
+  contacto_id: optionalIdSchema,
   fecha: z.string().min(1),
-  estado: z.enum(["pendiente", "cerrado"]).default("pendiente"),
+  estado: z.enum(["borrador", "cerrado", "registrado"]).default("borrador"),
   descripcion: optionalStringSchema.pipe(
     z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
   ),
@@ -111,8 +114,9 @@ export type ParteDiarioFormValues = z.infer<typeof parteDiarioSchema>;
 
 export const PARTE_DIARIO_DEFAULTS: ParteDiarioFormValues = {
   idproyecto: undefined as unknown as number,
+  contacto_id: undefined,
   fecha: "",
-  estado: "pendiente",
+  estado: "borrador",
   descripcion: "",
   detalles: [],
 };
@@ -132,8 +136,9 @@ export const normalizeParteDiarioPayload = (
   data: Partial<ParteDiarioFormValues>,
 ) => ({
   idproyecto: Number(data.idproyecto),
+  contacto_id: data.contacto_id ? Number(data.contacto_id) : null,
   fecha: trimRequiredText(data.fecha),
-  estado: data.estado === "cerrado" ? "cerrado" : "pendiente",
+  estado: data.estado === "cerrado" || data.estado === "registrado" ? data.estado : "borrador",
   descripcion: trimNullableText(data.descripcion),
   detalles: (data.detalles ?? []).map((detalle) => ({
     ...(detalle.id ? { id: Number(detalle.id) } : {}),
