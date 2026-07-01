@@ -268,7 +268,7 @@ const getActionErrorMessage = async (response: Response) => {
 
 const postParteAction = async (
   parteId: number | string,
-  action: "abrir" | "cerrar" | "registrar-tarja",
+  action: "abrir" | "confirmar" | "cerrar",
 ) => {
   const response = await fetch(`${apiUrl}/parte-diario/${parteId}/${action}`, {
     method: "POST",
@@ -453,10 +453,10 @@ const ParteDiarioActionMenu = ({
   onOpenTarja?: () => void;
   onRequestRegister: () => void;
 }) => {
-  const isClosed = parte.estado === "cerrado";
+  const isConfirmed = parte.estado === "confirmado";
   const isDraft = parte.estado === "borrador";
-  const canOpenParte = parte.estado === "cerrado" || parte.estado === "registrado";
-  const isRegistered = parte.estado === "registrado";
+  const canOpenParte = parte.estado === "confirmado" || parte.estado === "cerrado";
+  const isClosed = parte.estado === "cerrado";
 
   return (
     <DropdownMenuContent align="start" className="min-w-36">
@@ -470,18 +470,18 @@ const ParteDiarioActionMenu = ({
       </DropdownMenuItem>
       <DropdownMenuItem disabled={!isDraft} onClick={onCloseParte}>
         <Lock className="h-3.5 w-3.5" />
-        Cerrar
+        Confirmar
       </DropdownMenuItem>
-      {isRegistered ? (
+      {isClosed ? (
         <DropdownMenuItem disabled={!onOpenTarja} onClick={onOpenTarja}>
           <ClipboardCheck className="h-3.5 w-3.5" />
           Tarja
         </DropdownMenuItem>
       ) : null}
       <DropdownMenuSeparator />
-      <DropdownMenuItem disabled={!isClosed} onClick={onRequestRegister}>
+      <DropdownMenuItem disabled={!isConfirmed} onClick={onRequestRegister}>
         <FilePlus2 className="h-3.5 w-3.5" />
-        Registrar
+        Cerrar
       </DropdownMenuItem>
     </DropdownMenuContent>
   );
@@ -614,8 +614,8 @@ const ParteDiarioDayColumn = ({
   onOpenTarja: (tarja: TarjaRecord) => void;
   onRequestRegister: (parte: ParteDiarioPanelParte) => void;
 }) => {
-  const activePartes = partes.filter((parte) => parte.estado !== "registrado");
-  const registeredPartes = partes.filter((parte) => parte.estado === "registrado");
+  const activePartes = partes.filter((parte) => parte.estado !== "cerrado");
+  const registeredPartes = partes.filter((parte) => parte.estado === "cerrado");
   const visibleMissing = expanded
     ? missingAssignments
     : missingAssignments.slice(0, MISSING_LIMIT);
@@ -685,7 +685,7 @@ const ParteDiarioDayColumn = ({
               aria-expanded={!registeredCollapsed}
               onClick={onToggleRegisteredBlock}
             >
-              <span>Registrados</span>
+              <span>Cerrados</span>
               <span>{registeredPartes.length}</span>
             </button>
             {!registeredCollapsed ? (
@@ -719,7 +719,7 @@ const ParteDiarioDayColumn = ({
                     className="w-full rounded px-1 py-0 text-left text-[8px] font-medium leading-[0.7rem] text-blue-400 hover:bg-blue-50 hover:text-blue-600"
                     onClick={onToggleRegistered}
                   >
-                    + {hiddenRegistered} registrados
+                    + {hiddenRegistered} cerrados
                   </button>
                 ) : registeredExpanded && registeredPartes.length > REGISTERED_LIMIT ? (
                   <button
@@ -1119,11 +1119,11 @@ const ParteDiarioPanelBody = ({
     if (!parte.id) return;
     setActionLoading(true);
     try {
-      await postParteAction(parte.id, "cerrar");
-      notify("Parte diario cerrado", { type: "info" });
+      await postParteAction(parte.id, "confirmar");
+      notify("Parte diario confirmado", { type: "info" });
       refresh();
     } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudo cerrar el parte diario", {
+      notify(error instanceof Error ? error.message : "No se pudo confirmar el parte diario", {
         type: "warning",
       });
     } finally {
@@ -1135,8 +1135,8 @@ const ParteDiarioPanelBody = ({
     if (!registerParte?.id) return;
     setActionLoading(true);
     try {
-      await postParteAction(registerParte.id, "registrar-tarja");
-      notify("Tarja generada en borrador", { type: "info" });
+      await postParteAction(registerParte.id, "cerrar");
+      notify("Parte diario cerrado y tarja generada en borrador", { type: "info" });
       setRegisterParte(null);
       refresh();
     } catch (error) {
@@ -1149,7 +1149,7 @@ const ParteDiarioPanelBody = ({
   };
 
   const showMissing = !statusFilter;
-  const showRegistered = !statusFilter || statusFilter === "registrado";
+  const showRegistered = !statusFilter || statusFilter === "cerrado";
 
   return (
     <>
@@ -1202,9 +1202,9 @@ const ParteDiarioPanelBody = ({
       <Confirm
         isOpen={Boolean(registerParte)}
         loading={actionLoading}
-        title="Registrar tarja"
+        title="Cerrar parte diario"
         content="Se generara o actualizara una tarja en estado borrador para esta obra, encargado y fecha. Se copiaran las novedades del parte diario y se completara la nomina restante como PRESENTE con 9 horas."
-        confirm="Registrar"
+        confirm="Cerrar"
         onClose={() => {
           if (!actionLoading) setRegisterParte(null);
         }}

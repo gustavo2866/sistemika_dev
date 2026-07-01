@@ -13,7 +13,7 @@ import {
 import { useCallback, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { PlusCircle, UserPlus } from "lucide-react";
+import { CheckCircle, PlusCircle, UserPlus } from "lucide-react";
 import { Confirm } from "@/components/confirm";
 import { FormOrderCancelButton, FormOrderSaveButton } from "@/components/forms";
 import {
@@ -23,7 +23,6 @@ import {
   FormErrorSummary,
   FormReferenceAutocomplete,
   FormNumber,
-  FormSelect,
   FormSelectFijo,
   FormText,
   FormOrderHeaderMenuActions,
@@ -42,6 +41,7 @@ import { cn } from "@/lib/utils";
 import {
   PARTE_DIARIO_DEFAULTS,
   getParteDiarioDetalleDefaults,
+  normalizeParteDiarioPayload,
   parteDiarioSchema,
   VALIDATION_RULES,
   type ParteDiarioRecord,
@@ -492,9 +492,32 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
 const ParteDiarioToolbar = () => (
   <div className="flex w-full items-center justify-end gap-2">
     <FormOrderCancelButton />
+    <ParteDiarioSinNovedadButton />
     <FormOrderSaveButton variant="secondary" />
   </div>
 );
+
+const ParteDiarioSinNovedadButton = () => {
+  const record = useRecordContext<ParteDiarioRecord>();
+  if (record?.id) return null;
+
+  return (
+    <FormOrderSaveButton
+      type="button"
+      label="Sin novedad"
+      variant="outline"
+      alwaysEnable
+      icon={<CheckCircle className="size-3 sm:size-4" />}
+      transform={(data: Partial<ParteDiarioFormValues>) =>
+        normalizeParteDiarioPayload({
+          ...data,
+          estado: "confirmado",
+          detalles: [],
+        })
+      }
+    />
+  );
+};
 
 const ParteDiarioResumenTotales = ({
   addDisabled,

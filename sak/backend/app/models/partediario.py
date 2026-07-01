@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 class EstadoParteDiario(str, Enum):
     BORRADOR = "borrador"   # generado por el agente, editable
-    CERRADO = "cerrado"     # cerrado por el administrador, solo lectura para el agente
-    REGISTRADO = "registrado"  # tarja generada desde el parte diario
+    CONFIRMADO = "confirmado"  # confirmado por el agente o backoffice, listo para tarja
+    CERRADO = "cerrado"  # tarja generada desde el parte diario
 
 
 class OrigenDetalle(str, Enum):

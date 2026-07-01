@@ -254,7 +254,7 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
             idproyecto=seeded_parte_v3["project"].id,
             contacto_id=seeded_parte_v3["contact"].id,
             fecha=date(2026, 5, 15),
-            estado=EstadoParteDiario.CERRADO,
+            estado=EstadoParteDiario.CONFIRMADO,
         )
     )
     db_session.add(
@@ -273,7 +273,7 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
     assert "1: 16/05/2026 sab (borrador)" in (result.reply_text or "")
-    assert "2: 15/05/2026 vie (cerrado)" in (result.reply_text or "")
+    assert "2: 15/05/2026 vie (confirmado)" in (result.reply_text or "")
     assert "3: 14/05/2026 jue (sin cargar)" in (result.reply_text or "")
     assert "Responde con el numero de una fecha o SALIR" in (result.reply_text or "")
 
@@ -372,7 +372,7 @@ async def test_parte_diario_v3_closed_part_for_today_forwards_to_date_selection(
     closed = ParteDiario(
         idproyecto=seeded_parte_v3["project"].id,
         fecha=_today(),
-        estado=EstadoParteDiario.CERRADO,
+        estado=EstadoParteDiario.CONFIRMADO,
     )
     db_session.add(closed)
     db_session.commit()
@@ -384,7 +384,7 @@ async def test_parte_diario_v3_closed_part_for_today_forwards_to_date_selection(
 
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
-    assert "ya esta cerrado" in (result.reply_text or "")
+    assert "ya esta confirmado" in (result.reply_text or "")
     assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
 
 
@@ -401,7 +401,7 @@ async def test_parte_diario_v3_closed_date_selection_loads_saved_part(
     parte = ParteDiario(
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 17),
-        estado=EstadoParteDiario.CERRADO,
+        estado=EstadoParteDiario.CONFIRMADO,
     )
     db_session.add(parte)
     db_session.flush()
@@ -436,7 +436,7 @@ async def test_parte_diario_v3_initial_inferred_date_is_loaded_before_today(
         ParteDiario(
             idproyecto=seeded_parte_v3["project"].id,
             fecha=_today(),
-            estado=EstadoParteDiario.CERRADO,
+            estado=EstadoParteDiario.CONFIRMADO,
         )
     )
     db_session.commit()
@@ -892,7 +892,7 @@ async def test_parte_diario_v3_empty_part_close_marks_sin_novedades_and_closes(s
     assert result.metadata["parte_listo"] is True
     assert result.metadata["result"]["cerrar_parte"] is True
     assert result.metadata["result"]["sin_novedades_informado"] is True
-    assert "*PARTE DIARIO CERRADO*" in (result.reply_text or "")
+    assert "*PARTE DIARIO CONFIRMADO*" in (result.reply_text or "")
     assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
 
 
@@ -955,7 +955,7 @@ async def test_parte_diario_v3_menu_guardar_persists_draft(seeded_parte_v3):
     assert result.metadata["parte_listo"] is True
     assert result.metadata["result"]["cerrar_parte"] is False
     assert "Parte diario guardado como borrador para 2026-05-30." in (result.reply_text or "")
-    assert "*PARTE DIARIO REGISTRADO*" not in (result.reply_text or "")
+    assert "*PARTE DIARIO GUARDADO*" not in (result.reply_text or "")
     assert "*Novedades*" not in (result.reply_text or "")
     assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
 
@@ -1132,10 +1132,10 @@ async def test_parte_diario_v3_close_persists_after_pending_validation(
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
     assert result.metadata["parte_listo"] is True
     assert result.metadata["result"]["cerrar_parte"] is True
-    assert "*PARTE DIARIO CERRADO*" in (result.reply_text or "")
+    assert "*PARTE DIARIO CONFIRMADO*" in (result.reply_text or "")
     assert "Ruiz, Pablo: ACC, 0h" in (result.reply_text or "")
     parte = db_session.get(ParteDiario, result.metadata["parte_diario_id"])
-    assert parte.estado == EstadoParteDiario.CERRADO
+    assert parte.estado == EstadoParteDiario.CONFIRMADO
 
 
 def test_parte_diario_v3_resolver_keeps_similar_search_out_of_load(seeded_parte_v3):
@@ -1399,8 +1399,8 @@ async def test_parte_diario_v3_close_persists_closed_part(db_session: Session, s
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
     assert result.metadata["parte_listo"] is True
     parte = db_session.exec(select(ParteDiario)).one()
-    assert parte.estado == EstadoParteDiario.CERRADO
-    assert "*PARTE DIARIO CERRADO*" in (result.reply_text or "")
+    assert parte.estado == EstadoParteDiario.CONFIRMADO
+    assert "*PARTE DIARIO CONFIRMADO*" in (result.reply_text or "")
     assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
     message = db_session.get(CRMMensaje, parte.mensaje_origen_id)
     assert message is not None

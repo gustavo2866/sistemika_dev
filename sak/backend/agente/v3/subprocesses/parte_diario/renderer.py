@@ -102,7 +102,7 @@ def falta_informacion() -> str:
     return "Todavia no informaste novedades. Indicalas o escribi SIN NOVEDADES si todos estuvieron presentes."
 
 
-def sin_novedades_registrado() -> str:
+def sin_novedades_confirmado() -> str:
     return "Asistencia completa registrada. Escribi CONFIRMAR para guardar."
 
 
@@ -111,7 +111,7 @@ def sin_novedades_rechazado() -> str:
 
 
 def confirmado(state: ParteDiarioState, *, cerrado: bool = False) -> str:
-    title = "*PARTE DIARIO CERRADO*" if cerrado else "*PARTE DIARIO REGISTRADO*"
+    title = "*PARTE DIARIO CONFIRMADO*" if cerrado else "*PARTE DIARIO GUARDADO*"
     return (
         f"{title}\n"
         "━━━━━━━━━━━━━━\n\n"
@@ -184,7 +184,7 @@ def mostrar_nomina(items: list[NominaItem]) -> str:
 
 
 def parte_cerrado(fecha: str) -> str:
-    return f"El parte diario del {fecha} ya esta cerrado y no puede modificarse desde WhatsApp."
+    return f"El parte diario del {fecha} ya esta confirmado y no puede modificarse desde WhatsApp."
 
 
 def preguntar_cambio_fecha(fecha_actual: str | None, fecha_propuesta: str) -> str:

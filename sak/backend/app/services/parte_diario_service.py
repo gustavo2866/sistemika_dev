@@ -125,8 +125,9 @@ class ParteDiarioService:
     ) -> ParteDiario:
         if not result.get("parte_listo"):
             raise ValueError("El mensaje no tiene parte_listo=True")
-        target_estado = EstadoParteDiario.CERRADO if result.get("cerrar_parte") else EstadoParteDiario.BORRADOR
-        if target_estado == EstadoParteDiario.CERRADO and (
+        should_confirm = bool(result.get("confirmar_parte") or result.get("cerrar_parte"))
+        target_estado = EstadoParteDiario.CONFIRMADO if should_confirm else EstadoParteDiario.BORRADOR
+        if target_estado == EstadoParteDiario.CONFIRMADO and (
             result.get("pendientes_ambiguos") or result.get("conflictos_novedad")
         ):
             raise ValueError("El parte diario tiene resoluciones pendientes")
@@ -141,11 +142,11 @@ class ParteDiarioService:
         novedades = [item for item in raw_novedades if item.get("idnomina") is not None]
         pendientes_provisorios = list(result.get("pendientes_ambiguos") or [])
         novedades_provisorias = [item for item in raw_novedades if item.get("idnomina") is None]
-        if target_estado == EstadoParteDiario.CERRADO and novedades_provisorias:
+        if target_estado == EstadoParteDiario.CONFIRMADO and novedades_provisorias:
             raise ValueError("El parte diario tiene novedades sin validar")
         if target_estado == EstadoParteDiario.BORRADOR:
             pendientes_provisorios.extend(novedades_provisorias)
-        if target_estado == EstadoParteDiario.CERRADO and not novedades and not result.get("sin_novedades_informado"):
+        if target_estado == EstadoParteDiario.CONFIRMADO and not novedades and not result.get("sin_novedades_informado"):
             raise ValueError("El parte diario vacio requiere declaracion explicita de sin novedades")
         present_id = None
         if novedades:
@@ -161,7 +162,7 @@ class ParteDiarioService:
         self._validate_novedades(
             novedades,
             present_id=present_id,
-            require_close_rules=target_estado == EstadoParteDiario.CERRADO,
+            require_close_rules=target_estado == EstadoParteDiario.CONFIRMADO,
         )
 
         parte = self._resolve_parte(
@@ -182,8 +183,8 @@ class ParteDiarioService:
             session.add(parte)
             session.flush()
         else:
-            if parte.estado == EstadoParteDiario.CERRADO:
-                raise ValueError("El parte diario ya fue cerrado por el administrador")
+            if parte.estado in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO}:
+                raise ValueError("El parte diario ya fue confirmado")
             if contacto_id > 0:
                 parte.contacto_id = contacto_id
             parte.mensaje_origen_id = mensaje_id

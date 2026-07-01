@@ -103,7 +103,7 @@ export const parteDiarioSchema = z.object({
   idproyecto: numberFromInputSchema.pipe(z.number().int().positive()),
   contacto_id: optionalIdSchema,
   fecha: z.string().min(1),
-  estado: z.enum(["borrador", "cerrado", "registrado"]).default("borrador"),
+  estado: z.enum(["borrador", "confirmado", "cerrado"]).default("borrador"),
   descripcion: optionalStringSchema.pipe(
     z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
   ),
@@ -138,7 +138,7 @@ export const normalizeParteDiarioPayload = (
   idproyecto: Number(data.idproyecto),
   contacto_id: data.contacto_id ? Number(data.contacto_id) : null,
   fecha: trimRequiredText(data.fecha),
-  estado: data.estado === "cerrado" || data.estado === "registrado" ? data.estado : "borrador",
+  estado: data.estado === "confirmado" || data.estado === "cerrado" ? data.estado : "borrador",
   descripcion: trimNullableText(data.descripcion),
   detalles: (data.detalles ?? []).map((detalle) => ({
     ...(detalle.id ? { id: Number(detalle.id) } : {}),

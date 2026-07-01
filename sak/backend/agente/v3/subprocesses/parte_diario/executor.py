@@ -94,7 +94,7 @@ def execute_plan(
             return ExecutionResult(
                 "sin_novedades",
                 current,
-                renderer.sin_novedades_registrado(),
+                renderer.sin_novedades_confirmado(),
                 applied_operations=applied,
             )
 

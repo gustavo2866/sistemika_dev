@@ -20,14 +20,14 @@ def get_quincena_range(fecha):
 
 
 class ParteDiarioTarjaService:
-    def cerrar_parte(self, session: Session, parte_id: int) -> ParteDiario:
+    def confirmar_parte(self, session: Session, parte_id: int) -> ParteDiario:
         parte = session.get(ParteDiario, parte_id)
         if parte is None or parte.deleted_at is not None:
             raise ValueError("Parte diario no encontrado")
         if parte.estado != EstadoParteDiario.BORRADOR:
-            raise ValueError("Solo se puede cerrar un parte diario en borrador")
+            raise ValueError("Solo se puede confirmar un parte diario en borrador")
 
-        parte.estado = EstadoParteDiario.CERRADO
+        parte.estado = EstadoParteDiario.CONFIRMADO
         if hasattr(parte, "updated_at"):
             parte.updated_at = datetime.now(UTC)
         session.add(parte)
@@ -35,12 +35,18 @@ class ParteDiarioTarjaService:
         session.refresh(parte)
         return parte
 
+    def cerrar_parte(self, session: Session, parte_id: int) -> Tarja:
+        return self._generar_tarja_y_cerrar_parte(session, parte_id)
+
+    def registrar_tarja(self, session: Session, parte_id: int) -> Tarja:
+        return self._generar_tarja_y_cerrar_parte(session, parte_id)
+
     def abrir_parte(self, session: Session, parte_id: int) -> ParteDiario:
         parte = session.get(ParteDiario, parte_id)
         if parte is None or parte.deleted_at is not None:
             raise ValueError("Parte diario no encontrado")
-        if parte.estado not in {EstadoParteDiario.CERRADO, EstadoParteDiario.REGISTRADO}:
-            raise ValueError("Solo se puede abrir un parte diario cerrado o registrado")
+        if parte.estado not in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO}:
+            raise ValueError("Solo se puede abrir un parte diario confirmado o cerrado")
 
         parte.estado = EstadoParteDiario.BORRADOR
         if hasattr(parte, "updated_at"):
@@ -50,12 +56,12 @@ class ParteDiarioTarjaService:
         session.refresh(parte)
         return parte
 
-    def registrar_tarja(self, session: Session, parte_id: int) -> Tarja:
+    def _generar_tarja_y_cerrar_parte(self, session: Session, parte_id: int) -> Tarja:
         parte = session.get(ParteDiario, parte_id)
         if parte is None or parte.deleted_at is not None:
             raise ValueError("Parte diario no encontrado")
-        if parte.estado != EstadoParteDiario.CERRADO:
-            raise ValueError("Solo se puede registrar una tarja desde un parte diario cerrado")
+        if parte.estado != EstadoParteDiario.CONFIRMADO:
+            raise ValueError("Solo se puede cerrar un parte diario confirmado")
         if not parte.contacto_id:
             raise ValueError("El parte diario no tiene encargado/contacto asociado")
 
@@ -147,7 +153,7 @@ class ParteDiarioTarjaService:
             )
 
         self._ensure_tarja_novedad(session, int(tarja.id))
-        parte.estado = EstadoParteDiario.REGISTRADO
+        parte.estado = EstadoParteDiario.CERRADO
         if hasattr(parte, "updated_at"):
             parte.updated_at = datetime.now(UTC)
         session.add(parte)

@@ -73,13 +73,13 @@ def _seed_base(session):
     }
 
 
-def test_abrir_parte_cerrado_vuelve_a_borrador(db_session):
+def test_abrir_parte_confirmado_vuelve_a_borrador(db_session):
     data = _seed_base(db_session)
     parte = ParteDiario(
         idproyecto=data["proyecto"].id,
         contacto_id=data["contacto"].id,
         fecha=date(2026, 6, 24),
-        estado=EstadoParteDiario.CERRADO,
+        estado=EstadoParteDiario.CONFIRMADO,
     )
     db_session.add(parte)
     db_session.commit()
@@ -89,7 +89,7 @@ def test_abrir_parte_cerrado_vuelve_a_borrador(db_session):
     assert opened.estado == EstadoParteDiario.BORRADOR
 
 
-def test_cerrar_parte_borrador_pasa_a_cerrado(db_session):
+def test_confirmar_parte_borrador_pasa_a_confirmado(db_session):
     data = _seed_base(db_session)
     parte = ParteDiario(
         idproyecto=data["proyecto"].id,
@@ -100,37 +100,37 @@ def test_cerrar_parte_borrador_pasa_a_cerrado(db_session):
     db_session.add(parte)
     db_session.commit()
 
-    closed = parte_diario_tarja_service.cerrar_parte(db_session, parte.id)
+    closed = parte_diario_tarja_service.confirmar_parte(db_session, parte.id)
 
-    assert closed.estado == EstadoParteDiario.CERRADO
+    assert closed.estado == EstadoParteDiario.CONFIRMADO
 
 
-def test_cerrar_parte_requiere_borrador(db_session):
+def test_confirmar_parte_requiere_borrador(db_session):
+    data = _seed_base(db_session)
+    parte = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 24),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add(parte)
+    db_session.commit()
+
+    try:
+        parte_diario_tarja_service.confirmar_parte(db_session, parte.id)
+    except ValueError as exc:
+        assert "en borrador" in str(exc)
+    else:
+        raise AssertionError("confirmar_parte debe rechazar partes que no estan en borrador")
+
+
+def test_abrir_parte_cerrado_vuelve_a_borrador(db_session):
     data = _seed_base(db_session)
     parte = ParteDiario(
         idproyecto=data["proyecto"].id,
         contacto_id=data["contacto"].id,
         fecha=date(2026, 6, 24),
         estado=EstadoParteDiario.CERRADO,
-    )
-    db_session.add(parte)
-    db_session.commit()
-
-    try:
-        parte_diario_tarja_service.cerrar_parte(db_session, parte.id)
-    except ValueError as exc:
-        assert "en borrador" in str(exc)
-    else:
-        raise AssertionError("cerrar_parte debe rechazar partes que no estan en borrador")
-
-
-def test_abrir_parte_registrado_vuelve_a_borrador(db_session):
-    data = _seed_base(db_session)
-    parte = ParteDiario(
-        idproyecto=data["proyecto"].id,
-        contacto_id=data["contacto"].id,
-        fecha=date(2026, 6, 24),
-        estado=EstadoParteDiario.REGISTRADO,
     )
     db_session.add(parte)
     db_session.commit()
@@ -149,7 +149,7 @@ def test_registrar_tarja_copia_novedades_y_completa_nomina_del_encargado(db_sess
         idproyecto=data["proyecto"].id,
         contacto_id=data["contacto"].id,
         fecha=date(2026, 6, 24),
-        estado=EstadoParteDiario.CERRADO,
+        estado=EstadoParteDiario.CONFIRMADO,
         descripcion="Parte listo",
     )
     db_session.add(parte)
@@ -168,7 +168,7 @@ def test_registrar_tarja_copia_novedades_y_completa_nomina_del_encargado(db_sess
     db_session.refresh(parte)
 
     assert tarja.estado == EstadoTarja.BORRADOR
-    assert parte.estado == EstadoParteDiario.REGISTRADO
+    assert parte.estado == EstadoParteDiario.CERRADO
     assert tarja.idproyecto == data["proyecto"].id
     assert tarja.contacto_id == data["contacto"].id
     assert tarja.fechainicio == date(2026, 6, 16)
@@ -200,13 +200,13 @@ def test_registrar_tarja_reusa_cabecera_quincenal_y_preserva_otros_dias(db_sessi
         idproyecto=data["proyecto"].id,
         contacto_id=data["contacto"].id,
         fecha=date(2026, 6, 24),
-        estado=EstadoParteDiario.CERRADO,
+        estado=EstadoParteDiario.CONFIRMADO,
     )
     parte_25 = ParteDiario(
         idproyecto=data["proyecto"].id,
         contacto_id=data["contacto"].id,
         fecha=date(2026, 6, 25),
-        estado=EstadoParteDiario.CERRADO,
+        estado=EstadoParteDiario.CONFIRMADO,
     )
     db_session.add(parte_24)
     db_session.add(parte_25)
@@ -250,7 +250,7 @@ def test_registrar_tarja_reusa_cabecera_quincenal_y_preserva_otros_dias(db_sessi
     assert len(novedades) == 1
 
 
-def test_registrar_tarja_requiere_parte_cerrado(db_session):
+def test_registrar_tarja_requiere_parte_confirmado(db_session):
     data = _seed_base(db_session)
     parte = ParteDiario(
         idproyecto=data["proyecto"].id,
@@ -264,6 +264,6 @@ def test_registrar_tarja_requiere_parte_cerrado(db_session):
     try:
         parte_diario_tarja_service.registrar_tarja(db_session, parte.id)
     except ValueError as exc:
-        assert "parte diario cerrado" in str(exc)
+        assert "parte diario confirmado" in str(exc)
     else:
         raise AssertionError("registrar_tarja debe rechazar partes en borrador")

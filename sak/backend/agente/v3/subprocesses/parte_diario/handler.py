@@ -230,7 +230,7 @@ class ParteDiarioSubprocess:
         state.set_draft(draft)
         state.opciones_fecha = []
         state.etapa = "cargar_fecha"
-        if selected.estado == "cerrado":
+        if selected.estado in {"confirmado", "cerrado"}:
             error = self._prepare_cargar_fecha(state, allow_closed=True)
             if error:
                 state.etapa = "seleccionar_fecha"
@@ -507,7 +507,7 @@ class ParteDiarioSubprocess:
                 return self._post_action_result(
                     context,
                     state,
-                    payload.get("reply_to_user") or f"Parte diario registrado #{parte.id}.",
+                    payload.get("reply_to_user") or f"Parte diario confirmado #{parte.id}.",
                     "confirmed",
                     {
                         "process_name": self.name,
@@ -690,6 +690,9 @@ class ParteDiarioSubprocess:
             if parte is None:
                 status = "sin cargar"
                 parte_id = None
+            elif parte.estado == EstadoParteDiario.CONFIRMADO:
+                status = "confirmado"
+                parte_id = parte.id
             elif parte.estado == EstadoParteDiario.CERRADO:
                 status = "cerrado"
                 parte_id = parte.id
@@ -842,6 +845,7 @@ def _save_payload(draft, *, cerrar_parte: bool) -> dict:
         ),
         "parte_listo": True,
         "cerrar_parte": cerrar_parte,
+        "confirmar_parte": cerrar_parte,
         "close_after_materialization": True,
         "cancelado": False,
         "oportunidad_id": draft.oportunidad_id,
@@ -855,7 +859,7 @@ def _save_payload(draft, *, cerrar_parte: bool) -> dict:
         "errores": [],
         "parte_diario": {
             "status": "saved" if not cerrar_parte else "confirmed",
-            "operations": ["guardar" if not cerrar_parte else "cerrar"],
+            "operations": ["guardar" if not cerrar_parte else "confirmar"],
         },
     }
 

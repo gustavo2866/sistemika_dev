@@ -415,7 +415,7 @@ class ParteDiarioProcess:
         allow_closed: bool = False,
     ) -> str | None:
         existing = self._find_parte(int(state.idproyecto or 0), target_date, contacto_id=state.contacto_id)
-        if existing and existing.estado == EstadoParteDiario.CERRADO and not allow_closed:
+        if existing and existing.estado in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO} and not allow_closed:
             return renderer.parte_cerrado(target_date)
         if existing and state.parte_id == existing.id and state.fecha == target_date:
             return None
@@ -602,6 +602,7 @@ def _payload(result: ExecutionResult, *, plan: TurnPlan | None = None) -> dict:
         "reply_to_user": result.reply,
         "parte_listo": result.parte_listo,
         "cerrar_parte": result.cerrar_parte,
+        "confirmar_parte": result.cerrar_parte,
         "close_after_materialization": result.parte_listo,
         "cancelado": result.cancelado,
         "oportunidad_id": state.oportunidad_id,

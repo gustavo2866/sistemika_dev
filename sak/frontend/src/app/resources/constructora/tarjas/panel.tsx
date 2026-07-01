@@ -30,7 +30,7 @@ import { getEstadoTarjaBadgeClass, getEstadoTarjaLabel } from "./constants";
 import type { TarjaRecord } from "./model";
 
 type ParteDiarioStats = {
-  cerrados: number;
+  confirmados: number;
   borradores: number;
   sinCargar: number;
 };
@@ -242,8 +242,8 @@ const PendingTarjaRow = ({
       {project.nombre ?? `Obra #${project.id}`}
     </span>
     <span className="flex min-w-0 flex-1 items-center gap-1 text-[7px] font-medium">
-      <span className="text-emerald-600" title="Partes diarios cerrados">
-        C: {stats.cerrados}
+      <span className="text-emerald-600" title="Partes diarios confirmados">
+        C: {stats.confirmados}
       </span>
       <span className="text-amber-600" title="Partes diarios en borrador">
         B: {stats.borradores}
@@ -414,19 +414,19 @@ const TarjaPanelBody = ({
   const parteStatsByProject = useMemo(() => {
     const grouped = new Map<
       string,
-      { cerrados: number; borradores: number; loadedDates: Set<string> }
+      { confirmados: number; borradores: number; loadedDates: Set<string> }
     >();
     (parteData as ParteDiarioRecord[]).forEach((parte) => {
       const projectId = String(parte.idproyecto ?? "");
       const dateKey = String(parte.fecha ?? "").slice(0, 10);
       if (!projectId || !dateKey) return;
       const stats = grouped.get(projectId) ?? {
-        cerrados: 0,
+        confirmados: 0,
         borradores: 0,
         loadedDates: new Set<string>(),
       };
-      if (parte.estado === "cerrado") {
-        stats.cerrados += 1;
+      if (parte.estado === "confirmado") {
+        stats.confirmados += 1;
       } else {
         stats.borradores += 1;
       }
@@ -441,7 +441,7 @@ const TarjaPanelBody = ({
         return [
           String(project.id),
           {
-            cerrados: stats?.cerrados ?? 0,
+            confirmados: stats?.confirmados ?? 0,
             borradores: stats?.borradores ?? 0,
             sinCargar: Math.max(0, expectedDays - (stats?.loadedDates.size ?? 0)),
           } satisfies ParteDiarioStats,
@@ -496,7 +496,7 @@ const TarjaPanelBody = ({
                 startIso={startIso}
                 stats={
                   parteStatsByProject.get(String(project.id)) ?? {
-                    cerrados: 0,
+                    confirmados: 0,
                     borradores: 0,
                     sinCargar: 0,
                   }

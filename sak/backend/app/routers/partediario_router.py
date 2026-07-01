@@ -79,14 +79,26 @@ def abrir_parte_diario(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@parte_diario_router.post("/{parte_id}/confirmar")
+def confirmar_parte_diario(
+    parte_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        parte = parte_diario_tarja_service.confirmar_parte(session, parte_id)
+        return filtrar_respuesta(parte)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @parte_diario_router.post("/{parte_id}/cerrar")
 def cerrar_parte_diario(
     parte_id: int,
     session: Session = Depends(get_session),
 ):
     try:
-        parte = parte_diario_tarja_service.cerrar_parte(session, parte_id)
-        return filtrar_respuesta(parte)
+        tarja = parte_diario_tarja_service.cerrar_parte(session, parte_id)
+        return filtrar_respuesta(tarja)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
