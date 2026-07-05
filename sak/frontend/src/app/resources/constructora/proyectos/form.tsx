@@ -287,11 +287,16 @@ const ProyectoEncargadosSection = ({
 }) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
   const proyectoId = resolveNumericId(record?.id);
+  const location = useLocation();
+  const returnTo = `${location.pathname}${location.search}`;
 
   const content = proyectoId ? (
     <ProyectoEncargadoList
       embedded
       filter={{ proyecto_id: proyectoId }}
+      hideProyectoFilter
+      hideProyectoColumn
+      createState={{ proyecto_id: proyectoId, returnTo }}
       storeKey={`proyecto-encargados-proyecto-${proyectoId}`}
       perPage={25}
     />

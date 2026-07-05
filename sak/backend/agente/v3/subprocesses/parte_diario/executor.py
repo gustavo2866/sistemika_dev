@@ -209,6 +209,8 @@ def _agregar_novedad(
                 horas_extra=operation.horas_extra,
                 descripcion=operation.descripcion,
                 candidatos=candidates,
+                candidatos_externos=resolved.candidatos_externos,
+                mostrando_candidatos_externos=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
                 fuera_de_proyecto=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
             )
         )
@@ -264,6 +266,7 @@ def _build_novedad(
         descripcion=descripcion,
         fuera_de_proyecto=nomina.fuera_de_proyecto,
         nombre_proyecto=nomina.nombre_proyecto,
+        nro_legajo=nomina.nro_legajo,
     )
 
 

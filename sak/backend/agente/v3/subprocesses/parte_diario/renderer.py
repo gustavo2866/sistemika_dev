@@ -21,13 +21,14 @@ def resumen(state: ParteDiarioState) -> str:
     for novedad in state.novedades:
         horas = f"{novedad.horas:g}h" if novedad.horas is not None else "horas pendientes"
         estado = novedad.estado_codigo or "estado pendiente"
+        legajo = f" (legajo {novedad.nro_legajo})" if getattr(novedad, "nro_legajo", None) else ""
         externo = _external_label(novedad)
         motivo = (
             f", motivo: {novedad.descripcion}"
             if novedad.descripcion and str(novedad.estado_codigo or "").upper() != "P"
             else ""
         )
-        rows.append(f"- {novedad.nombre}{externo}: {estado}, {horas}{motivo}")
+        rows.append(f"- {novedad.nombre}{legajo}{externo}: {estado}, {horas}{motivo}")
     shown_pending_names = set()
     for pending in state.pendientes_ambiguos:
         normalized_name = normalize_text(pending.nombre)
@@ -82,6 +83,10 @@ def solicitar_confirmacion(state: ParteDiarioState) -> str:
     has_clarifications = bool(state.pendientes_ambiguos or state.conflictos_novedad)
     action = "Para resolver las aclaraciones, responde CONFIRMAR." if has_clarifications else "Para guardarlo, responde CONFIRMAR."
     return f"Parte diario para confirmar:\nFecha: {state.fecha}\n\n{resumen(state)}\n\n{action}"
+
+
+def confirmar_cierre_validado(state: ParteDiarioState) -> str:
+    return f"Parte diario listo para cerrar:\nFecha: {state.fecha}\n\n{resumen(state)}\n\nConfirmas cerrar el parte diario?"
 
 
 def consulta(state: ParteDiarioState) -> str:

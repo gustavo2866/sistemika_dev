@@ -94,6 +94,7 @@ class ParteDiarioV3State:
     contacto_id: int | None = None
     oportunidad_id: int | None = None
     proyecto_id: int | None = None
+    nombre_obra: str | None = None
     opciones_obra: list[ParteDiarioOption] = field(default_factory=list)
     opciones_fecha: list[ParteDiarioFechaOption] = field(default_factory=list)
     fecha_menu_pendiente: bool = False
@@ -132,6 +133,7 @@ class ParteDiarioV3State:
             contacto_id=_parse_int(data.get("contacto_id")),
             oportunidad_id=_parse_int(data.get("oportunidad_id")),
             proyecto_id=_parse_int(data.get("proyecto_id")),
+            nombre_obra=str(data.get("nombre_obra") or "").strip() or None,
             opciones_obra=options,
             opciones_fecha=date_options,
             fecha_menu_pendiente=bool(data.get("fecha_menu_pendiente")),
@@ -144,6 +146,7 @@ class ParteDiarioV3State:
             "contacto_id": self.contacto_id,
             "oportunidad_id": self.oportunidad_id,
             "proyecto_id": self.proyecto_id,
+            "nombre_obra": self.nombre_obra,
             "opciones_obra": [option.to_dict() for option in self.opciones_obra],
             "opciones_fecha": [option.to_dict() for option in self.opciones_fecha],
             "fecha_menu_pendiente": self.fecha_menu_pendiente,
@@ -157,6 +160,7 @@ class ParteDiarioV3State:
         self.contacto_id = option.contacto_id
         self.oportunidad_id = option.oportunidad_id
         self.proyecto_id = option.proyecto_id
+        self.nombre_obra = option.nombre
         self.opciones_obra = []
         self.etapa = "cargar_fecha"
 

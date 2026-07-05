@@ -54,6 +54,8 @@ BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
 logger = logging.getLogger(__name__)
 _RESERVED_OPERATIONS = {"confirmar", "cancelar"}
 _MUTATING_OPERATIONS = {"agregar_novedad", "modificar_novedad", "eliminar_novedad", "sin_novedades"}
+_CANDIDATE_LIST_MAX_ROWS = 10
+_CANDIDATE_LIST_PAGE_SIZE = 9
 
 
 @dataclass(slots=True)
@@ -271,12 +273,20 @@ class ParteDiarioProcess:
             pending.nombre_no_encontrado = False
             if resolved.ambiguo:
                 pending.candidatos = resolved.candidatos
+                pending.candidatos_externos = resolved.candidatos_externos
+                pending.mostrando_candidatos_externos = bool(pending.candidatos) and all(
+                    item.fuera_de_proyecto for item in pending.candidatos
+                )
+                pending.pagina_candidatos = 0
+                pending.lista_candidatos_mostrada = False
                 return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
             selected = resolved.match
             if selected is None:
                 pending.nombre_no_encontrado = True
                 return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
             pending.candidatos = [selected]
+            pending.pagina_candidatos = 0
+            pending.lista_candidatos_mostrada = False
             pending.idnomina_resuelto = selected.idnomina
             pending.fuera_de_proyecto = selected.fuera_de_proyecto
             pending.nombre_proyecto = selected.nombre_proyecto
@@ -303,7 +313,19 @@ class ParteDiarioProcess:
                     nominas_completas,
                     prefix=f"{unvalidated_name} quedo registrado sin validar.",
                 )
-            selected = parse_candidate_selection(text, pending.candidatos or [])
+            candidates = pending.candidatos or []
+            if not pending.lista_candidatos_mostrada:
+                return self._state_reply(
+                    state,
+                    renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
+                )
+            offset, visible_count = _candidate_page_selection_window(candidates, pending.pagina_candidatos)
+            selected = parse_candidate_selection(
+                text,
+                candidates,
+                offset=offset,
+                visible_count=visible_count,
+            )
             if selected is None:
                 return self._state_reply(
                     state,
@@ -391,8 +413,8 @@ class ParteDiarioProcess:
         *,
         prefix: str | None = None,
     ) -> TurnResult:
-        state.esperando = None
-        result = self._handle_exact_confirmation(state, estados, nominas_proyecto, nominas_completas, cerrar_parte=True)
+        state.esperando = "confirmacion_cierre_validado"
+        result = self._state_reply(state, renderer.confirmar_cierre_validado(state))
         if prefix and result.payload.get("reply_to_user"):
             result.payload["reply_to_user"] = f"{prefix}\n\n{result.payload['reply_to_user']}"
         return result
@@ -499,6 +521,7 @@ class ParteDiarioProcess:
                     descripcion=row.descripcion,
                     fuera_de_proyecto=external,
                     nombre_proyecto=projects.get(nomina.idproyecto) if external else None,
+                    nro_legajo=nomina.nro_legajo,
                 )
             )
         return novedades, pendientes
@@ -565,7 +588,16 @@ class ParteDiarioProcess:
             )
             for item in rows
         ]
-        return [item for item in all_items if item.idproyecto == idproyecto], all_items
+        project_items = [item for item in all_items if item.idproyecto == idproyecto]
+        if contacto_id is not None:
+            assigned_to_contact = [
+                item
+                for item in project_items
+                if item.encargado_contacto_id is not None and int(item.encargado_contacto_id) == contacto_id
+            ]
+            if assigned_to_contact:
+                project_items = assigned_to_contact
+        return project_items, all_items
 
     def _from_execution(self, result: ExecutionResult, *, plan: TurnPlan | None = None) -> TurnResult:
         return TurnResult(
@@ -685,18 +717,42 @@ def _prepare_pending_validation(
 ) -> None:
     if not pending.nombre_no_encontrado or pending.candidatos:
         return
-    candidates = NominaResolver.find_similar(pending.nombre, nominas_proyecto, nominas_completas)
+    project_candidates, external_candidates = NominaResolver.find_similar_grouped(
+        pending.nombre,
+        nominas_proyecto,
+        nominas_completas,
+    )
+    candidates = project_candidates or external_candidates
     if candidates:
         pending.candidatos = candidates
+        pending.candidatos_externos = external_candidates
+        pending.mostrando_candidatos_externos = not bool(project_candidates)
         pending.nombre_no_encontrado = False
+        pending.pagina_candidatos = 0
+        pending.lista_candidatos_mostrada = False
+
+
+def _candidate_page_selection_window(candidates: list[NominaItem], page: int) -> tuple[int, int]:
+    if len(candidates) <= _CANDIDATE_LIST_MAX_ROWS:
+        return 0, len(candidates)
+    offset = max(0, page) * _CANDIDATE_LIST_PAGE_SIZE
+    remaining = max(0, len(candidates) - offset)
+    if remaining <= _CANDIDATE_LIST_MAX_ROWS:
+        return offset, remaining
+    return offset, _CANDIDATE_LIST_PAGE_SIZE
 
 
 def _is_unvalidated_selection(text: str, pending: PendienteAmbiguo) -> bool:
     command = _normalize_command(text)
     candidates = pending.candidatos or []
     numbers = re.findall(r"\d+", command)
-    if len(numbers) == 1 and int(numbers[0]) == len(candidates) + 1:
-        return True
+    offset, visible_count = _candidate_page_selection_window(candidates, pending.pagina_candidatos)
+    has_more = offset + visible_count < len(candidates) or (
+        not pending.mostrando_candidatos_externos and bool(pending.candidatos_externos)
+    )
+    row_count = visible_count + (1 if has_more else 0)
+    if len(numbers) == 1 and row_count < _CANDIDATE_LIST_MAX_ROWS:
+        return int(numbers[0]) == row_count + 1
     pending_name = _normalize_command(pending.nombre)
     return command in {
         "registrar sin validar",

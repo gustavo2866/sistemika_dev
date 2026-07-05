@@ -11,10 +11,11 @@ from agente.v3.subprocesses.parte_diario.models import ParteDiarioState
 class FakeChatClient:
     def __init__(self) -> None:
         self.calls = []
+        self.next_response = {"operations": [], "reply": None}
 
     async def complete_json(self, **kwargs):
         self.calls.append(kwargs)
-        return {"operations": [], "reply": None}
+        return self.next_response
 
 
 @pytest.mark.asyncio
@@ -77,3 +78,23 @@ async def test_cierre_prompt_reserves_exact_save_close_commands():
     assert "1 o GUARDAR: guarda el borrador y sale del proceso" in prompt
     assert "2 o CERRAR: intenta cerrar el parte" in prompt
     assert "No guardes, cierres ni descartes desde aca" in prompt
+
+
+@pytest.mark.asyncio
+async def test_contextual_reply_must_answer_informational_questions_first():
+    chat = FakeChatClient()
+    chat.next_response = {"reply": "El 9 de julio es feriado nacional en Argentina."}
+    client = ParteDiarioLLMClient(chat_client=chat)
+
+    reply = await client.contextual_reply(
+        mensaje="cuales son los feriados de julio en argentina?",
+        etapa="seleccionar_fecha",
+        obra="Francia 118",
+        opciones_visibles=[{"id": "2026-07-05", "label": "05/07/2026 dom"}],
+    )
+
+    prompt = chat.calls[0]["system_prompt"]
+    assert reply == "El 9 de julio es feriado nacional en Argentina."
+    assert "respondela primero" in prompt
+    assert "No respondas solo con una instruccion de menu ante una pregunta informativa" in prompt
+    assert "No inventes datos" in prompt

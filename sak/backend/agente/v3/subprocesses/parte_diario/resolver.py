@@ -25,6 +25,7 @@ def _tokens(value: str | None) -> set[str]:
 class ResolveResult:
     match: NominaItem | None = None
     candidatos: list[NominaItem] | None = None
+    candidatos_externos: list[NominaItem] | None = None
     error: str | None = None
 
     @property
@@ -40,22 +41,15 @@ class NominaResolver:
         nominas_completas: list[NominaItem],
     ) -> ResolveResult:
         project_matches = NominaResolver._matches(nombre, nominas_proyecto)
+        external_matches = NominaResolver._external_matches(project_matches, NominaResolver._matches(nombre, nominas_completas))
         if len(project_matches) == 1:
             return ResolveResult(match=project_matches[0])
         if len(project_matches) > 1:
-            return ResolveResult(candidatos=project_matches)
-
-        project_ids = {item.idnomina for item in nominas_proyecto}
-        external_matches = [
-            item for item in NominaResolver._matches(nombre, nominas_completas)
-            if item.idnomina not in project_ids
-        ]
-        for item in external_matches:
-            item.fuera_de_proyecto = True
+            return ResolveResult(candidatos=project_matches, candidatos_externos=external_matches)
         if len(external_matches) == 1:
             return ResolveResult(match=external_matches[0])
         if len(external_matches) > 1:
-            return ResolveResult(candidatos=external_matches)
+            return ResolveResult(candidatos=external_matches, candidatos_externos=external_matches)
         return ResolveResult(error=f"No encontre a {nombre} en la nomina activa.")
 
     @staticmethod
@@ -64,17 +58,33 @@ class NominaResolver:
         nominas_proyecto: list[NominaItem],
         nominas_completas: list[NominaItem],
     ) -> list[NominaItem]:
+        project_similar, external_similar = NominaResolver.find_similar_grouped(
+            nombre,
+            nominas_proyecto,
+            nominas_completas,
+        )
+        return project_similar or external_similar
+
+    @staticmethod
+    def find_similar_grouped(
+        nombre: str,
+        nominas_proyecto: list[NominaItem],
+        nominas_completas: list[NominaItem],
+    ) -> tuple[list[NominaItem], list[NominaItem]]:
         project_similar = NominaResolver._similar_matches(nombre, nominas_proyecto)
-        if project_similar:
-            return project_similar
-        project_ids = {item.idnomina for item in nominas_proyecto}
-        external_similar = [
-            item for item in NominaResolver._similar_matches(nombre, nominas_completas)
-            if item.idnomina not in project_ids
-        ]
-        for item in external_similar:
+        external_similar = NominaResolver._external_matches(
+            nominas_proyecto,
+            NominaResolver._similar_matches(nombre, nominas_completas),
+        )
+        return project_similar, external_similar
+
+    @staticmethod
+    def _external_matches(project_items: list[NominaItem], all_matches: list[NominaItem]) -> list[NominaItem]:
+        project_ids = {item.idnomina for item in project_items}
+        external = [item for item in all_matches if item.idnomina not in project_ids]
+        for item in external:
             item.fuera_de_proyecto = True
-        return external_similar
+        return external
 
     @staticmethod
     def _matches(nombre: str, candidates: list[NominaItem]) -> list[NominaItem]:
@@ -105,7 +115,7 @@ class NominaResolver:
             if score >= 0.78:
                 scored.append((score, item))
         scored.sort(key=lambda pair: (-pair[0], pair[1].apellido, pair[1].nombre))
-        return [item for _, item in scored[:5]]
+        return [item for _, item in scored]
 
 
 def resolve_estado_codigo(codigo: str | None, estados: list[EstadoItem]) -> EstadoItem | None:
@@ -143,11 +153,20 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
     return None
 
 
-def parse_candidate_selection(text: str, candidates: list[NominaItem]) -> NominaItem | None:
+def parse_candidate_selection(
+    text: str,
+    candidates: list[NominaItem],
+    *,
+    offset: int = 0,
+    visible_count: int | None = None,
+) -> NominaItem | None:
     normalized = normalize_text(text)
     numbers = re.findall(r"\d+", normalized)
     if len(numbers) == 1:
-        index = int(numbers[0]) - 1
+        local_index = int(numbers[0]) - 1
+        if visible_count is not None and not 0 <= local_index < visible_count:
+            return None
+        index = offset + local_index
         return candidates[index] if 0 <= index < len(candidates) else None
     searched = _tokens(normalized) - {"el", "la", "de", "del"}
     if not searched:

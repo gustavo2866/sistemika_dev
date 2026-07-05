@@ -71,6 +71,7 @@ class NovedadPersonal:
     descripcion: str | None = None
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
+    nro_legajo: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -88,6 +89,7 @@ class NovedadPersonal:
             descripcion=raw.get("descripcion"),
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nombre_proyecto=raw.get("nombre_proyecto"),
+            nro_legajo=raw.get("nro_legajo"),
         )
 
 
@@ -100,11 +102,15 @@ class PendienteAmbiguo:
     horas_extra: float | None = None
     descripcion: str | None = None
     candidatos: list[NominaItem] | None = None
+    candidatos_externos: list[NominaItem] | None = None
+    mostrando_candidatos_externos: bool = False
     nombre_no_encontrado: bool = False
     idnomina_resuelto: int | None = None
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
     intentos_estado: int = 0
+    pagina_candidatos: int = 0
+    lista_candidatos_mostrada: bool = False
 
     @property
     def nombre_pendiente(self) -> bool:
@@ -117,11 +123,15 @@ class PendienteAmbiguo:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["candidatos"] = [item.to_dict() for item in self.candidatos] if self.candidatos else None
+        payload["candidatos_externos"] = (
+            [item.to_dict() for item in self.candidatos_externos] if self.candidatos_externos else None
+        )
         return payload
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "PendienteAmbiguo":
         candidates = raw.get("candidatos")
+        external_candidates = raw.get("candidatos_externos")
         return cls(
             nombre=str(raw.get("nombre") or ""),
             idestado=raw.get("idestado"),
@@ -130,11 +140,19 @@ class PendienteAmbiguo:
             horas_extra=_float_or_none(raw.get("horas_extra")),
             descripcion=raw.get("descripcion"),
             candidatos=[NominaItem.from_dict(item) for item in candidates] if isinstance(candidates, list) else None,
+            candidatos_externos=(
+                [NominaItem.from_dict(item) for item in external_candidates]
+                if isinstance(external_candidates, list)
+                else None
+            ),
+            mostrando_candidatos_externos=bool(raw.get("mostrando_candidatos_externos")),
             nombre_no_encontrado=bool(raw.get("nombre_no_encontrado")),
             idnomina_resuelto=raw.get("idnomina_resuelto"),
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nombre_proyecto=raw.get("nombre_proyecto"),
             intentos_estado=int(raw.get("intentos_estado") or 0),
+            pagina_candidatos=int(raw.get("pagina_candidatos") or 0),
+            lista_candidatos_mostrada=bool(raw.get("lista_candidatos_mostrada")),
         )
 
 

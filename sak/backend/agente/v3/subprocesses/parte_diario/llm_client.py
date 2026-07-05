@@ -104,6 +104,44 @@ class ParteDiarioLLMClient:
         )
         return str(raw.get("estado_codigo") or "NO_DETERMINADO").upper()
 
+    async def contextual_reply(
+        self,
+        *,
+        mensaje: str,
+        etapa: str,
+        obra: str | None = None,
+        opciones_visibles: list[dict[str, Any]] | None = None,
+    ) -> str:
+        payload = {
+            "mensaje": mensaje,
+            "etapa": etapa,
+            "obra": obra,
+            "opciones_visibles": opciones_visibles or [],
+        }
+        system_prompt = (
+            "Sos un asistente acotado dentro del proceso de parte diario.\n"
+            "El usuario esta en una etapa controlada y el backend ya intento resolver comandos y selecciones.\n"
+            "Tu tarea es responder brevemente el mensaje del usuario y luego el sistema volvera automaticamente a la etapa actual.\n"
+            "No ejecutes acciones, no selecciones opciones, no cargues novedades, no guardes y no cierres el parte.\n"
+            "Regla prioritaria: si el usuario hace una consulta informativa que no modifica el parte, respondela primero. "
+            "No respondas solo con una instruccion de menu ante una pregunta informativa.\n"
+            "Para consultas informativas, usa informacion interna del contexto si existe, o conocimiento general del mundo si estas seguro.\n"
+            "No inventes datos. Si la consulta requiere informacion actual, externa o especifica que no esta disponible en el contexto, "
+            "deci explicitamente que no tenes ese dato disponible en este paso.\n"
+            "Si el usuario intenta operar el parte fuera de las opciones visibles, indica que debe usar el menu actual.\n"
+            "No cierres con instrucciones largas: si hace falta, recorda en una frase que para continuar debe volver al menu visible.\n"
+            "Responde en espanol rioplatense, maximo tres frases.\n\n"
+            f"Contexto: {compact_json(payload)}"
+        )
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            response_format=_contextual_reply_schema(),
+            user_content="Responde solo JSON con una ayuda breve.",
+            max_tokens=250,
+        )
+        reply = str(raw.get("reply") or "").strip()
+        return reply or "Primero elegi una opcion del menu para continuar."
+
 
 def _prompt_name_for_stage(stage: str) -> str:
     if stage == "cierre":
@@ -213,6 +251,24 @@ def _pending_state_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                     "estado_codigo": {"type": "string", "enum": [*codes, "NO_DETERMINADO"]},
                 },
                 "required": ["estado_codigo"],
+            },
+        },
+    }
+
+
+def _contextual_reply_schema() -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "parte_diario_v3_contextual_reply",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "reply": {"type": "string"},
+                },
+                "required": ["reply"],
             },
         },
     }

@@ -14,6 +14,7 @@ from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3Proce
 from agente.v3.interactive import InteractiveButton, InteractiveListRow, whatsapp_buttons, whatsapp_list
 from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
+from agente.v3.subprocesses.parte_diario.query_agent import ParteDiarioQueryAgentClient
 from agente.v3.subprocesses.parte_diario import renderer
 from agente.v3.subprocesses.parte_diario.process import ParteDiarioProcess, _normalize_command, _today
 from agente.v3.subprocesses.parte_diario.state import (
@@ -22,17 +23,26 @@ from agente.v3.subprocesses.parte_diario.state import (
     ParteDiarioV3State,
 )
 from app.db import engine
-from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, ParteDiario, Proyecto, ProyectoEncargado
+from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, Nomina, ParteDiario, Proyecto, ProyectoEncargado
 from app.services.parte_diario_service import parte_diario_service
 
 logger = logging.getLogger(__name__)
+
+_CANDIDATE_LIST_MAX_ROWS = 10
+_CANDIDATE_LIST_PAGE_SIZE = 9
+_MORE_CANDIDATES_ID = "mostrar mas candidatos"
 
 
 class ParteDiarioSubprocess:
     name = "parteDiario"
 
-    def __init__(self, llm_client: ParteDiarioLLMClient | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: ParteDiarioLLMClient | None = None,
+        query_agent_client: ParteDiarioQueryAgentClient | None = None,
+    ) -> None:
         self._llm = llm_client or ParteDiarioLLMClient()
+        self._query_agent = query_agent_client or ParteDiarioQueryAgentClient()
 
     async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
         state = ParteDiarioV3State.from_dict(context.process_state)
@@ -60,7 +70,7 @@ class ParteDiarioSubprocess:
             return self._show_date_menu(context, state)
 
         if state.etapa == "seleccionar_fecha":
-            return self._handle_fecha_selection(command, context, state)
+            return await self._handle_fecha_selection(command, message, context, state)
 
         if state.etapa == "cargar_fecha":
             if resolved_obra_from_current_message:
@@ -78,6 +88,28 @@ class ParteDiarioSubprocess:
 
         if state.draft().esperando == "confirmacion_sin_novedades":
             return await self._handle_confirmar_sin_novedades(command, message, context, state)
+
+        if state.draft().esperando == "confirmacion_cierre_validado":
+            return await self._handle_confirmar_cierre_validado(command, message, context, state)
+
+        if state.draft().esperando == "confirmacion_ambiguos":
+            if command == "volver":
+                return self._back_to_load_from_validation(context, state)
+            draft = state.draft()
+            pending = draft.pendientes_ambiguos[0] if draft.pendientes_ambiguos else None
+            if command in {"elegir opcion", "ver opciones", "opciones"}:
+                return self._show_validation_options(context, state, reset_page=True)
+            if pending and _is_validation_back_command(command, pending):
+                return self._back_to_load_from_validation(context, state)
+            if pending and _is_validation_unvalidated_command(command, pending):
+                return await self._handle_parte_diario(
+                    message,
+                    context,
+                    state,
+                    forced_text="registrar sin validar",
+                )
+            if pending and _is_more_candidate_command(command, pending):
+                return self._show_more_validation_options(context, state)
 
         if state.etapa == "menu":
             if command in {"3", "salir"}:
@@ -188,47 +220,135 @@ class ParteDiarioSubprocess:
             )
         state.etapa = "seleccionar_fecha"
         state.fecha_menu_pendiente = False
+        state.nombre_obra = state.nombre_obra or self._resolve_project_name(int(state.proyecto_id))
         state.opciones_fecha = self._build_fecha_options(int(state.proyecto_id), contacto_id=state.contacto_id)
-        reply = _render_fecha_menu(state.opciones_fecha, prefix=prefix)
+        reply = _render_fecha_menu(state.opciones_fecha, prefix=prefix, obra=state.nombre_obra)
         return self._active_result(
             context,
             state,
             reply,
             status,
-            _merge_metadata(extra_metadata, _date_menu_metadata(state.opciones_fecha, prefix=prefix)),
+            _merge_metadata(extra_metadata, _date_menu_metadata(state.opciones_fecha, prefix=prefix, obra=state.nombre_obra)),
         )
 
-    def _handle_fecha_selection(
+    async def _handle_fecha_selection(
         self,
         command: str,
+        message: V3InboundMessage,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
     ) -> V3ProcessResult:
         if command in {"salir"}:
             return _return_to_general(context, source="parte_diario_fecha_menu")
+        if _is_show_nomina_command(command):
+            return self._show_nomina_on_date_menu(context, state)
 
         try:
             selected_option = int(command)
         except ValueError:
-            return self._active_result(
-                context,
-                state,
-                _render_fecha_menu(state.opciones_fecha, prefix="No pude interpretar la opcion."),
-                "invalid_date_selection",
-                _date_menu_metadata(state.opciones_fecha, prefix="No pude interpretar la opcion."),
-            )
+            return await self._contextual_fallback_to_date_menu(message, context, state)
 
         selected = next((option for option in state.opciones_fecha if option.opcion == selected_option), None)
         if selected is None:
             return self._active_result(
                 context,
                 state,
-                _render_fecha_menu(state.opciones_fecha, prefix="Opcion invalida."),
+                _render_fecha_menu(state.opciones_fecha, prefix="Opcion invalida.", obra=state.nombre_obra),
                 "invalid_date_selection",
-                _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida."),
+                _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida.", obra=state.nombre_obra),
             )
 
         return self._apply_fecha_selection(selected, context, state)
+
+    async def _contextual_fallback_to_date_menu(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        reply = "Primero elegi una fecha del menu para continuar."
+        options = [
+            {
+                "opcion": option.opcion,
+                "fecha": option.fecha,
+                "estado": option.estado,
+            }
+            for option in state.opciones_fecha
+        ]
+        if state.proyecto_id and _looks_like_internal_query(message.text or ""):
+            try:
+                with Session(engine) as session:
+                    query_reply = await self._query_agent.respond(
+                        session=session,
+                        message_text=message.text or "",
+                        etapa=state.etapa,
+                        proyecto_id=int(state.proyecto_id),
+                        contacto_id=state.contacto_id,
+                        nombre_obra=state.nombre_obra,
+                        opciones_visibles=options,
+                    )
+                if query_reply:
+                    reply = query_reply
+                    return self._show_date_menu(
+                        context,
+                        state,
+                        prefix=reply,
+                        status="contextual_query",
+                        extra_metadata={"result": {"parte_diario": {"status": "contextual_query"}}},
+                    )
+            except RuntimeError as exc:
+                logger.info("Agent SDK contextual de parteDiario no disponible: %s", exc)
+            except Exception:
+                logger.exception("No se pudo responder consulta contextual de parteDiario con Agent SDK")
+        try:
+            reply = await _llm_for_stage(self._llm, state.etapa).contextual_reply(
+                mensaje=message.text or "",
+                etapa=state.etapa,
+                obra=state.nombre_obra,
+                opciones_visibles=options,
+            )
+        except Exception:
+            logger.exception("No se pudo generar fallback contextual de parteDiario")
+        return self._show_date_menu(
+            context,
+            state,
+            prefix=reply,
+            status="contextual_fallback",
+            extra_metadata={"result": {"parte_diario": {"status": "contextual_fallback"}}},
+        )
+
+    def _show_nomina_on_date_menu(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        if not state.proyecto_id:
+            return self._closed_result(
+                context,
+                "No encontre una obra asociada para cargar el parte diario.",
+                "obra_not_found",
+            )
+        with Session(engine) as session:
+            process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, state.etapa))
+            nominas_proyecto, _ = process._load_nominas(
+                int(state.proyecto_id),
+                contacto_id=state.contacto_id,
+            )
+        return self._show_date_menu(
+            context,
+            state,
+            prefix=renderer.mostrar_nomina(nominas_proyecto),
+            status="shown_nomina",
+            extra_metadata={"result": {"parte_diario": {"status": "shown_nomina"}}},
+        )
+
+    @staticmethod
+    def _resolve_project_name(proyecto_id: int) -> str | None:
+        with Session(engine) as session:
+            proyecto = session.get(Proyecto, proyecto_id)
+            if proyecto is None:
+                return None
+            return proyecto.nombre
 
     def _handle_fecha_value(
         self,
@@ -252,9 +372,9 @@ class ParteDiarioSubprocess:
             return self._active_result(
                 context,
                 state,
-                _render_fecha_menu(state.opciones_fecha, prefix="Opcion invalida."),
+                _render_fecha_menu(state.opciones_fecha, prefix="Opcion invalida.", obra=state.nombre_obra),
                 "invalid_date_selection",
-                _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida."),
+                _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida.", obra=state.nombre_obra),
             )
 
         return self._apply_fecha_selection(selected, context, state)
@@ -318,14 +438,14 @@ class ParteDiarioSubprocess:
             return self._active_result(
                 context,
                 state,
-                _render_fecha_menu(state.opciones_fecha, prefix=error),
+                _render_fecha_menu(state.opciones_fecha, prefix=error, obra=state.nombre_obra),
                 "date_not_editable",
-                _date_menu_metadata(state.opciones_fecha, prefix=error),
+                _date_menu_metadata(state.opciones_fecha, prefix=error, obra=state.nombre_obra),
             )
         if not reply_on_success:
             return None
         draft = state.draft()
-        reply = _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft)), draft)
+        reply = _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft), obra=state.nombre_obra), draft)
         return self._active_result(
             context,
             state,
@@ -367,7 +487,7 @@ class ParteDiarioSubprocess:
 
         if command in {"volver", "2"}:
             state.etapa = "carga"
-            reply = _with_load_menu("Volvemos a la carga del parte diario.", state.draft())
+            reply = _volver_carga_reply(state.draft(), obra=state.nombre_obra)
             return self._active_result(
                 context,
                 state,
@@ -403,7 +523,7 @@ class ParteDiarioSubprocess:
             draft.esperando = None
             state.set_draft(draft)
             state.etapa = "carga"
-            reply = _with_load_menu("Volvemos a la carga del parte diario.", draft)
+            reply = _volver_carga_reply(draft, obra=state.nombre_obra)
             return self._active_result(
                 context,
                 state,
@@ -419,6 +539,111 @@ class ParteDiarioSubprocess:
             reply,
             "invalid_empty_close_confirmation",
             _confirmation_metadata(reply),
+        )
+
+    async def _handle_confirmar_cierre_validado(
+        self,
+        command: str,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        draft = state.draft()
+        if command in {"ok", "1"}:
+            draft.esperando = None
+            state.set_draft(draft)
+            state.etapa = "cierre"
+            return await self._handle_parte_diario(message, context, state, forced_text="CERRAR")
+
+        if command in {"volver", "2"}:
+            draft.esperando = None
+            state.set_draft(draft)
+            state.etapa = "carga"
+            reply = _volver_carga_reply(draft, obra=state.nombre_obra)
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "validated_close_cancelled",
+                _main_menu_metadata(reply),
+            )
+
+        reply = _cierre_validado_confirmacion(draft, obra=state.nombre_obra)
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "invalid_validated_close_confirmation",
+            _confirmation_metadata(reply),
+        )
+
+    def _show_validation_options(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        reset_page: bool = False,
+    ) -> V3ProcessResult:
+        draft = state.draft()
+        pending = draft.pendientes_ambiguos[0] if draft.pendientes_ambiguos else None
+        if reset_page and pending is not None:
+            pending.pagina_candidatos = 0
+        if pending is not None:
+            pending.lista_candidatos_mostrada = True
+            state.set_draft(draft)
+        reply = _validation_text_menu(pending) if pending else "Elegi una opcion."
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "validation_options",
+            _validation_action_buttons_metadata(pending, reply),
+        )
+
+    def _back_to_load_from_validation(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        draft = state.draft()
+        draft.esperando = None
+        state.set_draft(draft)
+        state.etapa = "carga"
+        reply = _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft), obra=state.nombre_obra), draft)
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "validation_back_to_load",
+            _main_menu_metadata(reply),
+        )
+
+    def _show_more_validation_options(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        draft = state.draft()
+        pending = draft.pendientes_ambiguos[0] if draft.pendientes_ambiguos else None
+        if pending is not None:
+            candidates = pending.candidatos or []
+            if _candidate_page_has_more(candidates, pending.pagina_candidatos):
+                pending.pagina_candidatos += 1
+                pending.lista_candidatos_mostrada = True
+                state.set_draft(draft)
+            elif not pending.mostrando_candidatos_externos and pending.candidatos_externos:
+                pending.candidatos = pending.candidatos_externos
+                pending.mostrando_candidatos_externos = True
+                pending.pagina_candidatos = 0
+                pending.lista_candidatos_mostrada = True
+                state.set_draft(draft)
+        reply = _validation_text_menu(pending) if pending else "Elegi una opcion."
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "validation_options",
+            _validation_action_buttons_metadata(pending, reply),
         )
 
     async def _handle_local_menu_command(
@@ -462,7 +687,7 @@ class ParteDiarioSubprocess:
 
         if command in {"volver"}:
             state.etapa = "carga"
-            reply = _with_load_menu("Volvemos a la carga del parte diario. Indica nuevas novedades o modificaciones.", draft)
+            reply = _volver_carga_reply(draft, obra=state.nombre_obra)
             return self._active_result(
                 context,
                 state,
@@ -625,7 +850,7 @@ class ParteDiarioSubprocess:
                     },
                 )
 
-        if process_result.keep_active and not payload.get("cancelado"):
+        if (process_result.keep_active or _should_keep_active_after_readonly(state, payload)) and not payload.get("cancelado"):
             state.parte_state = dict(process_result.process_state or {})
             reply = _format_reply(payload.get("reply_to_user") or "", state, payload)
             return self._active_result(
@@ -714,6 +939,33 @@ class ParteDiarioSubprocess:
             ]
             options: list[ParteDiarioOption] = []
             for contact in matched_contacts:
+                added_project_ids: set[int] = set()
+
+                def add_project_option(proyecto: Proyecto | None, *, oportunidad_id: int | None = None, nombre: str | None = None) -> None:
+                    if (
+                        proyecto is None
+                        or proyecto.id is None
+                        or proyecto.deleted_at is not None
+                        or contact.id is None
+                    ):
+                        return
+                    resolved_oportunidad_id = oportunidad_id or proyecto.oportunidad_id
+                    if resolved_oportunidad_id is None:
+                        return
+                    proyecto_id = int(proyecto.id)
+                    if proyecto_id in added_project_ids:
+                        return
+                    added_project_ids.add(proyecto_id)
+                    options.append(
+                        ParteDiarioOption(
+                            opcion=len(options) + 1,
+                            nombre=nombre or proyecto.nombre or f"Obra {proyecto.id}",
+                            contacto_id=int(contact.id),
+                            oportunidad_id=int(resolved_oportunidad_id),
+                            proyecto_id=proyecto_id,
+                        )
+                    )
+
                 asignaciones = session.exec(
                     select(ProyectoEncargado)
                     .where(ProyectoEncargado.contacto_id == contact.id)
@@ -722,25 +974,22 @@ class ParteDiarioSubprocess:
                 ).all()
                 for asignacion in asignaciones:
                     proyecto = session.get(Proyecto, asignacion.proyecto_id)
-                    if (
-                        proyecto is None
-                        or proyecto.id is None
-                        or proyecto.oportunidad_id is None
-                        or proyecto.deleted_at is not None
-                        or contact.id is None
-                    ):
-                        continue
-                    options.append(
-                        ParteDiarioOption(
-                            opcion=len(options) + 1,
-                            nombre=proyecto.nombre or f"Obra {proyecto.id}",
-                            contacto_id=int(contact.id),
-                            oportunidad_id=int(proyecto.oportunidad_id),
-                            proyecto_id=int(proyecto.id),
-                        )
-                    )
-                if asignaciones:
+                    add_project_option(proyecto)
+
+                nomina_project_ids = session.exec(
+                    select(Nomina.idproyecto)
+                    .where(Nomina.encargado_contacto_id == contact.id)
+                    .where(Nomina.activo.is_(True))
+                    .where(Nomina.deleted_at.is_(None))
+                    .where(Nomina.idproyecto.is_not(None))
+                    .distinct()
+                ).all()
+                for proyecto_id in nomina_project_ids:
+                    add_project_option(session.get(Proyecto, proyecto_id))
+
+                if added_project_ids:
                     continue
+
                 oportunidades = session.exec(
                     select(CRMOportunidad).where(CRMOportunidad.contacto_id == contact.id)
                 ).all()
@@ -748,16 +997,14 @@ class ParteDiarioSubprocess:
                     proyecto = session.exec(
                         select(Proyecto).where(Proyecto.oportunidad_id == oportunidad.id).limit(1)
                     ).first()
-                    if proyecto is None or proyecto.id is None or oportunidad.id is None or contact.id is None:
-                        continue
-                    options.append(
-                        ParteDiarioOption(
-                            opcion=len(options) + 1,
-                            nombre=proyecto.nombre or oportunidad.titulo or f"Obra {proyecto.id}",
-                            contacto_id=int(contact.id),
-                            oportunidad_id=int(oportunidad.id),
-                            proyecto_id=int(proyecto.id),
-                        )
+                    add_project_option(
+                        proyecto,
+                        oportunidad_id=int(oportunidad.id) if oportunidad.id is not None else None,
+                        nombre=(
+                            proyecto.nombre
+                            if proyecto is not None and proyecto.nombre
+                            else oportunidad.titulo or f"Obra {proyecto.id}" if proyecto is not None else None
+                        ),
                     )
             logger.info(
                 "v3_parte_diario_resolve_obra_timing phone=%s contacts=%s matched_contacts=%s options=%s total_ms=%s",
@@ -823,8 +1070,13 @@ def _seleccionar_obra(state: ParteDiarioV3State) -> str:
     return f"En que obra queres cargar el parte diario?\n{options}"
 
 
-def _render_fecha_menu(options: list[ParteDiarioFechaOption], *, prefix: str | None = None) -> str:
-    lines = ["Selecciona la fecha del parte diario:"]
+def _render_fecha_menu(
+    options: list[ParteDiarioFechaOption],
+    *,
+    prefix: str | None = None,
+    obra: str | None = None,
+) -> str:
+    lines = [_fecha_menu_title(obra)]
     if prefix:
         lines.insert(0, prefix)
     lines.extend(_format_fecha_option(option) for option in options)
@@ -837,8 +1089,13 @@ def _format_fecha_option(option: ParteDiarioFechaOption) -> str:
     return f"{option.opcion}: {target_date.strftime('%d/%m/%Y')} {_weekday_label(target_date)} ({option.estado})"
 
 
-def _date_menu_metadata(options: list[ParteDiarioFechaOption], *, prefix: str | None = None) -> dict | None:
-    body = "Selecciona la fecha del parte diario:"
+def _date_menu_metadata(
+    options: list[ParteDiarioFechaOption],
+    *,
+    prefix: str | None = None,
+    obra: str | None = None,
+) -> dict | None:
+    body = _fecha_menu_title(obra)
     if prefix:
         body = f"{prefix}\n\n{body}"
     interactive = whatsapp_list(
@@ -857,6 +1114,13 @@ def _date_menu_metadata(options: list[ParteDiarioFechaOption], *, prefix: str | 
     return _interactive_metadata(interactive)
 
 
+def _fecha_menu_title(obra: str | None = None) -> str:
+    obra_label = str(obra or "").strip()
+    if obra_label:
+        return f"Selecciona la fecha del parte diario:\nObra: {obra_label}"
+    return "Selecciona la fecha del parte diario:"
+
+
 def _fecha_option_title(option: ParteDiarioFechaOption) -> str:
     target_date = date.fromisoformat(option.fecha)
     return f"{target_date.strftime('%d/%m/%Y')} {_weekday_label(target_date)}"
@@ -866,10 +1130,36 @@ def _weekday_label(value: date) -> str:
     return ["lun", "mar", "mie", "jue", "vie", "sab", "dom"][value.weekday()]
 
 
-def _selected_fecha_reply(draft, status: str) -> str:
+def _selected_fecha_reply(draft, status: str, *, obra: str | None = None) -> str:
+    obra_line = _obra_summary_line(obra)
+    header = f"Fecha: {draft.fecha}{obra_line}"
     if status == "borrador" and draft.parte_id:
-        return f"Parte diario borrador recuperado:\nFecha: {draft.fecha}\n\n{renderer.resumen(draft)}"
-    return f"Parte diario en carga:\nFecha: {draft.fecha}\n\n{renderer.resumen(draft)}"
+        return f"Parte diario borrador recuperado:\n{header}\n\n{renderer.resumen(draft)}"
+    return f"Parte diario en carga:\n{header}\n\n{renderer.resumen(draft)}"
+
+
+def _volver_carga_reply(draft, *, obra: str | None = None) -> str:
+    return _with_load_menu(
+        f"Volvemos a la carga del parte diario.\n\n{_selected_fecha_reply(draft, _draft_status(draft), obra=obra)}",
+        draft,
+    )
+
+
+def _obra_summary_line(obra: str | None) -> str:
+    obra_label = str(obra or "").strip()
+    return f"\nObra: {obra_label}" if obra_label else ""
+
+
+def _add_obra_to_reply(reply: str, obra: str | None) -> str:
+    obra_label = str(obra or "").strip()
+    if not obra_label or "\nObra:" in reply:
+        return reply
+    lines = reply.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("Fecha:"):
+            lines.insert(index + 1, f"Obra: {obra_label}")
+            return "\n".join(lines)
+    return reply
 
 
 def _draft_status(draft) -> str:
@@ -891,6 +1181,14 @@ def _status_from_payload(payload: dict) -> str:
     return str(parte_meta.get("status") or "ok")
 
 
+def _should_keep_active_after_readonly(state: ParteDiarioV3State, payload: dict) -> bool:
+    if not state.has_resolved_obra():
+        return False
+    if state.etapa not in {"carga", "cierre"}:
+        return False
+    return _status_from_payload(payload) in {"shown", "shown_nomina"}
+
+
 def _map_menu_text(text: str, state: ParteDiarioV3State) -> str:
     command = _normalize_command(text)
     draft = state.draft()
@@ -909,19 +1207,27 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
     draft = state.draft()
     if draft.esperando == "confirmacion_cambio_fecha":
         return _replace_tail(reply, "Opciones: 1:CAMBIAR FECHA 2:MANTENER FECHA.")
+    if draft.esperando == "confirmacion_cierre_validado":
+        state.etapa = "cierre"
+        return _replace_tail(_add_obra_to_reply(reply, state.nombre_obra), _salida_confirmacion_tail())
     if draft.esperando in {"confirmacion_ambiguos", "resolucion_conflictos"}:
         state.etapa = "validacion"
+        if draft.esperando == "confirmacion_ambiguos" and draft.pendientes_ambiguos:
+            pending = draft.pendientes_ambiguos[0]
+            pending.lista_candidatos_mostrada = True
+            state.set_draft(draft)
+            return _validation_text_menu(pending)
         return reply
     status = _status_from_payload(payload)
     if status == "confirmation_required" or "Parte diario para confirmar:" in reply:
         state.etapa = "cierre"
-        return _replace_tail(reply, _close_menu())
+        return _replace_tail(_add_obra_to_reply(reply, state.nombre_obra), _close_menu())
     if status == "cancel_confirmation_required":
         state.etapa = "confirmar_salida"
         return _salida_confirmacion()
     if status in {"updated", "sin_novedades", "shown", "shown_nomina", "clarification", "waiting"}:
         state.etapa = "carga"
-        return _with_load_menu(reply, state.draft())
+        return _with_load_menu(_add_obra_to_reply(reply, state.nombre_obra), state.draft())
     return reply
 
 
@@ -930,6 +1236,8 @@ def _with_load_menu(reply: str, draft=None) -> str:
 
 
 def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict | None:
+    if state.draft().esperando == "confirmacion_cierre_validado":
+        return _confirmation_metadata(reply)
     if state.etapa in {"carga", "cierre"}:
         return _main_menu_metadata(reply)
     if state.etapa == "confirmar_salida":
@@ -971,24 +1279,33 @@ def _validation_metadata(state: ParteDiarioV3State) -> dict | None:
     pending = draft.pendientes_ambiguos[0]
     if not pending.nombre_pendiente:
         return None
-    candidates = pending.candidatos or []
-    rows = [
-        InteractiveListRow(
-            id=str(index),
-            title=_candidate_button_title(candidate, index),
-            description=_candidate_button_description(candidate),
-        )
-        for index, candidate in enumerate(candidates, start=1)
-    ]
-    rows.append(
-        InteractiveListRow(
-            id="registrar sin validar",
-            title="Registrar sin validar",
-            description=f"Usar {pending.nombre} sin validar nomina",
-        )
-    )
+    return _validation_action_buttons_metadata(pending, _validation_text_menu(pending))
+
+
+def _validation_action_buttons_metadata(pending, reply: str) -> dict | None:
+    if pending is None:
+        return None
+    buttons: list[InteractiveButton] = []
+    if _validation_action_position(pending, "mostrar mas") is not None:
+        buttons.append(InteractiveButton(id=_MORE_CANDIDATES_ID, title="VER MAS"))
+    buttons.append(InteractiveButton(id="registrar sin validar", title="SIN VALIDAR"))
+    buttons.append(InteractiveButton(id="volver", title="VOLVER"))
+    interactive = whatsapp_buttons(body=reply, buttons=buttons)
+    return _interactive_metadata(interactive)
+
+
+def _validation_list_metadata(state: ParteDiarioV3State) -> dict | None:
+    draft = state.draft()
+    if draft.esperando != "confirmacion_ambiguos" or not draft.pendientes_ambiguos:
+        return None
+    pending = draft.pendientes_ambiguos[0]
+    if not pending.nombre_pendiente:
+        return None
+    rows = _validation_rows(pending)
+    if not rows:
+        return None
     interactive = whatsapp_list(
-        body=f"A cual {pending.nombre} te referis?",
+        body=_validation_question(pending),
         button="Elegir opcion",
         section_title="Opciones",
         rows=rows,
@@ -996,11 +1313,114 @@ def _validation_metadata(state: ParteDiarioV3State) -> dict | None:
     return _interactive_metadata(interactive)
 
 
+def _validation_rows(pending) -> list[InteractiveListRow]:
+    candidates = pending.candidatos or []
+    visible_candidates, has_more = _candidate_page(candidates, pending.pagina_candidatos)
+    has_more = has_more or (
+        not pending.mostrando_candidatos_externos and bool(pending.candidatos_externos)
+    )
+    rows = [
+        InteractiveListRow(
+            id=str(index),
+            title=_candidate_button_title(candidate, index),
+            description=_candidate_button_description(candidate),
+        )
+        for index, candidate in enumerate(visible_candidates, start=1)
+    ]
+    return rows
+
+
+def _validation_text_menu(pending) -> str:
+    rows = _validation_rows(pending)
+    lines = [_validation_question(pending), "Opciones:"]
+    for index, row in enumerate(rows, start=1):
+        detail = f" ({row.description})" if row.description else ""
+        lines.append(f"{index}: {row.title}{detail}")
+    return "\n".join(lines)
+
+
+def _candidate_page(candidates: list, page: int) -> tuple[list, bool]:
+    if len(candidates) <= _CANDIDATE_LIST_MAX_ROWS:
+        return candidates, False
+    offset = max(0, page) * _CANDIDATE_LIST_PAGE_SIZE
+    remaining = max(0, len(candidates) - offset)
+    if remaining <= _CANDIDATE_LIST_MAX_ROWS:
+        return candidates[offset:], False
+    return candidates[offset : offset + _CANDIDATE_LIST_PAGE_SIZE], True
+
+
+def _candidate_page_has_more(candidates: list, page: int) -> bool:
+    if len(candidates) <= _CANDIDATE_LIST_MAX_ROWS:
+        return False
+    offset = max(0, page) * _CANDIDATE_LIST_PAGE_SIZE
+    return len(candidates) - offset > _CANDIDATE_LIST_MAX_ROWS
+
+
+def _is_more_candidate_command(command: str, pending) -> bool:
+    candidates = pending.candidatos or []
+    visible_candidates, has_more = _candidate_page(candidates, pending.pagina_candidatos)
+    has_more = has_more or (
+        not pending.mostrando_candidatos_externos and bool(pending.candidatos_externos)
+    )
+    if not has_more:
+        return False
+    if command in {_MORE_CANDIDATES_ID, "ver mas", "mostrar mas", "mas"}:
+        return True
+    return False
+
+
+def _is_validation_unvalidated_command(command: str, pending) -> bool:
+    if command in {"registrar sin validar", "sin validar", "aceptar sin validar"}:
+        return True
+    return False
+
+
+def _is_validation_back_command(command: str, pending) -> bool:
+    if command == "volver":
+        return True
+    return False
+
+
+def _validation_action_position(pending, action: str) -> int | None:
+    candidates = pending.candidatos or []
+    visible_candidates, has_more = _candidate_page(candidates, pending.pagina_candidatos)
+    has_more = has_more or (
+        not pending.mostrando_candidatos_externos and bool(pending.candidatos_externos)
+    )
+    row_count = len(visible_candidates)
+    if has_more:
+        row_count += 1
+    register_position = row_count + 1 if row_count < _CANDIDATE_LIST_MAX_ROWS else None
+    back_position = (
+        register_position + 1
+        if register_position is not None and register_position < _CANDIDATE_LIST_MAX_ROWS
+        else None
+    )
+    if action == "registrar sin validar":
+        return register_position
+    if action == "volver":
+        return back_position
+    if action == "mostrar mas":
+        return row_count if has_more else None
+    return None
+
+
+def _validation_question(pending) -> str:
+    if pending is None:
+        return "Elegi una opcion."
+    if getattr(pending, "mostrando_candidatos_externos", False):
+        return f"Otros fuera de la obra para {pending.nombre}:"
+    return f"A cual {pending.nombre} te referis?"
+
+
 def _candidate_button_title(candidate, index: int) -> str:
-    label = str(getattr(candidate, "nombre_completo", "") or f"Opcion {index}").strip()
+    label = str(getattr(candidate, "nombre_completo", "") or "").strip()
+    if not label:
+        nro_legajo = str(getattr(candidate, "nro_legajo", "") or "").strip()
+        label = f"Legajo {nro_legajo}" if nro_legajo else f"Opcion {index}"
     if len(label) <= 24:
         return label
-    return f"Opcion {index}"
+    return label[:24].rstrip(" ,")
 
 
 def _candidate_button_description(candidate) -> str | None:
@@ -1046,6 +1466,41 @@ def _parse_fecha_value(text: str | None) -> str | None:
         return date.fromisoformat(selected_date).isoformat()
     except ValueError:
         return None
+
+
+def _looks_like_internal_query(text: str) -> bool:
+    command = _normalize_command(text)
+    query_terms = {
+        "falto",
+        "falta",
+        "faltas",
+        "ausente",
+        "ausencias",
+        "novedad",
+        "novedades",
+        "parte",
+        "partes",
+        "pendiente",
+        "pendientes",
+        "borrador",
+        "borradores",
+        "sin cargar",
+        "cargado",
+        "cargados",
+        "confirmado",
+        "confirmados",
+        "cerrado",
+        "cerrados",
+        "hora",
+        "horas",
+        "extra",
+        "extras",
+        "trabajo",
+        "trabajaron",
+        "trabajadas",
+        "trabajados",
+    }
+    return any(term in command for term in query_terms)
 
 
 def _strip_known_menu_tail(reply: str) -> str:
@@ -1110,8 +1565,16 @@ def _sin_novedades_confirmacion() -> str:
     )
 
 
+def _cierre_validado_confirmacion(draft, *, obra: str | None = None) -> str:
+    return (
+        f"Parte diario listo para cerrar:\nFecha: {draft.fecha}{_obra_summary_line(obra)}\n\n"
+        f"{renderer.resumen(draft)}\n\n"
+        f"Confirmas cerrar el parte diario?\n\n{_salida_confirmacion_tail()}"
+    )
+
+
 def _salida_confirmacion_tail() -> str:
-    return "Opciones: 1:OK 2:VOLVER."
+    return "Opciones: OK / VOLVER."
 
 
 def _save_payload(draft, *, cerrar_parte: bool) -> dict:
@@ -1197,6 +1660,7 @@ def _is_waiting_for_resolution(draft) -> bool:
         "resolucion_conflictos",
         "confirmacion_cambio_fecha",
         "confirmacion_sin_novedades",
+        "confirmacion_cierre_validado",
     }
 
 
@@ -1216,3 +1680,8 @@ def _normalize_phone(value: str | None) -> str:
 
 def _is_date_menu_command(command: str) -> bool:
     return command in {"parte diario", "parte diarios", "partes diarios"}
+
+
+def _is_show_nomina_command(command: str) -> bool:
+    tokens = set(command.split())
+    return "nomina" in tokens or "personal" in tokens or "empleados" in tokens or "empleado" in tokens

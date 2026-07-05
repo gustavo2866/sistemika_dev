@@ -52,12 +52,18 @@ const ProyectoEncargadoFields = () => (
   </div>
 );
 
-export const ProyectoEncargadoForm = () => (
+type ProyectoEncargadoFormProps = {
+  defaultValues?: ProyectoEncargadoFormValues;
+};
+
+export const ProyectoEncargadoForm = ({
+  defaultValues = PROYECTO_ENCARGADO_DEFAULT,
+}: ProyectoEncargadoFormProps = {}) => (
   <SimpleForm<ProyectoEncargadoFormValues>
     className="w-full max-w-3xl"
     resolver={zodResolver(proyectoEncargadoSchema) as any}
     toolbar={<FormOrderToolbar />}
-    defaultValues={PROYECTO_ENCARGADO_DEFAULT}
+    defaultValues={defaultValues}
   >
     <FormErrorSummary />
     <SectionBaseTemplate

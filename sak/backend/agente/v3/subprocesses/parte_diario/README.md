@@ -235,8 +235,14 @@ Casos:
 Comportamiento:
 
 - Para personas no encontradas, busca nombres similares recien en esta etapa.
-- Si encuentra similares, presenta opciones para seleccionar.
+- Si encuentra similares, presenta solo candidatos como texto numerado visible.
+- No hay menu previo de `Ver opciones`: la seleccion se muestra directamente.
+- `Ver mas` pagina primero candidatos de la obra actual y, al agotarlos, muestra candidatos externos sin mezclarlos.
+- Si no hay candidatos de la obra actual, muestra directamente los externos.
+- Las acciones `VER MAS`, `SIN VALIDAR` y `VOLVER` se muestran solo como botones cuando aplican.
+- Al resolver un candidato, el resumen usa el nombre completo seleccionado y muestra el legajo si esta disponible.
 - Agrega una opcion adicional para aceptar el valor informado sin validar.
+- `VOLVER` abandona la seleccion puntual y vuelve a `carga` mostrando el resumen con el menu principal.
 - Por ahora, lo aceptado sin validar no se registra en DB al confirmar.
 - Mientras hay validacion pendiente, las respuestas numericas pertenecen a esa validacion, no al menu general.
 
@@ -250,7 +256,7 @@ A cual Petro te referis?
 
 Transiciones:
 
-- validacion resuelta y sin pendientes -> `cierre`;
+- validacion resuelta y sin pendientes -> `cierre` con confirmacion `OK` / `VOLVER`;
 - quedan pendientes -> permanece en `validacion`;
 - seleccion sin validar -> se descarta del registro final por ahora y continua validacion o pasa a `cierre`.
 
@@ -258,6 +264,15 @@ Transiciones:
 
 Estado tecnico usado cuando el parte ya supero validaciones y vuelve a mostrar el resumen.
 El menu visible se mantiene igual que en carga.
+
+Si el cierre paso por `validacion`, antes de persistir se muestra el resumen final y se pide confirmacion:
+
+```text
+Opciones: OK / VOLVER.
+```
+
+- `1` o `OK`: persiste el parte como `cerrado`.
+- `2` o `VOLVER`: vuelve a `carga`.
 
 Menu:
 
@@ -286,7 +301,7 @@ Menu:
 ```text
 Se perderan los cambios no guardados.
 
-Opciones: 1:OK 2:VOLVER.
+Opciones: OK / VOLVER.
 ```
 
 Comandos locales:
@@ -388,11 +403,22 @@ Durante la validacion se resuelven pendientes antes del cierre:
 
 La busqueda por nombres similares se ejecuta aca, no durante la carga.
 
-Cuando no quedan pendientes, el flujo pasa a `cierre`.
+`VOLVER` retorna a `carga` con el resumen del parte y las opciones `GUARDAR`, `CERRAR` y `SALIR`.
+
+Cuando no quedan pendientes, el flujo pasa a `cierre`, muestra el resumen final y pide confirmacion con `OK` / `VOLVER`.
 
 ### Cierre
 
 Cuando no hay pendientes, el menu visible sigue siendo el menu principal:
+
+Si el cierre viene de una validacion recien resuelta, primero se muestra:
+
+```text
+Opciones: OK / VOLVER.
+```
+
+- `1` o `OK`: guarda en DB como `cerrado`.
+- `2` o `VOLVER`: vuelve a `carga`.
 
 ```text
 Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
@@ -407,7 +433,7 @@ Luego de guardar o cerrar, el flujo vuelve al selector de fechas de `parteDiario
 ### Confirmar Salida
 
 ```text
-Opciones: 1:OK 2:VOLVER.
+Opciones: OK / VOLVER.
 ```
 
 - `1` o `OK`: descarta el parte en carga y vuelve al selector de fechas de `parteDiario`.
