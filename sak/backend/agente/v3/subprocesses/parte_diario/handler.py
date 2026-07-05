@@ -737,14 +737,23 @@ class ParteDiarioSubprocess:
                     normalized_payload=message.normalized_payload,
                     received_at=message.received_at,
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception("Error guardando borrador de parte diario desde agente v3")
+                error_reply = _persistence_debug_message(
+                    exc,
+                    stage="guardar_borrador",
+                    draft=draft,
+                    state=state,
+                    context=context,
+                    message=message,
+                    payload=payload,
+                )
                 return self._active_result(
                     context,
                     state,
-                    _with_load_menu("No pude guardar el parte diario. Proba nuevamente.", draft),
+                    _with_load_menu(error_reply, draft),
                     "persistence_error",
-                    _main_menu_metadata(_with_load_menu("No pude guardar el parte diario. Proba nuevamente.", draft)),
+                    _main_menu_metadata(_with_load_menu(error_reply, draft)),
                 )
 
         payload["parte_diario_id"] = parte.id
@@ -820,12 +829,21 @@ class ParteDiarioSubprocess:
                         normalized_payload=message.normalized_payload,
                         received_at=message.received_at,
                     )
-                except Exception:
+                except Exception as exc:
                     logger.exception("Error creando parte diario confirmado desde agente v3")
+                    error_reply = _persistence_debug_message(
+                        exc,
+                        stage="confirmar_cierre",
+                        draft=state.draft(),
+                        state=state,
+                        context=context,
+                        message=message,
+                        payload=payload,
+                    )
                     return self._active_result(
                         context,
                         state,
-                        "No pude guardar el parte diario. Proba nuevamente.",
+                        error_reply,
                         "persistence_error",
                     )
 
@@ -1575,6 +1593,56 @@ def _cierre_validado_confirmacion(draft, *, obra: str | None = None) -> str:
 
 def _salida_confirmacion_tail() -> str:
     return "Opciones: OK / VOLVER."
+
+
+def _persistence_debug_message(
+    exc: Exception,
+    *,
+    stage: str,
+    draft,
+    state: ParteDiarioV3State,
+    context: V3ConversationContext,
+    message: V3InboundMessage,
+    payload: dict | None,
+) -> str:
+    result = payload or {}
+    exception_name = type(exc).__name__
+    exception_message = str(exc) or "(sin detalle)"
+    draft_novedades = len(getattr(draft, "novedades", []) or [])
+    draft_pendientes = len(getattr(draft, "pendientes_ambiguos", []) or [])
+    draft_conflictos = len(getattr(draft, "conflictos_novedad", []) or [])
+    text_preview = (str(message.text or "").replace("\n", " ").strip())[:180]
+
+    lines = [
+        "No pude guardar el parte diario.",
+        "",
+        "DEBUG persistencia:",
+        f"- stage: {stage}",
+        f"- exception: {exception_name}",
+        f"- exception_message: {exception_message}",
+        f"- conversation_id: {context.conversation_id}",
+        f"- external_message_id: {message.external_message_id}",
+        f"- message_type: {message.message_type}",
+        f"- inbound_text: {text_preview or '(vacio)'}",
+        f"- etapa: {state.etapa}",
+        f"- esperando: {getattr(draft, 'esperando', None)}",
+        f"- fecha: {getattr(draft, 'fecha', None)}",
+        f"- proyecto_id: {state.proyecto_id}",
+        f"- oportunidad_id: {state.oportunidad_id}",
+        f"- contacto_id: {state.contacto_id}",
+        f"- parte_id_existente: {getattr(draft, 'parte_id', None)}",
+        f"- draft_novedades: {draft_novedades}",
+        f"- draft_pendientes_ambiguos: {draft_pendientes}",
+        f"- draft_conflictos: {draft_conflictos}",
+        f"- payload_parte_listo: {result.get('parte_listo')}",
+        f"- payload_cerrar_parte: {result.get('cerrar_parte')}",
+        f"- payload_confirmar_parte: {result.get('confirmar_parte')}",
+        f"- payload_fecha: {result.get('fecha')}",
+        f"- payload_idproyecto: {result.get('idproyecto')}",
+        f"- payload_contacto_id: {result.get('contacto_id')}",
+        f"- payload_parte_id_existente: {result.get('parte_id_existente')}",
+    ]
+    return "\n".join(lines)
 
 
 def _save_payload(draft, *, cerrar_parte: bool) -> dict:
