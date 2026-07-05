@@ -42,7 +42,24 @@ class V3Outbox:
 
         error: str | None = None
         try:
-            await default_meta_channel.send_text(message)
+            if message.payload_type == "interactive" and message.interactive:
+                try:
+                    await default_meta_channel.send_interactive(message)
+                except Exception as exc:
+                    logger.warning(
+                        "v3_outbox_interactive_fallback source_external_message_id=%s error=%s",
+                        message.source_external_message_id,
+                        exc,
+                    )
+                    await default_meta_channel.send_text(message)
+                    message.payload_type = "text"
+                    message.interactive = None
+                    message.raw_response = {
+                        **dict(message.raw_response or {}),
+                        "interactive_error": str(exc),
+                    }
+            else:
+                await default_meta_channel.send_text(message)
             message.status = "sent"
         except Exception as exc:
             error = str(exc)
@@ -80,6 +97,7 @@ class V3Outbox:
             "queue": message.queue_name,
             "to_address": message.to_address,
             "text": message.text,
+            "payload_type": message.payload_type,
             "status": message.status,
             "external_message_id": message.external_message_id,
             "error": error,
@@ -122,6 +140,8 @@ class V3Outbox:
                     "queue": message.queue_name,
                     "to_address": message.to_address,
                     "text": message.text,
+                    "payload_type": message.payload_type,
+                    "interactive": message.interactive,
                     "status": message.status,
                     "external_message_id": message.external_message_id,
                     "raw_response": message.raw_response,
@@ -136,6 +156,8 @@ class V3Outbox:
                 "queue": sent[-1].queue_name,
                 "to_address": sent[-1].to_address,
                 "text": sent[-1].text,
+                "payload_type": sent[-1].payload_type,
+                "interactive": sent[-1].interactive,
                 "status": sent[-1].status,
                 "external_message_id": sent[-1].external_message_id,
                 "raw_response": sent[-1].raw_response,

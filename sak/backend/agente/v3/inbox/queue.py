@@ -5,16 +5,20 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from datetime import UTC, datetime
+import logging
 import time
 from typing import Any
 
 from agente.v3.contracts import (
     V3InboundMessage,
+    V3OrchestratorResult,
     V3ProcessedMessage,
     utc_now,
 )
 from agente.v3.orchestrator.service import V3Orchestrator, default_orchestrator
 from app.modules.channels.v3.typing import show_typing_for_inbound_message
+
+logger = logging.getLogger(__name__)
 
 
 class V3Inbox:
@@ -46,7 +50,27 @@ class V3Inbox:
         t0 = time.perf_counter()
         await show_typing_for_inbound_message(message)
         t_typing = time.perf_counter()
-        result, outbound_message_id = await orchestrator.process_message(message)
+        try:
+            result, outbound_message_id = await orchestrator.process_message(message)
+        except Exception as exc:
+            logger.exception(
+                "v3_inbox_orchestrator_error conversation_id=%s external_message_id=%s queue=%s",
+                message.conversation_id,
+                message.external_message_id,
+                message.queue_name,
+            )
+            result = V3OrchestratorResult(
+                status="error",
+                reply_text="",
+                metadata={
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "message_id": message.id,
+                    "external_message_id": message.external_message_id,
+                    "conversation_id": message.conversation_id,
+                },
+            )
+            outbound_message_id = ""
         t_orchestrator = time.perf_counter()
         finished_at = datetime.now(UTC)
         queued_ms = 0.0

@@ -148,11 +148,27 @@ import {
   ProyFaseEdit,
 } from "@/app/resources/constructora/proy-fases";
 import {
+  ProyectoMacrorubroList,
+  ProyectoMacrorubroCreate,
+  ProyectoMacrorubroEdit,
+} from "@/app/resources/constructora/proyectos-macrorubros";
+import {
+  ProyectoConceptoList,
+  ProyectoConceptoCreate,
+  ProyectoConceptoEdit,
+} from "@/app/resources/constructora/proyectos-conceptos";
+import {
   ProyPresupuestoList,
   ProyPresupuestoCreate,
   ProyPresupuestoEdit,
   ProyPresupuestoShow,
 } from "@/app/resources/constructora/proy-presupuesto";
+import {
+  ProyectosBudgetList,
+  ProyectosBudgetCreate,
+  ProyectosBudgetEdit,
+  ProyectosBudgetPanel,
+} from "@/app/resources/constructora/proyectos-budget";
 import {
   ProyectoAvanceList,
   ProyectoAvanceCreate,
@@ -348,6 +364,7 @@ import { ConstructoraAdminPage } from "@/app/resources/constructora/constructora
 import { ConstructoraSetupPage } from "@/app/resources/constructora/constructora-setup/ConstructoraSetupPage";
 import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
 import { PropiedadesConfigPage } from "@/app/resources/inmobiliaria/propiedades-config/PropiedadesConfigPage";
+import { PowerBiReportPage } from "@/app/resources/administracion/powerbi-report/page";
 
 declare const window: Window | undefined;
 
@@ -460,6 +477,24 @@ const AdminApp = () => {
         options={{ label: "Fases de Proyecto" }}
       />
       <Resource
+        name="constructora/proyectos-macrorubros"
+        list={ProyectoMacrorubroList}
+        create={ProyectoMacrorubroCreate}
+        edit={ProyectoMacrorubroEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Macrorubros de Proyecto" }}
+      />
+      <Resource
+        name="constructora/proyectos-conceptos"
+        list={ProyectoConceptoList}
+        create={ProyectoConceptoCreate}
+        edit={ProyectoConceptoEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Conceptos de Proyecto" }}
+      />
+      <Resource
         name="proy-presupuestos"
         list={ProyPresupuestoList}
         create={ProyPresupuestoCreate}
@@ -468,6 +503,15 @@ const AdminApp = () => {
         recordRepresentation="fecha"
         icon={Wallet}
         options={{ label: "Presupuestos" }}
+      />
+      <Resource
+        name="constructora/proyectos-budget"
+        list={ProyectosBudgetList}
+        create={ProyectosBudgetCreate}
+        edit={ProyectosBudgetEdit}
+        recordRepresentation="descripcion"
+        icon={Wallet}
+        options={{ label: "Budget Proyectos" }}
       />
       <Resource
         name="proyecto-avance"
@@ -963,12 +1007,14 @@ const AdminApp = () => {
       <CustomRoutes>
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/constructora/setup/*" element={<ConstructoraSetupPage />} />
+        <Route path="/constructora/proyectos-budget/panel" element={<ProyectosBudgetPanel />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/parte-diario/panel" element={<ParteDiarioPanel />} />
         <Route path="/tarjas/panel" element={<TarjaPanel />} />
+        <Route path="/administracion/reporte-powerbi" element={<PowerBiReportPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />
         <Route path="/crm/oportunidades/:id/accion_agendar" element={<CRMOportunidadAccionAgendar />} />

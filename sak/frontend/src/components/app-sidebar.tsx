@@ -131,10 +131,15 @@ const HIDDEN_RESOURCES = [
   "po-invoice-status",
   "po-invoice-status-fin",
   "proyectos",
+  "constructora/proyectos-budget",
+  "constructora/proyectos-macrorubros",
+  "constructora/proyectos-conceptos",
   "nominas",
+  "parte-diario",
   "parte-diario-estados",
   "proy-fases",
   "proy-presupuestos",
+  "proyecto-encargados",
   "proyecto-avance",
   "recepciones",
   "tipos-propiedad",
@@ -287,6 +292,12 @@ export function AppSidebar() {
                     label="Parte Diario"
                     to="/parte-diario/panel"
                     icon={CalendarDays}
+                    onClick={handleItemClick}
+                  />
+                  <SidebarCustomMenuItem
+                    label="Budget Proyectos"
+                    to="/constructora/proyectos-budget/panel"
+                    icon={Wallet}
                     onClick={handleItemClick}
                   />
                   {constructoraResources.includes("tarjas") ? (
@@ -477,6 +488,12 @@ export function AppSidebar() {
                       onClick={handleItemClick}
                     />
                   ))}
+                  <SidebarCustomMenuItem
+                    label="Reporte Power BI"
+                    to="/administracion/reporte-powerbi"
+                    icon={LayoutGrid}
+                    onClick={handleItemClick}
+                  />
                 </GroupMenuItem>
               ) : null}
 

@@ -107,6 +107,57 @@ def test_raw_meta_audio_payload_is_normalized(db_session):
     assert normalized["mime_type"] == "audio/ogg; codecs=opus"
 
 
+def test_raw_meta_interactive_list_reply_is_normalized(db_session):
+    db_session.add(
+        Setting(
+            clave="channels.meta.phone_number_id",
+            valor="1046006975257973",
+        )
+    )
+    db_session.commit()
+
+    result = raw_meta_to_channel_payloads(
+        db_session,
+        {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "metadata": {
+                                    "display_phone_number": "5493816259343",
+                                    "phone_number_id": "1046006975257973",
+                                },
+                                "messages": [
+                                    {
+                                        "from": "5491156384310",
+                                        "id": "wamid.test.interactive",
+                                        "timestamp": "1779282000",
+                                        "type": "interactive",
+                                        "interactive": {
+                                            "type": "list_reply",
+                                            "list_reply": {
+                                                "id": "parte_fecha:2026-06-28",
+                                                "title": "28/06/2026 dom",
+                                                "description": "sin cargar",
+                                            },
+                                        },
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+
+    assert len(result) == 1
+    normalized = result[0]["mensaje"]
+    assert normalized["tipo"] == "interactive"
+    assert normalized["texto"] == "parte_fecha:2026-06-28"
+
+
 def test_raw_meta_status_payload_is_normalized(db_session):
     db_session.add(
         Setting(

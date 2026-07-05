@@ -92,6 +92,9 @@ from .enums import (
     EstadoEmprendimiento,
 )
 from .constructora import (
+    ProyectosBudget,
+    ProyectosConceptos,
+    ProyectosMacrorubros,
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
     PedidoObraDetalleEstado,
@@ -177,6 +180,9 @@ __all__ = [
     "EstadoEmprendimiento",
     "TaxProfile",
     "TaxProfileDetail",
+    "ProyectosBudget",
+    "ProyectosConceptos",
+    "ProyectosMacrorubros",
     "ConstructoraPedido",
     "ConstructoraPedidoDetalle",
     "PedidoObraDetalleEstado",

@@ -1,12 +1,14 @@
 # app/db.py
 import os
+from pathlib import Path
 from typing import Generator, Iterator, Optional
 from dotenv import load_dotenv
 
 from sqlmodel import SQLModel, Session, create_engine
 
-# Cargar variables de entorno desde .env
-load_dotenv()
+# Cargar variables de entorno desde backend/.env sin depender del cwd.
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(_BACKEND_ROOT / ".env")
 
 ENV: str = os.getenv("ENV", "dev")  # dev | staging | prod
 

@@ -22,6 +22,7 @@ from app.modules.channels.gateway import channel_gateway
 from app.modules.channels.persistence import ChannelEvent, channel_event_store
 from app.modules.channels.providers.meta.client import meta_graph_client
 from app.modules.channels.types import ChannelEventData
+from app.modules.channels.utils import normalize_phone_for_meta
 from app.services.audio_transcription_service import audio_transcription_service
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,15 @@ def _extract_text(msg_data: dict[str, Any]) -> str | None:
     msg_type = msg_data.get("type")
     if msg_type == "text":
         return (msg_data.get("text") or {}).get("body")
+    if msg_type == "interactive":
+        interactive = msg_data.get("interactive") or {}
+        interactive_type = interactive.get("type")
+        if interactive_type == "list_reply":
+            reply = interactive.get("list_reply") or {}
+            return str(reply.get("id") or reply.get("title") or "").strip() or None
+        if interactive_type == "button_reply":
+            reply = interactive.get("button_reply") or {}
+            return str(reply.get("id") or reply.get("title") or "").strip() or None
     media_data = msg_data.get(str(msg_type)) if msg_type else None
     if isinstance(media_data, dict):
         return media_data.get("caption")
@@ -120,12 +130,28 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str
     return messages
 
 
+def _dedupe_key(message: V3InboundMessage) -> tuple[str, str, str] | None:
+    if message.message_type != "interactive":
+        return None
+    text = str(message.text or "").strip()
+    if not text:
+        return None
+    if not text.startswith(("parte_fecha:", "parte_accion:")):
+        return None
+    return (str(message.queue_name or ""), message.conversation_id, text)
+
+
 class V3MetaChannel:
     """Adaptador Meta inicial.
 
     La recepcion parsea payloads reales de Meta y encola mensajes inbound.
     El envio queda registrado en memoria para medir el flujo sin llamar aun a Graph API.
     """
+
+    _DEDUP_TTL_SECONDS = 5.0
+
+    def __init__(self) -> None:
+        self._recent_inbound_keys: dict[tuple[str, str, str], float] = {}
 
     async def receive(
         self,
@@ -141,6 +167,8 @@ class V3MetaChannel:
         await _prepare_audio_messages(inbound_messages)
         t_audio = time.perf_counter()
 
+        received_count = len(inbound_messages)
+        inbound_messages = self._dedupe_inbound_messages(inbound_messages)
         enqueued_ids = await inbox.enqueue_many(inbound_messages)
         t_enqueued = time.perf_counter()
         if after_enqueue is not None and inbound_messages:
@@ -152,9 +180,10 @@ class V3MetaChannel:
             "total": round((t_enqueued - t0) * 1000, 3),
         }
         logger.info(
-            "v3_meta_receive_timing received_count=%s enqueued_count=%s normalize_ms=%s audio_ms=%s enqueue_ms=%s total_ms=%s",
-            len(inbound_messages),
+            "v3_meta_receive_timing received_count=%s enqueued_count=%s skipped_duplicates=%s normalize_ms=%s audio_ms=%s enqueue_ms=%s total_ms=%s",
+            received_count,
             len(enqueued_ids),
+            received_count - len(inbound_messages),
             timings_ms["normalize"],
             timings_ms["audio"],
             timings_ms["enqueue"],
@@ -163,11 +192,36 @@ class V3MetaChannel:
 
         return {
             "status": "ok",
-            "received_count": len(inbound_messages),
+            "received_count": received_count,
             "enqueued_count": len(enqueued_ids),
+            "skipped_duplicates": received_count - len(inbound_messages),
             "message_ids": enqueued_ids,
             "timings_ms": timings_ms,
         }
+
+    def _dedupe_inbound_messages(self, messages: list[V3InboundMessage]) -> list[V3InboundMessage]:
+        now = time.monotonic()
+        self._recent_inbound_keys = {
+            key: expires_at
+            for key, expires_at in self._recent_inbound_keys.items()
+            if expires_at > now
+        }
+
+        accepted: list[V3InboundMessage] = []
+        for message in messages:
+            key = _dedupe_key(message)
+            if key and key in self._recent_inbound_keys:
+                logger.info(
+                    "v3_meta_duplicate_inbound_skipped conversation_id=%s external_message_id=%s text=%s",
+                    message.conversation_id,
+                    message.external_message_id,
+                    message.text,
+                )
+                continue
+            if key:
+                self._recent_inbound_keys[key] = now + self._DEDUP_TTL_SECONDS
+            accepted.append(message)
+        return accepted
 
     async def send_text(self, outbound: V3OutboundMessage) -> V3OutboundMessage:
         t0 = time.perf_counter()
@@ -186,6 +240,92 @@ class V3MetaChannel:
         t_annotate = time.perf_counter()
         logger.info(
             "v3_meta_send_timing source_external_message_id=%s outbound_external_message_id=%s "
+            "to_address=%s status=%s send_ms=%s annotate_ms=%s total_ms=%s",
+            outbound.source_external_message_id,
+            outbound.external_message_id,
+            outbound.to_address,
+            outbound.status,
+            round((t_send - t0) * 1000, 3),
+            round((t_annotate - t_send) * 1000, 3),
+            round((t_annotate - t0) * 1000, 3),
+        )
+        return outbound
+
+    async def send_interactive(self, outbound: V3OutboundMessage) -> V3OutboundMessage:
+        if not outbound.interactive:
+            return await self.send_text(outbound)
+
+        t0 = time.perf_counter()
+        with Session(engine) as session:
+            account_config = meta_account_resolver.resolve(session, outbound.account_ref)
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": normalize_phone_for_meta(outbound.to_address),
+                "type": "interactive",
+                "interactive": outbound.interactive,
+            }
+            try:
+                result = await meta_graph_client.send_message(
+                    access_token=account_config.access_token,
+                    phone_number_id=account_config.phone_number_id,
+                    payload=payload,
+                )
+                external_message_id = (
+                    ((result.get("messages") or [{}])[0] or {}).get("id")
+                    or result.get("meta_message_id")
+                )
+                channel_event_store.record(
+                    session,
+                    ChannelEventData(
+                        provider=outbound.provider,
+                        channel_type=outbound.channel_type,
+                        account_ref=outbound.account_ref,
+                        external_account_id=account_config.phone_number_id,
+                        direction="outbound",
+                        from_address=account_config.phone_number_id,
+                        to_address=outbound.to_address,
+                        external_message_id=external_message_id,
+                        status="sent",
+                        raw_payload=result,
+                        normalized_payload={
+                            "request": payload,
+                            "message_type": "interactive",
+                            "interactive_type": outbound.interactive.get("type"),
+                            "agent_v3": _agent_v3_metadata(outbound),
+                        },
+                    ),
+                )
+                session.commit()
+            except Exception as exc:
+                channel_event_store.record(
+                    session,
+                    ChannelEventData(
+                        provider=outbound.provider,
+                        channel_type=outbound.channel_type,
+                        account_ref=outbound.account_ref,
+                        external_account_id=account_config.phone_number_id,
+                        direction="outbound",
+                        from_address=account_config.phone_number_id,
+                        to_address=outbound.to_address,
+                        status="failed",
+                        normalized_payload={
+                            "request": payload,
+                            "message_type": "interactive",
+                            "error": str(exc),
+                            "agent_v3": _agent_v3_metadata(outbound),
+                        },
+                    ),
+                )
+                session.commit()
+                raise
+        t_send = time.perf_counter()
+        outbound.status = "sent"
+        outbound.external_message_id = external_message_id
+        outbound.raw_response = dict(result)
+        _annotate_sent_channel_event(outbound)
+        t_annotate = time.perf_counter()
+        logger.info(
+            "v3_meta_send_interactive_timing source_external_message_id=%s outbound_external_message_id=%s "
             "to_address=%s status=%s send_ms=%s annotate_ms=%s total_ms=%s",
             outbound.source_external_message_id,
             outbound.external_message_id,
@@ -300,15 +440,19 @@ def _annotate_sent_channel_event(outbound: V3OutboundMessage) -> None:
             return
 
         normalized = dict(row.normalized_payload or {})
-        normalized["agent_v3"] = {
-            "outbound_message_id": outbound.id,
-            "source_message_id": outbound.source_message_id,
-            "source_external_message_id": outbound.source_external_message_id,
-            "queue": outbound.queue_name,
-        }
+        normalized["agent_v3"] = _agent_v3_metadata(outbound)
         row.normalized_payload = normalized
         session.add(row)
         session.commit()
+
+
+def _agent_v3_metadata(outbound: V3OutboundMessage) -> dict[str, Any]:
+    return {
+        "outbound_message_id": outbound.id,
+        "source_message_id": outbound.source_message_id,
+        "source_external_message_id": outbound.source_external_message_id,
+        "queue": outbound.queue_name,
+    }
 
 
 def persist_received_channel_events(messages: list[V3InboundMessage]) -> None:

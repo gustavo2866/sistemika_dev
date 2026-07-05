@@ -96,7 +96,11 @@ class V3Orchestrator:
         t_outbox_enqueue = t_context_save
         t_outbound_context_save = t_context_save
         if reply_text:
-            outbound = V3OutboundMessage.recorded_meta_reply(source=message, text=reply_text)
+            outbound = V3OutboundMessage.recorded_meta_reply(
+                source=message,
+                text=reply_text,
+                interactive=_outbound_interactive(process_result.metadata),
+            )
             outbound_id = await self._outbox.enqueue(outbound)
             t_outbox_enqueue = time.perf_counter()
             updated_context.last_outbound_message_id = outbound_id
@@ -229,6 +233,16 @@ def _show_timing_in_reply() -> bool:
         "si",
         "sí",
     }
+
+
+def _outbound_interactive(metadata: dict) -> dict | None:
+    outbound = metadata.get("outbound")
+    if not isinstance(outbound, dict):
+        return None
+    if outbound.get("type") != "interactive":
+        return None
+    interactive = outbound.get("interactive")
+    return interactive if isinstance(interactive, dict) else None
 
 
 default_orchestrator = V3Orchestrator()

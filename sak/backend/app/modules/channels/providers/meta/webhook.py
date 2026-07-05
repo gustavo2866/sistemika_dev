@@ -44,6 +44,15 @@ def _extract_message_content(msg_data: dict[str, Any]) -> dict[str, Any]:
     }
     if msg_type == "text":
         result["texto"] = (msg_data.get("text") or {}).get("body")
+    elif msg_type == "interactive":
+        interactive = msg_data.get("interactive") or {}
+        interactive_type = interactive.get("type")
+        if interactive_type == "list_reply":
+            reply = interactive.get("list_reply") or {}
+            result["texto"] = str(reply.get("id") or reply.get("title") or "").strip() or None
+        elif interactive_type == "button_reply":
+            reply = interactive.get("button_reply") or {}
+            result["texto"] = str(reply.get("id") or reply.get("title") or "").strip() or None
     elif msg_type in {"image", "document", "audio", "video"}:
         media_data = msg_data.get(msg_type) or {}
         result["media_id"] = media_data.get("id")

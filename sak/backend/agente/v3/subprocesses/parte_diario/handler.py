@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.interactive import InteractiveButton, InteractiveListRow, whatsapp_buttons, whatsapp_list
 from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario import renderer
@@ -35,7 +36,9 @@ class ParteDiarioSubprocess:
 
     async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
         state = ParteDiarioV3State.from_dict(context.process_state)
-        command = _normalize_command(message.text)
+        mapped_text = _map_interactive_text(message.text, state)
+        selected_fecha = _parse_interactive_fecha(message.text)
+        command = _normalize_command(mapped_text)
         is_date_menu_command = _is_date_menu_command(command)
         resolved_obra_from_current_message = False
 
@@ -50,6 +53,9 @@ class ParteDiarioSubprocess:
             if initial_result is not None:
                 return initial_result
             resolved_obra_from_current_message = True
+
+        if selected_fecha and state.has_resolved_obra():
+            return self._handle_fecha_value(selected_fecha, context, state)
 
         if is_date_menu_command:
             return self._show_date_menu(context, state)
@@ -181,12 +187,13 @@ class ParteDiarioSubprocess:
         state.etapa = "seleccionar_fecha"
         state.fecha_menu_pendiente = False
         state.opciones_fecha = self._build_fecha_options(int(state.proyecto_id), contacto_id=state.contacto_id)
+        reply = _render_fecha_menu(state.opciones_fecha, prefix=prefix)
         return self._active_result(
             context,
             state,
-            _render_fecha_menu(state.opciones_fecha, prefix=prefix),
+            reply,
             status,
-            extra_metadata,
+            _merge_metadata(extra_metadata, _date_menu_metadata(state.opciones_fecha, prefix=prefix)),
         )
 
     def _handle_fecha_selection(
@@ -206,6 +213,7 @@ class ParteDiarioSubprocess:
                 state,
                 _render_fecha_menu(state.opciones_fecha, prefix="No pude interpretar la opcion."),
                 "invalid_date_selection",
+                _date_menu_metadata(state.opciones_fecha, prefix="No pude interpretar la opcion."),
             )
 
         selected = next((option for option in state.opciones_fecha if option.opcion == selected_option), None)
@@ -215,8 +223,46 @@ class ParteDiarioSubprocess:
                 state,
                 _render_fecha_menu(state.opciones_fecha, prefix="Opcion invalida."),
                 "invalid_date_selection",
+                _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida."),
             )
 
+        return self._apply_fecha_selection(selected, context, state)
+
+    def _handle_fecha_value(
+        self,
+        fecha: str,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        if not state.proyecto_id:
+            return self._closed_result(
+                context,
+                "No encontre una obra asociada para cargar el parte diario.",
+                "obra_not_found",
+            )
+
+        if not state.opciones_fecha:
+            state.opciones_fecha = self._build_fecha_options(int(state.proyecto_id), contacto_id=state.contacto_id)
+
+        selected = next((option for option in state.opciones_fecha if option.fecha == fecha), None)
+        if selected is None:
+            state.etapa = "seleccionar_fecha"
+            return self._active_result(
+                context,
+                state,
+                _render_fecha_menu(state.opciones_fecha, prefix="Opcion invalida."),
+                "invalid_date_selection",
+                _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida."),
+            )
+
+        return self._apply_fecha_selection(selected, context, state)
+
+    def _apply_fecha_selection(
+        self,
+        selected: ParteDiarioFechaOption,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
         draft = state.draft()
         draft.fecha = selected.fecha
         draft.parte_id = None
@@ -272,16 +318,21 @@ class ParteDiarioSubprocess:
                 state,
                 _render_fecha_menu(state.opciones_fecha, prefix=error),
                 "date_not_editable",
+                _date_menu_metadata(state.opciones_fecha, prefix=error),
             )
         if not reply_on_success:
             return None
         draft = state.draft()
+        reply = _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft)), draft)
         return self._active_result(
             context,
             state,
-            _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft)), draft),
+            reply,
             "date_loaded",
-            {"fecha": draft.fecha, "parte_id": draft.parte_id},
+            _merge_metadata(
+                {"fecha": draft.fecha, "parte_id": draft.parte_id},
+                _main_menu_metadata(reply),
+            ),
         )
 
     def _prepare_cargar_fecha(self, state: ParteDiarioV3State, *, allow_closed: bool = False) -> str | None:
@@ -314,11 +365,13 @@ class ParteDiarioSubprocess:
 
         if command in {"volver", "2"}:
             state.etapa = "carga"
+            reply = _with_load_menu("Volvemos a la carga del parte diario.", state.draft())
             return self._active_result(
                 context,
                 state,
-                _with_load_menu("Volvemos a la carga del parte diario.", state.draft()),
+                reply,
                 "exit_cancelled",
+                _main_menu_metadata(reply),
             )
 
         return self._active_result(
@@ -359,11 +412,13 @@ class ParteDiarioSubprocess:
 
         if command in {"volver"}:
             state.etapa = "carga"
+            reply = _with_load_menu("Volvemos a la carga del parte diario. Indica nuevas novedades o modificaciones.", draft)
             return self._active_result(
                 context,
                 state,
-                _with_load_menu("Volvemos a la carga del parte diario. Indica nuevas novedades o modificaciones.", draft),
+                reply,
                 "back_to_load",
+                _main_menu_metadata(reply),
             )
 
         return None
@@ -381,6 +436,7 @@ class ParteDiarioSubprocess:
                 state,
                 _with_load_menu("No hay una fecha cargada para guardar el parte.", draft),
                 "missing_date",
+                _main_menu_metadata(_with_load_menu("No hay una fecha cargada para guardar el parte.", draft)),
             )
 
         payload = _save_payload(draft, cerrar_parte=False)
@@ -413,6 +469,7 @@ class ParteDiarioSubprocess:
                     state,
                     _with_load_menu("No pude guardar el parte diario. Proba nuevamente.", draft),
                     "persistence_error",
+                    _main_menu_metadata(_with_load_menu("No pude guardar el parte diario. Proba nuevamente.", draft)),
                 )
 
         payload["parte_diario_id"] = parte.id
@@ -453,7 +510,7 @@ class ParteDiarioSubprocess:
 
         started = time.perf_counter()
         with Session(engine) as session:
-            mapped_text = forced_text or _map_menu_text(message.text or "", state)
+            mapped_text = forced_text or _map_menu_text(_map_interactive_text(message.text, state), state)
             process_context = SimpleNamespace(
                 oportunidad_id=state.oportunidad_id,
                 contacto_id=state.contacto_id,
@@ -520,12 +577,13 @@ class ParteDiarioSubprocess:
 
         if process_result.keep_active and not payload.get("cancelado"):
             state.parte_state = dict(process_result.process_state or {})
+            reply = _format_reply(payload.get("reply_to_user") or "", state, payload)
             return self._active_result(
                 context,
                 state,
-                _format_reply(payload.get("reply_to_user") or "", state, payload),
+                reply,
                 _status_from_payload(payload),
-                {"result": payload},
+                _merge_metadata({"result": payload}, _reply_interactive_metadata(state, reply)),
             )
 
         updated = context.copy()
@@ -729,6 +787,31 @@ def _format_fecha_option(option: ParteDiarioFechaOption) -> str:
     return f"{option.opcion}: {target_date.strftime('%d/%m/%Y')} {_weekday_label(target_date)} ({option.estado})"
 
 
+def _date_menu_metadata(options: list[ParteDiarioFechaOption], *, prefix: str | None = None) -> dict | None:
+    body = "Selecciona la fecha del parte diario:"
+    if prefix:
+        body = f"{prefix}\n\n{body}"
+    interactive = whatsapp_list(
+        body=body,
+        button="Ver fechas",
+        section_title="Fechas",
+        rows=[
+            InteractiveListRow(
+                id=f"parte_fecha:{option.fecha}",
+                title=_fecha_option_title(option),
+                description=option.estado,
+            )
+            for option in options
+        ],
+    )
+    return _interactive_metadata(interactive)
+
+
+def _fecha_option_title(option: ParteDiarioFechaOption) -> str:
+    target_date = date.fromisoformat(option.fecha)
+    return f"{target_date.strftime('%d/%m/%Y')} {_weekday_label(target_date)}"
+
+
 def _weekday_label(value: date) -> str:
     return ["lun", "mar", "mie", "jue", "vie", "sab", "dom"][value.weekday()]
 
@@ -794,6 +877,84 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
 
 def _with_load_menu(reply: str, draft=None) -> str:
     return _replace_tail(reply, _main_menu())
+
+
+def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict | None:
+    if state.etapa in {"carga", "cierre"}:
+        return _main_menu_metadata(reply)
+    return None
+
+
+def _main_menu_metadata(reply: str) -> dict | None:
+    body = _strip_known_menu_tail(reply)
+    interactive = whatsapp_buttons(
+        body=body,
+        buttons=[
+            InteractiveButton(id="parte_accion:guardar", title="GUARDAR"),
+            InteractiveButton(id="parte_accion:cerrar", title="CERRAR"),
+            InteractiveButton(id="parte_accion:salir", title="SALIR"),
+        ],
+    )
+    return _interactive_metadata(interactive)
+
+
+def _interactive_metadata(interactive: dict | None) -> dict | None:
+    if not interactive:
+        return None
+    return {"outbound": {"type": "interactive", "interactive": interactive}}
+
+
+def _merge_metadata(*items: dict | None) -> dict | None:
+    merged: dict = {}
+    for item in items:
+        if item:
+            merged.update(item)
+    return merged or None
+
+
+def _map_interactive_text(text: str | None, state: ParteDiarioV3State) -> str:
+    raw = str(text or "").strip()
+    if raw.startswith("parte_accion:"):
+        action = raw.split(":", 1)[1].strip().lower()
+        return {
+            "guardar": "guardar",
+            "cerrar": "cerrar",
+            "salir": "salir",
+            "ok": "ok",
+            "volver": "volver",
+        }.get(action, raw)
+    if raw.startswith("parte_fecha:"):
+        selected_date = raw.split(":", 1)[1].strip()
+        selected = next(
+            (option for option in state.opciones_fecha if option.fecha == selected_date),
+            None,
+        )
+        return str(selected.opcion) if selected else raw
+    return raw
+
+
+def _parse_interactive_fecha(text: str | None) -> str | None:
+    raw = str(text or "").strip()
+    if raw.startswith("parte_fecha:"):
+        selected_date = raw.split(":", 1)[1].strip()
+    else:
+        match = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:\s|$)", raw)
+        if not match:
+            return None
+        day, month, year = (int(part) for part in match.groups())
+        selected_date = f"{year:04d}-{month:02d}-{day:02d}"
+    try:
+        return date.fromisoformat(selected_date).isoformat()
+    except ValueError:
+        return None
+
+
+def _strip_known_menu_tail(reply: str) -> str:
+    text = str(reply or "").strip()
+    for tail in (_main_menu(),):
+        if text.endswith(tail):
+            return text[: -len(tail)].strip()
+    return text
 
 
 def _is_empty_draft(draft) -> bool:

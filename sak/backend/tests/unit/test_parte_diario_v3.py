@@ -272,6 +272,18 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
 
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.metadata["outbound"]["type"] == "interactive"
+    assert result.metadata["outbound"]["interactive"]["type"] == "list"
+    body = result.metadata["outbound"]["interactive"]["body"]["text"]
+    assert body == "Selecciona la fecha del parte diario:"
+    rows = result.metadata["outbound"]["interactive"]["action"]["sections"][0]["rows"]
+    assert rows[0]["id"] == "parte_fecha:2026-05-16"
+    assert rows[0]["title"] == "16/05/2026 sab"
+    assert rows[0]["description"] == "borrador"
+    assert rows[1]["title"] == "15/05/2026 vie"
+    assert rows[1]["description"] == "confirmado"
+    assert rows[2]["title"] == "14/05/2026 jue"
+    assert rows[2]["description"] == "sin cargar"
     assert "1: 16/05/2026 sab (borrador)" in (result.reply_text or "")
     assert "2: 15/05/2026 vie (confirmado)" in (result.reply_text or "")
     assert "3: 14/05/2026 jue (sin cargar)" in (result.reply_text or "")
@@ -314,10 +326,18 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     menu = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-select-date"))
-    selected = await process.handle(_message("1"), menu.context)
+    selected = await process.handle(_message("parte_fecha:2026-05-16"), menu.context)
 
     assert selected.context.active_process == "parteDiario"
     assert selected.context.process_state["etapa"] == "carga"
+    assert selected.metadata["outbound"]["type"] == "interactive"
+    assert selected.metadata["outbound"]["interactive"]["type"] == "button"
+    buttons = selected.metadata["outbound"]["interactive"]["action"]["buttons"]
+    assert [button["reply"]["id"] for button in buttons] == [
+        "parte_accion:guardar",
+        "parte_accion:cerrar",
+        "parte_accion:salir",
+    ]
     draft = selected.context.process_state["parte_state"]
     assert draft["fecha"] == "2026-05-16"
     assert draft["parte_id"] == parte.id
@@ -325,6 +345,46 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     assert draft["novedades"][0]["estado_codigo"] == "FAL"
     assert "Parte diario borrador recuperado" in (selected.reply_text or "")
     assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (selected.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_interactive_date_without_context_resolves_single_project(
+    monkeypatch,
+    seeded_parte_v3,
+):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 6, 28))
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(
+        _message("parte_fecha:2026-06-28"),
+        V3ConversationContext(conversation_id="conv-direct-date"),
+    )
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-06-28"
+    assert result.metadata["status"] == "date_loaded"
+    assert "Parte diario en carga:" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_visible_date_title_resolves_single_project(
+    monkeypatch,
+    seeded_parte_v3,
+):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 6, 28))
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(
+        _message("28/06/2026 dom"),
+        V3ConversationContext(conversation_id="conv-visible-date"),
+    )
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-06-28"
+    assert result.metadata["status"] == "date_loaded"
+    assert "Parte diario en carga:" in (result.reply_text or "")
 
 
 @pytest.mark.asyncio

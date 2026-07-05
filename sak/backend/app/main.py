@@ -60,6 +60,9 @@ from app.routers.nomina_router import nomina_router
 from app.routers.parte_diario_estado_router import parte_diario_estado_router
 from app.routers.partediario_router import parte_diario_router
 from app.routers.tarja_router import tarja_router
+from app.routers.constructora_proyectos_macrorubros_router import constructora_proyectos_macrorubros_router
+from app.routers.constructora_proyectos_conceptos_router import constructora_proyectos_conceptos_router
+from app.routers.constructora_proyectos_budget_router import constructora_proyectos_budget_router
 from app.routers.constructora_pedido_router import constructora_pedido_router
 
 from app.routers.adm_concepto_router import adm_concepto_router
@@ -245,6 +248,9 @@ app.include_router(nomina_router)
 app.include_router(parte_diario_estado_router)
 app.include_router(parte_diario_router)
 app.include_router(tarja_router)
+app.include_router(constructora_proyectos_macrorubros_router)
+app.include_router(constructora_proyectos_conceptos_router)
+app.include_router(constructora_proyectos_budget_router)
 app.include_router(constructora_pedido_router)
 
 # Servir archivos estáticos (uploads)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 
@@ -90,6 +90,8 @@ class V3OutboundMessage:
     text: str
     source_message_id: str
     source_external_message_id: str | None = None
+    payload_type: Literal["text", "interactive"] = "text"
+    interactive: dict[str, Any] | None = None
     queue_name: str | None = None
     created_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime | None = None
@@ -99,7 +101,13 @@ class V3OutboundMessage:
     status: str = "pending"
 
     @classmethod
-    def recorded_meta_reply(cls, *, source: V3InboundMessage, text: str) -> "V3OutboundMessage":
+    def recorded_meta_reply(
+        cls,
+        *,
+        source: V3InboundMessage,
+        text: str,
+        interactive: dict[str, Any] | None = None,
+    ) -> "V3OutboundMessage":
         return cls(
             id=str(uuid4()),
             provider="meta",
@@ -109,6 +117,8 @@ class V3OutboundMessage:
             text=text,
             source_message_id=source.id,
             source_external_message_id=source.external_message_id,
+            payload_type="interactive" if interactive else "text",
+            interactive=interactive,
             queue_name=source.queue_name,
         )
 
@@ -139,7 +149,7 @@ class V3ProcessedMessage:
             },
             "outbox": {
                 "message_id": self.outbound_message_id,
-                "status": "queued",
+                "status": "queued" if self.outbound_message_id else "not_queued",
             },
             "started_at": self.started_at.isoformat(),
             "finished_at": self.finished_at.isoformat(),

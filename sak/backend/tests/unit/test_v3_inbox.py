@@ -33,6 +33,11 @@ class _FakeOrchestrator:
         return V3OrchestratorResult(status="ok", reply_text="ok"), "out-1"
 
 
+class _FailingOrchestrator:
+    async def process_message(self, message):
+        raise RuntimeError("db unavailable")
+
+
 @pytest.mark.asyncio
 async def test_v3_inbox_muestra_typing_antes_del_orquestador(monkeypatch):
     events: list[str] = []
@@ -49,3 +54,25 @@ async def test_v3_inbox_muestra_typing_antes_del_orquestador(monkeypatch):
     assert events == ["typing", "orchestrator"]
     assert processed is not None
     assert "typing" in processed.timings_ms
+
+
+@pytest.mark.asyncio
+async def test_v3_inbox_registra_error_del_orquestador_sin_propagar(monkeypatch):
+    async def fake_show_typing(message):
+        return None
+
+    monkeypatch.setattr("agente.v3.inbox.queue.show_typing_for_inbound_message", fake_show_typing)
+
+    inbox = V3Inbox()
+    await inbox.enqueue_many([_message()])
+
+    result = await inbox.process_pending(orchestrator=_FailingOrchestrator())
+
+    assert result["status"] == "ok"
+    assert result["processed_count"] == 1
+    processed = result["processed"][0]
+    assert processed["orchestrator"]["status"] == "error"
+    assert processed["orchestrator"]["metadata"]["error"] == "db unavailable"
+    assert processed["orchestrator"]["metadata"]["error_type"] == "RuntimeError"
+    assert processed["outbox"]["status"] == "not_queued"
+    assert result["pending_count"] == 0

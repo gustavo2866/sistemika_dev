@@ -106,8 +106,6 @@ SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip(
 }
 SHOW_TIMING = _args.timing or os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
 SHOW_DEBUG = _args.debug or os.environ.get("CHAT_TEST_SHOW_DEBUG", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
-
-
 def _request_json(method: str, path: str, payload: dict | None = None, params: dict | None = None) -> dict:
     url = f"{BASE_URL}{path}"
     if params:
@@ -208,6 +206,39 @@ def _clear_typing() -> None:
     if not SHOW_TYPING_INDICATOR:
         return
     print("\r" + (" " * 80) + "\r", end="", flush=True)
+
+
+def _format_runtime_error(exc: Exception) -> str:
+    if _is_db_operational_error(exc):
+        reason = getattr(exc, "orig", exc)
+        return (
+            "[Error] No se pudo leer channel_events por DB.\n"
+            f"        DB configurada: {_database_label()}\n"
+            f"        Detalle: {reason}"
+        )
+    return f"[Error] {exc}"
+
+
+def _is_db_operational_error(exc: Exception) -> bool:
+    try:
+        from sqlalchemy.exc import OperationalError
+    except Exception:
+        return False
+    return isinstance(exc, OperationalError)
+
+
+def _database_label() -> str:
+    try:
+        from sqlalchemy.engine import make_url
+
+        from app.db import DATABASE_URL
+
+        url = make_url(DATABASE_URL)
+    except Exception:
+        return "no disponible"
+
+    database = f"/{url.database}" if url.database else ""
+    return f"{url.drivername}://{url.host or '(sin host)'}{database}"
 
 
 def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
@@ -352,6 +383,9 @@ def _extract_channel_text(normalized: Any, raw: Any) -> str | None:
         text = request.get("text")
         if isinstance(text, dict) and text.get("body"):
             return str(text["body"])
+        interactive = request.get("interactive")
+        if isinstance(interactive, dict):
+            return _format_interactive_text(interactive)
         template = request.get("template")
         components = template.get("components") if isinstance(template, dict) else []
         for component in components or []:
@@ -363,6 +397,57 @@ def _extract_channel_text(normalized: Any, raw: Any) -> str | None:
         if isinstance(text, dict) and text.get("body"):
             return str(text["body"])
     return None
+
+
+def _format_interactive_text(interactive: dict) -> str | None:
+    lines: list[str] = []
+    header = interactive.get("header")
+    if isinstance(header, dict) and header.get("text"):
+        lines.append(str(header["text"]))
+
+    body = interactive.get("body")
+    if isinstance(body, dict) and body.get("text"):
+        lines.append(str(body["text"]))
+
+    action = interactive.get("action")
+    if isinstance(action, dict):
+        button_label = action.get("button")
+        if interactive.get("type") == "list" and button_label:
+            lines.append(f"[Menu: {button_label}]")
+
+        rows: list[dict] = []
+        for section in action.get("sections") or []:
+            if isinstance(section, dict):
+                rows.extend([row for row in section.get("rows") or [] if isinstance(row, dict)])
+        if rows:
+            if interactive.get("type") == "list":
+                lines.append("Opciones del menu:")
+            lines.extend(
+                _format_interactive_row(index, row)
+                for index, row in enumerate(rows, start=1)
+                if row.get("title") or row.get("id")
+            )
+
+        buttons = [button for button in action.get("buttons") or [] if isinstance(button, dict)]
+        for index, button in enumerate(buttons, start=1):
+            reply = button.get("reply") if isinstance(button.get("reply"), dict) else {}
+            label = reply.get("title") or reply.get("id")
+            if label:
+                lines.append(f"{index}: {label}")
+
+    footer = interactive.get("footer")
+    if isinstance(footer, dict) and footer.get("text"):
+        lines.append(str(footer["text"]))
+
+    return "\n".join(lines) if lines else None
+
+
+def _format_interactive_row(index: int, row: dict) -> str:
+    label = row.get("title") or row.get("id")
+    description = row.get("description")
+    if description:
+        return f"{index}: {label} ({description})"
+    return f"{index}: {label}"
 
 
 def _reply_text(result: dict | None, outbound: dict | None) -> str:
@@ -439,7 +524,7 @@ def main() -> None:
             continue
         except Exception as exc:
             _clear_typing()
-            print(f"[Error] {exc}")
+            print(_format_runtime_error(exc))
             continue
 
         t_total = time.time() - t_inicio

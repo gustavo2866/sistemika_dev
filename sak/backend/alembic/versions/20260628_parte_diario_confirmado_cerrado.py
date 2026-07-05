@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE partes_diario
-        SET estado = '__registrado_legacy__'
+        SET estado = '__reg_legacy__'
         WHERE estado = 'registrado'
         """
     )
@@ -35,7 +35,7 @@ def upgrade() -> None:
         """
         UPDATE partes_diario
         SET estado = 'cerrado'
-        WHERE estado = '__registrado_legacy__'
+        WHERE estado = '__reg_legacy__'
         """
     )
 
@@ -44,7 +44,7 @@ def downgrade() -> None:
     op.execute(
         """
         UPDATE partes_diario
-        SET estado = '__cerrado_legacy__'
+        SET estado = '__cer_legacy__'
         WHERE estado = 'cerrado'
         """
     )
@@ -59,6 +59,6 @@ def downgrade() -> None:
         """
         UPDATE partes_diario
         SET estado = 'registrado'
-        WHERE estado = '__cerrado_legacy__'
+        WHERE estado = '__cer_legacy__'
         """
     )
