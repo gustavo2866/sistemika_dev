@@ -76,6 +76,9 @@ class ParteDiarioSubprocess:
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(command, context, state)
 
+        if state.draft().esperando == "confirmacion_sin_novedades":
+            return await self._handle_confirmar_sin_novedades(command, message, context, state)
+
         if state.etapa == "menu":
             if command in {"3", "salir"}:
                 return _return_to_general(context, source="parte_diario_legacy_menu")
@@ -381,6 +384,43 @@ class ParteDiarioSubprocess:
             _confirmation_metadata(_salida_confirmacion()),
         )
 
+    async def _handle_confirmar_sin_novedades(
+        self,
+        command: str,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        draft = state.draft()
+        if command in {"ok", "1"}:
+            draft.sin_novedades_informado = True
+            draft.esperando = None
+            state.set_draft(draft)
+            state.etapa = "cierre"
+            return await self._handle_parte_diario(message, context, state, forced_text="CERRAR")
+
+        if command in {"volver", "2"}:
+            draft.esperando = None
+            state.set_draft(draft)
+            state.etapa = "carga"
+            reply = _with_load_menu("Volvemos a la carga del parte diario.", draft)
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "empty_close_cancelled",
+                _main_menu_metadata(reply),
+            )
+
+        reply = _sin_novedades_confirmacion()
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "invalid_empty_close_confirmation",
+            _confirmation_metadata(reply),
+        )
+
     async def _handle_local_menu_command(
         self,
         command: str,
@@ -397,8 +437,17 @@ class ParteDiarioSubprocess:
 
         if command in {"cerrar", "2"}:
             if _is_empty_draft(draft):
-                draft.sin_novedades_informado = True
+                draft.esperando = "confirmacion_sin_novedades"
                 state.set_draft(draft)
+                state.etapa = "cierre"
+                reply = _sin_novedades_confirmacion()
+                return self._active_result(
+                    context,
+                    state,
+                    reply,
+                    "empty_close_confirmation",
+                    _confirmation_metadata(reply),
+                )
             return await self._handle_parte_diario(message, context, state, forced_text="CERRAR")
 
         if command in {"salir", "3"}:
@@ -885,6 +934,8 @@ def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict |
         return _main_menu_metadata(reply)
     if state.etapa == "confirmar_salida":
         return _confirmation_metadata(reply)
+    if state.etapa == "validacion":
+        return _validation_metadata(state)
     return None
 
 
@@ -911,6 +962,59 @@ def _confirmation_metadata(reply: str) -> dict | None:
         ],
     )
     return _interactive_metadata(interactive)
+
+
+def _validation_metadata(state: ParteDiarioV3State) -> dict | None:
+    draft = state.draft()
+    if draft.esperando != "confirmacion_ambiguos" or not draft.pendientes_ambiguos:
+        return None
+    pending = draft.pendientes_ambiguos[0]
+    if not pending.nombre_pendiente:
+        return None
+    candidates = pending.candidatos or []
+    rows = [
+        InteractiveListRow(
+            id=str(index),
+            title=_candidate_button_title(candidate, index),
+            description=_candidate_button_description(candidate),
+        )
+        for index, candidate in enumerate(candidates, start=1)
+    ]
+    rows.append(
+        InteractiveListRow(
+            id="registrar sin validar",
+            title="Registrar sin validar",
+            description=f"Usar {pending.nombre} sin validar nomina",
+        )
+    )
+    interactive = whatsapp_list(
+        body=f"A cual {pending.nombre} te referis?",
+        button="Elegir opcion",
+        section_title="Opciones",
+        rows=rows,
+    )
+    return _interactive_metadata(interactive)
+
+
+def _candidate_button_title(candidate, index: int) -> str:
+    label = str(getattr(candidate, "nombre_completo", "") or f"Opcion {index}").strip()
+    if len(label) <= 24:
+        return label
+    return f"Opcion {index}"
+
+
+def _candidate_button_description(candidate) -> str | None:
+    details = []
+    nro_legajo = getattr(candidate, "nro_legajo", None)
+    if nro_legajo:
+        details.append(f"legajo {nro_legajo}")
+    nombre_proyecto = getattr(candidate, "nombre_proyecto", None)
+    if getattr(candidate, "fuera_de_proyecto", False) and nombre_proyecto:
+        details.append(f"asignado a {nombre_proyecto}")
+    encargado_nombre = getattr(candidate, "encargado_nombre", None)
+    if encargado_nombre:
+        details.append(f"encargado {encargado_nombre}")
+    return ", ".join(details) if details else None
 
 
 def _interactive_metadata(interactive: dict | None) -> dict | None:
@@ -999,6 +1103,13 @@ def _salida_confirmacion() -> str:
     return f"Se perderan los cambios no guardados.\n\n{_salida_confirmacion_tail()}"
 
 
+def _sin_novedades_confirmacion() -> str:
+    return (
+        "No informaste novedades para esta fecha. Confirmas cerrar el parte sin novedades?"
+        f"\n\n{_salida_confirmacion_tail()}"
+    )
+
+
 def _salida_confirmacion_tail() -> str:
     return "Opciones: 1:OK 2:VOLVER."
 
@@ -1081,7 +1192,12 @@ def _strip_known_instructions(reply: str) -> str:
 
 
 def _is_waiting_for_resolution(draft) -> bool:
-    return draft.esperando in {"confirmacion_ambiguos", "resolucion_conflictos", "confirmacion_cambio_fecha"}
+    return draft.esperando in {
+        "confirmacion_ambiguos",
+        "resolucion_conflictos",
+        "confirmacion_cambio_fecha",
+        "confirmacion_sin_novedades",
+    }
 
 
 def _has_conversational_draft(draft) -> bool:

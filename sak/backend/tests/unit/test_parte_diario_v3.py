@@ -926,7 +926,7 @@ async def test_parte_diario_v3_multiple_projects_selection_does_not_interpret_op
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_empty_part_close_marks_sin_novedades_and_closes(seeded_parte_v3):
+async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_parte_v3):
     state = ParteDiarioState(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
@@ -945,8 +945,28 @@ async def test_parte_diario_v3_empty_part_close_marks_sin_novedades_and_closes(s
     )
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
-    result = await process.handle(_message("2"), context)
+    confirmation = await process.handle(_message("2"), context)
+    back = await process.handle(
+        _message("volver", external_id="wamid-test-empty-close-back"),
+        confirmation.context,
+    )
+    result = await process.handle(
+        _message("ok", external_id="wamid-test-empty-close-ok"),
+        confirmation.context,
+    )
 
+    assert confirmation.context.active_process == "parteDiario"
+    assert confirmation.context.process_state["etapa"] == "cierre"
+    assert confirmation.context.process_state["parte_state"]["esperando"] == "confirmacion_sin_novedades"
+    assert confirmation.context.process_state["parte_state"]["sin_novedades_informado"] is False
+    assert "Confirmas cerrar el parte sin novedades" in (confirmation.reply_text or "")
+    assert "Opciones: 1:OK 2:VOLVER." in (confirmation.reply_text or "")
+    assert confirmation.metadata["outbound"]["type"] == "interactive"
+    buttons = confirmation.metadata["outbound"]["interactive"]["action"]["buttons"]
+    assert [button["reply"]["id"] for button in buttons] == ["ok", "volver"]
+    assert back.context.process_state["etapa"] == "carga"
+    assert back.context.process_state["parte_state"]["esperando"] is None
+    assert "Volvemos a la carga" in (back.reply_text or "")
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
     assert result.metadata["parte_listo"] is True
@@ -1268,10 +1288,19 @@ async def test_parte_diario_v3_cerrar_asks_to_select_similar_pending_name(seeded
     assert "Perez, Pedro" in (result.reply_text or "")
     assert "Registrar como Petro sin validar" in (result.reply_text or "")
     assert "Opciones: 1:CONFIRMAR" not in (result.reply_text or "")
+    assert result.metadata["outbound"]["type"] == "interactive"
+    interactive = result.metadata["outbound"]["interactive"]
+    assert interactive["type"] == "list"
+    rows = interactive["action"]["sections"][0]["rows"]
+    assert rows[-1]["id"] == "registrar sin validar"
+    assert rows[-1]["title"] == "Registrar sin validar"
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_unvalidated_selection_is_not_registered(seeded_parte_v3):
+async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisional_detail(
+    db_session: Session,
+    seeded_parte_v3,
+):
     process = ParteDiarioSubprocess(
         llm_client=FakeParteDiarioLLM(
             TurnPlan(
@@ -1285,13 +1314,20 @@ async def test_parte_diario_v3_unvalidated_selection_is_not_registered(seeded_pa
 
     loaded = await process.handle(_message("Petro falto"), context)
     validating = await process.handle(_message("2", external_id="wamid-test-2"), loaded.context)
-    result = await process.handle(_message("2", external_id="wamid-test-3"), validating.context)
+    result = await process.handle(_message("registrar sin validar", external_id="wamid-test-3"), validating.context)
 
-    assert result.context.process_state["etapa"] == "carga"
-    assert result.context.process_state["parte_state"]["pendientes_ambiguos"] == []
-    assert result.context.process_state["parte_state"]["novedades"] == []
-    assert "Petro quedo sin validar y no se registrara" in (result.reply_text or "")
-    assert "Todavia no informaste novedades" in (result.reply_text or "")
+    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.metadata["result"]["cerrar_parte"] is True
+    assert "Petro quedo registrado sin validar" in (result.reply_text or "")
+    assert "Petro (sin validar): FAL, 0h" in (result.reply_text or "")
+    parte_id = result.metadata["parte_diario_id"]
+    details = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_id)
+    ).all()
+    provisional = next((detail for detail in details if detail.nombre_provisorio == "Petro"), None)
+    assert provisional is not None
+    assert provisional.idnomina is None
+    assert provisional.horas == Decimal("0.00")
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.interactive import InteractiveButton, whatsapp_buttons
 from agente.v3.subprocesses.general_agent import (
     GENERAL_MENU_TEXT,
     GeneralAgentClient,
@@ -76,14 +77,17 @@ class GeneralSubprocess:
             return V3ProcessResult(
                 context=updated,
                 reply_text=GENERAL_MENU_TEXT,
-                metadata={
-                    "process_name": self.name,
-                    "status": "general_reply",
-                    "agent_source": "fast_path",
-                    "response_type": "general_reply",
-                    "target_process": None,
-                    "reason": "pure_greeting",
-                },
+                metadata=_with_general_menu_metadata(
+                    {
+                        "process_name": self.name,
+                        "status": "general_reply",
+                        "agent_source": "fast_path",
+                        "response_type": "general_reply",
+                        "target_process": None,
+                        "reason": "pure_greeting",
+                    },
+                    GENERAL_MENU_TEXT,
+                ),
             )
 
         try:
@@ -119,17 +123,18 @@ class GeneralSubprocess:
             }
             status = "general_reply"
 
+        metadata = {
+            "process_name": self.name,
+            "status": status,
+            "agent_source": source,
+            "response_type": output.type,
+            "target_process": target_process,
+            "reason": output.reason,
+        }
         return V3ProcessResult(
             context=updated,
             reply_text=output.respuesta,
-            metadata={
-                "process_name": self.name,
-                "status": status,
-                "agent_source": source,
-                "response_type": output.type,
-                "target_process": target_process,
-                "reason": output.reason,
-            },
+            metadata=_with_general_menu_metadata(metadata, output.respuesta),
         )
 
 
@@ -144,8 +149,24 @@ def _normalize(value: str | None) -> str:
 
 
 def _menu_selection(command: str) -> tuple[str, str] | None:
-    if command == "1":
+    if command in {"1", "pedido obra"}:
         return "pedidoObra", "pedido obra"
-    if command == "2":
+    if command in {"2", "parte diario"}:
         return "parteDiario", "parte diario"
     return None
+
+
+def _with_general_menu_metadata(metadata: dict, reply_text: str | None) -> dict:
+    if str(reply_text or "").strip() != GENERAL_MENU_TEXT:
+        return metadata
+    interactive = whatsapp_buttons(
+        body="Hola. Puedo ayudarte con:",
+        buttons=[
+            InteractiveButton(id="pedido obra", title="PEDIDO OBRA"),
+            InteractiveButton(id="parte diario", title="PARTE DIARIO"),
+        ],
+    )
+    if interactive:
+        metadata = dict(metadata)
+        metadata["outbound"] = {"type": "interactive", "interactive": interactive}
+    return metadata

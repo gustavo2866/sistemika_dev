@@ -142,11 +142,13 @@ class ParteDiarioService:
         novedades = [item for item in raw_novedades if item.get("idnomina") is not None]
         pendientes_provisorios = list(result.get("pendientes_ambiguos") or [])
         novedades_provisorias = [item for item in raw_novedades if item.get("idnomina") is None]
-        if target_estado == EstadoParteDiario.CONFIRMADO and novedades_provisorias:
-            raise ValueError("El parte diario tiene novedades sin validar")
-        if target_estado == EstadoParteDiario.BORRADOR:
-            pendientes_provisorios.extend(novedades_provisorias)
-        if target_estado == EstadoParteDiario.CONFIRMADO and not novedades and not result.get("sin_novedades_informado"):
+        pendientes_provisorios.extend(novedades_provisorias)
+        if (
+            target_estado == EstadoParteDiario.CONFIRMADO
+            and not novedades
+            and not pendientes_provisorios
+            and not result.get("sin_novedades_informado")
+        ):
             raise ValueError("El parte diario vacio requiere declaracion explicita de sin novedades")
         present_id = None
         if novedades:

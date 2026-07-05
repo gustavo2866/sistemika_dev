@@ -315,6 +315,26 @@ def registrar_pendiente_resuelto(
     _registrar_o_encolar_conflicto(state, novedad)
 
 
+def registrar_pendiente_sin_validar(state: ParteDiarioState, pending: PendienteAmbiguo) -> None:
+    state.novedades.append(
+        NovedadPersonal(
+            nombre=pending.nombre,
+            idnomina=None,
+            idestado=pending.idestado,
+            estado_codigo=pending.estado_codigo,
+            horas=normalizar_horas(
+                horas=pending.horas,
+                horas_extra=pending.horas_extra,
+                estado_codigo=pending.estado_codigo,
+                fuera_de_proyecto=pending.fuera_de_proyecto,
+            ),
+            descripcion=pending.descripcion,
+            fuera_de_proyecto=pending.fuera_de_proyecto,
+            nombre_proyecto=pending.nombre_proyecto,
+        )
+    )
+
+
 def _registrar_o_encolar_conflicto(state: ParteDiarioState, novedad: NovedadPersonal) -> None:
     if novedad.idnomina is None:
         return

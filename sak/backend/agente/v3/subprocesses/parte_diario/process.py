@@ -18,6 +18,7 @@ from agente.v3.subprocesses.parte_diario.executor import (
     execute_plan,
     limpiar_conflictos_repetidos,
     registrar_pendiente_resuelto,
+    registrar_pendiente_sin_validar,
 )
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.models import (
@@ -284,13 +285,14 @@ class ParteDiarioProcess:
 
         if pending.nombre_pendiente:
             if _is_unvalidated_selection(text, pending):
-                skipped_name = pending.nombre
+                unvalidated_name = pending.nombre
                 state.pendientes_ambiguos.pop(0)
+                registrar_pendiente_sin_validar(state, pending)
                 if state.pendientes_ambiguos:
                     _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
                     return self._state_reply(
                         state,
-                        f"{skipped_name} quedo sin validar y no se registrara en el parte.\n\n"
+                        f"{unvalidated_name} quedo registrado sin validar.\n\n"
                         f"{renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados)}",
                     )
                 state.esperando = None
@@ -299,7 +301,7 @@ class ParteDiarioProcess:
                     estados,
                     nominas_proyecto,
                     nominas_completas,
-                    prefix=f"{skipped_name} quedo sin validar y no se registrara en el parte.",
+                    prefix=f"{unvalidated_name} quedo registrado sin validar.",
                 )
             selected = parse_candidate_selection(text, pending.candidatos or [])
             if selected is None:

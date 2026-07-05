@@ -79,6 +79,11 @@ async def test_general_v3_saludo_puro_responde_menu_sin_agent_sdk(text):
     assert result.context.process_state["agent_source"] == "fast_path"
     assert result.metadata["agent_source"] == "fast_path"
     assert result.metadata["reason"] == "pure_greeting"
+    assert result.metadata["outbound"]["type"] == "interactive"
+    interactive = result.metadata["outbound"]["interactive"]
+    assert interactive["type"] == "button"
+    buttons = interactive["action"]["buttons"]
+    assert [button["reply"]["id"] for button in buttons] == ["pedido obra", "parte diario"]
     assert client.calls == []
 
 
@@ -146,9 +151,11 @@ async def test_general_v3_deriva_a_parte_diario():
     [
         ("1", "pedidoObra", "pedido obra"),
         ("2", "parteDiario", "parte diario"),
+        ("pedido obra", "pedidoObra", "pedido obra"),
+        ("parte diario", "parteDiario", "parte diario"),
     ],
 )
-async def test_general_v3_menu_numerico_deriva_sin_llamar_sdk(text, target_process, handoff_text):
+async def test_general_v3_menu_deriva_sin_llamar_sdk(text, target_process, handoff_text):
     client = FakeGeneralAgent()
     process = GeneralSubprocess(agent_client=client)
     result = await process.handle(
@@ -171,6 +178,7 @@ async def test_general_v3_usa_fallback_si_falla_agent_sdk():
     assert result.reply_text == GENERAL_MENU_TEXT
     assert result.context.active_process == "general"
     assert result.metadata["agent_source"] == "fallback"
+    assert result.metadata["outbound"]["type"] == "interactive"
 
 
 @pytest.mark.asyncio
