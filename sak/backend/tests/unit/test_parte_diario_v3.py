@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -2158,6 +2158,66 @@ async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session:
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
     ).all()
     assert details == []
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_confirm_creates_new_part_when_soft_deleted_exists_same_unique_key(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    existing = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+        fecha=date(2026, 6, 29),
+        estado=EstadoParteDiario.CONFIRMADO,
+        deleted_at=datetime.now(UTC),
+    )
+    db_session.add(existing)
+    db_session.flush()
+    existing_id = int(existing.id)
+    db_session.add(
+        ParteDiarioDetalle(
+            parte_diario_id=existing_id,
+            idnomina=seeded_parte_v3["employee_1"].id,
+            horas=Decimal("0.00"),
+            origen=OrigenDetalle.AGENTE,
+        )
+    )
+    db_session.commit()
+
+    state = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 29).isoformat(),
+        sin_novedades_informado=True,
+        esperando="confirmacion_cierre_validado",
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "cierre",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("ok", external_id="wamid-soft-delete-confirm"), context)
+
+    assert result.metadata["parte_listo"] is True
+    assert result.metadata["parte_diario_id"] != existing_id
+
+    old_part = db_session.get(ParteDiario, existing_id)
+    assert old_part is not None
+    assert old_part.deleted_at is not None
+
+    new_part = db_session.get(ParteDiario, int(result.metadata["parte_diario_id"]))
+    assert new_part is not None
+    assert new_part.deleted_at is None
+    assert new_part.estado == EstadoParteDiario.CONFIRMADO
 
 
 @pytest.mark.asyncio

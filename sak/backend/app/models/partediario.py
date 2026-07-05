@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import ClassVar, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, DECIMAL, String, UniqueConstraint
+from sqlalchemy import Column, DECIMAL, Index, String, UniqueConstraint, text
 from sqlmodel import Field, Relationship
 
 from .base import Base
@@ -30,7 +30,15 @@ class ParteDiario(Base, table=True):
 
     __tablename__ = "partes_diario"
     __table_args__ = (
-        UniqueConstraint("idproyecto", "fecha", "contacto_id", name="uq_partes_diario_proyecto_fecha_contacto"),
+        Index(
+            "uq_partes_diario_proyecto_fecha_contacto_activo",
+            "idproyecto",
+            "fecha",
+            "contacto_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
 
     __searchable_fields__: ClassVar[List[str]] = ["descripcion"]
