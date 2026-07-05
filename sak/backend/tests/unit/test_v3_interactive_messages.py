@@ -39,7 +39,7 @@ def test_v3_meta_channel_extracts_list_reply_id() -> None:
                 "interactive": {
                     "type": "list_reply",
                     "list_reply": {
-                        "id": "parte_fecha:2026-07-01",
+                        "id": "2026-07-01",
                         "title": "01/07/2026",
                     },
                 },
@@ -48,8 +48,8 @@ def test_v3_meta_channel_extracts_list_reply_id() -> None:
     )
 
     assert messages[0].message_type == "interactive"
-    assert messages[0].text == "parte_fecha:2026-07-01"
-    assert messages[0].normalized_payload["mensaje"]["texto"] == "parte_fecha:2026-07-01"
+    assert messages[0].text == "2026-07-01"
+    assert messages[0].normalized_payload["mensaje"]["texto"] == "2026-07-01"
 
 
 def test_v3_meta_channel_extracts_button_reply_id() -> None:
@@ -62,7 +62,7 @@ def test_v3_meta_channel_extracts_button_reply_id() -> None:
                 "interactive": {
                     "type": "button_reply",
                     "button_reply": {
-                        "id": "parte_accion:cerrar",
+                        "id": "cerrar",
                         "title": "CERRAR",
                     },
                 },
@@ -71,8 +71,8 @@ def test_v3_meta_channel_extracts_button_reply_id() -> None:
     )
 
     assert messages[0].message_type == "interactive"
-    assert messages[0].text == "parte_accion:cerrar"
-    assert messages[0].normalized_payload["mensaje"]["texto"] == "parte_accion:cerrar"
+    assert messages[0].text == "cerrar"
+    assert messages[0].normalized_payload["mensaje"]["texto"] == "cerrar"
 
 
 @pytest.mark.asyncio
@@ -93,7 +93,7 @@ async def test_v3_meta_channel_dedupes_quick_repeated_interactive_reply() -> Non
                 "interactive": {
                     "type": "list_reply",
                     "list_reply": {
-                        "id": "parte_fecha:2026-06-29",
+                        "id": "2026-06-29",
                         "title": "29/06/2026 lun",
                     },
                 },
@@ -111,7 +111,7 @@ async def test_v3_meta_channel_dedupes_quick_repeated_interactive_reply() -> Non
                 "interactive": {
                     "type": "list_reply",
                     "list_reply": {
-                        "id": "parte_fecha:2026-06-29",
+                        "id": "2026-06-29",
                         "title": "29/06/2026 lun",
                     },
                 },
@@ -127,7 +127,7 @@ async def test_v3_meta_channel_dedupes_quick_repeated_interactive_reply() -> Non
     assert second["enqueued_count"] == 0
     assert second["skipped_duplicates"] == 1
     assert snapshot["pending_count"] == 1
-    assert captured == [["parte_fecha:2026-06-29"]]
+    assert captured == [["2026-06-29"]]
 
 
 @pytest.mark.asyncio

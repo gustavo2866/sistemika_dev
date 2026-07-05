@@ -136,8 +136,6 @@ def _dedupe_key(message: V3InboundMessage) -> tuple[str, str, str] | None:
     text = str(message.text or "").strip()
     if not text:
         return None
-    if not text.startswith(("parte_fecha:", "parte_accion:")):
-        return None
     return (str(message.queue_name or ""), message.conversation_id, text)
 
 

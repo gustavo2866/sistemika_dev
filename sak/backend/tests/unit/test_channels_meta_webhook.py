@@ -137,7 +137,7 @@ def test_raw_meta_interactive_list_reply_is_normalized(db_session):
                                         "interactive": {
                                             "type": "list_reply",
                                             "list_reply": {
-                                                "id": "parte_fecha:2026-06-28",
+                                                "id": "2026-06-28",
                                                 "title": "28/06/2026 dom",
                                                 "description": "sin cargar",
                                             },
@@ -155,7 +155,7 @@ def test_raw_meta_interactive_list_reply_is_normalized(db_session):
     assert len(result) == 1
     normalized = result[0]["mensaje"]
     assert normalized["tipo"] == "interactive"
-    assert normalized["texto"] == "parte_fecha:2026-06-28"
+    assert normalized["texto"] == "2026-06-28"
 
 
 def test_raw_meta_status_payload_is_normalized(db_session):

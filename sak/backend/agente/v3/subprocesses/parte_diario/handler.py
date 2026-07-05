@@ -36,9 +36,8 @@ class ParteDiarioSubprocess:
 
     async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
         state = ParteDiarioV3State.from_dict(context.process_state)
-        mapped_text = _map_interactive_text(message.text, state)
-        selected_fecha = _parse_interactive_fecha(message.text)
-        command = _normalize_command(mapped_text)
+        selected_fecha = _parse_fecha_value(message.text)
+        command = _normalize_command(message.text)
         is_date_menu_command = _is_date_menu_command(command)
         resolved_obra_from_current_message = False
 
@@ -379,6 +378,7 @@ class ParteDiarioSubprocess:
             state,
             _salida_confirmacion(),
             "invalid_exit_confirmation",
+            _confirmation_metadata(_salida_confirmacion()),
         )
 
     async def _handle_local_menu_command(
@@ -408,6 +408,7 @@ class ParteDiarioSubprocess:
                 state,
                 _salida_confirmacion(),
                 "exit_confirmation",
+                _confirmation_metadata(_salida_confirmacion()),
             )
 
         if command in {"volver"}:
@@ -510,7 +511,7 @@ class ParteDiarioSubprocess:
 
         started = time.perf_counter()
         with Session(engine) as session:
-            mapped_text = forced_text or _map_menu_text(_map_interactive_text(message.text, state), state)
+            mapped_text = forced_text or _map_menu_text(message.text or "", state)
             process_context = SimpleNamespace(
                 oportunidad_id=state.oportunidad_id,
                 contacto_id=state.contacto_id,
@@ -797,7 +798,7 @@ def _date_menu_metadata(options: list[ParteDiarioFechaOption], *, prefix: str | 
         section_title="Fechas",
         rows=[
             InteractiveListRow(
-                id=f"parte_fecha:{option.fecha}",
+                id=option.fecha,
                 title=_fecha_option_title(option),
                 description=option.estado,
             )
@@ -882,6 +883,8 @@ def _with_load_menu(reply: str, draft=None) -> str:
 def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict | None:
     if state.etapa in {"carga", "cierre"}:
         return _main_menu_metadata(reply)
+    if state.etapa == "confirmar_salida":
+        return _confirmation_metadata(reply)
     return None
 
 
@@ -890,9 +893,21 @@ def _main_menu_metadata(reply: str) -> dict | None:
     interactive = whatsapp_buttons(
         body=body,
         buttons=[
-            InteractiveButton(id="parte_accion:guardar", title="GUARDAR"),
-            InteractiveButton(id="parte_accion:cerrar", title="CERRAR"),
-            InteractiveButton(id="parte_accion:salir", title="SALIR"),
+            InteractiveButton(id="guardar", title="GUARDAR"),
+            InteractiveButton(id="cerrar", title="CERRAR"),
+            InteractiveButton(id="salir", title="SALIR"),
+        ],
+    )
+    return _interactive_metadata(interactive)
+
+
+def _confirmation_metadata(reply: str) -> dict | None:
+    body = _strip_known_confirmation_tail(reply)
+    interactive = whatsapp_buttons(
+        body=body,
+        buttons=[
+            InteractiveButton(id="ok", title="OK"),
+            InteractiveButton(id="volver", title="VOLVER"),
         ],
     )
     return _interactive_metadata(interactive)
@@ -912,37 +927,17 @@ def _merge_metadata(*items: dict | None) -> dict | None:
     return merged or None
 
 
-def _map_interactive_text(text: str | None, state: ParteDiarioV3State) -> str:
+def _parse_fecha_value(text: str | None) -> str | None:
     raw = str(text or "").strip()
-    if raw.startswith("parte_accion:"):
-        action = raw.split(":", 1)[1].strip().lower()
-        return {
-            "guardar": "guardar",
-            "cerrar": "cerrar",
-            "salir": "salir",
-            "ok": "ok",
-            "volver": "volver",
-        }.get(action, raw)
-    if raw.startswith("parte_fecha:"):
-        selected_date = raw.split(":", 1)[1].strip()
-        selected = next(
-            (option for option in state.opciones_fecha if option.fecha == selected_date),
-            None,
-        )
-        return str(selected.opcion) if selected else raw
-    return raw
-
-
-def _parse_interactive_fecha(text: str | None) -> str | None:
-    raw = str(text or "").strip()
-    if raw.startswith("parte_fecha:"):
-        selected_date = raw.split(":", 1)[1].strip()
-    else:
-        match = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:\s|$)", raw)
-        if not match:
-            return None
-        day, month, year = (int(part) for part in match.groups())
-        selected_date = f"{year:04d}-{month:02d}-{day:02d}"
+    try:
+        return date.fromisoformat(raw).isoformat()
+    except ValueError:
+        pass
+    match = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:\s|$)", raw)
+    if not match:
+        return None
+    day, month, year = (int(part) for part in match.groups())
+    selected_date = f"{year:04d}-{month:02d}-{day:02d}"
     try:
         return date.fromisoformat(selected_date).isoformat()
     except ValueError:
@@ -952,6 +947,14 @@ def _parse_interactive_fecha(text: str | None) -> str | None:
 def _strip_known_menu_tail(reply: str) -> str:
     text = str(reply or "").strip()
     for tail in (_main_menu(),):
+        if text.endswith(tail):
+            return text[: -len(tail)].strip()
+    return text
+
+
+def _strip_known_confirmation_tail(reply: str) -> str:
+    text = str(reply or "").strip()
+    for tail in (_salida_confirmacion_tail(),):
         if text.endswith(tail):
             return text[: -len(tail)].strip()
     return text
@@ -993,7 +996,11 @@ def _return_to_general(context: V3ConversationContext, *, source: str) -> V3Proc
 
 
 def _salida_confirmacion() -> str:
-    return "Se perderan los cambios no guardados.\n\nOpciones: 1:OK 2:VOLVER."
+    return f"Se perderan los cambios no guardados.\n\n{_salida_confirmacion_tail()}"
+
+
+def _salida_confirmacion_tail() -> str:
+    return "Opciones: 1:OK 2:VOLVER."
 
 
 def _save_payload(draft, *, cerrar_parte: bool) -> dict:

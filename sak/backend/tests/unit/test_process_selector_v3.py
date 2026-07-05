@@ -66,7 +66,7 @@ async def test_selector_deriva_respuesta_interactiva_de_fecha_a_parte_diario(mon
     selector = V3ProcessSelector()
     context = V3ConversationContext(conversation_id="conv-1")
 
-    selection = await selector.resolve(_message("parte_fecha:2026-06-28"), context)
+    selection = await selector.resolve(_message("2026-06-28"), context)
 
     assert selection.process_name == PROCESS_PARTE_DIARIO
     assert selection.mode == "fast_path"

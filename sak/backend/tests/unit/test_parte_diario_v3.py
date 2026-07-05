@@ -277,7 +277,7 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     body = result.metadata["outbound"]["interactive"]["body"]["text"]
     assert body == "Selecciona la fecha del parte diario:"
     rows = result.metadata["outbound"]["interactive"]["action"]["sections"][0]["rows"]
-    assert rows[0]["id"] == "parte_fecha:2026-05-16"
+    assert rows[0]["id"] == "2026-05-16"
     assert rows[0]["title"] == "16/05/2026 sab"
     assert rows[0]["description"] == "borrador"
     assert rows[1]["title"] == "15/05/2026 vie"
@@ -326,7 +326,7 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     menu = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-select-date"))
-    selected = await process.handle(_message("parte_fecha:2026-05-16"), menu.context)
+    selected = await process.handle(_message("2026-05-16"), menu.context)
 
     assert selected.context.active_process == "parteDiario"
     assert selected.context.process_state["etapa"] == "carga"
@@ -334,9 +334,9 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     assert selected.metadata["outbound"]["interactive"]["type"] == "button"
     buttons = selected.metadata["outbound"]["interactive"]["action"]["buttons"]
     assert [button["reply"]["id"] for button in buttons] == [
-        "parte_accion:guardar",
-        "parte_accion:cerrar",
-        "parte_accion:salir",
+        "guardar",
+        "cerrar",
+        "salir",
     ]
     draft = selected.context.process_state["parte_state"]
     assert draft["fecha"] == "2026-05-16"
@@ -356,7 +356,7 @@ async def test_parte_diario_v3_interactive_date_without_context_resolves_single_
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     result = await process.handle(
-        _message("parte_fecha:2026-06-28"),
+        _message("2026-06-28"),
         V3ConversationContext(conversation_id="conv-direct-date"),
     )
 
@@ -1316,13 +1316,16 @@ async def test_parte_diario_v3_menu_salir_confirms_discard(seeded_parte_v3):
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     exit_confirmation = await process.handle(_message("3"), context)
-    back = await process.handle(_message("2"), exit_confirmation.context)
-    discarded = await process.handle(_message("1"), exit_confirmation.context)
+    back = await process.handle(_message("volver"), exit_confirmation.context)
+    discarded = await process.handle(_message("ok"), exit_confirmation.context)
 
     assert exit_confirmation.context.process_state["etapa"] == "confirmar_salida"
     assert "Se perderan los cambios no guardados." in (exit_confirmation.reply_text or "")
     assert "Opciones: 1:OK 2:VOLVER." in (exit_confirmation.reply_text or "")
     assert "Fecha: 2026-05-30" not in (exit_confirmation.reply_text or "")
+    assert exit_confirmation.metadata["outbound"]["type"] == "interactive"
+    buttons = exit_confirmation.metadata["outbound"]["interactive"]["action"]["buttons"]
+    assert [button["reply"]["id"] for button in buttons] == ["ok", "volver"]
     assert back.context.process_state["etapa"] == "carga"
     assert "Volvemos a la carga" in (back.reply_text or "")
     assert discarded.context.active_process == "parteDiario"

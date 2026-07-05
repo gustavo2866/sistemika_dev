@@ -117,7 +117,7 @@ class V3ProcessSelector:
     @staticmethod
     def _fast_path(message: V3InboundMessage) -> V3ProcessSelection | None:
         raw_text = str(message.text or "").strip().lower()
-        if raw_text.startswith(("parte_fecha:", "parte_accion:")) or _looks_like_date_list_reply(raw_text):
+        if _looks_like_date_list_reply(raw_text):
             return V3ProcessSelection(
                 PROCESS_PARTE_DIARIO,
                 "fast_path",
@@ -211,7 +211,11 @@ def _normalize(value: str | None) -> str:
 
 
 def _looks_like_date_list_reply(value: str) -> bool:
-    return bool(re.match(r"^\d{1,2}/\d{1,2}/\d{4}(?:\s|$)", value.strip()))
+    text = value.strip()
+    return bool(
+        re.match(r"^\d{4}-\d{2}-\d{2}$", text)
+        or re.match(r"^\d{1,2}/\d{1,2}/\d{4}(?:\s|$)", text)
+    )
 
 
 default_process_selector = V3ProcessSelector()
