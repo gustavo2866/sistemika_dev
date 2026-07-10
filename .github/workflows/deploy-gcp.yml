@@ -47,7 +47,6 @@ jobs:
             --service-account ${{ env.SERVICE_ACCOUNT }} \
             --allow-unauthenticated \
             --cpu=1 \
-            --no-cpu-throttling \
             --memory=1Gi \
             --concurrency=80 \
             --timeout=3600 \
