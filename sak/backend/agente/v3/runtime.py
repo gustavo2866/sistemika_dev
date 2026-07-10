@@ -18,7 +18,8 @@ async def process_pending_once(*, limit: int = 10, queue: str | None = None) -> 
     t_runtime = time.perf_counter()
     inbox_result = await runtime.inbox.process_pending(limit=limit, orchestrator=runtime.orchestrator)
     t_inbox = time.perf_counter()
-    outbox_result = await runtime.outbox.process_pending(limit=limit)
+    outbox_limit = max(limit, _outbound_count_from_inbox_result(inbox_result))
+    outbox_result = await runtime.outbox.process_pending(limit=outbox_limit)
     t_outbox = time.perf_counter()
     timings_ms = {
         "runtime": round((t_runtime - t0) * 1000, 3),
@@ -46,6 +47,30 @@ async def process_pending_once(*, limit: int = 10, queue: str | None = None) -> 
         "outbox": outbox_result,
         "timings_ms": timings_ms,
     }
+
+
+def _outbound_count_from_inbox_result(inbox_result: dict) -> int:
+    processed = inbox_result.get("processed")
+    if not isinstance(processed, list):
+        return 0
+    count = 0
+    for item in processed:
+        if not isinstance(item, dict):
+            continue
+        orchestrator = item.get("orchestrator")
+        if not isinstance(orchestrator, dict):
+            continue
+        metadata = orchestrator.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        outbound_ids = metadata.get("outbound_message_ids")
+        if isinstance(outbound_ids, list):
+            count += len(outbound_ids)
+            continue
+        outbox = item.get("outbox")
+        if isinstance(outbox, dict) and outbox.get("message_id"):
+            count += 1
+    return count
 
 
 async def _store_runtime_timings(runtime, inbox_result: dict, outbox_result: dict, timings_ms: dict) -> None:

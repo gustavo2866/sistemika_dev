@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from sqlmodel import Session, select
 
-from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessMessage, V3ProcessResult
 from agente.v3.interactive import InteractiveButton, InteractiveListRow, whatsapp_buttons, whatsapp_list
 from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
@@ -240,6 +240,8 @@ class ParteDiarioSubprocess:
     ) -> V3ProcessResult:
         if command in {"salir"}:
             return _return_to_general(context, source="parte_diario_fecha_menu")
+        if command in {"continuar cargando", "continuar", "cargar", "seguir cargando"}:
+            return self._show_date_menu(context, state)
         if _is_show_nomina_command(command):
             return self._show_nomina_on_date_menu(context, state)
 
@@ -907,6 +909,28 @@ class ParteDiarioSubprocess:
         if extra_metadata:
             metadata.update(extra_metadata)
             metadata["status"] = status
+        if status == "confirmed":
+            state.etapa = "seleccionar_fecha"
+            if state.proyecto_id:
+                state.nombre_obra = state.nombre_obra or self._resolve_project_name(int(state.proyecto_id))
+                state.opciones_fecha = self._build_fecha_options(
+                    int(state.proyecto_id),
+                    contacto_id=state.contacto_id,
+                )
+            weekly_reply = _render_post_confirmation_week_summary(state.opciones_fecha, obra=state.nombre_obra)
+            return self._active_result(
+                context,
+                state,
+                reply,
+                status,
+                metadata,
+                additional_messages=[
+                    V3ProcessMessage(
+                        text=weekly_reply,
+                        metadata=_post_confirmation_week_metadata(weekly_reply),
+                    )
+                ],
+            )
         return self._show_date_menu(
             context,
             state,
@@ -922,6 +946,7 @@ class ParteDiarioSubprocess:
         reply: str,
         status: str,
         extra_metadata: dict | None = None,
+        additional_messages: list[V3ProcessMessage] | None = None,
     ) -> V3ProcessResult:
         updated = context.copy()
         updated.active_process = self.name
@@ -929,7 +954,12 @@ class ParteDiarioSubprocess:
         metadata = {"process_name": self.name, "status": status, "etapa": state.etapa}
         if extra_metadata:
             metadata.update(extra_metadata)
-        return V3ProcessResult(context=updated, reply_text=reply, metadata=metadata)
+        return V3ProcessResult(
+            context=updated,
+            reply_text=reply,
+            metadata=metadata,
+            additional_messages=additional_messages or [],
+        )
 
     def _closed_result(self, context: V3ConversationContext, reply: str, status: str) -> V3ProcessResult:
         updated = context.copy()
@@ -1127,6 +1157,33 @@ def _date_menu_metadata(
                 description=option.estado,
             )
             for option in options
+        ],
+    )
+    return _interactive_metadata(interactive)
+
+
+def _render_post_confirmation_week_summary(
+    options: list[ParteDiarioFechaOption],
+    *,
+    obra: str | None = None,
+) -> str:
+    lines = ["Partes diarios de la semana:"]
+    obra_label = str(obra or "").strip()
+    if obra_label:
+        lines.append(f"Obra: {obra_label}")
+    lines.append("")
+    lines.extend(f"- {_fecha_option_title(option)}: {option.estado}" for option in options)
+    lines.append("")
+    lines.append("Podes continuar cargando otra fecha o salir.")
+    return "\n".join(lines)
+
+
+def _post_confirmation_week_metadata(reply: str) -> dict | None:
+    interactive = whatsapp_buttons(
+        body=reply,
+        buttons=[
+            InteractiveButton(id="continuar cargando", title="CONTINUAR CARGANDO"),
+            InteractiveButton(id="salir", title="SALIR"),
         ],
     )
     return _interactive_metadata(interactive)

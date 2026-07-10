@@ -69,6 +69,14 @@ class V3ConversationContext:
 
 
 @dataclass(slots=True)
+class V3ProcessMessage:
+    """Mensaje saliente adicional generado por un subproceso."""
+
+    text: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class V3ProcessResult:
     """Resultado de subproceso: contexto actualizado y respuesta opcional."""
 
@@ -76,6 +84,7 @@ class V3ProcessResult:
     reply_text: str | None = None
     status: str = "ok"
     metadata: dict[str, Any] = field(default_factory=dict)
+    additional_messages: list[V3ProcessMessage] = field(default_factory=list)
 
 
 @dataclass(slots=True)

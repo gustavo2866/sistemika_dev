@@ -23,6 +23,12 @@ type EditingCell = {
   field: EditableField;
 } | null;
 
+type BudgetFilterContext = {
+  proyecto_id: number;
+  proyectos_concepto_id: number;
+  proyectos_macrorubro_id: number;
+};
+
 type PanelMacrorubro = {
   macrorubro_id: number;
   macrorubro_nombre: string;
@@ -113,6 +119,28 @@ const formatMonthRangeLabel = (startDate: Date, endDate: Date) => {
   return `${formatter.format(startDate)} - ${formatter.format(endDate)}`;
 };
 
+const buildBudgetListLink = (
+  monthKey: string,
+  context?: BudgetFilterContext,
+) => {
+  if (!context) return null;
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = getMonthEnd(monthStart);
+  const params = new URLSearchParams();
+  params.set(
+    "filter",
+    JSON.stringify({
+      ...context,
+      fecha: {
+        gte: formatDateParam(monthStart),
+        lte: formatDateParam(monthEnd),
+      },
+    }),
+  );
+  return `/constructora/proyectos-budget?${params.toString()}`;
+};
+
 const formatCurrency = (value?: number) =>
   new Intl.NumberFormat("es-AR", {
     style: "currency",
@@ -135,6 +163,7 @@ type BudgetPanelRowProps = {
   expandable?: boolean;
   onToggle?: () => void;
   editable?: boolean;
+  filterContext?: BudgetFilterContext;
   onCellSave?: (
     budgetId: number,
     field: EditableField,
@@ -152,6 +181,7 @@ const BudgetPanelRow = ({
   expandable = false,
   onToggle,
   editable = false,
+  filterContext,
   onCellSave,
 }: BudgetPanelRowProps) => {
   const ToggleIcon = expanded ? ChevronDown : ChevronRight;
@@ -223,7 +253,11 @@ const BudgetPanelRow = ({
       {months.map((month) => {
         const values = monthValues[month] ?? { importe_neto: 0, empleados: 0, budget_id: null, record_count: 0 };
         const amount = Number(values.importe_neto ?? 0);
-        const canEdit = editable && Boolean(values.budget_id) && Number(values.record_count ?? 0) === 1;
+        const recordCount = Number(values.record_count ?? 0);
+        const canEdit = editable && Boolean(values.budget_id) && recordCount === 1;
+        const listLink = editable && !canEdit && recordCount > 0
+          ? buildBudgetListLink(month, filterContext)
+          : null;
         const isEditingAmount =
           editingCell?.month === month && editingCell.field === "importe";
         const isEditingEmployees =
@@ -265,6 +299,13 @@ const BudgetPanelRow = ({
                 >
                   {formatCurrency(amount)}
                 </button>
+              ) : listLink ? (
+                <Link
+                  to={listLink}
+                  className="block w-full text-right hover:underline"
+                >
+                  {formatCurrency(amount)}
+                </Link>
               ) : (
                 formatCurrency(amount)
               )}
@@ -565,6 +606,11 @@ export const ProyectosBudgetPanel = () => {
                                         months={months}
                                         monthValues={macro.months}
                                         editable
+                                        filterContext={{
+                                          proyecto_id: project.proyecto_id,
+                                          proyectos_concepto_id: concept.concepto_id,
+                                          proyectos_macrorubro_id: macro.macrorubro_id,
+                                        }}
                                         onCellSave={handleCellSave}
                                       />
                                     ))

@@ -1,6 +1,6 @@
 import pytest
 
-from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessMessage, V3ProcessResult
 from agente.v3.orchestrator.context_store import V3ContextStore
 from agente.v3.orchestrator.process_selector import PROCESS_GENERAL, V3ProcessSelection
 from agente.v3.orchestrator.service import V3Orchestrator
@@ -54,6 +54,28 @@ class FakeTargetProcess:
             context=updated,
             reply_text=f"{self.name} proceso: {message.text}",
             metadata={"process_name": self.name, "status": "ok"},
+        )
+
+
+class FakeAdditionalMessageProcess:
+    name = PROCESS_GENERAL
+
+    async def handle(self, message, context):
+        return V3ProcessResult(
+            context=context.copy(),
+            reply_text="mensaje principal",
+            metadata={"process_name": self.name, "status": "ok"},
+            additional_messages=[
+                V3ProcessMessage(
+                    text="mensaje adicional",
+                    metadata={
+                        "outbound": {
+                            "type": "interactive",
+                            "interactive": {"type": "button", "body": {"text": "mensaje adicional"}},
+                        }
+                    },
+                )
+            ],
         )
 
 
@@ -114,3 +136,27 @@ async def test_orchestrator_executes_general_handoff_with_forwarded_text():
     assert outbound_id
     assert result.reply_text == "pedidoObra proceso: pedido obra"
     assert target.messages[0][0].text == "pedido obra"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_enqueues_additional_messages_after_primary():
+    outbox = V3Outbox()
+    registry = V3SubprocessRegistry([FakeAdditionalMessageProcess()])
+    orchestrator = V3Orchestrator(
+        context_store=V3ContextStore(),
+        outbox=outbox,
+        subprocess_registry=registry,
+        process_selector=FakeSelector(),
+    )
+
+    result, outbound_id = await orchestrator.process_message(_message("hola", PROCESS_GENERAL))
+    snapshot = await outbox.snapshot()
+
+    assert outbound_id
+    assert snapshot["pending_count"] == 2
+    assert snapshot["pending"][0]["text"] == "mensaje principal"
+    assert snapshot["pending"][0]["payload_type"] == "text"
+    assert snapshot["pending"][1]["text"] == "mensaje adicional"
+    assert snapshot["pending"][1]["payload_type"] == "interactive"
+    assert result.metadata["outbound_message_ids"] == [item["message_id"] for item in snapshot["pending"]]
+    assert result.metadata["additional_outbound_message_ids"] == [snapshot["pending"][1]["message_id"]]

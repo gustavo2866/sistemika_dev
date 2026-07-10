@@ -1357,7 +1357,15 @@ async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_par
     assert result.metadata["result"]["cerrar_parte"] is True
     assert result.metadata["result"]["sin_novedades_informado"] is True
     assert "*PARTE DIARIO CONFIRMADO*" in (result.reply_text or "")
-    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
+    assert len(result.additional_messages) == 1
+    follow_up = result.additional_messages[0]
+    assert "Partes diarios de la semana:" in follow_up.text
+    assert "Obra: Obra Centro" in follow_up.text
+    assert "CONTINUAR CARGANDO" in str(follow_up.metadata)
+    assert "salir" in str(follow_up.metadata)
+    next_menu = await process.handle(_message("continuar cargando"), result.context)
+    assert "Selecciona la fecha del parte diario:" in (next_menu.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -2301,7 +2309,11 @@ async def test_parte_diario_v3_close_persists_closed_part(db_session: Session, s
     parte = db_session.exec(select(ParteDiario)).one()
     assert parte.estado == EstadoParteDiario.CONFIRMADO
     assert "*PARTE DIARIO CONFIRMADO*" in (result.reply_text or "")
-    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
+    assert len(result.additional_messages) == 1
+    follow_up = result.additional_messages[0]
+    assert "Partes diarios de la semana:" in follow_up.text
+    assert "CONTINUAR CARGANDO" in str(follow_up.metadata)
     message = db_session.get(CRMMensaje, parte.mensaje_origen_id)
     assert message is not None
     assert message.metadata_json["agent_v3"]["result"]["cerrar_parte"] is True

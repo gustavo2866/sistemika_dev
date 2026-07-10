@@ -93,15 +93,30 @@ class V3Orchestrator:
         )
 
         outbound_id = ""
+        outbound_ids: list[str] = []
         t_outbox_enqueue = t_context_save
         t_outbound_context_save = t_context_save
         if reply_text:
-            outbound = V3OutboundMessage.recorded_meta_reply(
-                source=message,
-                text=reply_text,
-                interactive=_outbound_interactive(process_result.metadata),
+            outbound_ids.append(
+                await self._enqueue_outbound(
+                    message,
+                    text=reply_text,
+                    metadata=process_result.metadata,
+                )
             )
-            outbound_id = await self._outbox.enqueue(outbound)
+        for additional in process_result.additional_messages:
+            additional_text = str(additional.text or "").strip()
+            if not additional_text:
+                continue
+            outbound_ids.append(
+                await self._enqueue_outbound(
+                    message,
+                    text=additional_text,
+                    metadata=additional.metadata,
+                )
+            )
+        if outbound_ids:
+            outbound_id = outbound_ids[-1]
             t_outbox_enqueue = time.perf_counter()
             updated_context.last_outbound_message_id = outbound_id
             await self._context_store.save(updated_context)
@@ -162,6 +177,8 @@ class V3Orchestrator:
                     "initial_selected_process": selection.process_name,
                     "process_selection": selection.to_dict(),
                     **handoff_metadata,
+                    "outbound_message_ids": outbound_ids,
+                    "additional_outbound_message_ids": outbound_ids[1:],
                     "orchestrator_timings_ms": timings_ms,
                 },
             ),
@@ -181,6 +198,20 @@ class V3Orchestrator:
                 reason="La conversacion ya tenia subproceso activo.",
             )
         return await self._process_selector.resolve(message, context)
+
+    async def _enqueue_outbound(
+        self,
+        source: V3InboundMessage,
+        *,
+        text: str,
+        metadata: dict,
+    ) -> str:
+        outbound = V3OutboundMessage.recorded_meta_reply(
+            source=source,
+            text=text,
+            interactive=_outbound_interactive(metadata),
+        )
+        return await self._outbox.enqueue(outbound)
 
 
 def _handoff_target(metadata: dict) -> str | None:
