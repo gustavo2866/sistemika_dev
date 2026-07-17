@@ -99,6 +99,7 @@ META_PHONE_NUMBER_ID = os.environ.get("CHAT_TEST_META_PHONE_NUMBER_ID", "1046006
 META_WABA_ID = os.environ.get("CHAT_TEST_META_WABA_ID", "1516474752918083")
 POLL_TIMEOUT_SECONDS = float(os.environ.get("CHAT_TEST_TIMEOUT", "30"))
 POLL_INTERVAL_SECONDS = float(os.environ.get("CHAT_TEST_POLL_INTERVAL", "0.2"))
+POLL_SETTLE_SECONDS = float(os.environ.get("CHAT_TEST_SETTLE_SECONDS", "0.8"))
 SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip().lower() not in {
     "0",
     "false",
@@ -106,7 +107,14 @@ SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip(
 }
 SHOW_TIMING = _args.timing or os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
 SHOW_DEBUG = _args.debug or os.environ.get("CHAT_TEST_SHOW_DEBUG", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
-def _request_json(method: str, path: str, payload: dict | None = None, params: dict | None = None) -> dict:
+def _request_json(
+    method: str,
+    path: str,
+    payload: dict | None = None,
+    params: dict | None = None,
+    *,
+    timeout: float = 30,
+) -> dict:
     url = f"{BASE_URL}{path}"
     if params:
         url = f"{url}?{urllib.parse.urlencode(params)}"
@@ -118,7 +126,7 @@ def _request_json(method: str, path: str, payload: dict | None = None, params: d
         method=method,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         raw = resp.read()
         return json.loads(raw) if raw else {}
 
@@ -241,57 +249,199 @@ def _database_label() -> str:
     return f"{url.drivername}://{url.host or '(sin host)'}{database}"
 
 
-def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
+def esperar_resultado(meta_message_id: str) -> tuple[dict | None, dict | None, list[dict]]:
     return esperar_resultado_v3(meta_message_id)
 
 
-def esperar_resultado_v3(meta_message_id: str) -> tuple[dict | None, dict | None, dict | None]:
+def esperar_resultado_v3(meta_message_id: str) -> tuple[dict | None, dict | None, list[dict]]:
     deadline = time.time() + POLL_TIMEOUT_SECONDS
     frame = 0
     sent_after = datetime.now(UTC) - timedelta(seconds=5)
+    outbounds: list[dict] = []
+    last_count = 0
+    last_change_at: float | None = None
+    expected_outbound_count: int | None = None
 
     while time.time() < deadline:
         _print_typing(frame)
         frame += 1
 
-        outbound = _find_channel_outbound_db(
+        expected_outbound_count = (
+            _expected_outbound_count_from_inbox_status(meta_message_id)
+            or expected_outbound_count
+        )
+        current_outbounds = _find_channel_outbounds_db(
             sent_after=sent_after,
             source_external_message_id=meta_message_id,
         )
-        if outbound:
-            _clear_typing()
-            inbound = {
-                "id": None,
-                "tipo": "entrada",
-                "canal": "whatsapp",
-                "contenido": None,
-                "contacto_referencia": FROM_PHONE,
-                "origen_externo_id": meta_message_id,
-                "metadata_json": {"agent_v3": {"observed_channel_outbound": outbound}},
-            }
-            text = _channel_outbound_text(outbound)
-            result = {
-                "type": "v3_ok",
-                "respuesta": text or "(sin texto)",
-                "status": outbound.get("status"),
-                "_timing": {},
-                "agent_v3": {"observed_channel_outbound": outbound},
-            }
-            outbound_message = {
-                "id": outbound.get("id"),
-                "tipo": "salida",
-                "canal": "whatsapp",
-                "estado": outbound.get("status"),
-                "contenido": text,
-                "contacto_referencia": outbound.get("to_address"),
-                "origen_externo_id": outbound.get("external_message_id"),
-                "metadata_json": outbound.get("normalized_payload") or {},
-            }
-            return inbound, result, outbound_message
+        current_outbounds = _merge_observed_outbound_lists(
+            current_outbounds,
+            _sent_outbounds_from_outbox_status(meta_message_id),
+        )
+        if current_outbounds:
+            outbounds = current_outbounds
+            if len(outbounds) != last_count:
+                last_count = len(outbounds)
+                last_change_at = time.time()
+            if expected_outbound_count and len(outbounds) >= expected_outbound_count:
+                break
+            if expected_outbound_count and len(outbounds) < expected_outbound_count:
+                time.sleep(POLL_INTERVAL_SECONDS)
+                continue
+            elif last_change_at is not None and time.time() - last_change_at >= POLL_SETTLE_SECONDS:
+                break
+            if POLL_SETTLE_SECONDS <= 0:
+                break
         time.sleep(POLL_INTERVAL_SECONDS)
 
+    if outbounds:
+        _clear_typing()
+        last_outbound = outbounds[-1]
+        inbound = {
+            "id": None,
+            "tipo": "entrada",
+            "canal": "whatsapp",
+            "contenido": None,
+            "contacto_referencia": FROM_PHONE,
+            "origen_externo_id": meta_message_id,
+            "metadata_json": {
+                "agent_v3": {
+                    "observed_channel_outbound": last_outbound,
+                    "observed_channel_outbounds": outbounds,
+                }
+            },
+        }
+        text = _channel_outbound_text(last_outbound)
+        result = {
+            "type": "v3_ok",
+            "respuesta": text or "(sin texto)",
+            "status": last_outbound.get("status"),
+            "_timing": {},
+            "agent_v3": {
+                "observed_channel_outbound": last_outbound,
+                "observed_channel_outbounds": outbounds,
+            },
+        }
+        return inbound, result, [_outbound_message_from_event(outbound) for outbound in outbounds]
+
     _clear_typing()
-    return None, None, None
+    return None, None, []
+
+
+def _expected_outbound_count_from_inbox_status(meta_message_id: str) -> int | None:
+    try:
+        status = _request_json(
+            "GET",
+            "/api/agente/v3/inbox/status",
+            params={"queue": QUEUE_NAME},
+            timeout=2,
+        )
+    except Exception:
+        return None
+
+    last_processed = status.get("last_processed") if isinstance(status, dict) else None
+    if not isinstance(last_processed, dict):
+        return None
+    if last_processed.get("external_message_id") != meta_message_id:
+        return None
+
+    orchestrator = last_processed.get("orchestrator")
+    metadata = orchestrator.get("metadata") if isinstance(orchestrator, dict) else None
+    if isinstance(metadata, dict):
+        outbound_ids = metadata.get("outbound_message_ids")
+        if isinstance(outbound_ids, list) and outbound_ids:
+            return len(outbound_ids)
+
+    outbox = last_processed.get("outbox")
+    if isinstance(outbox, dict) and outbox.get("message_id"):
+        return 1
+    return None
+
+
+def _sent_outbounds_from_outbox_status(meta_message_id: str) -> list[dict]:
+    try:
+        status = _request_json(
+            "GET",
+            "/api/agente/v3/outbox/status",
+            params={"queue": QUEUE_NAME},
+            timeout=2,
+        )
+    except Exception:
+        return []
+
+    sent = status.get("sent") if isinstance(status, dict) else None
+    if not isinstance(sent, list):
+        last_sent = status.get("last_sent") if isinstance(status, dict) else None
+        sent = [last_sent] if isinstance(last_sent, dict) else []
+    return [
+        _outbox_status_to_observed_outbound(item)
+        for item in sent
+        if isinstance(item, dict) and item.get("source_external_message_id") == meta_message_id
+    ]
+
+
+def _outbox_status_to_observed_outbound(message: dict) -> dict:
+    request: dict[str, Any] = {}
+    interactive = message.get("interactive")
+    if message.get("payload_type") == "interactive" and isinstance(interactive, dict):
+        request["interactive"] = interactive
+    elif message.get("text"):
+        request["text"] = {"body": str(message["text"])}
+
+    normalized_payload = {
+        "request": request,
+        "agent_v3": {
+            "outbound_message_id": message.get("message_id"),
+            "source_message_id": message.get("source_message_id"),
+            "source_external_message_id": message.get("source_external_message_id"),
+            "queue": message.get("queue"),
+        },
+    }
+    return {
+        "id": f"outbox:{message.get('message_id')}",
+        "external_message_id": message.get("external_message_id"),
+        "status": message.get("status"),
+        "from_address": None,
+        "to_address": message.get("to_address"),
+        "created_at": message.get("sent_at"),
+        "occurred_at": message.get("sent_at"),
+        "raw_payload": message.get("raw_response") or {},
+        "normalized_payload": normalized_payload,
+    }
+
+
+def _merge_observed_outbound_lists(outbounds: list[dict], fallbacks: list[dict]) -> list[dict]:
+    merged = list(outbounds)
+    observed_ids = {
+        outbound_id
+        for item in merged
+        if (outbound_id := _observed_outbound_message_id(item))
+    }
+    observed_external_ids = {
+        str(external_id)
+        for item in merged
+        if (external_id := item.get("external_message_id"))
+    }
+    for fallback in fallbacks:
+        fallback_id = _observed_outbound_message_id(fallback)
+        fallback_external_id = fallback.get("external_message_id")
+        if fallback_id and fallback_id in observed_ids:
+            continue
+        if fallback_external_id and str(fallback_external_id) in observed_external_ids:
+            continue
+        merged.append(fallback)
+        if fallback_id:
+            observed_ids.add(fallback_id)
+        if fallback_external_id:
+            observed_external_ids.add(str(fallback_external_id))
+    return merged
+
+
+def _observed_outbound_message_id(outbound: dict) -> str | None:
+    normalized = outbound.get("normalized_payload")
+    agent_v3 = normalized.get("agent_v3") if isinstance(normalized, dict) else None
+    outbound_id = agent_v3.get("outbound_message_id") if isinstance(agent_v3, dict) else None
+    return str(outbound_id) if outbound_id else None
 
 
 def _find_channel_outbound_db(
@@ -299,6 +449,18 @@ def _find_channel_outbound_db(
     sent_after: datetime,
     source_external_message_id: str | None = None,
 ) -> dict | None:
+    outbounds = _find_channel_outbounds_db(
+        sent_after=sent_after,
+        source_external_message_id=source_external_message_id,
+    )
+    return outbounds[-1] if outbounds else None
+
+
+def _find_channel_outbounds_db(
+    *,
+    sent_after: datetime,
+    source_external_message_id: str | None = None,
+) -> list[dict]:
     from sqlmodel import Session, select
 
     from app.db import engine
@@ -317,24 +479,33 @@ def _find_channel_outbound_db(
             .limit(50)
         ).all()
         if not rows:
-            return None
+            return []
 
-        row = rows[0]
         if source_external_message_id:
-            row = _find_v3_outbound_with_text(rows, source_external_message_id)
-            if row is None:
-                return None
-        return {
-            "id": row.id,
-            "external_message_id": row.external_message_id,
-            "status": row.status,
-            "from_address": row.from_address,
-            "to_address": row.to_address,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
-            "raw_payload": row.raw_payload or {},
-            "normalized_payload": row.normalized_payload or {},
-        }
+            rows = _find_v3_outbounds_with_text(rows, source_external_message_id)
+        else:
+            rows = [rows[0]]
+        return [_channel_event_to_dict(row) for row in sorted(rows, key=_channel_event_sort_key)]
+
+
+def _channel_event_to_dict(row: Any) -> dict:
+    return {
+        "id": row.id,
+        "external_message_id": row.external_message_id,
+        "status": row.status,
+        "from_address": row.from_address,
+        "to_address": row.to_address,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
+        "raw_payload": row.raw_payload or {},
+        "normalized_payload": row.normalized_payload or {},
+    }
+
+
+def _channel_event_sort_key(row: Any) -> tuple[datetime, int]:
+    created_at = row.created_at or datetime.min
+    row_id = int(row.id or 0)
+    return created_at, row_id
 
 
 def _matches_v3_outbound(row: Any, source_external_message_id: str) -> bool:
@@ -346,10 +517,13 @@ def _matches_v3_outbound(row: Any, source_external_message_id: str) -> bool:
 
 
 def _find_v3_outbound_with_text(rows: list[Any], source_external_message_id: str) -> Any | None:
+    outbounds = _find_v3_outbounds_with_text(rows, source_external_message_id)
+    return outbounds[-1] if outbounds else None
+
+
+def _find_v3_outbounds_with_text(rows: list[Any], source_external_message_id: str) -> list[Any]:
     matched = [row for row in rows if _matches_v3_outbound(row, source_external_message_id)]
-    for row in matched:
-        if _channel_event_text(row):
-            return row
+    candidates = [row for row in matched if _channel_event_text(row)]
 
     # Some Meta status callbacks share the outbound external_message_id but do
     # not carry request.text.body. Older backends could annotate that callback
@@ -361,8 +535,25 @@ def _find_v3_outbound_with_text(rows: list[Any], source_external_message_id: str
     }
     for row in rows:
         if row.external_message_id in matched_external_ids and _channel_event_text(row):
-            return row
-    return None
+            candidates.append(row)
+
+    unique: dict[Any, Any] = {}
+    for row in candidates:
+        unique[row.id] = row
+    return sorted(unique.values(), key=_channel_event_sort_key)
+
+
+def _outbound_message_from_event(outbound: dict) -> dict:
+    return {
+        "id": outbound.get("id"),
+        "tipo": "salida",
+        "canal": "whatsapp",
+        "estado": outbound.get("status"),
+        "contenido": _channel_outbound_text(outbound),
+        "contacto_referencia": outbound.get("to_address"),
+        "origen_externo_id": outbound.get("external_message_id"),
+        "metadata_json": outbound.get("normalized_payload") or {},
+    }
 
 
 def _channel_event_text(row: Any) -> str | None:
@@ -517,7 +708,7 @@ def main() -> None:
         hora_envio = datetime.now().strftime("%H:%M:%S")
         try:
             meta_message_id, webhook_response, t_post = enviar_webhook_con_typing(texto)
-            inbound, result, outbound = esperar_resultado(meta_message_id)
+            inbound, result, outbounds = esperar_resultado(meta_message_id)
         except urllib.error.URLError as exc:
             _clear_typing()
             print(f"[Error] No se pudo conectar al servidor: {exc.reason}")
@@ -533,16 +724,22 @@ def main() -> None:
         if SHOW_DEBUG or SHOW_TIMING:
             print(f"[{hora_envio} -> {hora_respuesta} | {t_total:.1f}s]")
 
-        if result is None and outbound is None:
+        if result is None and not outbounds:
             if inbound is None:
                 print("No encontre el mensaje entrante creado por el webhook.")
             else:
                 print("El webhook guardo el mensaje, pero aun no hay resultado del agente.")
             continue
 
-        print(f"Agente: {_reply_text(result, outbound)}\n")
+        if outbounds:
+            for outbound in outbounds:
+                print(f"Agente: {_reply_text(None, outbound)}")
+            print()
+        else:
+            print(f"Agente: {_reply_text(result, None)}\n")
+
         if SHOW_DEBUG:
-            _mostrar_estado(result, inbound, outbound)
+            _mostrar_estado(result, inbound, outbounds[-1] if outbounds else None)
             print()
         if SHOW_TIMING:
             timing = result.get("_timing") if isinstance(result, dict) else None

@@ -8,6 +8,7 @@ import os
 import time
 
 from agente.v3.contracts import V3InboundMessage, V3OrchestratorResult, V3OutboundMessage
+from agente.v3.emisor import OutboxV3MessageEmitter
 from agente.v3.orchestrator.context_store import V3ContextStore, default_context_store
 from agente.v3.orchestrator.process_selector import (
     PROCESS_GENERAL,
@@ -57,7 +58,8 @@ class V3Orchestrator:
             raise RuntimeError("No hay subproceso general registrado")
         t_registry = time.perf_counter()
 
-        process_result = await process.handle(message, context)
+        emisor = OutboxV3MessageEmitter(outbox=self._outbox, source=message)
+        process_result = await process.handle(message, context, emisor)
         final_process_name = selection.process_name
         handoff_metadata: dict[str, str] = {}
         handoff_target = _handoff_target(process_result.metadata)
@@ -77,7 +79,7 @@ class V3Orchestrator:
                 }
                 final_process_name = handoff_target
                 target_message = _message_for_handoff(message, process_result.metadata)
-                process_result = await target_process.handle(target_message, process_result.context)
+                process_result = await target_process.handle(target_message, process_result.context, emisor)
         t_process = time.perf_counter()
         updated_context = await self._context_store.save(process_result.context)
         t_context_save = time.perf_counter()
@@ -93,7 +95,7 @@ class V3Orchestrator:
         )
 
         outbound_id = ""
-        outbound_ids: list[str] = []
+        outbound_ids: list[str] = list(emisor.emitted_ids)
         t_outbox_enqueue = t_context_save
         t_outbound_context_save = t_context_save
         if reply_text:
@@ -178,6 +180,7 @@ class V3Orchestrator:
                     "process_selection": selection.to_dict(),
                     **handoff_metadata,
                     "outbound_message_ids": outbound_ids,
+                    "emitted_outbound_message_ids": list(emisor.emitted_ids),
                     "additional_outbound_message_ids": outbound_ids[1:],
                     "orchestrator_timings_ms": timings_ms,
                 },

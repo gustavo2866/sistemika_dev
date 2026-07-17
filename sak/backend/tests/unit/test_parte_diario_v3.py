@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 
 import agente.v3.subprocesses.parte_diario.handler as parte_diario_handler
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
-from agente.v3.subprocesses.parte_diario.handler import ParteDiarioSubprocess
+from agente.v3.subprocesses.parte_diario.handler import ParteDiarioSubprocess, resolver_fecha_default_parte_diario
 from agente.v3.subprocesses.parte_diario.models import (
     NominaItem,
     NovedadPersonal,
@@ -63,6 +63,15 @@ class FakeParteDiarioQueryAgent:
     async def respond(self, **kwargs):
         self.calls.append(kwargs)
         return self.reply or ""
+
+
+class FakeEmisor:
+    def __init__(self) -> None:
+        self.messages: list[dict] = []
+
+    async def emitir(self, texto: str, metadata: dict | None = None) -> str:
+        self.messages.append({"texto": texto, "metadata": metadata or {}})
+        return f"fake-{len(self.messages)}"
 
 
 def _message(
@@ -122,7 +131,7 @@ def seeded_parte_v3(db_session: Session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_first_load_resolves_project_and_sets_today(seeded_parte_v3):
+async def test_parte_diario_v3_first_load_resolves_project_and_sets_default_oldest_pending_date(seeded_parte_v3):
     process = ParteDiarioSubprocess(
         llm_client=FakeParteDiarioLLM(
             TurnPlan(
@@ -139,7 +148,7 @@ async def test_parte_diario_v3_first_load_resolves_project_and_sets_today(seeded
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["contacto_id"] == seeded_parte_v3["contact"].id
     draft = result.context.process_state["parte_state"]
-    assert draft["fecha"] == _today().isoformat()
+    assert draft["fecha"] == (_today() - timedelta(days=6)).isoformat()
     assert draft["novedades"][0]["idnomina"] == seeded_parte_v3["employee_1"].id
     assert draft["novedades"][0]["estado_codigo"] == "FAL"
     assert "Obra: Obra Centro" in (result.reply_text or "")
@@ -386,8 +395,19 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     )
     db_session.commit()
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    context = V3ConversationContext(
+        conversation_id="conv-menu",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+        },
+    )
 
-    result = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-menu"))
+    result = await process.handle(_message("Parte diario"), context)
 
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
@@ -443,6 +463,47 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     assert "2: PARTE DIARIO" in (exited.reply_text or "")
 
 
+def test_resolver_fecha_default_parte_diario_returns_oldest_pending_date(
+    db_session: Session,
+    monkeypatch,
+    seeded_parte_v3,
+):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 5, 16))
+    db_session.add(
+        ParteDiario(
+            idproyecto=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            fecha=date(2026, 5, 10),
+            estado=EstadoParteDiario.CONFIRMADO,
+        )
+    )
+    db_session.add(
+        ParteDiario(
+            idproyecto=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            fecha=date(2026, 5, 11),
+            estado=EstadoParteDiario.BORRADOR,
+        )
+    )
+    db_session.add(
+        ParteDiario(
+            idproyecto=seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+            fecha=date(2026, 5, 12),
+            estado=EstadoParteDiario.CERRADO,
+        )
+    )
+    db_session.commit()
+
+    assert (
+        resolver_fecha_default_parte_diario(
+            seeded_parte_v3["project"].id,
+            contacto_id=seeded_parte_v3["contact"].id,
+        )
+        == "2026-05-11"
+    )
+
+
 @pytest.mark.asyncio
 async def test_parte_diario_v3_date_menu_uses_query_agent_before_contextual_llm(
     db_session: Session,
@@ -453,8 +514,19 @@ async def test_parte_diario_v3_date_menu_uses_query_agent_before_contextual_llm(
     query_agent = FakeParteDiarioQueryAgent("Garcia, Juan falto el 16/05/2026.")
     llm = FakeParteDiarioLLM(TurnPlan())
     process = ParteDiarioSubprocess(llm_client=llm, query_agent_client=query_agent)
+    context = V3ConversationContext(
+        conversation_id="conv-query-agent",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+        },
+    )
 
-    result = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-query-agent"))
+    result = await process.handle(_message("Parte diario"), context)
     fallback = await process.handle(_message("que dias falto Garcia?"), result.context)
 
     assert fallback.context.active_process == "parteDiario"
@@ -798,8 +870,19 @@ async def test_parte_diario_v3_date_selection_recovers_provisional_name_detail(
     )
     db_session.commit()
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    context = V3ConversationContext(
+        conversation_id="conv-select-date",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+        },
+    )
 
-    menu = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-select-date"))
+    menu = await process.handle(_message("Parte diario"), context)
     selected = await process.handle(_message("1"), menu.context)
 
     draft = selected.context.process_state["parte_state"]
@@ -810,13 +893,19 @@ async def test_parte_diario_v3_date_selection_recovers_provisional_name_detail(
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_closed_part_for_today_forwards_to_date_selection(db_session: Session, seeded_parte_v3):
-    closed = ParteDiario(
-        idproyecto=seeded_parte_v3["project"].id,
-        fecha=_today(),
-        estado=EstadoParteDiario.CONFIRMADO,
-    )
-    db_session.add(closed)
+async def test_parte_diario_v3_without_default_pending_date_forwards_to_date_selection(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    for offset in range(7):
+        db_session.add(
+            ParteDiario(
+                idproyecto=seeded_parte_v3["project"].id,
+                contacto_id=seeded_parte_v3["contact"].id,
+                fecha=_today() - timedelta(days=offset),
+                estado=EstadoParteDiario.CONFIRMADO,
+            )
+        )
     db_session.commit()
     process = ParteDiarioSubprocess(
         llm_client=FakeParteDiarioLLM(TurnPlan(operations=[ParteDiarioOperation(type="sin_novedades")]))
@@ -826,7 +915,6 @@ async def test_parte_diario_v3_closed_part_for_today_forwards_to_date_selection(
 
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "seleccionar_fecha"
-    assert "ya esta confirmado" in (result.reply_text or "")
     assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
 
 
@@ -858,8 +946,19 @@ async def test_parte_diario_v3_closed_date_selection_loads_saved_part(
     )
     db_session.commit()
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    context = V3ConversationContext(
+        conversation_id="conv-closed-select",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+        },
+    )
 
-    menu = await process.handle(_message("Parte diario"), V3ConversationContext(conversation_id="conv-closed-select"))
+    menu = await process.handle(_message("Parte diario"), context)
     selected = await process.handle(_message("1"), menu.context)
 
     assert selected.context.active_process is None
@@ -1301,7 +1400,7 @@ async def test_parte_diario_v3_multiple_projects_selection_does_not_interpret_op
     assert selected.context.active_process == "parteDiario"
     assert selected.context.process_state["proyecto_id"] == seeded_parte_v3["project"].id
     assert selected.context.process_state["etapa"] == "carga"
-    assert selected.context.process_state["parte_state"]["fecha"] == _today().isoformat()
+    assert selected.context.process_state["parte_state"]["fecha"] == (_today() - timedelta(days=6)).isoformat()
     assert selected.context.process_state["parte_state"]["novedades"] == []
     assert "Parte diario en carga" in (selected.reply_text or "")
     assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (selected.reply_text or "")
@@ -1352,7 +1451,7 @@ async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_par
     assert "Parte diario en carga:" in (back.reply_text or "")
     assert "(sin novedades cargadas)" in (back.reply_text or "")
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["parte_listo"] is True
     assert result.metadata["result"]["cerrar_parte"] is True
     assert result.metadata["result"]["sin_novedades_informado"] is True
@@ -1360,16 +1459,21 @@ async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_par
     assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
     assert len(result.additional_messages) == 1
     follow_up = result.additional_messages[0]
-    assert "Partes diarios de la semana:" in follow_up.text
-    assert "Obra: Obra Centro" in follow_up.text
-    assert "CONTINUAR CARGANDO" in str(follow_up.metadata)
-    assert "salir" in str(follow_up.metadata)
-    next_menu = await process.handle(_message("continuar cargando"), result.context)
-    assert "Selecciona la fecha del parte diario:" in (next_menu.reply_text or "")
+    assert "Ahora corresponde cargar el parte del dia" in follow_up.text
+    assert "CONTINUAR" in str(follow_up.metadata)
+    assert "FINALIZAR" in str(follow_up.metadata)
+    finalized = await process.handle(_message("finalizar"), result.context)
+    assert finalized.context.active_process is None
+    assert finalized.context.process_state == {}
+    assert "finalizamos la carga" in (finalized.reply_text or "")
+    next_load = await process.handle(_message("continuar"), result.context)
+    assert next_load.context.process_state["etapa"] == "carga"
+    assert "Parte diario en carga:" in (next_load.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (next_load.reply_text or "")
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_command_with_multiple_projects_keeps_date_menu_intent(
+async def test_parte_diario_v3_command_with_multiple_projects_uses_default_date_after_project_selection(
     db_session: Session,
     monkeypatch,
     seeded_parte_v3,
@@ -1387,16 +1491,76 @@ async def test_parte_diario_v3_command_with_multiple_projects_keeps_date_menu_in
     db_session.add(second_project)
     db_session.commit()
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    emisor = FakeEmisor()
 
     requested = await process.handle(
         _message("Parte diario"),
         V3ConversationContext(conversation_id="conv-multiple-menu"),
     )
-    selected = await process.handle(_message("1"), requested.context)
+    selected = await process.handle(_message("1"), requested.context, emisor)
 
     assert requested.context.process_state["fecha_menu_pendiente"] is True
-    assert selected.context.process_state["etapa"] == "seleccionar_fecha"
-    assert "1: 16/05/2026 sab (sin cargar)" in (selected.reply_text or "")
+    assert selected.context.process_state["etapa"] == "carga"
+    assert selected.context.process_state["parte_state"]["fecha"] == "2026-05-10"
+    assert "Parte diario en carga:" in (selected.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (selected.reply_text or "")
+    assert len(emisor.messages) == 1
+    assert emisor.messages[0]["texto"] == (
+        "Hola Encargado, tenes 7 partes pendientes, "
+        "por favor podrias informar las novedades de la fecha 10/05/2026?"
+    )
+    assert emisor.messages[0]["metadata"]["status"] == "default_fecha_selected"
+    assert emisor.messages[0]["metadata"]["fecha"] == "2026-05-10"
+    assert emisor.messages[0]["metadata"]["pending_count"] == 7
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_command_after_confirmation_uses_next_default_date(
+    db_session: Session,
+    monkeypatch,
+    seeded_parte_v3,
+):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 7, 12))
+    for confirmed_date in (date(2026, 7, 6), date(2026, 7, 7)):
+        db_session.add(
+            ParteDiario(
+                idproyecto=seeded_parte_v3["project"].id,
+                contacto_id=seeded_parte_v3["contact"].id,
+                fecha=confirmed_date,
+                estado=EstadoParteDiario.CONFIRMADO,
+            )
+        )
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="conv-after-confirmation",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "seleccionar_fecha",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": {},
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    emisor = FakeEmisor()
+
+    result = await process.handle(_message("parte diario"), context, emisor)
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-07-08"
+    assert "Parte diario en carga:" in (result.reply_text or "")
+    assert "Fecha: 2026-07-08" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
+    assert len(emisor.messages) == 1
+    assert emisor.messages[0]["texto"] == (
+        "Hola Encargado, tenes 5 partes pendientes, "
+        "por favor podrias informar las novedades de la fecha 08/07/2026?"
+    )
+    assert emisor.messages[0]["metadata"]["fecha"] == "2026-07-08"
+    assert emisor.messages[0]["metadata"]["pending_count"] == 5
 
 
 @pytest.mark.asyncio
@@ -1650,10 +1814,12 @@ async def test_parte_diario_v3_close_persists_after_pending_validation(
     result = await process.handle(_message("ok", external_id="wamid-close-ok"), confirmation_context_for_ok)
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["parte_listo"] is True
     assert result.metadata["result"]["cerrar_parte"] is True
     assert "*PARTE DIARIO CONFIRMADO*" in (result.reply_text or "")
+    assert len(result.additional_messages) == 1
+    assert "Ahora corresponde cargar el parte del dia" in result.additional_messages[0].text
     parte = db_session.get(ParteDiario, result.metadata["parte_diario_id"])
     assert parte.estado == EstadoParteDiario.CONFIRMADO
 
@@ -2064,9 +2230,11 @@ async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisiona
 
     result = await process.handle(_message("ok", external_id="wamid-test-4"), confirmation.context)
 
-    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["result"]["cerrar_parte"] is True
     assert "Petro (sin validar): FAL, 0h" in (result.reply_text or "")
+    assert len(result.additional_messages) == 1
+    assert "Ahora corresponde cargar el parte del dia" in result.additional_messages[0].text
     parte_id = result.metadata["parte_diario_id"]
     details = db_session.exec(
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_id)
@@ -2304,7 +2472,7 @@ async def test_parte_diario_v3_close_persists_closed_part(db_session: Session, s
     result = await process.handle(_message("2", external_id="wamid-close-parte"), context)
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["parte_listo"] is True
     parte = db_session.exec(select(ParteDiario)).one()
     assert parte.estado == EstadoParteDiario.CONFIRMADO
@@ -2312,8 +2480,9 @@ async def test_parte_diario_v3_close_persists_closed_part(db_session: Session, s
     assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
     assert len(result.additional_messages) == 1
     follow_up = result.additional_messages[0]
-    assert "Partes diarios de la semana:" in follow_up.text
-    assert "CONTINUAR CARGANDO" in str(follow_up.metadata)
+    assert "Ahora corresponde cargar el parte del dia" in follow_up.text
+    assert "CONTINUAR" in str(follow_up.metadata)
+    assert "FINALIZAR" in str(follow_up.metadata)
     message = db_session.get(CRMMensaje, parte.mensaje_origen_id)
     assert message is not None
     assert message.metadata_json["agent_v3"]["result"]["cerrar_parte"] is True

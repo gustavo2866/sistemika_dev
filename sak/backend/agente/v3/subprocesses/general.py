@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.emisor import V3MessageEmitter
 from agente.v3.interactive import InteractiveButton, whatsapp_buttons
 from agente.v3.subprocesses.general_agent import (
     GENERAL_MENU_TEXT,
@@ -26,7 +27,12 @@ class GeneralSubprocess:
     def __init__(self, agent_client: GeneralAgentClient | None = None) -> None:
         self._agent_client = agent_client or GeneralAgentClient()
 
-    async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
+    async def handle(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        emisor: V3MessageEmitter | None = None,
+    ) -> V3ProcessResult:
         command = _normalize(message.text)
         if command == "cancelar":
             updated = context.copy()

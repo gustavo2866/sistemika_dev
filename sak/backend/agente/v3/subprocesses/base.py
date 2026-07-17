@@ -8,6 +8,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult, utc_now
+from agente.v3.emisor import V3MessageEmitter
 
 
 DISPLAY_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -16,7 +17,12 @@ DISPLAY_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 class V3Subprocess(Protocol):
     name: str
 
-    async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
+    async def handle(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        emisor: V3MessageEmitter | None = None,
+    ) -> V3ProcessResult:
         ...
 
 
@@ -25,7 +31,12 @@ class V3TimingSubprocess:
 
     name: str
 
-    async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
+    async def handle(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        emisor: V3MessageEmitter | None = None,
+    ) -> V3ProcessResult:
         updated = context.copy()
         if _normalize(message.text) == "cancelar":
             updated.active_process = None

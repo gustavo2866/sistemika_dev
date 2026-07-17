@@ -207,6 +207,157 @@ const HOME_DASHBOARD_RADAR_EXCLUDED_KEYS = new Set([
   "mis_compras",
 ]);
 
+const createEmptyHomeDashboardSection = (
+  domain: HomeDashboardDomainKey,
+): HomeDashboardSection => {
+  if (domain === "personal") {
+    return {
+      key: "personal",
+      label: "Mi dia",
+      description: "Tu trabajo inmediato",
+      items: [
+        {
+          key: "chats_nuevos",
+          label: "Chats nuevos",
+          count: 0,
+          severity: "high",
+          scope: "personal",
+          href: "/crm/chat",
+          ctaLabel: "Ver chats",
+        },
+        {
+          key: "agenda_pendiente",
+          label: "Agenda pendiente",
+          count: 0,
+          severity: "high",
+          scope: "personal",
+          href: "/crm/crm-eventos",
+          ctaLabel: "Ver agenda",
+        },
+        {
+          key: "agenda_vencida",
+          label: "Agenda vencida",
+          count: 0,
+          severity: "urgent",
+          scope: "personal",
+          href: "/crm/crm-eventos",
+          ctaLabel: "Resolver",
+        },
+      ],
+    };
+  }
+
+  if (domain === "poorders") {
+    return {
+      key: "compras",
+      label: "Compras",
+      description: "Aprobaciones y pagos",
+      items: [
+        {
+          key: "aprobaciones_pendientes",
+          label: "Aprobaciones pendientes",
+          count: 0,
+          severity: "high",
+          scope: "global",
+          href: "/po-orders-approval",
+          ctaLabel: "Abrir bandeja",
+        },
+        {
+          key: "mis_compras",
+          label: "Mis compras",
+          count: 0,
+          severity: "high",
+          scope: "personal",
+          href: "/po-orders",
+          ctaLabel: "Ver mis compras",
+        },
+        {
+          key: "solicitudes_pendientes",
+          label: "Solicitudes pendientes",
+          count: 0,
+          severity: "high",
+          scope: "global",
+          href: "/po-orders",
+          ctaLabel: "Ver solicitudes",
+        },
+      ],
+    };
+  }
+
+  if (domain === "oportunidades") {
+    return {
+      key: "crm",
+      label: "CRM",
+      description: "Seguimiento comercial",
+      items: [
+        {
+          key: "oportunidades_prospect",
+          label: "Oportunidades prospect",
+          count: 0,
+          severity: "normal",
+          scope: "personal",
+          href: "/crm/oportunidades",
+          ctaLabel: "Ver oportunidades",
+        },
+        {
+          key: "oportunidades_sin_actividad",
+          label: "Oportunidades inactivas",
+          count: 0,
+          severity: "high",
+          scope: "global",
+          href: "/crm/oportunidades",
+          ctaLabel: "Reactivar",
+        },
+      ],
+    };
+  }
+
+  if (domain === "contratos") {
+    return {
+      key: "contratos",
+      label: "Inmobiliaria",
+      description: "Contratos",
+      items: [
+        {
+          key: "contratos_proximos_vencer",
+          label: "Contratos proximos a vencer",
+          count: 0,
+          severity: "urgent",
+          scope: "global",
+          href: "/contratos",
+          ctaLabel: "Ver contratos",
+        },
+        {
+          key: "contratos_proximos_actualizar",
+          label: "Contratos proximos a actualizar",
+          count: 0,
+          severity: "high",
+          scope: "global",
+          href: "/contratos",
+          ctaLabel: "Ver renovaciones",
+        },
+      ],
+    };
+  }
+
+  return {
+    key: "propiedades",
+    label: "Inmobiliaria",
+    description: "Propiedades",
+    items: [
+      {
+        key: "vacancias_prolongadas",
+        label: "Propiedades vacantes",
+        count: 0,
+        severity: "high",
+        scope: "global",
+        href: "/propiedades-dashboard",
+        ctaLabel: "Ver vacancias",
+      },
+    ],
+  };
+};
+
 type IdentityPayload = {
   id?: string | number;
   fullName?: string | null;
@@ -354,11 +505,28 @@ const fetchHomeDashboardSectionResponse = async (
     `${apiUrl}/api/dashboard/home/${HOME_DASHBOARD_DOMAIN_ENDPOINTS[domain]}`,
   );
 
+const fetchHomeDashboardSectionResponseOrFallback = async (
+  domain: HomeDashboardDomainKey,
+  generatedAt: string,
+): Promise<HomeDashboardSectionResponse> => {
+  try {
+    return await fetchHomeDashboardSectionResponse(domain);
+  } catch (error) {
+    console.error(`No se pudo cargar la seccion ${domain} del home dashboard`, error);
+    return {
+      generatedAt,
+      section: createEmptyHomeDashboardSection(domain),
+    };
+  }
+};
+
 const fetchHomeDashboardBundle = async (): Promise<HomeDashboardBundle> => {
-  const [context, ...sectionResponses] = await Promise.all([
-    fetchHomeDashboardContext(),
-    ...HOME_DASHBOARD_DOMAIN_KEYS.map((domain) => fetchHomeDashboardSectionResponse(domain)),
-  ]);
+  const context = await fetchHomeDashboardContext();
+  const sectionResponses = await Promise.all(
+    HOME_DASHBOARD_DOMAIN_KEYS.map((domain) =>
+      fetchHomeDashboardSectionResponseOrFallback(domain, context.generatedAt),
+    ),
+  );
   const sections = Object.fromEntries(
     HOME_DASHBOARD_DOMAIN_KEYS.map((domain, index) => [
       domain,
@@ -400,7 +568,10 @@ const fetchHomeDashboardPartial = async (
   const responses = await Promise.all(
     domains.map(async (domain) => ({
       domain,
-      response: await fetchHomeDashboardSectionResponse(domain),
+      response: await fetchHomeDashboardSectionResponseOrFallback(
+        domain,
+        new Date().toISOString(),
+      ),
     })),
   );
   const sections = Object.fromEntries(

@@ -24,7 +24,7 @@ class FakeGeneralProcess:
 
     name = PROCESS_GENERAL
 
-    async def handle(self, message, context):
+    async def handle(self, message, context, emisor=None):
         updated = context.copy()
         updated.active_process = message.normalized_payload["target_process"]
         updated.process_state = {}
@@ -45,7 +45,7 @@ class FakeTargetProcess:
         self.name = name
         self.messages = []
 
-    async def handle(self, message, context):
+    async def handle(self, message, context, emisor=None):
         self.messages.append((message, context.copy()))
         updated = context.copy()
         updated.active_process = self.name
@@ -60,7 +60,7 @@ class FakeTargetProcess:
 class FakeAdditionalMessageProcess:
     name = PROCESS_GENERAL
 
-    async def handle(self, message, context):
+    async def handle(self, message, context, emisor=None):
         return V3ProcessResult(
             context=context.copy(),
             reply_text="mensaje principal",
@@ -76,6 +76,19 @@ class FakeAdditionalMessageProcess:
                     },
                 )
             ],
+        )
+
+
+class FakeEmitterProcess:
+    name = PROCESS_GENERAL
+
+    async def handle(self, message, context, emisor=None):
+        if emisor is not None:
+            await emisor.emitir("mensaje emitido", {"process_name": self.name, "status": "emitted"})
+        return V3ProcessResult(
+            context=context.copy(),
+            reply_text="mensaje final",
+            metadata={"process_name": self.name, "status": "ok"},
         )
 
 
@@ -160,3 +173,25 @@ async def test_orchestrator_enqueues_additional_messages_after_primary():
     assert snapshot["pending"][1]["payload_type"] == "interactive"
     assert result.metadata["outbound_message_ids"] == [item["message_id"] for item in snapshot["pending"]]
     assert result.metadata["additional_outbound_message_ids"] == [snapshot["pending"][1]["message_id"]]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_enqueues_emitted_messages_before_primary():
+    outbox = V3Outbox()
+    registry = V3SubprocessRegistry([FakeEmitterProcess()])
+    orchestrator = V3Orchestrator(
+        context_store=V3ContextStore(),
+        outbox=outbox,
+        subprocess_registry=registry,
+        process_selector=FakeSelector(),
+    )
+
+    result, outbound_id = await orchestrator.process_message(_message("hola", PROCESS_GENERAL))
+    snapshot = await outbox.snapshot()
+
+    assert outbound_id
+    assert snapshot["pending_count"] == 2
+    assert snapshot["pending"][0]["text"] == "mensaje emitido"
+    assert snapshot["pending"][1]["text"] == "mensaje final"
+    assert result.metadata["emitted_outbound_message_ids"] == [snapshot["pending"][0]["message_id"]]
+    assert result.metadata["outbound_message_ids"] == [item["message_id"] for item in snapshot["pending"]]

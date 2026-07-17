@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
@@ -12,6 +14,7 @@ from app.services.home_dashboard import (
 )
 
 router = APIRouter(prefix="/api/dashboard/home", tags=["dashboard-home"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/bundle")
@@ -24,6 +27,7 @@ def get_home_dashboard_bundle(
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover
+        logger.exception("Error building home dashboard bundle")
         raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
@@ -36,6 +40,7 @@ def get_home_dashboard_context(
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover
+        logger.exception("Error building home dashboard context")
         raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
@@ -55,6 +60,7 @@ def _get_home_dashboard_domain(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
+        logger.exception("Error building home dashboard domain %s", domain)
         raise HTTPException(status_code=500, detail="Error inesperado") from exc
 
 
@@ -114,4 +120,5 @@ def get_home_dashboard_partial(
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover
+        logger.exception("Error building home dashboard partial for keys=%s", keys)
         raise HTTPException(status_code=500, detail="Error inesperado") from exc

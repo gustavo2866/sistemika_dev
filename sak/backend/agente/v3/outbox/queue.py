@@ -128,6 +128,23 @@ class V3Outbox:
         async with self._lock:
             pending = list(self._queue)
             sent = list(self._sent)
+        sent_items = [
+            {
+                "message_id": message.id,
+                "source_message_id": message.source_message_id,
+                "source_external_message_id": message.source_external_message_id,
+                "queue": message.queue_name,
+                "to_address": message.to_address,
+                "text": message.text,
+                "payload_type": message.payload_type,
+                "interactive": message.interactive,
+                "status": message.status,
+                "external_message_id": message.external_message_id,
+                "raw_response": message.raw_response,
+                "sent_at": message.sent_at.isoformat() if message.sent_at else None,
+            }
+            for message in sent
+        ]
         return {
             "status": "ok",
             "pending_count": len(pending),
@@ -149,22 +166,8 @@ class V3Outbox:
                 }
                 for message in pending
             ],
-            "last_sent": {
-                "message_id": sent[-1].id,
-                "source_message_id": sent[-1].source_message_id,
-                "source_external_message_id": sent[-1].source_external_message_id,
-                "queue": sent[-1].queue_name,
-                "to_address": sent[-1].to_address,
-                "text": sent[-1].text,
-                "payload_type": sent[-1].payload_type,
-                "interactive": sent[-1].interactive,
-                "status": sent[-1].status,
-                "external_message_id": sent[-1].external_message_id,
-                "raw_response": sent[-1].raw_response,
-                "sent_at": sent[-1].sent_at.isoformat() if sent[-1].sent_at else None,
-            }
-            if sent
-            else None,
+            "sent": sent_items,
+            "last_sent": sent_items[-1] if sent_items else None,
         }
 
     async def reset(self) -> None:

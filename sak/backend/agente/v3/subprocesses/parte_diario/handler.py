@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessMessage, V3ProcessResult
+from agente.v3.emisor import V3MessageEmitter
 from agente.v3.interactive import InteractiveButton, InteractiveListRow, whatsapp_buttons, whatsapp_list
 from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
@@ -44,7 +45,12 @@ class ParteDiarioSubprocess:
         self._llm = llm_client or ParteDiarioLLMClient()
         self._query_agent = query_agent_client or ParteDiarioQueryAgentClient()
 
-    async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
+    async def handle(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        emisor: V3MessageEmitter | None = None,
+    ) -> V3ProcessResult:
         state = ParteDiarioV3State.from_dict(context.process_state)
         selected_fecha = _parse_fecha_value(message.text)
         command = _normalize_command(message.text)
@@ -52,19 +58,25 @@ class ParteDiarioSubprocess:
         resolved_obra_from_current_message = False
 
         if not state.has_resolved_obra():
-            initial_result = self._handle_inicial(
+            initial_result = await self._handle_inicial(
                 message,
                 command,
                 context,
                 state,
                 show_date_menu=is_date_menu_command,
+                emisor=emisor,
             )
             if initial_result is not None:
                 return initial_result
             resolved_obra_from_current_message = True
 
         if selected_fecha and state.has_resolved_obra():
-            return self._handle_fecha_value(selected_fecha, context, state)
+            return await self._handle_fecha_value(selected_fecha, context, state, emisor=emisor)
+
+        if is_date_menu_command and state.etapa == "seleccionar_fecha" and state.has_resolved_obra():
+            state.parte_state = {}
+            state.opciones_fecha = []
+            return await self._handle_cargar_fecha(context, state, emisor=emisor)
 
         if is_date_menu_command:
             return self._show_date_menu(context, state)
@@ -75,13 +87,17 @@ class ParteDiarioSubprocess:
         if state.etapa == "cargar_fecha":
             if resolved_obra_from_current_message:
                 await self._infer_initial_date(message, state)
-            prepared = self._handle_cargar_fecha(
+            prepared = await self._handle_cargar_fecha(
                 context,
                 state,
                 reply_on_success=not resolved_obra_from_current_message,
+                emisor=emisor,
             )
             if prepared is not None:
                 return prepared
+
+        if state.etapa == "continuar":
+            return await self._handle_continuar(command, context, state)
 
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(command, context, state)
@@ -155,7 +171,7 @@ class ParteDiarioSubprocess:
         draft.fecha = target_date.isoformat()
         state.set_draft(draft)
 
-    def _handle_inicial(
+    async def _handle_inicial(
         self,
         message: V3InboundMessage,
         command: str,
@@ -163,6 +179,7 @@ class ParteDiarioSubprocess:
         state: ParteDiarioV3State,
         *,
         show_date_menu: bool,
+        emisor: V3MessageEmitter | None = None,
     ) -> V3ProcessResult | None:
         if state.opciones_obra:
             try:
@@ -176,8 +193,8 @@ class ParteDiarioSubprocess:
                     state.set_obra(option)
                     state.fecha_menu_pendiente = False
                     if should_show_date_menu:
-                        return self._show_date_menu(context, state)
-                    return self._handle_cargar_fecha(context, state)
+                        return await self._handle_cargar_fecha(context, state, emisor=emisor)
+                    return await self._handle_cargar_fecha(context, state, emisor=emisor)
             return self._active_result(context, state, _comando_invalido(), "invalid_obra_selection")
 
         options = self._resolve_obra_options(message.from_address)
@@ -195,7 +212,7 @@ class ParteDiarioSubprocess:
         if len(options) == 1:
             state.set_obra(options[0])
             if show_date_menu:
-                return self._show_date_menu(context, state)
+                return await self._handle_cargar_fecha(context, state, emisor=emisor)
             return None
 
         state.etapa = "inicial"
@@ -260,7 +277,7 @@ class ParteDiarioSubprocess:
                 _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida.", obra=state.nombre_obra),
             )
 
-        return self._apply_fecha_selection(selected, context, state)
+        return await self._apply_fecha_selection(selected, context, state)
 
     async def _contextual_fallback_to_date_menu(
         self,
@@ -352,11 +369,13 @@ class ParteDiarioSubprocess:
                 return None
             return proyecto.nombre
 
-    def _handle_fecha_value(
+    async def _handle_fecha_value(
         self,
         fecha: str,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
+        *,
+        emisor: V3MessageEmitter | None = None,
     ) -> V3ProcessResult:
         if not state.proyecto_id:
             return self._closed_result(
@@ -379,13 +398,15 @@ class ParteDiarioSubprocess:
                 _date_menu_metadata(state.opciones_fecha, prefix="Opcion invalida.", obra=state.nombre_obra),
             )
 
-        return self._apply_fecha_selection(selected, context, state)
+        return await self._apply_fecha_selection(selected, context, state, emisor=emisor)
 
-    def _apply_fecha_selection(
+    async def _apply_fecha_selection(
         self,
         selected: ParteDiarioFechaOption,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
+        *,
+        emisor: V3MessageEmitter | None = None,
     ) -> V3ProcessResult:
         draft = state.draft()
         draft.fecha = selected.fecha
@@ -420,15 +441,28 @@ class ParteDiarioSubprocess:
                 },
             )
 
-        return self._handle_cargar_fecha(context, state)
+        return await self._handle_cargar_fecha(context, state, emisor=emisor)
 
-    def _handle_cargar_fecha(
+    async def _handle_cargar_fecha(
         self,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
         *,
         reply_on_success: bool = True,
+        emisor: V3MessageEmitter | None = None,
     ) -> V3ProcessResult | None:
+        draft = state.draft()
+        if not draft.fecha:
+            default_fecha, pending_count = resolver_fecha_default_parte_diario_info(
+                int(state.proyecto_id or 0),
+                contacto_id=state.contacto_id,
+            )
+            if default_fecha is None:
+                return self._show_date_menu(context, state)
+            draft.fecha = default_fecha
+            state.set_draft(draft)
+            await _emitir_fecha_default_parte_diario(emisor, state, default_fecha, pending_count)
+
         error = self._prepare_cargar_fecha(state)
         if error:
             state.etapa = "seleccionar_fecha"
@@ -459,10 +493,58 @@ class ParteDiarioSubprocess:
             ),
         )
 
+    async def _handle_continuar(
+        self,
+        command: str,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        if command in {"continuar", "1", "continuar cargando", "cargar", "seguir cargando"}:
+            draft = state.draft()
+            fecha = str(draft.fecha_propuesta or "").strip()
+            if not fecha and state.proyecto_id:
+                fecha, _pending_count = resolver_fecha_default_parte_diario_info(
+                    int(state.proyecto_id),
+                    contacto_id=state.contacto_id,
+                )
+            if not fecha:
+                return _finish_parte_diario_flow(context)
+            draft.fecha = fecha
+            draft.fecha_propuesta = None
+            draft.parte_id = None
+            draft.novedades = []
+            draft.pendientes_ambiguos = []
+            draft.conflictos_novedad = []
+            draft.sin_novedades_informado = False
+            draft.esperando = None
+            draft.retomado = False
+            state.set_draft(draft)
+            state.opciones_fecha = []
+            state.etapa = "cargar_fecha"
+            prepared = await self._handle_cargar_fecha(context, state)
+            if prepared is not None:
+                return prepared
+
+        if command in {"finalizar", "2", "salir"}:
+            return _finish_parte_diario_flow(context)
+
+        draft = state.draft()
+        fecha = str(draft.fecha_propuesta or "").strip()
+        if fecha:
+            reply = _continue_proposal_reply(fecha)
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "continue_confirmation_required",
+                _continue_proposal_metadata(reply),
+            )
+        return _finish_parte_diario_flow(context)
+
     def _prepare_cargar_fecha(self, state: ParteDiarioV3State, *, allow_closed: bool = False) -> str | None:
         draft = state.draft()
         if not draft.fecha:
-            draft.fecha = _today().isoformat()
+            return "Selecciona una fecha para cargar el parte diario."
         with Session(engine) as session:
             process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, state.etapa))
             estados = process._load_estados()
@@ -910,24 +992,41 @@ class ParteDiarioSubprocess:
             metadata.update(extra_metadata)
             metadata["status"] = status
         if status == "confirmed":
-            state.etapa = "seleccionar_fecha"
+            state.etapa = "continuar"
             if state.proyecto_id:
                 state.nombre_obra = state.nombre_obra or self._resolve_project_name(int(state.proyecto_id))
                 state.opciones_fecha = self._build_fecha_options(
                     int(state.proyecto_id),
                     contacto_id=state.contacto_id,
                 )
-            weekly_reply = _render_post_confirmation_week_summary(state.opciones_fecha, obra=state.nombre_obra)
+            next_fecha, pending_count = resolver_fecha_default_parte_diario_info(
+                int(state.proyecto_id or 0),
+                contacto_id=state.contacto_id,
+            )
+            if not next_fecha:
+                return V3ProcessResult(
+                    context=_finish_parte_diario_context(context),
+                    reply_text=reply,
+                    metadata=metadata,
+                )
+            draft = state.draft()
+            draft.fecha_propuesta = next_fecha
+            state.set_draft(draft)
+            continue_reply = _continue_proposal_reply(next_fecha)
             return self._active_result(
                 context,
                 state,
                 reply,
                 status,
-                metadata,
+                {
+                    **metadata,
+                    "next_fecha": next_fecha,
+                    "pending_count": pending_count,
+                },
                 additional_messages=[
                     V3ProcessMessage(
-                        text=weekly_reply,
-                        metadata=_post_confirmation_week_metadata(weekly_reply),
+                        text=continue_reply,
+                        metadata=_continue_proposal_metadata(continue_reply),
                     )
                 ],
             )
@@ -1113,6 +1212,82 @@ class ParteDiarioSubprocess:
         return options
 
 
+def resolver_fecha_default_parte_diario(
+    proyecto_id: int,
+    *,
+    contacto_id: int | None = None,
+) -> str | None:
+    fecha, _pending_count = resolver_fecha_default_parte_diario_info(
+        proyecto_id,
+        contacto_id=contacto_id,
+    )
+    return fecha
+
+
+def resolver_fecha_default_parte_diario_info(
+    proyecto_id: int,
+    *,
+    contacto_id: int | None = None,
+) -> tuple[str | None, int]:
+    if proyecto_id <= 0:
+        return None, 0
+
+    options = ParteDiarioSubprocess._build_fecha_options(proyecto_id, contacto_id=contacto_id)
+    pending_options = [
+        option
+        for option in sorted(options, key=lambda item: item.fecha)
+        if option.estado in {"borrador", "sin cargar"}
+    ]
+    if not pending_options:
+        return None, 0
+    return pending_options[0].fecha, len(pending_options)
+
+
+async def _emitir_fecha_default_parte_diario(
+    emisor: V3MessageEmitter | None,
+    state: ParteDiarioV3State,
+    fecha: str,
+    pending_count: int,
+) -> None:
+    if emisor is None:
+        return
+    try:
+        target_date = date.fromisoformat(fecha)
+    except ValueError:
+        return
+
+    fecha_label = target_date.strftime("%d/%m/%Y")
+    encargado = _resolve_contact_greeting_name(state.contacto_id)
+    saludo = f"Hola {encargado}, " if encargado else "Hola, "
+    partes_text = (
+        "tenes 1 parte pendiente"
+        if pending_count == 1
+        else f"tenes {pending_count} partes pendientes"
+    )
+
+    await emisor.emitir(
+        f"{saludo}{partes_text}, por favor podrias informar las novedades de la fecha {fecha_label}?",
+        metadata={
+            "process_name": "parteDiario",
+            "status": "default_fecha_selected",
+            "fecha": fecha,
+            "pending_count": pending_count,
+            "remaining_pending_count": max(pending_count - 1, 0),
+        },
+    )
+
+
+def _resolve_contact_greeting_name(contacto_id: int | None) -> str | None:
+    if not contacto_id:
+        return None
+    with Session(engine) as session:
+        contact = session.get(CRMContacto, int(contacto_id))
+    raw_name = str(getattr(contact, "nombre_completo", "") or "").strip()
+    if not raw_name:
+        return None
+    return raw_name.split()[0]
+
+
 def _seleccionar_obra(state: ParteDiarioV3State) -> str:
     options = "\n".join(f"{option.opcion}: {option.nombre}" for option in state.opciones_obra)
     return f"En que obra queres cargar el parte diario?\n{options}"
@@ -1162,28 +1337,21 @@ def _date_menu_metadata(
     return _interactive_metadata(interactive)
 
 
-def _render_post_confirmation_week_summary(
-    options: list[ParteDiarioFechaOption],
-    *,
-    obra: str | None = None,
-) -> str:
-    lines = ["Partes diarios de la semana:"]
-    obra_label = str(obra or "").strip()
-    if obra_label:
-        lines.append(f"Obra: {obra_label}")
-    lines.append("")
-    lines.extend(f"- {_fecha_option_title(option)}: {option.estado}" for option in options)
-    lines.append("")
-    lines.append("Podes continuar cargando otra fecha o salir.")
-    return "\n".join(lines)
+def _continue_proposal_reply(fecha: str) -> str:
+    try:
+        target_date = date.fromisoformat(fecha)
+        fecha_label = target_date.strftime("%d/%m/%Y")
+    except ValueError:
+        fecha_label = fecha
+    return f"Ahora corresponde cargar el parte del dia {fecha_label}. Queres continuar o finalizar?"
 
 
-def _post_confirmation_week_metadata(reply: str) -> dict | None:
+def _continue_proposal_metadata(reply: str) -> dict | None:
     interactive = whatsapp_buttons(
         body=reply,
         buttons=[
-            InteractiveButton(id="continuar cargando", title="CONTINUAR CARGANDO"),
-            InteractiveButton(id="salir", title="SALIR"),
+            InteractiveButton(id="continuar", title="CONTINUAR"),
+            InteractiveButton(id="finalizar", title="FINALIZAR"),
         ],
     )
     return _interactive_metadata(interactive)
@@ -1626,6 +1794,21 @@ def _return_to_general(context: V3ConversationContext, *, source: str) -> V3Proc
         context=updated,
         reply_text=_general_greeting(),
         metadata={"process_name": "parteDiario", "status": "returned_to_general"},
+    )
+
+
+def _finish_parte_diario_context(context: V3ConversationContext) -> V3ConversationContext:
+    updated = context.copy()
+    updated.active_process = None
+    updated.process_state = {}
+    return updated
+
+
+def _finish_parte_diario_flow(context: V3ConversationContext) -> V3ProcessResult:
+    return V3ProcessResult(
+        context=_finish_parte_diario_context(context),
+        reply_text="Listo, finalizamos la carga de partes diarios.",
+        metadata={"process_name": "parteDiario", "status": "finished"},
     )
 
 

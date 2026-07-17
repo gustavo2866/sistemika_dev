@@ -10,6 +10,7 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.emisor import V3MessageEmitter
 from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.pedido_obra import renderer
 from agente.v3.subprocesses.pedido_obra.interpreter import (
@@ -43,7 +44,12 @@ class PedidoObraSubprocess:
     def __init__(self, llm_client: PedidoObraCargaLLMClient | None = None) -> None:
         self._llm = llm_client or PedidoObraCargaLLMClient()
 
-    async def handle(self, message: V3InboundMessage, context: V3ConversationContext) -> V3ProcessResult:
+    async def handle(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        emisor: V3MessageEmitter | None = None,
+    ) -> V3ProcessResult:
         state = PedidoObraState.from_dict(context.process_state)
         command = normalize_command(message.text)
         is_pedido_menu_command = _is_pedido_menu_command(command)
