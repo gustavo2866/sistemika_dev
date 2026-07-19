@@ -31,6 +31,7 @@ Estados posibles:
 - `cargar_fecha`
 - `seleccionar_fecha`
 - `carga`
+- `revision`
 - `validacion`
 - `cierre`
 - `confirmar_salida`
@@ -196,29 +197,70 @@ El handler v3 decide como aplicar la fecha detectada:
 - si la fecha esta cerrada, bloquea edicion;
 - si existe parte en `borrador`, recupera novedades.
 
-Menu:
-
-```text
-Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
-```
+Durante la carga no se muestra menu de cierre. El agente confirma lo registrado
+y pregunta si hay alguna otra novedad.
 
 Comandos locales:
 
-- `1` o `GUARDAR`: guarda el parte como `borrador` y finaliza.
-- `2` o `CERRAR`: valida pendientes y reglas de cierre; si todo esta correcto, guarda el parte como `cerrado`.
-- `3` o `SALIR`: pasa a `confirmar_salida`.
+- `NO`, `NADA MAS`, `LISTO`, `OK` o equivalentes: pasa a `revision`.
+- `GUARDAR`: guarda el parte como `borrador` por compatibilidad con texto escrito.
+- `CERRAR` o `FINALIZAR`: valida pendientes y reglas de cierre por compatibilidad con texto escrito.
+- `SALIR`: pasa a `confirmar_salida`.
 
 Regla importante:
 
-No se validan reglas de cierre durante la carga. Las validaciones se disparan con `2:CERRAR`.
+No se validan reglas de cierre durante la carga conversacional. Las validaciones
+se disparan al finalizar el parte desde `revision` o con el comando textual `CERRAR`.
 
 Transiciones:
 
 - carga normal -> permanece en `carga`;
-- `1:GUARDAR` -> `seleccionar_fecha` con parte `borrador`;
-- `2:CERRAR` sin pendientes -> `seleccionar_fecha` con parte `cerrado`;
-- `2:CERRAR` con pendientes -> `validacion`;
-- `3:SALIR` -> `confirmar_salida`.
+- fin de carga -> `revision`;
+- `GUARDAR` -> `continuar` o `finalizado` con parte `borrador`;
+- `CERRAR` sin pendientes -> `continuar` o `finalizado`;
+- `CERRAR` con pendientes -> `validacion`;
+- `SALIR` -> `confirmar_salida`.
+
+### `revision`
+
+Muestra el resumen final del draft y recien ahi presenta acciones interactivas.
+Los botones dejan de ser el mecanismo principal de carga y pasan a ser el
+mecanismo de cierre.
+
+Ejemplo:
+
+```text
+Resumen del parte
+Fecha: 2026-07-17
+Obra: Obra Centro
+
+Ausencias
+- Perez (Enfermedad)
+- Ruiz (Vacaciones)
+
+Horas extra
+- Medina (4)
+
+Otra obra
+- Vera
+
+Opciones: 1:GUARDAR BORRADOR 2:FINALIZAR PARTE 3:SEGUIR EDITANDO.
+```
+
+Comandos locales:
+
+- `1` o `GUARDAR BORRADOR`: guarda en DB como `borrador`.
+- `2` o `FINALIZAR PARTE`: valida reglas de cierre y guarda en DB como confirmado.
+- `3` o `SEGUIR EDITANDO`: vuelve a `carga`.
+- `SALIR`: pasa a `confirmar_salida`.
+
+Transiciones:
+
+- guardar exitoso -> `continuar` o `finalizado`;
+- finalizar exitoso -> `continuar` o `finalizado`;
+- finalizar con pendientes -> `validacion`;
+- seguir editando -> `carga`;
+- salir -> `confirmar_salida`.
 
 ### `validacion`
 
@@ -262,8 +304,8 @@ Transiciones:
 
 ### `cierre`
 
-Estado tecnico usado cuando el parte ya supero validaciones y vuelve a mostrar el resumen.
-El menu visible se mantiene igual que en carga.
+Estado tecnico usado cuando el parte ya supero validaciones y pide confirmacion
+final con `OK` / `VOLVER`.
 
 Si el cierre paso por `validacion`, antes de persistir se muestra el resumen final y se pide confirmacion:
 
@@ -274,23 +316,8 @@ Opciones: OK / VOLVER.
 - `1` o `OK`: persiste el parte como `cerrado`.
 - `2` o `VOLVER`: vuelve a `carga`.
 
-Menu:
-
-```text
-Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
-```
-
-Comandos locales:
-
-- `1` o `GUARDAR`: persiste el parte como `borrador`.
-- `2` o `CERRAR`: valida reglas de cierre y persiste el parte como `cerrado`.
-- `3` o `SALIR`: pasa a `confirmar_salida`.
-
-Transiciones:
-
-- guardar exitoso -> `seleccionar_fecha`;
-- cerrar exitoso -> `seleccionar_fecha`;
-- salir -> `confirmar_salida`.
+Si por compatibilidad llega un estado `cierre` sin validacion pendiente, el handler
+lo trata como `revision`.
 
 ### `confirmar_salida`
 
@@ -383,14 +410,27 @@ Resultado:
 Durante la carga:
 
 ```text
-Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
+Hay alguna otra novedad?
 ```
 
-- `1` o `GUARDAR`: guarda el borrador y finaliza.
-- `2` o `CERRAR`: intenta cerrar el parte y ejecuta validaciones.
-- `3` o `SALIR`: pide confirmacion para descartar.
+- `NO`, `NADA MAS`, `LISTO`, `OK` o equivalentes: pasa a `revision`.
+- `GUARDAR`: guarda el borrador por compatibilidad con texto escrito.
+- `CERRAR` o `FINALIZAR`: intenta cerrar el parte y ejecuta validaciones.
+- `SALIR`: pide confirmacion para descartar.
 
-Si hay validaciones pendientes, `2:CERRAR` pasa a la etapa `validacion`.
+Si hay validaciones pendientes, `FINALIZAR PARTE` desde `revision` o `CERRAR`
+pasa a la etapa `validacion`.
+
+### Revision
+
+```text
+Opciones: 1:GUARDAR BORRADOR 2:FINALIZAR PARTE 3:SEGUIR EDITANDO.
+```
+
+- `1` o `GUARDAR BORRADOR`: guarda en DB como `borrador`.
+- `2` o `FINALIZAR PARTE`: valida y guarda en DB como confirmado.
+- `3` o `SEGUIR EDITANDO`: vuelve a `carga`.
+- `SALIR`: pide confirmacion para descartar.
 
 ### Validacion
 
@@ -403,13 +443,14 @@ Durante la validacion se resuelven pendientes antes del cierre:
 
 La busqueda por nombres similares se ejecuta aca, no durante la carga.
 
-`VOLVER` retorna a `carga` con el resumen del parte y las opciones `GUARDAR`, `CERRAR` y `SALIR`.
+`VOLVER` retorna a `carga` con el resumen del parte y sin menu principal.
 
 Cuando no quedan pendientes, el flujo pasa a `cierre`, muestra el resumen final y pide confirmacion con `OK` / `VOLVER`.
 
 ### Cierre
 
-Cuando no hay pendientes, el menu visible sigue siendo el menu principal:
+Cuando no hay pendientes, el cierre tecnico pide confirmacion final solo si viene
+de una validacion recien resuelta:
 
 Si el cierre viene de una validacion recien resuelta, primero se muestra:
 
@@ -420,15 +461,7 @@ Opciones: OK / VOLVER.
 - `1` o `OK`: guarda en DB como `cerrado`.
 - `2` o `VOLVER`: vuelve a `carga`.
 
-```text
-Opciones: 1:GUARDAR 2:CERRAR 3:SALIR.
-```
-
-- `1` o `GUARDAR`: guarda en DB como `borrador`.
-- `2` o `CERRAR`: guarda en DB como `cerrado`.
-- `3` o `SALIR`: pide confirmacion para descartar.
-
-Luego de guardar o cerrar, el flujo vuelve al selector de fechas de `parteDiario`.
+Luego de guardar o cerrar, el flujo continua con la siguiente fecha pendiente o finaliza.
 
 ### Confirmar Salida
 

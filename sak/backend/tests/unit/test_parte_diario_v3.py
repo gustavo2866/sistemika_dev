@@ -152,7 +152,8 @@ async def test_parte_diario_v3_first_load_resolves_project_and_sets_default_olde
     assert draft["novedades"][0]["idnomina"] == seeded_parte_v3["employee_1"].id
     assert draft["novedades"][0]["estado_codigo"] == "FAL"
     assert "Obra: Obra Centro" in (result.reply_text or "")
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
+    assert "Hay alguna otra novedad?" in (result.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." not in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -291,7 +292,7 @@ async def test_parte_diario_v3_contacto_encargado_por_nomina_se_incluye_en_menu(
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_mostrar_nomina_filtra_por_encargado_contacto(
+async def test_parte_diario_v3_mostrar_nomina_muestra_proyecto_activo_sin_filtrar_por_encargado(
     db_session: Session,
     seeded_parte_v3,
 ):
@@ -302,6 +303,16 @@ async def test_parte_diario_v3_mostrar_nomina_filtra_por_encargado_contacto(
     )
     db_session.add(otro_contacto)
     db_session.flush()
+    external_project = Proyecto(nombre="Obra Externa", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    db_session.add(external_project)
+    db_session.flush()
+    external_employee = Nomina(
+        nombre="Mario",
+        apellido="Externo",
+        dni="parte-v3-nomina-global",
+        idproyecto=external_project.id,
+    )
+    db_session.add(external_employee)
     seeded_parte_v3["employee_1"].encargado_contacto_id = seeded_parte_v3["contact"].id
     seeded_parte_v3["employee_2"].encargado_contacto_id = otro_contacto.id
     db_session.commit()
@@ -328,7 +339,15 @@ async def test_parte_diario_v3_mostrar_nomina_filtra_por_encargado_contacto(
 
     assert "*NOMINA ACTIVA*" in (result.reply_text or "")
     assert "Garcia, Juan" in (result.reply_text or "")
-    assert "Perez, Pedro" not in (result.reply_text or "")
+    assert "Perez, Pedro" in (result.reply_text or "")
+    assert "Externo, Mario" not in (result.reply_text or "")
+
+    result_full = await process.handle(_message("mostrar toda la nomina", external_id="wamid-test-2"), context)
+
+    assert "*NOMINA ACTIVA*" in (result_full.reply_text or "")
+    assert "Garcia, Juan" in (result_full.reply_text or "")
+    assert "Perez, Pedro" in (result_full.reply_text or "")
+    assert "Externo, Mario" in (result_full.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -369,6 +388,7 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     )
     db_session.add(other_contact)
     db_session.flush()
+    seeded_parte_v3["employee_2"].encargado_contacto_id = other_contact.id
     db_session.add(
         ParteDiario(
             idproyecto=seeded_parte_v3["project"].id,
@@ -570,7 +590,8 @@ async def test_parte_diario_v3_show_nomina_in_load_keeps_selected_project_contex
     assert result.context.process_state["parte_state"]["fecha"] == "2026-06-30"
     assert "*NOMINA ACTIVA*" in (result.reply_text or "")
     assert "Garcia, Juan" in (result.reply_text or "")
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
+    assert "Hay alguna otra novedad?" in (result.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." not in (result.reply_text or "")
 
 
 def test_parte_diario_query_service_answers_absences_report_and_pending(
@@ -591,6 +612,13 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
     external_project = Proyecto(nombre="Obra Externa", responsable_id=seeded_parte_v3["contact"].responsable_id)
     db_session.add(external_project)
     db_session.flush()
+    otro_contacto = CRMContacto(
+        nombre_completo="Otro Encargado",
+        telefonos=["549222222"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(otro_contacto)
+    db_session.flush()
     external_employee = Nomina(
         nombre="Mario",
         apellido="Externo",
@@ -604,6 +632,7 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
         apellido="Normal",
         dni="parte-v3-default-normal",
         idproyecto=seeded_parte_v3["project"].id,
+        encargado_contacto_id=otro_contacto.id,
     )
     db_session.add(default_employee)
     db_session.flush()
@@ -717,6 +746,7 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
         alcance_personal="otra_nomina",
     )
     context_nomina = service.consultar_contexto_parte(tipo="nomina")
+    full_context_nomina = service.consultar_contexto_parte(tipo="toda la nomina")
 
     assert "Garcia, Juan" in absences
     assert "16/05/2026" in absences
@@ -742,6 +772,10 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
     assert "Externo, Mario" not in extra_hours
     assert "Externo, Mario (otra nomina: Obra Externa): P, 12h" in external_hours
     assert "*NOMINA ACTIVA*" in context_nomina
+    assert "Normal, Laura" in context_nomina
+    assert "Externo, Mario" not in context_nomina
+    assert "*NOMINA COMPLETA*" in full_context_nomina
+    assert "Externo, Mario (Obra Externa)" in full_context_nomina
 
 
 def test_parte_diario_v3_internal_query_detector_accepts_novedades_and_hours():
@@ -783,14 +817,7 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
 
     assert selected.context.active_process == "parteDiario"
     assert selected.context.process_state["etapa"] == "carga"
-    assert selected.metadata["outbound"]["type"] == "interactive"
-    assert selected.metadata["outbound"]["interactive"]["type"] == "button"
-    buttons = selected.metadata["outbound"]["interactive"]["action"]["buttons"]
-    assert [button["reply"]["id"] for button in buttons] == [
-        "guardar",
-        "cerrar",
-        "salir",
-    ]
+    assert "outbound" not in selected.metadata
     draft = selected.context.process_state["parte_state"]
     assert draft["fecha"] == "2026-05-16"
     assert draft["parte_id"] == parte.id
@@ -798,7 +825,7 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     assert draft["novedades"][0]["estado_codigo"] == "FAL"
     assert "Parte diario borrador recuperado" in (selected.reply_text or "")
     assert "Obra: Obra Centro" in (selected.reply_text or "")
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (selected.reply_text or "")
+    assert "Queres agregar o corregir alguna novedad?" in (selected.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -996,10 +1023,17 @@ async def test_parte_diario_v3_initial_inferred_date_is_loaded_before_today(
     result = await process.handle(_message("ayer sin novedades"), V3ConversationContext(conversation_id="conv-yesterday"))
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["etapa"] == "revision"
     assert result.context.process_state["parte_state"]["fecha"] == target_date
     assert result.context.process_state["parte_state"]["sin_novedades_informado"] is True
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
+    assert "Resumen del parte" in (result.reply_text or "")
+    assert "Sin novedades. Todos presentes." in (result.reply_text or "")
+    buttons = result.metadata["outbound"]["interactive"]["action"]["buttons"]
+    assert [button["reply"]["id"] for button in buttons] == [
+        "guardar borrador",
+        "finalizar parte",
+        "seguir editando",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1094,7 +1128,8 @@ async def test_parte_diario_v3_load_does_not_validate_short_workday(seeded_parte
     draft = result.context.process_state["parte_state"]
     assert draft["novedades"][0]["estado_codigo"] == "P"
     assert draft["novedades"][0]["horas"] == 4
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (result.reply_text or "")
+    assert "Hay alguna otra novedad?" in (result.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." not in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -1403,7 +1438,8 @@ async def test_parte_diario_v3_multiple_projects_selection_does_not_interpret_op
     assert selected.context.process_state["parte_state"]["fecha"] == (_today() - timedelta(days=6)).isoformat()
     assert selected.context.process_state["parte_state"]["novedades"] == []
     assert "Parte diario en carga" in (selected.reply_text or "")
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (selected.reply_text or "")
+    assert "Que novedades hubo para esta fecha?" in (selected.reply_text or "")
+    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." not in (selected.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -1426,30 +1462,31 @@ async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_par
     )
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
-    confirmation = await process.handle(_message("2"), context)
+    review = await process.handle(_message("no"), context)
     back = await process.handle(
-        _message("volver", external_id="wamid-test-empty-close-back"),
-        confirmation.context,
+        _message("3", external_id="wamid-test-empty-close-back"),
+        review.context,
     )
     result = await process.handle(
-        _message("ok", external_id="wamid-test-empty-close-ok"),
-        confirmation.context,
+        _message("2", external_id="wamid-test-empty-close-ok"),
+        review.context,
     )
 
-    assert confirmation.context.active_process == "parteDiario"
-    assert confirmation.context.process_state["etapa"] == "cierre"
-    assert confirmation.context.process_state["parte_state"]["esperando"] == "confirmacion_sin_novedades"
-    assert confirmation.context.process_state["parte_state"]["sin_novedades_informado"] is False
-    assert "Confirmas cerrar el parte sin novedades" in (confirmation.reply_text or "")
-    assert "Opciones: OK / VOLVER." in (confirmation.reply_text or "")
-    assert confirmation.metadata["outbound"]["type"] == "interactive"
-    buttons = confirmation.metadata["outbound"]["interactive"]["action"]["buttons"]
-    assert [button["reply"]["id"] for button in buttons] == ["ok", "volver"]
+    assert review.context.active_process == "parteDiario"
+    assert review.context.process_state["etapa"] == "revision"
+    assert review.context.process_state["parte_state"]["sin_novedades_informado"] is True
+    assert "Resumen del parte" in (review.reply_text or "")
+    assert "Sin novedades. Todos presentes." in (review.reply_text or "")
+    buttons = review.metadata["outbound"]["interactive"]["action"]["buttons"]
+    assert [button["reply"]["id"] for button in buttons] == [
+        "guardar borrador",
+        "finalizar parte",
+        "seguir editando",
+    ]
     assert back.context.process_state["etapa"] == "carga"
-    assert back.context.process_state["parte_state"]["esperando"] is None
-    assert "Volvemos a la carga" in (back.reply_text or "")
+    assert "Seguimos editando" in (back.reply_text or "")
     assert "Parte diario en carga:" in (back.reply_text or "")
-    assert "(sin novedades cargadas)" in (back.reply_text or "")
+    assert "Sin novedades. Todos presentes." in (back.reply_text or "")
     assert result.context.active_process == "parteDiario"
     assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["parte_listo"] is True
@@ -1575,7 +1612,7 @@ async def test_parte_diario_v3_menu_guardar_persists_draft(seeded_parte_v3):
         conversation_id="meta:account:549111111",
         active_process="parteDiario",
         process_state={
-            "etapa": "carga",
+            "etapa": "revision",
             "contacto_id": seeded_parte_v3["contact"].id,
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
@@ -1587,13 +1624,15 @@ async def test_parte_diario_v3_menu_guardar_persists_draft(seeded_parte_v3):
     result = await process.handle(_message("1"), context)
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["parte_listo"] is True
     assert result.metadata["result"]["cerrar_parte"] is False
     assert "Parte diario guardado como borrador para 2026-05-30." in (result.reply_text or "")
     assert "*PARTE DIARIO GUARDADO*" not in (result.reply_text or "")
     assert "*Novedades*" not in (result.reply_text or "")
-    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
+    assert len(result.additional_messages) == 1
+    assert "Ahora corresponde cargar el parte del dia" in result.additional_messages[0].text
 
 
 @pytest.mark.asyncio
@@ -1625,7 +1664,7 @@ async def test_parte_diario_v3_menu_guardar_persists_pending_as_provisional_deta
         conversation_id="meta:account:549111111",
         active_process="parteDiario",
         process_state={
-            "etapa": "carga",
+            "etapa": "revision",
             "contacto_id": seeded_parte_v3["contact"].id,
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
@@ -1637,6 +1676,7 @@ async def test_parte_diario_v3_menu_guardar_persists_pending_as_provisional_deta
     saved = await process.handle(_message("1", external_id="wamid-save-pending"), context)
 
     assert saved.metadata["parte_listo"] is True
+    assert saved.metadata["next_fecha"] != _today().isoformat()
     assert "Parte diario guardado como borrador" in (saved.reply_text or "")
     assert "ruiz (**a validar)" not in (saved.reply_text or "")
     parte_id = saved.metadata["parte_diario_id"]
@@ -1649,7 +1689,8 @@ async def test_parte_diario_v3_menu_guardar_persists_pending_as_provisional_deta
     assert details[0].idestado == accidente.id
     assert details[0].horas == Decimal("0.00")
 
-    recovered = await process.handle(_message("1", external_id="wamid-recover-pending"), saved.context)
+    menu = await process.handle(_message("Parte diario", external_id="wamid-recover-menu"), saved.context)
+    recovered = await process.handle(_message(_today().isoformat(), external_id="wamid-recover-pending"), menu.context)
 
     draft = recovered.context.process_state["parte_state"]
     assert draft["novedades"] == []
@@ -1689,7 +1730,7 @@ async def test_parte_diario_v3_menu_cerrar_activates_pending_validation(seeded_p
         conversation_id="meta:account:549111111",
         active_process="parteDiario",
         process_state={
-            "etapa": "carga",
+            "etapa": "revision",
             "contacto_id": seeded_parte_v3["contact"].id,
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
@@ -1776,7 +1817,7 @@ async def test_parte_diario_v3_close_persists_after_pending_validation(
         conversation_id="meta:account:549111111",
         active_process="parteDiario",
         process_state={
-            "etapa": "carga",
+            "etapa": "revision",
             "contacto_id": seeded_parte_v3["contact"].id,
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
@@ -1804,12 +1845,11 @@ async def test_parte_diario_v3_close_persists_after_pending_validation(
     confirmation_context_for_ok.process_state = deepcopy(confirmation.context.process_state)
     back = await process.handle(_message("volver", external_id="wamid-close-back"), confirmation.context)
 
-    assert back.context.process_state["etapa"] == "carga"
+    assert back.context.process_state["etapa"] == "revision"
     assert back.context.process_state["parte_state"]["esperando"] is None
-    assert "Volvemos a la carga" in (back.reply_text or "")
-    assert "Parte diario en carga:" in (back.reply_text or "")
-    assert "Serrano, Juan David: FAL, 0h" in (back.reply_text or "")
-    assert "Ruiz, Pablo (legajo 501001): ACC, 0h" in (back.reply_text or "")
+    assert "Resumen del parte" in (back.reply_text or "")
+    assert "Serrano" in (back.reply_text or "")
+    assert "Ruiz" in (back.reply_text or "")
 
     result = await process.handle(_message("ok", external_id="wamid-close-ok"), confirmation_context_for_ok)
 
@@ -2170,8 +2210,11 @@ async def test_parte_diario_v3_cerrar_asks_to_select_similar_pending_name(seeded
     assert loaded_draft["pendientes_ambiguos"][0]["candidatos"] is None
     assert "Petro (**a validar): FAL, 0h" in (loaded.reply_text or "")
 
-    result = await process.handle(_message("2", external_id="wamid-test-2"), loaded.context)
+    review = await process.handle(_message("no", external_id="wamid-test-review"), loaded.context)
+    result = await process.handle(_message("2", external_id="wamid-test-2"), review.context)
 
+    assert review.context.process_state["etapa"] == "revision"
+    assert "Resumen del parte" in (review.reply_text or "")
     assert result.context.process_state["etapa"] == "validacion"
     assert result.context.process_state["parte_state"]["esperando"] == "confirmacion_ambiguos"
     assert result.context.process_state["parte_state"]["pendientes_ambiguos"][0]["lista_candidatos_mostrada"] is True
@@ -2192,7 +2235,7 @@ async def test_parte_diario_v3_cerrar_asks_to_select_similar_pending_name(seeded
     assert back.context.process_state["parte_state"]["pendientes_ambiguos"]
     assert "Parte diario en carga:" in (back.reply_text or "")
     assert "Petro (**a validar): FAL, 0h" in (back.reply_text or "")
-    assert "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR." in (back.reply_text or "")
+    assert "Que queres agregar o corregir?" in (back.reply_text or "")
 
     selected = await process.handle(_message("1", external_id="wamid-test-3"), result.context)
 
@@ -2218,7 +2261,8 @@ async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisiona
     context = V3ConversationContext(conversation_id="meta:account:549111111")
 
     loaded = await process.handle(_message("Petro falto"), context)
-    validating = await process.handle(_message("2", external_id="wamid-test-2"), loaded.context)
+    review = await process.handle(_message("no", external_id="wamid-test-review"), loaded.context)
+    validating = await process.handle(_message("2", external_id="wamid-test-2"), review.context)
     confirmation = await process.handle(_message("registrar sin validar", external_id="wamid-test-3"), validating.context)
 
     assert confirmation.context.process_state["etapa"] == "cierre"
@@ -2266,7 +2310,7 @@ async def test_parte_diario_v3_menu_salir_confirms_discard(seeded_parte_v3):
     )
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
-    exit_confirmation = await process.handle(_message("3"), context)
+    exit_confirmation = await process.handle(_message("salir"), context)
     back = await process.handle(_message("volver"), exit_confirmation.context)
     discarded = await process.handle(_message("ok"), exit_confirmation.context)
 
@@ -2317,7 +2361,7 @@ async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session:
     result = await process.handle(_message("1", external_id="wamid-confirm-parte"), context)
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "seleccionar_fecha"
+    assert result.context.process_state["etapa"] == "continuar"
     assert result.metadata["parte_listo"] is True
     parte = db_session.exec(select(ParteDiario)).one()
     assert parte.id == result.metadata["parte_diario_id"]
@@ -2329,7 +2373,9 @@ async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session:
     assert message.contacto_id == seeded_parte_v3["contact"].id
     assert message.metadata_json["agent_v3"]["result"]["contacto_id"] == seeded_parte_v3["contact"].id
     assert message.metadata_json["agent_v3"]["result"]["parte_listo"] is True
-    assert "Selecciona la fecha del parte diario:" in (result.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (result.reply_text or "")
+    assert len(result.additional_messages) == 1
+    assert "Ahora corresponde cargar el parte del dia" in result.additional_messages[0].text
     details = db_session.exec(
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
     ).all()

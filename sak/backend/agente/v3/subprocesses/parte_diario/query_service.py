@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
-from agente.v3.subprocesses.parte_diario.process import _today
+from agente.v3.subprocesses.parte_diario.process import _requests_full_nomina, _today
 from agente.v3.subprocesses.parte_diario.resolver import normalize_text
 from app.models import EstadoParteDiario, Nomina, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto
 
@@ -180,15 +180,27 @@ class ParteDiarioQueryService:
             return f"No encontre partes para {self._nombre_obra} entre {start.strftime('%d/%m/%Y')} y {end.strftime('%d/%m/%Y')}."
         return "Partes consultados:\n" + "\n".join(f"- {item}" for item in rows[:20])
 
-    def consultar_contexto_parte(self, *, tipo: str) -> str:
+    def consultar_contexto_parte(self, *, tipo: str, pedido_usuario: str | None = None) -> str:
         normalized = normalize_text(tipo)
         if normalized == "obra":
             return f"Obra seleccionada: {self._nombre_obra}."
-        if normalized == "nomina":
+        if normalized in {
+            "nomina",
+            "nomina obra",
+            "nomina proyecto",
+            "personal",
+            "empleado",
+            "empleados",
+        } and not _requests_full_nomina(pedido_usuario):
             nominas = self._load_scoped_nomina()
             if not nominas:
                 return f"No hay personal activo asignado a {self._nombre_obra}."
             return "*NOMINA ACTIVA*\n" + "\n".join(f"- {_nomina_label(item)}" for item in nominas[:30])
+        if _requests_full_nomina(tipo) or _requests_full_nomina(pedido_usuario):
+            nominas = self._load_all_nomina()
+            if not nominas:
+                return "No hay personal activo en la nomina."
+            return "*NOMINA COMPLETA*\n" + "\n".join(f"- {self._nomina_with_project_label(item)}" for item in nominas[:30])
         if normalized == "estados":
             states = self._session.exec(
                 select(ParteDiarioEstado)
@@ -266,9 +278,23 @@ class ParteDiarioQueryService:
             .where(Nomina.deleted_at.is_(None))
             .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
         ).all()
-        if self._contacto_id and any(item.encargado_contacto_id == self._contacto_id for item in rows):
-            rows = [item for item in rows if item.encargado_contacto_id == self._contacto_id]
         return rows
+
+    def _load_all_nomina(self) -> list[Nomina]:
+        return self._session.exec(
+            select(Nomina)
+            .where(Nomina.activo.is_(True))
+            .where(Nomina.deleted_at.is_(None))
+            .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
+        ).all()
+
+    def _nomina_with_project_label(self, item: Nomina) -> str:
+        suffix = ""
+        if item.idproyecto:
+            project = self._session.get(Proyecto, item.idproyecto)
+            if project is not None and project.nombre:
+                suffix = f" ({project.nombre})"
+        return f"{_nomina_label(item)}{suffix}"
 
     def _query_partes(self, desde: date, hasta: date) -> list[ParteDiario]:
         query = (

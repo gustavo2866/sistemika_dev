@@ -40,6 +40,8 @@ def execute_plan(
     nominas_proyecto: list[NominaItem],
     nominas_completas: list[NominaItem],
     estados: list[EstadoItem],
+    *,
+    nominas_visibles: list[NominaItem] | None = None,
 ) -> ExecutionResult:
     current = state.copy()
     applied: list[str] = []
@@ -80,7 +82,12 @@ def execute_plan(
             return ExecutionResult("shown", current, renderer.solicitar_confirmacion(current), applied_operations=applied)
 
         if op_type == "mostrar_nomina":
-            return ExecutionResult("shown_nomina", current, renderer.mostrar_nomina(nominas_proyecto), applied_operations=applied)
+            return ExecutionResult(
+                "shown_nomina",
+                current,
+                renderer.mostrar_nomina(nominas_visibles if nominas_visibles is not None else nominas_proyecto),
+                applied_operations=applied,
+            )
 
         if op_type == "sin_novedades":
             if current.novedades or current.pendientes_ambiguos or current.conflictos_novedad:

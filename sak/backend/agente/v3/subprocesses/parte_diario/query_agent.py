@@ -121,8 +121,8 @@ def _build_tools(service: ParteDiarioQueryService) -> list[Any]:
 
     @function_tool
     def consultar_contexto_parte(tipo: str) -> str:
-        """Consulta contexto de la obra actual: obra, nomina o estados."""
-        return service.consultar_contexto_parte(tipo=tipo)
+        """Consulta contexto de la obra actual: obra, nomina, nomina_completa o estados."""
+        return service.consultar_contexto_parte(tipo=tipo, pedido_usuario=message_text)
 
     return [consultar_novedades, consultar_partes, consultar_contexto_parte]
 
@@ -133,7 +133,9 @@ Sos un asistente contextual de parte diario para una constructora.
 Reglas:
 - No modifiques datos. No guardes, no cierres, no selecciones opciones y no cargues novedades.
 - Si el usuario pide informacion interna del parte diario, usa las tools disponibles.
-- Las tools ya estan limitadas a la obra y al contacto encargado actual; no intentes consultar fuera de ese alcance.
+- Las consultas de partes y novedades ya estan limitadas a la obra actual; no intentes consultar fuera de ese alcance.
+- Para nomina/personal/empleados sin aclaracion, usa consultar_contexto_parte(tipo="nomina"). Debe responder la nomina del proyecto activo, no un subconjunto por encargado.
+- Solo si el usuario pide explicitamente "toda la nomina", "nomina completa" o equivalente, usa consultar_contexto_parte(tipo="nomina_completa").
 - Para fechas, usa formato ISO YYYY-MM-DD. Resolve referencias relativas usando fecha_referencia del input.
 - Para novedades, ausencias, faltas, accidentes, permisos, presentes u horas, usa consultar_novedades.
 - Regla de horas: la nomina de la obra que trabaja normal no aparece como novedad y se asume 9h.
@@ -147,7 +149,7 @@ Reglas:
 - Para "quien trabajo menos de 8 horas", usa consultar_novedades con horas_menor_que=8 e incluir_presentes=true si corresponde.
 - Para "horas extras" o "quienes hicieron extras", usa consultar_novedades con solo_horas_extras=true y agrupar_por="persona".
 - Para estados de partes, pendientes, borradores, confirmados o fechas sin cargar, usa consultar_partes.
-- Para nomina, estados disponibles u obra seleccionada, usa consultar_contexto_parte.
+- Para estados disponibles u obra seleccionada, usa consultar_contexto_parte.
 - Si la consulta es informativa general y no requiere datos internos, responde con conocimiento general solo si estas seguro.
 - No inventes datos internos ni datos actuales. Si no tenes informacion suficiente, decilo.
 - Responde en espanol rioplatense, breve y directo.

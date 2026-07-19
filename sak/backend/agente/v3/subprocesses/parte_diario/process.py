@@ -107,6 +107,16 @@ class ParteDiarioProcess:
 
         readonly_operation = _parse_local_readonly_operation(command)
         if readonly_operation and state.esperando in {"confirmacion_ambiguos", "resolucion_conflictos"}:
+            nominas_visibles = (
+                self._load_nominas_for_display(
+                    project.id,
+                    contacto_id=contacto_id,
+                    command=command,
+                    nominas_completas=nominas_completas,
+                )
+                if readonly_operation == "mostrar_nomina"
+                else None
+            )
             return self._from_execution(
                 execute_plan(
                     state,
@@ -114,6 +124,7 @@ class ParteDiarioProcess:
                     nominas_proyecto,
                     nominas_completas,
                     estados,
+                    nominas_visibles=nominas_visibles,
                 )
             )
 
@@ -201,7 +212,24 @@ class ParteDiarioProcess:
             if date_error:
                 return self._simple_reply(date_error, keep_active=False)
 
-        result = execute_plan(state, plan, nominas_proyecto, nominas_completas, estados)
+        nominas_visibles = (
+            self._load_nominas_for_display(
+                project.id,
+                contacto_id=contacto_id,
+                command=message_text,
+                nominas_completas=nominas_completas,
+            )
+            if any(operation.type == "mostrar_nomina" for operation in plan.operations)
+            else None
+        )
+        result = execute_plan(
+            state,
+            plan,
+            nominas_proyecto,
+            nominas_completas,
+            estados,
+            nominas_visibles=nominas_visibles,
+        )
         if plan.is_readonly() and not had_conversational_draft:
             if any(operation.type == "mostrar_parte" for operation in plan.operations):
                 result.reply = renderer.consulta(result.next_state)
@@ -547,6 +575,7 @@ class ParteDiarioProcess:
         idproyecto: int,
         *,
         contacto_id: int | None = None,
+        filtrar_por_contacto: bool = True,
     ) -> tuple[list[NominaItem], list[NominaItem]]:
         projects = {item.id: item.nombre for item in self._session.exec(select(Proyecto)).all()}
         today = _today()
@@ -589,7 +618,7 @@ class ParteDiarioProcess:
             for item in rows
         ]
         project_items = [item for item in all_items if item.idproyecto == idproyecto]
-        if contacto_id is not None:
+        if filtrar_por_contacto and contacto_id is not None:
             assigned_to_contact = [
                 item
                 for item in project_items
@@ -598,6 +627,23 @@ class ParteDiarioProcess:
             if assigned_to_contact:
                 project_items = assigned_to_contact
         return project_items, all_items
+
+    def _load_nominas_for_display(
+        self,
+        idproyecto: int,
+        *,
+        contacto_id: int | None,
+        command: str,
+        nominas_completas: list[NominaItem],
+    ) -> list[NominaItem]:
+        if _requests_full_nomina(command):
+            return nominas_completas
+        nominas_proyecto, _ = self._load_nominas(
+            idproyecto,
+            contacto_id=contacto_id,
+            filtrar_por_contacto=False,
+        )
+        return nominas_proyecto
 
     def _from_execution(self, result: ExecutionResult, *, plan: TurnPlan | None = None) -> TurnResult:
         return TurnResult(
@@ -782,6 +828,32 @@ def _parse_local_readonly_operation(command: str) -> str | None:
     if "nomina" in tokens or "personal" in tokens or "empleado" in tokens or "empleados" in tokens:
         return "mostrar_nomina"
     return None
+
+
+def _requests_full_nomina(text: str | None) -> bool:
+    command = _normalize_command(text)
+    if not command:
+        return False
+    full_phrases = {
+        "toda la nomina",
+        "toda nomina",
+        "todas las nominas",
+        "todas nominas",
+        "nomina completa",
+        "nomina general",
+        "nomina global",
+        "personal completo",
+        "personal general",
+        "personal global",
+        "todo el personal",
+    }
+    if any(phrase in command for phrase in full_phrases):
+        return True
+    tokens = set(command.split())
+    return bool(
+        "nomina" in tokens
+        and ({"toda", "todas", "completa", "completo", "general", "global"} & tokens)
+    )
 
 
 def _has_explicit_date_reference(text: str | None) -> bool:

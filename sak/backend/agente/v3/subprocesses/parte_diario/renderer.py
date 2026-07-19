@@ -39,6 +39,94 @@ def resumen(state: ParteDiarioState) -> str:
     return "\n".join(rows)
 
 
+def resumen_revision(state: ParteDiarioState) -> str:
+    if state.sin_novedades_informado and not state.novedades and not state.pendientes_ambiguos:
+        return "Sin novedades. Todos presentes."
+
+    ausencias: list[str] = []
+    horas_extra: list[str] = []
+    otra_obra: list[str] = []
+    otras: list[str] = []
+    pendientes: list[str] = []
+
+    for novedad in state.novedades:
+        name = _short_person_name(novedad.nombre)
+        code = str(novedad.estado_codigo or "").upper()
+        hours = novedad.horas
+        if novedad.fuera_de_proyecto:
+            otra_obra.append(_review_row(name, _review_hours_suffix(hours)))
+            continue
+        if code and code != "P":
+            ausencias.append(_review_row(name, _state_label(novedad.estado_codigo)))
+            continue
+        if hours is not None and hours > 9:
+            horas_extra.append(_review_row(name, f"{hours - 9:g}"))
+            continue
+        if code == "P" or hours is not None:
+            otras.append(_review_row(name, _review_present_suffix(hours)))
+
+    for pending in state.pendientes_ambiguos:
+        name = _short_person_name(pending.nombre)
+        suffix = _state_label(pending.estado_codigo) or "a validar"
+        pendientes.append(_review_row(name, suffix))
+
+    groups = [
+        ("Ausencias", ausencias),
+        ("Horas extra", horas_extra),
+        ("Otra obra", otra_obra),
+        ("Otras novedades", otras),
+        ("Pendientes de validar", pendientes),
+    ]
+    lines: list[str] = []
+    for title, rows in groups:
+        if not rows:
+            continue
+        if lines:
+            lines.append("")
+        lines.append(title)
+        lines.extend(f"- {row}" for row in rows)
+    return "\n".join(lines) if lines else "(sin novedades cargadas)"
+
+
+def _short_person_name(value: str | None) -> str:
+    text = str(value or "").strip()
+    if "," not in text:
+        return text
+    last_name, first_name = (part.strip() for part in text.split(",", 1))
+    return last_name or first_name or text
+
+
+def _state_label(code: str | None) -> str:
+    labels = {
+        "ACC": "Accidente",
+        "ENF": "Enfermedad",
+        "FAL": "Falta",
+        "FER": "Feriado",
+        "LLV": "Lluvia",
+        "P": "Presente",
+        "PER": "Permiso",
+        "VAC": "Vacaciones",
+    }
+    return labels.get(str(code or "").upper(), str(code or "").upper())
+
+
+def _review_row(name: str, suffix: str | None = None) -> str:
+    clean_suffix = str(suffix or "").strip()
+    return f"{name} ({clean_suffix})" if clean_suffix else name
+
+
+def _review_hours_suffix(hours: float | None) -> str | None:
+    if hours is None or hours == 9:
+        return None
+    return f"{hours:g}h"
+
+
+def _review_present_suffix(hours: float | None) -> str | None:
+    if hours is None:
+        return "Presente"
+    return f"{hours:g}h"
+
+
 def _resumen_pendiente(pending: PendienteAmbiguo) -> str:
     estado = pending.estado_codigo or "estado pendiente"
     horas = _pending_hours(pending)

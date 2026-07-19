@@ -17,7 +17,7 @@ from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.query_agent import ParteDiarioQueryAgentClient
 from agente.v3.subprocesses.parte_diario import renderer
-from agente.v3.subprocesses.parte_diario.process import ParteDiarioProcess, _normalize_command, _today
+from agente.v3.subprocesses.parte_diario.process import ParteDiarioProcess, _normalize_command, _requests_full_nomina, _today
 from agente.v3.subprocesses.parte_diario.state import (
     ParteDiarioFechaOption,
     ParteDiarioOption,
@@ -260,7 +260,7 @@ class ParteDiarioSubprocess:
         if command in {"continuar cargando", "continuar", "cargar", "seguir cargando"}:
             return self._show_date_menu(context, state)
         if _is_show_nomina_command(command):
-            return self._show_nomina_on_date_menu(context, state)
+            return self._show_nomina_on_date_menu(context, state, command=command)
 
         try:
             selected_option = int(command)
@@ -340,6 +340,8 @@ class ParteDiarioSubprocess:
         self,
         context: V3ConversationContext,
         state: ParteDiarioV3State,
+        *,
+        command: str,
     ) -> V3ProcessResult:
         if not state.proyecto_id:
             return self._closed_result(
@@ -349,14 +351,16 @@ class ParteDiarioSubprocess:
             )
         with Session(engine) as session:
             process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, state.etapa))
-            nominas_proyecto, _ = process._load_nominas(
+            nominas_proyecto, nominas_completas = process._load_nominas(
                 int(state.proyecto_id),
                 contacto_id=state.contacto_id,
+                filtrar_por_contacto=False,
             )
+            nominas = nominas_completas if _requests_full_nomina(command) else nominas_proyecto
         return self._show_date_menu(
             context,
             state,
-            prefix=renderer.mostrar_nomina(nominas_proyecto),
+            prefix=renderer.mostrar_nomina(nominas),
             status="shown_nomina",
             extra_metadata={"result": {"parte_diario": {"status": "shown_nomina"}}},
         )
@@ -481,16 +485,13 @@ class ParteDiarioSubprocess:
         if not reply_on_success:
             return None
         draft = state.draft()
-        reply = _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft), obra=state.nombre_obra), draft)
+        reply = _load_start_reply(draft, _draft_status(draft), obra=state.nombre_obra)
         return self._active_result(
             context,
             state,
             reply,
             "date_loaded",
-            _merge_metadata(
-                {"fecha": draft.fecha, "parte_id": draft.parte_id},
-                _main_menu_metadata(reply),
-            ),
+            {"fecha": draft.fecha, "parte_id": draft.parte_id},
         )
 
     async def _handle_continuar(
@@ -577,7 +578,6 @@ class ParteDiarioSubprocess:
                 state,
                 reply,
                 "exit_cancelled",
-                _main_menu_metadata(reply),
             )
 
         return self._active_result(
@@ -606,14 +606,14 @@ class ParteDiarioSubprocess:
         if command in {"volver", "2"}:
             draft.esperando = None
             state.set_draft(draft)
-            state.etapa = "carga"
-            reply = _volver_carga_reply(draft, obra=state.nombre_obra)
+            state.etapa = "revision"
+            reply = _review_reply(draft, obra=state.nombre_obra)
             return self._active_result(
                 context,
                 state,
                 reply,
                 "empty_close_cancelled",
-                _main_menu_metadata(reply),
+                _review_metadata(reply),
             )
 
         reply = _sin_novedades_confirmacion()
@@ -642,14 +642,14 @@ class ParteDiarioSubprocess:
         if command in {"volver", "2"}:
             draft.esperando = None
             state.set_draft(draft)
-            state.etapa = "carga"
-            reply = _volver_carga_reply(draft, obra=state.nombre_obra)
+            state.etapa = "revision"
+            reply = _review_reply(draft, obra=state.nombre_obra)
             return self._active_result(
                 context,
                 state,
                 reply,
                 "validated_close_cancelled",
-                _main_menu_metadata(reply),
+                _review_metadata(reply),
             )
 
         reply = _cierre_validado_confirmacion(draft, obra=state.nombre_obra)
@@ -693,13 +693,12 @@ class ParteDiarioSubprocess:
         draft.esperando = None
         state.set_draft(draft)
         state.etapa = "carga"
-        reply = _with_load_menu(_selected_fecha_reply(draft, _draft_status(draft), obra=state.nombre_obra), draft)
+        reply = _volver_carga_reply(draft, obra=state.nombre_obra)
         return self._active_result(
             context,
             state,
             reply,
             "validation_back_to_load",
-            _main_menu_metadata(reply),
         )
 
     def _show_more_validation_options(
@@ -741,10 +740,71 @@ class ParteDiarioSubprocess:
         if _is_waiting_for_resolution(draft):
             return None
 
-        if command in {"guardar", "1"}:
+        if state.etapa in {"revision", "cierre"}:
+            if command in {"guardar", "guardar borrador", "1"}:
+                return await self._guardar_borrador(message, context, state)
+
+            if command in {"cerrar", "finalizar", "finalizar parte", "2"}:
+                if _is_empty_draft(draft):
+                    draft.esperando = "confirmacion_sin_novedades"
+                    state.set_draft(draft)
+                    state.etapa = "cierre"
+                    reply = _sin_novedades_confirmacion()
+                    return self._active_result(
+                        context,
+                        state,
+                        reply,
+                        "empty_close_confirmation",
+                        _confirmation_metadata(reply),
+                    )
+                return await self._handle_parte_diario(message, context, state, forced_text="CERRAR")
+
+            if command in {"seguir editando", "editar", "3", "volver"}:
+                state.etapa = "carga"
+                return self._active_result(
+                    context,
+                    state,
+                    _seguir_editando_reply(draft, obra=state.nombre_obra),
+                    "back_to_load",
+                )
+
+            if command in {"salir"}:
+                state.etapa = "confirmar_salida"
+                return self._active_result(
+                    context,
+                    state,
+                    _salida_confirmacion(),
+                    "exit_confirmation",
+                    _confirmation_metadata(_salida_confirmacion()),
+                )
+
+            reply = _review_reply(draft, obra=state.nombre_obra, prefix="No pude interpretar la opcion.")
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "invalid_review_action",
+                _review_metadata(reply),
+            )
+
+        if state.etapa == "carga" and _is_finish_loading_command(command):
+            if _is_empty_draft(draft):
+                draft.sin_novedades_informado = True
+                state.set_draft(draft)
+            state.etapa = "revision"
+            reply = _review_reply(state.draft(), obra=state.nombre_obra)
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "review_required",
+                _review_metadata(reply),
+            )
+
+        if command in {"guardar", "guardar borrador"}:
             return await self._guardar_borrador(message, context, state)
 
-        if command in {"cerrar", "2"}:
+        if command in {"cerrar", "finalizar", "finalizar parte"}:
             if _is_empty_draft(draft):
                 draft.esperando = "confirmacion_sin_novedades"
                 state.set_draft(draft)
@@ -759,7 +819,7 @@ class ParteDiarioSubprocess:
                 )
             return await self._handle_parte_diario(message, context, state, forced_text="CERRAR")
 
-        if command in {"salir", "3"}:
+        if command in {"salir"}:
             state.etapa = "confirmar_salida"
             return self._active_result(
                 context,
@@ -777,7 +837,6 @@ class ParteDiarioSubprocess:
                 state,
                 reply,
                 "back_to_load",
-                _main_menu_metadata(reply),
             )
 
         return None
@@ -790,12 +849,12 @@ class ParteDiarioSubprocess:
     ) -> V3ProcessResult:
         draft = state.draft()
         if not draft.fecha:
+            reply = "No hay una fecha cargada para guardar el parte."
             return self._active_result(
                 context,
                 state,
-                _with_load_menu("No hay una fecha cargada para guardar el parte.", draft),
+                reply,
                 "missing_date",
-                _main_menu_metadata(_with_load_menu("No hay una fecha cargada para guardar el parte.", draft)),
             )
 
         payload = _save_payload(draft, cerrar_parte=False)
@@ -832,12 +891,13 @@ class ParteDiarioSubprocess:
                     message=message,
                     payload=payload,
                 )
+                reply = _review_reply(draft, obra=state.nombre_obra, prefix=error_reply)
                 return self._active_result(
                     context,
                     state,
-                    _with_load_menu(error_reply, draft),
+                    reply,
                     "persistence_error",
-                    _main_menu_metadata(_with_load_menu(error_reply, draft)),
+                    _review_metadata(reply) if state.etapa == "revision" else None,
                 )
 
         payload["parte_diario_id"] = parte.id
@@ -991,7 +1051,7 @@ class ParteDiarioSubprocess:
         if extra_metadata:
             metadata.update(extra_metadata)
             metadata["status"] = status
-        if status == "confirmed":
+        if status in {"confirmed", "saved"}:
             state.etapa = "continuar"
             if state.proyecto_id:
                 state.nombre_obra = state.nombre_obra or self._resolve_project_name(int(state.proyecto_id))
@@ -999,9 +1059,14 @@ class ParteDiarioSubprocess:
                     int(state.proyecto_id),
                     contacto_id=state.contacto_id,
                 )
+            saved_fecha = None
+            if status == "saved":
+                result = (extra_metadata or {}).get("result") or {}
+                saved_fecha = str(result.get("fecha") or "").strip() or None
             next_fecha, pending_count = resolver_fecha_default_parte_diario_info(
                 int(state.proyecto_id or 0),
                 contacto_id=state.contacto_id,
+                exclude_fechas={saved_fecha} if saved_fecha else None,
             )
             if not next_fecha:
                 return V3ProcessResult(
@@ -1228,15 +1293,17 @@ def resolver_fecha_default_parte_diario_info(
     proyecto_id: int,
     *,
     contacto_id: int | None = None,
+    exclude_fechas: set[str | None] | None = None,
 ) -> tuple[str | None, int]:
     if proyecto_id <= 0:
         return None, 0
 
+    excluded = {str(item) for item in (exclude_fechas or set()) if item}
     options = ParteDiarioSubprocess._build_fecha_options(proyecto_id, contacto_id=contacto_id)
     pending_options = [
         option
         for option in sorted(options, key=lambda item: item.fecha)
-        if option.estado in {"borrador", "sin cargar"}
+        if option.estado in {"borrador", "sin cargar"} and option.fecha not in excluded
     ]
     if not pending_options:
         return None, 0
@@ -1381,11 +1448,64 @@ def _selected_fecha_reply(draft, status: str, *, obra: str | None = None) -> str
     return f"Parte diario en carga:\n{header}\n\n{renderer.resumen(draft)}"
 
 
+def _load_start_reply(draft, status: str, *, obra: str | None = None) -> str:
+    base = _selected_fecha_reply(draft, status, obra=obra)
+    if _is_empty_draft(draft):
+        return f"{base}\n\nQue novedades hubo para esta fecha?"
+    return f"{base}\n\nQueres agregar o corregir alguna novedad?"
+
+
+def _load_followup_reply(reply: str, draft, *, status: str, obra: str | None = None) -> str:
+    base = _strip_known_instructions(reply).strip()
+    if status == "updated" and not getattr(draft, "pendientes_ambiguos", None):
+        context_lines = []
+        if draft.fecha:
+            context_lines.append(f"Fecha: {draft.fecha}")
+        obra_label = str(obra or "").strip()
+        if obra_label:
+            context_lines.append(f"Obra: {obra_label}")
+        context_text = "\n".join(context_lines)
+        if context_text:
+            base = f"Registrado.\n{context_text}\n\n{renderer.resumen(draft)}"
+        else:
+            base = f"Registrado.\n\n{renderer.resumen(draft)}"
+    if not base:
+        base = renderer.resumen(draft)
+    return f"{base}\n\nHay alguna otra novedad?"
+
+
 def _volver_carga_reply(draft, *, obra: str | None = None) -> str:
-    return _with_load_menu(
-        f"Volvemos a la carga del parte diario.\n\n{_selected_fecha_reply(draft, _draft_status(draft), obra=obra)}",
-        draft,
+    return (
+        "Volvemos a la carga del parte diario.\n\n"
+        f"{_selected_fecha_reply(draft, _draft_status(draft), obra=obra)}\n\n"
+        "Que queres agregar o corregir?"
     )
+
+
+def _seguir_editando_reply(draft, *, obra: str | None = None) -> str:
+    return (
+        "Seguimos editando el parte.\n\n"
+        f"{_selected_fecha_reply(draft, _draft_status(draft), obra=obra)}\n\n"
+        "Que novedad queres agregar o corregir?"
+    )
+
+
+def _review_reply(draft, *, obra: str | None = None, prefix: str | None = None) -> str:
+    lines: list[str] = []
+    if prefix:
+        lines.append(prefix)
+        lines.append("")
+    lines.append("Resumen del parte")
+    if draft.fecha:
+        lines.append(f"Fecha: {draft.fecha}")
+    obra_label = str(obra or "").strip()
+    if obra_label:
+        lines.append(f"Obra: {obra_label}")
+    lines.append("")
+    lines.append(renderer.resumen_revision(draft))
+    lines.append("")
+    lines.append(_review_menu())
+    return "\n".join(lines)
 
 
 def _obra_summary_line(obra: str | None) -> str:
@@ -1427,7 +1547,7 @@ def _status_from_payload(payload: dict) -> str:
 def _should_keep_active_after_readonly(state: ParteDiarioV3State, payload: dict) -> bool:
     if not state.has_resolved_obra():
         return False
-    if state.etapa not in {"carga", "cierre"}:
+    if state.etapa not in {"carga", "revision", "cierre"}:
         return False
     return _status_from_payload(payload) in {"shown", "shown_nomina"}
 
@@ -1463,26 +1583,30 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
         return reply
     status = _status_from_payload(payload)
     if status == "confirmation_required" or "Parte diario para confirmar:" in reply:
-        state.etapa = "cierre"
-        return _replace_tail(_add_obra_to_reply(reply, state.nombre_obra), _close_menu())
+        state.etapa = "revision"
+        return _review_reply(state.draft(), obra=state.nombre_obra)
     if status == "cancel_confirmation_required":
         state.etapa = "confirmar_salida"
         return _salida_confirmacion()
-    if status in {"updated", "sin_novedades", "shown", "shown_nomina", "clarification", "waiting"}:
+    if status == "sin_novedades":
+        state.etapa = "revision"
+        return _review_reply(state.draft(), obra=state.nombre_obra)
+    if status in {"updated", "shown", "shown_nomina", "clarification", "waiting", "sin_novedades_rejected"}:
         state.etapa = "carga"
-        return _with_load_menu(_add_obra_to_reply(reply, state.nombre_obra), state.draft())
+        return _load_followup_reply(
+            _add_obra_to_reply(reply, state.nombre_obra),
+            state.draft(),
+            status=status,
+            obra=state.nombre_obra,
+        )
     return reply
-
-
-def _with_load_menu(reply: str, draft=None) -> str:
-    return _replace_tail(reply, _main_menu())
 
 
 def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict | None:
     if state.draft().esperando == "confirmacion_cierre_validado":
         return _confirmation_metadata(reply)
-    if state.etapa in {"carga", "cierre"}:
-        return _main_menu_metadata(reply)
+    if state.etapa == "revision":
+        return _review_metadata(reply)
     if state.etapa == "confirmar_salida":
         return _confirmation_metadata(reply)
     if state.etapa == "validacion":
@@ -1490,14 +1614,14 @@ def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict |
     return None
 
 
-def _main_menu_metadata(reply: str) -> dict | None:
-    body = _strip_known_menu_tail(reply)
+def _review_metadata(reply: str) -> dict | None:
+    body = _strip_known_review_tail(reply)
     interactive = whatsapp_buttons(
         body=body,
         buttons=[
-            InteractiveButton(id="guardar", title="GUARDAR"),
-            InteractiveButton(id="cerrar", title="CERRAR"),
-            InteractiveButton(id="salir", title="SALIR"),
+            InteractiveButton(id="guardar borrador", title="Guardar borrador"),
+            InteractiveButton(id="finalizar parte", title="Finalizar parte"),
+            InteractiveButton(id="seguir editando", title="Seguir editando"),
         ],
     )
     return _interactive_metadata(interactive)
@@ -1746,9 +1870,9 @@ def _looks_like_internal_query(text: str) -> bool:
     return any(term in command for term in query_terms)
 
 
-def _strip_known_menu_tail(reply: str) -> str:
+def _strip_known_review_tail(reply: str) -> str:
     text = str(reply or "").strip()
-    for tail in (_main_menu(),):
+    for tail in (_review_menu(),):
         if text.endswith(tail):
             return text[: -len(tail)].strip()
     return text
@@ -1771,12 +1895,8 @@ def _is_empty_draft(draft) -> bool:
     )
 
 
-def _close_menu() -> str:
-    return _main_menu()
-
-
-def _main_menu() -> str:
-    return "Opciones: 1:GUARDAR 2:CERRAR 3:SALIR."
+def _review_menu() -> str:
+    return "Opciones: 1:GUARDAR BORRADOR 2:FINALIZAR PARTE 3:SEGUIR EDITANDO."
 
 
 def _general_greeting() -> str:
@@ -1969,6 +2089,25 @@ def _is_waiting_for_resolution(draft) -> bool:
         "confirmacion_cambio_fecha",
         "confirmacion_sin_novedades",
         "confirmacion_cierre_validado",
+    }
+
+
+def _is_finish_loading_command(command: str) -> bool:
+    return command in {
+        "no",
+        "nada",
+        "nada mas",
+        "no nada mas",
+        "no hay mas",
+        "no hay nada mas",
+        "eso es todo",
+        "listo",
+        "terminamos",
+        "termine",
+        "finalizar carga",
+        "revisar",
+        "ver resumen",
+        "ok",
     }
 
 
