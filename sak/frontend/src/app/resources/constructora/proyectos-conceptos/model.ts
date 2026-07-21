@@ -28,7 +28,7 @@ export type ProyectoConcepto = {
 export const SIGNO_CHOICES = [
   { id: 1, name: "Ingreso" },
   { id: -1, name: "Egreso" },
-] as const;
+];
 
 export const proyectoConceptoSchema = z.object({
   nombre: z.string().min(1).max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),

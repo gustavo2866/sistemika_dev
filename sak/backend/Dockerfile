@@ -1,5 +1,5 @@
 # Dockerfile para FastAPI + Uvicorn en Cloud Run
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Variables de entorno para Python
 ENV PYTHONDONTWRITEBYTECODE 1

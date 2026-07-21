@@ -75,7 +75,7 @@ const TarjaEmpleadoValue = ({
   className?: string;
 }) => {
   const nominaId = resolveNumericId(idnomina);
-  const { data: fetchedNomina } = useGetOne<Record<string, unknown>>(
+  const { data: fetchedNomina } = useGetOne<{ id: number; [key: string]: unknown }>(
     "nominas",
     { id: nominaId ?? 0 },
     { enabled: nominaId != null && !nomina },
