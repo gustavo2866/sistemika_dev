@@ -55,6 +55,24 @@ import {
   AdmConceptoShow,
 } from "@/app/resources/administracion/adm-conceptos";
 import {
+  ErpRubroList,
+  ErpRubroCreate,
+  ErpRubroEdit,
+  ErpRubroShow,
+} from "@/app/resources/erp/rubros";
+import {
+  ErpCuentaList,
+  ErpCuentaCreate,
+  ErpCuentaEdit,
+  ErpCuentaShow,
+} from "@/app/resources/erp/cuentas";
+import {
+  ErpPresupuestoList,
+  ErpPresupuestoCreate,
+  ErpPresupuestoEdit,
+  ErpPresupuestoPanel,
+} from "@/app/resources/erp/presupuestos";
+import {
   TaxProfileList,
   TaxProfileCreate,
   TaxProfileEdit,
@@ -143,16 +161,6 @@ import {
   ProyectoEncargadoEdit,
 } from "@/app/resources/constructora/proyecto-encargados";
 import {
-  ProyFaseList,
-  ProyFaseCreate,
-  ProyFaseEdit,
-} from "@/app/resources/constructora/proy-fases";
-import {
-  ProyectoMacrorubroList,
-  ProyectoMacrorubroCreate,
-  ProyectoMacrorubroEdit,
-} from "@/app/resources/constructora/proyectos-macrorubros";
-import {
   ProyectoConceptoList,
   ProyectoConceptoCreate,
   ProyectoConceptoEdit,
@@ -163,12 +171,6 @@ import {
   ProyPresupuestoEdit,
   ProyPresupuestoShow,
 } from "@/app/resources/constructora/proy-presupuesto";
-import {
-  ProyectosBudgetList,
-  ProyectosBudgetCreate,
-  ProyectosBudgetEdit,
-  ProyectosBudgetPanel,
-} from "@/app/resources/constructora/proyectos-budget";
 import {
   ProyectoAvanceList,
   ProyectoAvanceCreate,
@@ -468,24 +470,6 @@ const AdminApp = () => {
         options={{ label: "Proyectos" }}
       />
       <Resource
-        name="proy-fases"
-        list={ProyFaseList}
-        create={ProyFaseCreate}
-        edit={ProyFaseEdit}
-        recordRepresentation="nombre"
-        icon={ListChecks}
-        options={{ label: "Fases de Proyecto" }}
-      />
-      <Resource
-        name="constructora/proyectos-macrorubros"
-        list={ProyectoMacrorubroList}
-        create={ProyectoMacrorubroCreate}
-        edit={ProyectoMacrorubroEdit}
-        recordRepresentation="nombre"
-        icon={ListChecks}
-        options={{ label: "Macrorubros de Proyecto" }}
-      />
-      <Resource
         name="constructora/proyectos-conceptos"
         list={ProyectoConceptoList}
         create={ProyectoConceptoCreate}
@@ -503,15 +487,6 @@ const AdminApp = () => {
         recordRepresentation="fecha"
         icon={Wallet}
         options={{ label: "Presupuestos" }}
-      />
-      <Resource
-        name="constructora/proyectos-budget"
-        list={ProyectosBudgetList}
-        create={ProyectosBudgetCreate}
-        edit={ProyectosBudgetEdit}
-        recordRepresentation="descripcion"
-        icon={Wallet}
-        options={{ label: "Budget Proyectos" }}
       />
       <Resource
         name="proyecto-avance"
@@ -666,6 +641,35 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Coins}
         options={{ label: "Centros de Costo" }}
+      />
+      <Resource
+        name="erp/rubros"
+        list={ErpRubroList}
+        create={ErpRubroCreate}
+        edit={ErpRubroEdit}
+        show={ErpRubroShow}
+        recordRepresentation="nombre"
+        icon={GitBranch}
+        options={{ label: "Rubros ERP" }}
+      />
+      <Resource
+        name="erp/cuentas"
+        list={ErpCuentaList}
+        create={ErpCuentaCreate}
+        edit={ErpCuentaEdit}
+        show={ErpCuentaShow}
+        recordRepresentation="descripcion"
+        icon={FileText}
+        options={{ label: "Cuentas ERP" }}
+      />
+      <Resource
+        name="erp/presupuestos"
+        list={ErpPresupuestoList}
+        create={ErpPresupuestoCreate}
+        edit={ErpPresupuestoEdit}
+        recordRepresentation="fecha"
+        icon={Wallet}
+        options={{ label: "Presupuestos ERP" }}
       />
       <Resource
         name="tipos-solicitud"
@@ -1007,7 +1011,7 @@ const AdminApp = () => {
       <CustomRoutes>
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/constructora/setup/*" element={<ConstructoraSetupPage />} />
-        <Route path="/constructora/proyectos-budget/panel" element={<ProyectosBudgetPanel />} />
+        <Route path="/erp/presupuestos/panel" element={<ErpPresupuestoPanel />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />

@@ -64,7 +64,6 @@ from .propietario import Propietario
 from .proyecto import Proyecto
 from .proyecto_encargado import ProyectoEncargado
 from .proyecto_avance import ProyectoAvance
-from .proy_fase import ProyFase
 from .proy_presupuesto import ProyPresupuesto
 from .nomina import Nomina, CategoriaNomina
 from .parte_diario_estado import ParteDiarioEstado
@@ -92,9 +91,7 @@ from .enums import (
     EstadoEmprendimiento,
 )
 from .constructora import (
-    ProyectosBudget,
     ProyectosConceptos,
-    ProyectosMacrorubros,
     ConstructoraPedido,
     ConstructoraPedidoDetalle,
     PedidoObraDetalleEstado,
@@ -102,6 +99,7 @@ from .constructora import (
     PedidoObraEstado,
     PedidoObraOrigen,
 )
+from .erp import (ErpRubro, ErpCuenta, ErpPresupuesto, ErpLibroDiario)
 
 __all__ = [
     "Base", 
@@ -180,15 +178,17 @@ __all__ = [
     "EstadoEmprendimiento",
     "TaxProfile",
     "TaxProfileDetail",
-    "ProyectosBudget",
     "ProyectosConceptos",
-    "ProyectosMacrorubros",
     "ConstructoraPedido",
     "ConstructoraPedidoDetalle",
     "PedidoObraDetalleEstado",
     "PedidoObraDetalleOrigen",
     "PedidoObraEstado",
     "PedidoObraOrigen",
+    "ErpRubro",
+    "ErpCuenta",
+    "ErpPresupuesto",
+    "ErpLibroDiario",
 ]
 
 

@@ -51,6 +51,7 @@ import {
   MessageCircle,
   Calculator,
   CalendarDays,
+  GitBranch,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = [
@@ -73,6 +74,7 @@ const ADMIN_RESOURCES = [
   "facturas",
   "orden-compra",
   "centros-costo",
+  "erp/rubros",
 ] as const;
 const CONFIG_RESOURCES = [
   "users",
@@ -127,17 +129,15 @@ const HIDDEN_RESOURCES = [
   "departamentos",
   "articulos",
   "tipos-solicitud",
+  "erp/presupuestos",
   "po-order-status",
   "po-invoice-status",
   "po-invoice-status-fin",
   "proyectos",
-  "constructora/proyectos-budget",
-  "constructora/proyectos-macrorubros",
   "constructora/proyectos-conceptos",
   "nominas",
   "parte-diario",
   "parte-diario-estados",
-  "proy-fases",
   "proy-presupuestos",
   "proyecto-encargados",
   "proyecto-avance",
@@ -289,15 +289,15 @@ export function AppSidebar() {
                     />
                     ))}
                   <SidebarCustomMenuItem
-                    label="Parte Diario"
-                    to="/parte-diario/panel"
-                    icon={CalendarDays}
+                    label="Presupuestos ERP"
+                    to="/erp/presupuestos/panel"
+                    icon={Wallet}
                     onClick={handleItemClick}
                   />
                   <SidebarCustomMenuItem
-                    label="Budget Proyectos"
-                    to="/constructora/proyectos-budget/panel"
-                    icon={Wallet}
+                    label="Parte Diario"
+                    to="/parte-diario/panel"
+                    icon={CalendarDays}
                     onClick={handleItemClick}
                   />
                   {constructoraResources.includes("tarjas") ? (
@@ -568,6 +568,8 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "parte-diario": NotebookPen,
   "parte-diario-estados": ListChecks,
   "constructora/pedidos": ClipboardList,
+  "erp/rubros": GitBranch,
+  "erp/presupuestos": Wallet,
   nominas: Wallet,
 };
 

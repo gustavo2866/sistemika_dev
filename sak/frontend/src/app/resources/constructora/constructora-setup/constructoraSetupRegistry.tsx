@@ -2,16 +2,6 @@
 
 import type { SetupItem } from "@/components/forms/form_order";
 import {
-  ProyFaseCreate,
-  ProyFaseEdit,
-  ProyFaseList,
-} from "@/app/resources/constructora/proy-fases";
-import {
-  ProyectoMacrorubroCreate,
-  ProyectoMacrorubroEdit,
-  ProyectoMacrorubroList,
-} from "@/app/resources/constructora/proyectos-macrorubros";
-import {
   ProyectoConceptoCreate,
   ProyectoConceptoEdit,
   ProyectoConceptoList,
@@ -21,26 +11,18 @@ import {
   ParteDiarioEstadoEdit,
   ParteDiarioEstadoList,
 } from "@/app/resources/constructora/parte-diario-estados";
+import {
+  ErpRubroCreate,
+  ErpRubroEdit,
+  ErpRubroList,
+} from "@/app/resources/erp/rubros";
+import {
+  ErpCuentaCreate,
+  ErpCuentaEdit,
+  ErpCuentaList,
+} from "@/app/resources/erp/cuentas";
 
 const PROYECTO_SETUP_ITEMS: SetupItem[] = [
-  {
-    key: "proy-fases",
-    label: "Fases de Proyecto",
-    description: "Configurar fases disponibles para los proyectos.",
-    resource: "proy-fases",
-    listComponent: ProyFaseList,
-    createComponent: ProyFaseCreate,
-    editComponent: ProyFaseEdit,
-  },
-  {
-    key: "proyectos-macrorubros",
-    label: "Macrorubros de Proyecto",
-    description: "Configurar macrorubros disponibles para presupuestos de proyecto.",
-    resource: "constructora/proyectos-macrorubros",
-    listComponent: ProyectoMacrorubroList,
-    createComponent: ProyectoMacrorubroCreate,
-    editComponent: ProyectoMacrorubroEdit,
-  },
   {
     key: "proyectos-conceptos",
     label: "Conceptos de Proyecto",
@@ -64,9 +46,31 @@ const TARJA_SETUP_ITEMS: SetupItem[] = [
   },
 ];
 
+const ERP_SETUP_ITEMS: SetupItem[] = [
+  {
+    key: "erp-rubros",
+    label: "Rubros ERP",
+    description: "Configurar rubros y cuentas contables para constructora.",
+    resource: "erp/rubros",
+    listComponent: ErpRubroList,
+    createComponent: ErpRubroCreate,
+    editComponent: ErpRubroEdit,
+  },
+  {
+    key: "erp-cuentas",
+    label: "Cuentas ERP",
+    description: "Configurar cuentas contables y su concepto de proyecto asociado.",
+    resource: "erp/cuentas",
+    listComponent: ErpCuentaList,
+    createComponent: ErpCuentaCreate,
+    editComponent: ErpCuentaEdit,
+  },
+];
+
 export const CONSTRUCTORA_SETUP_ITEMS: SetupItem[] = [
   ...PROYECTO_SETUP_ITEMS,
   ...TARJA_SETUP_ITEMS,
+  ...ERP_SETUP_ITEMS,
 ];
 
 export const CONSTRUCTORA_SETUP_GROUPS = [
@@ -79,6 +83,11 @@ export const CONSTRUCTORA_SETUP_GROUPS = [
     key: "tarja",
     label: "Tarja",
     items: TARJA_SETUP_ITEMS,
+  },
+  {
+    key: "erp",
+    label: "ERP",
+    items: ERP_SETUP_ITEMS,
   },
 ] as const;
 

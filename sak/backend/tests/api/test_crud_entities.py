@@ -90,6 +90,51 @@ def test_create_tarea(client: TestClient, db_session: Session) -> None:
     assert response.json()["titulo"] == payload["titulo"]
 
 
+def test_create_erp_cuenta_tipo(client: TestClient) -> None:
+    payload = {
+        "nombre": f"Tipo Cuenta Test {uuid4().hex[:8]}",
+        "descripcion": "Tipo de cuenta ERP de prueba",
+        "cuenta": "1.01.01",
+        "es_impuesto": False,
+    }
+    response = client.post("/erp/cuenta-tipos", json=payload)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["nombre"] == payload["nombre"]
+    assert body["cuenta"] == payload["cuenta"]
+
+
+def test_create_erp_cuenta(client: TestClient) -> None:
+    rubro_payload = {
+        "nombre": f"Rubro Cuenta Test {uuid4().hex[:8]}",
+        "activo": True,
+        "cuentas": [
+            {
+                "nro_cuenta": 1,
+                "cod_cuenta": f"BOOT-{uuid4().hex[:8]}",
+                "descripcion": "Cuenta inicial",
+                "activo": True,
+            }
+        ],
+    }
+    rubro_response = client.post("/erp/rubros", json=rubro_payload)
+    assert rubro_response.status_code == 201, rubro_response.text
+
+    payload = {
+        "rubro_id": rubro_response.json()["id"],
+        "nro_cuenta": 2,
+        "cod_cuenta": f"CTA-{uuid4().hex[:8]}",
+        "descripcion": "Cuenta ERP de prueba",
+        "activo": True,
+        "proyectos_concepto_id": None,
+    }
+    response = client.post("/erp/cuentas", json=payload)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["cod_cuenta"] == payload["cod_cuenta"]
+    assert body["rubro_id"] == payload["rubro_id"]
+
+
 def test_create_cliente(client: TestClient) -> None:
     payload = {
         "razon_social": "Cliente Demo",

@@ -6,9 +6,7 @@ from .pedido import (
     PedidoObraEstado,
     PedidoObraOrigen,
 )
-from .proyectos_macrorubros import ProyectosMacrorubros
 from .proyectos_conceptos import ProyectosConceptos
-from .proyectos_budget import ProyectosBudget
 
 __all__ = [
     "ConstructoraPedido",
@@ -17,7 +15,5 @@ __all__ = [
     "PedidoObraDetalleOrigen",
     "PedidoObraEstado",
     "PedidoObraOrigen",
-    "ProyectosMacrorubros",
     "ProyectosConceptos",
-    "ProyectosBudget",
 ]

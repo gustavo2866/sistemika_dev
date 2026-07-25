@@ -5,9 +5,7 @@ export * from "./configuracion/tipos-operacion";
 export * from "./configuracion/metodos-pago";
 export * from "./inmobiliaria/tipos-propiedad";
 export * from "./constructora/proyectos";
-export * from "./constructora/proyectos-macrorubros";
 export * from "./constructora/proyectos-conceptos";
-export * from "./constructora/proyectos-budget";
 export * from "./constructora";
 export * from "./constructora/parte-diario";
 export * from "./po/departamentos";
@@ -40,5 +38,8 @@ export * from "./crm/crm-mensajes";
 export * from "./inmobiliaria/emprendimientos";
 export * from "./inmobiliaria/calculadora-financiera";
 export * from "./administracion/adm-conceptos";
+export * from "./erp/rubros";
+export * from "./erp/cuentas";
+export * from "./erp/presupuestos";
 export * from "./configuracion/tax-profiles";
 // Los dashboards no necesitan ser exportados aquí
