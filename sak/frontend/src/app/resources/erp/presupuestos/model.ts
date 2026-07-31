@@ -26,6 +26,8 @@ export type ErpPresupuesto = {
   erp_cuenta_id: number;
   egreso: number;
   ingres: number;
+  real_egreso: number;
+  real_ingreso: number;
   obreros_cantidad: number;
   obreros_costo: number;
   proyecto?: {
@@ -53,6 +55,8 @@ export const erpPresupuestoSchema = z.object({
   erp_cuenta_id: requiredId,
   ingres: decimalField,
   egreso: decimalField,
+  real_ingreso: decimalField,
+  real_egreso: decimalField,
   obreros_cantidad: decimalField,
   obreros_costo: decimalField,
 });
@@ -66,6 +70,8 @@ export const ERP_PRESUPUESTO_DEFAULT: ErpPresupuestoFormValues = {
   erp_cuenta_id: undefined as unknown as number,
   ingres: 0,
   egreso: 0,
+  real_ingreso: 0,
+  real_egreso: 0,
   obreros_cantidad: 0,
   obreros_costo: 0,
 };

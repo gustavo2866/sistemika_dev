@@ -57,7 +57,7 @@ def _iter_periods(periodo_desde: str, periodo_hasta: str) -> Iterator[str]:
         yield f"{anio:04d}{mes:02d}"
 
 
-@erp_libro_diario_router.post("/sync-range", status_code=204)
+@erp_libro_diario_router.post("/sync-range")
 def sync_erp_libro_diario_range(payload: dict = Body(...)):
     periodo_desde = payload.get("periodo_desde")
     periodo_hasta = payload.get("periodo_hasta")
@@ -72,10 +72,17 @@ def sync_erp_libro_diario_range(payload: dict = Body(...)):
 
     try:
         periodos = list(_iter_periods(str(periodo_desde), str(periodo_hasta)))
+        results = []
         for periodo in periodos:
-            run_sync(periodo=periodo, batch_size=batch_size, dry_run=dry_run)
+            results.append(run_sync(periodo=periodo, batch_size=batch_size, dry_run=dry_run))
 
-        return Response(status_code=204)
+        return {
+            "periodo_desde": str(periodo_desde),
+            "periodo_hasta": str(periodo_hasta),
+            "dry_run": dry_run,
+            "periodos": periodos,
+            "resultados": results,
+        }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

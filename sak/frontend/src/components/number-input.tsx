@@ -17,15 +17,21 @@ export const NumberInput = (props: NumberInputProps) => {
     source,
     className,
     resource: resourceProp,
-    validate: _validateProp,
-    format: _formatProp,
+    validate,
+    format,
     parse = convertStringToNumber,
     onFocus,
     ...rest
   } = props;
   const resource = useResourceContext({ resource: resourceProp });
 
-  const { id, field, isRequired } = useInput(props);
+  const { id, field, isRequired } = useInput({
+    ...rest,
+    label,
+    source,
+    resource: resourceProp,
+    validate,
+  });
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -41,22 +47,31 @@ export const NumberInput = (props: NumberInputProps) => {
 
   const hasFocus = React.useRef(false);
 
+  const formatValue = React.useCallback(
+    (nextValue: unknown) => {
+      if (!format) return nextValue?.toString() ?? "";
+      return format(nextValue);
+    },
+    [format],
+  );
+
   const handleFocus = (event: React.FocusEvent<HTMLInputElement>) => {
     onFocus?.(event);
     hasFocus.current = true;
+    setValue(field.value?.toString() ?? "");
   };
 
   const handleBlur = (event: React.FocusEvent<HTMLInputElement>) => {
     field.onBlur?.(event);
     hasFocus.current = false;
-    setValue(field.value?.toString() ?? "");
+    setValue(formatValue(field.value));
   };
 
   useEffect(() => {
     if (!hasFocus.current) {
-      setValue(field.value?.toString() ?? "");
+      setValue(formatValue(field.value));
     }
-  }, [field.value]);
+  }, [field.value, formatValue]);
 
   return (
     <FormField id={id} className={className} name={field.name}>
@@ -74,7 +89,8 @@ export const NumberInput = (props: NumberInputProps) => {
         <Input
           {...rest}
           {...field}
-          type="number"
+          type={format ? "text" : "number"}
+          inputMode="decimal"
           value={value}
           onChange={handleChange}
           onFocus={handleFocus}

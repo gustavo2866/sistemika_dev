@@ -57,6 +57,7 @@ export const AutocompleteInput = (
         | React.ReactNode
         | ((option: Choice | undefined) => React.ReactNode);
       onSelectionChange?: (choice: Choice | null) => void;
+      optionFilter?: (choice: Choice) => boolean;
     },
 ) => {
   const {
@@ -190,7 +191,9 @@ export const AutocompleteInput = (
     (create || onCreate) && (filterValue !== "" || createLabel)
       ? getCreateItem(filterValue)
       : null;
-  let finalChoices = allChoices;
+  let finalChoices = props.optionFilter
+    ? allChoices.filter(props.optionFilter)
+    : allChoices;
   if (createItem) {
     finalChoices = [...finalChoices, createItem];
   }

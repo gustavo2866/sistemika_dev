@@ -45,6 +45,20 @@ const filters = buildListFilters(
       },
     },
     {
+      type: "reference",
+      referenceProps: {
+        source: "proyectos_concepto_id",
+        reference: "constructora/proyectos-conceptos",
+        label: "Concepto",
+        alwaysOn: true,
+      },
+      selectProps: {
+        optionText: "nombre",
+        emptyText: "Todos",
+        className: "w-full",
+      },
+    },
+    {
       type: "text",
       props: {
         source: "cod_cuenta",

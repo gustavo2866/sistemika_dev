@@ -17,7 +17,7 @@ type ChoiceRecord = Record<string, unknown> & {
 type OptionResolver<TChoice extends ChoiceRecord> = (choice: TChoice) => string;
 
 interface CompactRadixSelectProps<TChoice extends ChoiceRecord> {
-  label: string;
+  label: string | false;
   choices: TChoice[];
   value?: string | number | null;
   onChange: (value: string) => void;
@@ -51,6 +51,31 @@ export const CompactRadixSelect = <TChoice extends ChoiceRecord>({
   const normalizedValue =
     value === null || value === undefined ? undefined : String(value);
 
+  const select = (
+    <Select value={normalizedValue} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        size="sm"
+        className={cn(compactTriggerClass, triggerClassName)}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {choices.map((choice) => {
+          const optionValue = getOptionValue(choice);
+          return (
+            <SelectItem key={optionValue} value={optionValue}>
+              {getOptionLabel(choice)}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
+
+  if (label === false) {
+    return <div className={className}>{select}</div>;
+  }
+
   return (
     <CompactFormField
       label={label}
@@ -58,24 +83,7 @@ export const CompactRadixSelect = <TChoice extends ChoiceRecord>({
       required={required}
       className={className}
     >
-      <Select value={normalizedValue} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger
-          size="sm"
-          className={cn(compactTriggerClass, triggerClassName)}
-        >
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((choice) => {
-            const optionValue = getOptionValue(choice);
-            return (
-              <SelectItem key={optionValue} value={optionValue}>
-                {getOptionLabel(choice)}
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
+      {select}
     </CompactFormField>
   );
 };

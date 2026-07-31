@@ -4,7 +4,7 @@ import { useEffect, useMemo } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { required, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { FormOrderToolbar } from "@/components/forms";
 import {
@@ -22,6 +22,11 @@ import {
   type ErpPresupuestoFormValues,
 } from "./model";
 
+type ErpPresupuestoFormProps = {
+  initialValues?: Partial<ErpPresupuestoFormValues>;
+  onCancel?: () => void;
+};
+
 type ErpCuenta = {
   id: number | string;
   cod_cuenta?: string | null;
@@ -36,6 +41,43 @@ const parseNumericParam = (value: string | null) => {
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const parseDateParam = (value: string | null) =>
+  value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+
+const parsePeriodParam = (value: string | null) =>
+  value && /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : undefined;
+
+const normalizeRubroName = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const moneyFormatter = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "ARS",
+  maximumFractionDigits: 2,
+});
+
+const formatMoneyInput = (value: unknown) =>
+  moneyFormatter.format(Number(value ?? 0));
+
+const parseMoneyInput = (value: unknown) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value !== "string") {
+    return 0;
+  }
+
+  const normalized = value
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const formatCuentaChoice = (cuenta?: ErpCuenta | null) =>
@@ -67,6 +109,7 @@ const RubroAutocomplete = () => {
         optionText: "nombre",
         label: "Rubro",
         placeholder: "Selecciona un rubro",
+        optionFilter: (choice) => normalizeRubroName(choice?.nombre) !== "ingresos",
         onSelectionChange: () => {
           setValue("erp_cuenta_id", undefined as unknown as number, {
             shouldDirty: true,
@@ -143,6 +186,8 @@ const PresupuestoImporteFields = () => (
       label="Ingresos"
       min={0}
       step="0.01"
+      format={formatMoneyInput}
+      parse={parseMoneyInput}
       widthClass="w-full"
     />
     <FormNumber
@@ -150,6 +195,8 @@ const PresupuestoImporteFields = () => (
       label="Egresos"
       min={0}
       step="0.01"
+      format={formatMoneyInput}
+      parse={parseMoneyInput}
       widthClass="w-full"
     />
     <FormNumber
@@ -169,13 +216,52 @@ const PresupuestoImporteFields = () => (
   </div>
 );
 
-export const ErpPresupuestoForm = () => {
+const RealImporteFields = () => {
+  const record = useRecordContext<ErpPresupuesto>();
+  const isIngresoRubro =
+    normalizeRubroName(record?.erp_cuenta?.rubro?.nombre) === "ingresos";
+
+  return (
+    <div className="grid gap-2 md:grid-cols-4">
+      <FormNumber
+        source="real_ingreso"
+        label="Ingresos"
+        min={0}
+        step="0.01"
+        disabled={isIngresoRubro}
+        format={formatMoneyInput}
+        parse={parseMoneyInput}
+        widthClass="w-full"
+      />
+      <FormNumber
+        source="real_egreso"
+        label="Egresos"
+        min={0}
+        step="0.01"
+        disabled
+        format={formatMoneyInput}
+        parse={parseMoneyInput}
+        widthClass="w-full"
+        className="[&_input:disabled]:!border [&_input:disabled]:!border-input [&_input:disabled]:!bg-background [&_input:disabled]:!shadow-xs"
+      />
+    </div>
+  );
+};
+
+export const ErpPresupuestoForm = ({
+  initialValues,
+  onCancel,
+}: ErpPresupuestoFormProps = {}) => {
   const record = useRecordContext<ErpPresupuestoFormValues & { id?: number | string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
+  const returnTo = params.get("returnTo");
   const proyectoIdFromQuery = parseNumericParam(params.get("proyecto_id"));
   const rubroIdFromQuery = parseNumericParam(params.get("rubro_id"));
   const erpCuentaIdFromQuery = parseNumericParam(params.get("erp_cuenta_id"));
+  const fechaFromQuery =
+    parseDateParam(params.get("fecha")) ?? parsePeriodParam(params.get("periodo"));
 
   const defaultValues = useMemo(
     () =>
@@ -183,18 +269,41 @@ export const ErpPresupuestoForm = () => {
         ? undefined
         : {
             ...ERP_PRESUPUESTO_DEFAULT,
+            fecha: fechaFromQuery ?? ERP_PRESUPUESTO_DEFAULT.fecha,
             proyecto_id: proyectoIdFromQuery ?? ERP_PRESUPUESTO_DEFAULT.proyecto_id,
             rubro_id: rubroIdFromQuery ?? ERP_PRESUPUESTO_DEFAULT.rubro_id,
             erp_cuenta_id: erpCuentaIdFromQuery ?? ERP_PRESUPUESTO_DEFAULT.erp_cuenta_id,
+            ...initialValues,
           },
-    [erpCuentaIdFromQuery, proyectoIdFromQuery, record?.id, rubroIdFromQuery],
+    [
+      erpCuentaIdFromQuery,
+      fechaFromQuery,
+      initialValues,
+      proyectoIdFromQuery,
+      record?.id,
+      rubroIdFromQuery,
+    ],
   );
 
   return (
     <SimpleForm<ErpPresupuestoFormValues>
       className="w-full max-w-3xl"
       resolver={zodResolver(erpPresupuestoSchema) as any}
-      toolbar={<FormOrderToolbar />}
+      toolbar={
+        <FormOrderToolbar
+          cancelProps={
+            onCancel
+              ? {
+                  onClick: onCancel,
+                }
+              : returnTo
+              ? {
+                  onClick: () => navigate(returnTo, { replace: true }),
+                }
+              : undefined
+          }
+        />
+      }
       defaultValues={defaultValues}
     >
       <SectionBaseTemplate
@@ -203,8 +312,13 @@ export const ErpPresupuestoForm = () => {
         defaultOpen
       />
       <SectionBaseTemplate
-        title="Valores"
+        title="Presupuesto"
         main={<PresupuestoImporteFields />}
+        defaultOpen
+      />
+      <SectionBaseTemplate
+        title="Real"
+        main={<RealImporteFields />}
         defaultOpen
       />
     </SimpleForm>

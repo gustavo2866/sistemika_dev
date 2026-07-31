@@ -11,10 +11,14 @@ export const ErpPresupuestoEdit = ({
   embedded = false,
   id,
   redirect,
+  onCancel,
+  onSaved,
 }: {
   embedded?: boolean;
   id?: string | number;
   redirect?: string | false;
+  onCancel?: () => void;
+  onSaved?: () => void;
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,7 +28,8 @@ export const ErpPresupuestoEdit = ({
   return (
     <Edit
       id={id}
-      redirect={returnTo ? false : redirect}
+      redirect={returnTo || onSaved ? false : redirect}
+      mutationMode="pessimistic"
       title="Editar presupuesto ERP"
       className="max-w-3xl w-full"
       transform={normalizeErpPresupuestoPayload}
@@ -37,13 +42,17 @@ export const ErpPresupuestoEdit = ({
       }
       mutationOptions={{
         onSuccess: () => {
+          if (onSaved) {
+            onSaved();
+            return;
+          }
           navigate(returnTo ?? "/erp/presupuestos", {
             replace: true,
           });
         },
       }}
     >
-      <ErpPresupuestoForm />
+      <ErpPresupuestoForm onCancel={onCancel} />
     </Edit>
   );
 };

@@ -409,25 +409,50 @@ def sync_real_presupuestos(
                 (anio, mes),
             )
             combos = int(cur.fetchone()[0])
-        print(f"[dry-run] Combinaciones proyecto/cuenta con reales: {combos}")
+            print(f"[dry-run] Combinaciones proyecto/cuenta con reales: {combos}")
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM public.erp_presupuestos p
+                WHERE p.deleted_at IS NULL
+                    AND EXTRACT(YEAR FROM p.fecha) = %s
+                    AND EXTRACT(MONTH FROM p.fecha) = %s
+                    AND COALESCE(p.egreso, 0) = 0
+                    AND COALESCE(p.ingres, 0) = 0
+                    AND COALESCE(p.real_egreso, 0) = 0
+                    AND COALESCE(p.real_ingreso, 0) = 0
+                    AND COALESCE(p.obreros_cantidad, 0) = 0
+                    AND COALESCE(p.obreros_costo, 0) = 0
+                """,
+                (anio, mes),
+            )
+            deleted_empty_count = int(cur.fetchone()[0])
         return {
             "presupuestos_reset": 0,
             "presupuestos_created": 0,
             "presupuestos_updated": 0,
+            "presupuestos_deleted_empty": deleted_empty_count,
             "presupuestos_reales_combos": combos,
         }
 
     with dest_conn.cursor() as cur:
         cur.execute(
             """
-            UPDATE public.erp_presupuestos
+            UPDATE public.erp_presupuestos p
             SET
-                real_ingreso = 0,
+                real_ingreso = CASE
+                    WHEN lower(COALESCE(r.nombre, '')) = 'ingresos' THEN 0
+                    ELSE p.real_ingreso
+                END,
                 real_egreso = 0,
                 updated_at = now()
-            WHERE deleted_at IS NULL
-                AND EXTRACT(YEAR FROM fecha) = %s
-                AND EXTRACT(MONTH FROM fecha) = %s
+            FROM public.erp_cuentas c
+            LEFT JOIN public.erp_rubros r
+                ON r.id = c.rubro_id
+            WHERE p.deleted_at IS NULL
+                AND p.erp_cuenta_id = c.id
+                AND EXTRACT(YEAR FROM p.fecha) = %s
+                AND EXTRACT(MONTH FROM p.fecha) = %s
             """,
             (anio, mes),
         )
@@ -485,13 +510,20 @@ def sync_real_presupuestos(
             + """
             UPDATE public.erp_presupuestos p
             SET
-                real_ingreso = m.real_ingreso,
+                real_ingreso = CASE
+                    WHEN lower(COALESCE(r.nombre, '')) = 'ingresos' THEN m.real_ingreso
+                    ELSE p.real_ingreso
+                END,
                 real_egreso = m.real_egreso,
                 updated_at = now()
-            FROM movimientos m
+            FROM movimientos m,
+                public.erp_cuentas c
+            LEFT JOIN public.erp_rubros r
+                ON r.id = c.rubro_id
             WHERE p.deleted_at IS NULL
                 AND p.proyecto_id = m.proyecto_id
                 AND p.erp_cuenta_id = m.erp_cuenta_id
+                AND p.erp_cuenta_id = c.id
                 AND EXTRACT(YEAR FROM p.fecha) = %s
                 AND EXTRACT(MONTH FROM p.fecha) = %s
             """,
@@ -509,14 +541,33 @@ def sync_real_presupuestos(
         )
         combos = int(cur.fetchone()[0])
 
+        cur.execute(
+            """
+            DELETE FROM public.erp_presupuestos p
+            WHERE p.deleted_at IS NULL
+                AND EXTRACT(YEAR FROM p.fecha) = %s
+                AND EXTRACT(MONTH FROM p.fecha) = %s
+                AND COALESCE(p.egreso, 0) = 0
+                AND COALESCE(p.ingres, 0) = 0
+                AND COALESCE(p.real_egreso, 0) = 0
+                AND COALESCE(p.real_ingreso, 0) = 0
+                AND COALESCE(p.obreros_cantidad, 0) = 0
+                AND COALESCE(p.obreros_costo, 0) = 0
+            """,
+            (anio, mes),
+        )
+        deleted_empty_count = cur.rowcount or 0
+
     print(
         "Reales en erp_presupuestos actualizados: "
-        f"reset={reset_count}, creados={created_count}, actualizados={updated_count}"
+        f"reset={reset_count}, creados={created_count}, actualizados={updated_count}, "
+        f"vacios_eliminados={deleted_empty_count}"
     )
     return {
         "presupuestos_reset": int(reset_count),
         "presupuestos_created": int(created_count),
         "presupuestos_updated": int(updated_count),
+        "presupuestos_deleted_empty": int(deleted_empty_count),
         "presupuestos_reales_combos": combos,
     }
 
@@ -537,10 +588,16 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
     with psycopg.connect(**source_conn_kwargs) as source_conn, psycopg.connect(dest_url) as dest_conn:
         allowed_centros = get_allowed_centros_costo(dest_conn)
         if not allowed_centros:
-            print("No hay centros de costo validos en proyectos. Se limpia erp_libro_diario y termina.")
+            print("No hay centros de costo validos en proyectos. Se limpia el periodo objetivo y termina.")
             if not dry_run:
                 with dest_conn.cursor() as dest_cur:
-                    dest_cur.execute("TRUNCATE TABLE public.erp_libro_diario RESTART IDENTITY")
+                    dest_cur.execute(
+                        """
+                        DELETE FROM public.erp_libro_diario
+                        WHERE periodo_anio = %s AND periodo_mes = %s
+                        """,
+                        (anio, mes),
+                    )
                 dest_conn.commit()
             result_empty = {
                 "periodo": periodo_normalizado,
@@ -555,6 +612,7 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
                     "presupuestos_reset": 0,
                     "presupuestos_created": 0,
                     "presupuestos_updated": 0,
+                    "presupuestos_deleted_empty": 0,
                     "presupuestos_reales_combos": 0,
                 }
             )
@@ -593,7 +651,13 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
                 return result_dry
 
             with dest_conn.cursor() as dest_cur:
-                dest_cur.execute("TRUNCATE TABLE public.erp_libro_diario RESTART IDENTITY")
+                dest_cur.execute(
+                    """
+                    DELETE FROM public.erp_libro_diario
+                    WHERE periodo_anio = %s AND periodo_mes = %s
+                    """,
+                    (anio, mes),
+                )
 
                 total_insertados = 0
                 while True:
