@@ -25,6 +25,7 @@ import {
   Coins,
   CalendarDays,
   LineChart,
+  TrendingUp,
   ListChecks,
   CalendarCheck,
   Building,
@@ -178,6 +179,7 @@ import {
   ProyectoAvanceShow,
 } from "@/app/resources/constructora/proyecto-avance";
 import { ProyDashboardList } from "@/app/resources/constructora/proy-dashboard";
+import { ProyFinancialDashboardList } from "@/app/resources/constructora/proy-financial-dashboard";
 import {
   PoOrderList,
   PoOrderCreate,
@@ -458,6 +460,13 @@ const AdminApp = () => {
         recordRepresentation="id"
         icon={LineChart}
         options={{ label: "Dashboard Proyectos" }}
+      />
+      <Resource
+        name="proy-financial-dashboard"
+        list={ProyFinancialDashboardList}
+        recordRepresentation="id"
+        icon={TrendingUp}
+        options={{ label: "Dashboard Financiero" }}
       />
       <Resource
         name="proyectos"

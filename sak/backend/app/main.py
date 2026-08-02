@@ -70,6 +70,7 @@ from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
 from app.routers.home_dashboard_router import router as home_dashboard_router
 from app.routers.proyectos_dashboard_router import router as proyectos_dashboard_router
+from app.routers.erp_financial_dashboard_router import router as erp_financial_dashboard_router
 from app.routers.propiedades_dashboard_router import router as propiedades_dashboard_router
 # Routers módulo de compras (PO)
 from app.routers.po_invoice_router import po_invoice_router
@@ -209,6 +210,7 @@ app.include_router(home_dashboard_router)
 app.include_router(propiedades_dashboard_router)
 app.include_router(crm_dashboard_router)
 app.include_router(proyectos_dashboard_router)
+app.include_router(erp_financial_dashboard_router)
 app.include_router(crm_tipo_operacion_router)
 app.include_router(crm_tipo_contacto_router)
 app.include_router(crm_motivo_perdida_router)

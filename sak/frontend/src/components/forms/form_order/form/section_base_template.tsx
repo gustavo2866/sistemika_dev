@@ -14,7 +14,9 @@ import {
 
 export type SectionBaseTemplateProps = {
   /** Title shown in the section header. */
-  title: string;
+  title: ReactNode;
+  /** Text used for accessibility labels when title is not plain text. */
+  ariaTitle?: string;
   /** Main (always visible) content for the section. */
   main: ReactNode | ((props: { showOptional: boolean; toggleOptional: () => void }) => ReactNode);
   /** Optional content toggled by "more/less" action. */
@@ -44,6 +46,7 @@ export type SectionBaseTemplateProps = {
 
 export const SectionBaseTemplate = ({
   title,
+  ariaTitle,
   main,
   optional,
   headerSummary,
@@ -61,6 +64,7 @@ export const SectionBaseTemplate = ({
   showCollapseToggle = true,
   optionalTogglePlacement = "side",
 }: SectionBaseTemplateProps) => {
+  const resolvedAriaTitle = ariaTitle ?? (typeof title === "string" ? title : "seccion");
   const resolveInitialOpen = () => {
     if (!persistKey || typeof window === "undefined") return defaultOpen;
     const stored = window.localStorage.getItem(`section-open:${persistKey}`);
@@ -95,8 +99,8 @@ export const SectionBaseTemplate = ({
       className="h-6 w-6 text-muted-foreground"
       tabIndex={-1}
       onClick={() => setIsOpen((v) => !v)}
-      aria-label={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
-      title={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
+      aria-label={isOpen ? `Ocultar ${resolvedAriaTitle}` : `Mostrar ${resolvedAriaTitle}`}
+      title={isOpen ? `Ocultar ${resolvedAriaTitle}` : `Mostrar ${resolvedAriaTitle}`}
     >
       {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
     </Button>
@@ -135,6 +139,7 @@ export const SectionBaseTemplate = ({
   return (
     <SectionCard
       title={title}
+      ariaTitle={resolvedAriaTitle}
       isOpen={isOpen}
       onToggle={() => setIsOpen((v) => !v)}
       headerActions={headerActions}

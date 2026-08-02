@@ -187,6 +187,75 @@ def _apply_percent_variation(value: Decimal | int | float | None, percent: Decim
     return (base * multiplier).quantize(Decimal("0.01"))
 
 
+def distribute_presupuesto_conceptos_to_erp_rows(
+    *,
+    rows: list[dict],
+    concepto_montos: dict[int, Decimal],
+) -> list[dict]:
+    """Distribuye un monto presupuestado por concepto entre las filas ERP usando el real_egreso como peso."""
+    distributed: list[dict] = []
+    for row in rows:
+        concepto_id = row.get("concepto_id")
+        if concepto_id is None:
+            continue
+        monto = concepto_montos.get(int(concepto_id), Decimal("0"))
+        if monto == 0:
+            continue
+
+        peso = Decimal(str(row.get("real_egreso") or 0))
+        if peso <= 0:
+            continue
+
+        total_peso = sum(
+            Decimal(str(item.get("real_egreso") or 0))
+            for item in rows
+            if int(item.get("concepto_id")) == int(concepto_id)
+        )
+        if total_peso <= 0:
+            continue
+
+        monto_distribuido = (monto * peso / total_peso).quantize(Decimal("0.01"))
+        distributed.append({
+            **row,
+            "monto_distribuido": monto_distribuido,
+        })
+
+    return distributed
+
+
+def distribute_presupuesto_ingresos_to_erp_rows(
+    *,
+    rows: list[dict],
+    monto_total: Decimal,
+) -> list[dict]:
+    """Distribuye un monto presupuestado de ingresos entre las filas ERP con egreso > 0 usando el egreso como peso."""
+    if monto_total <= 0:
+        return []
+
+    rows_con_egreso = [
+        row for row in rows
+        if Decimal(str(row.get("egreso") or 0)) > 0
+    ]
+    if not rows_con_egreso:
+        return []
+
+    total_peso = sum(Decimal(str(row.get("egreso") or 0)) for row in rows_con_egreso)
+    if total_peso <= 0:
+        return []
+
+    distributed: list[dict] = []
+    remaining = monto_total
+    for index, row in enumerate(rows_con_egreso):
+        peso = Decimal(str(row.get("egreso") or 0))
+        monto_distribuido = (monto_total * peso / total_peso).quantize(Decimal("0.01"))
+        if index == len(rows_con_egreso) - 1:
+            monto_distribuido = remaining
+        remaining -= monto_distribuido
+        distributed.append({**row, "monto_distribuido": monto_distribuido})
+
+    return distributed
+
+
 def _build_panel_movimientos_stmt(
     anio: int,
     mes: int,
@@ -315,7 +384,7 @@ def _add_month_values(
 def get_erp_presupuesto_panel(
     fecha_desde: date = Query(..., description="Primer dia del periodo"),
     fecha_hasta: date = Query(..., description="Ultimo dia del periodo"),
-    estado: str = Query("02-ejecucion", description="Estado de proyecto a incluir"),
+    estado: str | None = Query("02-ejecucion", description="Estado de proyecto a incluir"),
     proyecto_id: int | None = Query(None, description="Filtro opcional por proyecto"),
     session: Session = Depends(get_session),
 ):
@@ -355,7 +424,6 @@ def get_erp_presupuesto_panel(
         .join(ErpRubro, ErpCuenta.rubro_id == ErpRubro.id)
         .where(ErpPresupuesto.fecha >= fecha_desde)
         .where(ErpPresupuesto.fecha <= fecha_hasta)
-        .where(Proyecto.estado == estado)
         .where(ErpPresupuesto.deleted_at.is_(None))
         .group_by(
             Proyecto.id,
@@ -374,6 +442,8 @@ def get_erp_presupuesto_panel(
 
     if proyecto_id is not None:
         stmt = stmt.where(Proyecto.id == proyecto_id)
+    if estado and estado != "all":
+        stmt = stmt.where(Proyecto.estado == estado)
 
     rows = session.exec(stmt).all()
 
@@ -477,16 +547,14 @@ def get_erp_presupuesto_panel(
 
 @erp_presupuesto_router.get("/panel/proyectos")
 def get_erp_presupuesto_panel_proyectos(
-    estado: str = Query("02-ejecucion", description="Estado de proyecto a incluir"),
+    estado: str | None = Query("02-ejecucion", description="Estado de proyecto a incluir"),
     session: Session = Depends(get_session),
 ):
     """Devuelve proyectos disponibles para filtrar el panel de presupuestos ERP."""
-    rows = session.exec(
-        select(Proyecto.id, Proyecto.nombre)
-        .where(Proyecto.deleted_at.is_(None))
-        .where(Proyecto.estado == estado)
-        .order_by(Proyecto.nombre)
-    ).all()
+    stmt = select(Proyecto.id, Proyecto.nombre).where(Proyecto.deleted_at.is_(None))
+    if estado and estado != "all":
+        stmt = stmt.where(Proyecto.estado == estado)
+    rows = session.exec(stmt.order_by(Proyecto.nombre)).all()
 
     return {
         "estado": estado,
@@ -526,6 +594,7 @@ def export_erp_presupuesto_panel_project(
             func.coalesce(func.sum(ErpPresupuesto.ingres), 0).label("ingres"),
             func.coalesce(func.sum(ErpPresupuesto.real_ingreso), 0).label("real_ingresos"),
             func.coalesce(func.sum(ErpPresupuesto.egreso), 0).label("egreso"),
+            func.coalesce(func.sum(ErpPresupuesto.real_egreso), 0).label("real_egresos"),
             func.coalesce(func.sum(ErpPresupuesto.obreros_cantidad), 0).label("obreros_cantidad"),
         )
         .select_from(ErpCuenta)
@@ -564,6 +633,7 @@ def export_erp_presupuesto_panel_project(
         "egresos",
         "ingresos",
         "real_ingresos",
+        "real_egresos",
     ]
     ws.append(headers)
 
@@ -595,6 +665,7 @@ def export_erp_presupuesto_panel_project(
                 float(row.egreso or 0),
                 float(row.ingres or 0),
                 float(row.real_ingresos or 0),
+                float(row.real_egresos or 0),
             ]
         )
 
@@ -608,6 +679,7 @@ def export_erp_presupuesto_panel_project(
         row[5].number_format = '$ #,##0.00'
         row[6].number_format = '$ #,##0.00'
         row[7].number_format = '$ #,##0.00'
+        row[8].number_format = '$ #,##0.00'
 
     widths = {
         "A": 42,
@@ -618,6 +690,7 @@ def export_erp_presupuesto_panel_project(
         "F": 16,
         "G": 16,
         "H": 16,
+        "I": 16,
     }
     for column, width in widths.items():
         ws.column_dimensions[column].width = width
@@ -904,6 +977,7 @@ EXPECTED_PRESUPUESTO_IMPORT_HEADERS = [
     "egresos",
     "ingresos",
     "real_ingresos",
+    "real_egresos",
 ]
 
 
@@ -965,7 +1039,7 @@ async def import_erp_presupuesto_panel_project(
     seen_cuentas: set[int] = set()
 
     for row_number in range(2, ws.max_row + 1):
-        values = [ws.cell(row_number, col).value for col in range(1, 9)]
+        values = [ws.cell(row_number, col).value for col in range(1, 10)]
         if all(value is None or value == "" for value in values):
             continue
 
@@ -978,6 +1052,7 @@ async def import_erp_presupuesto_panel_project(
             egresos_raw,
             ingresos_raw,
             _real_ingresos_raw,
+            _real_egresos_raw,
         ) = values
         centro_text = str(centro_costo or "").strip()
         periodo_text = str(row_periodo or "").strip()
@@ -1004,12 +1079,15 @@ async def import_erp_presupuesto_panel_project(
         real_ingresos = _parse_excel_decimal(
             _real_ingresos_raw, row_number, "real_ingresos", errors
         )
-        if empleados < 0 or egresos < 0 or ingresos < 0 or real_ingresos < 0:
+        real_egresos = _parse_excel_decimal(
+            _real_egresos_raw, row_number, "real_egresos", errors
+        )
+        if empleados < 0 or egresos < 0 or ingresos < 0 or real_ingresos < 0 or real_egresos < 0:
             errors.append(
-                f"Fila {row_number}: empleados, egresos, ingresos y real_ingresos no pueden ser negativos."
+                f"Fila {row_number}: empleados, egresos, ingresos, real_ingresos y real_egresos no pueden ser negativos."
             )
 
-        if empleados != 0 or egresos != 0 or ingresos != 0 or real_ingresos != 0:
+        if empleados != 0 or egresos != 0 or ingresos != 0 or real_ingresos != 0 or real_egresos != 0:
             imported_rows.append(
                 {
                     "erp_cuenta_id": cuenta_id,
@@ -1017,6 +1095,7 @@ async def import_erp_presupuesto_panel_project(
                     "egresos": egresos,
                     "ingresos": ingresos,
                     "real_ingresos": real_ingresos,
+                    "real_egresos": real_egresos,
                 }
             )
 
@@ -1051,6 +1130,7 @@ async def import_erp_presupuesto_panel_project(
                 egreso=row["egresos"],
                 ingres=row["ingresos"],
                 real_ingreso=row["real_ingresos"],
+                real_egreso=row["real_egresos"],
                 obreros_cantidad=row["empleados"],
                 obreros_costo=Decimal("0"),
             )

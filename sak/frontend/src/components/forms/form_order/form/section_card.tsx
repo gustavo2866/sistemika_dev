@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 export const SectionCard = ({
   title,
+  ariaTitle,
   isOpen,
   onToggle,
   children,
@@ -20,7 +21,8 @@ export const SectionCard = ({
   titleClassName,
   headerTabIndex,
 }: {
-  title: string;
+  title: ReactNode;
+  ariaTitle?: string;
   isOpen: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -32,6 +34,8 @@ export const SectionCard = ({
   titleClassName?: string;
   headerTabIndex?: number;
 }) => {
+  const resolvedAriaTitle = ariaTitle ?? (typeof title === "string" ? title : "seccion");
+
   return (
     <Card className={cn("border border-border w-full", cardClassName)}>
       <CardContent className={cn("px-3 pt-0 pb-0", contentClassName)}>
@@ -63,8 +67,8 @@ export const SectionCard = ({
                 className="h-6 w-6 text-muted-foreground"
                 tabIndex={-1}
                 onClick={onToggle}
-                aria-label={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
-                title={isOpen ? `Ocultar ${title}` : `Mostrar ${title}`}
+                aria-label={isOpen ? `Ocultar ${resolvedAriaTitle}` : `Mostrar ${resolvedAriaTitle}`}
+                title={isOpen ? `Ocultar ${resolvedAriaTitle}` : `Mostrar ${resolvedAriaTitle}`}
               >
                 {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>

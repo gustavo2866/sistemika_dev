@@ -52,10 +52,11 @@ import {
   Calculator,
   CalendarDays,
   GitBranch,
+  TrendingUp,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = [
-  "proy-dashboard",
+  "proy-financial-dashboard",
   "solicitudes",
   "tarjas",
   "constructora/pedidos",
@@ -141,6 +142,7 @@ const HIDDEN_RESOURCES = [
   "proy-presupuestos",
   "proyecto-encargados",
   "proyecto-avance",
+  "proy-dashboard",
   "recepciones",
   "tipos-propiedad",
   "propiedades-log-status",
@@ -280,7 +282,7 @@ export function AppSidebar() {
                   onToggle={() => setConstructoraOpen((open) => !open)}
                 >
                   {constructoraResources
-                    .filter((name) => name === "proy-dashboard")
+                    .filter((name) => name === "proy-financial-dashboard")
                     .map((name) => (
                     <ResourceSubMenuItem
                       key={name}
@@ -310,7 +312,9 @@ export function AppSidebar() {
                   ) : null}
                   {constructoraResources
                     .filter(
-                      (name) => name !== "proy-dashboard" && name !== "tarjas",
+                      (name) =>
+                        name !== "proy-financial-dashboard" &&
+                        name !== "tarjas",
                     )
                     .map((name) => (
                     <ResourceSubMenuItem
@@ -557,6 +561,7 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "tipos-propiedad": Building,
   "tipos-operacion": Workflow,
   "proy-dashboard": LayoutGrid,
+  "proy-financial-dashboard": TrendingUp,
   "metodos-pago": FileText,
   proyectos: Kanban,
   articulos: Package,

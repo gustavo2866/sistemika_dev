@@ -51,6 +51,9 @@ export const BudgetIncomeDialog = ({
   const [isSaving, setIsSaving] = useState(false);
   const [displayMode, setDisplayMode] =
     useState<IncomeRowsDisplayMode>("withBudget");
+  const hasBudgetedIncomeRows = rows.some(
+    (row) => Number(row.ingreso_presupuesto ?? 0) > 0,
+  );
 
   useEffect(() => {
     if (!request) {
@@ -62,13 +65,13 @@ export const BudgetIncomeDialog = ({
       return;
     }
 
-    setDisplayMode("withBudget");
+    setDisplayMode(hasBudgetedIncomeRows ? "withBudget" : "all");
     const nextDrafts = Object.fromEntries(
       rows.map((row) => [getIncomeRowKey(row), String(row.ingreso_real)]),
     );
     setDrafts(nextDrafts);
     setCommittedDrafts(nextDrafts);
-  }, [request, rows]);
+  }, [hasBudgetedIncomeRows, request, rows]);
 
   const visibleRows =
     displayMode === "withBudget"
@@ -179,7 +182,7 @@ export const BudgetIncomeDialog = ({
   return (
     <Dialog open={Boolean(request)} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[min(94vw,920px)] max-w-[920px] gap-2 p-3 sm:max-w-[920px]"
+        className="h-[min(88vh,548px)] w-[min(94vw,920px)] max-w-[920px] grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-2 p-3 sm:max-w-[920px]"
         overlayClassName="bg-transparent backdrop-blur-none"
       >
         <DialogHeader className="gap-1">
@@ -191,31 +194,45 @@ export const BudgetIncomeDialog = ({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <div className="inline-flex h-7 items-center rounded-md border border-border bg-background p-0.5 text-[9px]">
-                {[
-                  ["withBudget", "Con Ingresos"],
-                  ["all", "Todas"],
-                ].map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={cn(
-                      "h-5 rounded-sm px-2 text-muted-foreground transition-colors hover:text-foreground",
-                      displayMode === mode &&
-                        "bg-muted text-foreground shadow-xs",
-                    )}
-                    onClick={() => setDisplayMode(mode as IncomeRowsDisplayMode)}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="grid gap-0.5">
+                <span className="text-[8px] font-medium leading-none text-primary">
+                  Cuentas
+                </span>
+                <div className="inline-flex h-7 items-center rounded-md border border-border bg-background p-0.5 text-[9px]">
+                  {[
+                    ["withBudget", "Ingresos"],
+                    ["all", "Todas"],
+                  ].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={cn(
+                        "h-5 rounded-sm px-2 text-muted-foreground transition-colors hover:text-foreground",
+                        displayMode === mode &&
+                          "bg-muted text-foreground shadow-xs",
+                      )}
+                      onClick={() => setDisplayMode(mode as IncomeRowsDisplayMode)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="max-h-[360px] overflow-y-auto rounded-md border border-border">
+        <div className="min-h-0 overflow-y-auto rounded-t-md border-x border-t border-border">
           <table className="w-full table-fixed border-collapse text-[10px]">
+            <colgroup>
+              <col className="w-[104px]" />
+              <col className="w-[300px]" />
+              <col className="w-[92px]" />
+              <col className="w-[92px]" />
+              <col className="w-[112px]" />
+              <col className="w-[24px]" />
+              <col className="w-[108px]" />
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-muted">
               <tr className="border-b border-border">
                 <th className="w-[104px] px-1.5 py-1 text-left font-medium">
@@ -343,8 +360,22 @@ export const BudgetIncomeDialog = ({
                 })
               )}
             </tbody>
-            {visibleRows.length > 0 ? (
-              <tfoot className="sticky bottom-0 bg-background">
+          </table>
+        </div>
+
+        <div className="shrink-0 overflow-hidden rounded-b-md border-x border-b border-border bg-background">
+          <table className="w-full table-fixed border-collapse text-[10px]">
+            <colgroup>
+              <col className="w-[104px]" />
+              <col className="w-[300px]" />
+              <col className="w-[92px]" />
+              <col className="w-[92px]" />
+              <col className="w-[112px]" />
+              <col className="w-[24px]" />
+              <col className="w-[108px]" />
+            </colgroup>
+            <tfoot>
+              {visibleRows.length > 0 ? (
                 <tr className="border-t border-border/80 bg-muted/70">
                   <th className="px-1.5 py-1" colSpan={2} aria-label="Totales" />
                   <td className="whitespace-nowrap px-1.5 py-1 text-right text-[9px] font-medium tabular-nums text-muted-foreground">
@@ -361,39 +392,39 @@ export const BudgetIncomeDialog = ({
                     {formatCurrency(totalReal)}
                   </td>
                 </tr>
-                <tr aria-hidden="true">
-                  <td className="h-1 border-t border-border/40 bg-background p-0" colSpan={7} />
-                </tr>
-                <tr className="bg-background">
-                  <th className="px-1.5 py-1" colSpan={4} aria-label="Ingresos contables" />
-                  <td
-                    className="border-l border-y border-r border-border/60 bg-muted/20 px-1.5 py-1"
-                    colSpan={3}
-                  >
-                    <div className="grid min-h-6 grid-cols-[minmax(0,1fr)_auto] grid-rows-[14px_8px] items-start gap-x-2">
-                      <div className="flex h-[14px] min-w-0 items-center justify-end gap-1 text-[9px] font-medium leading-[9px] text-muted-foreground">
-                        <span className="truncate">Ingresos contables</span>
-                        <button
-                          type="button"
-                          className="inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-700"
-                          aria-label="Consultar movimientos de ingresos"
-                          title="Consultar movimientos de ingresos"
-                          onClick={openIncomeMovements}
-                        >
-                          <Eye className="size-3" aria-hidden="true" />
-                        </button>
-                      </div>
-                      <div className="flex h-[14px] items-center justify-end whitespace-nowrap text-right text-[10px] font-semibold leading-[10px] text-foreground tabular-nums">
-                        {formatCurrency(incomeRubroTotal.real_ingreso)}
-                      </div>
-                      <div className="col-start-2 row-start-2 whitespace-nowrap text-right text-[7px] leading-[7px] text-muted-foreground tabular-nums">
-                        Dif. {formatCurrency(realDifference)}
-                      </div>
+              ) : null}
+              <tr aria-hidden="true">
+                <td className="h-1 border-t border-border/40 bg-background p-0" colSpan={7} />
+              </tr>
+              <tr className="bg-background">
+                <th className="px-1.5 py-1" colSpan={4} aria-label="Ingresos contables" />
+                <td
+                  className="border-l border-y border-r border-border/60 bg-muted/20 px-1.5 py-1"
+                  colSpan={3}
+                >
+                  <div className="grid min-h-6 grid-cols-[minmax(0,1fr)_auto] grid-rows-[14px_8px] items-start gap-x-2">
+                    <div className="flex h-[14px] min-w-0 items-center justify-end gap-1 text-[9px] font-medium leading-[9px] text-muted-foreground">
+                      <span className="truncate">Ingresos contables</span>
+                      <button
+                        type="button"
+                        className="inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-700"
+                        aria-label="Consultar movimientos de ingresos"
+                        title="Consultar movimientos de ingresos"
+                        onClick={openIncomeMovements}
+                      >
+                        <Eye className="size-3" aria-hidden="true" />
+                      </button>
                     </div>
-                  </td>
-                </tr>
-              </tfoot>
-            ) : null}
+                    <div className="flex h-[14px] items-center justify-end whitespace-nowrap text-right text-[10px] font-semibold leading-[10px] text-foreground tabular-nums">
+                      {formatCurrency(incomeRubroTotal.real_ingreso)}
+                    </div>
+                    <div className="col-start-2 row-start-2 whitespace-nowrap text-right text-[7px] leading-[7px] text-muted-foreground tabular-nums">
+                      Dif. {formatCurrency(realDifference)}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
 

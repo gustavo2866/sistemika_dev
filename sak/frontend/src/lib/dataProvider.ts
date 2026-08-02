@@ -15,7 +15,12 @@ const httpClient: typeof fetchUtils.fetchJson = (url, options = {}) => {
       headers.set("Authorization", `Bearer ${token}`);
     }
   }
-  return fetchUtils.fetchJson(url, { ...options, headers });
+  return fetchUtils.fetchJson(url, { ...options, headers }).catch((error) => {
+    if (error instanceof TypeError) {
+      throw new Error(`No se pudo conectar con la API: ${url}`);
+    }
+    throw error;
+  });
 };
 
 const baseProvider = simpleRestProvider(apiUrl, httpClient);

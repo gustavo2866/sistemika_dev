@@ -1,13 +1,15 @@
 ﻿"use client";
 
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNotify } from "ra-core";
-import { ChevronDown, ChevronLeft, ChevronRight, Copy, DollarSign, Download, Eye, MoreHorizontal, Plus, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { ArrowDownToLine, ArrowLeft, BarChart3, ChevronDown, ChevronLeft, ChevronRight, Copy, DollarSign, Download, Eye, MoreHorizontal, Pencil, Percent, Plus, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { FormProvider, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
-import { CompactRadixSelect } from "@/components/forms/compact";
+import { FinancialKpiCards } from "@/components/financial-kpi-cards";
+import { CompactSelectInput } from "@/components/forms/form_order";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,8 +17,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
+import { PROYECTO_ESTADO_CHOICES } from "@/app/resources/constructora/proyectos/model";
 
 import { BudgetClearDialog } from "./panel/BudgetClearDialog";
 import { BudgetCopyDialog } from "./panel/BudgetCopyDialog";
@@ -36,7 +44,6 @@ import type {
   EditableField,
   EditingCell,
   MonthValues,
-  MovimientoConcepto,
   MovimientoContext,
   MovimientoRequest,
   MovimientoResponse,
@@ -71,6 +78,90 @@ import {
 
 const MONTHS_VISIBLE = 1;
 const MONTH_NAVIGATION_STEP = 1;
+const DEFAULT_PROJECT_ESTADO = "02-ejecucion";
+const PROJECT_ESTADO_FILTER_CHOICES = [
+  { id: "all", name: "Todos los estados" },
+  ...PROYECTO_ESTADO_CHOICES,
+];
+
+type HeaderFilterChoice = {
+  id: string | number;
+  name: string;
+};
+
+type IncomeRealMode = "manual" | "contab";
+
+type HeaderFiltersFormValues = {
+  estado: string;
+  proyecto: string;
+};
+
+const ErpPresupuestoPanelFilters = ({
+  selectedEstado,
+  selectedProjectId,
+  projectChoices,
+  onEstadoChange,
+  onProjectChange,
+}: {
+  selectedEstado: string;
+  selectedProjectId: string;
+  projectChoices: HeaderFilterChoice[];
+  onEstadoChange: (value: string) => void;
+  onProjectChange: (value: string) => void;
+}) => {
+  const form = useForm<HeaderFiltersFormValues>({
+    defaultValues: {
+      estado: selectedEstado,
+      proyecto: selectedProjectId,
+    },
+  });
+
+  useEffect(() => {
+    if (form.getValues("estado") !== selectedEstado) {
+      form.setValue("estado", selectedEstado, { shouldDirty: false });
+    }
+  }, [form, selectedEstado]);
+
+  useEffect(() => {
+    if (form.getValues("proyecto") !== selectedProjectId) {
+      form.setValue("proyecto", selectedProjectId, { shouldDirty: false });
+    }
+  }, [form, selectedProjectId]);
+
+  return (
+    <FormProvider {...form}>
+      <div className="list-filters pointer-events-auto flex min-w-0 flex-1 flex-wrap items-center gap-3">
+        <div className="filter-field pointer-events-auto relative flex flex-row items-center gap-1 sm:gap-2">
+          <CompactSelectInput
+            source="estado"
+            label="Estado"
+            choices={PROJECT_ESTADO_FILTER_CHOICES}
+            optionText="name"
+            optionValue="id"
+            disableClear
+            className="w-[150px]"
+            onSelectionChange={(value) => {
+              onEstadoChange(value);
+              onProjectChange("all");
+            }}
+          />
+        </div>
+        <div className="filter-field pointer-events-auto relative flex flex-row items-center gap-1 sm:gap-2">
+          <CompactSelectInput
+            source="proyecto"
+            label="Proyecto"
+            choices={projectChoices}
+            optionText="name"
+            optionValue="id"
+            disableClear
+            className="w-[260px]"
+            onSelectionChange={onProjectChange}
+          />
+        </div>
+      </div>
+    </FormProvider>
+  );
+};
 
 const parsePanelMonthParam = (value: string | null) => {
   if (!value || !/^\d{4}-\d{2}$/.test(value)) return null;
@@ -95,193 +186,118 @@ const parseExpandedRubroParam = (value: string | null) =>
       .filter(Boolean),
   );
 
-const ResultAmountWithProfitability = ({
-  amount,
-  profitability,
-  profitabilityTitle,
+const IncomeRealModeSelector = ({
+  value,
+  onChange,
 }: {
-  amount: number;
-  profitability: number | null;
-  profitabilityTitle: string;
+  value: IncomeRealMode;
+  onChange: (value: IncomeRealMode) => void;
 }) => (
-  <span className="grid w-full grid-cols-[minmax(0,1fr)_30px] items-baseline gap-1 text-[9px] leading-none tabular-nums">
-    <span className="min-w-0 truncate text-right">{formatCurrency(amount)}</span>
-    <span
-      className={cn(
-        "min-w-0 truncate text-right text-[7px] leading-none",
-        getNegativeOnlyColorClass(profitability),
-      )}
-      title={profitabilityTitle}
+  <span className="relative inline-flex h-4 items-center">
+    <select
+      value={value}
+      className="h-4 w-[92px] appearance-none rounded-sm border-0 bg-transparent py-0 pl-1 pr-3 text-[9px] font-semibold leading-none text-slate-700 outline-none transition-colors hover:text-slate-900 focus:text-slate-900"
+      title="Origen ingreso real"
+      aria-label="Origen ingreso real"
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => onChange(event.target.value as IncomeRealMode)}
     >
-      {formatPercent(profitability)}
-    </span>
+      <option value="contab">Ingreso Contable</option>
+      <option value="manual">Ingreso Manual</option>
+    </select>
+    <ChevronDown className="pointer-events-none absolute right-0 size-3 text-slate-700" />
   </span>
 );
 
-type ConceptValueCellProps = {
-  primary: ReactNode;
-  secondary: ReactNode;
-  variation: string;
-  primaryTitle: string;
-  secondaryTitle: string;
-  variationTitle: string;
-  primaryClassName?: string;
-  secondaryValueClassName?: string;
-  variationClassName?: string;
-  cellClassName?: string;
-  secondaryClassName?: string;
-  linkTo?: string | null;
-  onPrimaryClick?: () => void;
-  primaryIconClassName?: string;
-  primaryIconTitle?: string;
-  total?: boolean;
-  end?: boolean;
-  compact?: boolean;
-  narrow?: boolean;
-  secondaryLabel?: string;
-  showSecondaryLabel?: boolean;
-  showVariation?: boolean;
-};
+const metricCellClassName =
+  "w-[84px] min-w-[84px] max-w-[84px] overflow-hidden border-l border-border/40 px-1.5 text-right tabular-nums";
 
-const ConceptValueCell = ({
-  primary,
-  secondary,
-  variation,
-  primaryTitle,
-  secondaryTitle,
-  variationTitle,
-  primaryClassName,
-  secondaryValueClassName,
-  variationClassName,
-  cellClassName,
-  secondaryClassName,
-  linkTo,
-  onPrimaryClick,
-  primaryIconClassName,
-  primaryIconTitle = "Consultar movimientos",
-  total = false,
-  end = false,
+const MetricAmountCell = ({
+  value,
+  title,
+  children,
+  className,
+  valueClassName,
   compact = false,
-  narrow = false,
-  secondaryLabel = "Pres",
-  showSecondaryLabel = true,
-  showVariation = true,
-}: ConceptValueCellProps) => {
-  const content = (
-    <div className={cn("flex w-full flex-col", compact ? "gap-0" : "gap-0.5")}>
-      <div
+  total = false,
+}: {
+  value?: number;
+  title: string;
+  children?: ReactNode;
+  className?: string;
+  valueClassName?: string;
+  compact?: boolean;
+  total?: boolean;
+}) => (
+  <td
+    className={cn(
+      metricCellClassName,
+      compact ? "py-0.5 text-[8px]" : "py-1.5 text-[9px]",
+      total && "font-semibold",
+      className,
+    )}
+    title={title}
+  >
+    {children ?? (
+      <span
         className={cn(
-          "min-w-0 truncate text-right text-foreground",
+          "block truncate leading-none",
           total && "font-semibold",
-          primaryClassName,
+          valueClassName,
         )}
-        title={primaryTitle}
       >
-        {onPrimaryClick ? (
-          <span className="grid w-full grid-cols-[minmax(0,1fr)_14px] items-center gap-1">
-            <span className="min-w-0 truncate text-right text-[9px] leading-none tabular-nums">
-              {primary}
-            </span>
-            <button
-              type="button"
-              className={cn(
-                "inline-flex size-3.5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-700",
-                primaryIconClassName,
-              )}
-              aria-label={primaryIconTitle}
-              title={primaryIconTitle}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onPrimaryClick();
-              }}
-            >
-              <Eye className="size-3" aria-hidden="true" />
-            </button>
-          </span>
-        ) : (
-          <span className="text-[9px] leading-none tabular-nums">{primary}</span>
-        )}
-      </div>
-      {!compact ? (
-        <div
-          className={cn(
-            "rounded-sm bg-muted/60 py-px pl-1 text-[8px] leading-none text-muted-foreground",
-            onPrimaryClick || total || (!showSecondaryLabel && !showVariation)
-              ? "pr-0"
-              : "pr-1",
-            secondaryClassName,
-          )}
-        >
-          <div
-            className={cn(
-              "grid items-baseline gap-1",
-              onPrimaryClick
-                ? showSecondaryLabel || showVariation
-                  ? "grid-cols-[auto_minmax(0,1fr)_14px]"
-                  : "grid-cols-[minmax(0,1fr)_14px]"
-                : showSecondaryLabel || showVariation
-                  ? "grid-cols-[auto_minmax(0,1fr)]"
-                  : "grid-cols-[minmax(0,1fr)]",
-            )}
-          >
-            {showSecondaryLabel || showVariation ? (
-              <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-left">
-                {showSecondaryLabel ? <span>{secondaryLabel}</span> : null}
-                {showVariation ? (
-                  <span
-                    className={cn(
-                      "text-[7px]",
-                      total && "font-semibold",
-                      variationClassName,
-                    )}
-                    title={variationTitle}
-                  >
-                    {variation}
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
-            <span
-              className={cn(
-                "min-w-0 truncate text-right text-[9px] leading-none tabular-nums",
-                total && "font-semibold",
-                secondaryValueClassName,
-              )}
-              title={secondaryTitle}
-            >
-              {secondary}
-            </span>
-            {onPrimaryClick ? <span aria-hidden="true" /> : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+        {formatCurrency(value ?? 0)}
+      </span>
+    )}
+  </td>
+);
 
-  return (
-    <td
+const MetricVariationCell = ({
+  value,
+  title,
+  className,
+  compact = false,
+  total = false,
+}: {
+  value: number | null;
+  title: string;
+  className?: string;
+  compact?: boolean;
+  total?: boolean;
+}) => (
+  <td
+    className={cn(
+      "w-[48px] min-w-[48px] max-w-[48px] overflow-hidden border-l border-border/40 px-1 text-right tabular-nums",
+      compact ? "py-0.5 text-[8px]" : "py-1.5 text-[9px]",
+      total && "font-semibold",
+      getNegativeOnlyColorClass(value),
+      className,
+    )}
+    title={title}
+  >
+    <span className="block truncate leading-none">{formatPercent(value)}</span>
+  </td>
+);
+
+const ResultAmountWithMargin = ({
+  amount,
+  margin,
+}: {
+  amount: number;
+  margin: number | null;
+}) => (
+  <span className="grid w-full grid-cols-[minmax(0,1fr)_34px] items-baseline gap-1 leading-none">
+    <span className="min-w-0 truncate text-right">{formatCurrency(amount)}</span>
+    <span
       className={cn(
-        "overflow-hidden border-l border-border/40 px-1.5 text-right tabular-nums",
-        narrow
-          ? "w-[124px] min-w-[124px] max-w-[124px]"
-          : "w-[132px] min-w-[132px] max-w-[132px]",
-        compact ? "py-0.5 text-[8px]" : "py-1.5 text-[9px]",
-        total && "font-semibold",
-        end && "border-r",
-        cellClassName,
+        "min-w-0 truncate text-right text-[7px] tabular-nums",
+        getNegativeOnlyColorClass(margin),
       )}
     >
-      {linkTo ? (
-        <Link to={linkTo} className="block w-full hover:underline">
-          {content}
-        </Link>
-      ) : (
-        content
-      )}
-    </td>
-  );
-};
+      {formatPercent(margin)}
+    </span>
+  </span>
+);
 
 type PresupuestoPanelRowProps = {
   id: string;
@@ -302,6 +318,7 @@ type PresupuestoPanelRowProps = {
   onCopyBudget?: (request: BudgetCopyRequest) => void;
   onClearBudget?: (request: BudgetClearRequest) => void;
   onBudgetIncome?: (request: BudgetIncomeRequest) => void;
+  incomeRealMode?: IncomeRealMode;
   incomeReconciliation?: Record<
     string,
       {
@@ -339,12 +356,15 @@ const PresupuestoPanelRow = ({
   onCopyBudget,
   onClearBudget,
   onBudgetIncome,
+  incomeRealMode = "manual",
   incomeReconciliation,
   onCellSave,
   onAddRubro,
   onAddCuenta,
   compact = false,
 }: PresupuestoPanelRowProps) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const ToggleIcon = expanded ? ChevronDown : ChevronRight;
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
   const [draftValue, setDraftValue] = useState("");
@@ -465,8 +485,13 @@ const PresupuestoPanelRow = ({
         const values = monthValues[month] ?? getEmptyMonthValues();
         const ingresos = Number(values.ingresos ?? 0);
         const egresos = Number(values.egresos ?? 0);
-        const realIngresos = Number(values.real_ingresos ?? 0);
+        const manualRealIngresos = Number(values.real_ingresos ?? 0);
         const realEgresos = Number(values.real_egresos ?? 0);
+        const incomeReconciliationItem = incomeReconciliation?.[month];
+        const realIngresos =
+          level === 0 && incomeRealMode === "contab"
+            ? Number(incomeReconciliationItem?.rubroReal ?? 0)
+            : manualRealIngresos;
         const empleados = Number(values.empleados ?? 0);
         const resultado = ingresos - egresos;
         const realResultado = realIngresos - realEgresos;
@@ -493,22 +518,12 @@ const PresupuestoPanelRow = ({
           savingCell?.month === month && savingCell.field === "egreso";
         const isSavingEmpleados =
           savingCell?.month === month && savingCell.field === "obreros_cantidad";
-        const incomeReconciliationItem = incomeReconciliation?.[month];
-        const openMovimientos = (concepto: MovimientoConcepto, conceptoLabel: string) => {
-          onRealClick?.({
-            ...movimientoContext,
-            month,
-            concepto,
-            conceptoLabel,
-          });
+        const editProject = () => {
+          const returnTo = `${location.pathname}${location.search}`;
+          navigate(
+            `/proyectos/${movimientoContext.proyecto_id}?returnTo=${encodeURIComponent(returnTo)}`,
+          );
         };
-        const openProjectIncome = () => {
-          onBudgetIncome?.({
-            ...movimientoContext,
-            month,
-          });
-        };
-
         return (
           <Fragment key={`${id}-${month}`}>
             <td
@@ -554,157 +569,127 @@ const PresupuestoPanelRow = ({
                 formatEmployees(empleados)
               )}
             </td>
-            <ConceptValueCell
-              primary={formatCurrency(realIngresos)}
-              secondary={
-                isEditingIngresos ? (
-                  <input
-                    autoFocus
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={draftValue}
-                    disabled={isSavingIngresos}
-                    className="h-5 w-full rounded border border-primary/30 bg-background px-1 text-right text-[9px] tabular-nums text-foreground outline-none focus:border-primary"
-                    onChange={(event) => setDraftValue(event.target.value)}
-                    onBlur={() => void saveEditing(values)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void saveEditing(values);
-                      if (event.key === "Escape") cancelEditing();
-                    }}
-                  />
-                ) : canEdit ? (
-                  <button
-                    type="button"
-                    className="w-full truncate text-right hover:underline"
-                    onClick={() => startEditing(month, "ingres", ingresos)}
-                  >
-                    {formatCurrency(ingresos)}
-                  </button>
-                ) : listLink ? (
-                  <Link
-                    to={listLink}
-                    className="block w-full truncate text-right hover:underline"
-                  >
-                    {formatCurrency(ingresos)}
-                  </Link>
-                ) : (
-                  formatCurrency(ingresos)
-                )
-              }
-              variation={formatPercent(variacionIngresos)}
-              primaryTitle={`Ingreso real: ${formatCurrency(realIngresos)}`}
-              secondaryTitle={`Ingreso presupuesto: ${formatCurrency(ingresos)}`}
-              variationTitle={`Variacion ingreso: ${formatPercent(variacionIngresos)}`}
-              onPrimaryClick={
-                level === 0 && onBudgetIncome
-                  ? openProjectIncome
-                  : onRealClick
-                    ? () => openMovimientos("ingreso", "Ingreso")
-                    : undefined
-              }
-              primaryIconClassName={
-                incomeReconciliationItem?.mismatch
-                  ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                  : undefined
-              }
-              primaryIconTitle={
-                incomeReconciliationItem?.mismatch
-                  ? `Diferencia ingresos: movimientos ${formatCurrency(
-                      incomeReconciliationItem.rubroReal,
-                    )} / real ${formatCurrency(incomeReconciliationItem.projectReal)}`
-                  : level === 0
-                    ? "Consultar carga de ingresos"
-                    : "Consultar movimientos"
-              }
+            <MetricAmountCell
+              value={realIngresos}
+              title={`Ingreso real: ${formatCurrency(realIngresos)}`}
               compact={compact}
             />
-            <ConceptValueCell
-              primary={formatCurrency(realEgresos)}
-              secondary={
-                isEditingEgresos ? (
-                  <input
-                    autoFocus
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={draftValue}
-                    disabled={isSavingEgresos}
-                    className="h-5 w-full rounded border border-primary/30 bg-background px-1 text-right text-[9px] tabular-nums text-foreground outline-none focus:border-primary"
-                    onChange={(event) => setDraftValue(event.target.value)}
-                    onBlur={() => void saveEditing(values)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void saveEditing(values);
-                      if (event.key === "Escape") cancelEditing();
-                    }}
-                  />
-                ) : canEdit ? (
-                  <button
-                    type="button"
-                    className="w-full truncate text-right hover:underline"
-                    onClick={() => startEditing(month, "egreso", egresos)}
-                  >
-                    {formatCurrency(egresos)}
-                  </button>
-                ) : listLink ? (
-                  <Link
-                    to={listLink}
-                    className="block w-full truncate text-right hover:underline"
-                  >
-                    {formatCurrency(egresos)}
-                  </Link>
-                ) : (
-                  formatCurrency(egresos)
-                )
-              }
-              variation={formatPercent(variacionEgresos)}
-              primaryTitle={`Egreso real: ${formatCurrency(realEgresos)}`}
-              secondaryTitle={`Egreso presupuesto: ${formatCurrency(egresos)}`}
-              variationTitle={`Variacion egreso: ${formatPercent(variacionEgresos)}`}
-              onPrimaryClick={onRealClick ? () => openMovimientos("egreso", "Egreso") : undefined}
+            <MetricAmountCell
+              title={`Ingreso presupuesto: ${formatCurrency(ingresos)}`}
               compact={compact}
-            />
-            <ConceptValueCell
-              primary={
-                <ResultAmountWithProfitability
-                  amount={realResultado}
-                  profitability={rentabilidadReal}
-                  profitabilityTitle={`Rentabilidad real: ${formatPercent(rentabilidadReal)}`}
+              className="bg-muted/20"
+            >
+              {isEditingIngresos ? (
+                <input
+                  autoFocus
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={draftValue}
+                  disabled={isSavingIngresos}
+                  className="h-5 w-full rounded border border-primary/30 bg-background px-1 text-right text-[9px] tabular-nums text-foreground outline-none focus:border-primary"
+                  onChange={(event) => setDraftValue(event.target.value)}
+                  onBlur={() => void saveEditing(values)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void saveEditing(values);
+                    if (event.key === "Escape") cancelEditing();
+                  }}
                 />
-              }
-              secondary={
-                listLink ? (
-                  <Link
-                    to={listLink}
-                    className="block w-full truncate text-right hover:underline"
-                  >
-                    <ResultAmountWithProfitability
-                      amount={resultado}
-                      profitability={rentabilidadPres}
-                      profitabilityTitle={`Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
-                    />
-                  </Link>
-                ) : (
-                  <ResultAmountWithProfitability
-                    amount={resultado}
-                    profitability={rentabilidadPres}
-                    profitabilityTitle={`Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
-                  />
-                )
-              }
-              variation={formatPercent(variacionResultado)}
-              primaryTitle={`Resultado real: ${formatCurrency(realResultado)}`}
-              secondaryTitle={`Resultado presupuesto: ${formatCurrency(resultado)}`}
-              variationTitle={`Variacion resultado: ${formatPercent(variacionResultado)}`}
-              primaryClassName={getNegativeOnlyColorClass(realResultado)}
-              secondaryValueClassName={getNegativeOnlyColorClass(resultado)}
-              variationClassName={getNegativeOnlyColorClass(variacionResultado)}
-              cellClassName={compact ? undefined : "bg-slate-50/50"}
-              secondaryClassName={compact ? undefined : "bg-slate-100/70"}
+              ) : canEdit ? (
+                <button
+                  type="button"
+                  className="w-full truncate text-right hover:underline"
+                  onClick={() => startEditing(month, "ingres", ingresos)}
+                >
+                  {formatCurrency(ingresos)}
+                </button>
+              ) : listLink ? (
+                <Link
+                  to={listLink}
+                  className="block w-full truncate text-right hover:underline"
+                >
+                  {formatCurrency(ingresos)}
+                </Link>
+              ) : (
+                <span className="block truncate leading-none">{formatCurrency(ingresos)}</span>
+              )}
+            </MetricAmountCell>
+            <MetricVariationCell
+              value={variacionIngresos}
+              title={`Variacion ingreso: ${formatPercent(variacionIngresos)}`}
               compact={compact}
-              narrow
-              showSecondaryLabel={false}
-              showVariation={false}
+            />
+            <MetricAmountCell
+              value={realEgresos}
+              title={`Egreso real: ${formatCurrency(realEgresos)}`}
+              compact={compact}
+            />
+            <MetricAmountCell
+              title={`Egreso presupuesto: ${formatCurrency(egresos)}`}
+              compact={compact}
+              className="bg-muted/20"
+            >
+              {isEditingEgresos ? (
+                <input
+                  autoFocus
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={draftValue}
+                  disabled={isSavingEgresos}
+                  className="h-5 w-full rounded border border-primary/30 bg-background px-1 text-right text-[9px] tabular-nums text-foreground outline-none focus:border-primary"
+                  onChange={(event) => setDraftValue(event.target.value)}
+                  onBlur={() => void saveEditing(values)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void saveEditing(values);
+                    if (event.key === "Escape") cancelEditing();
+                  }}
+                />
+              ) : canEdit ? (
+                <button
+                  type="button"
+                  className="w-full truncate text-right hover:underline"
+                  onClick={() => startEditing(month, "egreso", egresos)}
+                >
+                  {formatCurrency(egresos)}
+                </button>
+              ) : listLink ? (
+                <Link
+                  to={listLink}
+                  className="block w-full truncate text-right hover:underline"
+                >
+                  {formatCurrency(egresos)}
+                </Link>
+              ) : (
+                <span className="block truncate leading-none">{formatCurrency(egresos)}</span>
+              )}
+            </MetricAmountCell>
+            <MetricVariationCell
+              value={variacionEgresos}
+              title={`Variacion egreso: ${formatPercent(variacionEgresos)}`}
+              compact={compact}
+            />
+            <MetricAmountCell
+              title={`Resultado real: ${formatCurrency(realResultado)} - Rentabilidad real: ${formatPercent(rentabilidadReal)}`}
+              compact={compact}
+              className={compact ? undefined : "bg-slate-50/50"}
+              valueClassName={getNegativeOnlyColorClass(realResultado)}
+            >
+              <ResultAmountWithMargin amount={realResultado} margin={rentabilidadReal} />
+            </MetricAmountCell>
+            <MetricAmountCell
+              title={`Resultado presupuesto: ${formatCurrency(resultado)} - Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
+              compact={compact}
+              className={compact ? "bg-muted/20" : "bg-slate-100/70"}
+              valueClassName={getNegativeOnlyColorClass(resultado)}
+            >
+              <ResultAmountWithMargin amount={resultado} margin={rentabilidadPres} />
+            </MetricAmountCell>
+            <MetricVariationCell
+              value={variacionResultado}
+              title={`Variacion resultado: ${formatPercent(variacionResultado)}`}
+              compact={compact}
+              className={compact ? undefined : "bg-slate-50/50"}
             />
             <td
               className={cn(
@@ -725,9 +710,17 @@ const PresupuestoPanelRow = ({
                     <MoreHorizontal className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-28 p-0.5">
+                <DropdownMenuContent align="end" className="w-32 p-0.5">
                   <DropdownMenuItem
-                    disabled={ingresos <= 0}
+                    onSelect={editProject}
+                    className="gap-1 px-1.5 py-0.5 text-[10px] leading-tight"
+                  >
+                    <Pencil className="size-2.5" />
+                    Editar proyecto
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="my-0.5" />
+                  <DropdownMenuItem
+                    disabled={!onBudgetIncome}
                     onSelect={() =>
                       onBudgetIncome?.({
                         ...movimientoContext,
@@ -738,6 +731,21 @@ const PresupuestoPanelRow = ({
                   >
                     <DollarSign className="size-2.5" />
                     Ingresos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!onRealClick}
+                    onSelect={() =>
+                      onRealClick?.({
+                        ...movimientoContext,
+                        month,
+                        concepto: "egreso",
+                        conceptoLabel: "Egreso",
+                      })
+                    }
+                    className="gap-1 px-1.5 py-0.5 text-[10px] leading-tight"
+                  >
+                    <Eye className="size-2.5" />
+                    Egresos
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="my-0.5" />
                   <DropdownMenuItem
@@ -802,6 +810,7 @@ const PresupuestoPanelRow = ({
 export const ErpPresupuestoPanel = () => {
   const notify = useNotify();
   const location = useLocation();
+  const navigate = useNavigate();
   const todayStart = useMemo(() => toStartOfMonth(new Date()), []);
   const [startMonth, setStartMonth] = useState(
     () =>
@@ -832,6 +841,13 @@ export const ErpPresupuestoPanel = () => {
   const [selectedProjectId, setSelectedProjectId] = useState(
     () => new URLSearchParams(location.search).get("panel_proyecto") ?? "all",
   );
+  const [selectedEstado, setSelectedEstado] = useState(
+    () =>
+      new URLSearchParams(location.search).get("panel_estado") ??
+      DEFAULT_PROJECT_ESTADO,
+  );
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [incomeRealMode, setIncomeRealMode] = useState<IncomeRealMode>("manual");
 
   const fechaDesde = useMemo(() => formatDateParam(startMonth), [startMonth]);
   const fechaHasta = useMemo(
@@ -843,11 +859,12 @@ export const ErpPresupuestoPanel = () => {
     const search = new URLSearchParams();
     search.set("fecha_desde", fechaDesde);
     search.set("fecha_hasta", fechaHasta);
+    search.set("estado", selectedEstado);
     if (selectedProjectId !== "all") {
       search.set("proyecto_id", selectedProjectId);
     }
     return search.toString();
-  }, [fechaDesde, fechaHasta, selectedProjectId]);
+  }, [fechaDesde, fechaHasta, selectedEstado, selectedProjectId]);
   const openPeriodBudgetForm = (month: string) => {
     setBudgetFormRequest({
       mode: "create",
@@ -912,10 +929,12 @@ export const ErpPresupuestoPanel = () => {
   });
 
   const { data: projectsData } = useQuery({
-    queryKey: ["erp-presupuestos-panel-proyectos"],
+    queryKey: ["erp-presupuestos-panel-proyectos", selectedEstado],
     queryFn: () =>
       fetchJsonWithAuth<PanelProjectsResponse>(
-        `${apiUrl}/erp/presupuestos/panel/proyectos`,
+        `${apiUrl}/erp/presupuestos/panel/proyectos?estado=${encodeURIComponent(
+          selectedEstado,
+        )}`,
       ),
   });
 
@@ -999,7 +1018,7 @@ export const ErpPresupuestoPanel = () => {
     () => buildBudgetIncomeRubroTotal(rows, budgetIncomeRequest),
     [rows, budgetIncomeRequest],
   );
-  const tableColSpan = 1 + months.length * 5;
+  const tableColSpan = 1 + months.length * 11;
   const hasExpandedProject = expandedProjects.size > 0;
   const totalsByMonth = useMemo(
     () =>
@@ -1007,10 +1026,15 @@ export const ErpPresupuestoPanel = () => {
         acc[month] = rows.reduce<MonthValues>(
           (total, project) => {
             const values = project.months[month] ?? getEmptyMonthValues();
+            const incomeRubro = project.rubros.find(isHiddenRubro);
+            const realIngresos =
+              incomeRealMode === "contab"
+                ? Number(incomeRubro?.months[month]?.real_ingresos ?? 0)
+                : Number(values.real_ingresos ?? 0);
             return {
               ingresos: total.ingresos + Number(values.ingresos ?? 0),
               egresos: total.egresos + Number(values.egresos ?? 0),
-              real_ingresos: total.real_ingresos + Number(values.real_ingresos ?? 0),
+              real_ingresos: total.real_ingresos + realIngresos,
               real_egresos: total.real_egresos + Number(values.real_egresos ?? 0),
               empleados: total.empleados + Number(values.empleados ?? 0),
               presupuesto_id: null,
@@ -1021,12 +1045,62 @@ export const ErpPresupuestoPanel = () => {
         );
         return acc;
       }, {}),
-    [months, rows],
+    [incomeRealMode, months, rows],
   );
+  const panelKpis = useMemo(
+    () =>
+      months.reduce(
+        (acc, month) => {
+          const values = totalsByMonth[month] ?? getEmptyMonthValues();
+          const ingresos = Number(values.ingresos ?? 0);
+          const egresos = Number(values.egresos ?? 0);
+          const realIngresos = Number(values.real_ingresos ?? 0);
+          const realEgresos = Number(values.real_egresos ?? 0);
+          return {
+            ingresos: acc.ingresos + realIngresos,
+            egresos: acc.egresos + realEgresos,
+            resultado: acc.resultado + realIngresos - realEgresos,
+            presupuestoIngresos: acc.presupuestoIngresos + ingresos,
+            presupuestoEgresos: acc.presupuestoEgresos + egresos,
+            presupuestoResultado: acc.presupuestoResultado + ingresos - egresos,
+            empleados: acc.empleados + Number(values.empleados ?? 0),
+          };
+        },
+        {
+          ingresos: 0,
+          egresos: 0,
+          resultado: 0,
+          presupuestoIngresos: 0,
+          presupuestoEgresos: 0,
+          presupuestoResultado: 0,
+          empleados: 0,
+        },
+      ),
+    [months, totalsByMonth],
+  );
+  const panelMargin = getProfitabilityPercent(panelKpis.resultado, panelKpis.ingresos) ?? 0;
+  const panelBudgetMargin =
+    getProfitabilityPercent(
+      panelKpis.presupuestoResultado,
+      panelKpis.presupuestoIngresos,
+    ) ?? 0;
   const navigationMonth = useMemo(
     () => formatMonthLabel(fechaDesde.slice(0, 7)),
     [fechaDesde],
   );
+  const selectedMonthKey = fechaDesde.slice(0, 7);
+  const visibleYearMonths = useMemo(() => {
+    const year = startMonth.getFullYear();
+    return Array.from({ length: 12 }, (_, monthIndex) => {
+      const monthStart = new Date(year, monthIndex, 1);
+      const monthKey = formatDateParam(monthStart).slice(0, 7);
+      return {
+        date: monthStart,
+        key: monthKey,
+        label: formatMonthLabel(monthKey),
+      };
+    });
+  }, [startMonth]);
   const moveVisibleMonth = (direction: -1 | 1) => {
     setStartMonth((current) => addMonths(current, direction * MONTH_NAVIGATION_STEP));
   };
@@ -1049,80 +1123,181 @@ export const ErpPresupuestoPanel = () => {
     });
   };
 
+  const handleBack = () => {
+    const returnTo = new URLSearchParams(location.search).get("returnTo");
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/erp/presupuestos");
+  };
+
   return (
     <div className="max-w-[1400px] px-2 py-3 sm:p-6">
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            ERP
-          </p>
-          <h1 className="text-xl font-semibold tracking-tight">Presupuestos ERP</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <CompactRadixSelect
-            label={false}
-            value={selectedProjectId}
-            onChange={setSelectedProjectId}
-            choices={[
-              { id: "all", name: "Todos los proyectos" },
-              ...(projectsData?.rows ?? []).map((project) => ({
-                id: String(project.proyecto_id),
-                name: project.proyecto_nombre,
-              })),
-            ]}
-            placeholder="Proyecto"
-            className="compact-filter w-[240px]"
-            triggerClassName="!h-6 !min-h-6 !px-2 !py-0 !text-[10px] sm:!h-6 sm:!min-h-6 sm:!px-2 sm:!py-0 sm:!text-[10px] [&_*]:!text-[10px] [&_svg]:!size-3"
-          />
-          <div className="flex items-center rounded-md border border-slate-200 bg-white shadow-xs">
+      <div className="mb-3 flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="h-6 w-6 rounded-r-none"
-              onClick={() => moveVisibleMonth(-1)}
-              aria-label="Mes anterior"
-              title="Mes anterior"
+              className="h-8 px-2 text-sm font-medium text-primary"
+              onClick={handleBack}
             >
-              <ChevronLeft className="size-3" />
+              <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+              Volver
             </Button>
-            <div className="min-w-[132px] border-x border-slate-200 px-2 text-center leading-none">
-              <div className="text-[11px] font-semibold text-slate-800">{navigationMonth}</div>
+            <h1 className="text-xl font-semibold tracking-tight">Presupuestos ERP</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-md border border-slate-200 bg-white shadow-xs">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 rounded-r-none"
+                onClick={() => moveVisibleMonth(-1)}
+                aria-label="Mes anterior"
+                title="Mes anterior"
+              >
+                <ChevronLeft className="size-3" />
+              </Button>
+              <Popover open={isMonthPickerOpen} onOpenChange={setIsMonthPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 min-w-[132px] rounded-none border-x border-slate-200 px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-50"
+                    aria-label="Seleccionar mes"
+                    title="Seleccionar mes"
+                  >
+                    {navigationMonth}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="center" className="w-[210px] p-2">
+                  <div className="grid grid-cols-3 gap-1">
+                    {visibleYearMonths.map((monthOption) => (
+                      <Button
+                        key={monthOption.key}
+                        type="button"
+                        variant={
+                          monthOption.key === selectedMonthKey
+                            ? "default"
+                            : "ghost"
+                        }
+                        className="h-7 justify-center px-2 text-[11px] capitalize"
+                        onClick={() => {
+                          setStartMonth(monthOption.date);
+                          setIsMonthPickerOpen(false);
+                        }}
+                      >
+                        {monthOption.label}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 rounded-l-none"
+                onClick={() => moveVisibleMonth(1)}
+                aria-label="Mes siguiente"
+                title="Mes siguiente"
+              >
+                <ChevronRight className="size-3" />
+              </Button>
             </div>
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="h-6 w-6 rounded-l-none"
-              onClick={() => moveVisibleMonth(1)}
-              aria-label="Mes siguiente"
-              title="Mes siguiente"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={() => setStartMonth(todayStart)}
             >
-              <ChevronRight className="size-3" />
+              <RotateCcw className="mr-1 size-3.5" />
+              Hoy
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={handleSyncLastSixMonths}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={cn("mr-1 size-3.5", isSyncing && "animate-spin")} />
+              {isSyncing ? "Sincronizando" : "Sincronizar"}
             </Button>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={() => setStartMonth(todayStart)}
-          >
-            <RotateCcw className="mr-1 size-3.5" />
-            Hoy
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={handleSyncLastSixMonths}
-            disabled={isSyncing}
-          >
-            <RefreshCw className={cn("mr-1 size-3.5", isSyncing && "animate-spin")} />
-            {isSyncing ? "Sincronizando" : "Sincronizar"}
-          </Button>
         </div>
+        <div className="mb-1 w-full min-w-0 rounded-lg bg-muted/30 p-1 sm:mb-2 sm:p-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <ErpPresupuestoPanelFilters
+              selectedEstado={selectedEstado}
+              selectedProjectId={selectedProjectId}
+              onEstadoChange={setSelectedEstado}
+              onProjectChange={setSelectedProjectId}
+              projectChoices={[
+                { id: "all", name: "Todos los proyectos" },
+                ...(projectsData?.rows ?? []).map((project) => ({
+                  id: String(project.proyecto_id),
+                  name: project.proyecto_nombre,
+                })),
+              ]}
+            />
+          </div>
+        </div>
+        <FinancialKpiCards
+          items={[
+            {
+              key: "ingresos",
+              title: "Ingresos",
+              value: panelKpis.ingresos,
+              budget: panelKpis.presupuestoIngresos,
+              deviation: panelKpis.ingresos - panelKpis.presupuestoIngresos,
+              icon: DollarSign,
+              iconClassName: "bg-emerald-600",
+            },
+            {
+              key: "egresos",
+              title: "Egresos",
+              value: panelKpis.egresos,
+              detail: `${formatEmployees(panelKpis.empleados)} personas`,
+              detailTitle: `Total personas: ${formatEmployees(panelKpis.empleados)}`,
+              budget: panelKpis.presupuestoEgresos,
+              deviation: panelKpis.egresos - panelKpis.presupuestoEgresos,
+              icon: ArrowDownToLine,
+              iconClassName: "bg-rose-600",
+            },
+            {
+              key: "resultado",
+              title: "Resultado",
+              value: panelKpis.resultado,
+              budget: panelKpis.presupuestoResultado,
+              deviation: panelKpis.resultado - panelKpis.presupuestoResultado,
+              icon: BarChart3,
+              iconClassName: "bg-indigo-700",
+            },
+            {
+              key: "margen",
+              title: "Margen",
+              value: panelMargin,
+              valueType: "percent",
+              budget: panelBudgetMargin,
+              budgetValueType: "percent",
+              deviation: panelMargin - panelBudgetMargin,
+              deviationType: "points",
+              showDeviationPercent: false,
+              icon: Percent,
+              iconClassName: "bg-amber-500",
+            },
+          ]}
+        />
       </div>
 
       <div className="overflow-hidden rounded-md border border-border bg-background">
@@ -1133,9 +1308,15 @@ export const ErpPresupuestoPanel = () => {
               {months.map((month) => (
                 <Fragment key={`${month}-cols`}>
                   <col className="w-[34px]" />
-                  <col className="w-[132px]" />
-                  <col className="w-[132px]" />
-                  <col className="w-[124px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[48px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[48px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[48px]" />
                   <col className="w-[32px]" />
                 </Fragment>
               ))}
@@ -1149,17 +1330,54 @@ export const ErpPresupuestoPanel = () => {
                   Proyecto
                 </th>
                 {months.map((month, monthIndex) => (
-                  <th
-                    key={month}
-                    scope="col"
-                    colSpan={5}
-                    className={cn(
-                      "border-r border-border px-1.5 py-1.5 text-center text-[10px] font-semibold",
-                      monthIndex > 0 && "border-l-2 border-l-slate-300",
-                    )}
-                  >
-                    {formatMonthLabel(month)}
-                  </th>
+                  <Fragment key={`${month}-group-headers`}>
+                    <th
+                      scope="col"
+                      rowSpan={2}
+                      className={cn(
+                        "w-[34px] min-w-[34px] max-w-[34px] border-l border-border/40 px-1 py-1.5 text-center text-[9px] font-semibold text-slate-700",
+                        monthIndex > 0 && "border-l-2 border-l-slate-300",
+                      )}
+                      title={`Empleados - ${formatMonthLabel(month)}`}
+                    >
+                      Emp.
+                    </th>
+                    <th
+                      scope="col"
+                      colSpan={3}
+                      className="border-l border-border/40 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-700"
+                      title={`Ingresos - ${formatMonthLabel(month)}`}
+                    >
+                      <div className="flex items-center justify-center">
+                        <IncomeRealModeSelector
+                          value={incomeRealMode}
+                          onChange={setIncomeRealMode}
+                        />
+                      </div>
+                    </th>
+                    <th
+                      scope="col"
+                      colSpan={3}
+                      className="border-l border-border/40 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-700"
+                      title={`Egresos - ${formatMonthLabel(month)}`}
+                    >
+                      Egresos
+                    </th>
+                    <th
+                      scope="col"
+                      colSpan={3}
+                      className="border-l border-border/40 bg-slate-100 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-900"
+                      title={`Resultado - ${formatMonthLabel(month)}`}
+                    >
+                      Resultado
+                    </th>
+                    <th
+                      scope="col"
+                      rowSpan={2}
+                      className="w-[32px] min-w-[32px] max-w-[32px] border-l border-r border-border/40 px-1 py-1"
+                      aria-label="Acciones"
+                    />
+                  </Fragment>
                 ))}
               </tr>
               <tr className="border-b border-border bg-muted/20">
@@ -1181,37 +1399,15 @@ export const ErpPresupuestoPanel = () => {
                 </th>
                 {months.map((month, monthIndex) => (
                   <Fragment key={`${month}-headers`}>
-                    <th
-                      className={cn(
-                        "w-[34px] min-w-[34px] max-w-[34px] border-l border-border/40 px-1 py-1 text-center text-[9px] font-semibold text-slate-700",
-                        monthIndex > 0 && "border-l-2 border-l-slate-300",
-                      )}
-                      title="Empleados"
-                    >
-                      Emp.
-                    </th>
-                    <th
-                      className="w-[132px] min-w-[132px] max-w-[132px] border-l border-border/40 px-1.5 py-1 text-center text-[9px] font-semibold text-slate-700"
-                      title="Ingreso"
-                    >
-                      Ingreso
-                    </th>
-                    <th
-                      className="w-[132px] min-w-[132px] max-w-[132px] border-l border-border/40 px-1.5 py-1 text-center text-[9px] font-semibold text-slate-700"
-                      title="Egreso"
-                    >
-                      Egreso
-                    </th>
-                    <th
-                      className="w-[124px] min-w-[124px] max-w-[124px] border-l border-border/40 bg-slate-100 px-1.5 py-1 text-center text-[9px] font-semibold text-slate-900"
-                      title="Resultado"
-                    >
-                      Resultado
-                    </th>
-                    <th
-                      className="w-[32px] min-w-[32px] max-w-[32px] border-l border-r border-border/40 px-1 py-1"
-                      aria-label="Acciones"
-                    />
+                    <th className={cn("border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600", monthIndex > 0 && "border-l-2 border-l-slate-300")}>Real</th>
+                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Presup</th>
+                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Var.</th>
+                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Real</th>
+                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Presup</th>
+                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Var.</th>
+                    <th className="border-l border-border/40 bg-slate-100 px-1 py-1 text-right text-[9px] font-semibold text-slate-700">Real</th>
+                    <th className="border-l border-border/40 bg-slate-100 px-1 py-1 text-right text-[9px] font-semibold text-slate-700">Presup</th>
+                    <th className="border-l border-border/40 bg-slate-100 px-1 py-1 text-right text-[9px] font-semibold text-slate-700">Var.</th>
                   </Fragment>
                 ))}
               </tr>
@@ -1257,7 +1453,10 @@ export const ErpPresupuestoPanel = () => {
                 rows.map((project) => {
                   const projectExpanded = expandedProjects.has(project.proyecto_id);
                   const compactProject = hasExpandedProject && !projectExpanded;
-                  const visibleRubros = project.rubros.filter((rubro) => !isHiddenRubro(rubro));
+                  const visibleRubros = project.rubros.filter(
+                    (rubro) =>
+                      incomeRealMode === "contab" || !isHiddenRubro(rubro),
+                  );
                   const incomeRubro = project.rubros.find(isHiddenRubro);
                   const incomeReconciliation = months.reduce<
                     Record<
@@ -1302,6 +1501,7 @@ export const ErpPresupuestoPanel = () => {
                         onCopyBudget={setBudgetCopyRequest}
                         onClearBudget={setBudgetClearRequest}
                         onBudgetIncome={setBudgetIncomeRequest}
+                        incomeRealMode={incomeRealMode}
                         incomeReconciliation={incomeReconciliation}
                         expandable={visibleRubros.length > 0}
                         expanded={projectExpanded}
@@ -1449,52 +1649,65 @@ export const ErpPresupuestoPanel = () => {
                         >
                           {formatEmployees(values.empleados)}
                         </td>
-                        <ConceptValueCell
-                          primary={formatCurrency(realIngresos)}
-                          secondary={formatCurrency(values.ingresos)}
-                          variation={formatPercent(variacionIngresos)}
-                          primaryTitle={`Ingreso real: ${formatCurrency(realIngresos)}`}
-                          secondaryTitle={`Ingreso presupuesto: ${formatCurrency(values.ingresos)}`}
-                          variationTitle={`Variacion ingreso: ${formatPercent(variacionIngresos)}`}
+                        <MetricAmountCell
+                          value={realIngresos}
+                          title={`Ingreso real: ${formatCurrency(realIngresos)}`}
                           total
                         />
-                        <ConceptValueCell
-                          primary={formatCurrency(realEgresos)}
-                          secondary={formatCurrency(values.egresos)}
-                          variation={formatPercent(variacionEgresos)}
-                          primaryTitle={`Egreso real: ${formatCurrency(realEgresos)}`}
-                          secondaryTitle={`Egreso presupuesto: ${formatCurrency(values.egresos)}`}
-                          variationTitle={`Variacion egreso: ${formatPercent(variacionEgresos)}`}
+                        <MetricAmountCell
+                          value={Number(values.ingresos ?? 0)}
+                          title={`Ingreso presupuesto: ${formatCurrency(values.ingresos)}`}
+                          className="bg-muted/20"
                           total
                         />
-                        <ConceptValueCell
-                          primary={
-                            <ResultAmountWithProfitability
-                              amount={realResultado}
-                              profitability={rentabilidadReal}
-                              profitabilityTitle={`Rentabilidad real: ${formatPercent(rentabilidadReal)}`}
-                            />
-                          }
-                          secondary={
-                            <ResultAmountWithProfitability
-                              amount={resultado}
-                              profitability={rentabilidadPres}
-                              profitabilityTitle={`Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
-                            />
-                          }
-                          variation={formatPercent(variacionResultado)}
-                          primaryTitle={`Resultado real: ${formatCurrency(realResultado)}`}
-                          secondaryTitle={`Resultado presupuesto: ${formatCurrency(resultado)}`}
-                          variationTitle={`Variacion resultado: ${formatPercent(variacionResultado)}`}
-                          primaryClassName={getNegativeOnlyColorClass(realResultado)}
-                          secondaryValueClassName={getNegativeOnlyColorClass(resultado)}
-                          variationClassName={getNegativeOnlyColorClass(variacionResultado)}
-                          cellClassName="bg-slate-100 text-foreground"
-                          secondaryClassName="bg-slate-200/70 text-foreground"
+                        <MetricVariationCell
+                          value={variacionIngresos}
+                          title={`Variacion ingreso: ${formatPercent(variacionIngresos)}`}
                           total
-                          narrow
-                          showSecondaryLabel={false}
-                          showVariation={false}
+                        />
+                        <MetricAmountCell
+                          value={realEgresos}
+                          title={`Egreso real: ${formatCurrency(realEgresos)}`}
+                          total
+                        />
+                        <MetricAmountCell
+                          value={Number(values.egresos ?? 0)}
+                          title={`Egreso presupuesto: ${formatCurrency(values.egresos)}`}
+                          className="bg-muted/20"
+                          total
+                        />
+                        <MetricVariationCell
+                          value={variacionEgresos}
+                          title={`Variacion egreso: ${formatPercent(variacionEgresos)}`}
+                          total
+                        />
+                        <MetricAmountCell
+                          title={`Resultado real: ${formatCurrency(realResultado)} - Rentabilidad real: ${formatPercent(rentabilidadReal)}`}
+                          className="bg-slate-100 text-foreground"
+                          valueClassName={getNegativeOnlyColorClass(realResultado)}
+                          total
+                        >
+                          <ResultAmountWithMargin
+                            amount={realResultado}
+                            margin={rentabilidadReal}
+                          />
+                        </MetricAmountCell>
+                        <MetricAmountCell
+                          title={`Resultado presupuesto: ${formatCurrency(resultado)} - Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
+                          className="bg-slate-200/70 text-foreground"
+                          valueClassName={getNegativeOnlyColorClass(resultado)}
+                          total
+                        >
+                          <ResultAmountWithMargin
+                            amount={resultado}
+                            margin={rentabilidadPres}
+                          />
+                        </MetricAmountCell>
+                        <MetricVariationCell
+                          value={variacionResultado}
+                          title={`Variacion resultado: ${formatPercent(variacionResultado)}`}
+                          className="bg-slate-100"
+                          total
                         />
                         <td className="w-[32px] min-w-[32px] max-w-[32px] border-l border-r border-border/40 px-1 py-1.5" />
                       </Fragment>
