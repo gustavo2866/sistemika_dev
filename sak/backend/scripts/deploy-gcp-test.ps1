@@ -76,7 +76,7 @@ Invoke-Step "Desplegando imagen en Cloud Run test" {
         --min-instances=1 `
         --max-instances=10 `
         --set-secrets="DATABASE_URL=DATABASE_URL_TEST:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,JWT_SECRET=JWT_SECRET:latest" `
-        --set-env-vars="ENV=test,OPENAI_CHAT_REPLY_MODEL=gpt-4.1-mini,CORS_ORIGINS=https://wcl.vercel.app;http://localhost:3000,CORS_ORIGINS_REGEX=https://.*-gustavo2866s-projects\.vercel\.app,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=$ProjectId,GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
+        --set-env-vars="ENV=test,OPENAI_CHAT_REPLY_MODEL=gpt-4.1-mini,CORS_ORIGINS=https://sistemika-sak-frontend.vercel.app;https://wcl.vercel.app;http://localhost:3000,CORS_ORIGINS_REGEX=https://.*\.vercel\.app,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=$ProjectId,GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
 }
 
 Invoke-Step "URL del servicio" {
