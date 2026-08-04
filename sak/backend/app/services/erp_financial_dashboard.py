@@ -269,6 +269,10 @@ def build_erp_financial_dashboard_payload(
     previous_by_project: dict[int, dict[str, Decimal]] = defaultdict(
         lambda: {"ingresos": ZERO, "egresos": ZERO, "resultado": ZERO}
     )
+    by_rubro: dict[str, dict[str, Any]] = {}
+    previous_by_rubro: dict[str, dict[str, Decimal]] = defaultdict(
+        lambda: {"ingresos": ZERO, "egresos": ZERO, "resultado": ZERO}
+    )
     open_window_by_project: dict[int, dict[str, Decimal]] = defaultdict(
         lambda: {
             "real": ZERO,
@@ -323,6 +327,24 @@ def build_erp_financial_dashboard_payload(
         deviation_entry["real_egreso"] += real_egreso
 
         rubro_name = row.rubro_nombre or row.cuenta_descripcion or "Sin rubro"
+        if not _is_income_rubro(rubro_name):
+            rubro_deviation_entry = by_rubro.setdefault(
+                rubro_name,
+                {
+                    "rubro": rubro_name,
+                    "ingresos": ZERO,
+                    "egresos": ZERO,
+                    "resultado": ZERO,
+                    "presupuesto_ingresos": ZERO,
+                    "presupuesto_egresos": ZERO,
+                },
+            )
+            rubro_deviation_entry["ingresos"] += real_ingreso_manual
+            rubro_deviation_entry["egresos"] += real_egreso
+            rubro_deviation_entry["resultado"] += real_ingreso_manual - real_egreso
+            rubro_deviation_entry["presupuesto_ingresos"] += presupuesto_ingreso
+            rubro_deviation_entry["presupuesto_egresos"] += presupuesto_egreso
+
         rubro_entry = costs_by_rubro.setdefault(
             rubro_name,
             {
@@ -351,12 +373,18 @@ def build_erp_financial_dashboard_payload(
         estados=estados,  # type: ignore[arg-type]
     )
     for row in previous_rows:
-        real_ingreso_contable, _real_ingreso_manual = _split_real_income(row)
+        real_ingreso_contable, real_ingreso_manual = _split_real_income(row)
         real_egreso = _to_decimal(row.real_egreso)
         project_previous = previous_by_project[int(row.proyecto_id)]
         project_previous["ingresos"] += real_ingreso_contable
         project_previous["egresos"] += real_egreso
         project_previous["resultado"] += real_ingreso_contable - real_egreso
+        rubro_name = row.rubro_nombre or row.cuenta_descripcion or "Sin rubro"
+        if not _is_income_rubro(rubro_name):
+            rubro_previous = previous_by_rubro[rubro_name]
+            rubro_previous["ingresos"] += real_ingreso_manual
+            rubro_previous["egresos"] += real_egreso
+            rubro_previous["resultado"] += real_ingreso_manual - real_egreso
 
     resultado_por_proyecto = sorted(
         [
@@ -376,18 +404,21 @@ def build_erp_financial_dashboard_payload(
                 "proyecto_id": item["proyecto_id"],
                 "proyecto": item["proyecto"],
                 "ingresos": {
+                    "anterior": _to_float(previous_by_project[item["proyecto_id"]]["ingresos"]),
                     "real": _to_float(item["ingresos"]),
                     "presupuestado": _to_float(item["presupuesto_ingresos"]),
                     "dif": _to_float(item["ingresos"] - item["presupuesto_ingresos"]),
                     "var": _pct_change(item["ingresos"], item["presupuesto_ingresos"]),
                 },
                 "egresos": {
+                    "anterior": _to_float(previous_by_project[item["proyecto_id"]]["egresos"]),
                     "real": _to_float(item["egresos"]),
                     "presupuestado": _to_float(item["presupuesto_egresos"]),
                     "dif": _to_float(item["egresos"] - item["presupuesto_egresos"]),
                     "var": _pct_change(item["egresos"], item["presupuesto_egresos"]),
                 },
                 "resultado": {
+                    "anterior": _to_float(previous_by_project[item["proyecto_id"]]["resultado"]),
                     "real": _to_float(item["resultado"]),
                     "presupuestado": _to_float(
                         item["presupuesto_ingresos"] - item["presupuesto_egresos"]
@@ -405,6 +436,45 @@ def build_erp_financial_dashboard_payload(
             for item in by_project.values()
         ],
         key=lambda item: item["proyecto"],
+    )
+
+    desvios_por_rubro = sorted(
+        [
+            {
+                "rubro": item["rubro"],
+                "ingresos": {
+                    "anterior": _to_float(previous_by_rubro[item["rubro"]]["ingresos"]),
+                    "real": _to_float(item["ingresos"]),
+                    "presupuestado": _to_float(item["presupuesto_ingresos"]),
+                    "dif": _to_float(item["ingresos"] - item["presupuesto_ingresos"]),
+                    "var": _pct_change(item["ingresos"], item["presupuesto_ingresos"]),
+                },
+                "egresos": {
+                    "anterior": _to_float(previous_by_rubro[item["rubro"]]["egresos"]),
+                    "real": _to_float(item["egresos"]),
+                    "presupuestado": _to_float(item["presupuesto_egresos"]),
+                    "dif": _to_float(item["egresos"] - item["presupuesto_egresos"]),
+                    "var": _pct_change(item["egresos"], item["presupuesto_egresos"]),
+                },
+                "resultado": {
+                    "anterior": _to_float(previous_by_rubro[item["rubro"]]["resultado"]),
+                    "real": _to_float(item["resultado"]),
+                    "presupuestado": _to_float(
+                        item["presupuesto_ingresos"] - item["presupuesto_egresos"]
+                    ),
+                    "dif": _to_float(
+                        item["resultado"]
+                        - (item["presupuesto_ingresos"] - item["presupuesto_egresos"])
+                    ),
+                    "var": _pct_change(
+                        item["resultado"],
+                        item["presupuesto_ingresos"] - item["presupuesto_egresos"],
+                    ),
+                },
+            }
+            for item in by_rubro.values()
+        ],
+        key=lambda item: item["rubro"],
     )
 
     top_desvios = []
@@ -610,6 +680,7 @@ def build_erp_financial_dashboard_payload(
         },
         "resultado_por_proyecto": resultado_por_proyecto,
         "desvios_por_proyecto": desvios_por_proyecto,
+        "desvios_por_rubro": desvios_por_rubro,
         "top_desvios_negativos": top_desvios,
         "resultado_por_rubro": resultado_por_rubro,
         "costo_por_rubro": resultado_por_rubro,

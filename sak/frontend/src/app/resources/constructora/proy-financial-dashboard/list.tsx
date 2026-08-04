@@ -25,6 +25,7 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { FinancialKpiCards } from "@/components/financial-kpi-cards";
+import { ZoomablePanel } from "@/components/zoomable-panel";
 import { cn } from "@/lib/utils";
 import {
   formatCurrency,
@@ -38,6 +39,7 @@ import {
   type ProjectDeviationItem,
   type ProjectResultItem,
   type ProjectSummaryItem,
+  type RubroDeviationItem,
   type RubroResultItem,
   type SelectOption,
 } from "./model";
@@ -260,6 +262,18 @@ const KpiGrid = ({
 }) => {
   const kpis = dashboardData.kpis;
   const trendSuffix = `vs ${previousPeriodLabel}`;
+  const accumulated = dashboardData.resumen_por_proyecto.reduce(
+    (acc, item) => ({
+      real: acc.real + item.ventana_abierta_real,
+      presupuestado: acc.presupuestado + item.ventana_abierta_presupuestado,
+      total: acc.total + item.ventana_abierta_total,
+      ingresosEsperados: acc.ingresosEsperados + item.ventana_abierta_ingresos_total,
+    }),
+    { real: 0, presupuestado: 0, total: 0, ingresosEsperados: 0 },
+  );
+  const accumulatedMargin = accumulated.ingresosEsperados
+    ? (accumulated.total / accumulated.ingresosEsperados) * 100
+    : 0;
 
   return (
     <FinancialKpiCards
@@ -305,6 +319,15 @@ const KpiGrid = ({
           trend: kpis.comparativos.margen_pp,
           trendSuffix,
           trendType: "points",
+          sideSummary: {
+            title: "Acc",
+            items: [
+              { label: "Real", value: accumulated.real },
+              { label: "Pres", value: accumulated.presupuestado },
+              { label: "Total", value: accumulated.total },
+              { label: "Mar", value: accumulatedMargin, valueType: "percent" },
+            ],
+          },
           icon: Percent,
           iconClassName: "bg-amber-500",
         },
@@ -313,11 +336,83 @@ const KpiGrid = ({
   );
 };
 
+const CHART_LABEL_AXIS_WIDTH = 96;
+const CHART_LABEL_LEFT_PADDING = 8;
+
+const TruncatedAxisTick = ({
+  x = 0,
+  y = 0,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string | number };
+}) => {
+  const label = String(payload?.value ?? "");
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <foreignObject
+        x={-CHART_LABEL_AXIS_WIDTH + CHART_LABEL_LEFT_PADDING}
+        y={-7}
+        width={CHART_LABEL_AXIS_WIDTH - CHART_LABEL_LEFT_PADDING - 6}
+        height={14}
+      >
+        <div
+          className="truncate pr-1 text-left text-[8px] leading-[14px] text-slate-600"
+          title={label}
+        >
+          {label}
+        </div>
+      </foreignObject>
+    </g>
+  );
+};
+
 const ResultByProjectChart = ({ data }: { data: ProjectResultItem[] }) => {
   const chartData = data.map((item) => ({
     ...item,
-    label: item.proyecto.length > 20 ? `${item.proyecto.slice(0, 19)}.` : item.proyecto,
+    label: item.proyecto,
   }));
+  const renderChart = () => (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart
+        data={chartData}
+        layout="vertical"
+        barCategoryGap="36%"
+        margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+        <XAxis
+          type="number"
+          tickFormatter={(value) => String(Math.round(Number(value) / 1_000_000))}
+          tick={{ fontSize: 8 }}
+          tickLine={false}
+          axisLine={{ stroke: "#9ca3af" }}
+        />
+        <YAxis
+          dataKey="label"
+          type="category"
+          width={CHART_LABEL_AXIS_WIDTH}
+          tick={<TruncatedAxisTick />}
+          interval={0}
+          tickLine={false}
+        />
+        <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+        <Bar dataKey="resultado" radius={[0, 3, 3, 0]} maxBarSize={16}>
+          {chartData.map((entry) => (
+            <Cell key={entry.proyecto_id} fill={entry.resultado >= 0 ? "#1d4ed8" : "#ef4444"} />
+          ))}
+          <LabelList
+            dataKey="resultado"
+            position="right"
+            formatter={(value) => formatMillions(Number(value))}
+            fontSize={8}
+          />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
 
   return (
     <SectionShell className="flex h-full flex-col p-1.5">
@@ -326,43 +421,7 @@ const ResultByProjectChart = ({ data }: { data: ProjectResultItem[] }) => {
         <div className="text-[8px] text-muted-foreground">Millones</div>
       </div>
       <div className="min-h-0 flex-1">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            layout="vertical"
-            barCategoryGap="36%"
-            margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-            <XAxis
-              type="number"
-              tickFormatter={(value) => String(Math.round(Number(value) / 1_000_000))}
-              tick={{ fontSize: 8 }}
-              tickLine={false}
-              axisLine={{ stroke: "#9ca3af" }}
-            />
-            <YAxis
-              dataKey="label"
-              type="category"
-              width={142}
-              tick={{ fontSize: 8 }}
-              interval={0}
-              tickLine={false}
-            />
-            <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-            <Bar dataKey="resultado" radius={[0, 3, 3, 0]} maxBarSize={16}>
-              {chartData.map((entry) => (
-                <Cell key={entry.proyecto_id} fill={entry.resultado >= 0 ? "#1d4ed8" : "#ef4444"} />
-              ))}
-              <LabelList
-                dataKey="resultado"
-                position="right"
-                formatter={(value) => formatMillions(Number(value))}
-                fontSize={8}
-              />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        {renderChart()}
       </div>
     </SectionShell>
   );
@@ -438,7 +497,7 @@ const RubroResultRanking = ({ data }: { data: RubroResultItem[] }) => {
   const rows = data.slice(0, 7);
   const chartData = rows.map((item) => ({
     ...item,
-    label: item.rubro.length > 20 ? `${item.rubro.slice(0, 19)}.` : item.rubro,
+    label: item.rubro,
   }));
   const minResult = Math.min(
     0,
@@ -454,7 +513,7 @@ const RubroResultRanking = ({ data }: { data: RubroResultItem[] }) => {
     <SectionShell className="flex h-full flex-col p-1.5">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <div className="text-xs font-semibold">Resultado por rubro</div>
-        <div className="flex items-center gap-2 text-[8px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground">
           <span className="inline-flex items-center gap-1"><span className="h-px w-3 bg-blue-700" />Real</span>
           <span className="inline-flex items-center gap-1"><span className="h-px w-3 bg-slate-400" />Pres.</span>
           <span>Millones</span>
@@ -482,8 +541,8 @@ const RubroResultRanking = ({ data }: { data: RubroResultItem[] }) => {
               <YAxis
                 dataKey="label"
                 type="category"
-                width={142}
-                tick={{ fontSize: 8 }}
+                width={CHART_LABEL_AXIS_WIDTH}
+                tick={<TruncatedAxisTick />}
                 interval={0}
                 tickLine={false}
               />
@@ -556,7 +615,7 @@ const MonthlyEvolutionChart = ({ data }: { data: FinancialDashboardResponse["evo
   <SectionShell className="flex h-full flex-col p-1.5">
     <div className="mb-1 flex items-baseline justify-between gap-2">
       <div className="text-xs font-semibold">Evolucion mensual</div>
-      <div className="flex items-center gap-2 text-[8px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground">
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-blue-700" />Ing.</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-red-500" />Egr.</span>
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />Res.</span>
@@ -673,14 +732,21 @@ const SummaryAmount = ({
   strong?: boolean;
   valueClassName?: string;
 }) => (
-  <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_32px] items-baseline gap-1">
+  <span
+    className={cn(
+      "min-w-0 items-baseline",
+      variation !== undefined
+        ? "grid grid-cols-[minmax(0,1fr)_27px] gap-0.5"
+        : "block",
+    )}
+  >
     <span className={cn("min-w-0 truncate text-right tabular-nums", strong && "font-semibold", valueClassName)}>
       {formatMillions(value)}
     </span>
     {variation !== undefined ? (
       <span
         className={cn(
-          "shrink-0 text-right text-[6.5px] font-medium tabular-nums",
+          "shrink-0 text-right text-[5.8px] font-medium tabular-nums",
           variation >= 0 ? "text-emerald-700" : "text-rose-700",
         )}
       >
@@ -688,16 +754,6 @@ const SummaryAmount = ({
         {formatPercent(variation)}
       </span>
     ) : null}
-  </span>
-);
-
-const SummaryMetricHeader = ({ label }: { label: string }) => (
-  <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_32px] items-end gap-1">
-    <span className="min-w-0 text-right font-semibold">{label}</span>
-    <span className="inline-flex shrink-0 items-center justify-end gap-0.5 text-[6.5px] font-semibold text-muted-foreground">
-      <ArrowUpRight className="h-2 w-2" />
-      Var
-    </span>
   </span>
 );
 
@@ -717,92 +773,206 @@ const ProjectSummaryTable = ({ data }: { data: ProjectSummaryItem[] }) => {
   const totalExpectedMargin = totals.ingresosEsperados
     ? (totals.total / totals.ingresosEsperados) * 100
     : 0;
+  const totalMonthlyMargin = totals.ingresos
+    ? (totals.resultado / totals.ingresos) * 100
+    : 0;
+  const exportColumns = [
+    "Proyecto",
+    "Ing.",
+    "Egr.",
+    "Res.",
+    "Mar. %",
+    "acc Real",
+    "acc Pres",
+    "acc Total",
+    "acc Mar %",
+    "Est.",
+  ];
+  const exportRows = [
+    ...data.map((item) => {
+      const monthlyMargin = item.acumulado_ingresos
+        ? (item.acumulado_resultado / item.acumulado_ingresos) * 100
+        : 0;
+
+      return [
+        item.proyecto,
+        item.acumulado_ingresos,
+        item.acumulado_egresos,
+        item.acumulado_resultado,
+        monthlyMargin,
+        item.ventana_abierta_real,
+        item.ventana_abierta_presupuestado,
+        item.ventana_abierta_total,
+        item.margen_total_esperado,
+        item.estado,
+      ];
+    }),
+    [
+      "TOTAL",
+      totals.ingresos,
+      totals.egresos,
+      totals.resultado,
+      totalMonthlyMargin,
+      totals.accReal,
+      totals.proy,
+      totals.total,
+      totalExpectedMargin,
+      "",
+    ],
+  ];
 
   return (
-    <SectionShell className="flex h-full flex-col p-1.5">
-      <div className="mb-1 flex items-baseline justify-between gap-2">
-        <div className="text-xs font-semibold">Resumen por proyecto</div>
-        <div className="text-[8px] text-muted-foreground">Vista financiera</div>
-      </div>
+    <ZoomablePanel
+      title="Resumen por proyecto"
+      subtitle="Vista financiera"
+      exportData={{
+        filename: "resumen_por_proyecto.csv",
+        columns: exportColumns,
+        rows: exportRows,
+      }}
+      className="flex h-full flex-col p-1.5"
+      contentClassName="min-h-0 flex-1"
+      zoomContentClassName="h-full [&_table]:!w-full [&_table]:!text-[8.25px] [&_thead]:!text-[8px] [&_td]:!text-[8px] [&_th]:!text-[8px] [&_td]:!px-1.5 [&_td]:!py-1.5 [&_th]:!px-1.5 [&_th]:!py-2"
+    >
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
         <table className="w-full table-fixed text-left text-[7.5px]">
           <colgroup>
             <col className="w-[22%]" />
-            <col className="w-[13%]" />
-            <col className="w-[13%]" />
-            <col className="w-[13%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[11%]" />
+            <col className="w-[7%]" />
             <col className="w-[9%]" />
             <col className="w-[9%]" />
             <col className="w-[10%]" />
             <col className="w-[6%]" />
-            <col className="w-[5%]" />
+            <col className="w-[4%]" />
           </colgroup>
-          <thead className="text-[7.5px] text-muted-foreground">
-            <tr className="sticky top-0 z-10 border-b bg-white">
-              <th className="py-1 font-semibold">Proyecto</th>
-              <th className="border-l border-slate-200/70 py-1 pl-1 text-right"><SummaryMetricHeader label="Ing." /></th>
-              <th className="border-l border-slate-200/70 py-1 pl-1 text-right"><SummaryMetricHeader label="Egr." /></th>
-              <th className="border-l border-slate-200/70 py-1 pl-1 text-right"><SummaryMetricHeader label="Res." /></th>
-              <th className="py-1 text-right font-semibold">Acc</th>
-              <th className="py-1 text-right font-semibold">Proy</th>
-              <th className="py-1 text-right font-semibold">Total</th>
-              <th className="py-1 text-right font-semibold">Mar.</th>
-              <th className="py-1 text-center font-semibold">Est.</th>
+          <thead className="text-[7px] text-muted-foreground">
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-white">
+              <th className="py-1.5 font-semibold">Proyecto</th>
+              <th className="border-l border-slate-200/70 py-1.5 pl-1 text-right font-semibold">Ing.</th>
+              <th className="py-1.5 pl-1 text-right font-semibold">Egr.</th>
+              <th className="py-1.5 pl-1 text-right font-semibold">Res.</th>
+              <th className="py-1.5 pr-2 text-right font-semibold">Mar.</th>
+              <th className="border-l border-slate-300 bg-slate-50/80 py-1.5 pl-2 text-right text-[6.25px] font-semibold leading-none">acc Real</th>
+              <th className="bg-slate-50/80 py-1.5 text-right text-[6.25px] font-semibold leading-none">acc Pres</th>
+              <th className="bg-slate-50/80 py-1.5 text-right text-[6.25px] font-semibold leading-none">acc Total</th>
+              <th className="bg-slate-50/80 py-1.5 text-right text-[6.25px] font-semibold leading-none">acc Mar</th>
+              <th className="py-1.5 text-center font-semibold">Est.</th>
             </tr>
           </thead>
           <tbody>
-            {data.map((item) => (
-              <tr key={item.proyecto_id} className="border-b last:border-0">
-                <td className="max-w-0 truncate py-1 pr-2 font-medium" title={item.proyecto}>
-                  {item.proyecto}
-                </td>
-                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right">
-                  <SummaryAmount value={item.acumulado_ingresos} variation={item.variacion_ingresos_pct} />
-                </td>
-                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right">
-                  <SummaryAmount value={item.acumulado_egresos} variation={item.variacion_egresos_pct} />
-                </td>
-                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right">
-                  <SummaryAmount
-                    value={item.acumulado_resultado}
-                    variation={item.variacion_resultado_pct}
-                    strong
-                    valueClassName={item.acumulado_resultado >= 0 ? "text-emerald-700" : "text-rose-700"}
-                  />
-                </td>
-                <td className="truncate py-1 text-right">{formatMillions(item.ventana_abierta_real)}</td>
-                <td className="truncate py-1 text-right">{formatMillions(item.ventana_abierta_presupuestado)}</td>
-                <td className="truncate py-1 text-right font-semibold">{formatMillions(item.ventana_abierta_total)}</td>
-                <td className="truncate py-1 text-right">{formatPercent(item.margen_total_esperado)}</td>
-                <td className="py-1 text-center">
-                  <span
-                    className={cn("inline-block h-2 w-2 rounded-full", marginStatusClass(item.margen_total_esperado))}
-                    title={`Margen esperado: ${formatPercent(item.margen_total_esperado)}`}
-                  />
-                </td>
-              </tr>
-            ))}
+            {data.map((item) => {
+              const monthlyMargin = item.acumulado_ingresos
+                ? (item.acumulado_resultado / item.acumulado_ingresos) * 100
+                : 0;
+
+              return (
+                <tr key={item.proyecto_id} className="border-b last:border-0">
+                  <td className="max-w-0 truncate py-1 pr-2 font-medium" title={item.proyecto}>
+                    {item.proyecto}
+                  </td>
+                  <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right text-[7px]">
+                    <SummaryAmount value={item.acumulado_ingresos} />
+                  </td>
+                  <td className="truncate py-1 pl-1 text-right text-[7px]">
+                    <SummaryAmount value={item.acumulado_egresos} />
+                  </td>
+                  <td className="truncate py-1 pl-1 text-right text-[7px]">
+                    <SummaryAmount
+                      value={item.acumulado_resultado}
+                      strong
+                    />
+                  </td>
+                  <td className="truncate py-1 pr-2 text-right text-[7px]">{formatPercent(monthlyMargin)}</td>
+                  <td className="truncate border-l border-slate-300 bg-slate-50/55 py-1 pl-2 text-right text-[6.25px]">{formatMillions(item.ventana_abierta_real)}</td>
+                  <td className="truncate bg-slate-50/55 py-1 text-right text-[6.25px]">{formatMillions(item.ventana_abierta_presupuestado)}</td>
+                  <td className="truncate bg-slate-50/55 py-1 text-right text-[6.25px] font-semibold">{formatMillions(item.ventana_abierta_total)}</td>
+                  <td className="truncate bg-slate-50/55 py-1 text-right text-[6.25px]">{formatPercent(item.margen_total_esperado)}</td>
+                  <td className="py-1 text-center">
+                    <span
+                      className={cn("inline-block h-2 w-2 rounded-full", marginStatusClass(item.margen_total_esperado))}
+                      title={`Margen esperado: ${formatPercent(item.margen_total_esperado)}`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
             {data.length ? (
               <tr className="sticky bottom-0 border-t bg-slate-50 font-bold">
                 <td className="py-1">TOTAL</td>
-                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right">{formatMillions(totals.ingresos)}</td>
-                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right">{formatMillions(totals.egresos)}</td>
-                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right">{formatMillions(totals.resultado)}</td>
-                <td className="truncate py-1 text-right">{formatMillions(totals.accReal)}</td>
-                <td className="truncate py-1 text-right">{formatMillions(totals.proy)}</td>
-                <td className="truncate py-1 text-right">{formatMillions(totals.total)}</td>
-                <td className="py-1 text-right">{formatPercent(totalExpectedMargin)}</td>
+                <td className="truncate border-l border-slate-200/70 py-1 pl-1 text-right text-[7px]">{formatMillions(totals.ingresos)}</td>
+                <td className="truncate py-1 pl-1 text-right text-[7px]">{formatMillions(totals.egresos)}</td>
+                <td className="truncate py-1 pl-1 text-right text-[7px]">
+                  <SummaryAmount
+                    value={totals.resultado}
+                    strong
+                  />
+                </td>
+                <td className="truncate py-1 pr-2 text-right text-[7px]">{formatPercent(totalMonthlyMargin)}</td>
+                <td className="truncate border-l border-slate-300 bg-slate-100/80 py-1 pl-2 text-right text-[6.25px]">{formatMillions(totals.accReal)}</td>
+                <td className="truncate bg-slate-100/80 py-1 text-right text-[6.25px]">{formatMillions(totals.proy)}</td>
+                <td className="truncate bg-slate-100/80 py-1 text-right text-[6.25px]">{formatMillions(totals.total)}</td>
+                <td className="bg-slate-100/80 py-1 text-right text-[6.25px]">{formatPercent(totalExpectedMargin)}</td>
                 <td className="py-1" />
               </tr>
             ) : null}
           </tbody>
         </table>
       </div>
-    </SectionShell>
+    </ZoomablePanel>
   );
 };
 
-const ProjectDeviationTable = ({ data }: { data: ProjectDeviationItem[] }) => {
+type DeviationTableItem = ProjectDeviationItem | RubroDeviationItem;
+
+const DeviationTable = ({
+  data,
+  title,
+  labelHeader,
+  filename,
+  getKey,
+  getLabel,
+}: {
+  data: DeviationTableItem[];
+  title: string;
+  labelHeader: string;
+  filename: string;
+  getKey: (item: DeviationTableItem) => string | number;
+  getLabel: (item: DeviationTableItem) => string;
+}) => {
+  const exportColumns = [
+    labelHeader,
+    "Ingreso Ant",
+    "Ingreso Real",
+    "Ingreso Pres",
+    "Ingreso Var %",
+    "Egreso Ant",
+    "Egreso Real",
+    "Egreso Pres",
+    "Egreso Var %",
+    "Resultado Ant",
+    "Resultado Real",
+    "Resultado Pres",
+    "Resultado Var %",
+  ];
+  const exportRows = data.map((item) => [
+    getLabel(item),
+    item.ingresos.anterior,
+    item.ingresos.real,
+    item.ingresos.presupuestado,
+    item.ingresos.var,
+    item.egresos.anterior,
+    item.egresos.real,
+    item.egresos.presupuestado,
+    item.egresos.var,
+    item.resultado.anterior,
+    item.resultado.real,
+    item.resultado.presupuestado,
+    item.resultado.var,
+  ]);
+
   const MetricCells = ({
     metric,
     strong = false,
@@ -811,48 +981,59 @@ const ProjectDeviationTable = ({ data }: { data: ProjectDeviationItem[] }) => {
     strong?: boolean;
   }) => (
     <>
-      <td className="truncate py-1.5 text-right tabular-nums">{formatMillions(metric.real)}</td>
-      <td className="truncate py-1.5 text-right tabular-nums text-slate-500">{formatMillions(metric.presupuestado)}</td>
-      <td className="py-1.5 text-right">
+      <td className="truncate py-1 text-right text-[5.8px] tabular-nums text-slate-500">{formatMillions(metric.anterior)}</td>
+      <td className="truncate py-1 text-right text-[6.25px] tabular-nums">{formatMillions(metric.real)}</td>
+      <td className="truncate py-1 pr-0 text-right text-[6.25px] tabular-nums text-slate-500">{formatMillions(metric.presupuestado)}</td>
+      <td className="py-1 pl-0 text-right">
         <span
           className={cn(
-            "inline-flex max-w-full items-baseline justify-end gap-1 rounded-sm px-1 py-0.5 tabular-nums",
-            metric.dif >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700",
+            "inline-flex max-w-full items-baseline justify-end text-[5.2px] tabular-nums",
+            metric.var >= 0 ? "text-emerald-700" : "text-rose-700",
             strong && "font-semibold",
           )}
         >
-          <span className="min-w-0 truncate">{formatMillions(metric.dif)}</span>
+          <span className="min-w-0 truncate">{formatPercent(metric.var)}</span>
         </span>
       </td>
     </>
   );
 
   return (
-    <SectionShell className="flex h-full flex-col p-1.5">
-      <div className="mb-1 flex items-baseline justify-between gap-2">
-        <div className="text-xs font-semibold">Desvios por proyecto</div>
-        <div className="text-[8px] text-muted-foreground">Real vs presupuesto</div>
-      </div>
+    <ZoomablePanel
+      title={title}
+      subtitle="Real vs presupuesto"
+      exportData={{
+        filename,
+        columns: exportColumns,
+        rows: exportRows,
+      }}
+      className="flex h-full flex-col p-1.5"
+      contentClassName="min-h-0 flex-1"
+      zoomContentClassName="h-full [&_table]:!w-full [&_table]:!text-[7.25px] [&_thead]:!text-[7px] [&_td]:!text-[7px] [&_th]:!text-[7px] [&_td]:!px-1 [&_td]:!py-1.5 [&_th]:!px-1 [&_th]:!py-1"
+    >
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-100">
-        <table className="w-full min-w-[600px] table-fixed text-left text-[7px]">
+        <table className="w-full table-fixed text-left text-[5.8px]">
           <colgroup>
-            <col className="w-[16%]" />
-            {Array.from({ length: 9 }).map((_, index) => (
-              <col key={index} className="w-[9.33%]" />
+            <col className="w-[14%]" />
+            {["anterior", "real", "pres", "var", "anterior", "real", "pres", "var", "anterior", "real", "pres", "var"].map((type, index) => (
+              <col
+                key={`${type}-${index}`}
+                className={type === "var" ? "w-[5%]" : "w-[7.33%]"}
+              />
             ))}
           </colgroup>
-          <thead className="text-[7.5px] text-muted-foreground">
+          <thead className="text-[5.8px] text-muted-foreground">
             <tr className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50">
-              <th rowSpan={2} className="px-1.5 py-1 text-left font-semibold">Proyecto</th>
-              <th colSpan={3} className="border-l border-slate-200/70 py-1 text-center font-semibold text-slate-600">Ingreso</th>
-              <th colSpan={3} className="border-l border-slate-200/70 py-1 text-center font-semibold text-slate-600">Egreso</th>
-              <th colSpan={3} className="border-l border-slate-200/70 py-1 text-center font-semibold text-slate-600">Resultado</th>
+              <th rowSpan={2} className="px-1 py-0.5 text-left font-semibold">{labelHeader}</th>
+              <th colSpan={4} className="border-l border-slate-200/70 py-0.5 text-center font-semibold text-slate-600">Ingreso</th>
+              <th colSpan={4} className="border-l border-slate-200/70 py-0.5 text-center font-semibold text-slate-600">Egreso</th>
+              <th colSpan={4} className="border-l border-slate-200/70 py-0.5 text-center font-semibold text-slate-600">Resultado</th>
             </tr>
-            <tr className="sticky top-[21px] z-10 border-b border-slate-100 bg-slate-50">
-              {["Real", "Pres", "Dif", "Real", "Pres", "Dif", "Real", "Pres", "Dif"].map((label, index) => (
+            <tr className="sticky top-[16px] z-10 border-b border-slate-100 bg-slate-50">
+              {["Ant", "Real", "Pres", "Var", "Ant", "Real", "Pres", "Var", "Ant", "Real", "Pres", "Var"].map((label, index) => (
                 <th
                   key={`${label}-${index}`}
-                  className={cn("px-1 py-1 text-right font-semibold", index % 3 === 0 && "border-l border-slate-200/70")}
+                  className={cn("px-0.5 py-0.5 text-right font-semibold", index % 4 === 0 && "border-l border-slate-200/70")}
                 >
                   {label}
                 </th>
@@ -861,25 +1042,47 @@ const ProjectDeviationTable = ({ data }: { data: ProjectDeviationItem[] }) => {
           </thead>
           <tbody>
             {data.length ? data.map((item) => (
-              <tr key={item.proyecto_id} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/40 last:border-0">
-                <td className="max-w-0 truncate px-1.5 py-1.5 font-medium" title={item.proyecto}>{item.proyecto}</td>
+              <tr key={getKey(item)} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/40 last:border-0">
+                <td className="max-w-0 truncate px-1 py-1 text-[6.25px] font-medium" title={getLabel(item)}>{getLabel(item)}</td>
                 <MetricCells metric={item.ingresos} />
                 <MetricCells metric={item.egresos} />
                 <MetricCells metric={item.resultado} strong />
               </tr>
             )) : (
               <tr>
-                <td colSpan={10} className="py-5 text-center text-muted-foreground">
-                  Sin desvios por proyecto en el periodo.
+                <td colSpan={13} className="py-5 text-center text-muted-foreground">
+                  Sin datos en el periodo.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-    </SectionShell>
+    </ZoomablePanel>
   );
 };
+
+const ProjectDeviationTable = ({ data }: { data: ProjectDeviationItem[] }) => (
+  <DeviationTable
+    data={data}
+    title="Desvios por proyecto"
+    labelHeader="Proyecto"
+    filename="desvios_por_proyecto.csv"
+    getKey={(item) => (item as ProjectDeviationItem).proyecto_id}
+    getLabel={(item) => (item as ProjectDeviationItem).proyecto}
+  />
+);
+
+const RubroDeviationTable = ({ data }: { data: RubroDeviationItem[] }) => (
+  <DeviationTable
+    data={data}
+    title="Desvios por rubro"
+    labelHeader="Rubro"
+    filename="desvios_por_rubro.csv"
+    getKey={(item) => (item as RubroDeviationItem).rubro}
+    getLabel={(item) => (item as RubroDeviationItem).rubro}
+  />
+);
 
 export default function ProyFinancialDashboardList() {
   const {
@@ -972,6 +1175,9 @@ export default function ProyFinancialDashboardList() {
             </div>
             <div className="h-[250px] min-h-0">
               <NegativeDeviations data={dashboardData.top_desvios_negativos} />
+            </div>
+            <div className="h-[250px] min-h-0 lg:col-start-1">
+              <RubroDeviationTable data={dashboardData.desvios_por_rubro} />
             </div>
           </div>
         </>
