@@ -49,6 +49,17 @@ export const postJsonWithAuth = async <T,>(
   return json as T;
 };
 
+export const deleteWithAuth = async (url: string): Promise<void> => {
+  await fetchUtils.fetchJson(url, {
+    method: "DELETE",
+    headers: new Headers(
+      typeof window !== "undefined" && localStorage.getItem("auth_token")
+        ? { Authorization: `Bearer ${localStorage.getItem("auth_token")}` }
+        : {},
+    ),
+  });
+};
+
 export const downloadBlobWithAuth = async (url: string, filename: string) => {
   const response = await fetch(url, {
     headers:
@@ -300,6 +311,7 @@ export const buildBudgetIncomeRows = (
             cuenta_id: cuenta.cuenta_id,
             rubro_nombre: rubro.rubro_nombre,
             cuenta_label: formatCuentaLabel(cuenta),
+            obreros: Number(values.empleados ?? 0),
             ingreso_presupuesto: Number(values.ingresos ?? 0),
             ingreso_real: Number(values.real_ingresos ?? 0),
             egreso_presupuesto: Number(values.egresos ?? 0),

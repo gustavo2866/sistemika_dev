@@ -44,20 +44,62 @@ const formatFieldLabel = (field: string) => {
     .replace(/^\w/, (char) => char.toUpperCase());
 };
 
+const stringifyErrorDetail = (detail: unknown): string | undefined => {
+  if (!detail) return undefined;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (!item || typeof item !== "object") return String(item);
+        const entry = item as {
+          loc?: unknown[];
+          msg?: string;
+          message?: string;
+        };
+        const field = Array.isArray(entry.loc)
+          ? entry.loc.filter((part) => part !== "body").join(".")
+          : undefined;
+        const message = entry.msg || entry.message;
+        if (field && message) return `${formatFieldLabel(field)}: ${message}`;
+        return message || JSON.stringify(item);
+      })
+      .filter(Boolean);
+    return messages.length ? messages.join("; ") : undefined;
+  }
+  if (typeof detail === "object") {
+    const detailObj = detail as {
+      error?: { message?: string };
+      message?: string;
+      error_description?: string;
+      errorMessage?: string;
+      error?: string;
+    };
+    if (typeof detailObj.error === "string") return detailObj.error;
+    return (
+      detailObj.error?.message ||
+      detailObj.message ||
+      detailObj.error_description ||
+      detailObj.errorMessage ||
+      JSON.stringify(detail)
+    );
+  }
+  return String(detail);
+};
+
 const extractErrorMessage = (error: unknown) => {
   const err = error as {
     body?: {
-      detail?: {
-        error?: { message?: string };
-        message?: string;
-      };
+      detail?: unknown;
+      error?: { message?: string };
+      message?: string;
     };
     message?: string;
   };
 
   const rawMessage =
-    err?.body?.detail?.error?.message ||
-    err?.body?.detail?.message ||
+    stringifyErrorDetail(err?.body?.detail) ||
+    err?.body?.error?.message ||
+    err?.body?.message ||
     err?.message ||
     "Error inesperado";
 

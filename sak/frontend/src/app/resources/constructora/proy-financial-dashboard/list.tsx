@@ -1009,7 +1009,7 @@ const DeviationTable = ({
       }}
       className="flex h-full flex-col p-1.5"
       contentClassName="min-h-0 flex-1"
-      zoomContentClassName="h-full [&_table]:!w-full [&_table]:!text-[7.25px] [&_thead]:!text-[7px] [&_td]:!text-[7px] [&_th]:!text-[7px] [&_td]:!px-1 [&_td]:!py-1.5 [&_th]:!px-1 [&_th]:!py-1"
+      zoomContentClassName="h-full [&_table]:!w-full [&_table]:!text-[11px] [&_thead]:!text-[10px] [&_tbody_td]:!text-[11px] [&_tbody_span]:!text-[10px] [&_th]:!text-[10px] [&_td]:!px-2.5 [&_td]:!py-2 [&_th]:!px-2.5 [&_th]:!py-1.5"
     >
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-100">
         <table className="w-full table-fixed text-left text-[5.8px]">

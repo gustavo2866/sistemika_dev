@@ -109,6 +109,7 @@ export type BudgetIncomeRow = {
   cuenta_id: number;
   rubro_nombre: string;
   cuenta_label: string;
+  obreros: number;
   ingreso_presupuesto: number;
   ingreso_real: number;
   egreso_presupuesto: number;
