@@ -61,7 +61,10 @@ class OpenAIChatClient:
         except AuthenticationError as exc:
             raise ValueError("OPENAI_API_KEY invalida") from exc
         except APIStatusError as exc:
-            raise ValueError(f"OpenAI error HTTP {exc.status_code}") from exc
+            response_text = str(getattr(exc, "response", "") or "").strip()
+            body = getattr(exc, "body", None)
+            detail = body if body is not None else response_text
+            raise ValueError(f"OpenAI error HTTP {exc.status_code}: {detail}") from exc
 
         message = completion.choices[0].message
         refusal = getattr(message, "refusal", None)

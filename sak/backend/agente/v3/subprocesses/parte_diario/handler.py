@@ -943,7 +943,7 @@ class ParteDiarioSubprocess:
                 oportunidad_id=state.oportunidad_id,
                 contacto_id=state.contacto_id,
                 is_project=True,
-                active_process="parte_diario",
+                active_process=self.name,
                 process_state=state.parte_state,
                 message=SimpleNamespace(contenido=mapped_text),
             )

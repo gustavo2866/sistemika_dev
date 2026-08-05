@@ -66,7 +66,7 @@ class TurnResult:
 
 
 class ParteDiarioProcess:
-    name = "parte_diario"
+    name = "parteDiario"
 
     def __init__(self, *, session: Session | None, llm_client: ParteDiarioLLMClient | None = None) -> None:
         self._session = session
@@ -174,10 +174,13 @@ class ParteDiarioProcess:
             plan = await self._llm.interpret_turn(message_text, state, nominas_proyecto, estados)
         except Exception:
             logger.exception("No se pudo interpretar el turno de parte_diario")
-            return self._state_reply(
-                state,
-                "No pude interpretar el parte diario. Proba nuevamente con una descripcion breve.",
-            )
+            fallback_plan = _fallback_simple_attendance_plan(message_text, estados)
+            if fallback_plan is None:
+                return self._state_reply(
+                    state,
+                    "No pude interpretar el parte diario. Proba nuevamente con una descripcion breve.",
+                )
+            plan = fallback_plan
 
         validation_error = _validate_plan(plan)
         if validation_error:
@@ -715,6 +718,118 @@ def _validate_plan(plan: TurnPlan) -> str | None:
         if operation.horas_extra is not None and operation.horas_extra + 9 > 24:
             return "La jornada total no puede superar 24 horas."
     return None
+
+
+def _fallback_simple_attendance_plan(message: str | None, estados: list[EstadoItem]) -> TurnPlan | None:
+    """Parsea reportes simples si el LLM falla, sin cubrir consultas ni correcciones."""
+    active_codes = {item.abreviatura.upper() for item in estados}
+    operations: list[ParteDiarioOperation] = _parse_plural_absence_operations(message, active_codes)
+    for segment in _split_simple_attendance_segments(message):
+        operation = _parse_simple_attendance_segment(segment, active_codes)
+        if operation is not None:
+            operations.append(operation)
+    if not operations:
+        return None
+    return TurnPlan(operations=operations)
+
+
+def _parse_plural_absence_operations(
+    message: str | None,
+    active_codes: set[str],
+) -> list[ParteDiarioOperation]:
+    if "FAL" not in active_codes:
+        return []
+    normalized = _normalize_command(message)
+    match = re.match(r"^faltaron\s+(?P<nombres>.+)$", normalized)
+    if not match:
+        return []
+    names = [
+        _clean_simple_name(name)
+        for name in re.split(r"[,;\n]+|\s+y\s+", match.group("nombres"), flags=re.IGNORECASE)
+        if _clean_simple_name(name)
+    ]
+    return [
+        ParteDiarioOperation(type="agregar_novedad", nombre=name, estado_codigo="FAL")
+        for name in names
+    ]
+
+
+def _split_simple_attendance_segments(message: str | None) -> list[str]:
+    text = str(message or "").strip()
+    if not text:
+        return []
+    parts = re.split(r"[,;\n]+|\s+y\s+", text, flags=re.IGNORECASE)
+    return [part.strip(" .") for part in parts if part.strip(" .")]
+
+
+def _parse_simple_attendance_segment(
+    segment: str,
+    active_codes: set[str],
+) -> ParteDiarioOperation | None:
+    normalized = _normalize_command(segment)
+    hours = _parse_simple_hours(normalized)
+
+    absence_prefix = re.match(
+        r"^(?:falto|falta|no\s+vino|no\s+trabajo)\s+(?P<nombre>.+?)"
+        r"(?:\s+\d{1,2}(?:[,.]\d+)?\s*(?:h|hs|horas?))?$",
+        normalized,
+    )
+    if absence_prefix and "FAL" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(absence_prefix.group("nombre")),
+            estado_codigo="FAL",
+        )
+
+    absence_suffix = re.match(
+        r"^(?P<nombre>.+?)\s+(?:falto|falta|no\s+vino|no\s+trabajo)$",
+        normalized,
+    )
+    if absence_suffix and "FAL" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(absence_suffix.group("nombre")),
+            estado_codigo="FAL",
+        )
+
+    illness = re.match(
+        r"^(?P<nombre>.+?)\s+(?:esta\s+)?(?:enfermo|enferma|enfermedad)$",
+        normalized,
+    )
+    if illness and "ENF" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(illness.group("nombre")),
+            estado_codigo="ENF",
+        )
+
+    worked = re.match(
+        r"^(?P<nombre>.+?)\s+(?:trabajo|vino|presente)(?:\s+\d{1,2}(?:[,.]\d+)?\s*(?:h|hs|horas?))?$",
+        normalized,
+    )
+    if worked and "P" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(worked.group("nombre")),
+            estado_codigo="P",
+            horas=hours,
+        )
+
+    return None
+
+
+def _parse_simple_hours(normalized_segment: str) -> float | None:
+    match = re.search(r"\b(\d{1,2}(?:[,.]\d+)?)\s*(?:h|hs|horas?)\b", normalized_segment)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _clean_simple_name(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip(" .")
 
 
 def _has_conversational_draft(state: ParteDiarioState) -> bool:

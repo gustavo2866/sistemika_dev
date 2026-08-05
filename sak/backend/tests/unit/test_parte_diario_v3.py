@@ -11,6 +11,7 @@ import agente.v3.subprocesses.parte_diario.handler as parte_diario_handler
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
 from agente.v3.subprocesses.parte_diario.handler import ParteDiarioSubprocess, resolver_fecha_default_parte_diario
 from agente.v3.subprocesses.parte_diario.models import (
+    EstadoItem,
     NominaItem,
     NovedadPersonal,
     ParteDiarioOperation,
@@ -18,7 +19,11 @@ from agente.v3.subprocesses.parte_diario.models import (
     PendienteAmbiguo,
     TurnPlan,
 )
-from agente.v3.subprocesses.parte_diario.process import _normalize_attendance_transcription, _today
+from agente.v3.subprocesses.parte_diario.process import (
+    _fallback_simple_attendance_plan,
+    _normalize_attendance_transcription,
+    _today,
+)
 from agente.v3.subprocesses.parte_diario.query_service import ParteDiarioQueryService
 from agente.v3.subprocesses.parte_diario.resolver import NominaResolver
 from app.models import (
@@ -53,6 +58,14 @@ class FakeParteDiarioLLM:
     async def contextual_reply(self, **kwargs):
         self.contextual_calls.append(kwargs)
         return self.contextual_reply_text
+
+
+class FailingParteDiarioLLM(FakeParteDiarioLLM):
+    def __init__(self) -> None:
+        super().__init__(TurnPlan())
+
+    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+        raise ValueError("LLM no disponible")
 
 
 class FakeParteDiarioQueryAgent:
@@ -94,6 +107,54 @@ def _message(
         raw_payload={"raw": True},
         normalized_payload={"normalized": True},
     )
+
+
+def test_parte_diario_v3_simple_attendance_fallback_extracts_absence_and_hours():
+    plan = _fallback_simple_attendance_plan(
+        "falto vera y serrano trabajo 12hs",
+        [
+            EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+            EstadoItem(id=2, abreviatura="FAL", nombre="FALTA"),
+        ],
+    )
+
+    assert plan is not None
+    assert [(item.nombre, item.estado_codigo, item.horas) for item in plan.operations] == [
+        ("vera", "FAL", None),
+        ("serrano", "P", 12.0),
+    ]
+
+
+def test_parte_diario_v3_simple_attendance_fallback_extracts_plural_absences():
+    plan = _fallback_simple_attendance_plan(
+        "faltaron vera y serrano",
+        [
+            EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+            EstadoItem(id=2, abreviatura="FAL", nombre="FALTA"),
+        ],
+    )
+
+    assert plan is not None
+    assert [(item.nombre, item.estado_codigo, item.horas) for item in plan.operations] == [
+        ("vera", "FAL", None),
+        ("serrano", "FAL", None),
+    ]
+
+
+def test_parte_diario_v3_simple_attendance_fallback_extracts_illness():
+    plan = _fallback_simple_attendance_plan(
+        "medina esta enfermo",
+        [
+            EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+            EstadoItem(id=2, abreviatura="FAL", nombre="FALTA"),
+            EstadoItem(id=3, abreviatura="ENF", nombre="ENFERMEDAD"),
+        ],
+    )
+
+    assert plan is not None
+    assert [(item.nombre, item.estado_codigo, item.horas) for item in plan.operations] == [
+        ("medina", "ENF", None),
+    ]
 
 
 @pytest.fixture()
@@ -1180,6 +1241,40 @@ async def test_parte_diario_v3_modify_for_missing_person_adds_new_attendance(see
     assert [item["estado_codigo"] for item in draft["novedades"]] == ["FAL", "ENF"]
     assert draft["novedades"][1]["idnomina"] == seeded_parte_v3["employee_2"].id
     assert draft["novedades"][1]["horas"] == 0
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_fallback_parses_simple_attendance_when_llm_fails(seeded_parte_v3):
+    state = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 7, 30).isoformat(),
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FailingParteDiarioLLM())
+
+    result = await process.handle(_message("falto garcia y perez trabajo 12hs"), context)
+
+    assert "No pude interpretar el parte diario" not in (result.reply_text or "")
+    draft = result.context.process_state["parte_state"]
+    assert [(item["estado_codigo"], item["horas"]) for item in draft["novedades"]] == [
+        ("FAL", 0.0),
+        ("P", 12.0),
+    ]
+    assert [item["idnomina"] for item in draft["novedades"]] == [
+        seeded_parte_v3["employee_1"].id,
+        seeded_parte_v3["employee_2"].id,
+    ]
 
 
 @pytest.mark.asyncio
