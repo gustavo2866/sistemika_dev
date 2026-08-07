@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
+from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient, _parse_turn_plan
 from agente.v3.subprocesses.parte_diario.models import ParteDiarioState
 
 
@@ -98,3 +98,85 @@ async def test_contextual_reply_must_answer_informational_questions_first():
     assert "respondela primero" in prompt
     assert "No respondas solo con una instruccion de menu ante una pregunta informativa" in prompt
     assert "No inventes datos" in prompt
+
+
+@pytest.mark.asyncio
+async def test_carga_prompt_requires_command_classification_before_novelty_parsing():
+    chat = FakeChatClient()
+    client = ParteDiarioLLMClient(chat_client=chat)
+
+    await client.interpret_turn(
+        "no ninguna",
+        ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-01"),
+        [],
+        [],
+    )
+
+    prompt = chat.calls[0]["system_prompt"]
+    response_schema = chat.calls[0]["response_format"]["json_schema"]["schema"]
+    assert "Rol conversacional" in prompt
+    assert "backend_action=\"finish_loading\"" in prompt
+    assert "intencion conversacional" in prompt
+    assert "salida silenciosa" in prompt
+    assert "No intentes cubrir frases por patron fijo" in prompt
+    assert response_schema["required"] == [
+        "message_kind",
+        "command_action",
+        "backend_action",
+        "operations",
+        "reply",
+    ]
+
+
+def test_parse_turn_plan_maps_command_action_to_backend_operation():
+    plan = _parse_turn_plan(
+        {
+            "message_kind": "comando",
+            "command_action": "finalizar_carga",
+            "backend_action": "none",
+            "operations": [],
+            "reply": None,
+        }
+    )
+
+    assert [operation.type for operation in plan.operations] == ["solicitar_confirmacion"]
+
+
+def test_parse_turn_plan_preserves_primitive_operations_for_natural_corrections():
+    plan = _parse_turn_plan(
+        {
+            "message_kind": "novedad",
+            "command_action": "none",
+            "backend_action": "none",
+            "operations": [
+                {
+                    "type": "eliminar_novedad",
+                    "nombre": "medina juan manuel",
+                    "estado_codigo": None,
+                    "horas": None,
+                    "horas_extra": None,
+                    "descripcion": None,
+                    "fecha": None,
+                    "requested": None,
+                    "reply": None,
+                },
+                {
+                    "type": "agregar_novedad",
+                    "nombre": "medina ivan",
+                    "estado_codigo": "FAL",
+                    "horas": None,
+                    "horas_extra": None,
+                    "descripcion": None,
+                    "fecha": None,
+                    "requested": None,
+                    "reply": None,
+                },
+            ],
+            "reply": None,
+        }
+    )
+
+    assert [operation.type for operation in plan.operations] == ["eliminar_novedad", "agregar_novedad"]
+    assert plan.operations[0].nombre == "medina juan manuel"
+    assert plan.operations[1].nombre == "medina ivan"
+    assert plan.operations[1].estado_codigo == "FAL"

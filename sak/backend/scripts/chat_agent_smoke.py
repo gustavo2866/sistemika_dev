@@ -29,6 +29,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -107,6 +108,16 @@ SHOW_TYPING_INDICATOR = os.environ.get("CHAT_TEST_TYPING_INDICATOR", "1").strip(
 }
 SHOW_TIMING = _args.timing or os.environ.get("CHAT_TEST_SHOW_TIMING", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
 SHOW_DEBUG = _args.debug or os.environ.get("CHAT_TEST_SHOW_DEBUG", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+
+
+def _clear_screen() -> None:
+    command = "cls" if os.name == "nt" else "clear"
+    try:
+        subprocess.run([command], check=False)
+    except Exception:
+        print("\033c", end="")
+
+
 def _request_json(
     method: str,
     path: str,
@@ -688,7 +699,7 @@ def main() -> None:
     print(f"Cola agente: {QUEUE_NAME}")
     print(f"Contacto hardcodeado: {FROM_NAME} <{FROM_PHONE}>")
     print(f"Canal Meta simulado: phone_number_id={META_PHONE_NUMBER_ID}, display={TO_PHONE}")
-    print("Comando local: '/salir' termina el chat.")
+    print("Comandos locales: 'cls' limpia la pantalla, '/salir' termina el chat.")
     print()
 
     while True:
@@ -699,6 +710,9 @@ def main() -> None:
             break
 
         if not texto:
+            continue
+        if texto.lower() == "cls":
+            _clear_screen()
             continue
         if texto.lower() == "/salir":
             print("Chau.")

@@ -190,6 +190,7 @@ class ParteDiarioState:
     pendientes_ambiguos: list[PendienteAmbiguo] = field(default_factory=list)
     conflictos_novedad: list[ConflictoNovedad] = field(default_factory=list)
     esperando: str | None = None
+    validacion_origen: str | None = None
     fecha_propuesta: str | None = None
     retomado: bool = False
 
@@ -205,6 +206,7 @@ class ParteDiarioState:
             "pendientes_ambiguos": [item.to_dict() for item in self.pendientes_ambiguos],
             "conflictos_novedad": [item.to_dict() for item in self.conflictos_novedad],
             "esperando": self.esperando,
+            "validacion_origen": self.validacion_origen,
             "fecha_propuesta": self.fecha_propuesta,
             "retomado": self.retomado,
         }
@@ -233,6 +235,7 @@ class ParteDiarioState:
                 ConflictoNovedad.from_dict(item) for item in data.get("conflictos_novedad") or []
             ],
             esperando=data.get("esperando"),
+            validacion_origen=data.get("validacion_origen"),
             fecha_propuesta=data.get("fecha_propuesta"),
             retomado=bool(data.get("retomado")),
         )

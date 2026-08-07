@@ -28,7 +28,7 @@ El estado principal se guarda en `ParteDiarioV3State.etapa`.
 Estados posibles:
 
 - `inicial`
-- `cargar_fecha`
+- `seleccionar_obra`
 - `seleccionar_fecha`
 - `carga`
 - `revision`
@@ -36,6 +36,8 @@ Estados posibles:
 - `cierre`
 - `confirmar_salida`
 - `finalizado`
+
+Nota de compatibilidad: `cargar_fecha` puede aparecer en conversaciones viejas persistidas, pero ya no es un estado conversacional principal. El handler lo trata como una transicion interna de preparacion de fecha y lo mueve a `carga` o `seleccionar_fecha`.
 
 ## Estados de Dominio del Parte
 
@@ -84,34 +86,44 @@ El subproceso `parteDiario` es autocontenido dentro de v3.
 
 ### `inicial`
 
-Es el punto de entrada del subproceso. Evalua la entrada, interpreta el mensaje si corresponde y resuelve la obra asociada al contacto.
+Es el punto de entrada del subproceso. Su responsabilidad principal es resolver la obra asociada al contacto.
 
 Comportamiento:
 
-- Si el mensaje es comando local, ejecuta la accion local que corresponda.
-- Si el mensaje es texto libre, llama al LLM v3 de `parteDiario`.
-- El LLM puede devolver fecha inferida, novedades y contenido complementario del mensaje.
 - Si no hay obra asociada, responde error y pasa a `finalizado`.
 - Si hay una sola obra, guarda `contacto_id`, `oportunidad_id`, `proyecto_id` y continua.
-- Si hay varias obras, guarda `opciones_obra` y pide seleccion.
-- Con obra asignada, hace forward a `cargar_fecha`.
+- Si hay varias obras, guarda `opciones_obra` y pasa a `seleccionar_obra`.
+- Con obra asignada, avanza al flujo de fecha.
 
 Regla importante:
 
-- `inicial` no aplica fecha.
-- `inicial` no consulta partes diarios.
-- `inicial` no recupera novedades.
-- Toda decision sobre fecha y parte existente pertenece a `cargar_fecha`.
+- `inicial` no debe interpretar comandos globales fuera de su contexto.
+- La resolucion de fecha pertenece al flujo de `seleccionar_fecha`.
+- La carga de novedades pertenece a `carga`.
 
 Transiciones:
 
-- obra resuelta -> `cargar_fecha`;
-- varias obras -> `inicial` hasta que el usuario elija una;
+- obra resuelta -> `seleccionar_fecha` y preparacion interna de fecha;
+- varias obras -> `seleccionar_obra`;
 - sin obra -> `finalizado`.
 
-### `cargar_fecha`
+### `seleccionar_obra`
 
-Es el unico estado responsable de preparar el parte para una fecha.
+Toma la opcion de obra elegida por el usuario.
+
+Comportamiento:
+
+- Si la opcion es valida, guarda `contacto_id`, `oportunidad_id`, `proyecto_id` y continua.
+- Si la opcion es invalida, vuelve a pedir una opcion valida.
+
+Transiciones:
+
+- obra seleccionada -> `seleccionar_fecha` y preparacion interna de fecha;
+- opcion invalida -> permanece en `seleccionar_obra`.
+
+### Preparacion interna de fecha
+
+No es un estado conversacional principal. Es el paso interno que se ejecuta desde `seleccionar_fecha` cuando ya hay una fecha definida o cuando el sistema puede asumir una fecha por defecto.
 
 Fuentes posibles de fecha:
 
@@ -131,16 +143,15 @@ Comportamiento:
 
 Transiciones:
 
-- sin parte diario -> `carga`;
-- parte editable -> `carga`;
-- parte no editable -> `seleccionar_fecha`;
-- falta fecha y se decide no asumir hoy -> `seleccionar_fecha`.
+- preparacion exitosa -> `carga`;
+- fecha no editable o invalida -> `seleccionar_fecha`;
+- fecha cerrada/confirmada -> consulta y finaliza.
 
 ### `seleccionar_fecha`
 
 Arma el menu de fechas y toma la seleccion del usuario.
 
-Este estado no recupera novedades ni prepara el parte para edicion. Solo obtiene una fecha valida y luego forwardea a `cargar_fecha`.
+Este estado interpreta el mensaje dentro del contexto de fecha: opcion numerica, fecha directa, pedido de menu, consulta de nomina o salida. Cuando obtiene una fecha valida, llama al paso interno de preparacion de fecha.
 
 Ejemplo:
 
@@ -158,13 +169,13 @@ Estados de fecha:
 
 Comportamiento al seleccionar opcion:
 
-- `sin cargar`: guarda la fecha seleccionada y forwardea a `cargar_fecha`.
-- `borrador`: guarda la fecha seleccionada y forwardea a `cargar_fecha`.
+- `sin cargar`: guarda la fecha seleccionada y prepara internamente el parte.
+- `borrador`: guarda la fecha seleccionada y prepara internamente el parte.
 - `cerrado`: muestra novedades como consulta e informa que no se puede editar.
 
 Transiciones:
 
-- opcion valida editable o sin cargar -> `cargar_fecha`;
+- opcion valida editable o sin cargar -> preparacion interna -> `carga`;
 - opcion no editable -> permanece en `seleccionar_fecha` o pasa a `finalizado` si es solo consulta;
 - opcion invalida -> permanece en `seleccionar_fecha`.
 
@@ -244,22 +255,21 @@ Horas extra
 Otra obra
 - Vera
 
-Opciones: 1:GUARDAR BORRADOR 2:FINALIZAR PARTE 3:SEGUIR EDITANDO.
+Cerrar definitivamente?
+SI cierra el parte. NO lo deja pendiente.
 ```
 
 Comandos locales:
 
-- `1` o `GUARDAR BORRADOR`: guarda en DB como `borrador`.
-- `2` o `FINALIZAR PARTE`: valida reglas de cierre y guarda en DB como confirmado.
-- `3` o `SEGUIR EDITANDO`: vuelve a `carga`.
+- `SI`: valida reglas de cierre y guarda en DB como confirmado.
+- `NO`: guarda en DB como `borrador`.
 - `SALIR`: pasa a `confirmar_salida`.
 
 Transiciones:
 
-- guardar exitoso -> `continuar` o `finalizado`;
-- finalizar exitoso -> `continuar` o `finalizado`;
-- finalizar con pendientes -> `validacion`;
-- seguir editando -> `carga`;
+- `NO` exitoso -> `continuar` o `finalizado`;
+- `SI` exitoso -> `continuar` o `finalizado`;
+- `SI` con pendientes -> `validacion`;
 - salir -> `confirmar_salida`.
 
 ### `validacion`
@@ -276,24 +286,24 @@ Casos:
 
 Comportamiento:
 
-- Para personas no encontradas, busca nombres similares recien en esta etapa.
-- Si encuentra similares, presenta solo candidatos como texto numerado visible.
-- No hay menu previo de `Ver opciones`: la seleccion se muestra directamente.
-- `Ver mas` pagina primero candidatos de la obra actual y, al agotarlos, muestra candidatos externos sin mezclarlos.
-- Si no hay candidatos de la obra actual, muestra directamente los externos.
-- Las acciones `VER MAS`, `SIN VALIDAR` y `VOLVER` se muestran solo como botones cuando aplican.
+- Para personas no encontradas, busca nombres similares durante la carga y tambien antes del cierre.
+- Si encuentra similares en la obra actual, presenta solo esos candidatos y agrega `OTROS` si hay coincidencias externas.
+- Si el usuario responde `OTROS`, muestra los candidatos externos agrupados por obra con etiqueta corta.
+- La respuesta puede ser el nombre de un candidato, `NINGUNO`, `OTROS` cuando se muestra, un nuevo filtro de nombre o directamente una novedad.
+- `NINGUNO` registra la novedad sin persona validada.
+- Si no hay coincidencias, informa que no encontro a la persona y pide reingresar el nombre, escribir `NINGUNO` o informar una nueva novedad.
 - Al resolver un candidato, el resumen usa el nombre completo seleccionado y muestra el legajo si esta disponible.
-- Agrega una opcion adicional para aceptar el valor informado sin validar.
-- `VOLVER` abandona la seleccion puntual y vuelve a `carga` mostrando el resumen con el menu principal.
 - Por ahora, lo aceptado sin validar no se registra en DB al confirmar.
-- Mientras hay validacion pendiente, las respuestas numericas pertenecen a esa validacion, no al menu general.
+- Mientras hay validacion pendiente, el agente de carga interpreta la respuesta y decide si selecciona persona, registra sin validar, pide aclaracion o procesa el texto como nueva novedad.
 
 Ejemplo:
 
 ```text
 A cual Petro te referis?
-1. Perez, Pedro
-2. Registrar como Petro sin validar
+
+Perez Pedro; Perez Pablo; Peretto Juan.
+
+Responde con el nombre, NINGUNO u OTROS.
 ```
 
 Transiciones:
@@ -366,10 +376,11 @@ Comportamiento esperado:
 
 - `inicial` reconoce el comando.
 - `inicial` resuelve la obra.
-- con obra asignada, forwardea a `cargar_fecha`.
-- `cargar_fecha` decide la fecha segun el contexto.
+- si hay varias obras, pasa a `seleccionar_obra`.
+- con obra asignada, entra al flujo de `seleccionar_fecha`.
+- la preparacion interna de fecha decide la fecha segun el contexto.
 
-Si no hay fecha asignada, la regla definida para `cargar_fecha` es asumir `hoy`.
+Si no hay fecha asignada, la regla de preparacion interna es asumir `hoy`.
 
 ### Menu de Fechas
 
@@ -401,8 +412,8 @@ Ejemplo:
 
 Resultado:
 
-- Si estaba `sin cargar`, guarda la fecha y forwardea a `cargar_fecha`.
-- Si estaba `borrador`, guarda la fecha y forwardea a `cargar_fecha`.
+- Si estaba `sin cargar`, guarda la fecha y prepara internamente el parte.
+- Si estaba `borrador`, guarda la fecha y prepara internamente el parte.
 - Si estaba `cerrado`, muestra el parte como consulta e informa que no se puede editar.
 
 ### Carga
@@ -418,18 +429,18 @@ Hay alguna otra novedad?
 - `CERRAR` o `FINALIZAR`: intenta cerrar el parte y ejecuta validaciones.
 - `SALIR`: pide confirmacion para descartar.
 
-Si hay validaciones pendientes, `FINALIZAR PARTE` desde `revision` o `CERRAR`
+Si hay validaciones pendientes, `SI` desde `revision` o `CERRAR`
 pasa a la etapa `validacion`.
 
 ### Revision
 
 ```text
-Opciones: 1:GUARDAR BORRADOR 2:FINALIZAR PARTE 3:SEGUIR EDITANDO.
+Cerrar definitivamente?
+SI cierra el parte. NO lo deja pendiente.
 ```
 
-- `1` o `GUARDAR BORRADOR`: guarda en DB como `borrador`.
-- `2` o `FINALIZAR PARTE`: valida y guarda en DB como confirmado.
-- `3` o `SEGUIR EDITANDO`: vuelve a `carga`.
+- `SI`: valida y guarda en DB como confirmado.
+- `NO`: guarda en DB como `borrador`.
 - `SALIR`: pide confirmacion para descartar.
 
 ### Validacion
@@ -518,7 +529,7 @@ Ejemplos:
 - Procesar comandos locales.
 - Mostrar menu de fechas.
 - Resolver seleccion de fecha.
-- Ejecutar `cargar_fecha`: asumir fecha, consultar parte existente y preparar contexto.
+- Preparar internamente la fecha: asumir fecha, consultar parte existente y preparar contexto.
 - Coordinar carga, cierre, salida y persistencia.
 
 ### `process.py`

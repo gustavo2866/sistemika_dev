@@ -10,6 +10,7 @@ from agente.v3.subprocesses.parte_diario.models import ParteDiarioState as Parte
 
 ParteDiarioStage = Literal[
     "inicial",
+    "seleccionar_obra",
     "cargar_fecha",
     "seleccionar_fecha",
     "carga",
@@ -108,6 +109,7 @@ class ParteDiarioV3State:
         etapa = str(data.get("etapa") or "inicial")
         if etapa not in {
             "inicial",
+            "seleccionar_obra",
             "cargar_fecha",
             "seleccionar_fecha",
             "carga",
@@ -166,7 +168,7 @@ class ParteDiarioV3State:
         self.proyecto_id = option.proyecto_id
         self.nombre_obra = option.nombre
         self.opciones_obra = []
-        self.etapa = "cargar_fecha"
+        self.etapa = "seleccionar_fecha"
 
     def draft(self) -> ParteDiarioDraftState:
         draft = ParteDiarioDraftState.from_dict(

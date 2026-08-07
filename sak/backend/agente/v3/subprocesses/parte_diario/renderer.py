@@ -19,16 +19,16 @@ def resumen(state: ParteDiarioState) -> str:
         return "(sin novedades cargadas)"
     rows = []
     for novedad in state.novedades:
-        horas = f"{novedad.horas:g}h" if novedad.horas is not None else "horas pendientes"
         estado = novedad.estado_codigo or "estado pendiente"
-        legajo = f" (legajo {novedad.nro_legajo})" if getattr(novedad, "nro_legajo", None) else ""
         externo = _external_label(novedad)
+        horas = _hours_text(novedad.estado_codigo, novedad.horas)
+        hours_part = f", {horas}" if horas else ""
         motivo = (
             f", motivo: {novedad.descripcion}"
             if novedad.descripcion and str(novedad.estado_codigo or "").upper() != "P"
             else ""
         )
-        rows.append(f"- {novedad.nombre}{legajo}{externo}: {estado}, {horas}{motivo}")
+        rows.append(f"- {novedad.nombre}{externo}: {estado}{hours_part}{motivo}")
     shown_pending_names = set()
     for pending in state.pendientes_ambiguos:
         normalized_name = normalize_text(pending.nombre)
@@ -90,10 +90,7 @@ def resumen_revision(state: ParteDiarioState) -> str:
 
 def _short_person_name(value: str | None) -> str:
     text = str(value or "").strip()
-    if "," not in text:
-        return text
-    last_name, first_name = (part.strip() for part in text.split(",", 1))
-    return last_name or first_name or text
+    return text
 
 
 def _state_label(code: str | None) -> str:
@@ -130,13 +127,20 @@ def _review_present_suffix(hours: float | None) -> str | None:
 def _resumen_pendiente(pending: PendienteAmbiguo) -> str:
     estado = pending.estado_codigo or "estado pendiente"
     horas = _pending_hours(pending)
-    horas_text = f"{horas:g}h" if horas is not None else "horas pendientes"
+    horas_text = _hours_text(pending.estado_codigo, horas)
+    hours_part = f", {horas_text}" if horas_text else ""
     motivo = (
         f", motivo: {pending.descripcion}"
         if pending.descripcion and str(pending.estado_codigo or "").upper() != "P"
         else ""
     )
-    return f"- {pending.nombre} (**a validar): {estado}, {horas_text}{motivo}"
+    return f"- {pending.nombre} (**a validar): {estado}{hours_part}{motivo}"
+
+
+def _hours_text(estado_codigo: str | None, horas: float | None) -> str:
+    if str(estado_codigo or "").upper() == "FAL" and horas in {0, 0.0, None}:
+        return ""
+    return f"{horas:g}h" if horas is not None else "horas pendientes"
 
 
 def _pending_hours(pending: PendienteAmbiguo) -> float | None:
@@ -156,8 +160,12 @@ def _external_label(novedad) -> str:
     if novedad.idnomina is None:
         return " (sin validar)"
     if novedad.fuera_de_proyecto and novedad.nombre_proyecto:
-        return f" (asignado a {novedad.nombre_proyecto})"
+        return f" ({_project_short_label(novedad.nombre_proyecto)})"
     return ""
+
+
+def _project_short_label(nombre_proyecto: str | None) -> str:
+    return str(nombre_proyecto or "").strip()[:6].strip()
 
 
 def actualizado(state: ParteDiarioState, errors: list[str] | None = None) -> str:
@@ -242,10 +250,8 @@ def validacion_requerida(question: str) -> str:
 
 def _candidate_label(candidate: NominaItem) -> str:
     details = []
-    if candidate.nro_legajo:
-        details.append(f"legajo {candidate.nro_legajo}")
     if candidate.fuera_de_proyecto and candidate.nombre_proyecto:
-        details.append(f"asignado a {candidate.nombre_proyecto}")
+        details.append(f"asignado a {_project_short_label(candidate.nombre_proyecto)}")
     if candidate.encargado_nombre:
         details.append(f"encargado {candidate.encargado_nombre}")
     suffix = f" ({', '.join(details)})" if details else ""

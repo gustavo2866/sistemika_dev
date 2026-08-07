@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import logging
 import re
 import unicodedata
+from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -54,10 +55,6 @@ BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
 logger = logging.getLogger(__name__)
 _RESERVED_OPERATIONS = {"confirmar", "cancelar"}
 _MUTATING_OPERATIONS = {"agregar_novedad", "modificar_novedad", "eliminar_novedad", "sin_novedades"}
-_CANDIDATE_LIST_MAX_ROWS = 10
-_CANDIDATE_LIST_PAGE_SIZE = 9
-
-
 @dataclass(slots=True)
 class TurnResult:
     payload: dict[str, Any] = field(default_factory=dict)
@@ -134,6 +131,7 @@ class ParteDiarioProcess:
             if command == "mantener fecha":
                 state.fecha_propuesta = None
                 state.esperando = None
+                state.validacion_origen = None
                 return self._state_reply(state, renderer.fecha_original_conservada(state.fecha))
             return self._state_reply(
                 state,
@@ -251,11 +249,13 @@ class ParteDiarioProcess:
         if state.conflictos_novedad:
             if not cerrar_parte:
                 return self._build_confirmation_result(state, cerrar_parte=False)
+            state.validacion_origen = state.validacion_origen or "cierre"
             state.esperando = "resolucion_conflictos"
             return self._state_reply(state, renderer.preguntar_conflicto(state.conflictos_novedad[0]))
         if state.pendientes_ambiguos:
             if not cerrar_parte:
                 return self._build_confirmation_result(state, cerrar_parte=False)
+            state.validacion_origen = state.validacion_origen or "cierre"
             state.esperando = "confirmacion_ambiguos"
             _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
@@ -293,14 +293,46 @@ class ParteDiarioProcess:
             return self._after_validation_completed(state, estados, nominas_proyecto, nominas_completas)
         pending = state.pendientes_ambiguos[0]
         if pending.nombre_no_encontrado:
+            if _is_unvalidated_selection(text, pending):
+                unvalidated_name = pending.nombre
+                state.pendientes_ambiguos.pop(0)
+                registrar_pendiente_sin_validar(state, pending)
+                if state.pendientes_ambiguos:
+                    _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
+                    return self._state_reply(
+                        state,
+                        f"{unvalidated_name} quedo registrado sin validar.\n\n"
+                        f"{renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados)}",
+                    )
+                state.esperando = None
+                return self._after_validation_completed(
+                    state,
+                    estados,
+                    nominas_proyecto,
+                    nominas_completas,
+                    prefix=f"{unvalidated_name} quedo registrado sin validar.",
+                )
             resolved = NominaResolver.resolve(text, nominas_proyecto, nominas_completas)
-            pending.nombre = text.strip() or pending.nombre
             if resolved.error:
                 _prepare_pending_validation(pending, nominas_proyecto, nominas_completas)
+                if state.validacion_origen == "carga" and not pending.candidatos and _looks_like_attendance_update(text):
+                    state.esperando = None
+                    state.validacion_origen = None
+                    return await self.handle(
+                        SimpleNamespace(
+                            oportunidad_id=state.oportunidad_id,
+                            contacto_id=state.contacto_id,
+                            is_project=True,
+                            active_process=self.name,
+                            process_state=state.to_dict(),
+                            message=SimpleNamespace(contenido=text),
+                        )
+                    )
                 return self._state_reply(
                     state,
                     renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
                 )
+            pending.nombre = text.strip() or pending.nombre
             pending.nombre_no_encontrado = False
             if resolved.ambiguo:
                 pending.candidatos = resolved.candidatos
@@ -344,7 +376,11 @@ class ParteDiarioProcess:
                     nominas_completas,
                     prefix=f"{unvalidated_name} quedo registrado sin validar.",
                 )
-            candidates = pending.candidatos or []
+            if _is_other_candidates_command(text, pending):
+                pending.mostrando_candidatos_externos = True
+                pending.lista_candidatos_mostrada = False
+                return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
+            candidates = _active_validation_candidates(pending)
             if not pending.lista_candidatos_mostrada:
                 return self._state_reply(
                     state,
@@ -358,6 +394,19 @@ class ParteDiarioProcess:
                 visible_count=visible_count,
             )
             if selected is None:
+                if state.validacion_origen == "carga":
+                    state.esperando = None
+                    state.validacion_origen = None
+                    return await self.handle(
+                        SimpleNamespace(
+                            oportunidad_id=state.oportunidad_id,
+                            contacto_id=state.contacto_id,
+                            is_project=True,
+                            active_process=self.name,
+                            process_state=state.to_dict(),
+                            message=SimpleNamespace(contenido=text),
+                        )
+                    )
                 return self._state_reply(
                     state,
                     renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
@@ -444,7 +493,15 @@ class ParteDiarioProcess:
         *,
         prefix: str | None = None,
     ) -> TurnResult:
+        if state.validacion_origen == "carga":
+            state.esperando = None
+            state.validacion_origen = None
+            result = self._state_reply(state, renderer.actualizado(state))
+            if prefix and result.payload.get("reply_to_user"):
+                result.payload["reply_to_user"] = f"{prefix}\n\n{result.payload['reply_to_user']}"
+            return result
         state.esperando = "confirmacion_cierre_validado"
+        state.validacion_origen = "cierre"
         result = self._state_reply(state, renderer.confirmar_cierre_validado(state))
         if prefix and result.payload.get("reply_to_user"):
             result.payload["reply_to_user"] = f"{prefix}\n\n{result.payload['reply_to_user']}"
@@ -454,6 +511,7 @@ class ParteDiarioProcess:
         proposed = state.fecha_propuesta
         state.fecha_propuesta = None
         state.esperando = None
+        state.validacion_origen = None
         if not proposed:
             return self._state_reply(state, "No hay un cambio de fecha pendiente.")
         error = self._apply_date(state, proposed, estados)
@@ -894,33 +952,63 @@ def _prepare_pending_validation(
 
 
 def _candidate_page_selection_window(candidates: list[NominaItem], page: int) -> tuple[int, int]:
-    if len(candidates) <= _CANDIDATE_LIST_MAX_ROWS:
-        return 0, len(candidates)
-    offset = max(0, page) * _CANDIDATE_LIST_PAGE_SIZE
-    remaining = max(0, len(candidates) - offset)
-    if remaining <= _CANDIDATE_LIST_MAX_ROWS:
-        return offset, remaining
-    return offset, _CANDIDATE_LIST_PAGE_SIZE
+    return 0, len(candidates)
 
 
 def _is_unvalidated_selection(text: str, pending: PendienteAmbiguo) -> bool:
     command = _normalize_command(text)
-    candidates = pending.candidatos or []
+    candidates = _active_validation_candidates(pending)
     numbers = re.findall(r"\d+", command)
     offset, visible_count = _candidate_page_selection_window(candidates, pending.pagina_candidatos)
     has_more = offset + visible_count < len(candidates) or (
         not pending.mostrando_candidatos_externos and bool(pending.candidatos_externos)
     )
     row_count = visible_count + (1 if has_more else 0)
-    if len(numbers) == 1 and row_count < _CANDIDATE_LIST_MAX_ROWS:
+    if len(numbers) == 1:
         return int(numbers[0]) == row_count + 1
     pending_name = _normalize_command(pending.nombre)
     return command in {
+        "ninguno",
+        "ninguna",
+        "ninguno de esos",
+        "ninguna de esas",
         "registrar sin validar",
         "sin validar",
         "aceptar sin validar",
         f"registrar como {pending_name} sin validar",
     }
+
+
+def _is_other_candidates_command(text: str, pending: PendienteAmbiguo) -> bool:
+    return _normalize_command(text) == "otros" and bool(pending.candidatos_externos)
+
+
+def _active_validation_candidates(pending: PendienteAmbiguo) -> list[NominaItem]:
+    if pending.mostrando_candidatos_externos and pending.candidatos_externos:
+        return pending.candidatos_externos
+    return pending.candidatos or pending.candidatos_externos or []
+
+
+def _looks_like_attendance_update(text: str | None) -> bool:
+    tokens = set(_normalize_command(text).split())
+    update_terms = {
+        "falto",
+        "falta",
+        "faltaron",
+        "ausente",
+        "enfermo",
+        "enfermedad",
+        "accidente",
+        "vacaciones",
+        "permiso",
+        "presente",
+        "trabajo",
+        "vino",
+        "horas",
+        "hora",
+        "hs",
+    }
+    return bool(tokens & update_terms)
 
 
 def _normalize_command(text: str | None) -> str:

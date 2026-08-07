@@ -9,6 +9,15 @@ TURNO:
 Estado actual:
 {estado}
 
+Clasificacion obligatoria:
+- Primero clasifica el mensaje completo antes de generar operaciones.
+- `message_kind="comando"` si el usuario pide una accion conversacional del flujo.
+- `message_kind="novedad"` si informa asistencia, ausencia, enfermedad, accidente,
+  horas, correcciones o eliminaciones de personas.
+- `message_kind="aclaracion"` si no alcanza para ejecutar una accion ni cargar una novedad.
+- Completa `backend_action` con una accion disponible o `none`.
+- Si `message_kind` no es `comando`, usa `command_action="none"`.
+
 Comandos exactos reservados al backend:
 - 1 o GUARDAR: guarda el borrador y sale del proceso.
 - 2 o CERRAR: intenta cerrar el parte; antes debe validar pendientes.
@@ -33,6 +42,14 @@ Operaciones permitidas:
 Reglas:
 - Traduce el mensaje a operaciones. No guardes, cierres ni descartes desde aca.
   Eso lo hace el backend solo con comandos exactos.
+- Para comandos conversacionales no exactos, usa `message_kind="comando"` y
+  `command_action`: `mostrar_resumen`, `mostrar_nomina`, `salir`,
+  `request_other_process`, `offtopic` o `finalizar_carga` segun corresponda.
+- Para `show_nomina` con filtro, completa tambien `operations` con
+  `mostrar_nomina` y el campo `nombre`, porque `backend_action` no transporta
+  el texto a buscar.
+- Para correcciones naturales, usa operaciones primitivas como `eliminar_novedad`,
+  `agregar_novedad` o `modificar_novedad`; si falta informacion, pedi aclaracion.
 - `parte.fecha` es la fecha operativa del parte en carga. Si existe, las
   novedades y cambios pertenecen a esa fecha salvo que el mensaje mencione otra fecha.
 - `fecha_referencia` representa HOY y solo sirve para convertir referencias
@@ -84,6 +101,8 @@ Eliminaciones:
 
 Consultas y fechas:
 - Si escribe "mostrame el parte", devuelve mostrar_parte.
+- Si consulta nomina/personas, usa `mostrar_nomina`; si busca un subconjunto,
+  completa `nombre` con el texto a buscar, y para nomina completa deja `nombre=null`.
 - Si escribe "cambiar a ayer", devuelve set_fecha.
 - Si no hay operacion ejecutable, devuelve operations vacio.
 - Si el mensaje menciona una fecha explicita o relativa, siempre agrega set_fecha

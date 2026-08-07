@@ -8,7 +8,10 @@ import pytest
 from sqlmodel import Session, select
 
 import agente.v3.subprocesses.parte_diario.handler as parte_diario_handler
-from agente.v3.contracts import V3ConversationContext, V3InboundMessage
+from agente.v3.subprocesses.parte_diario import renderer
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.subprocesses.parte_diario.carga_agent import ParteDiarioCargaAgentOutput
+from agente.v3.subprocesses.parte_diario.executor import execute_plan
 from agente.v3.subprocesses.parte_diario.handler import ParteDiarioSubprocess, resolver_fecha_default_parte_diario
 from agente.v3.subprocesses.parte_diario.models import (
     EstadoItem,
@@ -25,7 +28,8 @@ from agente.v3.subprocesses.parte_diario.process import (
     _today,
 )
 from agente.v3.subprocesses.parte_diario.query_service import ParteDiarioQueryService
-from agente.v3.subprocesses.parte_diario.resolver import NominaResolver
+from agente.v3.subprocesses.parte_diario.resolver import NominaResolver, normalize_text, parse_candidate_selection
+from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
 from app.models import (
     CRMContacto,
     CRMMensaje,
@@ -76,6 +80,16 @@ class FakeParteDiarioQueryAgent:
     async def respond(self, **kwargs):
         self.calls.append(kwargs)
         return self.reply or ""
+
+
+class FakeParteDiarioCargaAgent:
+    def __init__(self, output: ParteDiarioCargaAgentOutput) -> None:
+        self.output = output
+        self.calls: list[dict] = []
+
+    async def resolve_person_validation(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.output
 
 
 class FakeEmisor:
@@ -290,7 +304,7 @@ async def test_parte_diario_v3_contacto_encargado_varios_proyectos_muestra_menu(
     result = await process.handle(_message("parte diario"), V3ConversationContext(conversation_id="conv-varios"))
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "inicial"
+    assert result.context.process_state["etapa"] == "seleccionar_obra"
     assert "En que obra" in (result.reply_text or "")
     assert "Obra Centro" in (result.reply_text or "")
     assert "Obra Norte" in (result.reply_text or "")
@@ -345,7 +359,7 @@ async def test_parte_diario_v3_contacto_encargado_por_nomina_se_incluye_en_menu(
     result = await process.handle(_message("parte diario"), V3ConversationContext(conversation_id="conv-francia"))
 
     assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "inicial"
+    assert result.context.process_state["etapa"] == "seleccionar_obra"
     assert "En que obra" in (result.reply_text or "")
     assert "Obra Centro" in (result.reply_text or "")
     assert "Obra Norte" in (result.reply_text or "")
@@ -409,6 +423,46 @@ async def test_parte_diario_v3_mostrar_nomina_muestra_proyecto_activo_sin_filtra
     assert "Garcia, Juan" in (result_full.reply_text or "")
     assert "Perez, Pedro" in (result_full.reply_text or "")
     assert "Externo, Mario" in (result_full.reply_text or "")
+
+
+def test_parte_diario_v3_mostrar_nomina_filtra_por_nombre():
+    state = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-03")
+    nomina = [
+        NominaItem(idnomina=1, nombre="Ivan", apellido="Medina"),
+        NominaItem(idnomina=2, nombre="Juan Manuel", apellido="Medina"),
+        NominaItem(idnomina=3, nombre="Daniela", apellido="Vera"),
+    ]
+
+    result = execute_plan(
+        state,
+        TurnPlan(operations=[ParteDiarioOperation(type="mostrar_nomina", nombre="medina")]),
+        nomina,
+        nomina,
+        [],
+    )
+
+    assert result.status == "shown_nomina"
+    assert "Medina, Ivan" in result.reply
+    assert "Medina, Juan Manuel" in result.reply
+    assert "Vera, Daniela" not in result.reply
+
+
+def test_parte_diario_v3_plan_vacio_pide_aclaracion_sin_renderizar_actualizado():
+    state = ParteDiarioState(
+        oportunidad_id=1,
+        idproyecto=10,
+        fecha="2026-08-03",
+        novedades=[
+            NovedadPersonal(nombre="Vera, Daniela", estado_codigo="FAL", horas=0),
+        ],
+    )
+
+    result = execute_plan(state, TurnPlan(), [], [], [])
+
+    assert result.status == "clarification"
+    assert result.applied_operations == []
+    assert "Parte diario actualizado" not in result.reply
+    assert "confirma si terminaste la carga" in result.reply
 
 
 @pytest.mark.asyncio
@@ -1089,12 +1143,10 @@ async def test_parte_diario_v3_initial_inferred_date_is_loaded_before_today(
     assert result.context.process_state["parte_state"]["sin_novedades_informado"] is True
     assert "Resumen del parte" in (result.reply_text or "")
     assert "Sin novedades. Todos presentes." in (result.reply_text or "")
+    assert "Cerrar definitivamente?" in (result.reply_text or "")
+    assert "SI cierra el parte. NO lo deja pendiente." in (result.reply_text or "")
     buttons = result.metadata["outbound"]["interactive"]["action"]["buttons"]
-    assert [button["reply"]["id"] for button in buttons] == [
-        "guardar borrador",
-        "finalizar parte",
-        "seguir editando",
-    ]
+    assert [button["reply"]["id"] for button in buttons] == ["si", "no"]
 
 
 @pytest.mark.asyncio
@@ -1572,12 +1624,10 @@ async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_par
     assert review.context.process_state["parte_state"]["sin_novedades_informado"] is True
     assert "Resumen del parte" in (review.reply_text or "")
     assert "Sin novedades. Todos presentes." in (review.reply_text or "")
+    assert "Cerrar definitivamente?" in (review.reply_text or "")
+    assert "SI cierra el parte. NO lo deja pendiente." in (review.reply_text or "")
     buttons = review.metadata["outbound"]["interactive"]["action"]["buttons"]
-    assert [button["reply"]["id"] for button in buttons] == [
-        "guardar borrador",
-        "finalizar parte",
-        "seguir editando",
-    ]
+    assert [button["reply"]["id"] for button in buttons] == ["si", "no"]
     assert back.context.process_state["etapa"] == "carga"
     assert "Seguimos editando" in (back.reply_text or "")
     assert "Parte diario en carga:" in (back.reply_text or "")
@@ -1959,7 +2009,7 @@ async def test_parte_diario_v3_close_persists_after_pending_validation(
     assert parte.estado == EstadoParteDiario.CONFIRMADO
 
 
-def test_parte_diario_v3_resolver_keeps_similar_search_out_of_load(seeded_parte_v3):
+def test_parte_diario_v3_resolver_finds_similar_for_unresolved_name(seeded_parte_v3):
     candidates = [
         NominaItem(
             seeded_parte_v3["employee_2"].id,
@@ -2023,6 +2073,142 @@ def test_parte_diario_v3_similar_search_is_not_limited_to_five():
     assert len(result) == 7
 
 
+def test_parte_diario_v3_candidate_selection_ignores_accents():
+    candidates = [
+        NominaItem(idnomina=1, nombre="Iván", apellido="Medina"),
+        NominaItem(idnomina=2, nombre="Juan Manuel", apellido="Medina"),
+    ]
+
+    selected = parse_candidate_selection("ivan", candidates)
+
+    assert selected is not None
+    assert selected.idnomina == 1
+
+
+def test_parte_diario_v3_normalize_text_repairs_common_mojibake_accents():
+    assert normalize_text("IvÃ¡n") == "ivan"
+    assert normalize_text("Iván") == "ivan"
+
+
+def test_parte_diario_v3_resumen_omits_absence_zero_hours_legajo_and_shortens_external_project():
+    state = ParteDiarioState(
+        oportunidad_id=1,
+        idproyecto=10,
+        fecha="2026-08-01",
+        novedades=[
+            NovedadPersonal(
+                nombre="Serrano, Juan David",
+                estado_codigo="FAL",
+                horas=0,
+                idnomina=24,
+                nro_legajo="501183",
+            ),
+            NovedadPersonal(
+                nombre="Medina, Ivan",
+                estado_codigo="FAL",
+                horas=0,
+                idnomina=25,
+                fuera_de_proyecto=True,
+                nombre_proyecto="AXION - Emilio Castelar 1003",
+            ),
+        ],
+    )
+
+    reply = renderer.resumen(state)
+
+    assert "- Serrano, Juan David: FAL" in reply
+    assert "Serrano, Juan David: FAL, 0h" not in reply
+    assert "legajo" not in reply
+    assert "- Medina, Ivan (AXION): FAL" in reply
+
+
+def test_parte_diario_v3_validation_without_candidates_allows_retry_none_or_new_load():
+    pending = PendienteAmbiguo(nombre="Medina", estado_codigo="FAL", nombre_no_encontrado=True)
+
+    reply = parte_diario_handler._validation_text_menu(pending)
+
+    assert "No encontre a Medina en la nomina activa." in reply
+    assert "Volve a ingresar el nombre" in reply
+    assert "NINGUNO" in reply
+    assert "informa la nueva novedad" in reply
+
+
+def test_parte_diario_v3_validation_shows_otros_before_external_candidates():
+    pending = PendienteAmbiguo(
+        nombre="Medina",
+        estado_codigo="FAL",
+        candidatos=[
+            NominaItem(idnomina=1, nombre="Ivan", apellido="Medina"),
+            NominaItem(idnomina=2, nombre="Juan", apellido="Medina"),
+        ],
+        candidatos_externos=[
+            NominaItem(
+                idnomina=3,
+                nombre="Pedro",
+                apellido="Medina",
+                nombre_proyecto="La Rioja 474",
+                fuera_de_proyecto=True,
+            ),
+        ],
+    )
+
+    first_reply = parte_diario_handler._validation_text_menu(pending)
+    pending.mostrando_candidatos_externos = True
+    other_reply = parte_diario_handler._validation_text_menu(pending)
+
+    assert "Medina Ivan; Medina Juan." in first_reply
+    assert "OTROS" in first_reply
+    assert "Medina Pedro" not in first_reply
+    assert "Otros Medina:" in other_reply
+    assert "La Rio: Medina Pedro." in other_reply
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_validation_selects_compound_first_name(monkeypatch):
+    pending = PendienteAmbiguo(
+        nombre="medina",
+        estado_codigo="FAL",
+        candidatos=[
+            NominaItem(idnomina=1, nombre="Iván", apellido="Medina"),
+            NominaItem(idnomina=2, nombre="Juan Manuel", apellido="Medina"),
+        ],
+        lista_candidatos_mostrada=False,
+    )
+    state = ParteDiarioState(
+        oportunidad_id=10,
+        idproyecto=20,
+        fecha="2026-08-04",
+        pendientes_ambiguos=[pending],
+        esperando="confirmacion_ambiguos",
+        validacion_origen="carga",
+    )
+    context = V3ConversationContext(
+        conversation_id="test",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "validacion",
+            "contacto_id": 1,
+            "oportunidad_id": 10,
+            "proyecto_id": 20,
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    captured = {}
+
+    async def fake_handle_parte_diario(message, context, state, *, forced_text=None, extra_result_metadata=None):
+        captured["forced_text"] = forced_text
+        captured["state"] = state.to_dict()
+        return V3ProcessResult(context=context, reply_text="ok", metadata={})
+
+    monkeypatch.setattr(process, "_handle_parte_diario", fake_handle_parte_diario)
+
+    await process._handle_validacion(_message("juan manuel"), context, ParteDiarioV3State.from_dict(context.process_state))
+
+    assert captured["forced_text"] == "2"
+    assert captured["state"]["parte_state"]["pendientes_ambiguos"][0]["lista_candidatos_mostrada"] is True
+
+
 @pytest.mark.asyncio
 async def test_parte_diario_v3_validation_list_with_ten_candidates_has_no_more(seeded_parte_v3):
     candidates = [
@@ -2058,18 +2244,17 @@ async def test_parte_diario_v3_validation_list_with_ten_candidates_has_no_more(s
 
     options = await process.handle(_message("elegir opcion"), context)
 
-    assert options.metadata["outbound"]["interactive"]["type"] == "button"
-    assert "1: Gonzalez, Nombre 1" in (options.reply_text or "")
-    assert "10: Gonzalez, Nombre 10" in (options.reply_text or "")
+    assert "Gonzalez Nombre 1" in (options.reply_text or "")
+    assert "Gonzalez Nombre 10" in (options.reply_text or "")
     assert "Mostrar mas" not in (options.reply_text or "")
-    assert "Registrar sin validar" not in (options.reply_text or "")
+    assert "NINGUNO" in (options.reply_text or "")
+    assert "Registrar gonzalez sin validar" not in (options.reply_text or "")
     assert "VOLVER" not in (options.reply_text or "")
-    buttons = options.metadata["outbound"]["interactive"]["action"]["buttons"]
-    assert [button["reply"]["id"] for button in buttons] == ["registrar sin validar", "volver"]
+    assert "outbound" not in options.metadata
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_validation_list_paginates_and_selects_second_page(
+async def test_parte_diario_v3_validation_list_shows_names_and_selects_by_name(
     db_session: Session,
     seeded_parte_v3,
 ):
@@ -2108,29 +2293,19 @@ async def test_parte_diario_v3_validation_list_paginates_and_selects_second_page
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     first_page = await process.handle(_message("elegir opcion", external_id="wamid-page-1"), context)
-    first_buttons = first_page.metadata["outbound"]["interactive"]["action"]["buttons"]
-    second_page = await process.handle(
-        _message("mostrar mas candidatos", external_id="wamid-page-2"),
-        first_page.context,
-    )
-    selected = await process.handle(_message("1", external_id="wamid-page-3"), second_page.context)
+    selected = await process.handle(_message("Gonzalez Nombre 10", external_id="wamid-page-2"), first_page.context)
 
-    assert "1: Gonzalez, Nombre 1" in (first_page.reply_text or "")
-    assert "9: Gonzalez, Nombre 9" in (first_page.reply_text or "")
-    assert "10: Mostrar mas" not in (first_page.reply_text or "")
-    assert [button["reply"]["id"] for button in first_buttons] == ["mostrar mas candidatos", "registrar sin validar", "volver"]
-    assert second_page.context.process_state["parte_state"]["pendientes_ambiguos"][0]["pagina_candidatos"] == 1
-    assert second_page.metadata["outbound"]["interactive"]["type"] == "button"
-    assert "1: Gonzalez, Nombre 10" in (second_page.reply_text or "")
-    assert "2: Gonzalez, Nombre 11" in (second_page.reply_text or "")
-    assert "Registrar sin validar" not in (second_page.reply_text or "")
-    assert "VOLVER" not in (second_page.reply_text or "")
+    assert "Gonzalez Nombre 1" in (first_page.reply_text or "")
+    assert "Gonzalez Nombre 11" in (first_page.reply_text or "")
+    assert "Ver mas resultados" not in (first_page.reply_text or "")
+    assert "NINGUNO" in (first_page.reply_text or "")
+    assert "VOLVER" not in (first_page.reply_text or "")
     assert selected.metadata["result"]["pendientes_ambiguos"] == []
     assert selected.metadata["result"]["novedades"][0]["idnomina"] == candidates[9].idnomina
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_validation_more_shows_external_candidates_without_project_duplicates(
+async def test_parte_diario_v3_validation_list_shows_external_candidates_after_otros(
     seeded_parte_v3,
 ):
     project_candidates = [
@@ -2184,32 +2359,21 @@ async def test_parte_diario_v3_validation_more_shows_external_candidates_without
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     project_page = await process.handle(_message("elegir opcion", external_id="wamid-project-page"), context)
-    project_buttons = project_page.metadata["outbound"]["interactive"]["action"]["buttons"]
-    external_page = await process.handle(
-        _message("mostrar mas candidatos", external_id="wamid-external-page"),
-        project_page.context,
-    )
-    selected = await process.handle(_message("1", external_id="wamid-external-selected"), external_page.context)
+    other_page = await process.handle(_message("OTROS", external_id="wamid-other-page"), project_page.context)
 
-    assert "1: Medina, Juan" in (project_page.reply_text or "")
-    assert "2: Serrano, Juan" in (project_page.reply_text or "")
-    assert "3: Mostrar mas" not in (project_page.reply_text or "")
-    assert [button["reply"]["id"] for button in project_buttons] == ["mostrar mas candidatos", "registrar sin validar", "volver"]
-    assert external_page.context.process_state["parte_state"]["pendientes_ambiguos"][0]["mostrando_candidatos_externos"] is True
-    assert external_page.metadata["outbound"]["interactive"]["type"] == "button"
-    assert "Otros fuera de la obra para juan:" in (external_page.reply_text or "")
-    assert "1: Medina, Juan (asignado a Obra Norte)" in (external_page.reply_text or "")
-    assert "2: Ruiz, Juan (asignado a Obra Sur)" in (external_page.reply_text or "")
-    assert "Registrar sin validar" not in (external_page.reply_text or "")
-    assert "VOLVER" not in (external_page.reply_text or "")
-    assert "Serrano" not in (external_page.reply_text or "")
-    assert selected.metadata["result"]["novedades"][0]["idnomina"] == external_candidates[0].idnomina
-    assert selected.metadata["result"]["novedades"][0]["fuera_de_proyecto"] is True
-    assert selected.metadata["result"]["novedades"][0]["nombre_proyecto"] == "Obra Norte"
+    assert "Medina Juan" in (project_page.reply_text or "")
+    assert "Serrano Juan" in (project_page.reply_text or "")
+    assert "NINGUNO" in (project_page.reply_text or "")
+    assert "OTROS" in (project_page.reply_text or "")
+    assert "Obra Norte" not in (project_page.reply_text or "")
+    assert "Obra Sur" not in (project_page.reply_text or "")
+    assert "Otros juan:" in (other_page.reply_text or "")
+    assert "NORT: Medina Juan." in (other_page.reply_text or "")
+    assert "SUR: Ruiz Juan." in (other_page.reply_text or "")
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_validation_more_paginates_project_before_external_candidates(
+async def test_parte_diario_v3_validation_list_shows_all_project_candidates(
     seeded_parte_v3,
 ):
     project_candidates = [
@@ -2256,37 +2420,24 @@ async def test_parte_diario_v3_validation_more_paginates_project_before_external
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
     first_page = await process.handle(_message("elegir opcion", external_id="wamid-project-page-1"), context)
-    first_buttons = first_page.metadata["outbound"]["interactive"]["action"]["buttons"]
-    second_page = await process.handle(
-        _message("mostrar mas candidatos", external_id="wamid-project-page-2"),
-        first_page.context,
-    )
-    external_page = await process.handle(
-        _message("mostrar mas candidatos", external_id="wamid-external-page"),
-        second_page.context,
-    )
 
-    assert "1: Medina, Juan 1" in (first_page.reply_text or "")
-    assert "9: Medina, Juan 9" in (first_page.reply_text or "")
-    assert "10: Mostrar mas" not in (first_page.reply_text or "")
-    assert [button["reply"]["id"] for button in first_buttons] == ["mostrar mas candidatos", "registrar sin validar", "volver"]
-    assert second_page.metadata["outbound"]["interactive"]["type"] == "button"
-    assert "1: Medina, Juan 10" in (second_page.reply_text or "")
-    assert "2: Medina, Juan 11" in (second_page.reply_text or "")
-    assert "Mostrar mas" not in (second_page.reply_text or "")
-    assert "Registrar sin validar" not in (second_page.reply_text or "")
-    assert "VOLVER" not in (second_page.reply_text or "")
-    assert external_page.context.process_state["parte_state"]["pendientes_ambiguos"][0]["pagina_candidatos"] == 0
-    assert external_page.context.process_state["parte_state"]["pendientes_ambiguos"][0]["mostrando_candidatos_externos"] is True
-    assert external_page.metadata["outbound"]["interactive"]["type"] == "button"
-    assert "1: Externo, Juan 1 (asignado a Obra 1)" in (external_page.reply_text or "")
-    assert "7: Externo, Juan 7 (asignado a Obra 7)" in (external_page.reply_text or "")
-    assert "Registrar sin validar" not in (external_page.reply_text or "")
-    assert "VOLVER" not in (external_page.reply_text or "")
+    assert "Medina Juan 1" in (first_page.reply_text or "")
+    assert "Medina Juan 11" in (first_page.reply_text or "")
+    assert "Externo Juan 1" not in (first_page.reply_text or "")
+    assert "OTROS" in (first_page.reply_text or "")
+    assert "Ver mas resultados" not in (first_page.reply_text or "")
+    assert "NINGUNO" in (first_page.reply_text or "")
+    assert "VOLVER" not in (first_page.reply_text or "")
 
 
 @pytest.mark.asyncio
-async def test_parte_diario_v3_cerrar_asks_to_select_similar_pending_name(seeded_parte_v3):
+async def test_parte_diario_v3_load_asks_to_select_similar_pending_name(seeded_parte_v3):
+    carga_agent = FakeParteDiarioCargaAgent(
+        ParteDiarioCargaAgentOutput(
+            action="seleccionar_persona",
+            candidate_id=seeded_parte_v3["employee_2"].id,
+        )
+    )
     process = ParteDiarioSubprocess(
         llm_client=FakeParteDiarioLLM(
             TurnPlan(
@@ -2294,49 +2445,35 @@ async def test_parte_diario_v3_cerrar_asks_to_select_similar_pending_name(seeded
                     ParteDiarioOperation(type="agregar_novedad", nombre="Petro", estado_codigo="FAL"),
                 ]
             )
-        )
+        ),
+        carga_agent_client=carga_agent,
     )
     context = V3ConversationContext(conversation_id="meta:account:549111111")
 
     loaded = await process.handle(_message("Petro falto"), context)
     loaded_draft = loaded.context.process_state["parte_state"]
     assert loaded.context.process_state["etapa"] == "carga"
-    assert loaded_draft["pendientes_ambiguos"][0]["nombre_no_encontrado"] is True
-    assert loaded_draft["pendientes_ambiguos"][0]["candidatos"] is None
-    assert "Petro (**a validar): FAL, 0h" in (loaded.reply_text or "")
+    assert loaded.context.process_state["parte_state"]["esperando"] == "confirmacion_ambiguos"
+    assert loaded_draft["validacion_origen"] == "carga"
+    assert loaded_draft["pendientes_ambiguos"][0]["lista_candidatos_mostrada"] is True
+    assert "A cual Petro te referis?" in (loaded.reply_text or "")
+    assert "Perez Pedro" in (loaded.reply_text or "")
+    assert "NINGUNO" in (loaded.reply_text or "")
+    assert "Opciones: 1:CONFIRMAR" not in (loaded.reply_text or "")
+    assert "VOLVER" not in (loaded.reply_text or "")
+    assert "outbound" not in loaded.metadata
 
-    review = await process.handle(_message("no", external_id="wamid-test-review"), loaded.context)
-    result = await process.handle(_message("2", external_id="wamid-test-2"), review.context)
+    selected = await process.handle(_message("Pedro Perez", external_id="wamid-test-3"), loaded.context)
 
-    assert review.context.process_state["etapa"] == "revision"
-    assert "Resumen del parte" in (review.reply_text or "")
-    assert result.context.process_state["etapa"] == "validacion"
-    assert result.context.process_state["parte_state"]["esperando"] == "confirmacion_ambiguos"
-    assert result.context.process_state["parte_state"]["pendientes_ambiguos"][0]["lista_candidatos_mostrada"] is True
-    assert "A cual Petro te referis?" in (result.reply_text or "")
-    assert "1: Perez, Pedro" in (result.reply_text or "")
-    assert "Registrar como Petro sin validar" not in (result.reply_text or "")
-    assert "Opciones: 1:CONFIRMAR" not in (result.reply_text or "")
-    assert result.metadata["outbound"]["type"] == "interactive"
-    interactive = result.metadata["outbound"]["interactive"]
-    assert interactive["type"] == "button"
-    buttons = interactive["action"]["buttons"]
-    assert [button["reply"]["id"] for button in buttons] == ["registrar sin validar", "volver"]
-
-    back = await process.handle(_message("volver", external_id="wamid-test-back"), result.context)
-
-    assert back.context.process_state["etapa"] == "carga"
-    assert back.context.process_state["parte_state"]["esperando"] is None
-    assert back.context.process_state["parte_state"]["pendientes_ambiguos"]
-    assert "Parte diario en carga:" in (back.reply_text or "")
-    assert "Petro (**a validar): FAL, 0h" in (back.reply_text or "")
-    assert "Que queres agregar o corregir?" in (back.reply_text or "")
-
-    selected = await process.handle(_message("1", external_id="wamid-test-3"), result.context)
-
-    assert selected.context.process_state["parte_state"]["esperando"] == "confirmacion_cierre_validado"
+    assert not carga_agent.calls
+    assert selected.context.process_state["etapa"] == "carga"
+    assert selected.context.process_state["parte_state"]["esperando"] is None
+    assert selected.context.process_state["parte_state"]["validacion_origen"] is None
+    assert selected.metadata["carga_agent_source"] == "deterministic"
+    assert selected.metadata["carga_agent_action"] == "seleccionar_persona"
     assert "Perez, Pedro: FAL, 0h" in (selected.reply_text or "")
-    assert "Opcion 1" not in (result.reply_text or "")
+    assert "Hay alguna otra novedad?" in (selected.reply_text or "")
+    assert "Opcion 1" not in (loaded.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -2355,18 +2492,18 @@ async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisiona
     )
     context = V3ConversationContext(conversation_id="meta:account:549111111")
 
-    loaded = await process.handle(_message("Petro falto"), context)
+    validating = await process.handle(_message("Petro falto"), context)
+    loaded = await process.handle(_message("NINGUNO", external_id="wamid-test-3"), validating.context)
+
+    assert loaded.context.process_state["etapa"] == "carga"
+    assert loaded.context.process_state["parte_state"]["esperando"] is None
+    assert loaded.metadata["result"]["parte_listo"] is False
+    assert "Petro quedo registrado sin validar" in (loaded.reply_text or "")
+    assert "Petro (sin validar): FAL, 0h" in (loaded.reply_text or "")
+    assert "Hay alguna otra novedad?" in (loaded.reply_text or "")
+
     review = await process.handle(_message("no", external_id="wamid-test-review"), loaded.context)
-    validating = await process.handle(_message("2", external_id="wamid-test-2"), review.context)
-    confirmation = await process.handle(_message("registrar sin validar", external_id="wamid-test-3"), validating.context)
-
-    assert confirmation.context.process_state["etapa"] == "cierre"
-    assert confirmation.context.process_state["parte_state"]["esperando"] == "confirmacion_cierre_validado"
-    assert confirmation.metadata["result"]["parte_listo"] is False
-    assert "Petro quedo registrado sin validar" in (confirmation.reply_text or "")
-    assert "Petro (sin validar): FAL, 0h" in (confirmation.reply_text or "")
-    assert "Opciones: OK / VOLVER." in (confirmation.reply_text or "")
-
+    confirmation = await process.handle(_message("2", external_id="wamid-test-2"), review.context)
     result = await process.handle(_message("ok", external_id="wamid-test-4"), confirmation.context)
 
     assert result.context.process_state["etapa"] == "continuar"
@@ -2382,6 +2519,52 @@ async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisiona
     assert provisional is not None
     assert provisional.idnomina is None
     assert provisional.horas == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_review_text_free_returns_to_load_and_processes_message(monkeypatch):
+    state = ParteDiarioState(
+        oportunidad_id=10,
+        idproyecto=20,
+        fecha=date(2026, 5, 30).isoformat(),
+        sin_novedades_informado=True,
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "revision",
+            "contacto_id": 1,
+            "oportunidad_id": 10,
+            "proyecto_id": 20,
+            "nombre_obra": "Obra Centro",
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    captured = {}
+
+    async def fake_handle_carga(message, context, state):
+        captured["message_text"] = message.text
+        captured["etapa"] = state.etapa
+        captured["draft"] = state.draft().to_dict()
+        return V3ProcessResult(
+            context=context,
+            reply_text="Que novedad queres cargar?",
+            metadata={},
+        )
+
+    monkeypatch.setattr(process, "_handle_carga", fake_handle_carga)
+
+    result = await process.handle(_message("necesito cargar otra novedad"), context)
+
+    assert captured["message_text"] == "necesito cargar otra novedad"
+    assert captured["etapa"] == "carga"
+    assert captured["draft"]["esperando"] is None
+    assert captured["draft"]["validacion_origen"] is None
+    assert result.metadata["interrupted_status"] == "review_interrupted"
+    assert "En que obra" not in (result.reply_text or "")
+    assert "Que novedad queres cargar?" in (result.reply_text or "")
 
 
 @pytest.mark.asyncio

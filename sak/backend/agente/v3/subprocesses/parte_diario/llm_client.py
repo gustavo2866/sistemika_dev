@@ -25,6 +25,7 @@ OPERATION_TYPES = [
     "agregar_novedad",
     "modificar_novedad",
     "eliminar_novedad",
+    "pedir_aclaracion",
     "set_fecha",
     "mostrar_parte",
     "mostrar_nomina",
@@ -34,6 +35,49 @@ OPERATION_TYPES = [
     "offtopic",
     "request_other_process",
 ]
+
+COMMAND_ACTION_TYPES = [
+    "none",
+    "finalizar_carga",
+    "mostrar_resumen",
+    "mostrar_nomina",
+    "sin_novedades",
+    "salir",
+    "request_other_process",
+    "offtopic",
+]
+
+COMMAND_ACTION_TO_OPERATION = {
+    "finalizar_carga": "solicitar_confirmacion",
+    "mostrar_resumen": "mostrar_parte",
+    "mostrar_nomina": "mostrar_nomina",
+    "sin_novedades": "sin_novedades",
+    "salir": "solicitar_cancelacion",
+    "request_other_process": "request_other_process",
+    "offtopic": "offtopic",
+}
+
+BACKEND_ACTION_TYPES = [
+    "none",
+    "add_novelty",
+    "update_novelty",
+    "delete_novelty",
+    "finish_loading",
+    "show_summary",
+    "show_nomina",
+    "ask_clarification",
+    "exit",
+    "request_other_process",
+]
+
+BACKEND_ACTION_TO_OPERATION = {
+    "finish_loading": "solicitar_confirmacion",
+    "show_summary": "mostrar_parte",
+    "show_nomina": "mostrar_nomina",
+    "ask_clarification": "pedir_aclaracion",
+    "exit": "solicitar_cancelacion",
+    "request_other_process": "request_other_process",
+}
 
 
 class ParteDiarioLLMClient:
@@ -152,31 +196,67 @@ def _prompt_name_for_stage(stage: str) -> str:
 def _parse_turn_plan(raw: dict[str, Any]) -> TurnPlan:
     operations: list[ParteDiarioOperation] = []
     raw_operations = raw.get("operations")
-    if not isinstance(raw_operations, list):
-        return TurnPlan(reply=str(raw.get("reply") or "").strip() or None, raw_response=raw)
-    for raw_operation in raw_operations:
-        if not isinstance(raw_operation, dict):
-            continue
-        operation_type = str(raw_operation.get("type") or "").strip()
-        if operation_type not in OPERATION_TYPES:
-            continue
-        operations.append(
-            ParteDiarioOperation(
-                type=operation_type,
-                nombre=str(raw_operation.get("nombre") or "").strip() or None,
-                estado_codigo=str(raw_operation.get("estado_codigo") or "").strip().upper() or None,
-                horas=_parse_float(raw_operation.get("horas")),
-                horas_extra=_parse_float(raw_operation.get("horas_extra")),
-                descripcion=str(raw_operation.get("descripcion") or "").strip() or None,
-                fecha=str(raw_operation.get("fecha") or "").strip() or None,
-                requested=str(raw_operation.get("requested") or "").strip() or None,
-                reply=str(raw_operation.get("reply") or "").strip() or None,
+    if isinstance(raw_operations, list):
+        for raw_operation in raw_operations:
+            if not isinstance(raw_operation, dict):
+                continue
+            operation_type = str(raw_operation.get("type") or "").strip()
+            if operation_type not in OPERATION_TYPES:
+                continue
+            operations.append(
+                ParteDiarioOperation(
+                    type=operation_type,
+                    nombre=str(raw_operation.get("nombre") or "").strip() or None,
+                    estado_codigo=str(raw_operation.get("estado_codigo") or "").strip().upper() or None,
+                    horas=_parse_float(raw_operation.get("horas")),
+                    horas_extra=_parse_float(raw_operation.get("horas_extra")),
+                    descripcion=str(raw_operation.get("descripcion") or "").strip() or None,
+                    fecha=str(raw_operation.get("fecha") or "").strip() or None,
+                    requested=str(raw_operation.get("requested") or "").strip() or None,
+                    reply=str(raw_operation.get("reply") or "").strip() or None,
+                )
             )
-        )
+    _append_backend_action_operation(raw, operations)
+    _append_command_action_operation(raw, operations)
     return TurnPlan(
         operations=operations,
         reply=str(raw.get("reply") or "").strip() or None,
         raw_response=raw,
+    )
+
+
+def _append_backend_action_operation(raw: dict[str, Any], operations: list[ParteDiarioOperation]) -> None:
+    backend_action = str(raw.get("backend_action") or "").strip()
+    if not backend_action or backend_action == "none":
+        return
+    operation_type = BACKEND_ACTION_TO_OPERATION.get(backend_action)
+    if not operation_type:
+        return
+    if any(operation.type == operation_type for operation in operations):
+        return
+    operations.append(
+        ParteDiarioOperation(
+            type=operation_type,
+            reply=str(raw.get("reply") or "").strip() or None,
+        )
+    )
+
+
+def _append_command_action_operation(raw: dict[str, Any], operations: list[ParteDiarioOperation]) -> None:
+    message_kind = str(raw.get("message_kind") or "").strip()
+    command_action = str(raw.get("command_action") or "").strip()
+    if message_kind != "comando" or not command_action or command_action == "none":
+        return
+    operation_type = COMMAND_ACTION_TO_OPERATION.get(command_action)
+    if not operation_type:
+        return
+    if any(operation.type == operation_type for operation in operations):
+        return
+    operations.append(
+        ParteDiarioOperation(
+            type=operation_type,
+            reply=str(raw.get("reply") or "").strip() or None,
+        )
     )
 
 
@@ -200,6 +280,9 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
+                    "message_kind": {"type": "string", "enum": ["comando", "novedad", "aclaracion"]},
+                    "command_action": {"type": "string", "enum": COMMAND_ACTION_TYPES},
+                    "backend_action": {"type": "string", "enum": BACKEND_ACTION_TYPES},
                     "operations": {
                         "type": "array",
                         "items": {
@@ -231,7 +314,13 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                     },
                     "reply": {"type": ["string", "null"]},
                 },
-                "required": ["operations", "reply"],
+                "required": [
+                    "message_kind",
+                    "command_action",
+                    "backend_action",
+                    "operations",
+                    "reply",
+                ],
             },
         },
     }

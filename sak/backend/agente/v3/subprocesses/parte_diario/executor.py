@@ -21,6 +21,7 @@ KNOWN_OPERATIONS = {
     "agregar_novedad",
     "modificar_novedad",
     "eliminar_novedad",
+    "pedir_aclaracion",
     "set_fecha",
     "mostrar_parte",
     "mostrar_nomina",
@@ -78,14 +79,20 @@ def execute_plan(
                 status = "updated"
             continue
 
+        if op_type == "pedir_aclaracion":
+            reply = operation.reply or plan.reply or "Necesito una aclaracion para continuar."
+            return ExecutionResult("clarification", current, reply, applied_operations=applied)
+
         if op_type == "mostrar_parte":
             return ExecutionResult("shown", current, renderer.solicitar_confirmacion(current), applied_operations=applied)
 
         if op_type == "mostrar_nomina":
+            items = nominas_visibles if nominas_visibles is not None else nominas_proyecto
+            items = _filter_nomina_items(items, operation.nombre)
             return ExecutionResult(
                 "shown_nomina",
                 current,
-                renderer.mostrar_nomina(nominas_visibles if nominas_visibles is not None else nominas_proyecto),
+                renderer.mostrar_nomina(items),
                 applied_operations=applied,
             )
 
@@ -152,6 +159,14 @@ def execute_plan(
             reply = operation.reply or plan.reply or renderer.falta_informacion()
             return ExecutionResult("offtopic", current, reply, applied_operations=applied)
 
+    if not applied:
+        return ExecutionResult(
+            "clarification",
+            current,
+            plan.reply or "No pude interpretar una novedad o accion para el parte. Decime la novedad o confirma si terminaste la carga.",
+            applied_operations=applied,
+        )
+
     return ExecutionResult(
         status,
         current,
@@ -159,6 +174,41 @@ def execute_plan(
         errors=errors,
         applied_operations=applied,
     )
+
+
+def _filter_nomina_items(items: list[NominaItem], text: str | None) -> list[NominaItem]:
+    searched = set(normalize_text(text).split()) - {
+        "otro",
+        "otros",
+        "otra",
+        "otras",
+        "el",
+        "la",
+        "los",
+        "las",
+        "de",
+        "del",
+    }
+    if not searched:
+        return items
+    filtered = [
+        item for item in items
+        if searched <= set(
+            normalize_text(
+                " ".join(
+                    value
+                    for value in (
+                        item.apellido,
+                        item.nombre,
+                        item.nombre_completo,
+                        item.nro_legajo,
+                    )
+                    if value
+                )
+            ).split()
+        )
+    ]
+    return filtered or items
 
 
 def _agregar_novedad(
@@ -197,14 +247,15 @@ def _agregar_novedad(
         state.sin_novedades_informado = False
         return None
     if resolved.ambiguo:
-        candidates = resolved.candidatos or []
+        project_candidates = resolved.candidatos or []
+        candidates = project_candidates or resolved.candidatos_externos or []
         if (
             estado
             and estado.abreviatura.upper() == "P"
             and operation.horas is not None
             and operation.horas < 9
-            and candidates
-            and all(not item.fuera_de_proyecto for item in candidates)
+            and project_candidates
+            and all(not item.fuera_de_proyecto for item in project_candidates)
         ):
             estado = None
         state.pendientes_ambiguos.append(
@@ -305,6 +356,11 @@ def registrar_pendiente_resuelto(
         (item for item in pending.candidatos or [] if item.idnomina == pending.idnomina_resuelto),
         None,
     )
+    if candidate is None:
+        candidate = next(
+            (item for item in pending.candidatos_externos or [] if item.idnomina == pending.idnomina_resuelto),
+            None,
+        )
     if candidate is None:
         candidate = NominaItem(
             idnomina=int(pending.idnomina_resuelto or 0),
