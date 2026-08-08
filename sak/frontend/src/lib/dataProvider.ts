@@ -68,11 +68,10 @@ const stringifyErrorDetail = (detail: unknown): string | undefined => {
   }
   if (typeof detail === "object") {
     const detailObj = detail as {
-      error?: { message?: string };
+      error?: { message?: string } | string;
       message?: string;
       error_description?: string;
       errorMessage?: string;
-      error?: string;
     };
     if (typeof detailObj.error === "string") return detailObj.error;
     return (
