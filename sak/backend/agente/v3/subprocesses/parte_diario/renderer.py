@@ -279,7 +279,11 @@ def preguntar_conflicto(conflict: ConflictoNovedad) -> str:
 def mostrar_nomina(items: list[NominaItem]) -> str:
     if not items:
         return "No hay personal activo asignado a la obra."
-    return "*NOMINA ACTIVA*\n" + "\n".join(f"- {_candidate_label(item)}" for item in items)
+    return "*NOMINA ACTIVA*\n" + "\n".join(f"- {_nomina_label(item)}" for item in items)
+
+
+def _nomina_label(item: NominaItem) -> str:
+    return item.nombre_completo
 
 
 def parte_cerrado(fecha: str) -> str:

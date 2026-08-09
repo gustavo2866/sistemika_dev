@@ -697,11 +697,10 @@ class ParteDiarioSubprocess:
     ) -> V3ProcessResult:
         command = _normalize_command(message.text)
         if command in {"ok", "1"}:
-            return self._post_action_result(
+            return _return_to_general(
                 context,
-                state,
-                "Parte diario descartado.",
-                "discarded",
+                source="parte_diario_exit_confirmed",
+                prefix="Parte diario descartado.",
             )
 
         if command in {"volver", "2"}:
@@ -1528,7 +1527,9 @@ def resolver_fecha_default_parte_diario_info(
     ]
     if not pending_options:
         return None, 0
-    return pending_options[0].fecha, len(pending_options)
+    draft_options = [option for option in pending_options if option.estado == "borrador"]
+    selected = draft_options[0] if draft_options else pending_options[0]
+    return selected.fecha, len(pending_options)
 
 
 async def _emitir_fecha_default_parte_diario(
@@ -2080,16 +2081,19 @@ def _general_greeting() -> str:
     return GENERAL_MENU_TEXT
 
 
-def _return_to_general(context: V3ConversationContext, *, source: str) -> V3ProcessResult:
+def _return_to_general(context: V3ConversationContext, *, source: str, prefix: str | None = None) -> V3ProcessResult:
     updated = context.copy()
     updated.active_process = "general"
     updated.process_state = {
         "last_text": "salir parteDiario",
         "agent_source": source,
     }
+    reply = _general_greeting()
+    if prefix:
+        reply = f"{prefix.strip()}\n\n{reply}"
     return V3ProcessResult(
         context=updated,
-        reply_text=_general_greeting(),
+        reply_text=reply,
         metadata={"process_name": "parteDiario", "status": "returned_to_general"},
     )
 

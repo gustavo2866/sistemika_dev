@@ -415,6 +415,7 @@ async def test_parte_diario_v3_mostrar_nomina_muestra_proyecto_activo_sin_filtra
     assert "*NOMINA ACTIVA*" in (result.reply_text or "")
     assert "Garcia, Juan" in (result.reply_text or "")
     assert "Perez, Pedro" in (result.reply_text or "")
+    assert "encargado" not in (result.reply_text or "").lower()
     assert "Externo, Mario" not in (result.reply_text or "")
 
     result_full = await process.handle(_message("mostrar toda la nomina", external_id="wamid-test-2"), context)
@@ -444,6 +445,7 @@ def test_parte_diario_v3_mostrar_nomina_filtra_por_nombre():
     assert result.status == "shown_nomina"
     assert "Medina, Ivan" in result.reply
     assert "Medina, Juan Manuel" in result.reply
+    assert "encargado" not in result.reply.lower()
     assert "Vera, Daniela" not in result.reply
 
 
@@ -598,20 +600,12 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
     assert "2: PARTE DIARIO" in (exited.reply_text or "")
 
 
-def test_resolver_fecha_default_parte_diario_returns_oldest_pending_date(
+def test_resolver_fecha_default_parte_diario_prefers_draft_over_unloaded_date(
     db_session: Session,
     monkeypatch,
     seeded_parte_v3,
 ):
     monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 5, 16))
-    db_session.add(
-        ParteDiario(
-            idproyecto=seeded_parte_v3["project"].id,
-            contacto_id=seeded_parte_v3["contact"].id,
-            fecha=date(2026, 5, 10),
-            estado=EstadoParteDiario.CONFIRMADO,
-        )
-    )
     db_session.add(
         ParteDiario(
             idproyecto=seeded_parte_v3["project"].id,
@@ -2603,16 +2597,12 @@ async def test_parte_diario_v3_menu_salir_confirms_discard(seeded_parte_v3):
     assert "Volvemos a la carga" in (back.reply_text or "")
     assert "Parte diario en carga:" in (back.reply_text or "")
     assert "Sin novedades. Todos presentes." in (back.reply_text or "")
-    assert discarded.context.active_process == "parteDiario"
-    assert discarded.context.process_state["etapa"] == "seleccionar_fecha"
+    assert discarded.context.active_process == "general"
+    assert discarded.context.process_state["agent_source"] == "parte_diario_exit_confirmed"
     assert "descartado" in (discarded.reply_text or "")
-    assert "Selecciona la fecha del parte diario:" in (discarded.reply_text or "")
-
-    returned = await process.handle(_message("salir"), discarded.context)
-
-    assert returned.context.active_process == "general"
-    assert "1: PEDIDO OBRA" in (returned.reply_text or "")
-    assert "2: PARTE DIARIO" in (returned.reply_text or "")
+    assert "Selecciona la fecha del parte diario:" not in (discarded.reply_text or "")
+    assert "1: PEDIDO OBRA" in (discarded.reply_text or "")
+    assert "2: PARTE DIARIO" in (discarded.reply_text or "")
 
 
 @pytest.mark.asyncio

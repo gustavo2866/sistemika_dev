@@ -480,7 +480,7 @@ Luego de guardar o cerrar, el flujo continua con la siguiente fecha pendiente o 
 Opciones: OK / VOLVER.
 ```
 
-- `1` o `OK`: descarta el parte en carga y vuelve al selector de fechas de `parteDiario`.
+- `1` o `OK`: descarta el parte en carga y vuelve al menu inicial.
 - `2` o `VOLVER`: vuelve a la carga.
 
 ## Texto Libre
