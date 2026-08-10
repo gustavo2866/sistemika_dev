@@ -11,14 +11,37 @@ from agente.v3.subprocesses.parte_diario.models import EstadoItem, NominaItem
 
 
 def normalize_text(value: str | None) -> str:
-    text = unicodedata.normalize("NFKD", str(value or "").lower())
+    text = _repair_common_mojibake(str(value or "")).lower()
+    text = unicodedata.normalize("NFKD", text)
     text = "".join(char for char in text if not unicodedata.combining(char))
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _repair_common_mojibake(value: str) -> str:
+    if "Ã" not in value and "Â" not in value:
+        return value
+    try:
+        return value.encode("latin1").decode("utf-8")
+    except UnicodeError:
+        return value
+
+
 def _tokens(value: str | None) -> set[str]:
     return set(normalize_text(value).split())
+
+
+def _candidate_search_text(item: NominaItem) -> str:
+    return " ".join(
+        value
+        for value in (
+            item.apellido,
+            item.nombre,
+            item.nombre_completo,
+            item.nro_legajo,
+        )
+        if value
+    )
 
 
 @dataclass(slots=True)
@@ -94,7 +117,7 @@ class NominaResolver:
         return [
             item
             for item in candidates
-            if searched <= _tokens(f"{item.apellido} {item.nombre}")
+            if searched <= _tokens(_candidate_search_text(item))
         ]
 
     @staticmethod
@@ -104,7 +127,7 @@ class NominaResolver:
             return []
         scored: list[tuple[float, NominaItem]] = []
         for item in candidates:
-            candidate_tokens = _tokens(f"{item.apellido} {item.nombre}")
+            candidate_tokens = _tokens(_candidate_search_text(item))
             if not candidate_tokens:
                 continue
             score = max(
@@ -173,6 +196,19 @@ def parse_candidate_selection(
         return None
     matches = [
         item for item in candidates
-        if searched <= _tokens(f"{item.apellido} {item.nombre}")
+        if searched <= _tokens(_candidate_search_text(item))
     ]
     return matches[0] if len(matches) == 1 else None
+
+
+def filter_candidate_selection(text: str, candidates: list[NominaItem]) -> list[NominaItem]:
+    normalized = normalize_text(text)
+    if normalized.isdigit():
+        return []
+    searched = _tokens(normalized) - {"el", "la", "de", "del"}
+    if not searched:
+        return []
+    return [
+        item for item in candidates
+        if searched <= _tokens(_candidate_search_text(item))
+    ]

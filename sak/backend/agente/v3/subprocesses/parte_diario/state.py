@@ -10,6 +10,7 @@ from agente.v3.subprocesses.parte_diario.models import ParteDiarioState as Parte
 
 ParteDiarioStage = Literal[
     "inicial",
+    "seleccionar_obra",
     "cargar_fecha",
     "seleccionar_fecha",
     "carga",
@@ -100,6 +101,9 @@ class ParteDiarioV3State:
     opciones_obra: list[ParteDiarioOption] = field(default_factory=list)
     opciones_fecha: list[ParteDiarioFechaOption] = field(default_factory=list)
     fecha_menu_pendiente: bool = False
+    fecha_referida_explicita: bool = False
+    fecha_objetivo: str | None = None
+    texto_fecha_inicial: str | None = None
     parte_state: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -108,6 +112,7 @@ class ParteDiarioV3State:
         etapa = str(data.get("etapa") or "inicial")
         if etapa not in {
             "inicial",
+            "seleccionar_obra",
             "cargar_fecha",
             "seleccionar_fecha",
             "carga",
@@ -141,6 +146,9 @@ class ParteDiarioV3State:
             opciones_obra=options,
             opciones_fecha=date_options,
             fecha_menu_pendiente=bool(data.get("fecha_menu_pendiente")),
+            fecha_referida_explicita=bool(data.get("fecha_referida_explicita")),
+            fecha_objetivo=str(data.get("fecha_objetivo") or "").strip() or None,
+            texto_fecha_inicial=str(data.get("texto_fecha_inicial") or "").strip() or None,
             parte_state=dict(data.get("parte_state") or {}),
         )
 
@@ -154,6 +162,9 @@ class ParteDiarioV3State:
             "opciones_obra": [option.to_dict() for option in self.opciones_obra],
             "opciones_fecha": [option.to_dict() for option in self.opciones_fecha],
             "fecha_menu_pendiente": self.fecha_menu_pendiente,
+            "fecha_referida_explicita": self.fecha_referida_explicita,
+            "fecha_objetivo": self.fecha_objetivo,
+            "texto_fecha_inicial": self.texto_fecha_inicial,
             "parte_state": dict(self.parte_state),
         }
 
@@ -166,7 +177,7 @@ class ParteDiarioV3State:
         self.proyecto_id = option.proyecto_id
         self.nombre_obra = option.nombre
         self.opciones_obra = []
-        self.etapa = "cargar_fecha"
+        self.etapa = "seleccionar_fecha"
 
     def draft(self) -> ParteDiarioDraftState:
         draft = ParteDiarioDraftState.from_dict(

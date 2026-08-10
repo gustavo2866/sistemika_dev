@@ -94,6 +94,7 @@ export type ProjectSummaryItem = {
 };
 
 export type ProjectDeviationMetric = {
+  anterior: number;
   real: number;
   presupuestado: number;
   dif: number;
@@ -103,6 +104,13 @@ export type ProjectDeviationMetric = {
 export type ProjectDeviationItem = {
   proyecto_id: number;
   proyecto: string;
+  ingresos: ProjectDeviationMetric;
+  egresos: ProjectDeviationMetric;
+  resultado: ProjectDeviationMetric;
+};
+
+export type RubroDeviationItem = {
+  rubro: string;
   ingresos: ProjectDeviationMetric;
   egresos: ProjectDeviationMetric;
   resultado: ProjectDeviationMetric;
@@ -123,6 +131,7 @@ export type FinancialDashboardResponse = {
   kpis: FinancialKpis;
   resultado_por_proyecto: ProjectResultItem[];
   desvios_por_proyecto: ProjectDeviationItem[];
+  desvios_por_rubro: RubroDeviationItem[];
   top_desvios_negativos: NegativeDeviationItem[];
   resultado_por_rubro: RubroResultItem[];
   costo_por_rubro: RubroResultItem[];

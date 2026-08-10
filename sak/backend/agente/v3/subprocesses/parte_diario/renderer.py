@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from agente.v3.subprocesses.parte_diario.models import (
     ConflictoNovedad,
     EstadoItem,
@@ -19,16 +21,16 @@ def resumen(state: ParteDiarioState) -> str:
         return "(sin novedades cargadas)"
     rows = []
     for novedad in state.novedades:
-        horas = f"{novedad.horas:g}h" if novedad.horas is not None else "horas pendientes"
         estado = novedad.estado_codigo or "estado pendiente"
-        legajo = f" (legajo {novedad.nro_legajo})" if getattr(novedad, "nro_legajo", None) else ""
         externo = _external_label(novedad)
+        horas = _hours_text(novedad.estado_codigo, novedad.horas)
+        hours_part = f", {horas}" if horas else ""
         motivo = (
             f", motivo: {novedad.descripcion}"
             if novedad.descripcion and str(novedad.estado_codigo or "").upper() != "P"
             else ""
         )
-        rows.append(f"- {novedad.nombre}{legajo}{externo}: {estado}, {horas}{motivo}")
+        rows.append(f"- {novedad.nombre}{externo}: {estado}{hours_part}{motivo}")
     shown_pending_names = set()
     for pending in state.pendientes_ambiguos:
         normalized_name = normalize_text(pending.nombre)
@@ -90,10 +92,7 @@ def resumen_revision(state: ParteDiarioState) -> str:
 
 def _short_person_name(value: str | None) -> str:
     text = str(value or "").strip()
-    if "," not in text:
-        return text
-    last_name, first_name = (part.strip() for part in text.split(",", 1))
-    return last_name or first_name or text
+    return text
 
 
 def _state_label(code: str | None) -> str:
@@ -130,13 +129,20 @@ def _review_present_suffix(hours: float | None) -> str | None:
 def _resumen_pendiente(pending: PendienteAmbiguo) -> str:
     estado = pending.estado_codigo or "estado pendiente"
     horas = _pending_hours(pending)
-    horas_text = f"{horas:g}h" if horas is not None else "horas pendientes"
+    horas_text = _hours_text(pending.estado_codigo, horas)
+    hours_part = f", {horas_text}" if horas_text else ""
     motivo = (
         f", motivo: {pending.descripcion}"
         if pending.descripcion and str(pending.estado_codigo or "").upper() != "P"
         else ""
     )
-    return f"- {pending.nombre} (**a validar): {estado}, {horas_text}{motivo}"
+    return f"- {pending.nombre} (**a validar): {estado}{hours_part}{motivo}"
+
+
+def _hours_text(estado_codigo: str | None, horas: float | None) -> str:
+    if str(estado_codigo or "").upper() == "FAL" and horas in {0, 0.0, None}:
+        return ""
+    return f"{horas:g}h" if horas is not None else "horas pendientes"
 
 
 def _pending_hours(pending: PendienteAmbiguo) -> float | None:
@@ -156,30 +162,34 @@ def _external_label(novedad) -> str:
     if novedad.idnomina is None:
         return " (sin validar)"
     if novedad.fuera_de_proyecto and novedad.nombre_proyecto:
-        return f" (asignado a {novedad.nombre_proyecto})"
+        return f" ({_project_short_label(novedad.nombre_proyecto)})"
     return ""
+
+
+def _project_short_label(nombre_proyecto: str | None) -> str:
+    return str(nombre_proyecto or "").strip()[:6].strip()
 
 
 def actualizado(state: ParteDiarioState, errors: list[str] | None = None) -> str:
     prefix = ""
     if errors:
         prefix = "\n".join(errors) + "\n\n"
-    return f"{prefix}Parte diario actualizado:\nFecha: {state.fecha}\n\n{resumen(state)}\n\nCuando termines, escribi CONFIRMAR."
+    return f"{prefix}Parte diario actualizado:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}\n\nCuando termines, escribi CONFIRMAR."
 
 
 def solicitar_confirmacion(state: ParteDiarioState) -> str:
     has_clarifications = bool(state.pendientes_ambiguos or state.conflictos_novedad)
     action = "Para resolver las aclaraciones, responde CONFIRMAR." if has_clarifications else "Para guardarlo, responde CONFIRMAR."
-    return f"Parte diario para confirmar:\nFecha: {state.fecha}\n\n{resumen(state)}\n\n{action}"
+    return f"Parte diario para confirmar:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}\n\n{action}"
 
 
 def confirmar_cierre_validado(state: ParteDiarioState) -> str:
-    return f"Parte diario listo para cerrar:\nFecha: {state.fecha}\n\n{resumen(state)}\n\nConfirmas cerrar el parte diario?"
+    return f"Parte diario listo para cerrar:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}\n\nConfirmas cerrar el parte diario?"
 
 
 def consulta(state: ParteDiarioState) -> str:
     if state.parte_id is None:
-        return f"No hay un parte diario guardado para el {state.fecha}."
+        return f"No hay un parte diario guardado para el {_fecha_humana(state.fecha)}."
     return confirmado(state)
 
 
@@ -208,7 +218,7 @@ def confirmado(state: ParteDiarioState, *, cerrado: bool = False) -> str:
     return (
         f"{title}\n"
         "━━━━━━━━━━━━━━\n\n"
-        f"*Fecha:* {state.fecha}\n\n"
+        f"*Fecha:* {_fecha_humana(state.fecha)}\n\n"
         "*Novedades*\n"
         f"{_resumen_bullets(state)}"
     )
@@ -242,10 +252,8 @@ def validacion_requerida(question: str) -> str:
 
 def _candidate_label(candidate: NominaItem) -> str:
     details = []
-    if candidate.nro_legajo:
-        details.append(f"legajo {candidate.nro_legajo}")
     if candidate.fuera_de_proyecto and candidate.nombre_proyecto:
-        details.append(f"asignado a {candidate.nombre_proyecto}")
+        details.append(f"asignado a {_project_short_label(candidate.nombre_proyecto)}")
     if candidate.encargado_nombre:
         details.append(f"encargado {candidate.encargado_nombre}")
     suffix = f" ({', '.join(details)})" if details else ""
@@ -273,23 +281,77 @@ def preguntar_conflicto(conflict: ConflictoNovedad) -> str:
 def mostrar_nomina(items: list[NominaItem]) -> str:
     if not items:
         return "No hay personal activo asignado a la obra."
-    return "*NOMINA ACTIVA*\n" + "\n".join(f"- {_candidate_label(item)}" for item in items)
+    sorted_items = sorted(items, key=lambda item: (_sort_key(item.apellido), _sort_key(item.nombre)))
+    groups = _nomina_groups(sorted_items)
+    lines = ["*NOMINA ACTIVA*", f"{len(sorted_items)} personas", ""]
+    lines.extend(f"{label}: {', '.join(_nomina_compact_label(item) for item in group)}" for label, group in groups)
+    return "\n".join(lines)
+
+
+def _nomina_label(item: NominaItem) -> str:
+    return item.nombre_completo
+
+
+def _nomina_compact_label(item: NominaItem) -> str:
+    parts = [str(item.apellido or "").strip(), str(item.nombre or "").strip()]
+    return " ".join(part for part in parts if part)
+
+
+def _nomina_groups(items: list[NominaItem], *, target_size: int = 8) -> list[tuple[str, list[NominaItem]]]:
+    groups: list[tuple[str, list[NominaItem]]] = []
+    for index in range(0, len(items), target_size):
+        group = items[index : index + target_size]
+        groups.append((_nomina_group_label(group), group))
+    return groups
+
+
+def _nomina_group_label(items: list[NominaItem]) -> str:
+    if not items:
+        return ""
+    first = _initial(items[0].apellido or items[0].nombre)
+    last = _initial(items[-1].apellido or items[-1].nombre)
+    return first if first == last else f"{first}-{last}"
+
+
+def _initial(value: str | None) -> str:
+    text = _sort_key(value)
+    return text[:1].upper() if text else "#"
+
+
+def _sort_key(value: str | None) -> str:
+    replacements = str.maketrans("áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN")
+    return str(value or "").strip().translate(replacements).lower()
 
 
 def parte_cerrado(fecha: str) -> str:
-    return f"El parte diario del {fecha} ya esta confirmado y no puede modificarse desde WhatsApp."
+    return f"El parte diario del {_fecha_humana(fecha)} ya esta confirmado y no puede modificarse desde WhatsApp."
 
 
 def preguntar_cambio_fecha(fecha_actual: str | None, fecha_propuesta: str) -> str:
     return (
-        f"El parte en carga corresponde al {fecha_actual}. Para cambiarlo al {fecha_propuesta}, "
+        f"El parte en carga corresponde al {_fecha_humana(fecha_actual)}. Para cambiarlo al {_fecha_humana(fecha_propuesta)}, "
         "responde CAMBIAR FECHA. Para conservar la fecha actual, responde MANTENER FECHA."
     )
 
 
 def fecha_original_conservada(fecha: str | None) -> str:
-    return f"Conserve el parte del {fecha}. Podes seguir cargando novedades."
+    return f"Conserve el parte del {_fecha_humana(fecha)}. Podes seguir cargando novedades."
 
 
 def bloquear_otro_proceso() -> str:
     return "Hay un parte diario abierto. Confirmalo o responde CANCELAR antes de iniciar otro proceso."
+
+
+def _weekday_label(value: date) -> str:
+    return ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"][value.weekday()]
+
+
+def _fecha_humana(value: date | str | None) -> str:
+    if isinstance(value, date):
+        target_date = value
+    else:
+        try:
+            target_date = date.fromisoformat(str(value or "").strip())
+        except ValueError:
+            return str(value or "").strip()
+    return f"{_weekday_label(target_date)} {target_date.strftime('%d/%m/%Y')}"

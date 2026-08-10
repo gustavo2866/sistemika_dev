@@ -30,6 +30,15 @@ export type FinancialKpiCardItem = {
   deviation?: number;
   deviationType?: "millions" | "points";
   showDeviationPercent?: boolean;
+  sideSummary?: {
+    title: string;
+    items: Array<{
+      label: string;
+      value: number;
+      valueType?: "millions" | "percent";
+      className?: string;
+    }>;
+  };
   icon: ComponentType<{ className?: string }>;
   iconClassName: string;
 };
@@ -51,6 +60,7 @@ const FinancialKpiCard = ({
   deviation,
   deviationType = "millions",
   showDeviationPercent,
+  sideSummary,
   icon: Icon,
   iconClassName,
 }: FinancialKpiCardItem) => {
@@ -71,7 +81,16 @@ const FinancialKpiCard = ({
 
   return (
     <Card className="h-[62px] rounded-md border-border/70 py-0 shadow-sm">
-      <CardContent className={cn("grid h-full items-center gap-2 px-2.5 py-1.5", budget !== undefined ? "grid-cols-[30px_1fr_58px]" : "grid-cols-[30px_1fr]")}>
+      <CardContent
+        className={cn(
+          "grid h-full items-center gap-2 px-2.5 py-1.5",
+          sideSummary
+            ? "grid-cols-[30px_minmax(0,1fr)_70px]"
+            : budget !== undefined
+              ? "grid-cols-[30px_1fr_58px]"
+              : "grid-cols-[30px_1fr]",
+        )}
+      >
         <div className={cn("flex h-[30px] w-[30px] items-center justify-center rounded-md text-white", iconClassName)}>
           <Icon className="h-4 w-4" />
         </div>
@@ -116,6 +135,26 @@ const FinancialKpiCard = ({
                 {formatPercent(deviationPct)}
               </div>
             ) : null}
+          </div>
+        ) : sideSummary ? (
+          <div className="min-w-0 border-l border-slate-200/70 pl-2 text-right">
+            <div className="text-[6.5px] font-semibold uppercase leading-none text-muted-foreground">
+              {sideSummary.title}
+            </div>
+            <div className="mt-0.5 space-y-0.5">
+              {sideSummary.items.map((item) => (
+                <div
+                  key={item.label}
+                  className={cn(
+                    "flex min-w-0 items-baseline justify-between gap-1 text-[6.5px] font-semibold leading-none text-slate-600",
+                    item.className,
+                  )}
+                >
+                  <span className="shrink-0 text-muted-foreground">{item.label}</span>
+                  <span className="truncate tabular-nums">{formatValue(item.value, item.valueType ?? "millions")}</span>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
       </CardContent>

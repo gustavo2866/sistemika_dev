@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import logging
 import re
 import unicodedata
+from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -54,10 +55,6 @@ BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
 logger = logging.getLogger(__name__)
 _RESERVED_OPERATIONS = {"confirmar", "cancelar"}
 _MUTATING_OPERATIONS = {"agregar_novedad", "modificar_novedad", "eliminar_novedad", "sin_novedades"}
-_CANDIDATE_LIST_MAX_ROWS = 10
-_CANDIDATE_LIST_PAGE_SIZE = 9
-
-
 @dataclass(slots=True)
 class TurnResult:
     payload: dict[str, Any] = field(default_factory=dict)
@@ -66,7 +63,7 @@ class TurnResult:
 
 
 class ParteDiarioProcess:
-    name = "parte_diario"
+    name = "parteDiario"
 
     def __init__(self, *, session: Session | None, llm_client: ParteDiarioLLMClient | None = None) -> None:
         self._session = session
@@ -112,6 +109,7 @@ class ParteDiarioProcess:
                     project.id,
                     contacto_id=contacto_id,
                     command=command,
+                    alcance=None,
                     nominas_completas=nominas_completas,
                 )
                 if readonly_operation == "mostrar_nomina"
@@ -134,6 +132,7 @@ class ParteDiarioProcess:
             if command == "mantener fecha":
                 state.fecha_propuesta = None
                 state.esperando = None
+                state.validacion_origen = None
                 return self._state_reply(state, renderer.fecha_original_conservada(state.fecha))
             return self._state_reply(
                 state,
@@ -174,10 +173,13 @@ class ParteDiarioProcess:
             plan = await self._llm.interpret_turn(message_text, state, nominas_proyecto, estados)
         except Exception:
             logger.exception("No se pudo interpretar el turno de parte_diario")
-            return self._state_reply(
-                state,
-                "No pude interpretar el parte diario. Proba nuevamente con una descripcion breve.",
-            )
+            fallback_plan = _fallback_simple_attendance_plan(message_text, estados)
+            if fallback_plan is None:
+                return self._state_reply(
+                    state,
+                    "No pude interpretar el parte diario. Proba nuevamente con una descripcion breve.",
+                )
+            plan = fallback_plan
 
         validation_error = _validate_plan(plan)
         if validation_error:
@@ -217,6 +219,7 @@ class ParteDiarioProcess:
                 project.id,
                 contacto_id=contacto_id,
                 command=message_text,
+                alcance=_nomina_scope_from_operations(plan.operations),
                 nominas_completas=nominas_completas,
             )
             if any(operation.type == "mostrar_nomina" for operation in plan.operations)
@@ -248,11 +251,13 @@ class ParteDiarioProcess:
         if state.conflictos_novedad:
             if not cerrar_parte:
                 return self._build_confirmation_result(state, cerrar_parte=False)
+            state.validacion_origen = state.validacion_origen or "cierre"
             state.esperando = "resolucion_conflictos"
             return self._state_reply(state, renderer.preguntar_conflicto(state.conflictos_novedad[0]))
         if state.pendientes_ambiguos:
             if not cerrar_parte:
                 return self._build_confirmation_result(state, cerrar_parte=False)
+            state.validacion_origen = state.validacion_origen or "cierre"
             state.esperando = "confirmacion_ambiguos"
             _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
             return self._state_reply(state, renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados))
@@ -290,14 +295,46 @@ class ParteDiarioProcess:
             return self._after_validation_completed(state, estados, nominas_proyecto, nominas_completas)
         pending = state.pendientes_ambiguos[0]
         if pending.nombre_no_encontrado:
+            if _is_unvalidated_selection(text, pending):
+                unvalidated_name = pending.nombre
+                state.pendientes_ambiguos.pop(0)
+                registrar_pendiente_sin_validar(state, pending)
+                if state.pendientes_ambiguos:
+                    _prepare_pending_validation(state.pendientes_ambiguos[0], nominas_proyecto, nominas_completas)
+                    return self._state_reply(
+                        state,
+                        f"{unvalidated_name} quedo registrado sin validar.\n\n"
+                        f"{renderer.preguntar_pendiente(state.pendientes_ambiguos[0], estados)}",
+                    )
+                state.esperando = None
+                return self._after_validation_completed(
+                    state,
+                    estados,
+                    nominas_proyecto,
+                    nominas_completas,
+                    prefix=f"{unvalidated_name} quedo registrado sin validar.",
+                )
             resolved = NominaResolver.resolve(text, nominas_proyecto, nominas_completas)
-            pending.nombre = text.strip() or pending.nombre
             if resolved.error:
                 _prepare_pending_validation(pending, nominas_proyecto, nominas_completas)
+                if state.validacion_origen == "carga" and not pending.candidatos and _looks_like_attendance_update(text):
+                    state.esperando = None
+                    state.validacion_origen = None
+                    return await self.handle(
+                        SimpleNamespace(
+                            oportunidad_id=state.oportunidad_id,
+                            contacto_id=state.contacto_id,
+                            is_project=True,
+                            active_process=self.name,
+                            process_state=state.to_dict(),
+                            message=SimpleNamespace(contenido=text),
+                        )
+                    )
                 return self._state_reply(
                     state,
                     renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
                 )
+            pending.nombre = text.strip() or pending.nombre
             pending.nombre_no_encontrado = False
             if resolved.ambiguo:
                 pending.candidatos = resolved.candidatos
@@ -341,7 +378,11 @@ class ParteDiarioProcess:
                     nominas_completas,
                     prefix=f"{unvalidated_name} quedo registrado sin validar.",
                 )
-            candidates = pending.candidatos or []
+            if _is_other_candidates_command(text, pending):
+                pending.mostrando_candidatos_externos = True
+                pending.lista_candidatos_mostrada = False
+                return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
+            candidates = _active_validation_candidates(pending)
             if not pending.lista_candidatos_mostrada:
                 return self._state_reply(
                     state,
@@ -355,6 +396,19 @@ class ParteDiarioProcess:
                 visible_count=visible_count,
             )
             if selected is None:
+                if state.validacion_origen == "carga":
+                    state.esperando = None
+                    state.validacion_origen = None
+                    return await self.handle(
+                        SimpleNamespace(
+                            oportunidad_id=state.oportunidad_id,
+                            contacto_id=state.contacto_id,
+                            is_project=True,
+                            active_process=self.name,
+                            process_state=state.to_dict(),
+                            message=SimpleNamespace(contenido=text),
+                        )
+                    )
                 return self._state_reply(
                     state,
                     renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
@@ -441,7 +495,15 @@ class ParteDiarioProcess:
         *,
         prefix: str | None = None,
     ) -> TurnResult:
+        if state.validacion_origen == "carga":
+            state.esperando = None
+            state.validacion_origen = None
+            result = self._state_reply(state, renderer.actualizado(state))
+            if prefix and result.payload.get("reply_to_user"):
+                result.payload["reply_to_user"] = f"{prefix}\n\n{result.payload['reply_to_user']}"
+            return result
         state.esperando = "confirmacion_cierre_validado"
+        state.validacion_origen = "cierre"
         result = self._state_reply(state, renderer.confirmar_cierre_validado(state))
         if prefix and result.payload.get("reply_to_user"):
             result.payload["reply_to_user"] = f"{prefix}\n\n{result.payload['reply_to_user']}"
@@ -451,6 +513,7 @@ class ParteDiarioProcess:
         proposed = state.fecha_propuesta
         state.fecha_propuesta = None
         state.esperando = None
+        state.validacion_origen = None
         if not proposed:
             return self._state_reply(state, "No hay un cambio de fecha pendiente.")
         error = self._apply_date(state, proposed, estados)
@@ -634,14 +697,22 @@ class ParteDiarioProcess:
         *,
         contacto_id: int | None,
         command: str,
+        alcance: str | None,
         nominas_completas: list[NominaItem],
     ) -> list[NominaItem]:
-        if _requests_full_nomina(command):
+        if _requests_global_nomina(command) or alcance == "global":
             return nominas_completas
+        if _requests_full_nomina(command) or alcance == "obra":
+            nominas_proyecto, _ = self._load_nominas(
+                idproyecto,
+                contacto_id=contacto_id,
+                filtrar_por_contacto=False,
+            )
+            return nominas_proyecto
         nominas_proyecto, _ = self._load_nominas(
             idproyecto,
             contacto_id=contacto_id,
-            filtrar_por_contacto=False,
+            filtrar_por_contacto=True,
         )
         return nominas_proyecto
 
@@ -717,6 +788,118 @@ def _validate_plan(plan: TurnPlan) -> str | None:
     return None
 
 
+def _fallback_simple_attendance_plan(message: str | None, estados: list[EstadoItem]) -> TurnPlan | None:
+    """Parsea reportes simples si el LLM falla, sin cubrir consultas ni correcciones."""
+    active_codes = {item.abreviatura.upper() for item in estados}
+    operations: list[ParteDiarioOperation] = _parse_plural_absence_operations(message, active_codes)
+    for segment in _split_simple_attendance_segments(message):
+        operation = _parse_simple_attendance_segment(segment, active_codes)
+        if operation is not None:
+            operations.append(operation)
+    if not operations:
+        return None
+    return TurnPlan(operations=operations)
+
+
+def _parse_plural_absence_operations(
+    message: str | None,
+    active_codes: set[str],
+) -> list[ParteDiarioOperation]:
+    if "FAL" not in active_codes:
+        return []
+    normalized = _normalize_command(message)
+    match = re.match(r"^faltaron\s+(?P<nombres>.+)$", normalized)
+    if not match:
+        return []
+    names = [
+        _clean_simple_name(name)
+        for name in re.split(r"[,;\n]+|\s+y\s+", match.group("nombres"), flags=re.IGNORECASE)
+        if _clean_simple_name(name)
+    ]
+    return [
+        ParteDiarioOperation(type="agregar_novedad", nombre=name, estado_codigo="FAL")
+        for name in names
+    ]
+
+
+def _split_simple_attendance_segments(message: str | None) -> list[str]:
+    text = str(message or "").strip()
+    if not text:
+        return []
+    parts = re.split(r"[,;\n]+|\s+y\s+", text, flags=re.IGNORECASE)
+    return [part.strip(" .") for part in parts if part.strip(" .")]
+
+
+def _parse_simple_attendance_segment(
+    segment: str,
+    active_codes: set[str],
+) -> ParteDiarioOperation | None:
+    normalized = _normalize_command(segment)
+    hours = _parse_simple_hours(normalized)
+
+    absence_prefix = re.match(
+        r"^(?:falto|falta|no\s+vino|no\s+trabajo)\s+(?P<nombre>.+?)"
+        r"(?:\s+\d{1,2}(?:[,.]\d+)?\s*(?:h|hs|horas?))?$",
+        normalized,
+    )
+    if absence_prefix and "FAL" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(absence_prefix.group("nombre")),
+            estado_codigo="FAL",
+        )
+
+    absence_suffix = re.match(
+        r"^(?P<nombre>.+?)\s+(?:falto|falta|no\s+vino|no\s+trabajo)$",
+        normalized,
+    )
+    if absence_suffix and "FAL" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(absence_suffix.group("nombre")),
+            estado_codigo="FAL",
+        )
+
+    illness = re.match(
+        r"^(?P<nombre>.+?)\s+(?:esta\s+)?(?:enfermo|enferma|enfermedad)$",
+        normalized,
+    )
+    if illness and "ENF" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(illness.group("nombre")),
+            estado_codigo="ENF",
+        )
+
+    worked = re.match(
+        r"^(?P<nombre>.+?)\s+(?:trabajo|vino|presente)(?:\s+\d{1,2}(?:[,.]\d+)?\s*(?:h|hs|horas?))?$",
+        normalized,
+    )
+    if worked and "P" in active_codes:
+        return ParteDiarioOperation(
+            type="agregar_novedad",
+            nombre=_clean_simple_name(worked.group("nombre")),
+            estado_codigo="P",
+            horas=hours,
+        )
+
+    return None
+
+
+def _parse_simple_hours(normalized_segment: str) -> float | None:
+    match = re.search(r"\b(\d{1,2}(?:[,.]\d+)?)\s*(?:h|hs|horas?)\b", normalized_segment)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _clean_simple_name(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip(" .")
+
+
 def _has_conversational_draft(state: ParteDiarioState) -> bool:
     return bool(
         state.parte_id
@@ -779,33 +962,63 @@ def _prepare_pending_validation(
 
 
 def _candidate_page_selection_window(candidates: list[NominaItem], page: int) -> tuple[int, int]:
-    if len(candidates) <= _CANDIDATE_LIST_MAX_ROWS:
-        return 0, len(candidates)
-    offset = max(0, page) * _CANDIDATE_LIST_PAGE_SIZE
-    remaining = max(0, len(candidates) - offset)
-    if remaining <= _CANDIDATE_LIST_MAX_ROWS:
-        return offset, remaining
-    return offset, _CANDIDATE_LIST_PAGE_SIZE
+    return 0, len(candidates)
 
 
 def _is_unvalidated_selection(text: str, pending: PendienteAmbiguo) -> bool:
     command = _normalize_command(text)
-    candidates = pending.candidatos or []
+    candidates = _active_validation_candidates(pending)
     numbers = re.findall(r"\d+", command)
     offset, visible_count = _candidate_page_selection_window(candidates, pending.pagina_candidatos)
     has_more = offset + visible_count < len(candidates) or (
         not pending.mostrando_candidatos_externos and bool(pending.candidatos_externos)
     )
     row_count = visible_count + (1 if has_more else 0)
-    if len(numbers) == 1 and row_count < _CANDIDATE_LIST_MAX_ROWS:
+    if len(numbers) == 1:
         return int(numbers[0]) == row_count + 1
     pending_name = _normalize_command(pending.nombre)
     return command in {
+        "ninguno",
+        "ninguna",
+        "ninguno de esos",
+        "ninguna de esas",
         "registrar sin validar",
         "sin validar",
         "aceptar sin validar",
         f"registrar como {pending_name} sin validar",
     }
+
+
+def _is_other_candidates_command(text: str, pending: PendienteAmbiguo) -> bool:
+    return _normalize_command(text) == "otros" and bool(pending.candidatos_externos)
+
+
+def _active_validation_candidates(pending: PendienteAmbiguo) -> list[NominaItem]:
+    if pending.mostrando_candidatos_externos and pending.candidatos_externos:
+        return pending.candidatos_externos
+    return pending.candidatos or pending.candidatos_externos or []
+
+
+def _looks_like_attendance_update(text: str | None) -> bool:
+    tokens = set(_normalize_command(text).split())
+    update_terms = {
+        "falto",
+        "falta",
+        "faltaron",
+        "ausente",
+        "enfermo",
+        "enfermedad",
+        "accidente",
+        "vacaciones",
+        "permiso",
+        "presente",
+        "trabajo",
+        "vino",
+        "horas",
+        "hora",
+        "hs",
+    }
+    return bool(tokens & update_terms)
 
 
 def _normalize_command(text: str | None) -> str:
@@ -837,6 +1050,8 @@ def _requests_full_nomina(text: str | None) -> bool:
     full_phrases = {
         "toda la nomina",
         "toda nomina",
+        "toda la obra",
+        "toda obra",
         "todas las nominas",
         "todas nominas",
         "nomina completa",
@@ -846,6 +1061,8 @@ def _requests_full_nomina(text: str | None) -> bool:
         "personal general",
         "personal global",
         "todo el personal",
+        "todos los empleados",
+        "todos los empleados de la obra",
     }
     if any(phrase in command for phrase in full_phrases):
         return True
@@ -854,6 +1071,32 @@ def _requests_full_nomina(text: str | None) -> bool:
         "nomina" in tokens
         and ({"toda", "todas", "completa", "completo", "general", "global"} & tokens)
     )
+
+
+def _nomina_scope_from_operations(operations: list[ParteDiarioOperation]) -> str | None:
+    for operation in operations:
+        if operation.type == "mostrar_nomina" and operation.alcance in {"propia", "obra", "global"}:
+            return operation.alcance
+    return None
+
+
+def _requests_global_nomina(text: str | None) -> bool:
+    command = _normalize_command(text)
+    if not command:
+        return False
+    global_phrases = {
+        "toda la empresa",
+        "toda empresa",
+        "todas las obras",
+        "todas obras",
+        "todos los proyectos",
+        "todos proyectos",
+        "no solo la obra",
+        "no solo esta obra",
+        "no solo de esta obra",
+        "no solo la de esta obra",
+    }
+    return any(phrase in command for phrase in global_phrases)
 
 
 def _has_explicit_date_reference(text: str | None) -> bool:

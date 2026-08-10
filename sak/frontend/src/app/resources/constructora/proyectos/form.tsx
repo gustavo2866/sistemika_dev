@@ -16,8 +16,6 @@ import { Plus } from "lucide-react";
 import { CRMEventoListBody, MinimalActivosToggleFilter } from "@/app/resources/crm/crm-eventos/list";
 import { PedidoList } from "@/app/resources/constructora/pedidos";
 import { ProyectoEncargadoList } from "@/app/resources/constructora/proyecto-encargados";
-import { ProyectoAvanceList } from "@/app/resources/constructora/proyecto-avance";
-import { ProyPresupuestoList } from "@/app/resources/constructora/proy-presupuesto/List";
 import { NominaList } from "@/app/resources/administracion/nomina";
 import { PoOrderList } from "@/app/resources/po/po-orders/List";
 import { CreateButton } from "@/components/create-button";
@@ -73,8 +71,7 @@ const DESKTOP_LAYOUT_BREAKPOINT = 1024;
 const PROYECTO_ACTIVE_SECTION_STORAGE_KEY_PREFIX = "proyectos-form-active-section";
 
 type ProyectoDesktopSectionId =
-  | "presupuesto"
-  | "certificados"
+  | "general"
   | "ordenes"
   | "pedidos"
   | "nomina"
@@ -87,8 +84,7 @@ const PROYECTO_DESKTOP_SECTIONS: Array<{
   id: ProyectoDesktopSectionId;
   label: string;
 }> = [
-  { id: "presupuesto", label: "Presupuesto" },
-  { id: "certificados", label: "Certificados" },
+  { id: "general", label: "General" },
   { id: "ordenes", label: "Ordenes" },
   { id: "pedidos", label: "Pedidos" },
   { id: "nomina", label: "Nomina" },
@@ -582,150 +578,6 @@ const ProyectoPedidosSection = ({
   );
 };
 
-const ProyectoCertificadosSection = ({
-  variant = "stacked",
-}: {
-  variant?: ProyectoSectionVariant;
-}) => {
-  const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
-  const proyectoId = resolveNumericId(record?.id);
-  const location = useLocation();
-
-  const createTo = useMemo(() => {
-    if (!proyectoId) return "";
-    const params = new URLSearchParams();
-    params.set("proyecto_id", String(proyectoId));
-    params.set("returnTo", `${location.pathname}${location.search}`);
-    return `/proyecto-avance/create?${params.toString()}`;
-  }, [location.pathname, location.search, proyectoId]);
-
-  if (!proyectoId) {
-    const placeholder = (
-      <ProyectoDesktopEmptyState message="Los certificados estaran disponibles despues de guardar el proyecto." />
-    );
-
-    if (variant === "panel") {
-      return (
-        <ProyectoDesktopPanel
-          title="Certificados"
-          description="Registro historico de avances, horas e importes certificados del proyecto."
-        >
-          {placeholder}
-        </ProyectoDesktopPanel>
-      );
-    }
-
-    return (
-      <SectionBaseTemplate
-        title="Certificados"
-        defaultOpen={false}
-        main={placeholder}
-      />
-    );
-  }
-
-  const list = (
-    <ProyectoAvanceList
-      embedded
-      filterDefaultValues={{ proyecto_id: proyectoId }}
-      createTo={createTo}
-      storeKey={`proyecto-avance-proyecto-${proyectoId}`}
-    />
-  );
-
-  if (variant === "panel") {
-    return (
-      <ProyectoDesktopPanel
-        title="Certificados"
-        description="Registro historico de avances, horas e importes certificados del proyecto."
-      >
-        {list}
-      </ProyectoDesktopPanel>
-    );
-  }
-
-  return (
-    <SectionBaseTemplate
-      title="Certificados"
-      defaultOpen={false}
-      persistKey={`constructora-proyectos-certificados-${proyectoId}`}
-      main={list}
-    />
-  );
-};
-
-const ProyectoPresupuestoSection = ({
-  variant = "stacked",
-}: {
-  variant?: ProyectoSectionVariant;
-}) => {
-  const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
-  const proyectoId = resolveNumericId(record?.id);
-  const location = useLocation();
-
-  const createTo = useMemo(() => {
-    if (!proyectoId) return "";
-    const params = new URLSearchParams();
-    params.set("proyecto_id", String(proyectoId));
-    params.set("returnTo", `${location.pathname}${location.search}`);
-    return `/proy-presupuestos/create?${params.toString()}`;
-  }, [location.pathname, location.search, proyectoId]);
-
-  if (!proyectoId) {
-    const placeholder = (
-      <ProyectoDesktopEmptyState message="El presupuesto estara disponible despues de guardar el proyecto." />
-    );
-
-    if (variant === "panel") {
-      return (
-        <ProyectoDesktopPanel
-          title="Presupuesto"
-          description="Consulta la evolucion economica y los presupuestos cargados para este proyecto."
-        >
-          {placeholder}
-        </ProyectoDesktopPanel>
-      );
-    }
-
-    return (
-      <SectionBaseTemplate
-        title="Presupuesto"
-        defaultOpen={false}
-        main={placeholder}
-      />
-    );
-  }
-
-  const list = (
-    <ProyPresupuestoList
-      embedded
-      filterDefaultValues={{ proyecto_id: proyectoId }}
-      createTo={createTo}
-      storeKey={`proy-presupuestos-proyecto-${proyectoId}`}
-    />
-  );
-
-  if (variant === "panel") {
-    return (
-      <ProyectoDesktopPanel
-        title="Presupuesto"
-        description="Consulta la evolucion economica y los presupuestos cargados para este proyecto."
-      >
-        {list}
-      </ProyectoDesktopPanel>
-    );
-  }
-
-  return (
-    <SectionBaseTemplate
-      title="Presupuesto"
-      defaultOpen={false}
-      persistKey={`constructora-proyectos-presupuesto-${proyectoId}`}
-      main={list}
-    />
-  );
-};
-
 const ProyectoCabeceraMainFields = () => (
   <div className="grid gap-2 md:grid-cols-4">
     <FormText
@@ -823,6 +675,33 @@ const ProyectoCabeceraOptionalFields = () => (
     </div>
   </div>
 );
+
+const ProyectoGeneralSection = ({
+  variant = "stacked",
+}: {
+  variant?: ProyectoSectionVariant;
+}) => {
+  const content = <ProyectoCabeceraOptionalFields />;
+
+  if (variant === "panel") {
+    return (
+      <ProyectoDesktopPanel
+        title="General"
+        description="Datos complementarios del proyecto."
+      >
+        {content}
+      </ProyectoDesktopPanel>
+    );
+  }
+
+  return (
+    <SectionBaseTemplate
+      title="General"
+      defaultOpen={false}
+      main={content}
+    />
+  );
+};
 
 const ResumenProyecto = ({ className }: { className?: string }) => {
   const record = useRecordContext<ProyectoFormValues & { id?: number | string }>();
@@ -931,10 +810,8 @@ const ProyectoDesktopSectionsLayout = ({
 
   const renderActiveSection = () => {
     switch (activeSection) {
-      case "presupuesto":
-        return <ProyectoPresupuestoSection variant="panel" />;
-      case "certificados":
-        return <ProyectoCertificadosSection variant="panel" />;
+      case "general":
+        return <ProyectoGeneralSection variant="panel" />;
       case "ordenes":
         return <ProyectoOrdenesSection variant="panel" />;
       case "pedidos":
@@ -994,7 +871,7 @@ export const ProyectoForm = () => {
   const [activeSection, setActiveSection] = usePersistedActiveSection<ProyectoDesktopSectionId>({
     storageKey: activeSectionStorageKey,
     sections: PROYECTO_DESKTOP_SECTIONS.map((section) => section.id),
-    defaultSection: "presupuesto",
+    defaultSection: "general",
   });
   const defaultValues = useMemo(
     () => (record?.id ? undefined : PROYECTO_DEFAULTS),
@@ -1013,7 +890,6 @@ export const ProyectoForm = () => {
       <SectionBaseTemplate
         title="Cabecera"
         main={<ProyectoCabeceraMainFields />}
-        optional={<ProyectoCabeceraOptionalFields />}
         defaultOpen
       />
       {isDesktopLayout ? (
@@ -1023,8 +899,7 @@ export const ProyectoForm = () => {
         />
       ) : (
         <>
-          <ProyectoPresupuestoSection />
-          <ProyectoCertificadosSection />
+          <ProyectoGeneralSection />
           <ProyectoOrdenesSection />
           <ProyectoPedidosSection />
           <ProyectoNominaSection />

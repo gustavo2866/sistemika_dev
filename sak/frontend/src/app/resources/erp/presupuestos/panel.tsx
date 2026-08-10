@@ -58,6 +58,7 @@ import {
   buildBudgetIncomeRubroTotal,
   buildMovimientosUrl,
   buildPresupuestoListLink,
+  deleteWithAuth,
   fetchJsonWithAuth,
   formatCurrency,
   formatDateParam,
@@ -185,6 +186,17 @@ const parseExpandedRubroParam = (value: string | null) =>
       .map((item) => item.trim())
       .filter(Boolean),
   );
+
+const isPanelPeriodOpen = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return false;
+
+  const closeDate = new Date(year, monthIndex, 15);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  closeDate.setHours(0, 0, 0, 0);
+  return today < closeDate;
+};
 
 const IncomeRealModeSelector = ({
   value,
@@ -730,7 +742,7 @@ const PresupuestoPanelRow = ({
                     className="gap-1 px-1.5 py-0.5 text-[10px] leading-tight"
                   >
                     <DollarSign className="size-2.5" />
-                    Ingresos
+                    Cuentas
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={!onRealClick}
@@ -739,13 +751,13 @@ const PresupuestoPanelRow = ({
                         ...movimientoContext,
                         month,
                         concepto: "egreso",
-                        conceptoLabel: "Egreso",
+                        conceptoLabel: "Asientos",
                       })
                     }
                     className="gap-1 px-1.5 py-0.5 text-[10px] leading-tight"
                   >
                     <Eye className="size-2.5" />
-                    Egresos
+                    Asientos
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="my-0.5" />
                   <DropdownMenuItem
@@ -963,19 +975,44 @@ export const ErpPresupuestoPanel = () => {
     await refetch();
   };
 
-  const handleRealIncomeConfirm = async (
-    changes: Array<{ presupuestoId: number | null; cuentaId: number; value: number }>,
+  const handleBudgetIncomeConfirm = async (
+    changes: Array<{
+      field: "obreros" | "egreso_presupuesto" | "ingreso_presupuesto" | "ingreso_real";
+      presupuestoId: number | null;
+      cuentaId: number;
+      value: number;
+    }>,
   ) => {
     if (!budgetIncomeRequest) return;
     for (const change of changes) {
-      await postJsonWithAuth(`${apiUrl}/erp/presupuestos/panel/real-income`, {
-        proyecto_id: budgetIncomeRequest.proyecto_id,
-        periodo: budgetIncomeRequest.month,
-        erp_cuenta_id: change.cuentaId,
-        real_ingreso: change.value,
+      if (change.field === "ingreso_real") {
+        await postJsonWithAuth(`${apiUrl}/erp/presupuestos/panel/real-income`, {
+          proyecto_id: budgetIncomeRequest.proyecto_id,
+          periodo: budgetIncomeRequest.month,
+          erp_cuenta_id: change.cuentaId,
+          real_ingreso: change.value,
+        });
+        continue;
+      }
+
+      if (!change.presupuestoId) continue;
+      const field =
+        change.field === "ingreso_presupuesto"
+          ? "ingres"
+          : change.field === "egreso_presupuesto"
+            ? "egreso"
+            : "obreros_cantidad";
+      await patchJsonWithAuth(`${apiUrl}/erp/presupuestos/${change.presupuestoId}`, {
+        [field]: change.value,
       });
     }
-    notify(`Ingreso real actualizado (${changes.length})`, { type: "success" });
+    notify(`Cuentas actualizadas (${changes.length})`, { type: "success" });
+    await refetch();
+  };
+
+  const handleBudgetIncomeDelete = async (presupuestoId: number) => {
+    await deleteWithAuth(`${apiUrl}/erp/presupuestos/${presupuestoId}`);
+    notify("Cuenta eliminada", { type: "success" });
     await refetch();
   };
 
@@ -1734,9 +1771,36 @@ export const ErpPresupuestoPanel = () => {
         request={budgetIncomeRequest}
         rows={budgetIncomeRows}
         incomeRubroTotal={budgetIncomeRubroTotal}
-        onConfirmRealIncome={handleRealIncomeConfirm}
+        isOpenPeriod={
+          budgetIncomeRequest ? isPanelPeriodOpen(budgetIncomeRequest.month) : false
+        }
+        onConfirmChanges={handleBudgetIncomeConfirm}
         onOpenIncomeMovements={(request) => {
           setMovimientosRequest(request);
+        }}
+        onCreateBudgetAccount={(request) => {
+          setBudgetFormRequest({
+            mode: "create",
+            month: request.month,
+            label: request.label,
+            initialValues: {
+              fecha: `${request.month}-01`,
+              proyecto_id: request.proyecto_id,
+            },
+          });
+        }}
+        onEditBudgetAccount={(row, request) => {
+          if (!row.presupuesto_id) return;
+          setBudgetFormRequest({
+            mode: "edit",
+            id: row.presupuesto_id,
+            month: request.month,
+            label: row.cuenta_label,
+          });
+        }}
+        onDeleteBudgetAccount={async (row) => {
+          if (!row.presupuesto_id) return;
+          await handleBudgetIncomeDelete(row.presupuesto_id);
         }}
         onOpenChange={(open) => {
           if (!open) setBudgetIncomeRequest(null);
