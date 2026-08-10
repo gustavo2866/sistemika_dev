@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
-from agente.v3.subprocesses.parte_diario.process import _requests_full_nomina, _today
+from agente.v3.subprocesses.parte_diario.process import _requests_global_nomina, _today
 from agente.v3.subprocesses.parte_diario.resolver import normalize_text
 from app.models import EstadoParteDiario, Nomina, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto
 
@@ -159,6 +159,10 @@ class ParteDiarioQueryService:
         if error:
             return error
         normalized_state = str(estado_parte or "").strip().lower()
+        pending_alias = normalized_state in {"pendiente", "pendientes"}
+        if pending_alias:
+            normalized_state = EstadoParteDiario.BORRADOR.value
+            incluir_sin_cargar = True
         valid_states = {item.value for item in EstadoParteDiario}
         if normalized_state and normalized_state not in valid_states:
             return f"No reconozco el estado de parte {estado_parte}."
@@ -178,7 +182,8 @@ class ParteDiarioQueryService:
             cursor -= timedelta(days=1)
         if not rows:
             return f"No encontre partes para {self._nombre_obra} entre {start.strftime('%d/%m/%Y')} y {end.strftime('%d/%m/%Y')}."
-        return "Partes consultados:\n" + "\n".join(f"- {item}" for item in rows[:20])
+        title = "Partes pendientes:" if pending_alias else "Partes consultados:"
+        return title + "\n" + "\n".join(f"- {item}" for item in rows[:20])
 
     def consultar_contexto_parte(self, *, tipo: str, pedido_usuario: str | None = None) -> str:
         normalized = normalize_text(tipo)
@@ -191,12 +196,12 @@ class ParteDiarioQueryService:
             "personal",
             "empleado",
             "empleados",
-        } and not _requests_full_nomina(pedido_usuario):
+        } and not _requests_global_nomina(pedido_usuario):
             nominas = self._load_scoped_nomina()
             if not nominas:
                 return f"No hay personal activo asignado a {self._nombre_obra}."
             return "*NOMINA ACTIVA*\n" + "\n".join(f"- {_nomina_label(item)}" for item in nominas[:30])
-        if _requests_full_nomina(tipo) or _requests_full_nomina(pedido_usuario):
+        if _requests_global_nomina(tipo) or _requests_global_nomina(pedido_usuario):
             nominas = self._load_all_nomina()
             if not nominas:
                 return "No hay personal activo en la nomina."

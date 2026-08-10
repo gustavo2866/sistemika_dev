@@ -63,6 +63,7 @@ BACKEND_ACTION_TYPES = [
     "update_novelty",
     "delete_novelty",
     "finish_loading",
+    "sin_novedades",
     "show_summary",
     "show_nomina",
     "ask_clarification",
@@ -72,6 +73,7 @@ BACKEND_ACTION_TYPES = [
 
 BACKEND_ACTION_TO_OPERATION = {
     "finish_loading": "solicitar_confirmacion",
+    "sin_novedades": "sin_novedades",
     "show_summary": "mostrar_parte",
     "show_nomina": "mostrar_nomina",
     "ask_clarification": "pedir_aclaracion",
@@ -131,6 +133,39 @@ class ParteDiarioLLMClient:
         plan = _parse_turn_plan(raw)
         plan.llm_ms = round((time.perf_counter() - started) * 1000)
         return plan
+
+    async def normalize_initial_request(self, mensaje: str) -> dict[str, Any]:
+        payload = {
+            "mensaje": mensaje,
+            "fecha_referencia": datetime.now(BUENOS_AIRES).date().isoformat(),
+            "zona_horaria": "America/Argentina/Buenos_Aires",
+        }
+        system_prompt = (
+            "Sos el normalizador inicial del proceso parte diario.\n"
+            "Tu unica tarea es extraer datos estructurados del mensaje inicial antes de iniciar el flujo.\n"
+            "No cargues novedades, no guardes, no cierres y no respondas al usuario.\n\n"
+            "Extrae:\n"
+            "- `fecha`: fecha ISO YYYY-MM-DD si el mensaje menciona una fecha explicita o relativa.\n"
+            "- `obra`: texto de obra si el mensaje menciona una obra; si no, null.\n\n"
+            "Reglas de fecha:\n"
+            "- Usa `fecha_referencia` y `zona_horaria` del TURNO.\n"
+            "- Las fechas implicitas del comando parte diario deben ser siempre anteriores a `fecha_referencia`, salvo que diga explicitamente hoy.\n"
+            "- Un dia de semana sin otro modificador refiere a la ocurrencia anterior inmediata, estrictamente anterior a hoy.\n"
+            "- Si `fecha_referencia` es lunes, \"parte diario del lunes\" refiere al lunes de la semana anterior, no a hoy.\n"
+            "- Si el mensaje no menciona fecha, deja `fecha=null`.\n"
+            "- No inventes fecha ni obra.\n\n"
+            f"TURNO: {compact_json(payload)}"
+        )
+        raw = await self._chat.complete_json(
+            system_prompt=system_prompt,
+            response_format=_initial_request_schema(),
+            user_content="Responde solo JSON normalizado.",
+            max_tokens=200,
+        )
+        return {
+            "fecha": str(raw.get("fecha") or "").strip() or None,
+            "obra": str(raw.get("obra") or "").strip() or None,
+        }
 
     async def interpretar_estado_pendiente(self, mensaje: str, estados: list[EstadoItem]) -> str:
         prompt = load_prompt(PROMPTS_DIR / "estado_pendiente.txt")
@@ -207,6 +242,7 @@ def _parse_turn_plan(raw: dict[str, Any]) -> TurnPlan:
                 ParteDiarioOperation(
                     type=operation_type,
                     nombre=str(raw_operation.get("nombre") or "").strip() or None,
+                    alcance=str(raw_operation.get("alcance") or "").strip() or None,
                     estado_codigo=str(raw_operation.get("estado_codigo") or "").strip().upper() or None,
                     horas=_parse_float(raw_operation.get("horas")),
                     horas_extra=_parse_float(raw_operation.get("horas_extra")),
@@ -237,6 +273,7 @@ def _append_backend_action_operation(raw: dict[str, Any], operations: list[Parte
     operations.append(
         ParteDiarioOperation(
             type=operation_type,
+            alcance=str(raw.get("alcance") or "").strip() or None,
             reply=str(raw.get("reply") or "").strip() or None,
         )
     )
@@ -255,6 +292,7 @@ def _append_command_action_operation(raw: dict[str, Any], operations: list[Parte
     operations.append(
         ParteDiarioOperation(
             type=operation_type,
+            alcance=str(raw.get("alcance") or "").strip() or None,
             reply=str(raw.get("reply") or "").strip() or None,
         )
     )
@@ -291,6 +329,7 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                             "properties": {
                                 "type": {"type": "string", "enum": OPERATION_TYPES},
                                 "nombre": {"type": ["string", "null"]},
+                                "alcance": {"type": ["string", "null"], "enum": ["propia", "obra", "global", None]},
                                 "estado_codigo": {"enum": [*codes, None]},
                                 "horas": {"type": ["number", "null"]},
                                 "horas_extra": {"type": ["number", "null"]},
@@ -302,6 +341,7 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                             "required": [
                                 "type",
                                 "nombre",
+                                "alcance",
                                 "estado_codigo",
                                 "horas",
                                 "horas_extra",
@@ -313,6 +353,7 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                         },
                     },
                     "reply": {"type": ["string", "null"]},
+                    "alcance": {"type": ["string", "null"], "enum": ["propia", "obra", "global", None]},
                 },
                 "required": [
                     "message_kind",
@@ -320,7 +361,27 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                     "backend_action",
                     "operations",
                     "reply",
+                    "alcance",
                 ],
+            },
+        },
+    }
+
+
+def _initial_request_schema() -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "parte_diario_v3_initial_request",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "fecha": {"type": ["string", "null"]},
+                    "obra": {"type": ["string", "null"]},
+                },
+                "required": ["fecha", "obra"],
             },
         },
     }

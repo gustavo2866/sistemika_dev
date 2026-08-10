@@ -109,6 +109,7 @@ class ParteDiarioProcess:
                     project.id,
                     contacto_id=contacto_id,
                     command=command,
+                    alcance=None,
                     nominas_completas=nominas_completas,
                 )
                 if readonly_operation == "mostrar_nomina"
@@ -218,6 +219,7 @@ class ParteDiarioProcess:
                 project.id,
                 contacto_id=contacto_id,
                 command=message_text,
+                alcance=_nomina_scope_from_operations(plan.operations),
                 nominas_completas=nominas_completas,
             )
             if any(operation.type == "mostrar_nomina" for operation in plan.operations)
@@ -695,14 +697,22 @@ class ParteDiarioProcess:
         *,
         contacto_id: int | None,
         command: str,
+        alcance: str | None,
         nominas_completas: list[NominaItem],
     ) -> list[NominaItem]:
-        if _requests_full_nomina(command):
+        if _requests_global_nomina(command) or alcance == "global":
             return nominas_completas
+        if _requests_full_nomina(command) or alcance == "obra":
+            nominas_proyecto, _ = self._load_nominas(
+                idproyecto,
+                contacto_id=contacto_id,
+                filtrar_por_contacto=False,
+            )
+            return nominas_proyecto
         nominas_proyecto, _ = self._load_nominas(
             idproyecto,
             contacto_id=contacto_id,
-            filtrar_por_contacto=False,
+            filtrar_por_contacto=True,
         )
         return nominas_proyecto
 
@@ -1040,6 +1050,8 @@ def _requests_full_nomina(text: str | None) -> bool:
     full_phrases = {
         "toda la nomina",
         "toda nomina",
+        "toda la obra",
+        "toda obra",
         "todas las nominas",
         "todas nominas",
         "nomina completa",
@@ -1049,6 +1061,8 @@ def _requests_full_nomina(text: str | None) -> bool:
         "personal general",
         "personal global",
         "todo el personal",
+        "todos los empleados",
+        "todos los empleados de la obra",
     }
     if any(phrase in command for phrase in full_phrases):
         return True
@@ -1057,6 +1071,32 @@ def _requests_full_nomina(text: str | None) -> bool:
         "nomina" in tokens
         and ({"toda", "todas", "completa", "completo", "general", "global"} & tokens)
     )
+
+
+def _nomina_scope_from_operations(operations: list[ParteDiarioOperation]) -> str | None:
+    for operation in operations:
+        if operation.type == "mostrar_nomina" and operation.alcance in {"propia", "obra", "global"}:
+            return operation.alcance
+    return None
+
+
+def _requests_global_nomina(text: str | None) -> bool:
+    command = _normalize_command(text)
+    if not command:
+        return False
+    global_phrases = {
+        "toda la empresa",
+        "toda empresa",
+        "todas las obras",
+        "todas obras",
+        "todos los proyectos",
+        "todos proyectos",
+        "no solo la obra",
+        "no solo esta obra",
+        "no solo de esta obra",
+        "no solo la de esta obra",
+    }
+    return any(phrase in command for phrase in global_phrases)
 
 
 def _has_explicit_date_reference(text: str | None) -> bool:

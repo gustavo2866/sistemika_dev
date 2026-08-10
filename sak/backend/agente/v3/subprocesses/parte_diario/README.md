@@ -8,6 +8,13 @@ Registrar el parte diario de una obra desde WhatsApp, manteniendo el estado conv
 
 El parte diario debe contener solo novedades explicitas. Si el usuario informa que no hubo novedades o que todos trabajaron normalmente, se crea el parte sin detalles.
 
+Flujo normal esperado:
+
+- `parte diario` sin fecha explicita abre primero el dia operativo anterior si esta pendiente.
+- Por ahora `es_feriado` solo considera feriado al domingo; luego se reemplazara por calendario real.
+- Si el dia operativo anterior se cierra correctamente, el agente abre automaticamente el parte de hoy.
+- Si el parte de hoy se termina sin mas novedades, el agente finaliza la carga; internamente queda editable.
+
 ## Entrada al Subproceso
 
 `parteDiario` no recibe webhooks ni mensajes crudos.
@@ -425,7 +432,7 @@ Hay alguna otra novedad?
 ```
 
 - `NO`, `NADA MAS`, `LISTO`, `OK` o equivalentes: pasa a `revision`.
-- `GUARDAR`: guarda el borrador por compatibilidad con texto escrito.
+- `GUARDAR`: finaliza la carga por compatibilidad con texto escrito.
 - `CERRAR` o `FINALIZAR`: intenta cerrar el parte y ejecuta validaciones.
 - `SALIR`: pide confirmacion para descartar.
 

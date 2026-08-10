@@ -36,7 +36,29 @@ async def test_prompt_includes_local_date_and_weekday_resolution_rules():
     assert '"mensaje":"mostrame el parte diario del viernes"' in prompt
     assert "`fecha_referencia` representa HOY" in prompt
     assert '"el viernes pasado"' in prompt
+    assert "estrictamente anterior a hoy" in prompt
+    assert "lunes de la semana anterior, no a hoy" in prompt
+    assert "parte diario del martes" in prompt
+    assert "operacion ejecutable por si misma" in prompt
     assert "set_fecha para el viernes correspondiente y luego mostrar_parte" in prompt
+
+
+@pytest.mark.asyncio
+async def test_initial_request_normalizer_extracts_date_with_own_schema():
+    chat = FakeChatClient()
+    chat.next_response = {"fecha": "2026-08-06", "obra": None}
+    client = ParteDiarioLLMClient(chat_client=chat)
+
+    normalized = await client.normalize_initial_request("parte diario del jueves")
+
+    prompt = chat.calls[0]["system_prompt"]
+    schema = chat.calls[0]["response_format"]["json_schema"]["schema"]
+    assert normalized == {"fecha": "2026-08-06", "obra": None}
+    assert "normalizador inicial del proceso parte diario" in prompt
+    assert "deben ser siempre anteriores a `fecha_referencia`" in prompt
+    assert "ocurrencia anterior inmediata" in prompt
+    assert schema["required"] == ["fecha", "obra"]
+    assert set(schema["properties"]) == {"fecha", "obra"}
 
 
 @pytest.mark.asyncio
@@ -75,7 +97,7 @@ async def test_cierre_prompt_reserves_exact_save_close_commands():
 
     prompt = chat.calls[0]["system_prompt"]
     assert "Etapa actual: cierre." in prompt
-    assert "1 o GUARDAR: guarda el borrador y sale del proceso" in prompt
+    assert "1 o GUARDAR: finaliza la carga y sale del proceso" in prompt
     assert "2 o CERRAR: intenta cerrar el parte" in prompt
     assert "No guardes, cierres ni descartes desde aca" in prompt
 
@@ -116,16 +138,26 @@ async def test_carga_prompt_requires_command_classification_before_novelty_parsi
     response_schema = chat.calls[0]["response_format"]["json_schema"]["schema"]
     assert "Rol conversacional" in prompt
     assert "backend_action=\"finish_loading\"" in prompt
+    assert "`sin_novedades`: registrar que no hubo novedades" in prompt
+    assert 'Cuando la pregunta activa es "Hay alguna otra novedad?"' in prompt
+    assert 'usa `backend_action="finish_loading"`' in prompt
+    assert "No dependas de palabras exactas" in prompt
     assert "intencion conversacional" in prompt
     assert "salida silenciosa" in prompt
     assert "No intentes cubrir frases por patron fijo" in prompt
+    assert "El alcance de busqueda no reemplaza el filtro" in prompt
+    assert 'nombre="ruiz"' in prompt
     assert response_schema["required"] == [
         "message_kind",
         "command_action",
         "backend_action",
         "operations",
         "reply",
+        "alcance",
     ]
+    operation_schema = response_schema["properties"]["operations"]["items"]
+    assert "alcance" in operation_schema["properties"]
+    assert "alcance" in operation_schema["required"]
 
 
 def test_parse_turn_plan_maps_command_action_to_backend_operation():
@@ -140,6 +172,20 @@ def test_parse_turn_plan_maps_command_action_to_backend_operation():
     )
 
     assert [operation.type for operation in plan.operations] == ["solicitar_confirmacion"]
+
+
+def test_parse_turn_plan_maps_no_novelty_backend_action_to_operation():
+    plan = _parse_turn_plan(
+        {
+            "message_kind": "comando",
+            "command_action": "none",
+            "backend_action": "sin_novedades",
+            "operations": [],
+            "reply": None,
+        }
+    )
+
+    assert [operation.type for operation in plan.operations] == ["sin_novedades"]
 
 
 def test_parse_turn_plan_preserves_primitive_operations_for_natural_corrections():

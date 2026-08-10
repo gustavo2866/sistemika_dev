@@ -99,9 +99,9 @@ def execute_plan(
         if op_type == "sin_novedades":
             if current.novedades or current.pendientes_ambiguos or current.conflictos_novedad:
                 return ExecutionResult(
-                    "sin_novedades_rejected",
+                    "confirmation_required",
                     current,
-                    renderer.sin_novedades_rechazado(),
+                    renderer.solicitar_confirmacion(current),
                     applied_operations=applied,
                 )
             current.sin_novedades_informado = True

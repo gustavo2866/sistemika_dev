@@ -120,11 +120,19 @@ def _build_tools(service: ParteDiarioQueryService) -> list[Any]:
         )
 
     @function_tool
+    def consultar_partes_pendientes(
+        desde: str | None = None,
+        hasta: str | None = None,
+    ) -> str:
+        """Consulta partes pendientes: partes en borrador y fechas sin cargar."""
+        return service.consultar_partes_pendientes(desde=desde, hasta=hasta)
+
+    @function_tool
     def consultar_contexto_parte(tipo: str) -> str:
         """Consulta contexto de la obra actual: obra, nomina, nomina_completa o estados."""
         return service.consultar_contexto_parte(tipo=tipo, pedido_usuario=message_text)
 
-    return [consultar_novedades, consultar_partes, consultar_contexto_parte]
+    return [consultar_novedades, consultar_partes, consultar_partes_pendientes, consultar_contexto_parte]
 
 
 QUERY_AGENT_INSTRUCTIONS = """
@@ -148,7 +156,8 @@ Reglas:
 - Para "quien tuvo accidente", usa consultar_novedades con estado_codigo="ACC".
 - Para "quien trabajo menos de 8 horas", usa consultar_novedades con horas_menor_que=8 e incluir_presentes=true si corresponde.
 - Para "horas extras" o "quienes hicieron extras", usa consultar_novedades con solo_horas_extras=true y agrupar_por="persona".
-- Para estados de partes, pendientes, borradores, confirmados o fechas sin cargar, usa consultar_partes.
+- Para "partes pendientes", usa consultar_partes_pendientes. Pendiente significa parte en borrador o fecha sin cargar.
+- Para otros estados de partes, borradores, confirmados o fechas sin cargar, usa consultar_partes.
 - Para estados disponibles u obra seleccionada, usa consultar_contexto_parte.
 - Si la consulta es informativa general y no requiere datos internos, responde con conocimiento general solo si estas seguro.
 - No inventes datos internos ni datos actuales. Si no tenes informacion suficiente, decilo.

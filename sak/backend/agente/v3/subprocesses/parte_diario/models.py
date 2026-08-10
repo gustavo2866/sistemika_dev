@@ -248,6 +248,7 @@ class ParteDiarioState:
 class ParteDiarioOperation:
     type: str
     nombre: str | None = None
+    alcance: str | None = None
     estado_codigo: str | None = None
     horas: float | None = None
     horas_extra: float | None = None
