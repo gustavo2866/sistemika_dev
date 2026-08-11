@@ -18,6 +18,7 @@ ParteDiarioStage = Literal[
     "validacion",
     "cierre",
     "continuar",
+    "pendientes",
     "confirmar_salida",
     "menu",
     "finalizado",
@@ -103,7 +104,9 @@ class ParteDiarioV3State:
     fecha_menu_pendiente: bool = False
     fecha_referida_explicita: bool = False
     fecha_objetivo: str | None = None
+    dia_semana_objetivo: int | None = None
     texto_fecha_inicial: str | None = None
+    modo_pendientes: bool = False
     parte_state: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -120,6 +123,7 @@ class ParteDiarioV3State:
             "validacion",
             "cierre",
             "continuar",
+            "pendientes",
             "confirmar_salida",
             "menu",
             "finalizado",
@@ -148,7 +152,9 @@ class ParteDiarioV3State:
             fecha_menu_pendiente=bool(data.get("fecha_menu_pendiente")),
             fecha_referida_explicita=bool(data.get("fecha_referida_explicita")),
             fecha_objetivo=str(data.get("fecha_objetivo") or "").strip() or None,
+            dia_semana_objetivo=_parse_int(data.get("dia_semana_objetivo")),
             texto_fecha_inicial=str(data.get("texto_fecha_inicial") or "").strip() or None,
+            modo_pendientes=bool(data.get("modo_pendientes")),
             parte_state=dict(data.get("parte_state") or {}),
         )
 
@@ -164,7 +170,9 @@ class ParteDiarioV3State:
             "fecha_menu_pendiente": self.fecha_menu_pendiente,
             "fecha_referida_explicita": self.fecha_referida_explicita,
             "fecha_objetivo": self.fecha_objetivo,
+            "dia_semana_objetivo": self.dia_semana_objetivo,
             "texto_fecha_inicial": self.texto_fecha_inicial,
+            "modo_pendientes": self.modo_pendientes,
             "parte_state": dict(self.parte_state),
         }
 

@@ -204,6 +204,62 @@ const getEncargadoName = (
 const getParteDateKey = (parte: ParteDiarioPanelParte) =>
   String(parte.fecha ?? "").slice(0, 10);
 
+const normalizeSortText = (value?: string | null) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es-AR")
+    .trim();
+
+const compareNullableNumbers = (
+  left?: number | string | null,
+  right?: number | string | null,
+) => {
+  const leftNumber = Number(left ?? 0);
+  const rightNumber = Number(right ?? 0);
+  return leftNumber - rightNumber;
+};
+
+const compareProjectSortKey = (
+  leftProjectId: number | string | null | undefined,
+  rightProjectId: number | string | null | undefined,
+  projectsById: Map<string, ProyectoRecord>,
+) => {
+  const leftName = normalizeSortText(getProjectName(leftProjectId, projectsById));
+  const rightName = normalizeSortText(getProjectName(rightProjectId, projectsById));
+  const byName = leftName.localeCompare(rightName, "es-AR", { numeric: true });
+  if (byName !== 0) return byName;
+  return compareNullableNumbers(leftProjectId, rightProjectId);
+};
+
+const sortPartesByProject = (
+  partes: ParteDiarioPanelParte[],
+  projectsById: Map<string, ProyectoRecord>,
+) =>
+  [...partes].sort((left, right) => {
+    const byProject = compareProjectSortKey(left.idproyecto, right.idproyecto, projectsById);
+    if (byProject !== 0) return byProject;
+    const byContact = compareNullableNumbers(left.contacto_id, right.contacto_id);
+    if (byContact !== 0) return byContact;
+    return compareNullableNumbers(left.id, right.id);
+  });
+
+const sortAssignmentsByProject = (
+  assignments: ExpectedParteAssignment[],
+  projectsById: Map<string, ProyectoRecord>,
+) =>
+  [...assignments].sort((left, right) => {
+    const byProject = compareProjectSortKey(left.project.id, right.project.id, projectsById);
+    if (byProject !== 0) return byProject;
+    const byContact = compareNullableNumbers(left.contactoId, right.contactoId);
+    if (byContact !== 0) return byContact;
+    return normalizeSortText(left.encargadoNombre).localeCompare(
+      normalizeSortText(right.encargadoNombre),
+      "es-AR",
+      { numeric: true },
+    );
+  });
+
 const getDetalleCount = (parte: ParteDiarioPanelParte) =>
   Array.isArray(parte.detalles) ? parte.detalles.length : 0;
 
@@ -220,6 +276,9 @@ const isProjectActiveOnDate = (project: ProyectoRecord, dateIso: string) => {
   if (end && dateIso > end) return false;
   return true;
 };
+
+const isProjectInExecution = (project: ProyectoRecord) =>
+  String(project.estado ?? "") === "02-ejecucion";
 
 const isAssignmentActiveOnDate = (assignment: ProyectoEncargado, dateIso: string) => {
   if (assignment.activo === false) return false;
@@ -414,8 +473,8 @@ const ParteDiarioCard = ({
               {projectName}
             </span>
             {encargadoName ? (
-              <span className="block min-w-0 truncate text-[7px] font-medium leading-none text-slate-400">
-                {getShortContactName(encargadoName)}
+              <span className="block min-w-0 truncate text-[7.5px] font-semibold leading-tight text-slate-600">
+                Enc. {getShortContactName(encargadoName)}
               </span>
             ) : null}
           </div>
@@ -519,8 +578,8 @@ const ParteDiarioRegisteredRow = ({
         <span className="min-w-0 leading-none">
           <span className="block truncate">{projectName}</span>
           {encargadoName ? (
-            <span className="block truncate text-[7px] leading-none text-blue-300">
-              {getShortContactName(encargadoName)}
+            <span className="block truncate text-[7.5px] font-semibold leading-tight text-blue-500">
+              Enc. {getShortContactName(encargadoName)}
             </span>
           ) : null}
         </span>
@@ -557,8 +616,8 @@ const ParteDiarioMissingProjectRow = ({
     <span className="min-w-0 leading-none">
       <span className="block truncate">{assignment.project.nombre ?? `Obra #${assignment.project.id}`}</span>
       {assignment.encargadoNombre ? (
-        <span className="block truncate text-[7px] leading-none text-slate-400">
-          {getShortContactName(assignment.encargadoNombre)}
+        <span className="block truncate text-[7.5px] font-semibold leading-tight text-slate-600">
+          Enc. {getShortContactName(assignment.encargadoNombre)}
         </span>
       ) : null}
     </span>
@@ -614,12 +673,14 @@ const ParteDiarioDayColumn = ({
   onOpenTarja: (tarja: TarjaRecord) => void;
   onRequestRegister: (parte: ParteDiarioPanelParte) => void;
 }) => {
-  const activePartes = partes.filter((parte) => parte.estado !== "cerrado");
-  const registeredPartes = partes.filter((parte) => parte.estado === "cerrado");
+  const orderedPartes = sortPartesByProject(partes, projectsById);
+  const orderedMissingAssignments = sortAssignmentsByProject(missingAssignments, projectsById);
+  const activePartes = orderedPartes.filter((parte) => parte.estado !== "cerrado");
+  const registeredPartes = orderedPartes.filter((parte) => parte.estado === "cerrado");
   const visibleMissing = expanded
-    ? missingAssignments
-    : missingAssignments.slice(0, MISSING_LIMIT);
-  const hiddenMissing = Math.max(0, missingAssignments.length - visibleMissing.length);
+    ? orderedMissingAssignments
+    : orderedMissingAssignments.slice(0, MISSING_LIMIT);
+  const hiddenMissing = Math.max(0, orderedMissingAssignments.length - visibleMissing.length);
   const visibleRegistered = registeredExpanded
     ? registeredPartes
     : registeredPartes.slice(0, REGISTERED_LIMIT);
@@ -744,9 +805,9 @@ const ParteDiarioDayColumn = ({
               onClick={onToggleMissingBlock}
             >
               <span>Sin registrar</span>
-              <span>{missingAssignments.length}</span>
+              <span>{orderedMissingAssignments.length}</span>
             </button>
-            {!collapsed && missingAssignments.length ? (
+            {!collapsed && orderedMissingAssignments.length ? (
               <div className="space-y-0">
                 {visibleMissing.map((assignment) => (
                   <ParteDiarioMissingProjectRow
@@ -764,7 +825,7 @@ const ParteDiarioDayColumn = ({
                   >
                     + {hiddenMissing} obras sin reportar
                   </button>
-                ) : expanded && missingAssignments.length > MISSING_LIMIT ? (
+                ) : expanded && orderedMissingAssignments.length > MISSING_LIMIT ? (
                   <button
                     type="button"
                     className="w-full rounded px-1 py-0 text-left text-[8px] font-medium leading-[0.7rem] text-slate-400 hover:bg-slate-50 hover:text-slate-600"
@@ -1000,8 +1061,11 @@ const ParteDiarioPanelBody = ({
       current.push(parte);
       grouped.set(dateKey, current);
     });
+    grouped.forEach((items, dateKey) => {
+      grouped.set(dateKey, sortPartesByProject(items, projectsById));
+    });
     return grouped;
-  }, [partes]);
+  }, [partes, projectsById]);
 
   const reportedAssignmentKeysByDate = useMemo(() => {
     const grouped = new Map<string, Set<string>>();
@@ -1022,19 +1086,23 @@ const ParteDiarioPanelBody = ({
       const reported = reportedAssignmentKeysByDate.get(day.iso) ?? new Set<string>();
       grouped.set(
         day.iso,
-        expectedAssignments.filter(
-          (assignment) =>
-            isProjectActiveOnDate(assignment.project, day.iso) &&
-            (
-              assignment.contactoId == null ||
-              (assignment.source ? isAssignmentActiveOnDate(assignment.source, day.iso) : true)
-            ) &&
-            !reported.has(assignment.key),
+        sortAssignmentsByProject(
+          expectedAssignments.filter(
+            (assignment) =>
+              isProjectInExecution(assignment.project) &&
+              isProjectActiveOnDate(assignment.project, day.iso) &&
+              (
+                assignment.contactoId == null ||
+                (assignment.source ? isAssignmentActiveOnDate(assignment.source, day.iso) : true)
+              ) &&
+              !reported.has(assignment.key),
+          ),
+          projectsById,
         ),
       );
     });
     return grouped;
-  }, [days, expectedAssignments, reportedAssignmentKeysByDate]);
+  }, [days, expectedAssignments, projectsById, reportedAssignmentKeysByDate]);
 
   const toggleMissing = (dateIso: string) => {
     setExpandedMissing((current) => {

@@ -2,20 +2,22 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useGetList, useListContext } from "ra-core";
+import { useGetList, useListContext, useNotify, useRefresh } from "ra-core";
 import {
+  ArrowLeft,
   ClipboardCheck,
   List as ListIcon,
   Loader2,
   Plus,
-  SlidersHorizontal,
 } from "lucide-react";
 
+import { Confirm } from "@/components/confirm";
 import { List, LIST_CONTAINER_WIDE } from "@/components/list";
 import { FilterForm, StyledFilterDiv } from "@/components/filter-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buildListFilters } from "@/components/forms/form_order";
+import { apiUrl } from "@/lib/dataProvider";
 import {
   QuincenaNavigator,
   getQuincenaRange,
@@ -35,7 +37,18 @@ type ParteDiarioStats = {
   sinCargar: number;
 };
 
+type GenerateTarjaTarget = {
+  id: number | string;
+  nombre?: string | null;
+};
+
+type CloseTarjaTarget = {
+  id: number | string;
+  nombre?: string | null;
+};
+
 const ACTIVE_PROJECT_ESTADOS = ["01-plan", "02-ejecucion", "03-conclusion"];
+const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
 const PROJECT_COLORS = [
   "#2563eb",
   "#059669",
@@ -57,6 +70,7 @@ const PANEL_FILTERS = buildListFilters(
         reference: "proyectos",
         label: "Obra",
         alwaysOn: true,
+        filter: { estado: EXECUTION_PROJECT_ESTADO },
       },
       selectProps: {
         optionText: "nombre",
@@ -111,6 +125,64 @@ const buildParteDiarioPanelUrl = (
   return `/parte-diario/panel?${params.toString()}`;
 };
 
+const buildAuthHeaders = () => {
+  const headers = new Headers({
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  });
+  if (typeof window === "undefined") return headers;
+  const token = window.localStorage.getItem("auth_token");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return headers;
+};
+
+const getActionErrorMessage = async (response: Response) => {
+  try {
+    const payload = await response.json();
+    if (typeof payload?.detail === "string") return payload.detail;
+    if (typeof payload?.message === "string") return payload.message;
+  } catch {
+    // Keep the generic message below.
+  }
+  return "No se pudo completar la accion";
+};
+
+const postGenerateTarja = async ({
+  idproyecto,
+  fechainicio,
+  fechafinal,
+}: {
+  idproyecto: number | string;
+  fechainicio: string;
+  fechafinal: string;
+}) => {
+  const response = await fetch(`${apiUrl}/tarjas/generar`, {
+    method: "POST",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({
+      idproyecto: Number(idproyecto),
+      fechainicio,
+      fechafinal,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await getActionErrorMessage(response));
+  }
+  return response.json();
+};
+
+const patchCloseTarja = async (tarjaId: number | string) => {
+  const response = await fetch(`${apiUrl}/tarjas/${tarjaId}`, {
+    method: "PATCH",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ estado: "cerrado" }),
+  });
+  if (!response.ok) {
+    throw new Error(await getActionErrorMessage(response));
+  }
+  return response.json();
+};
+
 const TarjaPanelToolbar = ({
   rangeStart,
   rangeEnd,
@@ -128,10 +200,6 @@ const TarjaPanelToolbar = ({
   onNext: () => void;
   onSelectedDateChange: (value: string) => void;
 }) => {
-  const { filterValues } = useListContext();
-  const hasActiveFilters = Boolean(filterValues?.idproyecto);
-  const [showFilters, setShowFilters] = useState(hasActiveFilters);
-
   return (
     <div className="rounded-lg bg-muted/30 p-1 sm:p-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -145,25 +213,11 @@ const TarjaPanelToolbar = ({
           onSelectedDateChange={onSelectedDateChange}
         />
 
-        <Button
-          type="button"
-          variant={hasActiveFilters || showFilters ? "secondary" : "outline"}
-          size="sm"
-          className="h-6 shrink-0 px-2 text-[10px]"
-          aria-expanded={showFilters}
-          onClick={() => setShowFilters((current) => !current)}
-        >
-          <SlidersHorizontal className="size-3" />
-          Filtros
-        </Button>
-
-        {showFilters ? (
-          <FilterForm
-            filters={PANEL_FILTERS}
-            formComponent={StyledFilterDiv}
-            className="list-filters pointer-events-auto flex min-w-0 flex-wrap items-end gap-2 [&_.filter-field]:items-end"
-          />
-        ) : null}
+        <FilterForm
+          filters={PANEL_FILTERS}
+          formComponent={StyledFilterDiv}
+          className="list-filters pointer-events-auto flex min-w-0 flex-wrap items-end gap-2 [&_.filter-field]:items-end"
+        />
       </div>
     </div>
   );
@@ -173,10 +227,18 @@ const TarjaCard = ({
   tarja,
   projectName,
   onOpen,
+  generating,
+  onGenerate,
+  closing,
+  onClose,
 }: {
   tarja: TarjaRecord;
   projectName: string;
   onOpen: () => void;
+  generating?: boolean;
+  onGenerate?: () => void;
+  closing?: boolean;
+  onClose?: () => void;
 }) => {
   const detalles = Array.isArray(tarja.detalles) ? tarja.detalles : [];
   const totalHoras = detalles.reduce((total, detalle) => {
@@ -185,15 +247,16 @@ const TarjaCard = ({
   }, 0);
 
   return (
-    <button
-      type="button"
-      className="relative w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 pl-3 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-      onClick={onOpen}
-    >
+    <div className="relative w-full rounded-md border border-slate-200 bg-white pl-3 shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40">
       <span
         className="absolute left-0 top-0 h-full w-1 rounded-l-md"
         style={{ backgroundColor: getProjectColor(tarja.idproyecto) }}
       />
+      <button
+        type="button"
+        className="w-full px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        onClick={onOpen}
+      >
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1">
         <span className="truncate text-[10px] font-semibold leading-tight text-slate-800">
           {projectName}
@@ -217,7 +280,38 @@ const TarjaCard = ({
           {tarja.descripcion}
         </div>
       ) : null}
-    </button>
+      </button>
+      {onGenerate || onClose ? (
+        <div className="flex justify-end gap-1 px-2 pb-1">
+          {onClose ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={closing}
+              className="h-4 rounded px-1 text-[6px] has-[>svg]:px-1"
+              title="Cerrar tarja"
+              onClick={onClose}
+            >
+              {closing ? <Loader2 className="size-2.5 animate-spin" /> : "Cerrar"}
+            </Button>
+          ) : null}
+          {onGenerate ? (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            disabled={generating}
+            className="h-4 rounded bg-blue-600 px-1 text-[6px] text-white shadow-sm hover:bg-blue-700 has-[>svg]:px-1"
+            title="Recalcular tarja"
+            onClick={onGenerate}
+          >
+            {generating ? <Loader2 className="size-2.5 animate-spin" /> : "Generar"}
+          </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 };
 
@@ -225,10 +319,14 @@ const PendingTarjaRow = ({
   project,
   startIso,
   stats,
+  generating,
+  onGenerate,
 }: {
   project: ProyectoRecord;
   startIso: string;
   stats: ParteDiarioStats;
+  generating?: boolean;
+  onGenerate: () => void;
 }) => (
   <div className="flex min-h-5 w-full items-center gap-1 rounded px-1 py-0 text-left text-[8px] leading-[0.8rem] text-slate-500 transition hover:bg-slate-50">
     <span
@@ -254,13 +352,14 @@ const PendingTarjaRow = ({
     </span>
     <Button
       type="button"
-      variant="ghost"
+      variant="default"
       size="sm"
-      disabled
-      className="h-4 shrink-0 rounded px-1 text-[6px] has-[>svg]:px-1"
-      title="Generar tarja (próximamente)"
+      disabled={generating}
+      className="h-4 shrink-0 rounded bg-blue-600 px-1 text-[6px] text-white shadow-sm hover:bg-blue-700 has-[>svg]:px-1"
+      title="Generar tarja"
+      onClick={onGenerate}
     >
-      Generar
+      {generating ? <Loader2 className="size-2.5 animate-spin" /> : "Generar"}
     </Button>
     <Button
       asChild
@@ -347,6 +446,39 @@ const TarjaPanelActions = ({
   </div>
 );
 
+const TarjaPanelTitle = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <div className="sm:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-7 px-1.5 text-[11px] font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <div className="-mt-0.5 flex items-center justify-center gap-2">
+        <ClipboardCheck className="size-5" />
+        <span>Tarjas - Quincena</span>
+      </div>
+    </div>
+    <span className="hidden items-center gap-3 sm:inline-flex">
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-8 px-2 text-sm font-medium text-primary"
+        onClick={onBack}
+      >
+        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+        Volver
+      </Button>
+      <ClipboardCheck className="size-5" />
+      <span>Tarjas - Quincena</span>
+    </span>
+  </>
+);
+
 const TarjaPanelBody = ({
   startIso,
   endIso,
@@ -357,6 +489,11 @@ const TarjaPanelBody = ({
   returnTo: string;
 }) => {
   const navigate = useNavigate();
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [generateProject, setGenerateProject] = useState<GenerateTarjaTarget | null>(null);
+  const [closeTarja, setCloseTarja] = useState<CloseTarjaTarget | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const { data = [], filterValues, isLoading, isFetching, error } =
     useListContext<TarjaRecord>();
   const projectFilter = filterValues?.idproyecto;
@@ -406,6 +543,7 @@ const TarjaPanelBody = ({
     () =>
       projects.filter(
         (project) =>
+          project.estado === EXECUTION_PROJECT_ESTADO &&
           isProjectActiveInRange(project, startIso, endIso) &&
           !generatedProjectIds.has(String(project.id)),
       ),
@@ -459,9 +597,47 @@ const TarjaPanelBody = ({
     partesFetching;
 
   const openTarja = (tarja: TarjaRecord) => {
-    navigate(`/tarjas/${tarja.id}?returnTo=${encodeURIComponent(returnTo)}`, {
+    navigate(`/tarjas/${tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`, {
       state: { returnTo },
     });
+  };
+
+  const handleGenerateTarja = async () => {
+    if (!generateProject?.id) return;
+    setActionLoading(true);
+    try {
+      await postGenerateTarja({
+        idproyecto: generateProject.id,
+        fechainicio: startIso,
+        fechafinal: endIso,
+      });
+      notify("Tarja generada en borrador", { type: "info" });
+      setGenerateProject(null);
+      refresh();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "No se pudo generar la tarja", {
+        type: "warning",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCloseTarja = async () => {
+    if (!closeTarja?.id) return;
+    setActionLoading(true);
+    try {
+      await patchCloseTarja(closeTarja.id);
+      notify("Tarja cerrada", { type: "info" });
+      setCloseTarja(null);
+      refresh();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "No se pudo cerrar la tarja", {
+        type: "warning",
+      });
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   return (
@@ -501,6 +677,8 @@ const TarjaPanelBody = ({
                     sinCargar: 0,
                   }
                 }
+                generating={actionLoading && generateProject?.id === project.id}
+                onGenerate={() => setGenerateProject(project)}
               />
             ))}
           </TarjaStatusColumn>
@@ -520,6 +698,24 @@ const TarjaPanelBody = ({
                   `Obra #${tarja.idproyecto}`
                 }
                 onOpen={() => openTarja(tarja)}
+                generating={actionLoading && generateProject?.id === tarja.idproyecto}
+                closing={actionLoading && closeTarja?.id === tarja.id}
+                onGenerate={() =>
+                  setGenerateProject({
+                    id: tarja.idproyecto ?? "",
+                    nombre:
+                      projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
+                      `Obra #${tarja.idproyecto}`,
+                  })
+                }
+                onClose={() =>
+                  setCloseTarja({
+                    id: tarja.id,
+                    nombre:
+                      projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
+                      `Obra #${tarja.idproyecto}`,
+                  })
+                }
               />
             ))}
           </TarjaStatusColumn>
@@ -544,11 +740,40 @@ const TarjaPanelBody = ({
           </TarjaStatusColumn>
         </div>
       </div>
+      <Confirm
+        isOpen={Boolean(generateProject)}
+        loading={actionLoading}
+        title="Generar tarja"
+        content={`Se limpiara la tarja generada anteriormente para ${
+          generateProject?.nombre ?? "esta obra"
+        } y se volveran a crear los detalles de la quincena.`}
+        confirm="Generar"
+        onClose={() => {
+          if (!actionLoading) setGenerateProject(null);
+        }}
+        onConfirm={() => {
+          void handleGenerateTarja();
+        }}
+      />
+      <Confirm
+        isOpen={Boolean(closeTarja)}
+        loading={actionLoading}
+        title="Cerrar tarja"
+        content={`Se cerrara la tarja de ${closeTarja?.nombre ?? "esta obra"}. Una vez cerrada quedara fuera de la columna de borradores.`}
+        confirm="Cerrar"
+        onClose={() => {
+          if (!actionLoading) setCloseTarja(null);
+        }}
+        onConfirm={() => {
+          void handleCloseTarja();
+        }}
+      />
     </>
   );
 };
 
 export const TarjaPanel = () => {
+  const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const todayIso = useMemo(() => toISODate(new Date()), []);
@@ -581,15 +806,18 @@ export const TarjaPanel = () => {
     setQuincenaFromDate(toISODate(moveQuincena(range.start, direction)));
   };
 
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/tarjas");
+  };
+
   return (
     <List
       resource="tarjas"
-      title={
-        <span className="inline-flex items-center gap-2">
-          <ClipboardCheck className="size-5" />
-          Tarjas - Quincena
-        </span>
-      }
+      title={<TarjaPanelTitle onBack={handleBack} />}
       filters={PANEL_FILTERS}
       actions={
         <TarjaPanelActions

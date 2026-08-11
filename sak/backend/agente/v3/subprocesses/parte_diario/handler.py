@@ -18,12 +18,19 @@ from agente.v3.subprocesses.parte_diario.carga_agent import (
     ParteDiarioCargaAgentClient,
     fallback_person_validation,
 )
+from agente.v3.subprocesses.parte_diario.calendario import (
+    dia_operativo_anterior,
+    es_dia_laborable,
+    es_feriado,
+    fecha_es_feriado,
+)
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.query_agent import ParteDiarioQueryAgentClient
 from agente.v3.subprocesses.parte_diario import renderer
 from agente.v3.subprocesses.parte_diario.models import ParteDiarioState as ParteDiarioDraftState
 from agente.v3.subprocesses.parte_diario.process import (
     ParteDiarioProcess,
+    _has_explicit_date_reference,
     _normalize_command,
     _requests_full_nomina,
     _requests_global_nomina,
@@ -83,6 +90,9 @@ class ParteDiarioSubprocess:
         if state.etapa == "continuar":
             return await self._handle_continuar(message, context, state)
 
+        if state.etapa == "pendientes":
+            return await self._handle_pendientes(message, context, state, emisor=emisor)
+
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(message, context, state)
 
@@ -110,6 +120,16 @@ class ParteDiarioSubprocess:
         state: ParteDiarioV3State,
     ) -> V3ProcessResult:
         command = _normalize_command(message.text)
+        if command in {"salir"}:
+            state.etapa = "confirmar_salida"
+            reply = _salida_confirmacion()
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "exit_confirmation",
+                _confirmation_metadata(reply),
+            )
         draft = state.draft()
         pending = draft.pendientes_ambiguos[0] if draft.pendientes_ambiguos else None
         if command in {"elegir opcion", "ver opciones", "opciones"}:
@@ -263,6 +283,13 @@ class ParteDiarioSubprocess:
         draft = state.draft()
         if draft.fecha:
             return
+        weekday = _weekday_only_reference(text)
+        if weekday is not None:
+            state.dia_semana_objetivo = weekday
+            state.fecha_referida_explicita = True
+            return
+        if not _has_explicit_date_reference(text):
+            return
         try:
             llm = _llm_for_stage(self._llm, "carga")
             if hasattr(llm, "normalize_initial_request"):
@@ -293,6 +320,7 @@ class ParteDiarioSubprocess:
         emisor: V3MessageEmitter | None = None,
     ) -> V3ProcessResult:
         command = _normalize_command(message.text)
+        state.modo_pendientes = _is_pending_parts_command(command)
         options = self._resolve_obra_options(message.from_address)
         if not options:
             state.etapa = "finalizado"
@@ -307,6 +335,8 @@ class ParteDiarioSubprocess:
 
         if len(options) == 1:
             state.set_obra(options[0])
+            if state.modo_pendientes:
+                return self._show_pending_parts_selection(context, state)
             if _is_date_menu_command(command) or _parse_fecha_value(message.text):
                 return await self._handle_fecha_selection(message, context, state, emisor=emisor)
             await self._infer_initial_date(message, state)
@@ -319,7 +349,8 @@ class ParteDiarioSubprocess:
         state.opciones_obra = options
         state.fecha_menu_pendiente = _is_date_menu_command(command)
         state.texto_fecha_inicial = message.text or None
-        await self._infer_initial_date(message, state)
+        if not state.modo_pendientes:
+            await self._infer_initial_date(message, state)
         return self._active_result(context, state, _seleccionar_obra(state), "obra_selection_required")
 
     async def _handle_seleccionar_obra(
@@ -332,6 +363,12 @@ class ParteDiarioSubprocess:
     ) -> V3ProcessResult:
         command = _normalize_command(message.text)
         state.etapa = "seleccionar_obra"
+        if command in {"salir"}:
+            return _return_to_general(
+                context,
+                source="parte_diario_obra_selection",
+                prefix="Carga de parte diario cancelada.",
+            )
         try:
             selected_option = int(command)
         except ValueError:
@@ -341,6 +378,9 @@ class ParteDiarioSubprocess:
             if option.opcion == selected_option:
                 state.set_obra(option)
                 state.fecha_menu_pendiente = False
+                if state.modo_pendientes:
+                    state.texto_fecha_inicial = None
+                    return self._show_pending_parts_selection(context, state)
                 if state.texto_fecha_inicial:
                     await self._infer_initial_date_text(state.texto_fecha_inicial, state)
                     state.texto_fecha_inicial = None
@@ -645,15 +685,36 @@ class ParteDiarioSubprocess:
     ) -> V3ProcessResult | None:
         draft = state.draft()
         if not draft.fecha:
-            default_fecha, pending_count = resolver_fecha_default_parte_diario_info(
-                int(state.proyecto_id or 0),
-                contacto_id=state.contacto_id,
-            )
-            if default_fecha is None:
-                return self._show_date_menu(context, state)
-            draft.fecha = default_fecha
-            state.set_draft(draft)
-            await _emitir_fecha_default_parte_diario(emisor, state, default_fecha, pending_count)
+            if state.dia_semana_objetivo is not None:
+                selected, has_closed_match = _resolve_pending_weekday_option(
+                    int(state.proyecto_id or 0),
+                    state.dia_semana_objetivo,
+                    contacto_id=state.contacto_id,
+                )
+                if selected is None:
+                    weekday_name = _weekday_name_by_index(state.dia_semana_objetivo)
+                    state.fecha_referida_explicita = False
+                    state.dia_semana_objetivo = None
+                    prefix = f"No encontre un parte abierto de {weekday_name} en los ultimos 10 dias."
+                    if has_closed_match:
+                        prefix = f"El parte de {weekday_name} de los ultimos 10 dias ya esta cerrado."
+                    return self._closed_result(context, prefix, "weekday_part_not_editable")
+                draft.fecha = selected.fecha
+                state.fecha_objetivo = selected.fecha
+                state.dia_semana_objetivo = None
+                state.set_draft(draft)
+            if not state.fecha_referida_explicita and not state.fecha_objetivo:
+                state.fecha_objetivo = _today().isoformat()
+            if not draft.fecha:
+                default_fecha, pending_count = resolver_fecha_default_parte_diario_info(
+                    int(state.proyecto_id or 0),
+                    contacto_id=state.contacto_id,
+                )
+                if default_fecha is None:
+                    return self._show_date_menu(context, state)
+                draft.fecha = default_fecha
+                state.set_draft(draft)
+                await _emitir_fecha_default_parte_diario(emisor, state, default_fecha, pending_count)
 
         explicit_flow = bool(state.fecha_referida_explicita)
         selected_is_target = bool(state.fecha_objetivo and draft.fecha == state.fecha_objetivo)
@@ -751,6 +812,42 @@ class ParteDiarioSubprocess:
                 "continue_confirmation_required",
             )
         return _finish_parte_diario_flow(context)
+
+    async def _handle_pendientes(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        emisor: V3MessageEmitter | None = None,
+    ) -> V3ProcessResult:
+        command = _normalize_command(message.text)
+        if command in {"no", "ninguno", "ninguna", "finalizar", "salir", "2"}:
+            return _finish_parte_diario_flow(context)
+
+        if not state.opciones_fecha and state.proyecto_id:
+            state.opciones_fecha = _pending_parts_last_days_options(state)
+        if not state.opciones_fecha:
+            return _finish_parte_diario_flow(context)
+
+        selected = _select_pending_option(message.text, state.opciones_fecha)
+        if selected is None:
+            reply = _pending_parts_prompt(
+                state.opciones_fecha,
+                prefix="No pude identificar que parte pendiente queres cargar.",
+            )
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "pending_part_selection_required",
+                _pending_parts_metadata(state.opciones_fecha),
+            )
+
+        state.fecha_referida_explicita = True
+        state.fecha_objetivo = selected.fecha
+        state.opciones_fecha = []
+        return await self._apply_fecha_selection(selected, context, state, emisor=emisor)
 
     def _aplicar_fecha(self, state: ParteDiarioV3State, *, allow_closed: bool = False) -> str | None:
         draft = state.draft()
@@ -1387,15 +1484,22 @@ class ParteDiarioSubprocess:
         if status in {"confirmed", "saved"}:
             result = (extra_metadata or {}).get("result") or {}
             result_fecha = str(result.get("fecha") or "").strip() or None
-            pending_messages = _pending_parts_last_days_messages(state, exclude_fechas={result_fecha} if result_fecha else None)
-            if status == "confirmed" and result_fecha and result_fecha == state.fecha_objetivo:
+            specific_close = bool(
+                status == "confirmed"
+                and state.fecha_referida_explicita
+                and result_fecha
+                and result_fecha == state.fecha_objetivo
+            )
+            today_save = bool(status == "saved" and _parse_iso_date(result_fecha) == _today())
+            if specific_close:
                 state.fecha_objetivo = None
                 state.fecha_referida_explicita = False
-                return V3ProcessResult(
-                    context=_finish_parte_diario_context(context),
-                    reply_text=reply,
-                    metadata=metadata,
-                    additional_messages=pending_messages,
+                return self._finish_or_prompt_pending_parts(
+                    context,
+                    state,
+                    reply,
+                    metadata,
+                    exclude_fechas={result_fecha} if result_fecha else None,
                 )
             auto_today = await self._auto_open_today_after_previous_close(
                 context,
@@ -1403,10 +1507,21 @@ class ParteDiarioSubprocess:
                 reply,
                 status,
                 metadata,
-                additional_messages=pending_messages,
+                additional_messages=[],
             )
             if auto_today is not None:
                 return auto_today
+            saved_fecha = None
+            if status == "saved":
+                saved_fecha = str(result.get("fecha") or "").strip() or None
+                if today_save:
+                    return self._finish_or_prompt_pending_parts(
+                        context,
+                        state,
+                        reply,
+                        metadata,
+                        exclude_fechas={saved_fecha} if saved_fecha else None,
+                    )
             state.etapa = "continuar"
             if state.proyecto_id:
                 state.nombre_obra = state.nombre_obra or self._resolve_project_name(int(state.proyecto_id))
@@ -1414,16 +1529,6 @@ class ParteDiarioSubprocess:
                     int(state.proyecto_id),
                     contacto_id=state.contacto_id,
                 )
-            saved_fecha = None
-            if status == "saved":
-                saved_fecha = str(result.get("fecha") or "").strip() or None
-                if _parse_iso_date(saved_fecha) == _today():
-                    return V3ProcessResult(
-                        context=_finish_parte_diario_context(context),
-                        reply_text=reply,
-                        metadata=metadata,
-                        additional_messages=pending_messages,
-                    )
             next_fecha, pending_count = resolver_fecha_default_parte_diario_info(
                 int(state.proyecto_id or 0),
                 contacto_id=state.contacto_id,
@@ -1434,7 +1539,6 @@ class ParteDiarioSubprocess:
                     context=_finish_parte_diario_context(context),
                     reply_text=reply,
                     metadata=metadata,
-                    additional_messages=pending_messages,
                 )
             draft = state.draft()
             draft.fecha_propuesta = next_fecha
@@ -1450,12 +1554,7 @@ class ParteDiarioSubprocess:
                     "next_fecha": next_fecha,
                     "pending_count": pending_count,
                 },
-                additional_messages=[
-                    *pending_messages,
-                    V3ProcessMessage(
-                        text=continue_reply,
-                    )
-                ],
+                additional_messages=[V3ProcessMessage(text=continue_reply)],
             )
         return self._show_date_menu(
             context,
@@ -1463,6 +1562,79 @@ class ParteDiarioSubprocess:
             prefix=reply,
             status=status,
             extra_metadata=metadata,
+        )
+
+    def _finish_or_prompt_pending_parts(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        reply: str,
+        metadata: dict,
+        *,
+        exclude_fechas: set[str | None] | None = None,
+    ) -> V3ProcessResult:
+        pending_options = _pending_parts_last_days_options(state, exclude_fechas=exclude_fechas)
+        if not pending_options:
+            return V3ProcessResult(
+                context=_finish_parte_diario_context(context),
+                reply_text=reply,
+                metadata=metadata,
+            )
+
+        state.etapa = "pendientes"
+        state.parte_state = {}
+        state.opciones_fecha = pending_options
+        state.fecha_menu_pendiente = False
+        state.fecha_objetivo = None
+        state.fecha_referida_explicita = False
+        prompt = _pending_parts_prompt(pending_options)
+        return self._active_result(
+            context,
+            state,
+            f"{reply}\n\n{prompt}",
+            "pending_parts_selection",
+            {
+                **metadata,
+                "pending_count": len(pending_options),
+                **(_pending_parts_metadata(pending_options) or {}),
+            },
+        )
+
+    def _show_pending_parts_selection(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        prefix: str | None = None,
+    ) -> V3ProcessResult:
+        pending_options = _pending_parts_last_days_options(state)
+        state.modo_pendientes = False
+        if not pending_options:
+            reply = "No quedan partes pendientes de los ultimos 10 dias."
+            if prefix:
+                reply = f"{prefix.strip()}\n\n{reply}"
+            return V3ProcessResult(
+                context=_finish_parte_diario_context(context),
+                reply_text=reply,
+                metadata={"process_name": self.name, "status": "no_pending_parts"},
+            )
+
+        state.etapa = "pendientes"
+        state.parte_state = {}
+        state.opciones_fecha = pending_options
+        state.fecha_menu_pendiente = False
+        state.fecha_objetivo = None
+        state.fecha_referida_explicita = False
+        reply = _pending_parts_prompt(pending_options, prefix=prefix)
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "pending_parts_selection",
+            {
+                "pending_count": len(pending_options),
+                **(_pending_parts_metadata(pending_options) or {}),
+            },
         )
 
     async def _auto_open_today_after_previous_close(
@@ -1653,6 +1825,7 @@ class ParteDiarioSubprocess:
     ) -> list[ParteDiarioFechaOption]:
         today = today or _today()
         dates = [today - timedelta(days=offset) for offset in range(days)]
+        dates = [target_date for target_date in dates if es_dia_laborable(target_date)]
         with Session(engine) as session:
             base_query = (
                 select(ParteDiario)
@@ -1729,10 +1902,7 @@ def resolver_fecha_default_parte_diario_info(
         return None, 0
     by_fecha = {option.fecha: option for option in pending_options}
     selected = by_fecha.get(previous_operational_day.isoformat()) or by_fecha.get(today.isoformat())
-    if selected is None:
-        draft_options = [option for option in sorted(pending_options, key=lambda item: item.fecha) if option.estado == "borrador"]
-        selected = draft_options[0] if draft_options else sorted(pending_options, key=lambda item: item.fecha)[0]
-    return selected.fecha, len(pending_options)
+    return (selected.fecha if selected else None), len(pending_options)
 
 
 def _pending_parts_last_days_messages(
@@ -1741,6 +1911,18 @@ def _pending_parts_last_days_messages(
     exclude_fechas: set[str | None] | None = None,
     days: int = 10,
 ) -> list[V3ProcessMessage]:
+    pending_options = _pending_parts_last_days_options(state, exclude_fechas=exclude_fechas, days=days)
+    if not pending_options:
+        return [V3ProcessMessage(text="No quedan partes pendientes de los ultimos 10 dias.")]
+    return [V3ProcessMessage(text=_pending_parts_prompt(pending_options, include_question=False))]
+
+
+def _pending_parts_last_days_options(
+    state: ParteDiarioV3State,
+    *,
+    exclude_fechas: set[str | None] | None = None,
+    days: int = 10,
+) -> list[ParteDiarioFechaOption]:
     if not state.proyecto_id:
         return []
     excluded = {str(item) for item in (exclude_fechas or set()) if item}
@@ -1751,36 +1933,92 @@ def _pending_parts_last_days_messages(
             days=days,
         )
     except Exception:
-        logger.exception("Error consultando partes pendientes para mensaje final")
+        logger.exception("Error consultando partes pendientes")
         return []
     pending_options = sorted(
         (
             option
             for option in options
-            if option.estado in {"borrador", "sin cargar"} and option.fecha not in excluded
+            if option.estado in {"borrador", "sin cargar"}
+            and option.fecha not in excluded
+            and not fecha_es_feriado(option.fecha)
         ),
         key=lambda item: item.fecha,
     )
+    return [
+        ParteDiarioFechaOption(
+            opcion=index,
+            fecha=option.fecha,
+            estado=option.estado,
+            parte_id=option.parte_id,
+        )
+        for index, option in enumerate(pending_options, start=1)
+    ]
+
+
+def _pending_parts_prompt(
+    pending_options: list[ParteDiarioFechaOption],
+    *,
+    prefix: str | None = None,
+    include_question: bool = True,
+) -> str:
+    lines = []
+    if prefix:
+        lines.append(prefix)
+        lines.append("")
+    if include_question:
+        title = (
+            "Te queda 1 parte pendiente de los ultimos 10 dias."
+            if len(pending_options) == 1
+            else f"Te quedan {len(pending_options)} partes pendientes de los ultimos 10 dias."
+        )
+        lines.append(title)
+        lines.append("Cual queres cargar? Responde con el dia, fecha, numero o SALIR.")
+        lines.extend(f"{option.opcion}: {_fecha_humana(option.fecha)}" for option in pending_options)
+    else:
+        fechas = ", ".join(_fecha_humana(option.fecha) for option in pending_options)
+        title = (
+            "Te queda pendiente este parte de los ultimos 10 dias: "
+            if len(pending_options) == 1
+            else "Te quedan pendientes estos partes de los ultimos 10 dias: "
+        )
+        lines.append(f"{title}{fechas}.")
+    return "\n".join(lines)
+
+
+def _pending_parts_metadata(pending_options: list[ParteDiarioFechaOption]) -> dict | None:
     if not pending_options:
-        return [V3ProcessMessage(text="No quedan partes pendientes de los ultimos 10 dias.")]
-    fechas = ", ".join(_fecha_humana(option.fecha) for option in pending_options)
-    prefix = (
-        "Te queda pendiente este parte de los ultimos 10 dias: "
-        if len(pending_options) == 1
-        else "Te quedan pendientes estos partes de los ultimos 10 dias: "
-    )
-    return [V3ProcessMessage(text=f"{prefix}{fechas}.")]
+        return None
+    return {"pending_options": [option.to_dict() for option in pending_options]}
 
 
-def es_feriado(value: date) -> bool:
-    return value.weekday() == 6
+def _select_pending_option(text: str | None, pending_options: list[ParteDiarioFechaOption]) -> ParteDiarioFechaOption | None:
+    command = _normalize_command(text)
+    try:
+        selected_number = int(command)
+    except ValueError:
+        selected_number = None
+    if selected_number is not None:
+        option = next((item for item in pending_options if item.opcion == selected_number), None)
+        if option is not None:
+            return option
 
+    selected_fecha = _parse_fecha_value(text)
+    if selected_fecha:
+        option = next((item for item in pending_options if item.fecha == selected_fecha), None)
+        if option is not None:
+            return option
 
-def dia_operativo_anterior(today: date) -> date:
-    cursor = today - timedelta(days=1)
-    while es_feriado(cursor):
-        cursor -= timedelta(days=1)
-    return cursor
+    weekday = _weekday_only_reference(text)
+    if weekday is not None:
+        matches = [
+            option
+            for option in pending_options
+            if (_parse_iso_date(option.fecha) is not None and _parse_iso_date(option.fecha).weekday() == weekday)
+        ]
+        if matches:
+            return sorted(matches, key=lambda item: item.fecha)[0]
+    return None
 
 
 async def _emitir_fecha_default_parte_diario(
@@ -1904,6 +2142,100 @@ def _fecha_option_title(option: ParteDiarioFechaOption) -> str:
 
 def _weekday_label(value: date) -> str:
     return ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"][value.weekday()]
+
+
+def _weekday_name_by_index(value: int | None) -> str:
+    labels = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+    if value is None or value < 0 or value >= len(labels):
+        return "ese dia"
+    return labels[value]
+
+
+def _weekday_only_reference(text: str | None) -> int | None:
+    command = _normalize_command(text)
+    if not command:
+        return None
+    if re.search(r"\b\d{1,2}\s*(?:/|-)\s*\d{1,2}(?:\s*(?:/|-)\s*\d{2,4})?\b", command):
+        return None
+    month_names = {
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "setiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
+    }
+    tokens = set(command.split())
+    if tokens & month_names:
+        return None
+    if tokens & {"hoy", "ayer", "anteayer", "manana"}:
+        return None
+    weekdays = {
+        "lunes": 0,
+        "martes": 1,
+        "miercoles": 2,
+        "jueves": 3,
+        "viernes": 4,
+        "sabado": 5,
+        "domingo": 6,
+    }
+    matches = [index for name, index in weekdays.items() if name in tokens]
+    if len(matches) != 1:
+        return None
+    allowed = {
+        "abrir",
+        "cargar",
+        "de",
+        "del",
+        "diario",
+        "el",
+        "hacer",
+        "la",
+        "necesito",
+        "para",
+        "parte",
+        "partes",
+        "quiero",
+        "ver",
+    }
+    weekday_tokens = set(weekdays)
+    if tokens - allowed - weekday_tokens:
+        return None
+    return matches[0]
+
+
+def _resolve_pending_weekday_option(
+    proyecto_id: int,
+    weekday: int,
+    *,
+    contacto_id: int | None = None,
+) -> tuple[ParteDiarioFechaOption | None, bool]:
+    if proyecto_id <= 0:
+        return None, False
+    options = ParteDiarioSubprocess._build_fecha_options(
+        proyecto_id,
+        contacto_id=contacto_id,
+        days=10,
+    )
+    matching = [
+        option
+        for option in options
+        if (_parse_iso_date(option.fecha) is not None and _parse_iso_date(option.fecha).weekday() == weekday)
+    ]
+    pending = sorted(
+        (option for option in matching if option.estado in {"borrador", "sin cargar"}),
+        key=lambda item: item.fecha,
+    )
+    if pending:
+        return pending[0], bool(matching)
+    return None, bool(matching)
 
 
 def _fecha_humana(value: date | str | None) -> str:
@@ -2686,6 +3018,15 @@ def _normalize_phone(value: str | None) -> str:
 
 def _is_date_menu_command(command: str) -> bool:
     return command in {"parte diario", "parte diarios", "partes diarios"}
+
+
+def _is_pending_parts_command(command: str) -> bool:
+    return command in {
+        "parte pendiente",
+        "parte pendientes",
+        "partes pendiente",
+        "partes pendientes",
+    }
 
 
 def _is_show_nomina_command(command: str) -> bool:

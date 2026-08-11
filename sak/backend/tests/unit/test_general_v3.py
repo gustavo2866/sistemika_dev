@@ -153,6 +153,7 @@ async def test_general_v3_deriva_a_parte_diario():
         ("2", "parteDiario", "parte diario"),
         ("pedido obra", "pedidoObra", "pedido obra"),
         ("parte diario", "parteDiario", "parte diario"),
+        ("parte pendiente", "parteDiario", "parte pendiente"),
     ],
 )
 async def test_general_v3_menu_deriva_sin_llamar_sdk(text, target_process, handoff_text):

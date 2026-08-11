@@ -235,6 +235,7 @@ import {
   TarjaEdit,
   TarjaShow,
 } from "@/app/resources/constructora/tarjas";
+import { TarjaDetalleList } from "@/app/resources/constructora/tarja-detalle/list";
 import {
   NominaList,
   NominaCreate,
@@ -810,6 +811,13 @@ const AdminApp = () => {
         options={{ label: "Tarjas" }}
       />
       <Resource
+        name="tarja-detalle"
+        list={TarjaDetalleList}
+        recordRepresentation="empleado"
+        icon={ClipboardCheck}
+        options={{ label: "Tarja Detalle" }}
+      />
+      <Resource
         name="parte-diario"
         list={ParteDiarioList}
         create={ParteDiarioCreate}
@@ -1027,6 +1035,7 @@ const AdminApp = () => {
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/parte-diario/panel" element={<ParteDiarioPanel />} />
         <Route path="/tarjas/panel" element={<TarjaPanel />} />
+        <Route path="/tarjas/:id/detalle" element={<TarjaDetalleList />} />
         <Route path="/administracion/reporte-powerbi" element={<PowerBiReportPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />

@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import or_
 from sqlmodel import Session, select
 
+from agente.v3.subprocesses.parte_diario.calendario import es_dia_laborable
 from agente.v3.subprocesses.parte_diario.process import _requests_global_nomina, _today
 from agente.v3.subprocesses.parte_diario.resolver import normalize_text
 from app.models import EstadoParteDiario, Nomina, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto
@@ -171,6 +172,9 @@ class ParteDiarioQueryService:
         rows: list[str] = []
         cursor = end
         while cursor >= start:
+            if incluir_sin_cargar and not es_dia_laborable(cursor):
+                cursor -= timedelta(days=1)
+                continue
             parte = by_date.get(cursor)
             if parte is None:
                 if incluir_sin_cargar:

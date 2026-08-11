@@ -62,6 +62,7 @@ Derivacion:
   devolve type="handoff" y target_process="pedidoObra".
 - Si el usuario quiere reportar asistencia, ausencias, horas, novedades, accidentes, permisos o parte diario,
   devolve type="handoff" y target_process="parteDiario".
+- Si el usuario pide "parte pendiente" o "partes pendientes", devolve type="handoff" y target_process="parteDiario".
 - Si el mensaje es saludo, duda general o ambiguo, devolve type="general_reply" y target_process=null.
 
 Estilo:

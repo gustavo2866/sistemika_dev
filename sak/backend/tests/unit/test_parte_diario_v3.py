@@ -10,14 +10,16 @@ from sqlmodel import Session, select
 
 import agente.v3.subprocesses.parte_diario.handler as parte_diario_handler
 from agente.v3.subprocesses.parte_diario import renderer
-from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessMessage, V3ProcessResult
 from agente.v3.subprocesses.parte_diario.carga_agent import ParteDiarioCargaAgentOutput
 from agente.v3.subprocesses.parte_diario.executor import execute_plan
 from agente.v3.subprocesses.parte_diario.handler import (
     ParteDiarioSubprocess,
     dia_operativo_anterior,
+    es_dia_laborable,
     es_feriado,
     resolver_fecha_default_parte_diario,
+    resolver_fecha_default_parte_diario_info,
 )
 from agente.v3.subprocesses.parte_diario.models import (
     EstadoItem,
@@ -708,7 +710,9 @@ async def test_parte_diario_v3_command_shows_last_seven_days_menu(
 
 def test_dia_operativo_anterior_skips_sunday():
     assert es_feriado(date(2026, 8, 9)) is True
+    assert es_dia_laborable(date(2026, 8, 9)) is False
     assert es_feriado(date(2026, 8, 8)) is False
+    assert es_dia_laborable(date(2026, 8, 8)) is True
     assert dia_operativo_anterior(date(2026, 8, 10)) == date(2026, 8, 8)
     assert dia_operativo_anterior(date(2026, 8, 11)) == date(2026, 8, 10)
 
@@ -853,6 +857,117 @@ def test_resolver_fecha_default_parte_diario_uses_today_when_previous_operationa
         )
         == "2026-05-12"
     )
+
+
+def test_resolver_fecha_default_prefers_previous_operational_day(monkeypatch):
+    def fake_build_fecha_options(proyecto_id, *, contacto_id=None, today=None, days=7):
+        return [
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-10", estado="sin cargar"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-08", estado="borrador"),
+            ParteDiarioFechaOption(opcion=3, fecha="2026-08-07", estado="sin cargar"),
+        ]
+
+    monkeypatch.setattr(ParteDiarioSubprocess, "_build_fecha_options", staticmethod(fake_build_fecha_options))
+
+    fecha, pending_count = resolver_fecha_default_parte_diario_info(100, today=date(2026, 8, 10))
+
+    assert fecha == "2026-08-08"
+    assert pending_count == 3
+
+
+def test_resolver_fecha_default_uses_today_when_previous_operational_day_is_closed_and_ignores_old_pending(
+    monkeypatch,
+):
+    def fake_build_fecha_options(proyecto_id, *, contacto_id=None, today=None, days=7):
+        return [
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-10", estado="sin cargar"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-08", estado="confirmado"),
+            ParteDiarioFechaOption(opcion=3, fecha="2026-08-07", estado="borrador"),
+        ]
+
+    monkeypatch.setattr(ParteDiarioSubprocess, "_build_fecha_options", staticmethod(fake_build_fecha_options))
+
+    fecha, pending_count = resolver_fecha_default_parte_diario_info(100, today=date(2026, 8, 10))
+
+    assert fecha == "2026-08-10"
+    assert pending_count == 2
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_initial_plain_command_does_not_infer_explicit_today():
+    class FailingInitialDateLLM(FakeParteDiarioLLM):
+        async def normalize_initial_request(self, mensaje):
+            raise AssertionError("No debe normalizar fecha para comando sin referencia temporal")
+
+    process = ParteDiarioSubprocess(llm_client=FailingInitialDateLLM(TurnPlan()))
+    state = ParteDiarioV3State()
+
+    await process._infer_initial_date_text("parte diario", state)
+
+    assert state.draft().fecha is None
+    assert state.fecha_objetivo is None
+    assert state.fecha_referida_explicita is False
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_weekday_only_loads_oldest_open_matching_pending(monkeypatch):
+    def fake_build_fecha_options(proyecto_id, *, contacto_id=None, today=None, days=7):
+        assert days == 10
+        return [
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-10", estado="sin cargar"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-08", estado="borrador"),
+            ParteDiarioFechaOption(opcion=3, fecha="2026-08-01", estado="sin cargar"),
+        ]
+
+    class ProbeProcess(ParteDiarioSubprocess):
+        def _aplicar_fecha(self, state, *, allow_closed=False):
+            state.etapa = "carga"
+            state.set_draft(state.draft())
+            return None
+
+        def _draft_fecha_is_closed(self, draft):
+            return False
+
+    monkeypatch.setattr(ParteDiarioSubprocess, "_build_fecha_options", staticmethod(fake_build_fecha_options))
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    state = ParteDiarioV3State(
+        contacto_id=5,
+        oportunidad_id=10,
+        proyecto_id=100,
+        nombre_obra="Obra Centro",
+    )
+    await process._infer_initial_date_text("parte del sabado", state)
+
+    result = await process._preparar_fecha(V3ConversationContext(conversation_id="conv-weekday"), state)
+
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-08-01"
+    assert result.context.process_state["fecha_objetivo"] == "2026-08-01"
+    assert "Fecha: sabado 01/08/2026" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_weekday_only_returns_closed_message_when_no_open_match(monkeypatch):
+    def fake_build_fecha_options(proyecto_id, *, contacto_id=None, today=None, days=7):
+        assert days == 10
+        return [
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-08", estado="confirmado"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-01", estado="cerrado"),
+        ]
+
+    monkeypatch.setattr(ParteDiarioSubprocess, "_build_fecha_options", staticmethod(fake_build_fecha_options))
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    state = ParteDiarioV3State(
+        contacto_id=5,
+        oportunidad_id=10,
+        proyecto_id=100,
+        nombre_obra="Obra Centro",
+    )
+    await process._infer_initial_date_text("parte del sabado", state)
+
+    result = await process._preparar_fecha(V3ConversationContext(conversation_id="conv-weekday-closed"), state)
+
+    assert result.context.active_process is None
+    assert "El parte de sabado de los ultimos 10 dias ya esta cerrado." in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
@@ -1174,7 +1289,7 @@ def test_parte_diario_query_service_treats_pendiente_as_borrador_and_sin_cargar(
         estado_parte="pendiente",
     )
 
-    assert report == "Partes pendientes:\n- 09/08/2026: borrador\n- 08/08/2026: sin cargar"
+    assert report == "Partes pendientes:\n- 08/08/2026: sin cargar"
 
 
 def test_parte_diario_v3_internal_query_detector_accepts_novedades_and_hours():
@@ -2448,7 +2563,7 @@ def test_parte_diario_v3_pending_last_days_message_is_ordered_and_conversational
         assert days == 10
         return [
             ParteDiarioFechaOption(opcion=1, fecha="2026-08-10", estado="sin cargar"),
-            ParteDiarioFechaOption(opcion=2, fecha="2026-08-09", estado="confirmado"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-09", estado="sin cargar"),
             ParteDiarioFechaOption(opcion=3, fecha="2026-08-08", estado="borrador"),
             ParteDiarioFechaOption(opcion=4, fecha="2026-08-07", estado="sin cargar"),
         ]
@@ -2466,6 +2581,198 @@ def test_parte_diario_v3_pending_last_days_message_is_ordered_and_conversational
         "Te quedan pendientes estos partes de los ultimos 10 dias: "
         "viernes 07/08/2026, sabado 08/08/2026."
     )
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_auto_open_today_after_previous_close_does_not_show_pending_list(monkeypatch):
+    def fail_pending_messages(*args, **kwargs):
+        raise AssertionError("No debe consultar pendientes antes de abrir hoy automaticamente")
+
+    class ProbeProcess(ParteDiarioSubprocess):
+        async def _auto_open_today_after_previous_close(
+            self,
+            context,
+            state,
+            reply,
+            status,
+            metadata,
+            additional_messages=None,
+        ):
+            assert additional_messages == []
+            return V3ProcessResult(
+                context=context,
+                reply_text=reply,
+                metadata=metadata,
+                additional_messages=[V3ProcessMessage(text="Ahora seguimos con el parte de hoy.")],
+            )
+
+    monkeypatch.setattr(parte_diario_handler, "_pending_parts_last_days_messages", fail_pending_messages)
+    state = ParteDiarioV3State(
+        proyecto_id=100,
+        contacto_id=5,
+        fecha_objetivo="2026-08-10",
+        fecha_referida_explicita=False,
+    )
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process._post_action_result(
+        V3ConversationContext(conversation_id="conv-auto-today"),
+        state,
+        "cerrado",
+        "confirmed",
+        {"result": {"fecha": "2026-08-08", "cerrar_parte": True}},
+    )
+
+    assert result.additional_messages[0].text == "Ahora seguimos con el parte de hoy."
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_today_draft_save_shows_pending_list(monkeypatch):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 8, 10))
+    monkeypatch.setattr(
+        parte_diario_handler,
+        "_pending_parts_last_days_options",
+        lambda *args, **kwargs: [ParteDiarioFechaOption(opcion=1, fecha="2026-08-07", estado="sin cargar")],
+    )
+    state = ParteDiarioV3State(proyecto_id=100, contacto_id=5, nombre_obra="Obra Centro")
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process._post_action_result(
+        V3ConversationContext(conversation_id="conv-save-today"),
+        state,
+        "guardado",
+        "saved",
+        {"result": {"fecha": "2026-08-10", "cerrar_parte": False}},
+    )
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "pendientes"
+    assert result.additional_messages == []
+    assert "Te queda 1 parte pendiente de los ultimos 10 dias." in result.reply_text
+    assert "Cual queres cargar?" in result.reply_text
+    assert "1: viernes 07/08/2026" in result.reply_text
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_pending_stage_uses_selected_work_without_asking_again():
+    class ProbeProcess(ParteDiarioSubprocess):
+        def _aplicar_fecha(self, state, *, allow_closed=False):
+            state.etapa = "carga"
+            state.set_draft(state.draft())
+            return None
+
+        def _draft_fecha_is_closed(self, draft):
+            return False
+
+    state = ParteDiarioV3State(
+        etapa="pendientes",
+        contacto_id=5,
+        oportunidad_id=10,
+        proyecto_id=100,
+        nombre_obra="Francia 118",
+        opciones_fecha=[
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-06", estado="sin cargar"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-07", estado="sin cargar"),
+        ],
+    )
+    context = V3ConversationContext(
+        conversation_id="conv-pending-stage",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("parte del jueves"), context)
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["proyecto_id"] == 100
+    assert result.context.process_state["nombre_obra"] == "Francia 118"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-08-06"
+    assert "En que obra" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_parte_pendiente_starts_pending_stage(monkeypatch):
+    monkeypatch.setattr(
+        ParteDiarioSubprocess,
+        "_resolve_obra_options",
+        staticmethod(lambda phone: [parte_diario_handler.ParteDiarioOption(1, "Francia 118", 5, 10, 100)]),
+    )
+    monkeypatch.setattr(
+        parte_diario_handler,
+        "_pending_parts_last_days_options",
+        lambda *args, **kwargs: [
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-06", estado="sin cargar"),
+            ParteDiarioFechaOption(opcion=2, fecha="2026-08-07", estado="borrador"),
+        ],
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("parte pendiente"), V3ConversationContext(conversation_id="conv-pending-command"))
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "pendientes"
+    assert result.context.process_state["proyecto_id"] == 100
+    assert result.context.process_state["nombre_obra"] == "Francia 118"
+    assert result.context.process_state["modo_pendientes"] is False
+    assert "Te quedan 2 partes pendientes de los ultimos 10 dias." in (result.reply_text or "")
+    assert "1: jueves 06/08/2026" in (result.reply_text or "")
+    assert "2: viernes 07/08/2026" in (result.reply_text or "")
+    assert "Parte diario en carga:" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_parte_pendiente_survives_project_selection(monkeypatch):
+    monkeypatch.setattr(
+        ParteDiarioSubprocess,
+        "_resolve_obra_options",
+        staticmethod(
+            lambda phone: [
+                parte_diario_handler.ParteDiarioOption(1, "Catamarca", 5, 10, 100),
+                parte_diario_handler.ParteDiarioOption(2, "Francia 118", 5, 20, 200),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        parte_diario_handler,
+        "_pending_parts_last_days_options",
+        lambda state, **kwargs: [ParteDiarioFechaOption(opcion=1, fecha="2026-08-07", estado="sin cargar")],
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    requested = await process.handle(
+        _message("parte pendiente"),
+        V3ConversationContext(conversation_id="conv-pending-command-menu"),
+    )
+    selected = await process.handle(_message("2"), requested.context)
+
+    assert requested.context.process_state["etapa"] == "seleccionar_obra"
+    assert requested.context.process_state["modo_pendientes"] is True
+    assert selected.context.active_process == "parteDiario"
+    assert selected.context.process_state["etapa"] == "pendientes"
+    assert selected.context.process_state["proyecto_id"] == 200
+    assert selected.context.process_state["nombre_obra"] == "Francia 118"
+    assert "1: viernes 07/08/2026" in (selected.reply_text or "")
+    assert "Parte diario en carga:" not in (selected.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_parte_pendiente_without_pending_parts_finishes(monkeypatch):
+    monkeypatch.setattr(
+        ParteDiarioSubprocess,
+        "_resolve_obra_options",
+        staticmethod(lambda phone: [parte_diario_handler.ParteDiarioOption(1, "Francia 118", 5, 10, 100)]),
+    )
+    monkeypatch.setattr(parte_diario_handler, "_pending_parts_last_days_options", lambda *args, **kwargs: [])
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("parte pendiente"), V3ConversationContext(conversation_id="conv-no-pending"))
+
+    assert result.context.active_process is None
+    assert result.context.process_state == {}
+    assert result.metadata["status"] == "no_pending_parts"
+    assert "No quedan partes pendientes de los ultimos 10 dias." in (result.reply_text or "")
 
 
 def test_parte_diario_v3_candidate_row_uses_legajo_when_name_is_missing():
@@ -3026,6 +3333,83 @@ async def test_parte_diario_v3_menu_salir_confirms_discard(seeded_parte_v3):
     assert "Selecciona la fecha del parte diario:" not in (discarded.reply_text or "")
     assert "1: PEDIDO OBRA" in (discarded.reply_text or "")
     assert "2: PARTE DIARIO" in (discarded.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_obra_selection_salir_returns_to_general():
+    state = ParteDiarioV3State(
+        etapa="seleccionar_obra",
+        opciones_obra=[
+            parte_diario_handler.ParteDiarioOption(1, "Catamarca", 1, 10, 100),
+            parte_diario_handler.ParteDiarioOption(2, "Francia 118", 1, 20, 200),
+        ],
+    )
+    context = V3ConversationContext(
+        conversation_id="conv-obra-salir",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("salir"), context)
+
+    assert result.context.active_process == "general"
+    assert result.context.process_state["agent_source"] == "parte_diario_obra_selection"
+    assert result.metadata["status"] == "returned_to_general"
+    assert "Carga de parte diario cancelada." in (result.reply_text or "")
+    assert "1: PEDIDO OBRA" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_validacion_salir_confirms_discard():
+    state = ParteDiarioV3State(
+        etapa="validacion",
+        contacto_id=1,
+        oportunidad_id=10,
+        proyecto_id=100,
+        nombre_obra="Francia 118",
+    )
+    context = V3ConversationContext(
+        conversation_id="conv-validacion-salir",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("salir"), context)
+
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "confirmar_salida"
+    assert result.metadata["status"] == "exit_confirmation"
+    assert "Se perderan los cambios no guardados." in (result.reply_text or "")
+    assert "Opciones: OK / VOLVER." in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_pendientes_salir_finishes_without_asking_project():
+    state = ParteDiarioV3State(
+        etapa="pendientes",
+        contacto_id=1,
+        oportunidad_id=10,
+        proyecto_id=100,
+        nombre_obra="Francia 118",
+        opciones_fecha=[
+            ParteDiarioFechaOption(opcion=1, fecha="2026-08-06", estado="sin cargar"),
+        ],
+    )
+    context = V3ConversationContext(
+        conversation_id="conv-pendientes-salir",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("salir"), context)
+
+    assert result.context.active_process is None
+    assert result.context.process_state == {}
+    assert result.metadata["status"] == "finished"
+    assert "En que obra" not in (result.reply_text or "")
 
 
 @pytest.mark.asyncio
