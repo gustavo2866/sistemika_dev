@@ -5,12 +5,11 @@ import { ReferenceField } from "@/components/reference-field";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
+import { useRecordContext } from "ra-core";
 import {
   BooleanListColumn,
-  DateListColumn,
   FormOrderListRowActions,
   ListColumn,
-  ListMoney,
   ListPaginator,
   ListText,
   NumberListColumn,
@@ -84,6 +83,14 @@ const LIST_FILTERS = buildListFilters(
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
+const NombreCompletoField = () => {
+  const record = useRecordContext<{ nombre?: string | null; apellido?: string | null }>();
+  const apellido = String(record?.apellido ?? "").trim();
+  const nombre = String(record?.nombre ?? "").trim();
+  const value = [apellido, nombre].filter(Boolean).join(", ");
+  return <span className="whitespace-normal break-words">{value || "-"}</span>;
+};
+
 const NominaListTitle = () => (
   <>
     <div className="sm:hidden">
@@ -151,8 +158,8 @@ export const NominaList = ({
     <ResponsiveDataTable
       rowClick={rowClick}
       mobileConfig={{
-        primaryField: "nombre",
-        secondaryFields: ["apellido", "dni", "categoria", "idproyecto", "encargado_contacto_id"],
+        primaryField: "apellido",
+        secondaryFields: ["nombre", "categoria", "idproyecto", "encargado_contacto_id"],
       }}
       className="text-[10px] [&_th]:text-[10px] [&_td]:text-[10px] xl:text-[11px] xl:[&_th]:text-[11px] xl:[&_td]:text-[11px]"
     >
@@ -161,17 +168,8 @@ export const NominaList = ({
         label="ID"
         className="w-[50px] text-center"
       />
-      <TextListColumn source="nombre" label="Nombre" className="w-[130px]">
-        <ListText source="nombre" className="whitespace-normal break-words" />
-      </TextListColumn>
-      <TextListColumn source="apellido" label="Apellido" className="w-[130px]">
-        <ListText source="apellido" className="whitespace-normal break-words" />
-      </TextListColumn>
-      <TextListColumn source="dni" label="DNI" className="w-[90px]">
-        <ListText source="dni" />
-      </TextListColumn>
-      <TextListColumn source="nro_legajo" label="Legajo" className="w-[80px]">
-        <ListText source="nro_legajo" />
+      <TextListColumn source="apellido" label="Apellido y nombre" className="w-[210px]">
+        <NombreCompletoField />
       </TextListColumn>
       <ListColumn source="categoria" label="Categoria" className="w-[110px]">
         <SelectField source="categoria" choices={CATEGORIA_CHOICES} />
@@ -185,14 +183,6 @@ export const NominaList = ({
         <ReferenceField source="encargado_contacto_id" reference="crm/contactos">
           <ListText source="nombre_completo" className="whitespace-normal break-words" />
         </ReferenceField>
-      </ListColumn>
-      <TextListColumn source="email" label="Email" className="w-[170px]">
-        <ListText source="email" className="whitespace-normal break-words" />
-      </TextListColumn>
-      <DateListColumn source="fecha_ingreso" label="Ingreso" className="w-[80px]" />
-      <DateListColumn source="fecha_egreso" label="Egreso" className="w-[80px]" />
-      <ListColumn source="salario_mensual" label="Salario" className="w-[90px] text-right">
-        <ListMoney source="salario_mensual" showCurrency={false} />
       </ListColumn>
       <BooleanListColumn source="activo" label="Activo" className="w-[70px]" />
       <ListColumn label="Acciones" className="w-[56px]">

@@ -38,7 +38,7 @@ from agente.v3.subprocesses.parte_diario.process import (
 )
 from agente.v3.subprocesses.parte_diario.query_service import ParteDiarioQueryService
 from agente.v3.subprocesses.parte_diario.resolver import NominaResolver, normalize_text, parse_candidate_selection
-from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
+from agente.v3.subprocesses.parte_diario.state import ParteDiarioAsistenciaOption, ParteDiarioV3State
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioFechaOption
 from app.models import (
     CRMContacto,
@@ -725,6 +725,37 @@ def test_parte_diario_v3_fecha_visible_incluye_dia_completo():
     assert "Fecha: sabado 08/08/2026" in reply
     assert "Obra: Francia 118" in reply
     assert "Que novedades hubo ese dia?" in reply
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_novedades_parsea_se_accidento():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+    estados = [
+        EstadoItem(id=1, abreviatura="FAL", nombre="Falta"),
+        EstadoItem(id=2, abreviatura="ACC", nombre="Accidente"),
+    ]
+
+    parsed, error = await process._parse_asistencia_entries("23 se accidento", options, estados)
+
+    assert error is None
+    assert parsed[0][0].idnomina == 123
+    assert parsed[0][1].abreviatura == "ACC"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_novedades_usa_llm_si_motivo_no_matchea_local():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+    estados = [
+        EstadoItem(id=1, abreviatura="FAL", nombre="Falta"),
+        EstadoItem(id=2, abreviatura="PER", nombre="Permiso"),
+    ]
+
+    parsed, error = await process._parse_asistencia_entries("23 tramite personal", options, estados)
+
+    assert error is None
+    assert parsed[0][1].abreviatura == "PER"
 
 
 def test_parte_diario_v3_fecha_visible_pregunta_hoy(monkeypatch):

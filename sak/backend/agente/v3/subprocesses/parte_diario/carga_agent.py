@@ -90,7 +90,7 @@ def _build_tools(candidates: list[NominaItem]) -> list[Any]:
 
     @function_tool
     def detectar_novedad(texto: str) -> dict[str, Any]:
-        """Detecta si el texto parece una nueva novedad de asistencia."""
+        """Detecta si el texto parece una nueva novedad."""
         return {"looks_like_attendance_update": _looks_like_attendance_update(texto)}
 
     return [resolver_candidato, detectar_novedad]
@@ -132,7 +132,7 @@ Tu tarea en este punto es resolver una aclaracion de persona pendiente.
 Reglas:
 - Si el usuario escribe NINGUNO, devolve action="registrar_sin_validar".
 - Si el usuario identifica un candidato por nombre, apellido, legajo o numero, usa resolver_candidato y devolve action="seleccionar_persona" con candidate_id.
-- Si el usuario escribe una nueva novedad de asistencia en vez de aclarar la persona, usa detectar_novedad y devolve action="procesar_como_novedad" con text igual al mensaje original.
+- Si el usuario escribe una nueva novedad en vez de aclarar la persona, usa detectar_novedad y devolve action="procesar_como_novedad" con text igual al mensaje original.
 - Si no alcanza para decidir, devolve action="pedir_aclaracion".
 - No guardes, no cierres y no inventes candidatos.
 - Responde siempre con la salida estructurada.

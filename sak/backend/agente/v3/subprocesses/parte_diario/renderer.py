@@ -206,7 +206,7 @@ def falta_informacion() -> str:
 
 
 def sin_novedades_confirmado() -> str:
-    return "Asistencia completa registrada. Escribi CONFIRMAR para guardar."
+    return "Novedades registradas. Escribi CONFIRMAR para guardar."
 
 
 def sin_novedades_rechazado() -> str:

@@ -134,12 +134,12 @@ async def test_general_v3_deriva_a_parte_diario():
         GeneralAgentOutput(
             type="handoff",
             target_process="parteDiario",
-            respuesta="Perfecto. Pasame la asistencia o novedades del dia.",
+            respuesta="Perfecto. Pasame las novedades del dia.",
             reason="parte_diario",
         )
     )
     process = GeneralSubprocess(agent_client=client)
-    result = await process.handle(_message("cargar asistencia"), V3ConversationContext(conversation_id="conv-1"))
+    result = await process.handle(_message("cargar novedades"), V3ConversationContext(conversation_id="conv-1"))
 
     assert result.context.active_process == "parteDiario"
     assert result.metadata["target_process"] == "parteDiario"

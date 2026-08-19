@@ -192,6 +192,28 @@ export const dataProvider: DataProvider = {
   ...baseProvider,
   getList: withErrorHandling((resource, params) => {
     const resolved = resolveResource(resource, "getList");
+    const meta = params?.meta as { fields?: string | string[]; include?: string | string[] } | undefined;
+    if (meta?.fields || meta?.include) {
+      const query = new URLSearchParams();
+      query.set("sort", JSON.stringify([params?.sort?.field ?? "id", params?.sort?.order ?? "ASC"]));
+      const page = params?.pagination?.page ?? 1;
+      const perPage = params?.pagination?.perPage ?? 25;
+      const start = (page - 1) * perPage;
+      query.set("range", JSON.stringify([start, start + perPage - 1]));
+      query.set("filter", JSON.stringify(params?.filter ?? {}));
+      if (meta.fields) {
+        query.set("fields", Array.isArray(meta.fields) ? meta.fields.join(",") : meta.fields);
+      }
+      if (meta.include) {
+        query.set("include", Array.isArray(meta.include) ? meta.include.join(",") : meta.include);
+      }
+      const url = `${apiUrl}/${resolved}?${query.toString()}`;
+      return httpClient(url, { signal: params?.signal }).then(({ headers, json }) => {
+        const contentRange = headers.get("Content-Range");
+        const total = contentRange ? Number(contentRange.split("/").pop()) : json.length;
+        return { data: json, total: Number.isFinite(total) ? total : json.length };
+      });
+    }
     if (resolved === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
       const { default_scope, ...restFilter } = params.filter as Record<string, unknown>;
       return (async () => {

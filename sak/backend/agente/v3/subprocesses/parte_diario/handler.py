@@ -27,7 +27,10 @@ from agente.v3.subprocesses.parte_diario.calendario import (
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.query_agent import ParteDiarioQueryAgentClient
 from agente.v3.subprocesses.parte_diario import renderer
-from agente.v3.subprocesses.parte_diario.models import ParteDiarioState as ParteDiarioDraftState
+from agente.v3.subprocesses.parte_diario.models import (
+    NovedadPersonal,
+    ParteDiarioState as ParteDiarioDraftState,
+)
 from agente.v3.subprocesses.parte_diario.process import (
     ParteDiarioProcess,
     _has_explicit_date_reference,
@@ -36,8 +39,15 @@ from agente.v3.subprocesses.parte_diario.process import (
     _requests_global_nomina,
     _today,
 )
-from agente.v3.subprocesses.parte_diario.resolver import filter_candidate_selection, parse_candidate_selection
+from agente.v3.subprocesses.parte_diario.resolver import (
+    filter_candidate_selection,
+    normalize_text,
+    parse_candidate_selection,
+    parse_estado_local,
+)
 from agente.v3.subprocesses.parte_diario.state import (
+    ParteDiarioAsistenciaOption,
+    ParteDiarioAsistenciaRegistro,
     ParteDiarioFechaOption,
     ParteDiarioOption,
     ParteDiarioV3State,
@@ -47,6 +57,9 @@ from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, Nomina, P
 from app.services.parte_diario_service import parte_diario_service
 
 logger = logging.getLogger(__name__)
+
+ASISTENCIA_PAGE_SIZE = 8
+
 
 class ParteDiarioSubprocess:
     name = "parteDiario"
@@ -92,6 +105,9 @@ class ParteDiarioSubprocess:
 
         if state.etapa == "pendientes":
             return await self._handle_pendientes(message, context, state, emisor=emisor)
+
+        if state.etapa == "novedades":
+            return await self._handle_asistencia(message, context, state)
 
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(message, context, state)
@@ -1263,6 +1279,350 @@ class ParteDiarioSubprocess:
             return await self._handle_confirmar_cierre_validado(command, message, context, state)
         return await self._handle_parte_diario(message, context, state)
 
+    def _start_asistencia(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        state.etapa = "novedades"
+        state.asistencia_offset = 0
+        state.asistencia_opciones = []
+        state.asistencia_registros = []
+        state.asistencia_reemplazo_pendiente = {}
+        return self._show_asistencia_page(context, state)
+
+    async def _handle_asistencia(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        command = _normalize_command(message.text)
+        if command in {"salir"}:
+            return self._finish_asistencia(context, state)
+
+        if state.asistencia_reemplazo_pendiente:
+            if command in {"ok", "si", "confirmar"}:
+                return self._confirm_asistencia_reemplazo(context, state)
+            if command in {"volver", "no", "cancelar"}:
+                state.asistencia_reemplazo_pendiente = {}
+                reply = f"Mantengo la novedad cargada.\n\n{self._asistencia_current_page_text(state)}"
+                return self._active_result(context, state, reply, "asistencia_replace_cancelled")
+            reply = (
+                "Responde OK para reemplazar la novedad o VOLVER para mantenerla.\n\n"
+                f"{self._asistencia_reemplazo_text(state)}"
+            )
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "asistencia_replace_confirmation",
+                _confirmation_metadata(reply),
+            )
+
+        if not state.asistencia_opciones:
+            return self._show_asistencia_page(context, state)
+
+        if command in {"no", "nadie", "ninguno", "ninguna"} or command.startswith("no "):
+            return self._advance_asistencia_page(context, state)
+
+        with Session(engine) as session:
+            estados = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))._load_estados()
+            parsed, error = await self._parse_asistencia_entries(message.text or "", state.asistencia_opciones, estados)
+
+        if error:
+            reply = f"{error}\n\n{self._asistencia_current_page_text(state)}"
+            return self._active_result(context, state, reply, "asistencia_invalid_response")
+
+        draft = state.draft()
+        existing_entries = [
+            (option, estado, motivo, self._find_asistencia_existing(draft, option.idnomina))
+            for option, estado, motivo in parsed
+        ]
+        replacement_entries = [item for item in existing_entries if item[3] is not None]
+        if replacement_entries:
+            if len(parsed) > 1:
+                reply = (
+                    "Para reemplazar una novedad ya cargada, indica solo esa persona.\n\n"
+                    f"{self._asistencia_current_page_text(state)}"
+                )
+                return self._active_result(context, state, reply, "asistencia_replace_single_required")
+            option, estado, motivo, existing = replacement_entries[0]
+            state.asistencia_reemplazo_pendiente = {
+                "option": option.to_dict(),
+                "estado_id": estado.id,
+                "estado_codigo": estado.abreviatura.upper(),
+                "motivo": motivo,
+                "estado_anterior": getattr(existing, "estado_codigo", None),
+            }
+            reply = self._asistencia_reemplazo_text(state)
+            return self._active_result(
+                context,
+                state,
+                reply,
+                "asistencia_replace_confirmation",
+                _confirmation_metadata(reply),
+            )
+
+        for option, estado, motivo in parsed:
+            self._apply_asistencia_novedad(
+                draft,
+                state,
+                option=option,
+                estado_id=estado.id,
+                estado_codigo=estado.abreviatura.upper(),
+                motivo=motivo,
+            )
+        draft.sin_novedades_informado = False
+        draft.esperando = None
+        state.set_draft(draft)
+        return self._advance_asistencia_page(context, state, prefix="Cargado.")
+
+    def _show_asistencia_page(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        prefix: str | None = None,
+    ) -> V3ProcessResult:
+        nominas = self._load_asistencia_nomina(state)
+        total = len(nominas)
+        if total == 0:
+            state.etapa = "carga"
+            state.asistencia_offset = 0
+            state.asistencia_opciones = []
+            state.asistencia_registros = []
+            state.asistencia_reemplazo_pendiente = {}
+            return self._active_result(
+                context,
+                state,
+                f"No hay nomina activa asignada a {state.nombre_obra or 'la obra seleccionada'}.\n\nHay alguna otra novedad?",
+                "asistencia_empty_nomina",
+            )
+        if state.asistencia_offset >= total:
+            return self._finish_asistencia(context, state)
+
+        page = nominas[state.asistencia_offset : state.asistencia_offset + ASISTENCIA_PAGE_SIZE]
+        state.asistencia_opciones = [
+            ParteDiarioAsistenciaOption(
+                opcion=index,
+                idnomina=int(item.id),
+                nombre=item.nombre,
+                apellido=item.apellido,
+                nro_legajo=item.nro_legajo,
+            )
+            for index, item in enumerate(page, start=state.asistencia_offset + 1)
+            if item.id is not None
+        ]
+        reply = self._asistencia_page_text(state, total=total, prefix=prefix)
+        return self._active_result(context, state, reply, "asistencia_page")
+
+    def _advance_asistencia_page(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        prefix: str | None = None,
+    ) -> V3ProcessResult:
+        state.asistencia_offset += ASISTENCIA_PAGE_SIZE
+        return self._show_asistencia_page(context, state, prefix=prefix)
+
+    def _finish_asistencia(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        registros = list(state.asistencia_registros)
+        state.etapa = "carga"
+        state.asistencia_offset = 0
+        state.asistencia_opciones = []
+        state.asistencia_registros = []
+        state.asistencia_reemplazo_pendiente = {}
+        if not registros:
+            reply = "Novedades finalizadas.\n\nNo se cargaron faltas.\n\nHay alguna otra novedad?"
+        else:
+            lines = ["Novedades finalizadas.", "", "Faltas cargadas:"]
+            lines.extend(f"- {item.nombre}: {item.estado_codigo}, motivo: {item.motivo}" for item in registros)
+            lines.extend(["", "Hay alguna otra novedad?"])
+            reply = "\n".join(lines)
+        return self._active_result(context, state, reply, "asistencia_finished")
+
+    def _asistencia_current_page_text(self, state: ParteDiarioV3State) -> str:
+        nominas = self._load_asistencia_nomina(state)
+        return self._asistencia_page_text(state, total=len(nominas))
+
+    def _asistencia_page_text(
+        self,
+        state: ParteDiarioV3State,
+        *,
+        total: int,
+        prefix: str | None = None,
+    ) -> str:
+        start = state.asistencia_offset + 1
+        end = state.asistencia_offset + len(state.asistencia_opciones)
+        lines: list[str] = []
+        if prefix:
+            lines.extend([prefix, ""])
+        lines.append(f"Novedades - {state.nombre_obra or 'obra seleccionada'}")
+        lines.append(f"Empleados {start}-{end} de {total}:")
+        lines.append("")
+        for option in state.asistencia_opciones:
+            existing = self._find_asistencia_existing(state.draft(), option.idnomina)
+            suffix = f" - ya cargado: {existing.estado_codigo or 'estado pendiente'}" if existing else ""
+            lines.append(f"{option.opcion}. {option.nombre_completo}{suffix}")
+        lines.extend(
+            [
+                "",
+                "Alguno falto? Indica numero y motivo, o responde NO.",
+                "SALIR para terminar novedades.",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _load_asistencia_nomina(self, state: ParteDiarioV3State) -> list[Nomina]:
+        if not state.proyecto_id:
+            return []
+        with Session(engine) as session:
+            return list(
+                session.exec(
+                    select(Nomina)
+                    .where(Nomina.idproyecto == int(state.proyecto_id))
+                    .where(Nomina.activo.is_(True))
+                    .where(Nomina.deleted_at.is_(None))
+                    .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
+                ).all()
+            )
+
+    async def _parse_asistencia_entries(self, text: str, options: list[ParteDiarioAsistenciaOption], estados):
+        normalized_text = re.sub(r"\s+y\s+(?=\d+\b)", "\n", text or "", flags=re.IGNORECASE)
+        parts = [part.strip() for part in re.split(r"[,;\n]+", normalized_text) if part.strip()]
+        if not parts:
+            return [], "No pude interpretar la respuesta. Indica numero y motivo, por ejemplo: 2 enfermedad."
+
+        parsed = []
+        options_by_number = {option.opcion: option for option in options}
+        for part in parts:
+            match = re.match(r"^\s*(\d+)(?:[\).\:\-\s]+(.+?)\s*)?$", part)
+            if not match:
+                return [], "No pude identificar el numero de empleado. Indica numero y motivo, por ejemplo: 2 enfermedad."
+            number = int(match.group(1))
+            motive = (match.group(2) or "falta").strip()
+            option = options_by_number.get(number)
+            if option is None:
+                available = ", ".join(str(item.opcion) for item in options)
+                return [], f"El numero {number} no esta en esta pagina. Opciones disponibles: {available}."
+            estado = await self._resolve_estado_for_motive(motive, estados)
+            if estado is None or estado.abreviatura.upper() == "P":
+                return [], f"No pude identificar el motivo '{motive}'. Proba con falta, enfermedad, accidente o el codigo del estado."
+            parsed.append((option, estado, motive))
+        return parsed, None
+
+    async def _resolve_estado_for_motive(self, text: str, estados):
+        estado = parse_estado_local(text, estados) or self._resolve_estado_from_text(text, estados)
+        if estado is not None:
+            return estado
+        try:
+            code = await self._llm.interpretar_estado_pendiente(text, estados)
+        except Exception:
+            logger.exception("No se pudo interpretar estado de novedad con LLM")
+            return None
+        normalized_code = str(code or "").strip().upper()
+        if normalized_code == "NO_DETERMINADO":
+            return None
+        return next((item for item in estados if item.abreviatura.upper() == normalized_code), None)
+
+    @staticmethod
+    def _resolve_estado_from_text(text: str, estados):
+        normalized = normalize_text(text)
+        for estado in estados:
+            code = normalize_text(estado.abreviatura)
+            name = normalize_text(estado.nombre)
+            if code and code in normalized.split():
+                return estado
+            if name and (name in normalized or normalized in name):
+                return estado
+        return None
+
+    def _confirm_asistencia_reemplazo(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        pending = dict(state.asistencia_reemplazo_pendiente or {})
+        option = ParteDiarioAsistenciaOption.from_dict(dict(pending.get("option") or {}))
+        estado_id = pending.get("estado_id")
+        estado_codigo = str(pending.get("estado_codigo") or "").strip().upper()
+        motivo = str(pending.get("motivo") or "").strip()
+        if option is None or not estado_id or not estado_codigo or not motivo:
+            state.asistencia_reemplazo_pendiente = {}
+            reply = f"No pude recuperar el reemplazo pendiente.\n\n{self._asistencia_current_page_text(state)}"
+            return self._active_result(context, state, reply, "asistencia_replace_lost")
+
+        draft = state.draft()
+        self._apply_asistencia_novedad(
+            draft,
+            state,
+            option=option,
+            estado_id=int(estado_id),
+            estado_codigo=estado_codigo,
+            motivo=motivo,
+        )
+        draft.sin_novedades_informado = False
+        draft.esperando = None
+        state.set_draft(draft)
+        state.asistencia_reemplazo_pendiente = {}
+        return self._advance_asistencia_page(context, state, prefix="Reemplazado.")
+
+    def _asistencia_reemplazo_text(self, state: ParteDiarioV3State) -> str:
+        pending = dict(state.asistencia_reemplazo_pendiente or {})
+        option = ParteDiarioAsistenciaOption.from_dict(dict(pending.get("option") or {}))
+        nombre = option.nombre_completo if option else "La persona seleccionada"
+        anterior = str(pending.get("estado_anterior") or "estado previo").upper()
+        nuevo = str(pending.get("estado_codigo") or "nuevo estado").upper()
+        return f"{nombre} ya tiene {anterior}. Queres reemplazarla por {nuevo}?\n\nOpciones: OK / VOLVER."
+
+    def _apply_asistencia_novedad(
+        self,
+        draft,
+        state: ParteDiarioV3State,
+        *,
+        option: ParteDiarioAsistenciaOption,
+        estado_id: int,
+        estado_codigo: str,
+        motivo: str,
+    ) -> None:
+        nombre = option.nombre_completo
+        novedad = NovedadPersonal(
+            nombre=nombre,
+            idnomina=option.idnomina,
+            idestado=estado_id,
+            estado_codigo=estado_codigo,
+            horas=0,
+            descripcion=motivo,
+            nro_legajo=option.nro_legajo,
+        )
+        existing = self._find_asistencia_existing(draft, option.idnomina)
+        if existing is None:
+            draft.novedades.append(novedad)
+        else:
+            existing.nombre = novedad.nombre
+            existing.idestado = novedad.idestado
+            existing.estado_codigo = novedad.estado_codigo
+            existing.horas = novedad.horas
+            existing.descripcion = novedad.descripcion
+            existing.nro_legajo = novedad.nro_legajo
+        state.asistencia_registros.append(
+            ParteDiarioAsistenciaRegistro(
+                nombre=nombre,
+                estado_codigo=estado_codigo,
+                motivo=motivo,
+            )
+        )
+
+    @staticmethod
+    def _find_asistencia_existing(draft, idnomina: int):
+        return next((item for item in draft.novedades if item.idnomina == idnomina), None)
+
     async def _handle_parte_diario(
         self,
         message: V3InboundMessage,
@@ -1282,6 +1642,9 @@ class ParteDiarioSubprocess:
         if state.etapa == "carga" and forced_text is None:
             command = _normalize_command(message.text)
             draft = state.draft()
+
+            if command in {"novedades"}:
+                return self._start_asistencia(context, state)
 
             contextual_query = await self._handle_active_contextual_query(message, context, state)
             if contextual_query is not None:
@@ -2963,7 +3326,7 @@ def _strip_known_instructions(reply: str) -> str:
         "Cuando termines, escribi CONFIRMAR.",
         "Para guardarlo, responde CONFIRMAR.",
         "Para resolver las aclaraciones, responde CONFIRMAR.",
-        "Asistencia completa registrada. Escribi CONFIRMAR para guardar.",
+        "Novedades registradas. Escribi CONFIRMAR para guardar.",
         "Para descartar el parte diario completo, responde CANCELAR.",
     )
     if len(lines) > 1 and lines[-1].strip() in known_prefixes:

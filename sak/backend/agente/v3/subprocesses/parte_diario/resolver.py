@@ -161,6 +161,9 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
         "enfermo": "ENF",
         "enfermedad": "ENF",
         "accidente": "ACC",
+        "accidento": "ACC",
+        "accidentado": "ACC",
+        "accidentada": "ACC",
         "vacaciones": "VAC",
         "permiso": "PER",
         "lluvia": "LLV",
@@ -168,6 +171,11 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
         "presente": "P",
     }
     alias = aliases.get(normalized)
+    if alias is None:
+        for token in normalized.split():
+            alias = aliases.get(token)
+            if alias is not None:
+                break
     for estado in estados:
         if alias == estado.abreviatura.upper():
             return estado

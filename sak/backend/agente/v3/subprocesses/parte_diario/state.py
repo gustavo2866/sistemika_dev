@@ -19,6 +19,7 @@ ParteDiarioStage = Literal[
     "cierre",
     "continuar",
     "pendientes",
+    "novedades",
     "confirmar_salida",
     "menu",
     "finalizado",
@@ -93,6 +94,61 @@ class ParteDiarioFechaOption:
 
 
 @dataclass(slots=True)
+class ParteDiarioAsistenciaOption:
+    opcion: int
+    idnomina: int
+    nombre: str
+    apellido: str
+    nro_legajo: str | None = None
+
+    @property
+    def nombre_completo(self) -> str:
+        return f"{self.apellido}, {self.nombre}".strip(", ")
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioAsistenciaOption | None":
+        try:
+            opcion = int(raw.get("opcion") or 0)
+            idnomina = int(raw.get("idnomina") or 0)
+        except (TypeError, ValueError):
+            return None
+        nombre = str(raw.get("nombre") or "").strip()
+        apellido = str(raw.get("apellido") or "").strip()
+        nro_legajo = str(raw.get("nro_legajo") or "").strip() or None
+        if opcion <= 0 or idnomina <= 0 or not (nombre or apellido):
+            return None
+        return cls(opcion=opcion, idnomina=idnomina, nombre=nombre, apellido=apellido, nro_legajo=nro_legajo)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opcion": self.opcion,
+            "idnomina": self.idnomina,
+            "nombre": self.nombre,
+            "apellido": self.apellido,
+            "nro_legajo": self.nro_legajo,
+        }
+
+
+@dataclass(slots=True)
+class ParteDiarioAsistenciaRegistro:
+    nombre: str
+    estado_codigo: str
+    motivo: str
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioAsistenciaRegistro | None":
+        nombre = str(raw.get("nombre") or "").strip()
+        estado_codigo = str(raw.get("estado_codigo") or "").strip().upper()
+        motivo = str(raw.get("motivo") or "").strip()
+        if not nombre or not estado_codigo or not motivo:
+            return None
+        return cls(nombre=nombre, estado_codigo=estado_codigo, motivo=motivo)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"nombre": self.nombre, "estado_codigo": self.estado_codigo, "motivo": self.motivo}
+
+
+@dataclass(slots=True)
 class ParteDiarioV3State:
     etapa: ParteDiarioStage = "inicial"
     contacto_id: int | None = None
@@ -107,6 +163,10 @@ class ParteDiarioV3State:
     dia_semana_objetivo: int | None = None
     texto_fecha_inicial: str | None = None
     modo_pendientes: bool = False
+    asistencia_offset: int = 0
+    asistencia_opciones: list[ParteDiarioAsistenciaOption] = field(default_factory=list)
+    asistencia_registros: list[ParteDiarioAsistenciaRegistro] = field(default_factory=list)
+    asistencia_reemplazo_pendiente: dict[str, Any] = field(default_factory=dict)
     parte_state: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -124,6 +184,7 @@ class ParteDiarioV3State:
             "cierre",
             "continuar",
             "pendientes",
+            "novedades",
             "confirmar_salida",
             "menu",
             "finalizado",
@@ -141,6 +202,18 @@ class ParteDiarioV3State:
                 parsed = ParteDiarioFechaOption.from_dict(option)
                 if parsed is not None:
                     date_options.append(parsed)
+        asistencia_options: list[ParteDiarioAsistenciaOption] = []
+        for option in data.get("asistencia_opciones", []):
+            if isinstance(option, dict):
+                parsed = ParteDiarioAsistenciaOption.from_dict(option)
+                if parsed is not None:
+                    asistencia_options.append(parsed)
+        asistencia_registros: list[ParteDiarioAsistenciaRegistro] = []
+        for item in data.get("asistencia_registros", []):
+            if isinstance(item, dict):
+                parsed = ParteDiarioAsistenciaRegistro.from_dict(item)
+                if parsed is not None:
+                    asistencia_registros.append(parsed)
         return cls(
             etapa=etapa,  # type: ignore[arg-type]
             contacto_id=_parse_int(data.get("contacto_id")),
@@ -155,6 +228,10 @@ class ParteDiarioV3State:
             dia_semana_objetivo=_parse_int(data.get("dia_semana_objetivo")),
             texto_fecha_inicial=str(data.get("texto_fecha_inicial") or "").strip() or None,
             modo_pendientes=bool(data.get("modo_pendientes")),
+            asistencia_offset=_parse_int(data.get("asistencia_offset")) or 0,
+            asistencia_opciones=asistencia_options,
+            asistencia_registros=asistencia_registros,
+            asistencia_reemplazo_pendiente=dict(data.get("asistencia_reemplazo_pendiente") or {}),
             parte_state=dict(data.get("parte_state") or {}),
         )
 
@@ -173,6 +250,10 @@ class ParteDiarioV3State:
             "dia_semana_objetivo": self.dia_semana_objetivo,
             "texto_fecha_inicial": self.texto_fecha_inicial,
             "modo_pendientes": self.modo_pendientes,
+            "asistencia_offset": self.asistencia_offset,
+            "asistencia_opciones": [option.to_dict() for option in self.asistencia_opciones],
+            "asistencia_registros": [item.to_dict() for item in self.asistencia_registros],
+            "asistencia_reemplazo_pendiente": dict(self.asistencia_reemplazo_pendiente),
             "parte_state": dict(self.parte_state),
         }
 

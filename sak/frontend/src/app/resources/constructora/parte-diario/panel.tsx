@@ -913,6 +913,9 @@ const ParteDiarioPanelBody = ({
       pagination: { page: 1, perPage: 500 },
       sort: { field: "nombre", order: "ASC" },
       filter: projectFilterPayload,
+      meta: {
+        fields: "id,nombre,fecha_inicio,fecha_final,estado",
+      },
     },
   );
 
@@ -928,6 +931,10 @@ const ParteDiarioPanelBody = ({
       pagination: { page: 1, perPage: 2000 },
       sort: { field: "id", order: "ASC" },
       filter: assignmentFilterPayload,
+      meta: {
+        fields: "id,proyecto_id,contacto_id,activo,desde,hasta",
+        include: "contacto",
+      },
     },
   );
 
@@ -945,6 +952,10 @@ const ParteDiarioPanelBody = ({
       pagination: { page: 1, perPage: 2000 },
       sort: { field: "id", order: "ASC" },
       filter: nominaFilterPayload,
+      meta: {
+        fields: "id,idproyecto,encargado_contacto_id",
+        include: "encargado_contacto",
+      },
     },
   );
 
@@ -963,6 +974,9 @@ const ParteDiarioPanelBody = ({
       pagination: { page: 1, perPage: 1000 },
       sort: { field: "fechainicio", order: "ASC" },
       filter: tarjaFilterPayload,
+      meta: {
+        fields: "id,idproyecto,contacto_id,fechainicio,fechafinal,estado",
+      },
     },
     { enabled: Boolean(weekStartIso && weekEndIso) },
   );
@@ -1349,6 +1363,12 @@ export const ParteDiarioPanel = () => {
       pagination={false}
       sort={{ field: "fecha", order: "ASC" }}
       filter={{ fecha: { gte: rangeStartIso, lte: rangeEndIso } }}
+      queryOptions={{
+        meta: {
+          fields: "id,idproyecto,contacto_id,fecha,estado,descripcion,detalles",
+          include: "detalles",
+        },
+      }}
       containerClassName={LIST_CONTAINER_WIDE}
       showFilters={false}
       topContent={

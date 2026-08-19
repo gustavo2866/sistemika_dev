@@ -547,8 +547,10 @@ class GenericCRUD(Generic[M]):
             # Base query
             stmt = select(self.model)
             
-            # Apply auto-includes (including nested relationships)
-            stmt = self._apply_auto_includes(stmt)
+            # Si el cliente pide campos concretos, evitamos auto-includes pesados.
+            # Los includes explicitos siguen funcionando con el parametro include.
+            if not fields:
+                stmt = self._apply_auto_includes(stmt)
             
             # Aplicar joins para relaciones incluidas (soporta anidado)
             if include:
