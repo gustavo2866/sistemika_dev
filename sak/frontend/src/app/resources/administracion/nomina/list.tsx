@@ -68,7 +68,7 @@ const LIST_FILTERS = buildListFilters(
       type: "reference",
       referenceProps: {
         source: "idproyecto",
-        reference: "proyectos",
+        reference: "nominas/proyectos",
         label: "Proyecto",
       },
       selectProps: {

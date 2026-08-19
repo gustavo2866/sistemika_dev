@@ -20,6 +20,7 @@ ParteDiarioStage = Literal[
     "continuar",
     "pendientes",
     "novedades",
+    "apoyos",
     "confirmar_salida",
     "menu",
     "finalizado",
@@ -94,12 +95,40 @@ class ParteDiarioFechaOption:
 
 
 @dataclass(slots=True)
+class ParteDiarioApoyoProyectoOption:
+    opcion: int
+    proyecto_id: int
+    nombre: str
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioApoyoProyectoOption | None":
+        try:
+            opcion = int(raw.get("opcion") or 0)
+            proyecto_id = int(raw.get("proyecto_id") or 0)
+        except (TypeError, ValueError):
+            return None
+        nombre = str(raw.get("nombre") or "").strip()
+        if opcion <= 0 or proyecto_id <= 0 or not nombre:
+            return None
+        return cls(opcion=opcion, proyecto_id=proyecto_id, nombre=nombre)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "opcion": self.opcion,
+            "proyecto_id": self.proyecto_id,
+            "nombre": self.nombre,
+        }
+
+
+@dataclass(slots=True)
 class ParteDiarioAsistenciaOption:
     opcion: int
     idnomina: int
     nombre: str
     apellido: str
     nro_legajo: str | None = None
+    proyecto_id: int | None = None
+    nombre_proyecto: str | None = None
 
     @property
     def nombre_completo(self) -> str:
@@ -115,9 +144,19 @@ class ParteDiarioAsistenciaOption:
         nombre = str(raw.get("nombre") or "").strip()
         apellido = str(raw.get("apellido") or "").strip()
         nro_legajo = str(raw.get("nro_legajo") or "").strip() or None
+        proyecto_id = _parse_int(raw.get("proyecto_id"))
+        nombre_proyecto = str(raw.get("nombre_proyecto") or "").strip() or None
         if opcion <= 0 or idnomina <= 0 or not (nombre or apellido):
             return None
-        return cls(opcion=opcion, idnomina=idnomina, nombre=nombre, apellido=apellido, nro_legajo=nro_legajo)
+        return cls(
+            opcion=opcion,
+            idnomina=idnomina,
+            nombre=nombre,
+            apellido=apellido,
+            nro_legajo=nro_legajo,
+            proyecto_id=proyecto_id,
+            nombre_proyecto=nombre_proyecto,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -126,6 +165,8 @@ class ParteDiarioAsistenciaOption:
             "nombre": self.nombre,
             "apellido": self.apellido,
             "nro_legajo": self.nro_legajo,
+            "proyecto_id": self.proyecto_id,
+            "nombre_proyecto": self.nombre_proyecto,
         }
 
 
@@ -163,6 +204,9 @@ class ParteDiarioV3State:
     dia_semana_objetivo: int | None = None
     texto_fecha_inicial: str | None = None
     modo_pendientes: bool = False
+    apoyo_proyecto_id: int | None = None
+    apoyo_proyecto_nombre: str | None = None
+    opciones_apoyo_proyecto: list[ParteDiarioApoyoProyectoOption] = field(default_factory=list)
     asistencia_offset: int = 0
     asistencia_opciones: list[ParteDiarioAsistenciaOption] = field(default_factory=list)
     asistencia_registros: list[ParteDiarioAsistenciaRegistro] = field(default_factory=list)
@@ -185,6 +229,7 @@ class ParteDiarioV3State:
             "continuar",
             "pendientes",
             "novedades",
+            "apoyos",
             "confirmar_salida",
             "menu",
             "finalizado",
@@ -214,6 +259,12 @@ class ParteDiarioV3State:
                 parsed = ParteDiarioAsistenciaRegistro.from_dict(item)
                 if parsed is not None:
                     asistencia_registros.append(parsed)
+        apoyo_project_options: list[ParteDiarioApoyoProyectoOption] = []
+        for option in data.get("opciones_apoyo_proyecto", []):
+            if isinstance(option, dict):
+                parsed = ParteDiarioApoyoProyectoOption.from_dict(option)
+                if parsed is not None:
+                    apoyo_project_options.append(parsed)
         return cls(
             etapa=etapa,  # type: ignore[arg-type]
             contacto_id=_parse_int(data.get("contacto_id")),
@@ -228,6 +279,9 @@ class ParteDiarioV3State:
             dia_semana_objetivo=_parse_int(data.get("dia_semana_objetivo")),
             texto_fecha_inicial=str(data.get("texto_fecha_inicial") or "").strip() or None,
             modo_pendientes=bool(data.get("modo_pendientes")),
+            apoyo_proyecto_id=_parse_int(data.get("apoyo_proyecto_id")),
+            apoyo_proyecto_nombre=str(data.get("apoyo_proyecto_nombre") or "").strip() or None,
+            opciones_apoyo_proyecto=apoyo_project_options,
             asistencia_offset=_parse_int(data.get("asistencia_offset")) or 0,
             asistencia_opciones=asistencia_options,
             asistencia_registros=asistencia_registros,
@@ -250,6 +304,9 @@ class ParteDiarioV3State:
             "dia_semana_objetivo": self.dia_semana_objetivo,
             "texto_fecha_inicial": self.texto_fecha_inicial,
             "modo_pendientes": self.modo_pendientes,
+            "apoyo_proyecto_id": self.apoyo_proyecto_id,
+            "apoyo_proyecto_nombre": self.apoyo_proyecto_nombre,
+            "opciones_apoyo_proyecto": [option.to_dict() for option in self.opciones_apoyo_proyecto],
             "asistencia_offset": self.asistencia_offset,
             "asistencia_opciones": [option.to_dict() for option in self.asistencia_opciones],
             "asistencia_registros": [item.to_dict() for item in self.asistencia_registros],

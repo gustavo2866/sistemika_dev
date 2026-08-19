@@ -758,6 +758,64 @@ async def test_parte_diario_v3_novedades_usa_llm_si_motivo_no_matchea_local():
     assert parsed[0][1].abreviatura == "PER"
 
 
+def test_parte_diario_v3_apoyos_parsea_horas_opcionales():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    options = [
+        ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez"),
+        ParteDiarioAsistenciaOption(opcion=24, idnomina=124, nombre="Luis", apellido="Gomez"),
+    ]
+
+    parsed, error = process._parse_apoyo_entries("23 6hs y 24", options)
+
+    assert error is None
+    assert [(item[0].idnomina, item[1]) for item in parsed] == [(123, 6.0), (124, 9.0)]
+
+
+def test_parte_diario_v3_apoyos_aplica_presente_fuera_de_proyecto():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    draft = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-08")
+    state = ParteDiarioV3State(
+        etapa="apoyos",
+        proyecto_id=10,
+        apoyo_proyecto_id=20,
+        apoyo_proyecto_nombre="Francia",
+        parte_state=draft.to_dict(),
+    )
+    option = ParteDiarioAsistenciaOption(
+        opcion=23,
+        idnomina=123,
+        nombre="Juan",
+        apellido="Perez",
+        proyecto_id=20,
+        nombre_proyecto="Francia",
+    )
+
+    process._apply_apoyo_novedad(draft, state, option=option, horas=7.0, present_id=5)
+
+    assert draft.novedades[0].idnomina == 123
+    assert draft.novedades[0].estado_codigo == "P"
+    assert draft.novedades[0].idestado == 5
+    assert draft.novedades[0].horas == 7.0
+    assert draft.novedades[0].fuera_de_proyecto is True
+    assert draft.novedades[0].nombre_proyecto == "Francia"
+
+
+def test_parte_diario_v3_apoyos_acepta_comando_singular_y_match_aproximado():
+    assert parte_diario_handler._extract_apoyos_origin_text("apoyo sanitario") == "sanitario"
+    assert parte_diario_handler._apoyo_project_match_score("sanitario", "Instalacion sanitaria") >= 0.55
+
+
+def test_parte_diario_v3_apoyos_next_steps_no_pide_otra_novedad():
+    text = parte_diario_handler._apoyos_next_steps()
+
+    assert "Hay alguna otra novedad?" not in text
+    assert "Volvemos al parte diario" in text
+    assert "APOYO" in text
+    assert "NOVEDADES" in text
+    assert "GUARDAR" in text
+    assert "CERRAR" in text
+
+
 def test_parte_diario_v3_fecha_visible_pregunta_hoy(monkeypatch):
     monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 8, 9))
     draft = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-09")

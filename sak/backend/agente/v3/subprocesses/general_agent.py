@@ -60,7 +60,7 @@ Objetivo:
 Derivacion:
 - Si el usuario quiere pedir, comprar, agregar, modificar o consultar materiales, insumos, artefactos o equipos para obra,
   devolve type="handoff" y target_process="pedidoObra".
-- Si el usuario quiere reportar novedades, ausencias, horas, accidentes, permisos o parte diario,
+- Si el usuario quiere reportar novedades, apoyos, ausencias, horas, accidentes, permisos o parte diario,
   devolve type="handoff" y target_process="parteDiario".
 - Si el usuario pide "parte pendiente" o "partes pendientes", devolve type="handoff" y target_process="parteDiario".
 - Si el mensaje es saludo, duda general o ambiguo, devolve type="general_reply" y target_process=null.
@@ -75,6 +75,7 @@ Ejemplos:
 - "hola" => general_reply: "Hola. Puedo ayudarte con:\n1: PEDIDO OBRA\n2: PARTE DIARIO"
 - "necesito cemento" => handoff pedidoObra: "Perfecto. Decime que materiales necesitas y para que obra."
 - "quiero cargar novedades" => handoff parteDiario: "Perfecto. Pasame las novedades del dia."
+- "apoyos Francia" => handoff parteDiario: "Perfecto. Carguemos los apoyos."
 """.strip()
 
 

@@ -6,6 +6,7 @@ import logging
 import re
 import time
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 from types import SimpleNamespace
 
 from sqlmodel import Session, select
@@ -46,6 +47,7 @@ from agente.v3.subprocesses.parte_diario.resolver import (
     parse_estado_local,
 )
 from agente.v3.subprocesses.parte_diario.state import (
+    ParteDiarioApoyoProyectoOption,
     ParteDiarioAsistenciaOption,
     ParteDiarioAsistenciaRegistro,
     ParteDiarioFechaOption,
@@ -108,6 +110,9 @@ class ParteDiarioSubprocess:
 
         if state.etapa == "novedades":
             return await self._handle_asistencia(message, context, state)
+
+        if state.etapa == "apoyos":
+            return await self._handle_apoyos(message, context, state)
 
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(message, context, state)
@@ -1279,6 +1284,332 @@ class ParteDiarioSubprocess:
             return await self._handle_confirmar_cierre_validado(command, message, context, state)
         return await self._handle_parte_diario(message, context, state)
 
+    def _start_apoyos(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        text: str,
+    ) -> V3ProcessResult:
+        state.etapa = "apoyos"
+        state.apoyo_proyecto_id = None
+        state.apoyo_proyecto_nombre = None
+        state.opciones_apoyo_proyecto = []
+        state.asistencia_offset = 0
+        state.asistencia_opciones = []
+        state.asistencia_registros = []
+        state.asistencia_reemplazo_pendiente = {}
+        origin_text = _extract_apoyos_origin_text(text)
+        if origin_text:
+            return self._resolve_apoyo_project(context, state, origin_text)
+        return self._ask_apoyo_project(context, state)
+
+    async def _handle_apoyos(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        command = _normalize_command(message.text)
+        if command in {"salir"}:
+            return self._finish_apoyos(context, state)
+
+        if not state.apoyo_proyecto_id:
+            selected = self._parse_apoyo_project_selection(message.text, state)
+            if selected is not None:
+                state.apoyo_proyecto_id = selected.proyecto_id
+                state.apoyo_proyecto_nombre = selected.nombre
+                state.opciones_apoyo_proyecto = []
+                state.asistencia_offset = 0
+                return self._show_apoyos_page(context, state)
+            return self._resolve_apoyo_project(context, state, message.text or "")
+
+        if not state.asistencia_opciones:
+            return self._show_apoyos_page(context, state)
+
+        if command in {"no", "nadie", "ninguno", "ninguna"} or command.startswith("no "):
+            return self._advance_apoyos_page(context, state)
+
+        parsed, error = self._parse_apoyo_entries(message.text or "", state.asistencia_opciones)
+        if error:
+            reply = f"{error}\n\n{self._apoyos_current_page_text(state)}"
+            return self._active_result(context, state, reply, "apoyos_invalid_response")
+
+        with Session(engine) as session:
+            estados = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))._load_estados()
+        present = next((item for item in estados if item.abreviatura.upper() == "P"), None)
+        draft = state.draft()
+        for option, hours in parsed:
+            self._apply_apoyo_novedad(draft, state, option=option, horas=hours, present_id=present.id if present else None)
+        draft.sin_novedades_informado = False
+        draft.esperando = None
+        state.set_draft(draft)
+        return self._advance_apoyos_page(context, state, prefix="Cargado.")
+
+    def _ask_apoyo_project(self, context: V3ConversationContext, state: ParteDiarioV3State) -> V3ProcessResult:
+        state.etapa = "apoyos"
+        return self._active_result(context, state, "De que obra viene el apoyo?", "apoyos_project_required")
+
+    def _resolve_apoyo_project(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        text: str,
+    ) -> V3ProcessResult:
+        options = self._find_apoyo_projects(state, text)
+        if not options:
+            return self._active_result(
+                context,
+                state,
+                "No encontre una obra con nomina activa para ese apoyo. Indica el nombre de la obra origen.",
+                "apoyos_project_not_found",
+            )
+        if len(options) == 1:
+            selected = options[0]
+            state.apoyo_proyecto_id = selected.proyecto_id
+            state.apoyo_proyecto_nombre = selected.nombre
+            state.opciones_apoyo_proyecto = []
+            state.asistencia_offset = 0
+            return self._show_apoyos_page(context, state)
+        state.opciones_apoyo_proyecto = options
+        lines = ["A que obra de origen te referis?", ""]
+        lines.extend(f"{option.opcion}. {option.nombre}" for option in options)
+        lines.append("")
+        lines.append("Responde con el numero o el nombre.")
+        return self._active_result(context, state, "\n".join(lines), "apoyos_project_ambiguous")
+
+    def _parse_apoyo_project_selection(
+        self,
+        text: str | None,
+        state: ParteDiarioV3State,
+    ) -> ParteDiarioApoyoProyectoOption | None:
+        command = _normalize_command(text)
+        try:
+            selected_option = int(command)
+        except ValueError:
+            selected_option = None
+        if selected_option is not None:
+            return next((option for option in state.opciones_apoyo_proyecto if option.opcion == selected_option), None)
+        normalized = normalize_text(text)
+        matches = [
+            option for option in state.opciones_apoyo_proyecto
+            if _apoyo_project_match_score(normalized, option.nombre) >= 0.55
+        ]
+        return matches[0] if len(matches) == 1 else None
+
+    def _find_apoyo_projects(self, state: ParteDiarioV3State, text: str) -> list[ParteDiarioApoyoProyectoOption]:
+        normalized = normalize_text(text)
+        with Session(engine) as session:
+            rows = session.exec(
+                select(Proyecto.id, Proyecto.nombre)
+                .join(Nomina, Nomina.idproyecto == Proyecto.id)
+                .where(Proyecto.id != int(state.proyecto_id or 0))
+                .where(Proyecto.deleted_at.is_(None))
+                .where(Nomina.activo.is_(True))
+                .where(Nomina.deleted_at.is_(None))
+                .group_by(Proyecto.id, Proyecto.nombre)
+                .order_by(Proyecto.nombre.asc())
+            ).all()
+        scored_matches = [
+            (score, int(project_id), str(name or "").strip())
+            for project_id, name in rows
+            if (score := _apoyo_project_match_score(normalized, str(name or ""))) >= 0.55
+        ]
+        scored_matches.sort(key=lambda item: (-item[0], item[2].lower()))
+        matches = [(project_id, name) for _, project_id, name in scored_matches]
+        if not normalized:
+            matches = [(int(project_id), str(name or "").strip()) for project_id, name in rows]
+        return [
+            ParteDiarioApoyoProyectoOption(opcion=index, proyecto_id=project_id, nombre=name)
+            for index, (project_id, name) in enumerate(matches[:10], start=1)
+            if name
+        ]
+
+    def _show_apoyos_page(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        prefix: str | None = None,
+    ) -> V3ProcessResult:
+        nominas = self._load_apoyos_nomina(state)
+        total = len(nominas)
+        if total == 0:
+            apoyo_nombre = state.apoyo_proyecto_nombre or "la obra origen"
+            state.etapa = "carga"
+            self._clear_apoyos_state(state)
+            return self._active_result(
+                context,
+                state,
+                f"No hay nomina activa en {apoyo_nombre}.\n\n{_apoyos_next_steps()}",
+                "apoyos_empty_nomina",
+            )
+        if state.asistencia_offset >= total:
+            return self._finish_apoyos(context, state)
+        page = nominas[state.asistencia_offset : state.asistencia_offset + ASISTENCIA_PAGE_SIZE]
+        state.asistencia_opciones = [
+            ParteDiarioAsistenciaOption(
+                opcion=index,
+                idnomina=int(item.id),
+                nombre=item.nombre,
+                apellido=item.apellido,
+                nro_legajo=item.nro_legajo,
+                proyecto_id=state.apoyo_proyecto_id,
+                nombre_proyecto=state.apoyo_proyecto_nombre,
+            )
+            for index, item in enumerate(page, start=state.asistencia_offset + 1)
+            if item.id is not None
+        ]
+        reply = self._apoyos_page_text(state, total=total, prefix=prefix)
+        return self._active_result(context, state, reply, "apoyos_page")
+
+    def _advance_apoyos_page(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        *,
+        prefix: str | None = None,
+    ) -> V3ProcessResult:
+        state.asistencia_offset += ASISTENCIA_PAGE_SIZE
+        return self._show_apoyos_page(context, state, prefix=prefix)
+
+    def _finish_apoyos(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        registros = list(state.asistencia_registros)
+        self._clear_apoyos_state(state)
+        state.etapa = "carga"
+        if not registros:
+            reply = f"Apoyos finalizados.\n\nNo se cargaron apoyos.\n\n{_apoyos_next_steps()}"
+        else:
+            lines = ["Apoyos finalizados.", "", "Apoyos cargados:"]
+            lines.extend(f"- {item.nombre}: {item.motivo}" for item in registros)
+            lines.extend(["", _apoyos_next_steps()])
+            reply = "\n".join(lines)
+        return self._active_result(context, state, reply, "apoyos_finished")
+
+    def _clear_apoyos_state(self, state: ParteDiarioV3State) -> None:
+        state.apoyo_proyecto_id = None
+        state.apoyo_proyecto_nombre = None
+        state.opciones_apoyo_proyecto = []
+        state.asistencia_offset = 0
+        state.asistencia_opciones = []
+        state.asistencia_registros = []
+        state.asistencia_reemplazo_pendiente = {}
+
+    def _apoyos_current_page_text(self, state: ParteDiarioV3State) -> str:
+        nominas = self._load_apoyos_nomina(state)
+        return self._apoyos_page_text(state, total=len(nominas))
+
+    def _apoyos_page_text(
+        self,
+        state: ParteDiarioV3State,
+        *,
+        total: int,
+        prefix: str | None = None,
+    ) -> str:
+        start = state.asistencia_offset + 1
+        end = state.asistencia_offset + len(state.asistencia_opciones)
+        lines: list[str] = []
+        if prefix:
+            lines.extend([prefix, ""])
+        lines.append(f"Apoyos desde {state.apoyo_proyecto_nombre or 'obra origen'} - {state.nombre_obra or 'obra seleccionada'}")
+        lines.append(f"Empleados {start}-{end} de {total}:")
+        lines.append("")
+        for option in state.asistencia_opciones:
+            existing = self._find_asistencia_existing(state.draft(), option.idnomina)
+            suffix = f" - ya cargado: {existing.horas:g}h" if existing and existing.horas is not None else ""
+            lines.append(f"{option.opcion}. {option.nombre_completo}{suffix}")
+        lines.extend(
+            [
+                "",
+                "Quien trabajo en esta obra? Indica numero y horas opcionales, o responde NO.",
+                "SALIR para terminar apoyos.",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _load_apoyos_nomina(self, state: ParteDiarioV3State) -> list[Nomina]:
+        if not state.apoyo_proyecto_id:
+            return []
+        with Session(engine) as session:
+            return list(
+                session.exec(
+                    select(Nomina)
+                    .where(Nomina.idproyecto == int(state.apoyo_proyecto_id))
+                    .where(Nomina.activo.is_(True))
+                    .where(Nomina.deleted_at.is_(None))
+                    .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
+                ).all()
+            )
+
+    def _parse_apoyo_entries(self, text: str, options: list[ParteDiarioAsistenciaOption]):
+        normalized_text = re.sub(r"\s+y\s+(?=\d+\b)", "\n", text or "", flags=re.IGNORECASE)
+        parts = [part.strip() for part in re.split(r"[,;\n]+", normalized_text) if part.strip()]
+        if not parts:
+            return [], "No pude interpretar la respuesta. Indica numero y horas opcionales, por ejemplo: 2 8hs."
+        parsed = []
+        options_by_number = {option.opcion: option for option in options}
+        for part in parts:
+            match = re.match(r"^\s*(\d+)(?:[\).\:\-\s]+(.+?)\s*)?$", part)
+            if not match:
+                return [], "No pude identificar el numero de empleado. Indica numero y horas opcionales, por ejemplo: 2 8hs."
+            number = int(match.group(1))
+            detail = (match.group(2) or "").strip()
+            option = options_by_number.get(number)
+            if option is None:
+                available = ", ".join(str(item.opcion) for item in options)
+                return [], f"El numero {number} no esta en esta pagina. Opciones disponibles: {available}."
+            hours = _parse_hours_from_text(detail) if detail else 9.0
+            if hours is None:
+                return [], f"No pude identificar las horas en '{detail}'. Usa por ejemplo: {number} 8hs."
+            if hours < 0 or hours > 24:
+                return [], "Las horas deben estar entre 0 y 24."
+            parsed.append((option, hours))
+        return parsed, None
+
+    def _apply_apoyo_novedad(
+        self,
+        draft,
+        state: ParteDiarioV3State,
+        *,
+        option: ParteDiarioAsistenciaOption,
+        horas: float,
+        present_id: int | None,
+    ) -> None:
+        nombre = option.nombre_completo
+        novedad = NovedadPersonal(
+            nombre=nombre,
+            idnomina=option.idnomina,
+            idestado=present_id,
+            estado_codigo="P",
+            horas=horas,
+            descripcion=f"Apoyo desde {option.nombre_proyecto or state.apoyo_proyecto_nombre or 'otra obra'}",
+            fuera_de_proyecto=True,
+            nombre_proyecto=option.nombre_proyecto or state.apoyo_proyecto_nombre,
+            nro_legajo=option.nro_legajo,
+        )
+        existing = self._find_asistencia_existing(draft, option.idnomina)
+        if existing is None:
+            draft.novedades.append(novedad)
+        else:
+            existing.nombre = novedad.nombre
+            existing.idestado = novedad.idestado
+            existing.estado_codigo = novedad.estado_codigo
+            existing.horas = novedad.horas
+            existing.descripcion = novedad.descripcion
+            existing.fuera_de_proyecto = True
+            existing.nombre_proyecto = novedad.nombre_proyecto
+            existing.nro_legajo = novedad.nro_legajo
+        state.asistencia_registros.append(
+            ParteDiarioAsistenciaRegistro(
+                nombre=nombre,
+                estado_codigo="P",
+                motivo=f"{horas:g}h desde {novedad.nombre_proyecto or 'otra obra'}",
+            )
+        )
+
     def _start_asistencia(
         self,
         context: V3ConversationContext,
@@ -1645,6 +1976,8 @@ class ParteDiarioSubprocess:
 
             if command in {"novedades"}:
                 return self._start_asistencia(context, state)
+            if command in {"apoyo", "apoyos"} or command.startswith("apoyo ") or command.startswith("apoyos "):
+                return self._start_apoyos(context, state, message.text or "")
 
             contextual_query = await self._handle_active_contextual_query(message, context, state)
             if contextual_query is not None:
@@ -3395,3 +3728,62 @@ def _is_pending_parts_command(command: str) -> bool:
 def _is_show_nomina_command(command: str) -> bool:
     tokens = set(command.split())
     return "nomina" in tokens or "personal" in tokens or "empleados" in tokens or "empleado" in tokens
+
+
+def _extract_apoyos_origin_text(text: str | None) -> str:
+    normalized = str(text or "").strip()
+    match = re.match(r"^\s*apoyos?\s*(?:de|desde)?\s*(.*?)\s*$", normalized, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return match.group(1).strip()
+
+
+def _apoyos_next_steps() -> str:
+    return (
+        "Volvemos al parte diario. "
+        "Para cargar otro apoyo, escribi APOYO y la obra origen. "
+        "Para cargar faltas o accidentes, escribi NOVEDADES. "
+        "Para terminar el parte, responde GUARDAR o CERRAR."
+    )
+
+
+def _apoyo_project_match_score(query: str, project_name: str | None) -> float:
+    normalized_query = normalize_text(query)
+    normalized_name = normalize_text(project_name)
+    if not normalized_query or not normalized_name:
+        return 0.0
+    if normalized_query == normalized_name:
+        return 1.0
+    if normalized_query in normalized_name:
+        return 0.95
+    query_tokens = {token for token in normalized_query.split() if len(token) >= 3}
+    name_tokens = {token for token in normalized_name.split() if len(token) >= 3}
+    if query_tokens and query_tokens <= name_tokens:
+        return 0.9
+    if query_tokens and query_tokens & name_tokens:
+        return 0.75
+    token_similarity = max(
+        (
+            SequenceMatcher(None, query_token, name_token).ratio()
+            for query_token in query_tokens
+            for name_token in name_tokens
+        ),
+        default=0.0,
+    )
+    full_similarity = SequenceMatcher(None, normalized_query, normalized_name).ratio()
+    return max(token_similarity, full_similarity)
+
+
+def _parse_hours_from_text(text: str | None) -> float | None:
+    raw = str(text or "").strip().lower().replace(",", ".")
+    if not raw:
+        return 9.0
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:h|hs|hora|horas)\b", raw)
+    if not match:
+        match = re.search(r"\b(\d+(?:\.\d+)?)\b", raw)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
