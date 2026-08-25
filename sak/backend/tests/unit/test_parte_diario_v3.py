@@ -38,7 +38,11 @@ from agente.v3.subprocesses.parte_diario.process import (
 )
 from agente.v3.subprocesses.parte_diario.query_service import ParteDiarioQueryService
 from agente.v3.subprocesses.parte_diario.resolver import NominaResolver, normalize_text, parse_candidate_selection
-from agente.v3.subprocesses.parte_diario.state import ParteDiarioAsistenciaOption, ParteDiarioV3State
+from agente.v3.subprocesses.parte_diario.state import (
+    ParteDiarioAsistenciaOption,
+    ParteDiarioAsistenciaRegistro,
+    ParteDiarioV3State,
+)
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioFechaOption
 from app.models import (
     CRMContacto,
@@ -54,6 +58,7 @@ from app.models import (
     ProyectoEncargado,
     User,
 )
+from app.services.parte_diario_service import parte_diario_service
 from app.services.parte_diario_estado_service import seed_parte_diario_estados
 
 
@@ -739,6 +744,7 @@ async def test_parte_diario_v3_novedades_parsea_se_accidento():
     parsed, error = await process._parse_asistencia_entries("23 se accidento", options, estados)
 
     assert error is None
+    assert parsed[0][5] is None
     assert parsed[0][0].idnomina == 123
     assert parsed[0][1].abreviatura == "ACC"
 
@@ -758,60 +764,487 @@ async def test_parte_diario_v3_novedades_usa_llm_si_motivo_no_matchea_local():
     assert parsed[0][1].abreviatura == "PER"
 
 
-def test_parte_diario_v3_apoyos_parsea_horas_opcionales():
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_parsea_trabajo_con_horas():
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    options = [
-        ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez"),
-        ParteDiarioAsistenciaOption(opcion=24, idnomina=124, nombre="Luis", apellido="Gomez"),
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+    estados = [
+        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
     ]
 
-    parsed, error = process._parse_apoyo_entries("23 6hs y 24", options)
+    parsed, error = await process._parse_asistencia_entries("23 trabajo 10hs", options, estados)
 
     assert error is None
-    assert [(item[0].idnomina, item[1]) for item in parsed] == [(123, 6.0), (124, 9.0)]
+    assert parsed[0][0].idnomina == 123
+    assert parsed[0][1].abreviatura == "P"
+    assert parsed[0][2] == "trabajo 10hs"
+    assert parsed[0][3] == 10.0
 
 
-def test_parte_diario_v3_apoyos_aplica_presente_fuera_de_proyecto():
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_parsea_trabajo_en_otra_obra_sin_horas():
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    draft = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-08")
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+    estados = [
+        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
+    ]
+
+    parsed, error = await process._parse_asistencia_entries("23 fue a Francia 118", options, estados)
+
+    assert error is None
+    assert parsed[0][0].idnomina == 123
+    assert parsed[0][1].abreviatura == "P"
+    assert parsed[0][3] == 9.0
+    assert parsed[0][4] == "francia 118"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_parsea_trabajo_en_otra_obra_con_horas():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+    estados = [
+        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
+    ]
+
+    parsed, error = await process._parse_asistencia_entries("23 trabajo en Francia 118 7hs", options, estados)
+
+    assert error is None
+    assert parsed[0][1].abreviatura == "P"
+    assert parsed[0][3] == 7.0
+    assert parsed[0][4] == "francia 118"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_resuelve_id_de_obra_destino():
+    class ProbeProcess(ParteDiarioSubprocess):
+        def _resolve_asistencia_external_project(self, state, project_text):
+            return 200, "Francia 118", None
+
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+    estados = [
+        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
+        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
+    ]
+
+    parsed, error = await process._parse_asistencia_entries(
+        "23 fue a Francia 118",
+        options,
+        estados,
+        state=ParteDiarioV3State(proyecto_id=100),
+    )
+
+    assert error is None
+    assert parsed[0][4] == "Francia 118"
+    assert parsed[0][5] == 200
+
+
+def test_parte_diario_v3_listado_aplica_presente_con_horas():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    state = ParteDiarioV3State(etapa="novedades")
+    option = ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")
+
+    process._apply_asistencia_novedad(
+        draft,
+        state,
+        option=option,
+        estado_id=1,
+        estado_codigo="P",
+        motivo="trabajo 10hs",
+        horas=10.0,
+    )
+
+    assert draft.novedades[0].estado_codigo == "P"
+    assert draft.novedades[0].horas == 10.0
+    assert draft.novedades[0].descripcion == "trabajo 10hs"
+    assert state.asistencia_registros[0].horas == 10.0
+
+
+def test_parte_diario_v3_listado_aplica_presente_en_otra_obra():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    state = ParteDiarioV3State(etapa="novedades")
+    option = ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")
+
+    process._apply_asistencia_novedad(
+        draft,
+        state,
+        option=option,
+        estado_id=1,
+        estado_codigo="P",
+        motivo="fue a Francia 118",
+        horas=9.0,
+        fuera_de_proyecto=True,
+        nombre_proyecto="Francia 118",
+    )
+
+    assert draft.novedades[0].estado_codigo == "P"
+    assert draft.novedades[0].horas == 9.0
+    assert draft.novedades[0].fuera_de_proyecto is True
+    assert draft.novedades[0].nombre_proyecto == "Francia 118"
+    assert draft.novedades[0].idproyecto_destino is None
+
+
+def test_parte_diario_v3_carga_agrega_empleado_actual_en_otra_obra_sin_horas():
+    state = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    nominas = [
+        NominaItem(
+            idnomina=123,
+            nombre="Juan",
+            apellido="Perez",
+            idproyecto=100,
+            nombre_proyecto="Obra actual",
+        )
+    ]
+    estados = [EstadoItem(id=1, abreviatura="P", nombre="PRESENTE")]
+
+    result = execute_plan(
+        state,
+        TurnPlan(
+            operations=[
+                ParteDiarioOperation(
+                    type="agregar_novedad",
+                    nombre="Perez",
+                    fuera_de_proyecto=True,
+                    nombre_proyecto="Francia 118",
+                )
+            ]
+        ),
+        nominas,
+        nominas,
+        estados,
+    )
+
+    assert result.errors == []
+    assert result.next_state.novedades[0].estado_codigo == "P"
+    assert result.next_state.novedades[0].horas == 9.0
+    assert result.next_state.novedades[0].fuera_de_proyecto is True
+    assert result.next_state.novedades[0].nombre_proyecto == "Francia 118"
+
+
+def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
+    class FakeResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    class FakeSession:
+        def exec(self, query):
+            return FakeResult(
+                [
+                    SimpleNamespace(id=200, nombre="Francia 118"),
+                    SimpleNamespace(id=201, nombre="Catamarca 50"),
+                ]
+            )
+
+    process = ParteDiarioProcess(session=FakeSession(), llm_client=FakeParteDiarioLLM(TurnPlan()))
+    plan = TurnPlan(
+        operations=[
+            ParteDiarioOperation(
+                type="agregar_novedad",
+                nombre="Perez",
+                fuera_de_proyecto=True,
+                nombre_proyecto="franci",
+            )
+        ]
+    )
+
+    error = process._resolve_external_project_operations(plan, current_project_id=100)
+
+    assert error is None
+    assert plan.operations[0].idproyecto_destino == 200
+    assert plan.operations[0].nombre_proyecto == "Francia 118"
+    assert plan.operations[0].estado_codigo == "P"
+
+
+def test_parte_diario_v3_persistencia_deriva_empleado_a_obra_destino():
+    class FakeSession:
+        def get(self, model, item_id):
+            if model is Nomina and item_id == 123:
+                return SimpleNamespace(idproyecto=100)
+            return None
+
+    current_items, destination_items = parte_diario_service._split_destination_novedades(
+        FakeSession(),
+        [
+            {
+                "nombre": "Perez, Pedro",
+                "idnomina": 123,
+                "idestado": 1,
+                "estado_codigo": "P",
+                "horas": None,
+                "descripcion": None,
+                "fuera_de_proyecto": True,
+                "nombre_proyecto": "Francia 118",
+                "idproyecto_destino": 200,
+            }
+        ],
+        idproyecto=100,
+        fecha=date(2026, 8, 21),
+    )
+
+    assert current_items[0]["idnomina"] == 123
+    assert current_items[0]["horas"] == 0.0
+    assert current_items[0]["fuera_de_proyecto"] is True
+    assert current_items[0]["descripcion"] == "Trabajo en Francia 118"
+    assert destination_items[0]["idproyecto"] == 200
+    assert destination_items[0]["idnomina"] == 123
+    assert destination_items[0]["horas"] == 9.0
+    parte_diario_service._validate_novedades(
+        current_items,
+        present_id=1,
+        require_close_rules=True,
+    )
+
+
+def test_parte_diario_v3_persistencia_actualiza_parte_destino_confirmado(monkeypatch):
+    existing_destination = SimpleNamespace(
+        id=500,
+        estado=EstadoParteDiario.CONFIRMADO,
+        mensaje_origen_id=None,
+    )
+
+    class FakeSession:
+        def __init__(self):
+            self.added = []
+            self.exec_calls = 0
+
+        def get(self, model, item_id):
+            return None
+
+        def add(self, item):
+            self.added.append(item)
+
+        def flush(self):
+            return None
+
+        def exec(self, query):
+            self.exec_calls += 1
+
+    def fake_resolve_parte(session, result, *, idproyecto, fecha, contacto_id):
+        return existing_destination
+
+    fake_session = FakeSession()
+    monkeypatch.setattr(parte_diario_service, "_resolve_parte", fake_resolve_parte)
+
+    parte_diario_service._materialize_destination_novedades(
+        fake_session,
+        [
+            {
+                "idproyecto": 200,
+                "idnomina": 123,
+                "idestado": 1,
+                "estado_codigo": "P",
+                "horas": 8.0,
+                "descripcion": "Trabajo derivado",
+            }
+        ],
+        result={"type": "parte_diario_reply"},
+        fecha=date(2026, 8, 22),
+        contacto_id=106,
+        target_estado=EstadoParteDiario.CONFIRMADO,
+        mensaje_id=900,
+    )
+
+    details = [item for item in fake_session.added if isinstance(item, ParteDiarioDetalle)]
+    assert existing_destination.mensaje_origen_id == 900
+    assert len(details) == 1
+    assert details[0].parte_diario_id == 500
+    assert details[0].idnomina == 123
+    assert details[0].horas == Decimal("8.0")
+
+
+def test_parte_diario_v3_listado_muestra_empleado_informado():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    draft = ParteDiarioState(
+        oportunidad_id=10,
+        idproyecto=100,
+        fecha="2026-08-22",
+        novedades=[
+            NovedadPersonal(
+                nombre="Perez, Juan",
+                idnomina=123,
+                estado_codigo="P",
+                horas=10.0,
+                descripcion="trabajo 10hs",
+            ),
+            NovedadPersonal(
+                nombre="Gomez, Ana",
+                idnomina=124,
+                estado_codigo="ENF",
+                horas=0,
+                descripcion="enfermo",
+            ),
+        ],
+    )
     state = ParteDiarioV3State(
-        etapa="apoyos",
-        proyecto_id=10,
-        apoyo_proyecto_id=20,
-        apoyo_proyecto_nombre="Francia",
+        etapa="novedades",
+        parte_state=draft.to_dict(),
+        asistencia_opciones=[
+            ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez"),
+            ParteDiarioAsistenciaOption(opcion=24, idnomina=124, nombre="Ana", apellido="Gomez"),
+        ],
+    )
+
+    text = process._asistencia_page_text(state, total=2)
+
+    assert "23. Perez, Juan - informado: P, 10h" in text
+    assert "24. Gomez, Ana - informado: ENF, motivo: enfermo" in text
+    assert "ya cargado" not in text
+
+
+def test_parte_diario_v3_novedades_finaliza_con_resumen_de_carga():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    draft = ParteDiarioState(
+        oportunidad_id=10,
+        idproyecto=100,
+        fecha="2026-08-22",
+        novedades=[
+            NovedadPersonal(
+                nombre="Cardenas, Ignacio",
+                idnomina=123,
+                idestado=2,
+                estado_codigo="FAL",
+                horas=0,
+                descripcion="falto Cardenas",
+            )
+        ],
+    )
+    state = ParteDiarioV3State(
+        etapa="novedades",
+        contacto_id=5,
+        oportunidad_id=10,
+        proyecto_id=100,
+        nombre_obra="Francia 118",
+        asistencia_registros=[
+            ParteDiarioAsistenciaRegistro(
+                nombre="Cardenas, Ignacio",
+                estado_codigo="FAL",
+                motivo="falto Cardenas",
+            )
+        ],
         parte_state=draft.to_dict(),
     )
-    option = ParteDiarioAsistenciaOption(
-        opcion=23,
-        idnomina=123,
-        nombre="Juan",
-        apellido="Perez",
-        proyecto_id=20,
-        nombre_proyecto="Francia",
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
     )
 
-    process._apply_apoyo_novedad(draft, state, option=option, horas=7.0, present_id=5)
+    result = process._finish_asistencia(context, state)
 
-    assert draft.novedades[0].idnomina == 123
-    assert draft.novedades[0].estado_codigo == "P"
-    assert draft.novedades[0].idestado == 5
-    assert draft.novedades[0].horas == 7.0
-    assert draft.novedades[0].fuera_de_proyecto is True
-    assert draft.novedades[0].nombre_proyecto == "Francia"
+    assert result.context.active_process == "parteDiario"
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.metadata["status"] == "asistencia_finished"
+    assert "Parte diario actualizado:" in (result.reply_text or "")
+    assert "Fecha: sabado 22/08/2026" in (result.reply_text or "")
+    assert "Obra: Francia 118" in (result.reply_text or "")
+    assert "Cardenas, Ignacio: FAL, motivo: falto Cardenas" in (result.reply_text or "")
+    assert "Hay alguna otra novedad?" in (result.reply_text or "")
+    assert "Novedades finalizadas" not in (result.reply_text or "")
+    assert "Faltas cargadas" not in (result.reply_text or "")
 
 
-def test_parte_diario_v3_apoyos_acepta_comando_singular_y_match_aproximado():
-    assert parte_diario_handler._extract_apoyos_origin_text("apoyo sanitario") == "sanitario"
-    assert parte_diario_handler._apoyo_project_match_score("sanitario", "Instalacion sanitaria") >= 0.55
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_inicia_auxiliar_de_novedades():
+    class ProbeProcess(ParteDiarioSubprocess):
+        def _show_asistencia_page(self, context, state, *, prefix=None):
+            return self._active_result(context, state, "Listado de prueba", "asistencia_page")
+
+    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": 5,
+            "oportunidad_id": 10,
+            "proyecto_id": 100,
+            "nombre_obra": "Francia 118",
+            "parte_state": draft.to_dict(),
+        },
+    )
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("listado"), context)
+
+    assert result.context.process_state["etapa"] == "novedades"
+    assert result.metadata["status"] == "asistencia_page"
+    assert result.reply_text == "Listado de prueba"
 
 
-def test_parte_diario_v3_apoyos_next_steps_no_pide_otra_novedad():
+@pytest.mark.asyncio
+async def test_parte_diario_v3_apoyo_command_no_inicia_modalidad():
+    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    captured = {}
+
+    class ProbeProcess(ParteDiarioSubprocess):
+        async def _handle_parte_diario(self, message, context, state, forced_text=None, extra_result_metadata=None):
+            captured["text"] = message.text
+            captured["etapa"] = state.etapa
+            return self._active_result(context, state, "flujo carga", "carga_normal")
+
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    context = V3ConversationContext(
+        conversation_id="conv-apoyo-disabled",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": 1,
+            "oportunidad_id": 10,
+            "proyecto_id": 100,
+            "nombre_obra": "Obra Centro",
+            "parte_state": draft.to_dict(),
+        },
+    )
+
+    result = await process.handle(_message("apoyo Francia"), context)
+
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.metadata["status"] == "carga_normal"
+    assert captured == {"text": "apoyo Francia", "etapa": "carga"}
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_apoyos_state_vuelve_a_carga():
+    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    context = V3ConversationContext(
+        conversation_id="conv-apoyos-old-state",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "apoyos",
+            "contacto_id": 1,
+            "oportunidad_id": 10,
+            "proyecto_id": 100,
+            "nombre_obra": "Obra Centro",
+            "apoyo_proyecto_id": 20,
+            "apoyo_proyecto_nombre": "Francia",
+            "parte_state": draft.to_dict(),
+        },
+    )
+
+    result = await process.handle(_message("23 8hs"), context)
+
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["apoyo_proyecto_id"] is None
+    assert result.metadata["status"] == "apoyos_disabled"
+    assert "La modalidad APOYO ya no esta disponible" in (result.reply_text or "")
+
+
+def test_parte_diario_v3_apoyos_next_steps_no_ofrece_modalidad_apoyo():
     text = parte_diario_handler._apoyos_next_steps()
 
     assert "Hay alguna otra novedad?" not in text
     assert "Volvemos al parte diario" in text
-    assert "APOYO" in text
-    assert "NOVEDADES" in text
+    assert "APOYO" not in text
+    assert "trabajo en otra obra" in text
+    assert "LISTADO" in text
     assert "GUARDAR" in text
     assert "CERRAR" in text
 

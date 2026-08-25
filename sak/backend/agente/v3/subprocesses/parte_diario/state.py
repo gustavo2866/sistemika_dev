@@ -175,6 +175,7 @@ class ParteDiarioAsistenciaRegistro:
     nombre: str
     estado_codigo: str
     motivo: str
+    horas: float | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioAsistenciaRegistro | None":
@@ -183,10 +184,10 @@ class ParteDiarioAsistenciaRegistro:
         motivo = str(raw.get("motivo") or "").strip()
         if not nombre or not estado_codigo or not motivo:
             return None
-        return cls(nombre=nombre, estado_codigo=estado_codigo, motivo=motivo)
+        return cls(nombre=nombre, estado_codigo=estado_codigo, motivo=motivo, horas=_parse_float(raw.get("horas")))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"nombre": self.nombre, "estado_codigo": self.estado_codigo, "motivo": self.motivo}
+        return {"nombre": self.nombre, "estado_codigo": self.estado_codigo, "motivo": self.motivo, "horas": self.horas}
 
 
 @dataclass(slots=True)
@@ -344,5 +345,14 @@ def _parse_int(value: Any) -> int | None:
         return None
     try:
         return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None

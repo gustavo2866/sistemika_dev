@@ -37,6 +37,7 @@ from agente.v3.subprocesses.parte_diario.resolver import (
     normalize_text,
     parse_candidate_selection,
     parse_estado_local,
+    project_match_score,
     resolve_estado_codigo,
 )
 from app.models import (
@@ -214,6 +215,10 @@ class ParteDiarioProcess:
             if date_error:
                 return self._simple_reply(date_error, keep_active=False)
 
+        project_error = self._resolve_external_project_operations(plan, int(project.id))
+        if project_error:
+            return self._state_reply(state, project_error)
+
         nominas_visibles = (
             self._load_nominas_for_display(
                 project.id,
@@ -238,6 +243,57 @@ class ParteDiarioProcess:
                 result.reply = renderer.consulta(result.next_state)
             result.keep_active = False
         return self._from_execution(result, plan=plan)
+
+    def _resolve_external_project_operations(self, plan: TurnPlan, current_project_id: int) -> str | None:
+        for operation in plan.operations:
+            if operation.type not in {"agregar_novedad", "modificar_novedad"}:
+                continue
+            if not operation.fuera_de_proyecto and not operation.nombre_proyecto:
+                continue
+            if not str(operation.nombre_proyecto or "").strip():
+                return "Indica a que obra fue a trabajar."
+            resolved_project_id, resolved_project_name, error = self._resolve_external_project_name(
+                operation.nombre_proyecto,
+                current_project_id,
+            )
+            if error:
+                return error
+            operation.fuera_de_proyecto = True
+            operation.idproyecto_destino = resolved_project_id
+            operation.nombre_proyecto = resolved_project_name
+            operation.estado_codigo = operation.estado_codigo or "P"
+        return None
+
+    def _resolve_external_project_name(
+        self,
+        project_text: str | None,
+        current_project_id: int,
+    ) -> tuple[int | None, str | None, str | None]:
+        query = str(project_text or "").strip()
+        if not query:
+            return None, None, "Indica a que obra fue a trabajar."
+        projects = list(
+            self._session.exec(
+                select(Proyecto)
+                .where(Proyecto.deleted_at.is_(None))
+                .where(Proyecto.id != current_project_id)
+                .order_by(Proyecto.nombre.asc())
+            ).all()
+        )
+        matches = [
+            (project_match_score(query, project.nombre), project)
+            for project in projects
+        ]
+        matches = [(score, project) for score, project in matches if score >= 0.55]
+        matches.sort(key=lambda pair: (-pair[0], str(pair[1].nombre or "")))
+        if not matches:
+            return None, None, f"No encontre la obra destino '{query}'. Indica el nombre de la obra."
+        best_score, best_project = matches[0]
+        close = [project for score, project in matches if best_score - score <= 0.05]
+        if len(close) > 1:
+            names = ", ".join(str(project.nombre) for project in close[:3])
+            return None, None, f"La obra destino '{query}' es ambigua. Opciones: {names}."
+        return int(best_project.id), str(best_project.nombre or "").strip(), None
 
     def _handle_exact_confirmation(
         self,

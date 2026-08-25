@@ -18,6 +18,33 @@ def normalize_text(value: str | None) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def project_match_score(query: str | None, project_name: str | None) -> float:
+    normalized_query = normalize_text(query)
+    normalized_name = normalize_text(project_name)
+    if not normalized_query or not normalized_name:
+        return 0.0
+    if normalized_query == normalized_name:
+        return 1.0
+    if normalized_query in normalized_name:
+        return 0.95
+    query_tokens = {token for token in normalized_query.split() if len(token) >= 3}
+    name_tokens = {token for token in normalized_name.split() if len(token) >= 3}
+    if query_tokens and query_tokens <= name_tokens:
+        return 0.9
+    if query_tokens and query_tokens & name_tokens:
+        return 0.75
+    token_similarity = max(
+        (
+            SequenceMatcher(None, query_token, name_token).ratio()
+            for query_token in query_tokens
+            for name_token in name_tokens
+        ),
+        default=0.0,
+    )
+    full_similarity = SequenceMatcher(None, normalized_query, normalized_name).ratio()
+    return max(token_similarity, full_similarity)
+
+
 def _repair_common_mojibake(value: str) -> str:
     if "Ã" not in value and "Â" not in value:
         return value
@@ -169,6 +196,8 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
         "lluvia": "LLV",
         "feriado": "FER",
         "presente": "P",
+        "trabajo": "P",
+        "vino": "P",
     }
     alias = aliases.get(normalized)
     if alias is None:

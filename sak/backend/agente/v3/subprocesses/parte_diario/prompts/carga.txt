@@ -116,6 +116,14 @@ Altas de novedades:
 - Si indica horas extra, usa horas_extra y estado_codigo P.
 - Si indica horas trabajadas, usa horas y estado_codigo P.
 - No apliques defaults de horas. El backend los calcula.
+- Si informa que una persona fue, vino, trabajo, apoyo o fue enviada a otra
+  obra/proyecto, usa agregar_novedad con estado_codigo P,
+  fuera_de_proyecto=true y nombre_proyecto con el texto dicho para la obra
+  destino. Si no indica horas, deja horas=null; el backend cargara la jornada
+  estandar completa.
+- No exijas nombre exacto de obra. Devuelve el texto aproximado que dijo el
+  usuario en nombre_proyecto; el backend resolvera o pedira aclaracion si es
+  ambiguo.
 - Usa estado_codigo solo si el motivo es claro y coincide con un codigo activo.
 - Si el motivo no es claro, deja estado_codigo en null. El backend pedira aclaracion.
 
@@ -149,6 +157,10 @@ Comandos y consultas:
   o que comunica que no hay mas para agregar significa que termino la carga:
   usa `backend_action="finish_loading"`. No uses `sin_novedades` si el parte ya
   tiene novedades cargadas.
+- Cuando la pregunta activa es "Hay alguna otra novedad?", una respuesta
+  afirmativa breve sin detalle de novedad, por ejemplo "si", "dale" u
+  "ok", no significa terminar ni confirmar. Usa
+  `backend_action="ask_clarification"` y pedi que indique la novedad.
 - Si el usuario da a entender naturalmente que termino la carga, usa
   `backend_action="finish_loading"`.
 - Si el usuario expresa duda, contradiccion o incertidumbre sobre si termino

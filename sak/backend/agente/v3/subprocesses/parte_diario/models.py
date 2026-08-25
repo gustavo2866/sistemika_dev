@@ -71,6 +71,7 @@ class NovedadPersonal:
     descripcion: str | None = None
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
+    idproyecto_destino: int | None = None
     nro_legajo: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,6 +90,7 @@ class NovedadPersonal:
             descripcion=raw.get("descripcion"),
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nombre_proyecto=raw.get("nombre_proyecto"),
+            idproyecto_destino=raw.get("idproyecto_destino"),
             nro_legajo=raw.get("nro_legajo"),
         )
 
@@ -108,6 +110,7 @@ class PendienteAmbiguo:
     idnomina_resuelto: int | None = None
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
+    idproyecto_destino: int | None = None
     intentos_estado: int = 0
     pagina_candidatos: int = 0
     lista_candidatos_mostrada: bool = False
@@ -150,6 +153,7 @@ class PendienteAmbiguo:
             idnomina_resuelto=raw.get("idnomina_resuelto"),
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nombre_proyecto=raw.get("nombre_proyecto"),
+            idproyecto_destino=raw.get("idproyecto_destino"),
             intentos_estado=int(raw.get("intentos_estado") or 0),
             pagina_candidatos=int(raw.get("pagina_candidatos") or 0),
             lista_candidatos_mostrada=bool(raw.get("lista_candidatos_mostrada")),
@@ -253,6 +257,9 @@ class ParteDiarioOperation:
     horas: float | None = None
     horas_extra: float | None = None
     descripcion: str | None = None
+    fuera_de_proyecto: bool = False
+    nombre_proyecto: str | None = None
+    idproyecto_destino: int | None = None
     fecha: str | None = None
     requested: str | None = None
     reply: str | None = None

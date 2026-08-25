@@ -223,7 +223,11 @@ def _agregar_novedad(
         return "No pude identificar a que persona corresponde una novedad."
     if not _has_concrete_attendance_update(operation):
         return f"No pude identificar la novedad para {nombre}. Indica si falto, trabajo horas o el motivo."
+    if operation.fuera_de_proyecto and not str(operation.nombre_proyecto or "").strip():
+        return f"Indica a que obra fue a trabajar {nombre}."
     estado = resolve_estado_codigo(operation.estado_codigo, estados)
+    if estado is None and operation.fuera_de_proyecto:
+        estado = resolve_estado_codigo("P", estados)
     if estado is None and (
         operation.horas_extra is not None
         or (operation.horas is not None and operation.horas >= 9)
@@ -241,6 +245,7 @@ def _agregar_novedad(
                 horas=operation.horas,
                 horas_extra=operation.horas_extra,
                 descripcion=operation.descripcion,
+                idproyecto_destino=operation.idproyecto_destino,
                 nombre_no_encontrado=True,
             )
         )
@@ -270,6 +275,7 @@ def _agregar_novedad(
                 candidatos_externos=resolved.candidatos_externos,
                 mostrando_candidatos_externos=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
                 fuera_de_proyecto=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
+                idproyecto_destino=operation.idproyecto_destino,
             )
         )
         state.sin_novedades_informado = False
@@ -286,17 +292,22 @@ def _agregar_novedad(
                 horas_extra=operation.horas_extra,
                 descripcion=operation.descripcion,
                 idnomina_resuelto=item.idnomina,
+                idproyecto_destino=operation.idproyecto_destino,
             )
         )
         state.sin_novedades_informado = False
         return None
-    normalized_hours = normalizar_horas(
-        horas=operation.horas,
-        horas_extra=operation.horas_extra,
-        estado_codigo=estado.abreviatura if estado else None,
-        fuera_de_proyecto=item.fuera_de_proyecto,
+    novedad = _build_novedad(
+        nombre,
+        item,
+        estado,
+        operation.horas,
+        operation.horas_extra,
+        operation.descripcion,
+        fuera_de_proyecto=operation.fuera_de_proyecto,
+        nombre_proyecto=operation.nombre_proyecto,
+        idproyecto_destino=operation.idproyecto_destino,
     )
-    novedad = _build_novedad(nombre, item, estado, operation.horas, operation.horas_extra, operation.descripcion)
     _registrar_o_encolar_conflicto(state, novedad)
     state.sin_novedades_informado = False
     return None
@@ -309,7 +320,13 @@ def _build_novedad(
     horas: float | None,
     horas_extra: float | None,
     descripcion: str | None,
+    fuera_de_proyecto: bool = False,
+    nombre_proyecto: str | None = None,
+    idproyecto_destino: int | None = None,
 ) -> NovedadPersonal:
+    external = nomina.fuera_de_proyecto or fuera_de_proyecto
+    project_name = nombre_proyecto if fuera_de_proyecto else nomina.nombre_proyecto
+    destination_id = idproyecto_destino if fuera_de_proyecto else None
     return NovedadPersonal(
         nombre=nomina.nombre_completo or nombre,
         idnomina=nomina.idnomina,
@@ -319,11 +336,12 @@ def _build_novedad(
             horas=horas,
             horas_extra=horas_extra,
             estado_codigo=estado.abreviatura if estado else None,
-            fuera_de_proyecto=nomina.fuera_de_proyecto,
+            fuera_de_proyecto=external,
         ),
         descripcion=descripcion,
-        fuera_de_proyecto=nomina.fuera_de_proyecto,
-        nombre_proyecto=nomina.nombre_proyecto,
+        fuera_de_proyecto=external,
+        nombre_proyecto=project_name,
+        idproyecto_destino=destination_id,
         nro_legajo=nomina.nro_legajo,
     )
 
@@ -377,6 +395,9 @@ def registrar_pendiente_resuelto(
         pending.horas,
         pending.horas_extra,
         pending.descripcion,
+        fuera_de_proyecto=pending.fuera_de_proyecto,
+        nombre_proyecto=pending.nombre_proyecto,
+        idproyecto_destino=pending.idproyecto_destino,
     )
     _registrar_o_encolar_conflicto(state, novedad)
 
@@ -397,6 +418,7 @@ def registrar_pendiente_sin_validar(state: ParteDiarioState, pending: PendienteA
             descripcion=pending.descripcion,
             fuera_de_proyecto=pending.fuera_de_proyecto,
             nombre_proyecto=pending.nombre_proyecto,
+            idproyecto_destino=pending.idproyecto_destino,
         )
     )
 
@@ -505,13 +527,16 @@ def _modificar_novedad(
             return _agregar_novedad(state, operation, nominas_proyecto, nominas_completas, estados)
         return f"No encontre una unica novedad para {operation.nombre or 'esa persona'}."
     estado = resolve_estado_codigo(operation.estado_codigo, estados) if operation.estado_codigo else None
+    if estado is None and operation.fuera_de_proyecto:
+        estado = resolve_estado_codigo("P", estados)
     proposed_code = estado.abreviatura if estado else novedad.estado_codigo
+    proposed_external = novedad.fuera_de_proyecto or operation.fuera_de_proyecto
     proposed_hours = (
         normalizar_horas(
             horas=operation.horas,
             horas_extra=operation.horas_extra,
             estado_codigo=proposed_code,
-            fuera_de_proyecto=novedad.fuera_de_proyecto,
+            fuera_de_proyecto=proposed_external,
         )
         if operation.horas is not None or operation.horas_extra is not None or estado is not None
         else novedad.horas
@@ -525,6 +550,10 @@ def _modificar_novedad(
         novedad.horas = proposed_hours
     if operation.descripcion:
         novedad.descripcion = operation.descripcion
+    if operation.fuera_de_proyecto:
+        novedad.fuera_de_proyecto = True
+        novedad.nombre_proyecto = operation.nombre_proyecto
+        novedad.idproyecto_destino = operation.idproyecto_destino
     state.sin_novedades_informado = False
     return None
 
@@ -535,6 +564,8 @@ def _modificar_pendiente(
     estados: list[EstadoItem],
 ) -> str | None:
     estado = resolve_estado_codigo(operation.estado_codigo, estados) if operation.estado_codigo else None
+    if estado is None and operation.fuera_de_proyecto:
+        estado = resolve_estado_codigo("P", estados)
     proposed_code = estado.abreviatura if estado else pending.estado_codigo
     if operation.horas_extra is not None and str(proposed_code or "").upper() != "P":
         return f"Para {pending.nombre}, las horas extra solo pueden registrarse como PRESENTE."
@@ -547,6 +578,10 @@ def _modificar_pendiente(
         pending.horas_extra = operation.horas_extra
     if operation.descripcion:
         pending.descripcion = operation.descripcion
+    if operation.fuera_de_proyecto:
+        pending.fuera_de_proyecto = True
+        pending.nombre_proyecto = operation.nombre_proyecto
+        pending.idproyecto_destino = operation.idproyecto_destino
     return None
 
 
@@ -555,6 +590,8 @@ def _has_concrete_attendance_update(operation: ParteDiarioOperation) -> bool:
         str(operation.estado_codigo or "").strip()
         or operation.horas is not None
         or operation.horas_extra is not None
+        or operation.fuera_de_proyecto
+        or bool(str(operation.nombre_proyecto or "").strip())
     )
 
 

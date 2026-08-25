@@ -18,6 +18,8 @@ from app.models import (
     ParteDiario,
     ParteDiarioDetalle,
     ParteDiarioEstado,
+    Nomina,
+    Proyecto,
 )
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
 from app.modules.channels.persistence import channel_event_store
@@ -140,6 +142,12 @@ class ParteDiarioService:
         fecha = date.fromisoformat(str(result.get("fecha") or ""))
         raw_novedades = list(result.get("novedades") or [])
         novedades = [item for item in raw_novedades if item.get("idnomina") is not None]
+        novedades, novedades_destino = self._split_destination_novedades(
+            session,
+            novedades,
+            idproyecto=idproyecto,
+            fecha=fecha,
+        )
         pendientes_provisorios = list(result.get("pendientes_ambiguos") or [])
         novedades_provisorias = [item for item in raw_novedades if item.get("idnomina") is None]
         pendientes_provisorios.extend(novedades_provisorias)
@@ -230,7 +238,139 @@ class ParteDiarioService:
                 )
             )
 
+        self._materialize_destination_novedades(
+            session,
+            novedades_destino,
+            result=result,
+            fecha=fecha,
+            contacto_id=contacto_id,
+            target_estado=target_estado,
+            mensaje_id=mensaje_id,
+        )
+
         return parte
+
+    def _split_destination_novedades(
+        self,
+        session: Session,
+        novedades: list[dict[str, Any]],
+        *,
+        idproyecto: int,
+        fecha: date,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        current_items: list[dict[str, Any]] = []
+        destination_items: list[dict[str, Any]] = []
+        for item in novedades:
+            normalized = dict(item)
+            destination_id = _parse_optional_int(normalized.get("idproyecto_destino"))
+            if normalized.get("nombre_proyecto"):
+                normalized["fuera_de_proyecto"] = True
+            if destination_id is None or destination_id == idproyecto:
+                current_items.append(normalized)
+                continue
+            nomina = session.get(Nomina, int(normalized["idnomina"]))
+            if nomina is None or nomina.idproyecto != idproyecto:
+                current_items.append(normalized)
+                continue
+            destination = dict(normalized)
+            destination["idproyecto"] = destination_id
+            destination["fecha"] = fecha.isoformat()
+            destination["horas"] = _destination_hours(destination)
+            destination["fuera_de_proyecto"] = True
+            destination_items.append(destination)
+
+            origin = dict(normalized)
+            origin["horas"] = 0.0
+            origin["fuera_de_proyecto"] = True
+            project_name = str(origin.get("nombre_proyecto") or "").strip()
+            if project_name and not str(origin.get("descripcion") or "").strip():
+                origin["descripcion"] = f"Trabajo en {project_name}"
+            current_items.append(origin)
+        return current_items, destination_items
+
+    def _materialize_destination_novedades(
+        self,
+        session: Session,
+        novedades_destino: list[dict[str, Any]],
+        *,
+        result: dict[str, Any],
+        fecha: date,
+        contacto_id: int,
+        target_estado: EstadoParteDiario,
+        mensaje_id: int | None,
+    ) -> None:
+        if not novedades_destino:
+            return
+        by_project: dict[int, list[dict[str, Any]]] = {}
+        for item in novedades_destino:
+            destination_id = _parse_optional_int(item.get("idproyecto"))
+            if destination_id is None:
+                continue
+            by_project.setdefault(destination_id, []).append(item)
+
+        for destination_id, items in by_project.items():
+            destination_result = dict(result)
+            destination_result["idproyecto"] = destination_id
+            destination_result["fecha"] = fecha.isoformat()
+            destination_result["parte_id_existente"] = None
+            parte = self._resolve_parte(
+                session,
+                destination_result,
+                idproyecto=destination_id,
+                fecha=fecha,
+                contacto_id=contacto_id,
+            )
+            if parte is None:
+                parte = ParteDiario(
+                    idproyecto=destination_id,
+                    contacto_id=contacto_id or None,
+                    fecha=fecha,
+                    estado=target_estado,
+                    mensaje_origen_id=mensaje_id,
+                    descripcion="Generado por personal derivado desde otra obra",
+                )
+                session.add(parte)
+                session.flush()
+            elif parte.estado == EstadoParteDiario.CERRADO:
+                project = session.get(Proyecto, destination_id)
+                project_name = project.nombre if project is not None else destination_id
+                raise ValueError(f"El parte diario destino {project_name} ya fue cerrado")
+            elif parte.estado == EstadoParteDiario.CONFIRMADO:
+                if target_estado != EstadoParteDiario.CONFIRMADO:
+                    project = session.get(Proyecto, destination_id)
+                    project_name = project.nombre if project is not None else destination_id
+                    raise ValueError(f"El parte diario destino {project_name} ya fue confirmado")
+                parte.mensaje_origen_id = mensaje_id
+                session.add(parte)
+                session.flush()
+            else:
+                if contacto_id > 0:
+                    parte.contacto_id = contacto_id
+                parte.mensaje_origen_id = mensaje_id
+                parte.estado = target_estado
+                session.add(parte)
+                session.flush()
+
+            ids = [int(item["idnomina"]) for item in items if item.get("idnomina") is not None]
+            if ids:
+                session.exec(
+                    delete(ParteDiarioDetalle)
+                    .where(ParteDiarioDetalle.parte_diario_id == parte.id)
+                    .where(ParteDiarioDetalle.idnomina.in_(ids))
+                )
+            for item in items:
+                session.add(
+                    ParteDiarioDetalle(
+                        parte_diario_id=int(parte.id),
+                        idnomina=int(item["idnomina"]),
+                        idestado=item.get("idestado"),
+                        horas=Decimal(str(_destination_hours(item))),
+                        ingreso=_parse_datetime(item.get("ingreso")),
+                        egreso=_parse_datetime(item.get("egreso")),
+                        descripcion=item.get("descripcion"),
+                        origen=OrigenDetalle.AGENTE,
+                    )
+                )
 
     @staticmethod
     def _extract_agent_metadata(metadata: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -385,6 +525,27 @@ def _parse_datetime(value: Any) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(str(value))
+
+
+def _parse_optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _destination_hours(item: dict[str, Any]) -> float:
+    value = item.get("horas")
+    normalized_code = str(item.get("estado_codigo") or "").upper()
+    if value is None:
+        return 9.0 if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
+    try:
+        hours = float(value)
+    except (TypeError, ValueError):
+        return 9.0 if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
+    return hours
 
 
 def _provisional_hours(item: dict[str, Any]) -> float:

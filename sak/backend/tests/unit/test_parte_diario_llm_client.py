@@ -141,12 +141,18 @@ async def test_carga_prompt_requires_command_classification_before_novelty_parsi
     assert "`sin_novedades`: registrar que no hubo novedades" in prompt
     assert 'Cuando la pregunta activa es "Hay alguna otra novedad?"' in prompt
     assert 'usa `backend_action="finish_loading"`' in prompt
+    assert "afirmativa breve sin detalle de novedad" in prompt
+    assert 'backend_action="ask_clarification"' in prompt
+    assert "pedi que indique la novedad" in prompt
     assert "No dependas de palabras exactas" in prompt
     assert "intencion conversacional" in prompt
     assert "salida silenciosa" in prompt
     assert "No intentes cubrir frases por patron fijo" in prompt
     assert "El alcance de busqueda no reemplaza el filtro" in prompt
     assert 'nombre="ruiz"' in prompt
+    assert "fuera_de_proyecto=true" in prompt
+    assert "nombre_proyecto" in prompt
+    assert "jornada" in prompt and "estandar completa" in prompt
     assert response_schema["required"] == [
         "message_kind",
         "command_action",
@@ -158,6 +164,40 @@ async def test_carga_prompt_requires_command_classification_before_novelty_parsi
     operation_schema = response_schema["properties"]["operations"]["items"]
     assert "alcance" in operation_schema["properties"]
     assert "alcance" in operation_schema["required"]
+    assert "fuera_de_proyecto" in operation_schema["properties"]
+    assert "fuera_de_proyecto" in operation_schema["required"]
+    assert "nombre_proyecto" in operation_schema["properties"]
+    assert "nombre_proyecto" in operation_schema["required"]
+
+
+def test_parse_turn_plan_preserves_external_project_fields():
+    plan = _parse_turn_plan(
+        {
+            "message_kind": "novedad",
+            "command_action": "none",
+            "backend_action": "add_novelty",
+            "operations": [
+                {
+                    "type": "agregar_novedad",
+                    "nombre": "Perez",
+                    "alcance": None,
+                    "estado_codigo": "P",
+                    "horas": None,
+                    "horas_extra": None,
+                    "descripcion": None,
+                    "fuera_de_proyecto": True,
+                    "nombre_proyecto": "Francia 118",
+                    "fecha": None,
+                    "requested": None,
+                    "reply": None,
+                }
+            ],
+            "reply": None,
+        }
+    )
+
+    assert plan.operations[0].fuera_de_proyecto is True
+    assert plan.operations[0].nombre_proyecto == "Francia 118"
 
 
 def test_parse_turn_plan_maps_command_action_to_backend_operation():

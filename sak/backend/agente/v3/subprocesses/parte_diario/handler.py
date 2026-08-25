@@ -6,7 +6,6 @@ import logging
 import re
 import time
 from datetime import date, timedelta
-from difflib import SequenceMatcher
 from types import SimpleNamespace
 
 from sqlmodel import Session, select
@@ -45,6 +44,7 @@ from agente.v3.subprocesses.parte_diario.resolver import (
     normalize_text,
     parse_candidate_selection,
     parse_estado_local,
+    project_match_score,
 )
 from agente.v3.subprocesses.parte_diario.state import (
     ParteDiarioApoyoProyectoOption,
@@ -112,7 +112,7 @@ class ParteDiarioSubprocess:
             return await self._handle_asistencia(message, context, state)
 
         if state.etapa == "apoyos":
-            return await self._handle_apoyos(message, context, state)
+            return self._apoyos_disabled_result(context, state)
 
         if state.etapa == "confirmar_salida":
             return self._handle_confirmar_salida(message, context, state)
@@ -1284,6 +1284,31 @@ class ParteDiarioSubprocess:
             return await self._handle_confirmar_cierre_validado(command, message, context, state)
         return await self._handle_parte_diario(message, context, state)
 
+    def _apoyos_disabled_result(
+        self,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        self._clear_apoyos_state(state)
+        state.etapa = "carga"
+        draft = state.draft()
+        notice = (
+            "La modalidad APOYO ya no esta disponible. "
+            "Para registrar trabajo en otra obra, cargalo como novedad normal. "
+            "Ejemplo: Perez fue a Francia 118 8hs."
+        )
+        reply = (
+            f"{notice}\n\n"
+            f"{_load_followup_reply(renderer.resumen(draft), draft, status='shown', obra=state.nombre_obra)}"
+        )
+        return self._active_result(
+            context,
+            state,
+            reply,
+            "apoyos_disabled",
+            {"result": {"parte_diario": {"status": "apoyos_disabled"}}},
+        )
+
     def _start_apoyos(
         self,
         context: V3ConversationContext,
@@ -1392,7 +1417,7 @@ class ParteDiarioSubprocess:
         normalized = normalize_text(text)
         matches = [
             option for option in state.opciones_apoyo_proyecto
-            if _apoyo_project_match_score(normalized, option.nombre) >= 0.55
+            if project_match_score(normalized, option.nombre) >= 0.55
         ]
         return matches[0] if len(matches) == 1 else None
 
@@ -1412,7 +1437,7 @@ class ParteDiarioSubprocess:
         scored_matches = [
             (score, int(project_id), str(name or "").strip())
             for project_id, name in rows
-            if (score := _apoyo_project_match_score(normalized, str(name or ""))) >= 0.55
+            if (score := project_match_score(normalized, str(name or ""))) >= 0.55
         ]
         scored_matches.sort(key=lambda item: (-item[0], item[2].lower()))
         matches = [(project_id, name) for _, project_id, name in scored_matches]
@@ -1659,7 +1684,12 @@ class ParteDiarioSubprocess:
 
         with Session(engine) as session:
             estados = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))._load_estados()
-            parsed, error = await self._parse_asistencia_entries(message.text or "", state.asistencia_opciones, estados)
+            parsed, error = await self._parse_asistencia_entries(
+                message.text or "",
+                state.asistencia_opciones,
+                estados,
+                state=state,
+            )
 
         if error:
             reply = f"{error}\n\n{self._asistencia_current_page_text(state)}"
@@ -1667,10 +1697,18 @@ class ParteDiarioSubprocess:
 
         draft = state.draft()
         existing_entries = [
-            (option, estado, motivo, self._find_asistencia_existing(draft, option.idnomina))
-            for option, estado, motivo in parsed
+            (
+                option,
+                estado,
+                motivo,
+                horas,
+                nombre_proyecto,
+                idproyecto_destino,
+                self._find_asistencia_existing(draft, option.idnomina),
+            )
+            for option, estado, motivo, horas, nombre_proyecto, idproyecto_destino in parsed
         ]
-        replacement_entries = [item for item in existing_entries if item[3] is not None]
+        replacement_entries = [item for item in existing_entries if item[6] is not None]
         if replacement_entries:
             if len(parsed) > 1:
                 reply = (
@@ -1678,12 +1716,16 @@ class ParteDiarioSubprocess:
                     f"{self._asistencia_current_page_text(state)}"
                 )
                 return self._active_result(context, state, reply, "asistencia_replace_single_required")
-            option, estado, motivo, existing = replacement_entries[0]
+            option, estado, motivo, horas, nombre_proyecto, idproyecto_destino, existing = replacement_entries[0]
             state.asistencia_reemplazo_pendiente = {
                 "option": option.to_dict(),
                 "estado_id": estado.id,
                 "estado_codigo": estado.abreviatura.upper(),
                 "motivo": motivo,
+                "horas": horas,
+                "fuera_de_proyecto": bool(nombre_proyecto),
+                "nombre_proyecto": nombre_proyecto,
+                "idproyecto_destino": idproyecto_destino,
                 "estado_anterior": getattr(existing, "estado_codigo", None),
             }
             reply = self._asistencia_reemplazo_text(state)
@@ -1695,7 +1737,7 @@ class ParteDiarioSubprocess:
                 _confirmation_metadata(reply),
             )
 
-        for option, estado, motivo in parsed:
+        for option, estado, motivo, horas, nombre_proyecto, idproyecto_destino in parsed:
             self._apply_asistencia_novedad(
                 draft,
                 state,
@@ -1703,6 +1745,10 @@ class ParteDiarioSubprocess:
                 estado_id=estado.id,
                 estado_codigo=estado.abreviatura.upper(),
                 motivo=motivo,
+                horas=horas,
+                fuera_de_proyecto=bool(nombre_proyecto),
+                nombre_proyecto=nombre_proyecto,
+                idproyecto_destino=idproyecto_destino,
             )
         draft.sin_novedades_informado = False
         draft.esperando = None
@@ -1763,19 +1809,18 @@ class ParteDiarioSubprocess:
         context: V3ConversationContext,
         state: ParteDiarioV3State,
     ) -> V3ProcessResult:
-        registros = list(state.asistencia_registros)
         state.etapa = "carga"
         state.asistencia_offset = 0
         state.asistencia_opciones = []
         state.asistencia_registros = []
         state.asistencia_reemplazo_pendiente = {}
-        if not registros:
-            reply = "Novedades finalizadas.\n\nNo se cargaron faltas.\n\nHay alguna otra novedad?"
-        else:
-            lines = ["Novedades finalizadas.", "", "Faltas cargadas:"]
-            lines.extend(f"- {item.nombre}: {item.estado_codigo}, motivo: {item.motivo}" for item in registros)
-            lines.extend(["", "Hay alguna otra novedad?"])
-            reply = "\n".join(lines)
+        draft = state.draft()
+        reply = _load_followup_reply(
+            renderer.actualizado(draft),
+            draft,
+            status="updated",
+            obra=state.nombre_obra,
+        )
         return self._active_result(context, state, reply, "asistencia_finished")
 
     def _asistencia_current_page_text(self, state: ParteDiarioV3State) -> str:
@@ -1794,18 +1839,18 @@ class ParteDiarioSubprocess:
         lines: list[str] = []
         if prefix:
             lines.extend([prefix, ""])
-        lines.append(f"Novedades - {state.nombre_obra or 'obra seleccionada'}")
+        lines.append(f"Listado - {state.nombre_obra or 'obra seleccionada'}")
         lines.append(f"Empleados {start}-{end} de {total}:")
         lines.append("")
         for option in state.asistencia_opciones:
             existing = self._find_asistencia_existing(state.draft(), option.idnomina)
-            suffix = f" - ya cargado: {existing.estado_codigo or 'estado pendiente'}" if existing else ""
+            suffix = _asistencia_existing_suffix(existing)
             lines.append(f"{option.opcion}. {option.nombre_completo}{suffix}")
         lines.extend(
             [
                 "",
-                "Alguno falto? Indica numero y motivo, o responde NO.",
-                "SALIR para terminar novedades.",
+                "Indica numero y motivo u horas, o responde NO.",
+                "SALIR para terminar listado.",
             ]
         )
         return "\n".join(lines)
@@ -1824,7 +1869,14 @@ class ParteDiarioSubprocess:
                 ).all()
             )
 
-    async def _parse_asistencia_entries(self, text: str, options: list[ParteDiarioAsistenciaOption], estados):
+    async def _parse_asistencia_entries(
+        self,
+        text: str,
+        options: list[ParteDiarioAsistenciaOption],
+        estados,
+        *,
+        state: ParteDiarioV3State | None = None,
+    ):
         normalized_text = re.sub(r"\s+y\s+(?=\d+\b)", "\n", text or "", flags=re.IGNORECASE)
         parts = [part.strip() for part in re.split(r"[,;\n]+", normalized_text) if part.strip()]
         if not parts:
@@ -1842,11 +1894,76 @@ class ParteDiarioSubprocess:
             if option is None:
                 available = ", ".join(str(item.opcion) for item in options)
                 return [], f"El numero {number} no esta en esta pagina. Opciones disponibles: {available}."
-            estado = await self._resolve_estado_for_motive(motive, estados)
-            if estado is None or estado.abreviatura.upper() == "P":
-                return [], f"No pude identificar el motivo '{motive}'. Proba con falta, enfermedad, accidente o el codigo del estado."
-            parsed.append((option, estado, motive))
+            estado, horas = await self._resolve_asistencia_detail(motive, estados)
+            nombre_proyecto = None
+            idproyecto_destino = None
+            external_project_text = _extract_external_work_project_text(motive)
+            if external_project_text:
+                estado = self._present_estado(estados)
+                if estado is None:
+                    return [], "No encontre el estado PRESENTE para cargar trabajo en otra obra."
+                hours = _parse_hours_from_text(motive, require_unit=True)
+                horas = hours if hours is not None else 9.0
+                if state is not None:
+                    idproyecto_destino, nombre_proyecto, project_error = self._resolve_asistencia_external_project(
+                        state,
+                        external_project_text,
+                    )
+                    if project_error:
+                        return [], project_error
+                else:
+                    nombre_proyecto = external_project_text
+                    idproyecto_destino = None
+            if estado is None:
+                return [], f"No pude identificar '{motive}'. Proba con falta, enfermedad, accidente, presente o trabajo 8hs."
+            parsed.append((option, estado, motive, horas, nombre_proyecto, idproyecto_destino))
         return parsed, None
+
+    async def _resolve_asistencia_detail(self, text: str, estados):
+        estado = await self._resolve_estado_for_motive(text, estados)
+        if estado is None:
+            return None, None
+        normalized_code = str(estado.abreviatura or "").upper()
+        if normalized_code != "P":
+            return estado, 0.0
+        hours = _parse_hours_from_text(text)
+        return estado, hours if hours is not None else 9.0
+
+    @staticmethod
+    def _present_estado(estados):
+        return next((item for item in estados if str(item.abreviatura or "").upper() == "P"), None)
+
+    def _resolve_asistencia_external_project(
+        self,
+        state: ParteDiarioV3State,
+        project_text: str,
+    ) -> tuple[int | None, str | None, str | None]:
+        current_project_id = int(state.proyecto_id or 0)
+        if not current_project_id:
+            return None, None, "No pude resolver la obra destino porque el parte no tiene obra activa."
+        with Session(engine) as session:
+            projects = list(
+                session.exec(
+                    select(Proyecto)
+                    .where(Proyecto.deleted_at.is_(None))
+                    .where(Proyecto.id != current_project_id)
+                    .order_by(Proyecto.nombre.asc())
+                ).all()
+            )
+        scored = [
+            (project_match_score(project_text, project.nombre), project)
+            for project in projects
+        ]
+        matches = [(score, project) for score, project in scored if score >= 0.55]
+        matches.sort(key=lambda pair: (-pair[0], str(pair[1].nombre or "")))
+        if not matches:
+            return None, None, f"No encontre la obra destino '{project_text}'. Indica el nombre de la obra."
+        best_score, best_project = matches[0]
+        close = [project for score, project in matches if best_score - score <= 0.05]
+        if len(close) > 1:
+            names = ", ".join(str(project.nombre) for project in close[:3])
+            return None, None, f"La obra destino '{project_text}' es ambigua. Opciones: {names}."
+        return int(best_project.id), str(best_project.nombre or "").strip(), None
 
     async def _resolve_estado_for_motive(self, text: str, estados):
         estado = parse_estado_local(text, estados) or self._resolve_estado_from_text(text, estados)
@@ -1884,6 +2001,10 @@ class ParteDiarioSubprocess:
         estado_id = pending.get("estado_id")
         estado_codigo = str(pending.get("estado_codigo") or "").strip().upper()
         motivo = str(pending.get("motivo") or "").strip()
+        horas = pending.get("horas")
+        fuera_de_proyecto = bool(pending.get("fuera_de_proyecto"))
+        nombre_proyecto = str(pending.get("nombre_proyecto") or "").strip() or None
+        idproyecto_destino = pending.get("idproyecto_destino")
         if option is None or not estado_id or not estado_codigo or not motivo:
             state.asistencia_reemplazo_pendiente = {}
             reply = f"No pude recuperar el reemplazo pendiente.\n\n{self._asistencia_current_page_text(state)}"
@@ -1897,6 +2018,10 @@ class ParteDiarioSubprocess:
             estado_id=int(estado_id),
             estado_codigo=estado_codigo,
             motivo=motivo,
+            horas=float(horas) if horas is not None else 0.0,
+            fuera_de_proyecto=fuera_de_proyecto,
+            nombre_proyecto=nombre_proyecto,
+            idproyecto_destino=int(idproyecto_destino) if idproyecto_destino else None,
         )
         draft.sin_novedades_informado = False
         draft.esperando = None
@@ -1921,6 +2046,10 @@ class ParteDiarioSubprocess:
         estado_id: int,
         estado_codigo: str,
         motivo: str,
+        horas: float,
+        fuera_de_proyecto: bool = False,
+        nombre_proyecto: str | None = None,
+        idproyecto_destino: int | None = None,
     ) -> None:
         nombre = option.nombre_completo
         novedad = NovedadPersonal(
@@ -1928,8 +2057,11 @@ class ParteDiarioSubprocess:
             idnomina=option.idnomina,
             idestado=estado_id,
             estado_codigo=estado_codigo,
-            horas=0,
+            horas=horas,
             descripcion=motivo,
+            fuera_de_proyecto=fuera_de_proyecto,
+            nombre_proyecto=nombre_proyecto,
+            idproyecto_destino=idproyecto_destino,
             nro_legajo=option.nro_legajo,
         )
         existing = self._find_asistencia_existing(draft, option.idnomina)
@@ -1941,12 +2073,16 @@ class ParteDiarioSubprocess:
             existing.estado_codigo = novedad.estado_codigo
             existing.horas = novedad.horas
             existing.descripcion = novedad.descripcion
+            existing.fuera_de_proyecto = novedad.fuera_de_proyecto
+            existing.nombre_proyecto = novedad.nombre_proyecto
+            existing.idproyecto_destino = novedad.idproyecto_destino
             existing.nro_legajo = novedad.nro_legajo
         state.asistencia_registros.append(
             ParteDiarioAsistenciaRegistro(
                 nombre=nombre,
                 estado_codigo=estado_codigo,
                 motivo=motivo,
+                horas=horas,
             )
         )
 
@@ -1974,10 +2110,8 @@ class ParteDiarioSubprocess:
             command = _normalize_command(message.text)
             draft = state.draft()
 
-            if command in {"novedades"}:
+            if command in {"listado"}:
                 return self._start_asistencia(context, state)
-            if command in {"apoyo", "apoyos"} or command.startswith("apoyo ") or command.startswith("apoyos "):
-                return self._start_apoyos(context, state, message.text or "")
 
             contextual_query = await self._handle_active_contextual_query(message, context, state)
             if contextual_query is not None:
@@ -3023,9 +3157,9 @@ def _load_followup_reply(reply: str, draft, *, status: str, obra: str | None = N
             context_lines.append(f"Obra: {obra_label}")
         context_text = "\n".join(context_lines)
         if context_text:
-            base = f"Registrado.\n{context_text}\n\n{renderer.resumen(draft)}"
+            base = f"Parte diario actualizado:\n{context_text}\n\n{renderer.resumen(draft)}"
         else:
-            base = f"Registrado.\n\n{renderer.resumen(draft)}"
+            base = f"Parte diario actualizado:\n\n{renderer.resumen(draft)}"
     if not base:
         base = renderer.resumen(draft)
     return f"{base}\n\nHay alguna otra novedad?"
@@ -3644,6 +3778,23 @@ def _summary_hours_text(estado_codigo: str | None, hours: float | None) -> str:
     return f"{hours:g}h" if hours is not None else "horas pendientes"
 
 
+def _asistencia_existing_suffix(existing) -> str:
+    if existing is None:
+        return ""
+    state = existing.estado_codigo or "estado pendiente"
+    hours = (
+        _summary_hours_text(existing.estado_codigo, existing.horas)
+        if str(existing.estado_codigo or "").upper() == "P" or existing.horas not in {0, 0.0}
+        else ""
+    )
+    parts = [state]
+    if hours:
+        parts.append(hours)
+    if existing.descripcion and str(existing.estado_codigo or "").upper() != "P":
+        parts.append(f"motivo: {existing.descripcion}")
+    return f" - informado: {', '.join(parts)}"
+
+
 def _replace_tail(reply: str, menu: str) -> str:
     base = _strip_known_instructions(reply).rstrip()
     if not base:
@@ -3741,45 +3892,49 @@ def _extract_apoyos_origin_text(text: str | None) -> str:
 def _apoyos_next_steps() -> str:
     return (
         "Volvemos al parte diario. "
-        "Para cargar otro apoyo, escribi APOYO y la obra origen. "
-        "Para cargar faltas o accidentes, escribi NOVEDADES. "
+        "Para registrar trabajo en otra obra, cargalo como novedad normal. "
+        "Para cargar faltas o accidentes, escribi LISTADO. "
         "Para terminar el parte, responde GUARDAR o CERRAR."
     )
 
 
-def _apoyo_project_match_score(query: str, project_name: str | None) -> float:
-    normalized_query = normalize_text(query)
-    normalized_name = normalize_text(project_name)
-    if not normalized_query or not normalized_name:
-        return 0.0
-    if normalized_query == normalized_name:
-        return 1.0
-    if normalized_query in normalized_name:
-        return 0.95
-    query_tokens = {token for token in normalized_query.split() if len(token) >= 3}
-    name_tokens = {token for token in normalized_name.split() if len(token) >= 3}
-    if query_tokens and query_tokens <= name_tokens:
-        return 0.9
-    if query_tokens and query_tokens & name_tokens:
-        return 0.75
-    token_similarity = max(
-        (
-            SequenceMatcher(None, query_token, name_token).ratio()
-            for query_token in query_tokens
-            for name_token in name_tokens
-        ),
-        default=0.0,
-    )
-    full_similarity = SequenceMatcher(None, normalized_query, normalized_name).ratio()
-    return max(token_similarity, full_similarity)
+def _extract_external_work_project_text(text: str | None) -> str:
+    normalized = normalize_text(text)
+    if not normalized:
+        return ""
+    work_tokens = {
+        "trabajo",
+        "trabaja",
+        "trabajando",
+        "trabajar",
+        "vino",
+        "fue",
+        "va",
+        "apoyo",
+        "apoyar",
+        "mande",
+        "mandaron",
+        "envie",
+        "enviaron",
+    }
+    if not (work_tokens & set(normalized.split())) and "otra obra" not in normalized:
+        return ""
+    matches = list(re.finditer(r"\b(?:en|a|para)\s+(?:la\s+)?(?:obra\s+)?(.+)$", normalized))
+    if not matches:
+        return ""
+    project_text = matches[-1].group(1)
+    project_text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:h|hs|hora|horas)\b", " ", project_text)
+    project_text = re.sub(r"\b(?:otra|otro)\s+obra\b", " ", project_text)
+    project_text = re.sub(r"\s+", " ", project_text).strip()
+    return project_text
 
 
-def _parse_hours_from_text(text: str | None) -> float | None:
+def _parse_hours_from_text(text: str | None, *, require_unit: bool = False) -> float | None:
     raw = str(text or "").strip().lower().replace(",", ".")
     if not raw:
         return 9.0
     match = re.search(r"(\d+(?:\.\d+)?)\s*(?:h|hs|hora|horas)\b", raw)
-    if not match:
+    if not match and not require_unit:
         match = re.search(r"\b(\d+(?:\.\d+)?)\b", raw)
     if not match:
         return None
