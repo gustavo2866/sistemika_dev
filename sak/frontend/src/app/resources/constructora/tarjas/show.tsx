@@ -106,12 +106,15 @@ const NovedadesSection = () => {
       <div className="space-y-2">
         {novedades.map((novedad: TarjaNovedad, index) => (
           <RecordContextProvider value={novedad} key={novedad.id ?? `novedad-${index}`}>
-            <div className="grid gap-3 rounded-lg border p-3 text-sm md:grid-cols-4">
-              <FieldBlock label="Hs enf. justif.">
-                <NumberField source="horas_enfermedad_justif" />
+            <div className="grid gap-3 rounded-lg border p-3 text-sm md:grid-cols-5">
+              <FieldBlock label="Hs justificadas">
+                <NumberField source="horas_justificadas" />
               </FieldBlock>
               <FieldBlock label="Presentismo">
-                <NumberField source="presentismo" />
+                {novedad.presentismo ? "SI" : "NO"}
+              </FieldBlock>
+              <FieldBlock label="Adicional">
+                <NumberField source="adicional" />
               </FieldBlock>
               <FieldBlock label="Premio">
                 <NumberField source="premio" />

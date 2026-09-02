@@ -9,14 +9,12 @@ import {
   FormErrorSummary,
   FormNumber,
   FormReferenceAutocomplete,
-  FormSelect,
   FormText,
   FormTextarea,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/forms/form_order/simple_form";
 import {
-  CATEGORIA_CHOICES,
   NOMINA_DEFAULT,
   VALIDATION_RULES,
   nominaSchema,
@@ -62,11 +60,30 @@ const DatosPersonalesFields = () => (
 
 const DatosLaboralesFields = () => (
   <div className="grid gap-2 md:grid-cols-2">
-    <FormSelect
-      source="categoria"
-      label="Categoria"
-      choices={CATEGORIA_CHOICES}
-      validate={required()}
+    <FormReferenceAutocomplete
+      referenceProps={{
+        source: "nomina_categoria_id",
+        reference: "nomina-categorias",
+        filter: { activa: true },
+      }}
+      inputProps={{
+        optionText: "descripcion",
+        label: "Categoria",
+        placeholder: "Seleccionar",
+      }}
+      widthClass="w-full"
+    />
+    <FormReferenceAutocomplete
+      referenceProps={{
+        source: "nomina_tarea_id",
+        reference: "nomina-tareas",
+        filter: { activa: true },
+      }}
+      inputProps={{
+        optionText: "descripcion",
+        label: "Tarea",
+        placeholder: "Seleccionar",
+      }}
       widthClass="w-full"
     />
     <FormReferenceAutocomplete

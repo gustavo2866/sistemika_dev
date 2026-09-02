@@ -12,6 +12,16 @@ import {
   ParteDiarioEstadoList,
 } from "@/app/resources/constructora/parte-diario-estados";
 import {
+  NominaCategoriaCreate,
+  NominaCategoriaEdit,
+  NominaCategoriaList,
+} from "@/app/resources/administracion/nomina-categorias";
+import {
+  NominaTareaCreate,
+  NominaTareaEdit,
+  NominaTareaList,
+} from "@/app/resources/administracion/nomina-tareas";
+import {
   ErpRubroCreate,
   ErpRubroEdit,
   ErpRubroList,
@@ -43,6 +53,24 @@ const TARJA_SETUP_ITEMS: SetupItem[] = [
     listComponent: ParteDiarioEstadoList,
     createComponent: ParteDiarioEstadoCreate,
     editComponent: ParteDiarioEstadoEdit,
+  },
+  {
+    key: "nomina-categorias",
+    label: "Categorias de nomina",
+    description: "Configurar categorias disponibles para el personal de nomina.",
+    resource: "nomina-categorias",
+    listComponent: NominaCategoriaList,
+    createComponent: NominaCategoriaCreate,
+    editComponent: NominaCategoriaEdit,
+  },
+  {
+    key: "nomina-tareas",
+    label: "Tareas de nomina",
+    description: "Configurar tareas disponibles para el personal de nomina.",
+    resource: "nomina-tareas",
+    listComponent: NominaTareaList,
+    createComponent: NominaTareaCreate,
+    editComponent: NominaTareaEdit,
   },
 ];
 

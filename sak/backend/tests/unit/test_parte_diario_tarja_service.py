@@ -250,6 +250,38 @@ def test_registrar_tarja_reusa_cabecera_quincenal_y_preserva_otros_dias(db_sessi
     assert len(novedades) == 1
 
 
+def test_novedad_guarda_categoria_y_tarea_en_tarja_novedad(db_session):
+    data = _seed_base(db_session)
+    tarja = parte_diario_tarja_service._get_or_create_tarja(
+        db_session,
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 6, 16),
+        fechafinal=date(2026, 6, 30),
+        descripcion="tarja test",
+    )
+
+    novedad = TarjaNovedad(
+        tarja_id=tarja.id,
+        nomina_id=data["nomina_con_novedad"].id,
+        nomina_categoria_id=42,
+        nomina_tarea_id=7,
+        horas_justificadas=Decimal("0"),
+        presentismo=False,
+        adicional=Decimal("0"),
+        premio=Decimal("0"),
+        observaciones=None,
+        documentos=[],
+    )
+    db_session.add(novedad)
+    db_session.commit()
+
+    stored = db_session.get(TarjaNovedad, novedad.id)
+    assert stored is not None
+    assert stored.nomina_categoria_id == 42
+    assert stored.nomina_tarea_id == 7
+
+
 def test_registrar_tarja_requiere_parte_confirmado(db_session):
     data = _seed_base(db_session)
     parte = ParteDiario(

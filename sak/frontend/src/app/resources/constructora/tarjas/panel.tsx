@@ -1,129 +1,121 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useGetList, useListContext, useNotify, useRefresh } from "ra-core";
+import { useNotify } from "ra-core";
 import {
   ArrowLeft,
-  ClipboardCheck,
-  List as ListIcon,
+  CheckCircle2,
+  Eye,
+  FileClock,
+  FileQuestion,
   Loader2,
+  Lock,
+  LockOpen,
+  MoreHorizontal,
   Plus,
+  RefreshCw,
+  RotateCcw,
+  TableProperties,
+  Users,
 } from "lucide-react";
 
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import { Confirm } from "@/components/confirm";
-import { List, LIST_CONTAINER_WIDE } from "@/components/list";
-import { FilterForm, StyledFilterDiv } from "@/components/filter-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { buildListFilters } from "@/components/forms/form_order";
-import { apiUrl } from "@/lib/dataProvider";
 import {
-  QuincenaNavigator,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   getQuincenaRange,
   moveQuincena,
   parseDateOnly,
+  QuincenaNavigator,
   toISODate,
 } from "@/components/forms/quincena-navigator";
+import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
-import type { ProyectoRecord } from "../proyectos/model";
-import type { ParteDiarioRecord } from "../parte-diario/model";
-import { getEstadoTarjaBadgeClass, getEstadoTarjaLabel } from "./constants";
-import type { TarjaRecord } from "./model";
+import { PROYECTO_ESTADO_CHOICES } from "../proyectos/model";
 
-type ParteDiarioStats = {
-  confirmados: number;
-  borradores: number;
-  sinCargar: number;
+type PanelDayStatus = "faltante" | "borrador" | "completo" | "cerrado" | "descanso";
+
+type PanelDay = {
+  fecha: string;
+  dia: number;
+  weekday: number;
+  esperado: boolean;
+  estado: PanelDayStatus;
+  parte_ids: number[];
+  partes: number;
 };
 
-type GenerateTarjaTarget = {
-  id: number | string;
-  nombre?: string | null;
+type PanelTarja = {
+  id: number;
+  estado: "borrador" | "cerrado";
+  panel_estado: "borrador" | "lista_cerrar" | "cerrado";
+  fechainicio?: string | null;
+  fechafinal?: string | null;
+  registros: number;
+  horas: number;
+  novedades: number;
+  adicional: number;
+  premio: number;
 };
 
-type CloseTarjaTarget = {
-  id: number | string;
-  nombre?: string | null;
+type PanelRow = {
+  id: string;
+  proyecto_id: number;
+  contacto_id?: number | null;
+  proyecto_nombre: string;
+  proyecto_estado?: string | null;
+  encargado?: string | null;
+  encargado_principal?: boolean | null;
+  fecha_inicio?: string | null;
+  fecha_final?: string | null;
+  dias: PanelDay[];
+  parte_stats: {
+    esperados: number;
+    completos: number;
+    borrador: number;
+    faltantes: number;
+    descanso: number;
+  };
+  tarja?: PanelTarja | null;
+  puede_generar: boolean;
+  puede_cerrar: boolean;
+  puede_reabrir: boolean;
 };
 
-const ACTIVE_PROJECT_ESTADOS = ["01-plan", "02-ejecucion", "03-conclusion"];
-const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
-const PROJECT_COLORS = [
-  "#2563eb",
-  "#059669",
-  "#d97706",
-  "#7c3aed",
-  "#dc2626",
-  "#0891b2",
-  "#65a30d",
-  "#be123c",
-];
+type TarjaPanelResponse = {
+  range: {
+    fechainicio: string;
+    fechafinal: string;
+  };
+  totals: {
+    obras: number;
+    dias_esperados: number;
+    partes_completos: number;
+    partes_borrador: number;
+    partes_faltantes: number;
+    sin_tarja: number;
+    tarjas_borrador: number;
+    tarjas_listas: number;
+    tarjas_cerradas: number;
+  };
+  rows: PanelRow[];
+};
+
+type ActionTarget = {
+  row: PanelRow;
+  action: "generar" | "cerrar" | "reabrir";
+};
+
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
-
-const PANEL_FILTERS = buildListFilters(
-  [
-    {
-      type: "reference",
-      referenceProps: {
-        source: "idproyecto",
-        reference: "proyectos",
-        label: "Obra",
-        alwaysOn: true,
-        filter: { estado: EXECUTION_PROJECT_ESTADO },
-      },
-      selectProps: {
-        optionText: "nombre",
-        emptyText: "Todas",
-        className: "w-[150px] sm:w-[190px]",
-      },
-    },
-  ],
-  { keyPrefix: "tarja-panel" },
-);
-
-const getProjectColor = (idproyecto?: number | string | null) => {
-  const id = Number(idproyecto ?? 0);
-  return PROJECT_COLORS[Math.abs(id) % PROJECT_COLORS.length];
-};
-
-const isProjectActiveInRange = (
-  project: ProyectoRecord,
-  startIso: string,
-  endIso: string,
-) => {
-  const projectStart = String(project.fecha_inicio ?? "").slice(0, 10);
-  const projectEnd = String(project.fecha_final ?? "").slice(0, 10);
-  if (projectStart && projectStart > endIso) return false;
-  if (projectEnd && projectEnd < startIso) return false;
-  return true;
-};
-
-const countProjectDaysInRange = (
-  project: ProyectoRecord,
-  startIso: string,
-  endIso: string,
-) => {
-  const projectStart = String(project.fecha_inicio ?? "").slice(0, 10);
-  const projectEnd = String(project.fecha_final ?? "").slice(0, 10);
-  const effectiveStart = projectStart && projectStart > startIso ? projectStart : startIso;
-  const effectiveEnd = projectEnd && projectEnd < endIso ? projectEnd : endIso;
-  if (effectiveStart > effectiveEnd) return 0;
-  const start = parseDateOnly(effectiveStart);
-  const end = parseDateOnly(effectiveEnd);
-  return Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
-};
-
-const buildParteDiarioPanelUrl = (
-  idproyecto: number | string,
-  startIso: string,
-) => {
-  const params = new URLSearchParams({
-    fecha: startIso,
-    filter: JSON.stringify({ idproyecto: Number(idproyecto) }),
-  });
-  return `/parte-diario/panel?${params.toString()}`;
-};
+const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
 
 const buildAuthHeaders = () => {
   const headers = new Headers({
@@ -136,10 +128,12 @@ const buildAuthHeaders = () => {
   return headers;
 };
 
-const getActionErrorMessage = async (response: Response) => {
+const extractActionErrorMessage = async (response: Response) => {
   try {
     const payload = await response.json();
-    if (typeof payload?.detail === "string") return payload.detail;
+    const detail = payload?.detail;
+    if (typeof detail === "string") return detail;
+    if (typeof detail?.error?.message === "string") return detail.error.message;
     if (typeof payload?.message === "string") return payload.message;
   } catch {
     // Keep the generic message below.
@@ -147,277 +141,402 @@ const getActionErrorMessage = async (response: Response) => {
   return "No se pudo completar la accion";
 };
 
+const fetchTarjaPanel = async ({
+  startIso,
+  endIso,
+  projectId,
+  projectEstado,
+  signal,
+}: {
+  startIso: string;
+  endIso: string;
+  projectId?: string | null;
+  projectEstado?: string | null;
+  signal?: AbortSignal;
+}) => {
+  const params = new URLSearchParams({
+    fechainicio: startIso,
+    fechafinal: endIso,
+  });
+  params.set("estado", projectEstado ?? "");
+  if (projectId) params.set("idproyecto", projectId);
+
+  const response = await fetch(`${apiUrl}/tarjas/panel?${params.toString()}`, {
+    cache: "no-store",
+    headers: buildAuthHeaders(),
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as TarjaPanelResponse;
+};
+
 const postGenerateTarja = async ({
   idproyecto,
+  contacto_id,
   fechainicio,
   fechafinal,
 }: {
-  idproyecto: number | string;
+  idproyecto: number;
+  contacto_id?: number | null;
   fechainicio: string;
   fechafinal: string;
 }) => {
   const response = await fetch(`${apiUrl}/tarjas/generar`, {
     method: "POST",
     headers: buildAuthHeaders(),
-    body: JSON.stringify({
-      idproyecto: Number(idproyecto),
-      fechainicio,
-      fechafinal,
-    }),
+    body: JSON.stringify({ idproyecto, contacto_id: contacto_id ?? null, fechainicio, fechafinal }),
   });
   if (!response.ok) {
-    throw new Error(await getActionErrorMessage(response));
+    throw new Error(await extractActionErrorMessage(response));
   }
   return response.json();
 };
 
-const patchCloseTarja = async (tarjaId: number | string) => {
+const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado") => {
   const response = await fetch(`${apiUrl}/tarjas/${tarjaId}`, {
     method: "PATCH",
     headers: buildAuthHeaders(),
-    body: JSON.stringify({ estado: "cerrado" }),
+    body: JSON.stringify({ estado }),
   });
   if (!response.ok) {
-    throw new Error(await getActionErrorMessage(response));
+    throw new Error(await extractActionErrorMessage(response));
   }
   return response.json();
 };
 
-const TarjaPanelToolbar = ({
-  rangeStart,
-  rangeEnd,
-  quincenaNumber,
-  selectedDate,
-  onPrevious,
-  onNext,
-  onSelectedDateChange,
-}: {
-  rangeStart: Date;
-  rangeEnd: Date;
-  quincenaNumber: number;
-  selectedDate: string;
-  onPrevious: () => void;
-  onNext: () => void;
-  onSelectedDateChange: (value: string) => void;
-}) => {
-  return (
-    <div className="rounded-lg bg-muted/30 p-1 sm:p-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <QuincenaNavigator
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-          quincenaNumber={quincenaNumber}
-          selectedDate={selectedDate}
-          onPrevious={onPrevious}
-          onNext={onNext}
-          onSelectedDateChange={onSelectedDateChange}
-        />
+const formatNumber = (value: number, maximumFractionDigits = 0) =>
+  Number(value || 0).toLocaleString("es-AR", { maximumFractionDigits });
 
-        <FilterForm
-          filters={PANEL_FILTERS}
-          formComponent={StyledFilterDiv}
-          className="list-filters pointer-events-auto flex min-w-0 flex-wrap items-end gap-2 [&_.filter-field]:items-end"
-        />
-      </div>
-    </div>
-  );
+const hasAmount = (value?: number | null) => {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) && amount !== 0;
 };
 
-const TarjaCard = ({
-  tarja,
-  projectName,
-  onOpen,
-  generating,
-  onGenerate,
-  closing,
-  onClose,
-}: {
-  tarja: TarjaRecord;
-  projectName: string;
-  onOpen: () => void;
-  generating?: boolean;
-  onGenerate?: () => void;
-  closing?: boolean;
-  onClose?: () => void;
-}) => {
-  const detalles = Array.isArray(tarja.detalles) ? tarja.detalles : [];
-  const totalHoras = detalles.reduce((total, detalle) => {
-    const horas = Number(detalle.horas ?? 0);
-    return total + (Number.isFinite(horas) ? horas : 0);
-  }, 0);
-
-  return (
-    <div className="relative w-full rounded-md border border-slate-200 bg-white pl-3 shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40">
-      <span
-        className="absolute left-0 top-0 h-full w-1 rounded-l-md"
-        style={{ backgroundColor: getProjectColor(tarja.idproyecto) }}
-      />
-      <button
-        type="button"
-        className="w-full px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-        onClick={onOpen}
-      >
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1">
-        <span className="truncate text-[10px] font-semibold leading-tight text-slate-800">
-          {projectName}
-        </span>
-        <Badge
-          variant="secondary"
-          className={cn(
-            "h-4 shrink-0 px-1 py-0 text-[7px] leading-none",
-            getEstadoTarjaBadgeClass(tarja.estado),
-          )}
-        >
-          {getEstadoTarjaLabel(tarja.estado)}
-        </Badge>
-      </div>
-      <div className="mt-0.5 text-[8px] leading-tight text-slate-500">
-        {detalles.length} registros ·{" "}
-        {totalHoras.toLocaleString("es-AR", { maximumFractionDigits: 2 })} hs
-      </div>
-      {tarja.descripcion ? (
-        <div className="mt-0.5 truncate text-[8px] text-slate-400">
-          {tarja.descripcion}
-        </div>
-      ) : null}
-      </button>
-      {onGenerate || onClose ? (
-        <div className="flex justify-end gap-1 px-2 pb-1">
-          {onClose ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={closing}
-              className="h-4 rounded px-1 text-[6px] has-[>svg]:px-1"
-              title="Cerrar tarja"
-              onClick={onClose}
-            >
-              {closing ? <Loader2 className="size-2.5 animate-spin" /> : "Cerrar"}
-            </Button>
-          ) : null}
-          {onGenerate ? (
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            disabled={generating}
-            className="h-4 rounded bg-blue-600 px-1 text-[6px] text-white shadow-sm hover:bg-blue-700 has-[>svg]:px-1"
-            title="Recalcular tarja"
-            onClick={onGenerate}
-          >
-            {generating ? <Loader2 className="size-2.5 animate-spin" /> : "Generar"}
-          </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
+const buildNominaListUrl = (row: PanelRow) => {
+  const params = new URLSearchParams({
+    filter: JSON.stringify({
+      idproyecto: row.proyecto_id,
+      encargado_contacto_id: row.contacto_id ?? null,
+    }),
+  });
+  return `/nominas?${params.toString()}`;
 };
 
-const PendingTarjaRow = ({
-  project,
-  startIso,
-  stats,
-  generating,
-  onGenerate,
-}: {
-  project: ProyectoRecord;
-  startIso: string;
-  stats: ParteDiarioStats;
-  generating?: boolean;
-  onGenerate: () => void;
-}) => (
-  <div className="flex min-h-5 w-full items-center gap-1 rounded px-1 py-0 text-left text-[8px] leading-[0.8rem] text-slate-500 transition hover:bg-slate-50">
-    <span
-      className="size-1 shrink-0 rounded-full"
-      style={{ backgroundColor: getProjectColor(project.id) }}
-    />
-    <span
-      className="w-[88px] min-w-0 shrink-0 truncate sm:w-[104px]"
-      title={project.nombre ?? `Obra #${project.id}`}
-    >
-      {project.nombre ?? `Obra #${project.id}`}
-    </span>
-    <span className="flex min-w-0 flex-1 items-center gap-1 text-[7px] font-medium">
-      <span className="text-emerald-600" title="Partes diarios confirmados">
-        C: {stats.confirmados}
-      </span>
-      <span className="text-amber-600" title="Partes diarios en borrador">
-        B: {stats.borradores}
-      </span>
-      <span className="text-slate-400" title="Partes diarios sin cargar">
-        S: {stats.sinCargar}
-      </span>
-    </span>
-    <Button
-      type="button"
-      variant="default"
-      size="sm"
-      disabled={generating}
-      className="h-4 shrink-0 rounded bg-blue-600 px-1 text-[6px] text-white shadow-sm hover:bg-blue-700 has-[>svg]:px-1"
-      title="Generar tarja"
-      onClick={onGenerate}
-    >
-      {generating ? <Loader2 className="size-2.5 animate-spin" /> : "Generar"}
-    </Button>
-    <Button
-      asChild
-      variant="outline"
-      size="sm"
-      className="h-4 shrink-0 rounded px-1 text-[6px] has-[>svg]:px-1"
-    >
-      <Link to={buildParteDiarioPanelUrl(project.id, startIso)}>Partes</Link>
-    </Button>
-  </div>
-);
+const buildParteDiarioDayUrl = (row: PanelRow, day: PanelDay, returnTo: string) => {
+  const parteId = day.parte_ids[0];
+  if (parteId) {
+    return `/parte-diario/${parteId}?returnTo=${encodeURIComponent(returnTo)}`;
+  }
+  const params = new URLSearchParams({
+    idproyecto: String(row.proyecto_id),
+    fecha: day.fecha,
+    returnTo,
+  });
+  if (row.contacto_id) {
+    params.set("contacto_id", String(row.contacto_id));
+  }
+  return `/parte-diario/create?${params.toString()}`;
+};
 
-const TarjaStatusColumn = ({
-  title,
-  count,
+const getTarjaStatusLabel = (row: PanelRow) => {
+  if (!row.tarja) return "Sin tarja";
+  if (row.tarja.panel_estado === "lista_cerrar") return "Lista para cerrar";
+  if (row.tarja.estado === "cerrado") return "Cerrada";
+  return "Borrador";
+};
+
+const getTarjaStatusClass = (row: PanelRow) => {
+  if (!row.tarja) return "bg-slate-100 text-slate-700";
+  if (row.tarja.panel_estado === "lista_cerrar") return "bg-blue-100 text-blue-700";
+  if (row.tarja.estado === "cerrado") return "bg-emerald-100 text-emerald-700";
+  return "bg-amber-100 text-amber-700";
+};
+
+const dayStatusConfig: Record<
+  PanelDayStatus,
+  { label: string; short: string; className: string; icon: React.ReactNode }
+> = {
+  completo: {
+    label: "Parte completo",
+    short: "C",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: <CheckCircle2 className="size-2.5" />,
+  },
+  cerrado: {
+    label: "Parte cerrado",
+    short: "T",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+    icon: <Lock className="size-2.5" />,
+  },
+  borrador: {
+    label: "Parte en borrador",
+    short: "B",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: <FileClock className="size-2.5" />,
+  },
+  faltante: {
+    label: "Parte faltante",
+    short: "F",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+    icon: <FileQuestion className="size-2.5" />,
+  },
+  descanso: {
+    label: "Dia no requerido",
+    short: "-",
+    className: "border-slate-200 bg-slate-50 text-slate-400",
+    icon: null,
+  },
+};
+
+const KpiTile = ({
+  label,
+  value,
   tone,
-  emptyLabel,
-  compact = false,
-  children,
 }: {
-  title: string;
-  count: number;
-  tone: "amber" | "blue" | "emerald";
-  emptyLabel: string;
-  compact?: boolean;
-  children: React.ReactNode;
+  label: string;
+  value: number | string;
+  tone: "slate" | "emerald" | "amber" | "rose" | "blue";
 }) => {
   const toneClass = {
-    amber: "border-amber-200 bg-amber-50/70 text-amber-700",
-    blue: "border-blue-200 bg-blue-50/70 text-blue-700",
-    emerald: "border-emerald-200 bg-emerald-50/70 text-emerald-700",
+    slate: "border-slate-200 bg-white text-slate-700",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    rose: "border-rose-200 bg-rose-50 text-rose-700",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
   }[tone];
 
   return (
-    <section className="flex min-h-[480px] flex-col bg-white">
-      <div className={cn("flex items-center justify-between border-b px-3 py-2", toneClass)}>
-        <span className="text-[11px] font-semibold">{title}</span>
-        <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[8px] font-semibold">
-          {count}
-        </span>
-      </div>
-      <div
-        className={cn(
-          "flex-1 overflow-y-auto p-2",
-          compact ? "space-y-0" : "space-y-1.5",
-        )}
-      >
-        {count ? (
-          children
-        ) : (
-          <div className="rounded-md border border-dashed border-slate-200 px-2 py-4 text-center text-[10px] text-slate-400">
-            {emptyLabel}
-          </div>
-        )}
-      </div>
-    </section>
+    <div className={cn("rounded-md border px-3 py-2", toneClass)}>
+      <div className="text-[10px] font-medium text-slate-500">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold leading-none">{value}</div>
+    </div>
   );
 };
+
+const DayStrip = ({ row, returnTo }: { row: PanelRow; returnTo: string }) => (
+  <div
+    className="grid w-max grid-flow-col auto-cols-[18px] gap-0.5"
+    aria-label={`Partes diarios de ${row.proyecto_nombre}`}
+  >
+    {row.dias.map((day) => {
+      const config = dayStatusConfig[day.estado];
+      return (
+        <Link
+          key={day.fecha}
+          to={buildParteDiarioDayUrl(row, day, returnTo)}
+          className={cn(
+            "flex h-7 w-[18px] flex-col items-center justify-center rounded border text-[7px] font-semibold leading-none",
+            config.className,
+          )}
+          title={`${day.fecha} - ${config.label}${day.partes ? ` (${day.partes})` : ""}`}
+        >
+          <span className="mb-0.5 text-[6px] font-medium opacity-70">{day.dia}</span>
+          {config.icon ?? <span>{config.short}</span>}
+        </Link>
+      );
+    })}
+  </div>
+);
+
+const ProgressCell = ({ row }: { row: PanelRow }) => {
+  const expected = row.parte_stats.esperados || 0;
+  const completed = row.parte_stats.completos || 0;
+  const percent = expected ? Math.round((completed / expected) * 100) : 0;
+
+  return (
+    <div className="w-[96px]">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="font-semibold text-slate-700">{percent}%</span>
+        <span className="text-slate-500">
+          {completed}/{expected}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={cn(
+            "h-full rounded-full",
+            percent === 100 ? "bg-emerald-500" : row.parte_stats.faltantes ? "bg-rose-500" : "bg-amber-500",
+          )}
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+      <div className="mt-1 grid grid-cols-3 gap-0.5 text-[7px] font-medium">
+        <span className="text-emerald-700">C {row.parte_stats.completos}</span>
+        <span className="text-amber-700">B {row.parte_stats.borrador}</span>
+        <span className="text-rose-700">F {row.parte_stats.faltantes}</span>
+      </div>
+    </div>
+  );
+};
+
+const TarjaCell = ({ row }: { row: PanelRow }) => {
+  const tarja = row.tarja;
+  return (
+    <div className="w-[140px] space-y-1">
+      <Badge variant="secondary" className={cn("h-5 px-2 text-[10px]", getTarjaStatusClass(row))}>
+        {getTarjaStatusLabel(row)}
+      </Badge>
+      {tarja ? (
+        <div className="text-[9px] leading-tight text-slate-500">
+          <div>{formatNumber(tarja.registros)} registros</div>
+          <div>{formatNumber(tarja.horas, 2)} hs</div>
+        </div>
+      ) : (
+        <div className="text-[10px] text-slate-400">Pendiente de generar</div>
+      )}
+    </div>
+  );
+};
+
+const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
+  if (!tarja) {
+    return <span className="text-[10px] text-slate-400">-</span>;
+  }
+  const total = Number(tarja.adicional || 0) + Number(tarja.premio || 0);
+  return (
+    <div className="w-[118px] text-[9px] leading-tight tabular-nums text-slate-600">
+      <div className="text-[12px] font-semibold leading-4 text-slate-900">
+        {formatNumber(total, 2)}
+      </div>
+      {hasAmount(tarja.adicional) ? (
+        <div className="text-[8px] font-medium text-slate-500">
+          Adicional: {formatNumber(tarja.adicional, 2)}
+        </div>
+      ) : null}
+      {hasAmount(tarja.premio) ? (
+        <div className="text-[8px] font-medium text-slate-500">
+          Premio: {formatNumber(tarja.premio, 2)}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const RowActions = ({
+  row,
+  returnTo,
+  onAction,
+}: {
+  row: PanelRow;
+  returnTo: string;
+  onAction: (target: ActionTarget) => void;
+}) => {
+  const detailUrl = row.tarja
+    ? `/tarjas/${row.tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`
+    : null;
+  const nominaUrl = buildNominaListUrl(row);
+  const puedeGenerar = Boolean(
+    row.puede_generar &&
+      row.parte_stats.esperados > 0 &&
+      row.parte_stats.faltantes === 0 &&
+      row.parte_stats.borrador === 0,
+  );
+
+  const primary = (() => {
+    if (!row.tarja && puedeGenerar) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 whitespace-nowrap px-2 text-[10px]"
+          onClick={() => onAction({ row, action: "generar" })}
+        >
+          <RefreshCw className="size-3" />
+          Generar
+        </Button>
+      );
+    }
+    if (row.puede_cerrar) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 whitespace-nowrap px-2 text-[10px]"
+          onClick={() => onAction({ row, action: "cerrar" })}
+        >
+          <Lock className="size-3" />
+          Cerrar
+        </Button>
+      );
+    }
+    if (row.tarja) {
+      return (
+        <Button asChild type="button" variant="outline" size="sm" className="h-7 whitespace-nowrap px-2 text-[10px]">
+          <Link to={detailUrl ?? nominaUrl}>
+            <Eye className="size-3" />
+            {row.tarja.estado === "cerrado" ? "Ver" : "Abrir"}
+          </Link>
+        </Button>
+      );
+    }
+    return null;
+  })();
+
+  return (
+    <div className="flex w-[112px] items-center justify-end gap-1">
+      {primary}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Mas acciones">
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-40">
+          {detailUrl ? (
+            <DropdownMenuItem asChild>
+              <Link to={detailUrl}>
+                <TableProperties className="mr-2 size-3.5" />
+                Tarja detalle
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem asChild>
+            <Link to={nominaUrl}>
+              <Users className="mr-2 size-3.5" />
+              Nomina
+            </Link>
+          </DropdownMenuItem>
+          {puedeGenerar ? (
+            <DropdownMenuItem onSelect={() => onAction({ row, action: "generar" })}>
+              <RotateCcw className="mr-2 size-3.5" />
+              {row.tarja ? "Regenerar" : "Generar"}
+            </DropdownMenuItem>
+          ) : null}
+          {row.puede_cerrar ? (
+            <DropdownMenuItem onSelect={() => onAction({ row, action: "cerrar" })}>
+              <Lock className="mr-2 size-3.5" />
+              Cerrar
+            </DropdownMenuItem>
+          ) : null}
+          {row.puede_reabrir ? (
+            <DropdownMenuItem onSelect={() => onAction({ row, action: "reabrir" })}>
+              <LockOpen className="mr-2 size-3.5" />
+              Reabrir
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
+const TarjaPanelTitle = ({ onBack }: { onBack: () => void }) => (
+  <div className="flex min-w-0 items-center gap-3">
+    <Button
+      type="button"
+      variant="ghost"
+      className="h-8 px-2 text-sm font-medium text-primary"
+      onClick={onBack}
+    >
+      <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+      Volver
+    </Button>
+    <TableProperties className="size-5 shrink-0" />
+    <h2 className="truncate text-xl font-bold tracking-tight sm:text-2xl">Tarjas - Control</h2>
+  </div>
+);
 
 const TarjaPanelActions = ({
   startIso,
@@ -429,12 +548,6 @@ const TarjaPanelActions = ({
   returnTo: string;
 }) => (
   <div className="flex items-center gap-2">
-    <Button asChild variant="outline" size="sm" className={actionButtonClass}>
-      <Link to="/tarjas">
-        <ListIcon className="size-3.5" />
-        Lista
-      </Link>
-    </Button>
     <Button asChild size="sm" className={actionButtonClass}>
       <Link
         to={`/tarjas/create?fechainicio=${startIso}&fechafinal=${endIso}&returnTo=${encodeURIComponent(returnTo)}`}
@@ -446,364 +559,143 @@ const TarjaPanelActions = ({
   </div>
 );
 
-const TarjaPanelTitle = ({ onBack }: { onBack: () => void }) => (
-  <>
-    <div className="sm:hidden">
-      <Button
-        type="button"
-        variant="ghost"
-        className="h-7 px-1.5 text-[11px] font-medium text-primary"
-        onClick={onBack}
-      >
-        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-        Volver
-      </Button>
-      <div className="-mt-0.5 flex items-center justify-center gap-2">
-        <ClipboardCheck className="size-5" />
-        <span>Tarjas - Quincena</span>
-      </div>
-    </div>
-    <span className="hidden items-center gap-3 sm:inline-flex">
-      <Button
-        type="button"
-        variant="ghost"
-        className="h-8 px-2 text-sm font-medium text-primary"
-        onClick={onBack}
-      >
-        <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-        Volver
-      </Button>
-      <ClipboardCheck className="size-5" />
-      <span>Tarjas - Quincena</span>
-    </span>
-  </>
-);
-
-const TarjaPanelBody = ({
-  startIso,
-  endIso,
-  returnTo,
-}: {
-  startIso: string;
-  endIso: string;
-  returnTo: string;
-}) => {
-  const navigate = useNavigate();
-  const notify = useNotify();
-  const refresh = useRefresh();
-  const [generateProject, setGenerateProject] = useState<GenerateTarjaTarget | null>(null);
-  const [closeTarja, setCloseTarja] = useState<CloseTarjaTarget | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
-  const { data = [], filterValues, isLoading, isFetching, error } =
-    useListContext<TarjaRecord>();
-  const projectFilter = filterValues?.idproyecto;
-  const projectFilterPayload = useMemo(() => {
-    const payload: Record<string, unknown> = {
-      estado: { in: ACTIVE_PROJECT_ESTADOS },
-    };
-    if (projectFilter) payload.id = Number(projectFilter);
-    return payload;
-  }, [projectFilter]);
-
-  const { data: projectData = [], isLoading: projectsLoading } =
-    useGetList<ProyectoRecord>("proyectos", {
-      pagination: { page: 1, perPage: 500 },
-      sort: { field: "nombre", order: "ASC" },
-      filter: projectFilterPayload,
-    });
-  const parteFilter = useMemo(() => {
-    const filter: Record<string, unknown> = {
-      fecha: { gte: startIso, lte: endIso },
-    };
-    if (projectFilter) filter.idproyecto = Number(projectFilter);
-    return filter;
-  }, [endIso, projectFilter, startIso]);
-  const {
-    data: parteData = [],
-    isLoading: partesLoading,
-    isFetching: partesFetching,
-    error: partesError,
-  } = useGetList<ParteDiarioRecord>("parte-diario", {
-    pagination: { page: 1, perPage: 1000 },
-    sort: { field: "fecha", order: "ASC" },
-    filter: parteFilter,
-  });
-
-  const tarjas = data as TarjaRecord[];
-  const projects = projectData as ProyectoRecord[];
-  const projectsById = useMemo(
-    () => new Map(projects.map((project) => [String(project.id), project])),
-    [projects],
-  );
-  const generatedProjectIds = useMemo(
-    () => new Set(tarjas.map((tarja) => String(tarja.idproyecto ?? ""))),
-    [tarjas],
-  );
-  const pendingProjects = useMemo(
-    () =>
-      projects.filter(
-        (project) =>
-          project.estado === EXECUTION_PROJECT_ESTADO &&
-          isProjectActiveInRange(project, startIso, endIso) &&
-          !generatedProjectIds.has(String(project.id)),
-      ),
-    [endIso, generatedProjectIds, projects, startIso],
-  );
-  const parteStatsByProject = useMemo(() => {
-    const grouped = new Map<
-      string,
-      { confirmados: number; borradores: number; loadedDates: Set<string> }
-    >();
-    (parteData as ParteDiarioRecord[]).forEach((parte) => {
-      const projectId = String(parte.idproyecto ?? "");
-      const dateKey = String(parte.fecha ?? "").slice(0, 10);
-      if (!projectId || !dateKey) return;
-      const stats = grouped.get(projectId) ?? {
-        confirmados: 0,
-        borradores: 0,
-        loadedDates: new Set<string>(),
-      };
-      if (parte.estado === "confirmado") {
-        stats.confirmados += 1;
-      } else {
-        stats.borradores += 1;
-      }
-      stats.loadedDates.add(dateKey);
-      grouped.set(projectId, stats);
-    });
-
-    return new Map(
-      pendingProjects.map((project) => {
-        const stats = grouped.get(String(project.id));
-        const expectedDays = countProjectDaysInRange(project, startIso, endIso);
-        return [
-          String(project.id),
-          {
-            confirmados: stats?.confirmados ?? 0,
-            borradores: stats?.borradores ?? 0,
-            sinCargar: Math.max(0, expectedDays - (stats?.loadedDates.size ?? 0)),
-          } satisfies ParteDiarioStats,
-        ];
-      }),
-    );
-  }, [endIso, parteData, pendingProjects, startIso]);
-  const draftTarjas = tarjas.filter((tarja) => tarja.estado === "borrador");
-  const closedTarjas = tarjas.filter((tarja) => tarja.estado === "cerrado");
-  const loading =
-    isLoading ||
-    isFetching ||
-    projectsLoading ||
-    partesLoading ||
-    partesFetching;
-
-  const openTarja = (tarja: TarjaRecord) => {
-    navigate(`/tarjas/${tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`, {
-      state: { returnTo },
-    });
-  };
-
-  const handleGenerateTarja = async () => {
-    if (!generateProject?.id) return;
-    setActionLoading(true);
-    try {
-      await postGenerateTarja({
-        idproyecto: generateProject.id,
-        fechainicio: startIso,
-        fechafinal: endIso,
-      });
-      notify("Tarja generada en borrador", { type: "info" });
-      setGenerateProject(null);
-      refresh();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudo generar la tarja", {
-        type: "warning",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCloseTarja = async () => {
-    if (!closeTarja?.id) return;
-    setActionLoading(true);
-    try {
-      await patchCloseTarja(closeTarja.id);
-      notify("Tarja cerrada", { type: "info" });
-      setCloseTarja(null);
-      refresh();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudo cerrar la tarja", {
-        type: "warning",
-      });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  return (
-    <>
-      {error || partesError ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
-          No se pudo cargar el panel de tarjas.
-        </div>
-      ) : null}
-
-      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-        {loading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm">
-              <Loader2 className="size-3.5 animate-spin" />
-              Cargando quincena
-            </span>
-          </div>
-        ) : null}
-        <div className="grid grid-flow-col auto-cols-[280px] overflow-x-auto md:grid-flow-row md:grid-cols-3 md:divide-x md:divide-slate-200 md:overflow-x-hidden">
-          <TarjaStatusColumn
-            title="Pendientes"
-            count={pendingProjects.length}
-            tone="amber"
-            emptyLabel="Todas las tarjas fueron generadas"
-            compact
-          >
-            {pendingProjects.map((project) => (
-              <PendingTarjaRow
-                key={project.id}
-                project={project}
-                startIso={startIso}
-                stats={
-                  parteStatsByProject.get(String(project.id)) ?? {
-                    confirmados: 0,
-                    borradores: 0,
-                    sinCargar: 0,
-                  }
-                }
-                generating={actionLoading && generateProject?.id === project.id}
-                onGenerate={() => setGenerateProject(project)}
-              />
-            ))}
-          </TarjaStatusColumn>
-
-          <TarjaStatusColumn
-            title="Borrador"
-            count={draftTarjas.length}
-            tone="blue"
-            emptyLabel="Sin tarjas en borrador"
-          >
-            {draftTarjas.map((tarja) => (
-              <TarjaCard
-                key={tarja.id}
-                tarja={tarja}
-                projectName={
-                  projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
-                  `Obra #${tarja.idproyecto}`
-                }
-                onOpen={() => openTarja(tarja)}
-                generating={actionLoading && generateProject?.id === tarja.idproyecto}
-                closing={actionLoading && closeTarja?.id === tarja.id}
-                onGenerate={() =>
-                  setGenerateProject({
-                    id: tarja.idproyecto ?? "",
-                    nombre:
-                      projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
-                      `Obra #${tarja.idproyecto}`,
-                  })
-                }
-                onClose={() =>
-                  setCloseTarja({
-                    id: tarja.id,
-                    nombre:
-                      projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
-                      `Obra #${tarja.idproyecto}`,
-                  })
-                }
-              />
-            ))}
-          </TarjaStatusColumn>
-
-          <TarjaStatusColumn
-            title="Cerradas"
-            count={closedTarjas.length}
-            tone="emerald"
-            emptyLabel="Sin tarjas cerradas"
-          >
-            {closedTarjas.map((tarja) => (
-              <TarjaCard
-                key={tarja.id}
-                tarja={tarja}
-                projectName={
-                  projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
-                  `Obra #${tarja.idproyecto}`
-                }
-                onOpen={() => openTarja(tarja)}
-              />
-            ))}
-          </TarjaStatusColumn>
-        </div>
-      </div>
-      <Confirm
-        isOpen={Boolean(generateProject)}
-        loading={actionLoading}
-        title="Generar tarja"
-        content={`Se limpiara la tarja generada anteriormente para ${
-          generateProject?.nombre ?? "esta obra"
-        } y se volveran a crear los detalles de la quincena.`}
-        confirm="Generar"
-        onClose={() => {
-          if (!actionLoading) setGenerateProject(null);
-        }}
-        onConfirm={() => {
-          void handleGenerateTarja();
-        }}
-      />
-      <Confirm
-        isOpen={Boolean(closeTarja)}
-        loading={actionLoading}
-        title="Cerrar tarja"
-        content={`Se cerrara la tarja de ${closeTarja?.nombre ?? "esta obra"}. Una vez cerrada quedara fuera de la columna de borradores.`}
-        confirm="Cerrar"
-        onClose={() => {
-          if (!actionLoading) setCloseTarja(null);
-        }}
-        onConfirm={() => {
-          void handleCloseTarja();
-        }}
-      />
-    </>
-  );
-};
-
 export const TarjaPanel = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const notify = useNotify();
   const [searchParams, setSearchParams] = useSearchParams();
   const todayIso = useMemo(() => toISODate(new Date()), []);
   const initialDate = searchParams.get("fecha") ?? todayIso;
-  const [selectedDate, setSelectedDate] = useState(initialDate);
   const [range, setRange] = useState(() => getQuincenaRange(parseDateOnly(initialDate)));
+  const [panel, setPanel] = useState<TarjaPanelResponse | null>(null);
+  const [optionsPanel, setOptionsPanel] = useState<TarjaPanelResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const startIso = useMemo(() => toISODate(range.start), [range.start]);
   const endIso = useMemo(() => toISODate(range.end), [range.end]);
+  const selectedProject = searchParams.get("idproyecto");
+  const selectedEncargado = searchParams.get("contacto_id");
+  const selectedProjectEstado = searchParams.get("estado") ?? EXECUTION_PROJECT_ESTADO;
   const returnTo = `${location.pathname}${location.search}`;
 
-  const setQuincenaFromDate = useCallback(
-    (value: string) => {
-      const date = parseDateOnly(value);
-      const nextIso = toISODate(date);
-      setSelectedDate(nextIso);
-      setRange(getQuincenaRange(date));
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current);
-          next.set("fecha", nextIso);
-          return next;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams],
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetchTarjaPanel({
+      startIso,
+      endIso,
+      projectId: selectedProject,
+      projectEstado: selectedProjectEstado,
+      signal: controller.signal,
+    })
+      .then(setPanel)
+      .catch((fetchError) => {
+        if (fetchError?.name === "AbortError") return;
+        setError(fetchError instanceof Error ? fetchError.message : "No se pudo cargar el panel");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
 
-  const moveTo = (direction: -1 | 1) => {
-    setQuincenaFromDate(toISODate(moveQuincena(range.start, direction)));
+    return () => controller.abort();
+  }, [endIso, refreshKey, selectedProject, selectedProjectEstado, startIso]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchTarjaPanel({
+      startIso,
+      endIso,
+      projectId: null,
+      projectEstado: selectedProjectEstado,
+      signal: controller.signal,
+    })
+      .then(setOptionsPanel)
+      .catch((fetchError) => {
+        if (fetchError?.name !== "AbortError") {
+          setOptionsPanel(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [endIso, refreshKey, selectedProjectEstado, startIso]);
+
+  const handleProjectChange = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value) {
+          next.set("idproyecto", value);
+        } else {
+          next.delete("idproyecto");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const handleProjectEstadoChange = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("idproyecto");
+        next.delete("contacto_id");
+        if (value) {
+          next.set("estado", value);
+        } else {
+          next.set("estado", "");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const handleEncargadoChange = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("idproyecto");
+        if (value) {
+          next.set("contacto_id", value);
+        } else {
+          next.delete("contacto_id");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const setQuincenaDate = (date: Date) => {
+    const nextRange = getQuincenaRange(date);
+    const nextDate = toISODate(nextRange.start);
+    setRange(nextRange);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("fecha", nextDate);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const handlePreviousQuincena = () => {
+    setQuincenaDate(moveQuincena(range.start, -1));
+  };
+
+  const handleNextQuincena = () => {
+    setQuincenaDate(moveQuincena(range.start, 1));
+  };
+
+  const handleSelectedDateChange = (value: string) => {
+    setQuincenaDate(parseDateOnly(value));
   };
 
   const handleBack = () => {
@@ -814,42 +706,326 @@ export const TarjaPanel = () => {
     navigate("/tarjas");
   };
 
+  const rowsForEstado = useMemo(
+    () =>
+      (panel?.rows ?? []).filter(
+        (row) => !selectedProjectEstado || row.proyecto_estado === selectedProjectEstado,
+      ),
+    [panel?.rows, selectedProjectEstado],
+  );
+  const visibleRows = useMemo(
+    () =>
+      rowsForEstado.filter((row) => {
+        if (!selectedEncargado) return true;
+        const rowEncargadoId = row.contacto_id ? String(row.contacto_id) : "sin-encargado";
+        return rowEncargadoId === selectedEncargado;
+      }),
+    [rowsForEstado, selectedEncargado],
+  );
+  const projectOptions = useMemo(() => {
+    const options = new Map<number, string>();
+    const optionRows = optionsPanel?.rows ?? panel?.rows ?? [];
+    optionRows.forEach((row) => {
+      if (!options.has(row.proyecto_id)) {
+        options.set(row.proyecto_id, row.proyecto_nombre);
+      }
+    });
+    return Array.from(options.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [optionsPanel?.rows, panel?.rows]);
+  const encargadoOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    rowsForEstado.forEach((row) => {
+      const id = row.contacto_id ? String(row.contacto_id) : "sin-encargado";
+      if (!options.has(id)) {
+        options.set(id, row.encargado ?? "Sin encargado");
+      }
+    });
+    return Array.from(options.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [rowsForEstado]);
+  const totals = useMemo<TarjaPanelResponse["totals"]>(
+    () =>
+      visibleRows.reduce(
+        (acc, row) => {
+          acc.obras += 1;
+          acc.dias_esperados += row.parte_stats.esperados;
+          acc.partes_completos += row.parte_stats.completos;
+          acc.partes_borrador += row.parte_stats.borrador;
+          acc.partes_faltantes += row.parte_stats.faltantes;
+          if (!row.tarja) {
+            acc.sin_tarja += 1;
+          } else if (row.tarja.estado === "cerrado") {
+            acc.tarjas_cerradas += 1;
+          } else if (row.tarja.panel_estado === "lista_cerrar") {
+            acc.tarjas_listas += 1;
+          } else {
+            acc.tarjas_borrador += 1;
+          }
+          return acc;
+        },
+        {
+          obras: 0,
+          dias_esperados: 0,
+          partes_completos: 0,
+          partes_borrador: 0,
+          partes_faltantes: 0,
+          sin_tarja: 0,
+          tarjas_borrador: 0,
+          tarjas_listas: 0,
+          tarjas_cerradas: 0,
+        },
+      ),
+    [visibleRows],
+  );
+  const completionPercent = totals.dias_esperados
+    ? Math.round((totals.partes_completos / totals.dias_esperados) * 100)
+    : 0;
+
+  const executeAction = async () => {
+    if (!actionTarget) return;
+    setActionLoading(true);
+    try {
+      const { row, action } = actionTarget;
+      if (action === "generar") {
+        await postGenerateTarja({
+          idproyecto: row.proyecto_id,
+          contacto_id: row.contacto_id,
+          fechainicio: startIso,
+          fechafinal: endIso,
+        });
+        notify("Tarja generada", { type: "info" });
+      } else if (action === "cerrar" && row.tarja) {
+        await patchTarjaEstado(row.tarja.id, "cerrado");
+        notify("Tarja cerrada", { type: "info" });
+      } else if (action === "reabrir" && row.tarja) {
+        await patchTarjaEstado(row.tarja.id, "borrador");
+        notify("Tarja reabierta", { type: "info" });
+      }
+      setActionTarget(null);
+      setRefreshKey((key) => key + 1);
+    } catch (actionError) {
+      notify(actionError instanceof Error ? actionError.message : "No se pudo completar la accion", {
+        type: "warning",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const actionCopy = (() => {
+    if (!actionTarget) return null;
+    const projectName = [
+      actionTarget.row.proyecto_nombre,
+      actionTarget.row.encargado,
+    ].filter(Boolean).join(" / ");
+    if (actionTarget.action === "cerrar") {
+      return {
+        title: "Cerrar tarja",
+        content: `Se cerrara la tarja de ${projectName}.`,
+        confirm: "Cerrar",
+      };
+    }
+    if (actionTarget.action === "reabrir") {
+      return {
+        title: "Reabrir tarja",
+        content: `La tarja de ${projectName} volvera a estado borrador.`,
+        confirm: "Reabrir",
+      };
+    }
+    return {
+      title: actionTarget.row.tarja ? "Regenerar tarja" : "Generar tarja",
+      content: `Se generara la tarja de ${projectName} para la quincena seleccionada.`,
+      confirm: "Generar",
+    };
+  })();
+
   return (
-    <List
-      resource="tarjas"
-      title={<TarjaPanelTitle onBack={handleBack} />}
-      filters={PANEL_FILTERS}
-      actions={
-        <TarjaPanelActions
-          startIso={startIso}
-          endIso={endIso}
-          returnTo={returnTo}
-        />
-      }
-      perPage={500}
-      pagination={false}
-      sort={{ field: "idproyecto", order: "ASC" }}
-      filter={{
-        fechainicio: { lte: endIso },
-        fechafinal: { gte: startIso },
-      }}
-      containerClassName={LIST_CONTAINER_WIDE}
-      showFilters={false}
-      topContent={
-        <TarjaPanelToolbar
-          rangeStart={range.start}
-          rangeEnd={range.end}
-          quincenaNumber={range.number}
-          selectedDate={selectedDate}
-          onPrevious={() => moveTo(-1)}
-          onNext={() => moveTo(1)}
-          onSelectedDateChange={setQuincenaFromDate}
-        />
-      }
-      filterDebounce={300}
-    >
-      <TarjaPanelBody startIso={startIso} endIso={endIso} returnTo={returnTo} />
-    </List>
+    <div className="w-full max-w-none min-w-0 overflow-x-hidden pr-2">
+      <AppBreadcrumb items={[{ label: "Tarjas", current: true }]} />
+
+      <div className="my-3 flex flex-wrap items-center justify-between gap-3">
+        <TarjaPanelTitle onBack={handleBack} />
+        <TarjaPanelActions startIso={startIso} endIso={endIso} returnTo={returnTo} />
+      </div>
+
+      <div className="mb-3 rounded-lg bg-muted/30 px-2 pb-2 pt-4">
+        <div className="flex w-full flex-wrap items-start gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            <QuincenaNavigator
+              rangeStart={range.start}
+              rangeEnd={range.end}
+              quincenaNumber={range.number}
+              selectedDate={startIso}
+              onPrevious={handlePreviousQuincena}
+              onNext={handleNextQuincena}
+              onSelectedDateChange={handleSelectedDateChange}
+              showSelectedDate={false}
+            />
+            <label className="relative flex h-8 text-[10px] font-medium leading-none text-blue-700">
+              <span className="absolute -top-3 left-0">Estado</span>
+              <select
+                value={selectedProjectEstado}
+                onChange={(event) => handleProjectEstadoChange(event.target.value)}
+                className="h-8 w-[150px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Todos</option>
+                {PROYECTO_ESTADO_CHOICES.map((estado) => (
+                  <option key={estado.id} value={estado.id}>
+                    {estado.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="relative flex h-8 text-[10px] font-medium leading-none text-blue-700">
+              <span className="absolute -top-3 left-0">Encargado</span>
+              <select
+                value={selectedEncargado ?? ""}
+                onChange={(event) => handleEncargadoChange(event.target.value)}
+                className="h-8 w-[210px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Todos</option>
+                {encargadoOptions.map((encargado) => (
+                  <option key={encargado.id} value={encargado.id}>
+                    {encargado.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="relative flex h-8 text-[10px] font-medium leading-none text-blue-700">
+              <span className="absolute -top-3 left-0">idproyecto</span>
+              <select
+                value={selectedProject ?? ""}
+                onChange={(event) => handleProjectChange(event.target.value)}
+                className="h-8 w-[230px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Todas</option>
+                {projectOptions.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto h-8 px-2 text-[11px]"
+            onClick={() => setRefreshKey((key) => key + 1)}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            Actualizar
+          </Button>
+        </div>
+      </div>
+
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <KpiTile label="Obra/enc." value={totals.obras} tone="slate" />
+        <KpiTile label="Avance partes" value={`${completionPercent}%`} tone="emerald" />
+        <KpiTile label="Faltantes" value={totals.partes_faltantes} tone="rose" />
+        <KpiTile label="Borradores" value={totals.partes_borrador} tone="amber" />
+        <KpiTile label="Listas" value={totals.tarjas_listas} tone="blue" />
+        <KpiTile label="Cerradas" value={totals.tarjas_cerradas} tone="emerald" />
+      </div>
+
+      {error ? (
+        <div className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+        {loading ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm">
+              <Loader2 className="size-3.5 animate-spin" />
+              Cargando panel
+            </span>
+          </div>
+        ) : null}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1160px] table-fixed border-collapse text-[11px]">
+            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+              <tr className="border-b border-slate-200">
+                <th className="w-[310px] px-3 py-2 text-left font-semibold">Obra</th>
+                <th className="w-[360px] px-2 py-2 text-left font-semibold">Partes diarios</th>
+                <th className="w-[105px] px-2 py-2 text-left font-semibold">Avance</th>
+                <th className="w-[145px] px-2 py-2 text-left font-semibold">Tarja</th>
+                <th className="w-[125px] px-2 py-2 text-left font-semibold">Bonos</th>
+                <th className="w-[120px] px-3 py-2 text-right font-semibold">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.length ? (
+                visibleRows.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-100 align-top hover:bg-blue-50/30">
+                    <td className="px-3 py-3">
+                      <div className="truncate text-[12px] font-semibold text-slate-900" title={row.proyecto_nombre}>
+                        {row.proyecto_nombre}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] text-slate-500">
+                        <span>{row.proyecto_estado ?? "sin estado"}</span>
+                        {row.fecha_inicio ? <span>Inicio {row.fecha_inicio}</span> : null}
+                      </div>
+                      <div className="mt-1 line-clamp-1 text-[10px] leading-tight text-slate-600">
+                        {row.encargado ?? "-"}
+                        {row.encargado_principal ? (
+                          <span className="ml-1 text-[8px] font-medium text-blue-600">principal</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="overflow-hidden px-2 py-3">
+                      <DayStrip row={row} returnTo={returnTo} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <ProgressCell row={row} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <TarjaCell row={row} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <BonosCell tarja={row.tarja} />
+                    </td>
+                    <td className="px-3 py-3">
+                      <RowActions
+                        row={row}
+                        returnTo={returnTo}
+                        onAction={setActionTarget}
+                      />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-3 py-10 text-center text-[12px] text-slate-400">
+                    Sin obras para la quincena seleccionada
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Confirm
+        isOpen={Boolean(actionTarget)}
+        loading={actionLoading}
+        title={actionCopy?.title ?? ""}
+        content={actionCopy?.content ?? ""}
+        confirm={actionCopy?.confirm ?? "Confirmar"}
+        onClose={() => {
+          if (!actionLoading) setActionTarget(null);
+        }}
+        onConfirm={() => {
+          void executeAction();
+        }}
+      />
+    </div>
   );
 };
 

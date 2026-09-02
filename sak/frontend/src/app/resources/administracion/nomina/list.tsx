@@ -17,8 +17,7 @@ import {
   TextListColumn,
   buildListFilters,
 } from "@/components/forms/form_order";
-import { SelectField } from "@/components/select-field";
-import { CATEGORIA_CHOICES, ESTADO_CHOICES } from "./model";
+import { ESTADO_CHOICES } from "./model";
 import { NominaBackButton } from "./navigation-title";
 
 const LIST_FILTERS = buildListFilters(
@@ -47,11 +46,28 @@ const LIST_FILTERS = buildListFilters(
       },
     },
     {
-      type: "select",
-      props: {
-        source: "categoria",
+      type: "reference",
+      referenceProps: {
+        source: "nomina_categoria_id",
+        reference: "nomina-categorias",
         label: "Categoria",
-        choices: CATEGORIA_CHOICES,
+      },
+      selectProps: {
+        optionText: "descripcion",
+        className: "w-full",
+        emptyText: "Todas",
+      },
+    },
+    {
+      type: "reference",
+      referenceProps: {
+        source: "nomina_tarea_id",
+        reference: "nomina-tareas",
+        label: "Tarea",
+      },
+      selectProps: {
+        optionText: "descripcion",
+        className: "w-full",
         emptyText: "Todas",
       },
     },
@@ -159,7 +175,7 @@ export const NominaList = ({
       rowClick={rowClick}
       mobileConfig={{
         primaryField: "apellido",
-        secondaryFields: ["nombre", "categoria", "idproyecto", "encargado_contacto_id"],
+        secondaryFields: ["nombre", "nomina_categoria_id", "nomina_tarea_id", "idproyecto", "encargado_contacto_id"],
       }}
       className="text-[10px] [&_th]:text-[10px] [&_td]:text-[10px] xl:text-[11px] xl:[&_th]:text-[11px] xl:[&_td]:text-[11px]"
     >
@@ -171,8 +187,15 @@ export const NominaList = ({
       <TextListColumn source="apellido" label="Apellido y nombre" className="w-[210px]">
         <NombreCompletoField />
       </TextListColumn>
-      <ListColumn source="categoria" label="Categoria" className="w-[110px]">
-        <SelectField source="categoria" choices={CATEGORIA_CHOICES} />
+      <ListColumn source="nomina_categoria_id" label="Categoria" className="w-[150px]">
+        <ReferenceField source="nomina_categoria_id" reference="nomina-categorias">
+          <ListText source="descripcion" className="whitespace-normal break-words" />
+        </ReferenceField>
+      </ListColumn>
+      <ListColumn source="nomina_tarea_id" label="Tarea" className="w-[150px]">
+        <ReferenceField source="nomina_tarea_id" reference="nomina-tareas">
+          <ListText source="descripcion" className="whitespace-normal break-words" />
+        </ReferenceField>
       </ListColumn>
       <ListColumn source="idproyecto" label="Proyecto" className="w-[160px]">
         <ReferenceField source="idproyecto" reference="proyectos">

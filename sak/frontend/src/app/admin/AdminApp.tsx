@@ -237,14 +237,31 @@ import {
 } from "@/app/resources/constructora/tarjas";
 import { TarjaDetalleList } from "@/app/resources/constructora/tarja-detalle/list";
 import {
+  TarjaNovedadList,
+  TarjaNovedadCreate,
+  TarjaNovedadEdit,
+  TarjaNovedadShow,
+} from "@/app/resources/constructora/tarja-novedades";
+import {
   NominaList,
   NominaCreate,
   NominaEdit,
   NominaShow,
 } from "@/app/resources/administracion/nomina";
 import {
+  NominaCategoriaList,
+  NominaCategoriaCreate,
+  NominaCategoriaEdit,
+  NominaCategoriaShow,
+} from "@/app/resources/administracion/nomina-categorias";
+import {
+  NominaTareaList,
+  NominaTareaCreate,
+  NominaTareaEdit,
+  NominaTareaShow,
+} from "@/app/resources/administracion/nomina-tareas";
+import {
   ParteDiarioList,
-  ParteDiarioPanel,
   ParteDiarioCreate,
   ParteDiarioEdit,
   ParteDiarioShow,
@@ -818,6 +835,16 @@ const AdminApp = () => {
         options={{ label: "Tarja Detalle" }}
       />
       <Resource
+        name="tarja-novedades"
+        list={TarjaNovedadList}
+        create={TarjaNovedadCreate}
+        edit={TarjaNovedadEdit}
+        show={TarjaNovedadShow}
+        recordRepresentation="id"
+        icon={ClipboardCheck}
+        options={{ label: "Tarja Novedades" }}
+      />
+      <Resource
         name="parte-diario"
         list={ParteDiarioList}
         create={ParteDiarioCreate}
@@ -865,6 +892,26 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Wallet}
         options={{ label: "Nómina" }}
+      />
+      <Resource
+        name="nomina-categorias"
+        list={NominaCategoriaList}
+        create={NominaCategoriaCreate}
+        edit={NominaCategoriaEdit}
+        show={NominaCategoriaShow}
+        recordRepresentation="descripcion"
+        icon={ListChecks}
+        options={{ label: "Categorias de nomina" }}
+      />
+      <Resource
+        name="nomina-tareas"
+        list={NominaTareaList}
+        create={NominaTareaCreate}
+        edit={NominaTareaEdit}
+        show={NominaTareaShow}
+        recordRepresentation="descripcion"
+        icon={ClipboardList}
+        options={{ label: "Tareas de nomina" }}
       />
       <Resource
         name="crm/catalogos/tipos-operacion"
@@ -1033,7 +1080,6 @@ const AdminApp = () => {
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
-        <Route path="/parte-diario/panel" element={<ParteDiarioPanel />} />
         <Route path="/tarjas/panel" element={<TarjaPanel />} />
         <Route path="/tarjas/:id/detalle" element={<TarjaDetalleList />} />
         <Route path="/administracion/reporte-powerbi" element={<PowerBiReportPage />} />

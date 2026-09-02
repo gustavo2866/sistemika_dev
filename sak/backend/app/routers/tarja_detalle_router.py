@@ -7,14 +7,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models.nomina import Nomina
+from app.models.nomina_catalogos import NominaCategoria, NominaTarea
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.proyecto import Proyecto
-from app.models.tarja import Tarja, TarjaDetalle
+from app.models.tarja import Tarja, TarjaDetalle, TarjaNovedad
 
 
 router = APIRouter(prefix="/tarja-detalle", tags=["tarja-detalle"])
@@ -58,6 +59,10 @@ def _parse_filter(filter_param: str | None) -> dict[str, Any]:
         return {}
 
 
+def _is_truthy_filter(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "si", "sí"}
+
+
 def _day_key(index: int) -> str:
     return f"D{index:02d}"
 
@@ -70,6 +75,7 @@ def _build_empty_days(start: date) -> dict[str, dict[str, Any]]:
             "horas": None,
             "idestado": None,
             "estado": None,
+            "estado_nombre": None,
             "descripcion": None,
         }
         for index in range(1, 16)
@@ -99,7 +105,8 @@ def list_tarja_detalle(
     obra = proyecto.nombre if proyecto is not None else None
 
     search = str(filters.get("q") or q or "").strip()
-    only_novedades = str(filters.get("novedades") or "").lower() in {"1", "true", "si", "sí"}
+    only_bonos = _is_truthy_filter(filters.get("bonos"))
+    only_parte_novedades = _is_truthy_filter(filters.get("parte_novedades"))
     page, per_page = _parse_range(range)
     sort_by, sort_dir = _parse_sort(sort)
 
@@ -120,17 +127,40 @@ def list_tarja_detalle(
                 Nomina.dni.ilike(pattern),
             )
         )
-    if only_novedades:
-        novedades_stmt = (
+    if only_bonos:
+        nominas_con_bonos = (
+            select(TarjaNovedad.nomina_id)
+            .where(TarjaNovedad.tarja_id == tarja.id)
+            .where(TarjaNovedad.deleted_at.is_(None))
+            .where(TarjaNovedad.nomina_id.is_not(None))
+            .where(
+                or_(
+                    TarjaNovedad.adicional != 0,
+                    TarjaNovedad.premio != 0,
+                )
+            )
+            .group_by(TarjaNovedad.nomina_id)
+        )
+        base_stmt = base_stmt.where(TarjaDetalle.idnomina.in_(nominas_con_bonos))
+    if only_parte_novedades:
+        nominas_con_novedades = (
             select(TarjaDetalle.idnomina)
-            .join(ParteDiarioEstado, ParteDiarioEstado.id == TarjaDetalle.idestado)
+            .outerjoin(ParteDiarioEstado, ParteDiarioEstado.id == TarjaDetalle.idestado)
             .where(TarjaDetalle.tarja_id == tarja.id)
             .where(TarjaDetalle.deleted_at.is_(None))
             .where(TarjaDetalle.idnomina.is_not(None))
-            .where(ParteDiarioEstado.abreviatura != "P")
-            .distinct()
+            .where(
+                or_(
+                    and_(
+                        ParteDiarioEstado.abreviatura.is_not(None),
+                        ParteDiarioEstado.abreviatura != "P",
+                    ),
+                    func.length(func.trim(func.coalesce(TarjaDetalle.descripcion, ""))) > 0,
+                )
+            )
+            .group_by(TarjaDetalle.idnomina)
         )
-        base_stmt = base_stmt.where(TarjaDetalle.idnomina.in_(novedades_stmt))
+        base_stmt = base_stmt.where(TarjaDetalle.idnomina.in_(nominas_con_novedades))
 
     total = session.exec(select(func.count()).select_from(base_stmt.subquery())).one()
     order_columns = {
@@ -155,6 +185,24 @@ def list_tarja_detalle(
         .where(TarjaDetalle.deleted_at.is_(None))
         .order_by(Nomina.apellido, Nomina.nombre, TarjaDetalle.fecha)
     ).all()
+    novedades = session.exec(
+        select(TarjaNovedad, NominaCategoria, NominaTarea)
+        .outerjoin(NominaCategoria, NominaCategoria.id == TarjaNovedad.nomina_categoria_id)
+        .outerjoin(NominaTarea, NominaTarea.id == TarjaNovedad.nomina_tarea_id)
+        .where(TarjaNovedad.tarja_id == tarja.id)
+        .where(TarjaNovedad.deleted_at.is_(None))
+        .where(TarjaNovedad.nomina_id.in_(nomina_ids))
+        .order_by(TarjaNovedad.id)
+    ).all()
+    novedades_by_nomina = {
+        int(novedad.nomina_id): {
+            "novedad": novedad,
+            "categoria_codigo": str(categoria.codigo or "").strip() if categoria is not None else None,
+            "actividad_codigo": str(tarea.codigo or "").strip() if tarea is not None else None,
+        }
+        for novedad, categoria, tarea in novedades
+        if novedad.nomina_id is not None
+    }
 
     rows: dict[int, dict[str, Any]] = {}
     for detalle, nomina, estado in detalles:
@@ -168,9 +216,26 @@ def list_tarja_detalle(
                 "idnomina": nomina_id,
                 "empleado": f"{nomina.apellido}, {nomina.nombre}",
                 "dni": nomina.dni,
+                "categoria_codigo": None,
+                "actividad_codigo": None,
+                "novedad": None,
                 **_build_empty_days(tarja.fechainicio),
             },
         )
+        novedad_data = novedades_by_nomina.get(nomina_id)
+        novedad = novedad_data["novedad"] if novedad_data is not None else None
+        if novedad is not None:
+            row["novedad"] = {
+                "id": novedad.id,
+                "nomina_id": novedad.nomina_id,
+                "horas_justificadas": float(novedad.horas_justificadas),
+                "presentismo": novedad.presentismo,
+                "adicional": float(novedad.adicional),
+                "premio": float(novedad.premio),
+                "observaciones": novedad.observaciones,
+            }
+            row["categoria_codigo"] = novedad_data["categoria_codigo"]
+            row["actividad_codigo"] = novedad_data["actividad_codigo"]
         day_index = (detalle.fecha - tarja.fechainicio).days + 1
         if 1 <= day_index <= 15:
             row[_day_key(day_index)] = {
@@ -179,6 +244,7 @@ def list_tarja_detalle(
                 "horas": float(detalle.horas),
                 "idestado": detalle.idestado,
                 "estado": estado.abreviatura if estado else None,
+                "estado_nombre": estado.nombre if estado else None,
                 "descripcion": detalle.descripcion,
             }
 
@@ -207,6 +273,7 @@ def update_tarja_detalle(
     session.add(detalle)
     session.commit()
     session.refresh(detalle)
+    estado = session.get(ParteDiarioEstado, detalle.idestado) if detalle.idestado else None
     return {
         "id": detalle.id,
         "detalle_id": detalle.id,
@@ -215,5 +282,7 @@ def update_tarja_detalle(
         "fecha": detalle.fecha.isoformat(),
         "horas": float(detalle.horas),
         "idestado": detalle.idestado,
+        "estado": estado.abreviatura if estado else None,
+        "estado_nombre": estado.nombre if estado else None,
         "descripcion": detalle.descripcion,
     }

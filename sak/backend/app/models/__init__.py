@@ -65,7 +65,8 @@ from .proyecto import Proyecto
 from .proyecto_encargado import ProyectoEncargado
 from .proyecto_avance import ProyectoAvance
 from .proy_presupuesto import ProyPresupuesto
-from .nomina import Nomina, CategoriaNomina
+from .nomina import Nomina
+from .nomina_catalogos import NominaCategoria, NominaTarea
 from .parte_diario_estado import ParteDiarioEstado
 from .partediario import (
     ParteDiario,
@@ -157,7 +158,8 @@ __all__ = [
     "ProyectoAvance",
     "ProyPresupuesto",
     "Nomina",
-    "CategoriaNomina",
+    "NominaCategoria",
+    "NominaTarea",
     "ParteDiario",
     "ParteDiarioDetalle",
     "ParteDiarioEstado",

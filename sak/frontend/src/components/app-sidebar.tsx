@@ -50,7 +50,6 @@ import {
   LayoutGrid,
   MessageCircle,
   Calculator,
-  CalendarDays,
   GitBranch,
   TrendingUp,
 } from "lucide-react";
@@ -76,6 +75,7 @@ const ADMIN_RESOURCES = [
   "orden-compra",
   "centros-costo",
   "erp/rubros",
+  "erp/cuentas",
 ] as const;
 const CONFIG_RESOURCES = [
   "users",
@@ -137,7 +137,11 @@ const HIDDEN_RESOURCES = [
   "proyectos",
   "constructora/proyectos-conceptos",
   "nominas",
+  "nomina-categorias",
+  "nomina-tareas",
   "parte-diario",
+  "tarja-detalle",
+  "tarja-novedades",
   "parte-diario-estados",
   "proy-presupuestos",
   "proyecto-encargados",
@@ -294,12 +298,6 @@ export function AppSidebar() {
                     label="Presupuestos ERP"
                     to="/erp/presupuestos/panel"
                     icon={Wallet}
-                    onClick={handleItemClick}
-                  />
-                  <SidebarCustomMenuItem
-                    label="Parte Diario"
-                    to="/parte-diario/panel"
-                    icon={CalendarDays}
                     onClick={handleItemClick}
                   />
                   {constructoraResources.includes("tarjas") ? (

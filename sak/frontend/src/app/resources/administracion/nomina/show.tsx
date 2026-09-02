@@ -6,10 +6,10 @@ import { TextField } from "@/components/text-field";
 import { DateField } from "@/components/date-field";
 import { NumberField } from "@/components/number-field";
 import { UrlField } from "@/components/url-field";
-import { SelectField } from "@/components/select-field";
 import { ReferenceField } from "@/components/reference-field";
+import { SelectField } from "@/components/select-field";
 import { FormOrderEditButton } from "@/components/forms/form_order";
-import { CATEGORIA_CHOICES, ESTADO_CHOICES } from "./model";
+import { ESTADO_CHOICES } from "./model";
 
 export const NominaShow = () => (
   <Show actions={<FormOrderEditButton />}>
@@ -22,10 +22,12 @@ export const NominaShow = () => (
       <TextField source="email" label="Email" />
       <TextField source="telefono" label="Telefono" />
       <TextField source="direccion" label="Direccion" />
-      <SelectField
-        source="categoria"
-        choices={CATEGORIA_CHOICES}
-      />
+      <ReferenceField source="nomina_categoria_id" reference="nomina-categorias" label="Categoria">
+        <TextField source="descripcion" />
+      </ReferenceField>
+      <ReferenceField source="nomina_tarea_id" reference="nomina-tareas" label="Tarea">
+        <TextField source="descripcion" />
+      </ReferenceField>
       <ReferenceField source="idproyecto" reference="proyectos" label="Proyecto">
         <TextField source="nombre" />
       </ReferenceField>

@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, ClassVar, List, Optional
 
-from sqlalchemy import Column, DECIMAL, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DECIMAL, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship
 
@@ -12,6 +12,7 @@ from .base import Base
 if TYPE_CHECKING:
     from .crm.contacto import CRMContacto
     from .nomina import Nomina
+    from .nomina_catalogos import NominaCategoria, NominaTarea
     from .parte_diario_estado import ParteDiarioEstado
     from .partediario import ParteDiarioDetalle
 
@@ -127,22 +128,42 @@ class TarjaNovedad(Base, table=True):
 
     __tablename__ = "tarja_novedades"
     __table_args__ = (
-        UniqueConstraint("tarja_id", name="uq_tarja_novedades_tarja"),
+        UniqueConstraint("tarja_id", "nomina_id", name="uq_tarja_novedades_tarja_nomina"),
     )
 
     tarja_id: int = Field(
         foreign_key="tarjas.id",
         description="Tarja cabecera a la que pertenecen las novedades",
     )
-    horas_enfermedad_justif: Decimal = Field(
+    nomina_id: Optional[int] = Field(
+        default=None,
+        foreign_key="nominas.id",
+        description="Empleado de nomina asociado a la novedad",
+    )
+    nomina_categoria_id: Optional[int] = Field(
+        default=None,
+        foreign_key="nomina_categorias.id",
+        description="Categoria de nomina asociada a la novedad",
+    )
+    nomina_tarea_id: Optional[int] = Field(
+        default=None,
+        foreign_key="nomina_tareas.id",
+        description="Tarea de nomina asociada a la novedad",
+    )
+    horas_justificadas: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(8, 2), nullable=False, server_default="0"),
         description="Total de horas justificadas por enfermedad",
     )
-    presentismo: Decimal = Field(
+    presentismo: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+        description="Indica si corresponde presentismo",
+    )
+    adicional: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
-        description="Importe de presentismo",
+        description="Importe adicional de la novedad",
     )
     premio: Decimal = Field(
         default=Decimal("0"),
@@ -161,3 +182,6 @@ class TarjaNovedad(Base, table=True):
     )
 
     tarja: "Tarja" = Relationship(back_populates="novedades")
+    nomina: Optional["Nomina"] = Relationship()
+    nomina_categoria: Optional["NominaCategoria"] = Relationship()
+    nomina_tarea: Optional["NominaTarea"] = Relationship()

@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { DateField } from "@/components/date-field";
 import { cn } from "@/lib/utils";
 import { ParteDiarioForm } from "./form";
+import { ParteDiarioBackButton } from "./navigation-title";
 import {
   getEstadoParteBadgeClass,
   getEstadoParteLabel,
@@ -21,13 +22,14 @@ type ParteDiarioEditProps = {
   redirect?: BaseEditProps["redirect"];
 };
 
-const ParteDiarioEditTitle = () => {
+const ParteDiarioEditTitle = ({ returnTo }: { returnTo?: string | null }) => {
   const { record } = useEditContext<ParteDiarioRecord>();
   if (!record) return "Editar parte diario";
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <ParteDiarioBackButton returnTo={returnTo} />
         <span className="inline-flex items-center gap-2">
           <NotebookPen className="h-4 w-4" />
           Editar parte diario
@@ -73,7 +75,7 @@ export const ParteDiarioEdit = ({
       id={id}
       redirect={redirect ?? false}
       mutationMode="pessimistic"
-      title={<ParteDiarioEditTitle />}
+      title={<ParteDiarioEditTitle returnTo={returnTo} />}
       className="max-w-5xl w-full"
       actions={false}
       transform={normalizeParteDiarioPayload}

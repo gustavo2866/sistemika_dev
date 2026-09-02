@@ -62,6 +62,7 @@ export const QuincenaNavigator = ({
   onPrevious,
   onNext,
   onSelectedDateChange,
+  showSelectedDate = true,
 }: {
   rangeStart: Date;
   rangeEnd: Date;
@@ -70,21 +71,22 @@ export const QuincenaNavigator = ({
   onPrevious: () => void;
   onNext: () => void;
   onSelectedDateChange: (value: string) => void;
+  showSelectedDate?: boolean;
 }) => (
   <>
-    <div className="flex items-center rounded-md border border-slate-200 bg-white shadow-xs">
+    <div className="flex h-8 items-center rounded-md border border-slate-200 bg-white shadow-xs">
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="h-6 w-6 rounded-r-none"
+        className="h-8 w-7 rounded-r-none"
         onClick={onPrevious}
         aria-label="Quincena anterior"
         title="Quincena anterior"
       >
         <ChevronLeft className="size-3" />
       </Button>
-      <div className="min-w-[168px] border-x border-slate-200 px-2 text-center">
+      <div className="flex h-full min-w-[184px] flex-col justify-center border-x border-slate-200 px-2 text-center">
         <div className="text-[10px] font-semibold capitalize text-slate-700">
           {formatQuincena(rangeStart, quincenaNumber)}
         </div>
@@ -96,7 +98,7 @@ export const QuincenaNavigator = ({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-6 w-6 rounded-l-none"
+        className="h-8 w-7 rounded-l-none"
         onClick={onNext}
         aria-label="Quincena siguiente"
         title="Quincena siguiente"
@@ -105,12 +107,14 @@ export const QuincenaNavigator = ({
       </Button>
     </div>
 
-    <input
-      type="date"
-      aria-label="Fecha de la quincena"
-      value={selectedDate}
-      onChange={(event) => onSelectedDateChange(event.target.value)}
-      className="h-6 w-[116px] rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-    />
+    {showSelectedDate ? (
+      <input
+        type="date"
+        aria-label="Fecha de la quincena"
+        value={selectedDate}
+        onChange={(event) => onSelectedDateChange(event.target.value)}
+        className="h-8 w-[132px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      />
+    ) : null}
   </>
 );

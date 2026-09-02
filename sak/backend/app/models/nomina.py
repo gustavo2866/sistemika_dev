@@ -1,23 +1,16 @@
 from datetime import date
 from decimal import Decimal
-from enum import Enum
 from typing import ClassVar, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, Column, String
+from sqlalchemy import DECIMAL, Column
 from sqlmodel import Field, Relationship
 
 from .base import Base
 
 if TYPE_CHECKING:
     from .crm.contacto import CRMContacto
+    from .nomina_catalogos import NominaCategoria, NominaTarea
     from .proyecto import Proyecto
-
-
-class CategoriaNomina(str, Enum):
-    OFICIAL = "oficial"
-    MEDIO_OFICIAL = "medio_oficial"
-    AYUDANTE = "ayudante"
-    ADMINISTRATIVO = "administrativo"
 
 
 class Nomina(Base, table=True):
@@ -26,7 +19,7 @@ class Nomina(Base, table=True):
     __tablename__ = "nominas"
 
     __searchable_fields__ = ["nombre", "apellido", "dni", "email", "nro_legajo"]
-    __auto_include_relations__: ClassVar[List[str]] = ["proyecto"]
+    __auto_include_relations__: ClassVar[List[str]] = ["proyecto", "nomina_categoria", "nomina_tarea"]
 
     nombre: str = Field(max_length=120, description="Nombre del empleado")
     apellido: str = Field(max_length=120, description="Apellido del empleado")
@@ -79,10 +72,15 @@ class Nomina(Base, table=True):
         max_length=500,
         description="URL de la fotografia del empleado",
     )
-    categoria: CategoriaNomina = Field(
-        default=CategoriaNomina.AYUDANTE,
-        sa_column=Column(String(32), nullable=False),
+    nomina_categoria_id: Optional[int] = Field(
+        default=None,
+        foreign_key="nomina_categorias.id",
         description="Categoria laboral del empleado",
+    )
+    nomina_tarea_id: Optional[int] = Field(
+        default=None,
+        foreign_key="nomina_tareas.id",
+        description="Tarea principal del empleado",
     )
     idproyecto: Optional[int] = Field(
         default=None,
@@ -100,7 +98,9 @@ class Nomina(Base, table=True):
     )
 
     proyecto: Optional["Proyecto"] = Relationship()
+    nomina_categoria: Optional["NominaCategoria"] = Relationship()
+    nomina_tarea: Optional["NominaTarea"] = Relationship()
     encargado_contacto: Optional["CRMContacto"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"Nomina(id={self.id}, nombre='{self.nombre} {self.apellido}', categoria='{self.categoria}')"
+        return f"Nomina(id={self.id}, nombre='{self.nombre} {self.apellido}')"

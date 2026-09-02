@@ -56,9 +56,11 @@ from app.routers.proyecto_encargado_router import proyecto_encargado_router
 from app.routers.proyecto_avance_router import proyecto_avance_router
 from app.routers.proy_presupuesto_router import proy_presupuesto_router
 from app.routers.nomina_router import nomina_router
+from app.routers.nomina_catalogos_router import nomina_categoria_router, nomina_tarea_router
 from app.routers.parte_diario_estado_router import parte_diario_estado_router
 from app.routers.partediario_router import parte_diario_router
 from app.routers.tarja_detalle_router import router as tarja_detalle_router
+from app.routers.tarja_novedad_router import tarja_novedad_router
 from app.routers.tarja_router import tarja_router
 from app.routers.constructora_proyectos_conceptos_router import constructora_proyectos_conceptos_router
 from app.routers.constructora_pedido_router import constructora_pedido_router
@@ -248,9 +250,12 @@ app.include_router(proyecto_encargado_router)
 app.include_router(proyecto_avance_router)
 app.include_router(proy_presupuesto_router)
 app.include_router(nomina_router)
+app.include_router(nomina_categoria_router)
+app.include_router(nomina_tarea_router)
 app.include_router(parte_diario_estado_router)
 app.include_router(parte_diario_router)
 app.include_router(tarja_detalle_router)
+app.include_router(tarja_novedad_router)
 app.include_router(tarja_router)
 app.include_router(constructora_proyectos_conceptos_router)
 app.include_router(constructora_pedido_router)
