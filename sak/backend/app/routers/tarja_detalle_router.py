@@ -67,18 +67,27 @@ def _day_key(index: int) -> str:
     return f"D{index:02d}"
 
 
-def _build_empty_days(start: date) -> dict[str, dict[str, Any]]:
+def _tarja_day_slots(start: date, end: date) -> int:
+    return 16 if start.day == 26 else 15
+
+
+def _build_empty_days(start: date, end: date) -> dict[str, dict[str, Any]]:
+    slot_count = _tarja_day_slots(start, end)
     return {
         _day_key(index): {
             "detalle_id": None,
-            "fecha": (start + timedelta(days=index - 1)).isoformat(),
+            "fecha": (
+                current_date.isoformat()
+                if (current_date := start + timedelta(days=index - 1)) <= end
+                else None
+            ),
             "horas": None,
             "idestado": None,
             "estado": None,
             "estado_nombre": None,
             "descripcion": None,
         }
-        for index in range(1, 16)
+        for index in range(1, slot_count + 1)
     }
 
 
@@ -221,7 +230,7 @@ def list_tarja_detalle(
                 "categoria_codigo": None,
                 "actividad_codigo": None,
                 "novedad": None,
-                **_build_empty_days(tarja.fechainicio),
+                **_build_empty_days(tarja.fechainicio, tarja.fechafinal),
             },
         )
         novedad_data = novedades_by_nomina.get(nomina_id)
@@ -246,7 +255,7 @@ def list_tarja_detalle(
             row["categoria_codigo"] = novedad_data["categoria_codigo"]
             row["actividad_codigo"] = novedad_data["actividad_codigo"]
         day_index = (detalle.fecha - tarja.fechainicio).days + 1
-        if 1 <= day_index <= 15:
+        if 1 <= day_index <= _tarja_day_slots(tarja.fechainicio, tarja.fechafinal):
             row[_day_key(day_index)] = {
                 "detalle_id": detalle.id,
                 "fecha": detalle.fecha.isoformat(),

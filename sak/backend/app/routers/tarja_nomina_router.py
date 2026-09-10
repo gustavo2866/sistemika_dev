@@ -33,18 +33,23 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
         return str(value or "").strip().lower() in {"1", "true", "si", "sí"}
 
     @staticmethod
-    def _empty_days(start_date) -> dict[str, dict[str, Any]]:
+    def _empty_days(start_date, end_date) -> dict[str, dict[str, Any]]:
+        slot_count = 16 if start_date.day == 26 else 15
         return {
             f"D{day:02d}": {
                 "detalle_id": None,
-                "fecha": (start_date + timedelta(days=day - 1)).isoformat(),
+                "fecha": (
+                    current_date.isoformat()
+                    if (current_date := start_date + timedelta(days=day - 1)) <= end_date
+                    else None
+                ),
                 "horas": None,
                 "idestado": None,
                 "estado": None,
                 "estado_nombre": None,
                 "descripcion": None,
             }
-            for day in range(1, 16)
+            for day in range(1, slot_count + 1)
         }
 
     @staticmethod
@@ -285,7 +290,7 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
             obj = row[0]
             if obj.id not in items_by_id:
                 values = self._row_values(row, 1)
-                values.update(self._empty_days(row[10]))
+                values.update(self._empty_days(row[10], row[11]))
                 tipo_novedad = str(row[22] or "").strip().upper() or None
                 values.update(
                     {
@@ -300,7 +305,8 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
             if row[15] is None or detail_date is None:
                 continue
             day_number = (detail_date - row[10]).days + 1
-            if not 1 <= day_number <= 15:
+            slot_count = 16 if row[10].day == 26 else 15
+            if not 1 <= day_number <= slot_count:
                 continue
             day_key = f"D{day_number:02d}"
             self._set_calculated(

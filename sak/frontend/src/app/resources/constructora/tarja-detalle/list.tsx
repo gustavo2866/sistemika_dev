@@ -52,7 +52,8 @@ type DayKey =
   | "D12"
   | "D13"
   | "D14"
-  | "D15";
+  | "D15"
+  | "D16";
 
 type TarjaDetalleRow = {
   id: string;
@@ -66,12 +67,16 @@ type TarjaDetalleRow = {
   categoria_codigo?: string | null;
   actividad_codigo?: string | null;
   novedad?: TarjaNovedadSummary | null;
-} & Record<DayKey, TarjaDetalleCell>;
+} & Partial<Record<DayKey, TarjaDetalleCell>>;
 
-const dayKeys = Array.from(
-  { length: 15 },
+const allDayKeys = Array.from(
+  { length: 16 },
   (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
 );
+const isDayKey = (value: unknown): value is DayKey =>
+  typeof value === "string" && allDayKeys.includes(value as DayKey);
+const getVisibleDayKeys = (rows: TarjaDetalleRow[]) =>
+  allDayKeys.filter((key) => key !== "D16" || rows.some((row) => row.D16 !== undefined));
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -126,7 +131,7 @@ const getTarjaDetalleExportCellText = (
   row: TarjaDetalleRow,
   columnKey: DayKey | "empleado" | "categoria" | "actividad" | "horas" | "presentismo" | "bonos" | "comentario",
 ) => {
-  if (dayKeys.includes(columnKey as DayKey)) {
+  if (isDayKey(columnKey)) {
     const cell = row[columnKey as DayKey];
     const horas = cell?.horas == null ? "" : formatHours(Number(cell.horas));
     const estado = shouldShowEstado(cell?.estado) ? String(cell?.estado ?? "") : "";
@@ -161,9 +166,10 @@ const downloadTarjaDetalleExcel = (
   title: string,
   rows: TarjaDetalleRow[],
 ) => {
+  const visibleDayKeys = getVisibleDayKeys(rows);
   const headers = [
     "Empleado",
-    ...dayKeys.map((key) => `${formatDayName(rows[0]?.[key], key)} ${formatDayLabel(rows[0]?.[key], key)}`),
+    ...visibleDayKeys.map((key) => `${formatDayName(rows[0]?.[key])} ${formatDayLabel(rows[0]?.[key])}`),
     "Categ",
     "Act",
     "Horas",
@@ -173,7 +179,7 @@ const downloadTarjaDetalleExcel = (
   ];
   const columnKeys = [
     "empleado",
-    ...dayKeys,
+    ...visibleDayKeys,
     "categoria",
     "actividad",
     "horas",
@@ -185,7 +191,7 @@ const downloadTarjaDetalleExcel = (
     .map((row, rowIndex) => {
       const cells = columnKeys
         .map((columnKey) => {
-          const isSunday = dayKeys.includes(columnKey as DayKey) && isNonWorkingDay(rows[0]?.[columnKey as DayKey]?.fecha);
+          const isSunday = isDayKey(columnKey) && isNonWorkingDay(rows[0]?.[columnKey]?.fecha);
           const style = [
             "border:1px solid #cbd5e1",
             "mso-number-format:\\@",
@@ -287,6 +293,7 @@ const downloadTarjaDetallePdf = (
   title: string,
   rows: TarjaDetalleRow[],
 ) => {
+  const visibleDayKeys = getVisibleDayKeys(rows);
   const pageWidth = 842;
   const pageHeight = 595;
   const margin = 18;
@@ -297,8 +304,8 @@ const downloadTarjaDetallePdf = (
   const normalRowsPerPage = Math.max(Math.floor((tableTop - margin - headerHeight) / rowHeight), 1);
   const columns = [
     { label: "Empleado", width: 112, align: "left", size: 5.8, max: 24, key: "empleado" },
-    ...dayKeys.map((key) => ({
-      label: `${formatDayName(rows[0]?.[key], key)} ${formatDayLabel(rows[0]?.[key], key)}`,
+    ...visibleDayKeys.map((key) => ({
+      label: `${formatDayName(rows[0]?.[key])} ${formatDayLabel(rows[0]?.[key])}`,
       width: 24,
       align: "center",
       size: 5.2,
@@ -310,7 +317,7 @@ const downloadTarjaDetallePdf = (
     { label: "Horas", width: 36, align: "center", size: 5.8, max: 8, key: "horas" },
     { label: "Pres", width: 42, align: "center", size: 5.2, max: 10, key: "presentismo" },
     { label: "Bonos", width: 62, align: "center", size: 5.2, max: 16, key: "bonos" },
-    { label: "Coment", width: tableWidth - 112 - 24 * 15 - 28 - 28 - 36 - 42 - 62, align: "left", size: 5.2, max: 34, key: "comentario" },
+    { label: "Coment", width: tableWidth - 112 - 24 * visibleDayKeys.length - 28 - 28 - 36 - 42 - 62, align: "left", size: 5.2, max: 34, key: "comentario" },
   ] as const;
 
   const getCellText = (row: TarjaDetalleRow, column: (typeof columns)[number]) => {
@@ -534,10 +541,10 @@ const isTransferCell = (cell?: TarjaDetalleCell) =>
   normalizeText(cell?.descripcion).startsWith("traspaso");
 
 const getRowWorkedHours = (row: TarjaDetalleRow) =>
-  dayKeys.reduce((total, key) => total + getWorkedHours(row[key]), 0);
+  allDayKeys.reduce((total, key) => total + getWorkedHours(row[key]), 0);
 
 const getRowJustifiedHours = (row: TarjaDetalleRow) =>
-  dayKeys.reduce((total, key) => total + getJustifiedHours(row[key]), 0);
+  allDayKeys.reduce((total, key) => total + getJustifiedHours(row[key]), 0);
 
 const formatHours = (value: number) =>
   value.toLocaleString("es-AR", { maximumFractionDigits: 1 });
@@ -601,7 +608,7 @@ const TarjaDetalleRowActions = ({ row }: { row: TarjaDetalleRow }) => {
       ...(row.encargado_id ? { encargado_id: String(row.encargado_id) } : {}),
       ...(row.obra ? { obra: row.obra } : {}),
       fecha_desde: String(row.D01?.fecha ?? ""),
-      fecha_hasta: String(row.D15?.fecha ?? row.D01?.fecha ?? ""),
+      fecha_hasta: String(row.D16?.fecha ?? row.D15?.fecha ?? row.D01?.fecha ?? ""),
       horas_trabajadas: String(getRowWorkedHours(row)),
       returnTo,
     });
@@ -794,6 +801,7 @@ const TarjaDetalleGrid = ({
   const { data = [], isLoading, isFetching, error } = useListContext<TarjaDetalleRow>();
   const rows = data as TarjaDetalleRow[];
   const firstRow = rows[0];
+  const visibleDayKeys = getVisibleDayKeys(rows);
 
   if (error) {
     return (
@@ -820,7 +828,7 @@ const TarjaDetalleGrid = ({
               <th className="sticky left-0 z-10 w-[112px] border-b border-r border-slate-200 bg-slate-50 px-1 py-2 text-left font-semibold">
                 Empleado
               </th>
-              {dayKeys.map((key) => {
+              {visibleDayKeys.map((key) => {
                 const cell = firstRow?.[key];
                 const nonWorking = isNonWorkingDay(cell?.fecha);
                 return (
@@ -832,10 +840,10 @@ const TarjaDetalleGrid = ({
                     )}
                   >
                     <span className="block text-[7px] leading-tight">
-                      {formatDayName(cell, key)}
+                      {formatDayName(cell)}
                     </span>
                     <span className="block text-[5.5px] font-normal leading-tight text-slate-400">
-                      {formatDayLabel(cell, key)}
+                      {formatDayLabel(cell)}
                     </span>
                   </th>
                 );
@@ -877,7 +885,7 @@ const TarjaDetalleGrid = ({
                     <span className="block truncate font-medium text-slate-800">{row.empleado}</span>
                     <span className="block truncate text-[8px] text-slate-400">{row.dni}</span>
                   </td>
-                  {dayKeys.map((key) => {
+                  {visibleDayKeys.map((key) => {
                     const cell = row[key];
                     const nonWorking = isNonWorkingDay(cell?.fecha);
                     return (
@@ -947,7 +955,7 @@ const TarjaDetalleGrid = ({
               })
             ) : (
               <tr>
-                <td colSpan={23} className="px-3 py-8 text-center text-sm text-slate-400">
+                <td colSpan={visibleDayKeys.length + 8} className="px-3 py-8 text-center text-sm text-slate-400">
                   Sin detalle para mostrar.
                 </td>
               </tr>

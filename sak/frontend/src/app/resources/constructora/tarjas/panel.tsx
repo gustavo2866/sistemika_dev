@@ -140,7 +140,8 @@ type DayKey =
   | "D12"
   | "D13"
   | "D14"
-  | "D15";
+  | "D15"
+  | "D16";
 
 type TarjaDetalleExportRow = {
   id: string;
@@ -151,7 +152,7 @@ type TarjaDetalleExportRow = {
   categoria_codigo?: string | null;
   actividad_codigo?: string | null;
   novedad?: TarjaNovedadSummary | null;
-} & Record<DayKey, TarjaDetalleCell>;
+} & Partial<Record<DayKey, TarjaDetalleCell>>;
 
 type ActionTarget = {
   row: PanelRow;
@@ -159,10 +160,14 @@ type ActionTarget = {
 };
 
 const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
-const dayKeys = Array.from(
-  { length: 15 },
+const allDayKeys = Array.from(
+  { length: 16 },
   (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
 );
+const isDayKey = (value: unknown): value is DayKey =>
+  typeof value === "string" && allDayKeys.includes(value as DayKey);
+const getVisibleDayKeys = (rows: TarjaDetalleExportRow[]) =>
+  allDayKeys.filter((key) => key !== "D16" || rows.some((row) => row.D16 !== undefined));
 
 const buildAuthHeaders = () => {
   const headers = new Headers({
@@ -238,7 +243,29 @@ const postGenerateTarja = async ({
   if (!response.ok) {
     throw new Error(await extractActionErrorMessage(response));
   }
-  return response.json();
+  return (await response.json()) as { id?: number; tarja_id?: number };
+};
+
+const postEnsureTarjaNomina = async ({
+  idproyecto,
+  contacto_id,
+  fechainicio,
+  fechafinal,
+}: {
+  idproyecto: number;
+  contacto_id?: number | null;
+  fechainicio: string;
+  fechafinal: string;
+}) => {
+  const response = await fetch(`${apiUrl}/tarjas/asegurar-nomina`, {
+    method: "POST",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ idproyecto, contacto_id: contacto_id ?? null, fechainicio, fechafinal }),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as { id?: number; tarja_id?: number };
 };
 
 const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado") => {
@@ -313,7 +340,7 @@ const shouldShowEstado = (estado?: string | null) => {
 };
 
 const getWorkedHours = (row: TarjaDetalleExportRow) =>
-  dayKeys.reduce((total, key) => {
+  allDayKeys.reduce((total, key) => {
     const horas = Number(row[key]?.horas ?? 0);
     return total + (Number.isFinite(horas) ? horas : 0);
   }, 0);
@@ -332,7 +359,7 @@ const getTarjaDetalleExportCellText = (
     | "bonos"
     | "comentario",
 ) => {
-  if (dayKeys.includes(columnKey as DayKey)) {
+  if (isDayKey(columnKey)) {
     const cell = row[columnKey as DayKey];
     const horas = cell?.horas == null ? "" : formatHours(Number(cell.horas));
     const estado = shouldShowEstado(cell?.estado) ? String(cell?.estado ?? "") : "";
@@ -374,11 +401,12 @@ const downloadTarjaPanelExcel = (
   title: string,
   rows: TarjaDetalleExportRow[],
 ) => {
+  const visibleDayKeys = getVisibleDayKeys(rows);
   const headers = [
     "Proy",
     "Enc",
     "Emp",
-    ...dayKeys.map((key) => formatDayLabel(rows[0]?.[key], key).slice(0, 2)),
+    ...visibleDayKeys.map((key) => formatDayLabel(rows[0]?.[key]).slice(0, 2)),
     "Cat",
     "Act",
     "Hs",
@@ -390,7 +418,7 @@ const downloadTarjaPanelExcel = (
     "proyecto",
     "encargado",
     "empleado",
-    ...dayKeys,
+    ...visibleDayKeys,
     "categoria",
     "actividad",
     "horas",
@@ -403,9 +431,9 @@ const downloadTarjaPanelExcel = (
       const cells = columnKeys
         .map((columnKey) => {
           const isSunday =
-            dayKeys.includes(columnKey as DayKey) &&
-            isNonWorkingDay(rows[0]?.[columnKey as DayKey]?.fecha);
-          const isDayColumn = dayKeys.includes(columnKey as DayKey);
+            isDayKey(columnKey) &&
+            isNonWorkingDay(rows[0]?.[columnKey]?.fecha);
+          const isDayColumn = isDayKey(columnKey);
           const style = [
             "border:1px solid #cbd5e1",
             "mso-number-format:\\@",
@@ -446,7 +474,7 @@ const downloadTarjaPanelExcel = (
       <col class="project-col" />
       <col class="person-col" />
       <col class="person-col" />
-      ${dayKeys.map(() => `<col class="date-col" />`).join("")}
+      ${visibleDayKeys.map(() => `<col class="date-col" />`).join("")}
       <col class="small-col" />
       <col class="small-col" />
       <col class="small-col" />
@@ -692,14 +720,15 @@ const RowActions = ({
   row,
   returnTo,
   onAction,
+  onOpenDetalle,
+  detalleLoading,
 }: {
   row: PanelRow;
   returnTo: string;
   onAction: (target: ActionTarget) => void;
+  onOpenDetalle: (row: PanelRow) => void;
+  detalleLoading?: boolean;
 }) => {
-  const detailUrl = row.tarja
-    ? `/tarjas/${row.tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`
-    : null;
   const puedeGenerar = Boolean(
     row.puede_generar &&
       row.parte_stats.esperados > 0 &&
@@ -735,14 +764,17 @@ const RowActions = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-40">
-          {detailUrl ? (
-            <DropdownMenuItem asChild>
-              <Link to={detailUrl}>
-                <TableProperties className="mr-2 size-3.5" />
-                Tarja detalle
-              </Link>
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem
+            disabled={detalleLoading}
+            onSelect={() => onOpenDetalle(row)}
+          >
+            {detalleLoading ? (
+              <Loader2 className="mr-2 size-3.5 animate-spin" />
+            ) : (
+              <TableProperties className="mr-2 size-3.5" />
+            )}
+            Tarja detalle
+          </DropdownMenuItem>
           {hasAgentPhone ? (
             <DropdownMenuItem asChild>
               <Link to={buildAgentChatUrl(row, returnTo)}>
@@ -802,8 +834,6 @@ export const TarjaPanel = () => {
   const notify = useNotify();
   const [searchParams, setSearchParams] = useSearchParams();
   const todayIso = useMemo(() => toISODate(new Date()), []);
-  const initialDate = searchParams.get("fecha") ?? todayIso;
-  const [range, setRange] = useState(() => getQuincenaRange(parseDateOnly(initialDate)));
   const [panel, setPanel] = useState<TarjaPanelResponse | null>(null);
   const [optionsPanel, setOptionsPanel] = useState<TarjaPanelResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -812,13 +842,29 @@ export const TarjaPanel = () => {
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [openingDetalleRowId, setOpeningDetalleRowId] = useState<string | null>(null);
 
+  const fechaParam = searchParams.get("fecha");
+  const selectedDate = fechaParam ?? todayIso;
+  const range = useMemo(() => getQuincenaRange(parseDateOnly(selectedDate)), [selectedDate]);
   const startIso = useMemo(() => toISODate(range.start), [range.start]);
   const endIso = useMemo(() => toISODate(range.end), [range.end]);
   const selectedProject = searchParams.get("idproyecto");
   const selectedEncargado = searchParams.get("contacto_id");
   const selectedProjectEstado = searchParams.get("estado") ?? EXECUTION_PROJECT_ESTADO;
   const returnTo = `${location.pathname}${location.search}`;
+
+  useEffect(() => {
+    if (fechaParam === startIso) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("fecha", startIso);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [fechaParam, setSearchParams, startIso]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -913,7 +959,6 @@ export const TarjaPanel = () => {
   const setQuincenaDate = (date: Date) => {
     const nextRange = getQuincenaRange(date);
     const nextDate = toISODate(nextRange.start);
-    setRange(nextRange);
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -1087,6 +1132,36 @@ export const TarjaPanel = () => {
       });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleOpenDetalle = async (row: PanelRow) => {
+    if (row.tarja?.id) {
+      navigate(`/tarjas/${row.tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+
+    setOpeningDetalleRowId(row.id);
+    try {
+      const generated = await postEnsureTarjaNomina({
+        idproyecto: row.proyecto_id,
+        contacto_id: row.contacto_id,
+        fechainicio: startIso,
+        fechafinal: endIso,
+      });
+      const tarjaId = Number(generated.tarja_id ?? generated.id);
+      if (!Number.isFinite(tarjaId) || tarjaId <= 0) {
+        throw new Error("No se pudo resolver la tarja generada");
+      }
+      notify("Tarja preparada", { type: "info" });
+      setRefreshKey((key) => key + 1);
+      navigate(`/tarjas/${tarjaId}/detalle?returnTo=${encodeURIComponent(returnTo)}`);
+    } catch (openError) {
+      notify(openError instanceof Error ? openError.message : "No se pudo abrir el detalle", {
+        type: "warning",
+      });
+    } finally {
+      setOpeningDetalleRowId(null);
     }
   };
 
@@ -1270,6 +1345,8 @@ export const TarjaPanel = () => {
                         row={row}
                         returnTo={returnTo}
                         onAction={setActionTarget}
+                        onOpenDetalle={handleOpenDetalle}
+                        detalleLoading={openingDetalleRowId === row.id}
                       />
                     </td>
                   </tr>

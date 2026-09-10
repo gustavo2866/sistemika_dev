@@ -164,12 +164,22 @@ const getQuincenaRange = (value: unknown) => {
   if (!fecha) return null;
   const [year, month, day] = fecha.split("-").map(Number);
   if (!year || !month || !day) return null;
-  const startDay = day <= 15 ? 1 : 16;
-  const endDay = day <= 15 ? 15 : new Date(year, month, 0).getDate();
+  const startDate =
+    day <= 10
+      ? new Date(year, month - 2, 26)
+      : day <= 25
+        ? new Date(year, month - 1, 11)
+        : new Date(year, month - 1, 26);
+  const endDate =
+    day <= 10
+      ? new Date(year, month - 1, 10)
+      : day <= 25
+        ? new Date(year, month - 1, 25)
+        : new Date(year, month, 10);
   return {
     fecha,
-    fechainicio: formatISODate(new Date(year, month - 1, startDay)),
-    fechafinal: formatISODate(new Date(year, month - 1, endDay)),
+    fechainicio: formatISODate(startDate),
+    fechafinal: formatISODate(endDate),
   };
 };
 

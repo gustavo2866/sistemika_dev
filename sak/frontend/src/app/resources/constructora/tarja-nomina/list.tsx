@@ -53,7 +53,8 @@ type DayKey =
   | "D12"
   | "D13"
   | "D14"
-  | "D15";
+  | "D15"
+  | "D16";
 
 type TarjaNominaRecord = TarjaNomina & Partial<Record<DayKey, TarjaNominaDayCell>> & {
   empleado?: string | null;
@@ -68,10 +69,12 @@ type TarjaNominaRecord = TarjaNomina & Partial<Record<DayKey, TarjaNominaDayCell
   tarja_fecha_hasta?: string | null;
 };
 
-const dayKeys = Array.from(
-  { length: 15 },
+const allDayKeys = Array.from(
+  { length: 16 },
   (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
 );
+const getVisibleDayKeys = (rows: TarjaNominaRecord[]) =>
+  allDayKeys.filter((key) => key !== "D16" || rows.some((row) => row.D16 !== undefined));
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -163,7 +166,7 @@ const getWorkedHours = (cell?: TarjaNominaDayCell) => {
 };
 
 const getRowWorkedHours = (record?: TarjaNominaRecord) =>
-  dayKeys.reduce((total, key) => total + getWorkedHours(record?.[key]), 0);
+  allDayKeys.reduce((total, key) => total + getWorkedHours(record?.[key]), 0);
 
 const shouldShowEstado = (estado?: string | null) => {
   const normalized = String(estado ?? "").trim().toUpperCase();
@@ -256,6 +259,7 @@ const downloadTarjaNominaPdf = (
   title: string,
   rows: TarjaNominaRecord[],
 ) => {
+  const visibleDayKeys = getVisibleDayKeys(rows);
   const pageWidth = 842;
   const pageHeight = 595;
   const margin = 18;
@@ -269,8 +273,8 @@ const downloadTarjaNominaPdf = (
   );
   const columns = [
     { label: "Empleado", width: 112, align: "left", size: 5.8, max: 24, key: "empleado" },
-    ...dayKeys.map((key) => ({
-      label: `${formatDayName(rows[0]?.[key], key)} ${formatDayLabel(rows[0]?.[key], key)}`,
+    ...visibleDayKeys.map((key) => ({
+      label: `${formatDayName(rows[0]?.[key])} ${formatDayLabel(rows[0]?.[key])}`,
       width: 24,
       align: "center",
       size: 5.2,
@@ -284,7 +288,7 @@ const downloadTarjaNominaPdf = (
     { label: "Bonos", width: 62, align: "center", size: 5.2, max: 16, key: "bonos" },
     {
       label: "Coment",
-      width: tableWidth - 112 - 24 * 15 - 28 - 28 - 36 - 42 - 62,
+      width: tableWidth - 112 - 24 * visibleDayKeys.length - 28 - 28 - 36 - 42 - 62,
       align: "left",
       size: 5.2,
       max: 34,
@@ -833,7 +837,7 @@ const TarjaNominaGrid = () => {
               <th className="sticky left-0 z-10 w-[112px] border-b border-r border-slate-200 bg-slate-50 px-1 py-2 text-left font-semibold">
                 Empleado
               </th>
-              {dayKeys.map((key) => {
+              {visibleDayKeys.map((key) => {
                 const cell = firstRow?.[key];
                 const nonWorking = isNonWorkingDay(cell?.fecha);
                 return (
@@ -845,10 +849,10 @@ const TarjaNominaGrid = () => {
                     )}
                   >
                     <span className="block text-[7px] leading-tight">
-                      {formatDayName(cell, key)}
+                      {formatDayName(cell)}
                     </span>
                     <span className="block text-[5.5px] font-normal leading-tight text-slate-400">
-                      {formatDayLabel(cell, key)}
+                      {formatDayLabel(cell)}
                     </span>
                   </th>
                 );
@@ -882,7 +886,7 @@ const TarjaNominaGrid = () => {
                     <td className="sticky left-0 z-10 max-w-[112px] border-r border-slate-200 bg-white px-1 py-1.5">
                       <EmpleadoCell />
                     </td>
-                    {dayKeys.map((key) => {
+                    {visibleDayKeys.map((key) => {
                       const cell = row[key];
                       const nonWorking = isNonWorkingDay(cell?.fecha);
                       return (
@@ -935,7 +939,7 @@ const TarjaNominaGrid = () => {
               ))
             ) : (
               <tr>
-                <td colSpan={23} className="px-3 py-8 text-center text-sm text-slate-400">
+                <td colSpan={visibleDayKeys.length + 8} className="px-3 py-8 text-center text-sm text-slate-400">
                   Sin nomina para mostrar.
                 </td>
               </tr>

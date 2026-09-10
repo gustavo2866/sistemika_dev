@@ -146,7 +146,7 @@ class TarjaNomina(Base, table=True):
         "encargado_id",
         "tipo_novedad",
         "editable",
-        *[f"D{day:02d}" for day in range(1, 16)],
+        *[f"D{day:02d}" for day in range(1, 17)],
     ]
 
     tarja_id: int = Field(

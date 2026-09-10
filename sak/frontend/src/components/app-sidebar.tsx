@@ -165,6 +165,27 @@ const SIDEBAR_SUBMENU_CLASSNAME = "mx-2.5 px-2 py-0";
 const SIDEBAR_SUBMENU_BUTTON_CLASSNAME =
   "h-6 gap-1.5 px-2 text-[11px] [&_svg]:size-3 2xl:h-7 2xl:gap-2 2xl:text-xs 2xl:[&_svg]:size-3.5";
 
+const toISODate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getCurrentTarjaPanelUrl = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const day = today.getDate();
+  const start =
+    day <= 10
+      ? new Date(year, month - 1, 26)
+      : day <= 25
+        ? new Date(year, month, 11)
+        : new Date(year, month, 26);
+  return `/tarjas/panel?fecha=${toISODate(start)}`;
+};
+
 export function AppSidebar() {
   const hasDashboard = useHasDashboard();
   const resources = useResourceDefinitions();
@@ -303,7 +324,7 @@ export function AppSidebar() {
                   {constructoraResources.includes("tarjas") ? (
                     <SidebarCustomMenuItem
                       label="Tarjas"
-                      to="/tarjas/panel"
+                      to={getCurrentTarjaPanelUrl()}
                       icon={ClipboardCheck}
                       onClick={handleItemClick}
                     />
@@ -715,7 +736,7 @@ const SidebarCustomMenuItem = ({
   icon?: ComponentType;
   onClick?: () => void;
 }) => {
-  const match = useMatch({ path: to, end: false });
+  const match = useMatch({ path: to.split("?")[0], end: false });
   const IconComponent = icon ?? Settings;
   return (
     <SidebarMenuSubItem>

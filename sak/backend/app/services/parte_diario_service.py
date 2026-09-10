@@ -27,19 +27,55 @@ from app.modules.channels.types import ChannelEventData
 
 
 class ParteDiarioService:
+    @staticmethod
+    def _is_confirmation_result(result: dict[str, Any]) -> bool:
+        return bool(result.get("confirmar_parte") or result.get("cerrar_parte"))
+
+    def _sync_existing_confirmed_part(
+        self,
+        session: Session,
+        parte: ParteDiario,
+        result: dict[str, Any],
+    ) -> bool:
+        if not self._is_confirmation_result(result):
+            return False
+        if parte.estado != EstadoParteDiario.CONFIRMADO:
+            return False
+
+        from app.services.parte_diario_tarja_service import parte_diario_tarja_service
+
+        parte_diario_tarja_service.sincronizar_detalle_para_parte(
+            session,
+            parte,
+            auto_commit=False,
+        )
+        return True
+
+    def _should_reprocess_existing_part(
+        self,
+        parte: ParteDiario,
+        result: dict[str, Any],
+    ) -> bool:
+        return self._is_confirmation_result(result) and parte.estado == EstadoParteDiario.BORRADOR
+
     def create_or_update_from_agent_message(self, session: Session, mensaje_id: int) -> ParteDiario:
         mensaje = session.get(CRMMensaje, mensaje_id)
         if mensaje is None:
             raise ValueError(f"Mensaje {mensaje_id} no encontrado")
         metadata = mensaje.metadata_json or {}
         agent_key, agent_metadata = self._extract_agent_metadata(metadata)
+        result = agent_metadata.get("result") or {}
         existing_id = agent_metadata.get("parte_diario_id")
         if existing_id:
             existing = session.get(ParteDiario, int(existing_id))
             if existing is not None:
-                return existing
+                if self._sync_existing_confirmed_part(session, existing, result):
+                    session.commit()
+                    session.refresh(existing)
+                    return existing
+                if not self._should_reprocess_existing_part(existing, result):
+                    return existing
 
-        result = agent_metadata.get("result") or {}
         if result.get("type") != "parte_diario_reply":
             raise ValueError(f"Mensaje {mensaje_id} no contiene resultado de parte_diario_reply")
         parte = self._create_or_update_from_result(session, result, mensaje_id=mensaje_id)
@@ -116,7 +152,33 @@ class ParteDiarioService:
             received_at=received_at,
             channel_event_id=channel_event.id,
         )
-        return self.create_or_update_from_agent_message(session, int(mensaje.id))
+
+        metadata = copy.deepcopy(mensaje.metadata_json or {})
+        agent_metadata = metadata.setdefault("agent_v3", {})
+        existing_id = agent_metadata.get("parte_diario_id")
+        if existing_id:
+            existing = session.get(ParteDiario, int(existing_id))
+            if existing is not None:
+                if self._sync_existing_confirmed_part(session, existing, result):
+                    agent_metadata["result"] = result
+                    mensaje.metadata_json = metadata
+                    flag_modified(mensaje, "metadata_json")
+                    session.add(mensaje)
+                    session.commit()
+                    session.refresh(existing)
+                    return existing
+                if not self._should_reprocess_existing_part(existing, result):
+                    return existing
+
+        parte = self._create_or_update_from_result(session, result, mensaje_id=int(mensaje.id))
+        agent_metadata["result"] = result
+        agent_metadata["parte_diario_id"] = parte.id
+        mensaje.metadata_json = metadata
+        flag_modified(mensaje, "metadata_json")
+        session.add(mensaje)
+        session.commit()
+        session.refresh(parte)
+        return parte
 
     def _create_or_update_from_result(
         self,

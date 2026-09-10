@@ -26,29 +26,43 @@ export const toISODate = (date: Date) => {
 export const getQuincenaRange = (date: Date): QuincenaRange => {
   const year = date.getFullYear();
   const month = date.getMonth();
-  const firstHalf = date.getDate() <= 15;
+  const day = date.getDate();
+  if (day <= 10) {
+    return {
+      start: new Date(year, month - 1, 26),
+      end: new Date(year, month, 10),
+      number: 1,
+    };
+  }
+  if (day <= 25) {
+    return {
+      start: new Date(year, month, 11),
+      end: new Date(year, month, 25),
+      number: 2,
+    };
+  }
   return {
-    start: new Date(year, month, firstHalf ? 1 : 16),
-    end: firstHalf
-      ? new Date(year, month, 15)
-      : new Date(year, month + 1, 0),
-    number: firstHalf ? 1 : 2,
+    start: new Date(year, month, 26),
+    end: new Date(year, month + 1, 10),
+    number: 1,
   };
 };
 
 export const moveQuincena = (start: Date, direction: -1 | 1) => {
-  const year = start.getFullYear();
-  const month = start.getMonth();
-  const firstHalf = start.getDate() === 1;
+  const normalizedStart = getQuincenaRange(start).start;
+  const year = normalizedStart.getFullYear();
+  const month = normalizedStart.getMonth();
+  const firstHalf = normalizedStart.getDate() === 26;
   if (direction === 1) {
-    return firstHalf ? new Date(year, month, 16) : new Date(year, month + 1, 1);
+    return firstHalf ? new Date(year, month + 1, 11) : new Date(year, month, 26);
   }
-  return firstHalf ? new Date(year, month - 1, 16) : new Date(year, month, 1);
+  return firstHalf ? new Date(year, month, 11) : new Date(year, month - 1, 26);
 };
 
 const formatQuincena = (start: Date, number: number) => {
-  const month = start.toLocaleDateString("es-AR", { month: "long" });
-  return `${number}ª quincena · ${month} ${start.getFullYear()}`;
+  const referenceDate = number === 1 ? new Date(start.getFullYear(), start.getMonth() + 1, 1) : start;
+  const month = referenceDate.toLocaleDateString("es-AR", { month: "long" });
+  return `${number}ª quincena · ${month} ${referenceDate.getFullYear()}`;
 };
 
 const formatDateRange = (start: Date, end: Date) =>

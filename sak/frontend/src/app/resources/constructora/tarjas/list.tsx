@@ -72,6 +72,27 @@ const LIST_FILTERS = buildListFilters(
 
 const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
+const toISODate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getCurrentTarjaPanelUrl = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const day = today.getDate();
+  const start =
+    day <= 10
+      ? new Date(year, month - 1, 26)
+      : day <= 25
+        ? new Date(year, month, 11)
+        : new Date(year, month, 26);
+  return `/tarjas/panel?fecha=${toISODate(start)}`;
+};
+
 const LIST_MOBILE_CONFIG = {
   primaryField: "idproyecto",
   secondaryFields: ["contacto_id", "fechainicio", "fechafinal", "estado"],
@@ -104,7 +125,7 @@ const TarjaListTitle = () => {
         variant="ghost"
         size="icon"
         className="h-7 w-7"
-        onClick={() => navigate("/tarjas/panel")}
+        onClick={() => navigate(getCurrentTarjaPanelUrl())}
         title="Volver al panel de tarjas"
       >
         <CalendarRange className="h-4 w-4" />
