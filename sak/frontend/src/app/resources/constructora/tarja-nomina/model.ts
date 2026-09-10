@@ -83,6 +83,7 @@ export const tarjaNominaSchema = z.object({
   tarja_fecha_desde: z.string().optional(),
   tarja_fecha_hasta: z.string().optional(),
   confirmar_traspaso: z.boolean().optional(),
+  documentos: z.array(z.string()).optional().nullable(),
   observaciones: z.preprocess(
     emptyToUndefined,
     z.string().max(VALIDATION_RULES.OBSERVACIONES.MAX_LENGTH).optional(),
@@ -133,6 +134,7 @@ export const TARJA_NOMINA_DEFAULT: TarjaNominaFormValues = {
   tarja_fecha_desde: "",
   tarja_fecha_hasta: "",
   confirmar_traspaso: false,
+  documentos: [],
   observaciones: "",
 };
 
@@ -170,6 +172,7 @@ export const normalizeTarjaNominaPayload = (data: unknown) => {
   payload.mejora_importe = Number(payload.mejora_importe ?? 0);
   payload.cargas_importe = Number(payload.cargas_importe ?? 0);
   payload.observaciones = trimNullableText(payload.observaciones as string | null);
+  payload.documentos = Array.isArray(payload.documentos) ? payload.documentos : [];
   delete payload.tarja_fecha_desde;
   delete payload.tarja_fecha_hasta;
 

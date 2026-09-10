@@ -26,6 +26,9 @@ from app.modules.channels.persistence import channel_event_store
 from app.modules.channels.types import ChannelEventData
 
 
+INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
+
+
 class ParteDiarioService:
     @staticmethod
     def _is_confirmation_result(result: dict[str, Any]) -> bool:
@@ -57,6 +60,24 @@ class ParteDiarioService:
         result: dict[str, Any],
     ) -> bool:
         return self._is_confirmation_result(result) and parte.estado == EstadoParteDiario.BORRADOR
+
+    def _delete_agent_managed_details(self, session: Session, parte_id: int) -> None:
+        internal_state_ids = {
+            int(row)
+            for row in session.exec(
+                select(ParteDiarioEstado.id)
+                .where(ParteDiarioEstado.abreviatura.in_(INTERNAL_NOMINA_STATE_CODES))
+                .where(ParteDiarioEstado.deleted_at.is_(None))
+            ).all()
+            if row is not None
+        }
+        stmt = delete(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_id)
+        if internal_state_ids:
+            stmt = stmt.where(
+                ParteDiarioDetalle.idestado.not_in(internal_state_ids)
+                | ParteDiarioDetalle.idestado.is_(None)
+            )
+        session.exec(stmt)
 
     def create_or_update_from_agent_message(self, session: Session, mensaje_id: int) -> ParteDiario:
         mensaje = session.get(CRMMensaje, mensaje_id)
@@ -262,9 +283,7 @@ class ParteDiarioService:
             parte.mensaje_origen_id = mensaje_id
             session.add(parte)
             session.flush()
-            session.exec(
-                delete(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
-            )
+            self._delete_agent_managed_details(session, int(parte.id))
 
         parte.estado = target_estado
         session.add(parte)
@@ -306,7 +325,6 @@ class ParteDiarioService:
             result=result,
             fecha=fecha,
             contacto_id=contacto_id,
-            target_estado=target_estado,
             mensaje_id=mensaje_id,
         )
 
@@ -378,7 +396,7 @@ class ParteDiarioService:
             destination_items.append(destination)
 
             origin = dict(normalized)
-            origin["horas"] = 0.0
+            origin["horas"] = _origin_hours_for_destination(normalized, fecha)
             origin["fuera_de_proyecto"] = True
             project_name = str(origin.get("nombre_proyecto") or "").strip()
             if project_name and not str(origin.get("descripcion") or "").strip():
@@ -394,11 +412,11 @@ class ParteDiarioService:
         result: dict[str, Any],
         fecha: date,
         contacto_id: int,
-        target_estado: EstadoParteDiario,
         mensaje_id: int | None,
     ) -> None:
         if not novedades_destino:
             return
+        destination_estado = EstadoParteDiario.BORRADOR
         by_project: dict[int, list[dict[str, Any]]] = {}
         for item in novedades_destino:
             destination_id = _parse_optional_int(item.get("idproyecto"))
@@ -423,7 +441,7 @@ class ParteDiarioService:
                     idproyecto=destination_id,
                     contacto_id=contacto_id or None,
                     fecha=fecha,
-                    estado=target_estado,
+                    estado=destination_estado,
                     mensaje_origen_id=mensaje_id,
                     descripcion="Generado por personal derivado desde otra obra",
                 )
@@ -434,18 +452,14 @@ class ParteDiarioService:
                 project_name = project.nombre if project is not None else destination_id
                 raise ValueError(f"El parte diario destino {project_name} ya fue cerrado")
             elif parte.estado == EstadoParteDiario.CONFIRMADO:
-                if target_estado != EstadoParteDiario.CONFIRMADO:
-                    project = session.get(Proyecto, destination_id)
-                    project_name = project.nombre if project is not None else destination_id
-                    raise ValueError(f"El parte diario destino {project_name} ya fue confirmado")
-                parte.mensaje_origen_id = mensaje_id
-                session.add(parte)
-                session.flush()
+                project = session.get(Proyecto, destination_id)
+                project_name = project.nombre if project is not None else destination_id
+                raise ValueError(f"El parte diario destino {project_name} ya fue confirmado")
             else:
                 if contacto_id > 0:
                     parte.contacto_id = contacto_id
                 parte.mensaje_origen_id = mensaje_id
-                parte.estado = target_estado
+                parte.estado = destination_estado
                 session.add(parte)
                 session.flush()
 
@@ -635,6 +649,19 @@ def _parse_optional_int(value: Any) -> int | None:
         return None
 
 
+def _origin_hours_for_destination(item: dict[str, Any], fecha: date) -> float:
+    destination_hours = _parse_float(item.get("horas"))
+    if destination_hours is None:
+        return 0.0
+
+    from app.services.parte_diario_tarja_service import get_jornada_esperada
+
+    normal_hours = float(get_jornada_esperada(fecha))
+    if destination_hours > normal_hours:
+        return 0.0
+    return max(normal_hours - destination_hours, 0.0)
+
+
 def _destination_hours(item: dict[str, Any]) -> float:
     value = item.get("horas")
     normalized_code = str(item.get("estado_codigo") or "").upper()
@@ -645,6 +672,15 @@ def _destination_hours(item: dict[str, Any]) -> float:
     except (TypeError, ValueError):
         return 9.0 if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
     return hours
+
+
+def _parse_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _provisional_hours(item: dict[str, Any]) -> float:

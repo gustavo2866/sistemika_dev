@@ -1,7 +1,12 @@
+import json
+import os
+import tempfile
+import uuid
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Sequence
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.core.generic_crud import GenericCRUD
@@ -15,14 +20,26 @@ from app.models.proyecto import Proyecto
 from app.models.proyecto_encargado import ProyectoEncargado
 from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
 from app.models.crm.contacto import CRMContacto
+from app.services.gcs_storage_service import storage_service
 from sqlalchemy import String, and_, cast, func, or_
 from sqlmodel import Session, select
+
+
+_TARJA_NOMINA_MAX_FILE_SIZE = 20 * 1024 * 1024
+_TARJA_NOMINA_ALLOWED_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".txt",
+}
 
 
 class TarjaNominaTrasladoRequest(BaseModel):
     proyecto_id: int = Field(..., gt=0)
     proyecto_encargado_id: int = Field(..., gt=0)
     fecha: date
+
+
+class TarjaNominaDocumentoDeleteRequest(BaseModel):
+    url: str = Field(..., min_length=1)
 
 
 class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
@@ -742,3 +759,117 @@ def trasladar_tarja_nomina(
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _get_tarja_nomina_or_404(id: int, session: Session) -> TarjaNomina:
+    registro = session.get(TarjaNomina, id)
+    if registro is None or registro.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Registro de nomina no encontrado")
+    return registro
+
+
+def _parse_documento_item(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        url = str(value.get("url") or value.get("archivo_url") or "").strip()
+        nombre = str(value.get("nombre") or "").strip() or Path(url).name or "Documento"
+        return {
+            "url": url,
+            "nombre": nombre,
+            "content_type": value.get("content_type") or value.get("mime_type"),
+            "size": value.get("size") or value.get("tamanio_bytes"),
+        }
+    text = str(value or "").strip()
+    if text.startswith("{"):
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return _parse_documento_item(parsed)
+    return {"url": text, "nombre": Path(text).name or "Documento"}
+
+
+def _documentos_as_list(registro: TarjaNomina) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in (_parse_documento_item(value) for value in (registro.documentos or []))
+        if item.get("url")
+    ]
+
+
+def _documentos_to_storage(items: list[dict[str, Any]]) -> list[str]:
+    return [json.dumps(item, ensure_ascii=False) for item in items if item.get("url")]
+
+
+@tarja_nomina_router.post("/{id:int}/documentos", tags=["tarja-nomina"])
+async def upload_tarja_nomina_documento(
+    id: int,
+    file: UploadFile = File(...),
+    nombre: str | None = Form(default=None),
+    session: Session = Depends(get_session),
+):
+    registro = _get_tarja_nomina_or_404(id, session)
+    content = await file.read()
+    if len(content) > _TARJA_NOMINA_MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande (maximo 20 MB)")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in _TARJA_NOMINA_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=415, detail=f"Tipo de archivo no permitido: {ext}")
+
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(tmp_fd, "wb") as tmp:
+            tmp.write(content)
+        gcs_result = storage_service.upload_file(
+            tmp_path,
+            safe_name,
+            folder=f"tarja-nomina/{id}",
+            content_type=file.content_type,
+        )
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    documentos = _documentos_as_list(registro)
+    documentos.append(
+        {
+            "url": gcs_result["download_url"],
+            "nombre": nombre or file.filename or safe_name,
+            "content_type": file.content_type,
+            "size": len(content),
+        }
+    )
+    registro.documentos = _documentos_to_storage(documentos)
+    registro.updated_at = datetime.now(UTC)
+    session.add(registro)
+    session.commit()
+    session.refresh(registro)
+    return registro
+
+
+@tarja_nomina_router.delete("/{id:int}/documentos", tags=["tarja-nomina"])
+def delete_tarja_nomina_documento(
+    id: int,
+    payload: TarjaNominaDocumentoDeleteRequest,
+    session: Session = Depends(get_session),
+):
+    registro = _get_tarja_nomina_or_404(id, session)
+    documentos = _documentos_as_list(registro)
+    remaining = [item for item in documentos if item.get("url") != payload.url]
+    if len(remaining) == len(documentos):
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    try:
+        blob_name = storage_service.blob_name_from_download_url(payload.url)
+        storage_service.delete_file(blob_name)
+    except Exception:
+        pass
+
+    registro.documentos = _documentos_to_storage(remaining)
+    registro.updated_at = datetime.now(UTC)
+    session.add(registro)
+    session.commit()
+    session.refresh(registro)
+    return registro

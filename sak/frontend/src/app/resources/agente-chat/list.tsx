@@ -132,12 +132,15 @@ export const AgentChatList = () => {
   const fromPhone = searchParams.get("from_phone")?.trim() ?? "";
   const fromName = searchParams.get("from_name")?.trim() ?? "";
   const returnTo = searchParams.get("returnTo")?.trim() ?? "";
+  const initialParteDiarioId = searchParams.get("parte_diario_id")?.trim() ?? "";
   const contactLabel = fromName || (fromPhone ? fromPhone : "Contacto de prueba");
   const requiresSourcePhone = source === "parte-diario";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [savedParteDiarioId, setSavedParteDiarioId] = useState<number | string | null>(null);
+  const [savedParteDiarioId, setSavedParteDiarioId] = useState<number | string | null>(
+    initialParteDiarioId || null,
+  );
   const [resetReady, setResetReady] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);

@@ -36,6 +36,7 @@ class ParteDiarioQueryAgentClient:
         proyecto_id: int,
         contacto_id: int | None,
         nombre_obra: str | None,
+        fecha: str | None = None,
         opciones_visibles: list[dict[str, Any]] | None = None,
     ) -> str:
         service = ParteDiarioQueryService(
@@ -43,6 +44,7 @@ class ParteDiarioQueryAgentClient:
             proyecto_id=proyecto_id,
             contacto_id=contacto_id,
             nombre_obra=nombre_obra,
+            fecha=fecha,
         )
         tools = _build_tools(service)
         client = AgentSDKClient(
@@ -60,7 +62,7 @@ class ParteDiarioQueryAgentClient:
                     "proyecto_id": proyecto_id,
                     "contacto_id": contacto_id,
                     "obra": nombre_obra,
-                    "fecha_referencia": _today().isoformat(),
+                    "fecha_referencia": fecha or _today().isoformat(),
                     "opciones_visibles": opciones_visibles or [],
                 },
                 ensure_ascii=False,

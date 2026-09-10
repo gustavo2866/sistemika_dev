@@ -30,6 +30,7 @@ type ParteDiarioAgentChatButtonProps = {
   fromName?: string;
   fromPhone?: string;
   returnTo?: string | null;
+  parteDiarioId?: number | string | null;
 };
 
 export const ParteDiarioAgentChatButton = ({
@@ -40,6 +41,7 @@ export const ParteDiarioAgentChatButton = ({
   fromName,
   fromPhone,
   returnTo,
+  parteDiarioId,
 }: ParteDiarioAgentChatButtonProps) => {
   const navigate = useNavigate();
 
@@ -50,6 +52,7 @@ export const ParteDiarioAgentChatButton = ({
     if (fromPhone?.trim()) params.set("from_phone", fromPhone.trim());
     if (fromName?.trim()) params.set("from_name", fromName.trim());
     if (returnTo?.trim()) params.set("returnTo", returnTo.trim());
+    if (parteDiarioId) params.set("parte_diario_id", String(parteDiarioId));
     const query = params.toString();
     navigate(`/agente-chat${query ? `?${query}` : ""}`);
   };
@@ -58,16 +61,20 @@ export const ParteDiarioAgentChatButton = ({
 
   return (
     <span title={title}>
-    <Button
-      type="button"
-      variant="outline"
-      className="h-7 gap-1 px-2 text-xs"
-      disabled={disabled}
-      onClick={handleClick}
-    >
-      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-      {loading ? "Leyendo" : "IA"}
-    </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-7 gap-1 px-2 text-xs"
+        disabled={disabled}
+        onClick={handleClick}
+      >
+        {loading ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Sparkles className="h-3 w-3" />
+        )}
+        {loading ? "Leyendo" : "IA"}
+      </Button>
     </span>
   );
 };

@@ -1,16 +1,27 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { required, useGetOne, useRecordContext } from "ra-core";
+import { required, useGetOne, useNotify, useRecordContext, useRefresh } from "ra-core";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FormOrderToolbar } from "@/components/forms";
 import { Confirm } from "@/components/confirm";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { FileText, Plus, Trash2, Upload } from "lucide-react";
+import { apiUrl } from "@/lib/dataProvider";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { NominaQuickCreateDialog } from "./nomina-quick-create-dialog";
 import {
+  ArchivoViewerModal,
   FormBoolean,
   FormDate,
   FormNumber,
@@ -77,6 +88,126 @@ const formatHoursValue = (value: number) =>
 const formatDateValue = (value?: string | null) => {
   const [year, month, day] = String(value ?? "").slice(0, 10).split("-");
   return year && month && day ? `${day}/${month}/${year}` : "-";
+};
+
+const buildAuthHeaders = () => {
+  const headers: Record<string, string> = {};
+  if (typeof window === "undefined") return headers;
+  const token = window.localStorage.getItem("auth_token");
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+};
+
+type TarjaNominaDocumento = {
+  url: string;
+  nombre: string;
+  content_type?: string | null;
+  size?: number | null;
+};
+
+const parseDocumento = (value: unknown): TarjaNominaDocumento | null => {
+  if (!value) return null;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const url = String(record.url ?? record.archivo_url ?? "").trim();
+    if (!url) return null;
+    return {
+      url,
+      nombre: String(record.nombre ?? "").trim() || url.split("/").pop() || "Documento",
+      content_type: record.content_type ? String(record.content_type) : null,
+      size: Number.isFinite(Number(record.size)) ? Number(record.size) : null,
+    };
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  if (text.startsWith("{")) {
+    try {
+      return parseDocumento(JSON.parse(text));
+    } catch {
+      // Fallback to treating it as a plain URL.
+    }
+  }
+  return {
+    url: text,
+    nombre: text.split("/").pop() || "Documento",
+  };
+};
+
+const getDocumentoUrl = (url: string) => {
+  if (url.startsWith("gs://")) {
+    return url.replace(/^gs:\/\/([^/]+)\/(.+)$/, "https://storage.googleapis.com/$1/$2");
+  }
+  return url.startsWith("/") ? `${apiUrl}${url}` : url;
+};
+
+const useTarjaNominaDocumentoUpload = () => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  const upload = async (registroId: number, file: File, nombre?: string) => {
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (nombre) formData.append("nombre", nombre);
+      const response = await fetch(`${apiUrl}/tarja-nomina/${registroId}/documentos`, {
+        method: "POST",
+        headers: buildAuthHeaders(),
+        body: formData,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        notify(payload?.detail ?? "No se pudo subir el documento", { type: "warning" });
+        return false;
+      }
+      notify("Documento subido", { type: "info" });
+      refresh();
+      return true;
+    } catch {
+      notify("Error al subir el documento", { type: "warning" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { upload, loading };
+};
+
+const useTarjaNominaDocumentoDelete = () => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [loading, setLoading] = useState(false);
+
+  const deleteDocumento = async (registroId: number, url: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${apiUrl}/tarja-nomina/${registroId}/documentos`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...buildAuthHeaders(),
+        },
+        body: JSON.stringify({ url }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        notify(payload?.detail ?? "No se pudo eliminar el documento", { type: "warning" });
+        return false;
+      }
+      notify("Documento eliminado", { type: "info" });
+      refresh();
+      return true;
+    } catch {
+      notify("Error al eliminar el documento", { type: "warning" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { deleteDocumento, loading };
 };
 
 const getEmpleadoLabel = (choice?: unknown) => {
@@ -561,6 +692,191 @@ const TarjaLiquidacionFields = () => {
   );
 };
 
+const TarjaNominaDocumentosFields = ({
+  registroId,
+  readOnly = false,
+}: {
+  registroId?: number;
+  readOnly?: boolean;
+}) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const rawDocumentos = useWatch<TarjaNominaFormValues>({ name: "documentos" });
+  const documentos = (Array.isArray(rawDocumentos) ? rawDocumentos : [])
+    .map(parseDocumento)
+    .filter((item): item is TarjaNominaDocumento => Boolean(item));
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [nombre, setNombre] = useState("");
+  const [confirmUploadOpen, setConfirmUploadOpen] = useState(false);
+  const [documentoAEliminar, setDocumentoAEliminar] = useState<TarjaNominaDocumento | null>(null);
+  const { upload, loading: uploading } = useTarjaNominaDocumentoUpload();
+  const { deleteDocumento, loading: deleting } = useTarjaNominaDocumentoDelete();
+
+  const disabled = readOnly || !registroId;
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPendingFile(file);
+    setNombre(file.name);
+    setConfirmUploadOpen(true);
+    event.target.value = "";
+  };
+
+  const handleUpload = async () => {
+    if (!registroId || !pendingFile) return;
+    const ok = await upload(registroId, pendingFile, nombre.trim() || pendingFile.name);
+    if (!ok) return;
+    setPendingFile(null);
+    setNombre("");
+    setConfirmUploadOpen(false);
+  };
+
+  const handleCancelUpload = () => {
+    setPendingFile(null);
+    setNombre("");
+    setConfirmUploadOpen(false);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!registroId || !documentoAEliminar) return;
+    const ok = await deleteDocumento(registroId, documentoAEliminar.url);
+    if (ok) setDocumentoAEliminar(null);
+  };
+
+  if (!registroId) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        Guarda el registro de nomina para adjuntar certificados y otros documentos.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.txt"
+        onChange={handleFileSelect}
+        disabled={disabled || uploading}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-muted-foreground">
+          Certificados y documentos asociados a esta nomina de la quincena.
+        </p>
+        {!readOnly ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 px-2 text-[11px]"
+            disabled={disabled || uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="size-3.5" />
+            Subir
+          </Button>
+        ) : null}
+      </div>
+      {documentos.length ? (
+        <ul className="divide-y rounded-md border bg-white text-[12px]">
+          {documentos.map((documento) => {
+            const resolvedUrl = getDocumentoUrl(documento.url);
+            return (
+              <li key={documento.url} className="flex items-center justify-between gap-2 px-2 py-1.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate" title={documento.nombre}>
+                    {documento.nombre}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <ArchivoViewerModal url={resolvedUrl} nombre={documento.nombre} />
+                  {!readOnly ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-destructive"
+                      disabled={deleting}
+                      onClick={() => setDocumentoAEliminar(documento)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="rounded-md border border-dashed px-3 py-4 text-center text-[12px] text-muted-foreground">
+          Sin documentos adjuntos.
+        </p>
+      )}
+      <Dialog
+        open={confirmUploadOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCancelUpload();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Subir documento</DialogTitle>
+            <DialogDescription>
+              El archivo quedara asociado a esta nomina dentro de la quincena.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Nombre</label>
+            <Input
+              value={nombre}
+              onChange={(event) => setNombre(event.target.value)}
+              disabled={uploading}
+              className="h-9 text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleCancelUpload} disabled={uploading}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => void handleUpload()} disabled={uploading}>
+              {uploading ? "Subiendo..." : "Subir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(documentoAEliminar)}
+        onOpenChange={(open) => {
+          if (!open) setDocumentoAEliminar(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar documento</DialogTitle>
+            <DialogDescription>
+              Se quitara el documento de esta nomina de la quincena.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+            {documentoAEliminar?.nombre ?? "Documento"}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDocumentoAEliminar(null)} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void handleDeleteConfirm()} disabled={deleting}>
+              {deleting ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
 type TarjaNominaFormProps = {
   defaultValues?: Partial<TarjaNominaFormValues>;
   lockReferences?: boolean;
@@ -697,6 +1013,16 @@ export const TarjaNominaForm = ({
           />
         }
         defaultOpen
+      />
+      <SectionBaseTemplate
+        title="Documentos"
+        main={
+          <TarjaNominaDocumentosFields
+            registroId={record?.id ? Number(record.id) : undefined}
+            readOnly={isReadOnlyNovedad}
+          />
+        }
+        defaultOpen={false}
       />
       <SectionBaseTemplate
         title="Liquidacion"

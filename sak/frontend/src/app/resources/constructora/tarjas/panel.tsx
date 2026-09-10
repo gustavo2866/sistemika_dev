@@ -384,9 +384,7 @@ const getTarjaDetalleExportCellText = (
     case "horas":
       return formatHours(totalHours);
     case "presentismo":
-      return `${row.novedad?.presentismo ? "SI" : "NO"} trab:${formatHours(workedHours)}${
-        justifiedHours ? ` just:${formatHours(justifiedHours)}` : ""
-      }`;
+      return row.novedad?.presentismo ? "SI" : "NO";
     case "bonos":
       return formatNumber(totalBonus);
     case "comentario":
@@ -459,7 +457,8 @@ const downloadTarjaPanelExcel = (
     body { font-family: Arial, sans-serif; }
     h1 { font-size: 16px; margin: 0 0 12px 0; }
     table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-    th { border: 1px solid #cbd5e1; background: #000; color: #fff; font-size: 9px; padding: 3px 2px; }
+    thead tr { height: 13px; }
+    th { border: 1px solid #cbd5e1; background: #e5e7eb; color: #111827; font-size: 7px; line-height: 9px; padding: 1px 2px; font-weight: 600; }
     .date-col { width: 24px; }
     .project-col { width: 150px; }
     .person-col { width: 130px; }

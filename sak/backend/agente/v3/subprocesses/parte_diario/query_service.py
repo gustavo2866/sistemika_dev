@@ -11,18 +11,29 @@ from sqlmodel import Session, select
 from agente.v3.subprocesses.parte_diario.calendario import es_dia_laborable
 from agente.v3.subprocesses.parte_diario.process import _requests_global_nomina, _today
 from agente.v3.subprocesses.parte_diario.resolver import normalize_text
-from app.models import EstadoParteDiario, Nomina, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto
+from app.models import EstadoParteDiario, Nomina, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto, Tarja, TarjaNomina
+from app.utils.quincenas import get_quincena_range
 
 
 _INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
 
 
 class ParteDiarioQueryService:
-    def __init__(self, *, session: Session, proyecto_id: int, contacto_id: int | None, nombre_obra: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        session: Session,
+        proyecto_id: int,
+        contacto_id: int | None,
+        nombre_obra: str | None,
+        fecha: str | None = None,
+    ) -> None:
         self._session = session
         self._proyecto_id = proyecto_id
         self._contacto_id = contacto_id
         self._nombre_obra = nombre_obra or "la obra seleccionada"
+        parsed_fecha, fecha_error = _parse_iso_date(fecha) if fecha else (None, None)
+        self._fecha = parsed_fecha if fecha_error is None else None
 
     def consultar_novedades(
         self,
@@ -295,14 +306,60 @@ class ParteDiarioQueryService:
         ]
 
     def _load_scoped_nomina(self) -> list[Nomina]:
-        rows = self._session.exec(
+        if self._fecha is not None:
+            has_tarja_nomina, scoped = self._load_scoped_nomina_desde_tarja_nomina(self._fecha)
+            if has_tarja_nomina:
+                return scoped
+        query = (
             select(Nomina)
             .where(Nomina.idproyecto == self._proyecto_id)
             .where(Nomina.activo.is_(True))
             .where(Nomina.deleted_at.is_(None))
             .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
-        ).all()
-        return rows
+        )
+        if self._contacto_id is not None:
+            query = query.where(Nomina.encargado_contacto_id == self._contacto_id)
+        if self._fecha is not None:
+            query = query.where((Nomina.fecha_ingreso.is_(None)) | (Nomina.fecha_ingreso <= self._fecha))
+            query = query.where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= self._fecha))
+        return list(self._session.exec(query).all())
+
+    def _load_scoped_nomina_desde_tarja_nomina(self, fecha: date) -> tuple[bool, list[Nomina]]:
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        contacto_filter = (
+            Tarja.contacto_id == self._contacto_id
+            if self._contacto_id is not None
+            else Tarja.contacto_id.is_(None)
+        )
+        tarja_id = self._session.exec(
+            select(Tarja.id)
+            .where(Tarja.idproyecto == self._proyecto_id)
+            .where(Tarja.fechainicio == fechainicio)
+            .where(Tarja.fechafinal == fechafinal)
+            .where(Tarja.deleted_at.is_(None))
+            .where(contacto_filter)
+        ).first()
+        if tarja_id is None:
+            return False, []
+        has_registros = self._session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        if has_registros is None:
+            return False, []
+        query = (
+            select(Nomina)
+            .join(TarjaNomina, TarjaNomina.nomina_id == Nomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .where(TarjaNomina.fecha_desde <= fecha)
+            .where(TarjaNomina.fecha_hasta >= fecha)
+            .where(Nomina.deleted_at.is_(None))
+            .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
+        )
+        return True, list(self._session.exec(query).all())
 
     def _load_all_nomina(self) -> list[Nomina]:
         return self._session.exec(

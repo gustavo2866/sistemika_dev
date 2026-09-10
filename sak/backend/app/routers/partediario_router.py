@@ -440,47 +440,118 @@ class ParteDiarioCRUD(NestedCRUD):
         if not nomina_ids:
             return
 
-        baja_estado_ids = self._get_estado_ids_por_codigo(
+        alta_estado_ids = self._get_estado_ids_por_codigo(
             session,
             detalles,
-            self.BAJA_ESTADO_CODIGO,
+            self.ALTA_ESTADO_CODIGO,
         )
-        baja_nomina_ids = {
+        alta_nomina_ids = {
             int(detalle["idnomina"])
             for detalle in detalles
             if (
                 isinstance(detalle, dict)
                 and detalle.get("idnomina") not in (None, "")
                 and detalle.get("idestado") not in (None, "")
-                and int(detalle["idestado"]) in baja_estado_ids
+                and int(detalle["idestado"]) in alta_estado_ids
             )
         }
-        active_nomina_ids = nomina_ids - baja_nomina_ids
+        scoped_nomina_ids = nomina_ids - alta_nomina_ids
         valid_ids: set[int] = set()
 
-        if active_nomina_ids:
-            stmt = (
+        if alta_nomina_ids:
+            alta_stmt = (
                 select(Nomina.id)
-                .where(Nomina.id.in_(active_nomina_ids))
-                .where(Nomina.activo.is_(True))
+                .where(Nomina.id.in_(alta_nomina_ids))
                 .where(Nomina.deleted_at.is_(None))
             )
-            valid_ids.update(int(nomina_id) for nomina_id in session.exec(stmt).all())
+            valid_ids.update(int(nomina_id) for nomina_id in session.exec(alta_stmt).all())
 
-        if baja_nomina_ids:
-            baja_stmt = (
-                select(Nomina.id)
-                .where(Nomina.id.in_(baja_nomina_ids))
-                .where(Nomina.deleted_at.is_(None))
+        if scoped_nomina_ids:
+            idproyecto = self._payload_int(data.get("idproyecto", existing.idproyecto if existing is not None else None))
+            contacto_id = self._payload_int(data.get("contacto_id", existing.contacto_id if existing is not None else None))
+            fecha = self._parse_fecha_parte(data.get("fecha", existing.fecha if existing is not None else None))
+            if idproyecto is None or fecha is None:
+                raise ValueError("Proyecto y fecha son requeridos para validar la nomina del parte diario")
+            valid_ids.update(
+                self._get_nomina_ids_vigentes_para_parte(
+                    session,
+                    nomina_ids=scoped_nomina_ids,
+                    idproyecto=idproyecto,
+                    contacto_id=contacto_id,
+                    fecha=fecha,
+                )
             )
-            valid_ids.update(int(nomina_id) for nomina_id in session.exec(baja_stmt).all())
 
         invalid_ids = sorted(nomina_ids - valid_ids)
         if invalid_ids:
             raise ValueError(
-                "La nomina seleccionada no existe o no esta activa: "
+                "La nomina seleccionada no corresponde al proyecto, encargado y fecha del parte diario: "
                 + ", ".join(str(nomina_id) for nomina_id in invalid_ids)
             )
+
+    def _get_nomina_ids_vigentes_para_parte(
+        self,
+        session: Session,
+        *,
+        nomina_ids: set[int],
+        idproyecto: int,
+        contacto_id: int | None,
+        fecha: date,
+    ) -> set[int]:
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        tarja = self._get_tarja_quincena(
+            session,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id,
+            fechainicio=fechainicio,
+            fechafinal=fechafinal,
+        )
+        if tarja is not None:
+            has_registros = session.exec(
+                select(TarjaNomina.id)
+                .where(TarjaNomina.tarja_id == int(tarja.id))
+                .where(TarjaNomina.deleted_at.is_(None))
+                .limit(1)
+            ).first()
+            if has_registros is not None:
+                return {
+                    int(nomina_id)
+                    for nomina_id in session.exec(
+                        select(TarjaNomina.nomina_id)
+                        .where(TarjaNomina.tarja_id == int(tarja.id))
+                        .where(TarjaNomina.nomina_id.in_(nomina_ids))
+                        .where(TarjaNomina.fecha_desde <= fecha)
+                        .where(TarjaNomina.fecha_hasta >= fecha)
+                        .where(TarjaNomina.deleted_at.is_(None))
+                    ).all()
+                    if nomina_id is not None
+                }
+
+        stmt = (
+            select(Nomina.id)
+            .where(Nomina.id.in_(nomina_ids))
+            .where(Nomina.idproyecto == idproyecto)
+            .where(Nomina.activo.is_(True))
+            .where(Nomina.deleted_at.is_(None))
+            .where((Nomina.fecha_ingreso.is_(None)) | (Nomina.fecha_ingreso <= fecha))
+            .where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= fecha))
+        )
+        if contacto_id is None:
+            stmt = stmt.where(Nomina.encargado_contacto_id.is_(None))
+        else:
+            stmt = stmt.where(Nomina.encargado_contacto_id == contacto_id)
+        return {int(nomina_id) for nomina_id in session.exec(stmt).all()}
+
+    @staticmethod
+    def _parse_fecha_parte(value: Any) -> date | None:
+        if isinstance(value, date):
+            return value
+        if value in (None, ""):
+            return None
+        try:
+            return date.fromisoformat(str(value))
+        except ValueError:
+            return None
 
     def _validate_detalles_nomina_unicos(
         self,

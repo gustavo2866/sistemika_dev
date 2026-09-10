@@ -11,22 +11,13 @@ from app.models.nomina import Nomina
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDetalle
 from app.models.tarja import EstadoTarja, Tarja, TarjaDetalle, TarjaNomina
+from app.utils.quincenas import get_quincena_range
 
 
 PRESENTISMO_EXCLUDED_ESTADOS = {"ENF", "ACC"}
 ALTA_ESTADO_CODIGO = "ALT"
 BAJA_ESTADO_CODIGO = "BAJ"
 TRASPASO_ESTADO_CODIGO = "TRA"
-
-
-def get_quincena_range(fecha):
-    if fecha.day <= 10:
-        previous_month = fecha.replace(day=1) - timedelta(days=1)
-        return previous_month.replace(day=26), fecha.replace(day=10)
-    if fecha.day <= 25:
-        return fecha.replace(day=11), fecha.replace(day=25)
-    next_month = fecha.replace(day=28) + timedelta(days=4)
-    return fecha.replace(day=26), next_month.replace(day=10)
 
 
 def get_jornada_esperada(fecha: date) -> Decimal:

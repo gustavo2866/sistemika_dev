@@ -58,6 +58,7 @@ from app.models import (
     ProyectoEncargado,
     User,
 )
+from app.models.tarja import Tarja, TarjaNomina
 from app.services.parte_diario_service import parte_diario_service
 from app.services.parte_diario_estado_service import seed_parte_diario_estados
 
@@ -461,6 +462,66 @@ async def test_parte_diario_v3_mostrar_nomina_muestra_por_defecto_la_nomina_del_
     assert "Garcia Juan" in (result_global.reply_text or "")
     assert "Perez Pedro" in (result_global.reply_text or "")
     assert "Externo Mario" in (result_global.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_usa_tarja_nomina_vigente_por_encargado_y_fecha(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    seeded_parte_v3["employee_1"].encargado_contacto_id = seeded_parte_v3["contact"].id
+    seeded_parte_v3["employee_2"].encargado_contacto_id = seeded_parte_v3["contact"].id
+    seeded_parte_v3["employee_2"].activo = True
+    tarja = Tarja(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+        fechainicio=date(2026, 8, 26),
+        fechafinal=date(2026, 9, 10),
+    )
+    db_session.add(tarja)
+    db_session.flush()
+    db_session.add(
+        TarjaNomina(
+            tarja_id=tarja.id,
+            nomina_id=seeded_parte_v3["employee_1"].id,
+            fecha_desde=date(2026, 8, 26),
+            fecha_hasta=date(2026, 9, 10),
+            documentos=[],
+        )
+    )
+    db_session.add(
+        TarjaNomina(
+            tarja_id=tarja.id,
+            nomina_id=seeded_parte_v3["employee_2"].id,
+            fecha_desde=date(2026, 9, 10),
+            fecha_hasta=date(2026, 9, 10),
+            documentos=[],
+        )
+    )
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 9).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("listado"), context)
+
+    assert result.metadata["status"] == "asistencia_page"
+    assert "Garcia, Juan" in (result.reply_text or "")
+    assert "Perez, Pedro" not in (result.reply_text or "")
 
 
 def test_parte_diario_v3_mostrar_nomina_filtra_por_nombre():
@@ -1003,7 +1064,134 @@ def test_parte_diario_v3_persistencia_deriva_empleado_a_obra_destino():
     )
 
 
-def test_parte_diario_v3_persistencia_actualiza_parte_destino_confirmado(monkeypatch):
+def test_parte_diario_v3_persistencia_deriva_horas_remanentes_a_origen():
+    class FakeSession:
+        def get(self, model, item_id):
+            if model is Nomina and item_id == 123:
+                return SimpleNamespace(idproyecto=100)
+            return None
+
+    current_items, destination_items = parte_diario_service._split_destination_novedades(
+        FakeSession(),
+        [
+            {
+                "nombre": "Perez, Pedro",
+                "idnomina": 123,
+                "idestado": 1,
+                "estado_codigo": "P",
+                "horas": 5.0,
+                "descripcion": None,
+                "fuera_de_proyecto": True,
+                "nombre_proyecto": "Francia 118",
+                "idproyecto_destino": 200,
+            }
+        ],
+        idproyecto=100,
+        fecha=date(2026, 8, 21),
+    )
+
+    assert current_items[0]["horas"] == 4.0
+    assert destination_items[0]["horas"] == 5.0
+
+
+def test_parte_diario_v3_persistencia_deriva_origen_cero_si_no_hay_horas_o_supera_jornada():
+    class FakeSession:
+        def get(self, model, item_id):
+            if model is Nomina:
+                return SimpleNamespace(idproyecto=100)
+            return None
+
+    current_without_hours, destination_without_hours = parte_diario_service._split_destination_novedades(
+        FakeSession(),
+        [
+            {
+                "idnomina": 123,
+                "idestado": 1,
+                "estado_codigo": "P",
+                "horas": None,
+                "fuera_de_proyecto": True,
+                "nombre_proyecto": "Francia 118",
+                "idproyecto_destino": 200,
+            }
+        ],
+        idproyecto=100,
+        fecha=date(2026, 8, 21),
+    )
+    current_extra_hours, destination_extra_hours = parte_diario_service._split_destination_novedades(
+        FakeSession(),
+        [
+            {
+                "idnomina": 124,
+                "idestado": 1,
+                "estado_codigo": "P",
+                "horas": 12.0,
+                "fuera_de_proyecto": True,
+                "nombre_proyecto": "Francia 118",
+                "idproyecto_destino": 200,
+            }
+        ],
+        idproyecto=100,
+        fecha=date(2026, 8, 21),
+    )
+
+    assert current_without_hours[0]["horas"] == 0.0
+    assert destination_without_hours[0]["horas"] == 9.0
+    assert current_extra_hours[0]["horas"] == 0.0
+    assert destination_extra_hours[0]["horas"] == 12.0
+
+
+def test_parte_diario_v3_persistencia_crea_parte_destino_borrador(monkeypatch):
+    class FakeSession:
+        def __init__(self):
+            self.added = []
+            self.exec_calls = 0
+
+        def get(self, model, item_id):
+            return None
+
+        def add(self, item):
+            self.added.append(item)
+
+        def flush(self):
+            for item in self.added:
+                if isinstance(item, ParteDiario) and item.id is None:
+                    item.id = 500
+
+        def exec(self, query):
+            self.exec_calls += 1
+
+    def fake_resolve_parte(session, result, *, idproyecto, fecha, contacto_id):
+        return None
+
+    fake_session = FakeSession()
+    monkeypatch.setattr(parte_diario_service, "_resolve_parte", fake_resolve_parte)
+
+    parte_diario_service._materialize_destination_novedades(
+        fake_session,
+        [
+            {
+                "idproyecto": 200,
+                "idnomina": 123,
+                "idestado": 1,
+                "estado_codigo": "P",
+                "horas": 5.0,
+                "descripcion": "Trabajo derivado",
+            }
+        ],
+        result={"type": "parte_diario_reply"},
+        fecha=date(2026, 8, 22),
+        contacto_id=106,
+        mensaje_id=900,
+    )
+
+    partes = [item for item in fake_session.added if isinstance(item, ParteDiario)]
+    details = [item for item in fake_session.added if isinstance(item, ParteDiarioDetalle)]
+    assert partes[0].estado == EstadoParteDiario.BORRADOR
+    assert details[0].parte_diario_id == 500
+    assert details[0].horas == Decimal("5.0")
+
+
+def test_parte_diario_v3_persistencia_rechaza_parte_destino_confirmado(monkeypatch):
     existing_destination = SimpleNamespace(
         id=500,
         estado=EstadoParteDiario.CONFIRMADO,
@@ -1033,31 +1221,28 @@ def test_parte_diario_v3_persistencia_actualiza_parte_destino_confirmado(monkeyp
     fake_session = FakeSession()
     monkeypatch.setattr(parte_diario_service, "_resolve_parte", fake_resolve_parte)
 
-    parte_diario_service._materialize_destination_novedades(
-        fake_session,
-        [
-            {
-                "idproyecto": 200,
-                "idnomina": 123,
-                "idestado": 1,
-                "estado_codigo": "P",
-                "horas": 8.0,
-                "descripcion": "Trabajo derivado",
-            }
-        ],
-        result={"type": "parte_diario_reply"},
-        fecha=date(2026, 8, 22),
-        contacto_id=106,
-        target_estado=EstadoParteDiario.CONFIRMADO,
-        mensaje_id=900,
-    )
-
-    details = [item for item in fake_session.added if isinstance(item, ParteDiarioDetalle)]
-    assert existing_destination.mensaje_origen_id == 900
-    assert len(details) == 1
-    assert details[0].parte_diario_id == 500
-    assert details[0].idnomina == 123
-    assert details[0].horas == Decimal("8.0")
+    try:
+        parte_diario_service._materialize_destination_novedades(
+            fake_session,
+            [
+                {
+                    "idproyecto": 200,
+                    "idnomina": 123,
+                    "idestado": 1,
+                    "estado_codigo": "P",
+                    "horas": 8.0,
+                    "descripcion": "Trabajo derivado",
+                }
+            ],
+            result={"type": "parte_diario_reply"},
+            fecha=date(2026, 8, 22),
+            contacto_id=106,
+            mensaje_id=900,
+        )
+    except ValueError as exc:
+        assert "parte diario destino 200 ya fue confirmado" in str(exc)
+    else:
+        raise AssertionError("Debe rechazar el parte destino ya confirmado")
 
 
 def test_parte_diario_v3_listado_muestra_empleado_informado():

@@ -569,9 +569,11 @@ const ParteDiarioHeaderSection = ({ returnTo }: { returnTo?: string | null }) =>
 };
 
 const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) => {
+  const record = useRecordContext<ParteDiarioRecord>();
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const form = useFormContext<ParteDiarioFormValues>();
+  const { dirtyFields } = useFormState({ control: form.control });
   const [addRequestSignal, setAddRequestSignal] = useState(0);
   const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
@@ -644,6 +646,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
     typeof contacto?.nombre_completo === "string" ? contacto.nombre_completo.trim() : undefined;
   const agentContactPhone = firstContactPhone(contacto);
   const isAgentPhoneLoading = Boolean(contactoId && isContactLoading);
+  const isDirty = Object.keys(dirtyFields).length > 0;
   const columns: SectionDetailColumn[] = [
     { label: "Empleado", width: "180px", mobileSpan: "full" },
     { label: "Horas", width: "54px" },
@@ -900,13 +903,18 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         hideClearAction
         inlineActions={
           <ParteDiarioAgentChatButton
-            disabled={isAgentPhoneLoading || !agentContactPhone}
-            disabledReason="El contacto no tiene telefono para simular WhatsApp."
+            disabled={isAgentPhoneLoading || !agentContactPhone || isDirty}
+            disabledReason={
+              isDirty
+                ? "Guarda los cambios del parte diario antes de usar IA."
+                : "El contacto no tiene telefono para simular WhatsApp."
+            }
             initialMessage={agentInitialMessage}
             loading={isAgentPhoneLoading}
             fromName={agentContactName}
             fromPhone={agentContactPhone}
             returnTo={returnTo}
+            parteDiarioId={record?.id}
           />
         }
         actions={

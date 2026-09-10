@@ -49,7 +49,10 @@ from app.models import (
     ParteDiarioDetalle,
     ParteDiarioEstado,
     Proyecto,
+    Tarja,
+    TarjaNomina,
 )
+from app.utils.quincenas import get_quincena_range
 
 
 BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -80,14 +83,18 @@ class ParteDiarioProcess:
         if project is None:
             return self._simple_reply("No encontre un proyecto asociado para cargar el parte diario.", keep_active=False)
         contacto_id = _parse_optional_int(getattr(ctx, "contacto_id", None))
-        estados = self._load_estados()
-        nominas_proyecto, nominas_completas = self._load_nominas(project.id, contacto_id=contacto_id)
         state = ParteDiarioState.from_dict(
             ctx.process_state,
             oportunidad_id=ctx.oportunidad_id,
             idproyecto=project.id,
         )
         state.contacto_id = contacto_id
+        estados = self._load_estados()
+        nominas_proyecto, nominas_completas = self._load_nominas(
+            project.id,
+            contacto_id=contacto_id,
+            fecha=_parse_date_reference(state.fecha),
+        )
         had_conversational_draft = _has_conversational_draft(state)
         limpiar_conflictos_repetidos(state)
         command = _normalize_command(ctx.message.contenido)
@@ -112,6 +119,7 @@ class ParteDiarioProcess:
                     command=command,
                     alcance=None,
                     nominas_completas=nominas_completas,
+                    fecha=_parse_date_reference(state.fecha),
                 )
                 if readonly_operation == "mostrar_nomina"
                 else None
@@ -226,6 +234,7 @@ class ParteDiarioProcess:
                 command=message_text,
                 alcance=_nomina_scope_from_operations(plan.operations),
                 nominas_completas=nominas_completas,
+                fecha=_parse_date_reference(state.fecha),
             )
             if any(operation.type == "mostrar_nomina" for operation in plan.operations)
             else None
@@ -694,6 +703,7 @@ class ParteDiarioProcess:
         idproyecto: int,
         *,
         contacto_id: int | None = None,
+        fecha: date | None = None,
         filtrar_por_contacto: bool = True,
     ) -> tuple[list[NominaItem], list[NominaItem]]:
         projects = {item.id: item.nombre for item in self._session.exec(select(Proyecto)).all()}
@@ -705,9 +715,21 @@ class ParteDiarioProcess:
             .where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= today))
             .order_by(Nomina.apellido, Nomina.nombre)
         ).all()
+        has_scoped_nomina = False
+        scoped_rows: list[Nomina] = []
+        if filtrar_por_contacto:
+            has_scoped_nomina, scoped_rows = self._load_nominas_desde_tarja_nomina(
+                idproyecto,
+                contacto_id=contacto_id,
+                fecha=fecha,
+            )
+        row_ids = {item.id for item in rows if item.id is not None}
+        base_rows = list(rows) + [
+            item for item in scoped_rows if item.id is not None and item.id not in row_ids
+        ]
         encargado_ids = {
             int(item.encargado_contacto_id)
-            for item in rows
+            for item in base_rows
             if item.encargado_contacto_id is not None
         }
         encargados = {}
@@ -734,10 +756,28 @@ class ParteDiarioProcess:
                     else None
                 ),
             )
-            for item in rows
+            for item in base_rows
+            if item.id is not None
         ]
-        project_items = [item for item in all_items if item.idproyecto == idproyecto]
-        if filtrar_por_contacto and contacto_id is not None:
+        if has_scoped_nomina:
+            project_items = [
+                NominaItem(
+                    idnomina=int(item.id),
+                    nombre=item.nombre,
+                    apellido=item.apellido,
+                    idproyecto=item.idproyecto,
+                    nombre_proyecto=projects.get(item.idproyecto),
+                    fuera_de_proyecto=item.idproyecto != idproyecto,
+                    nro_legajo=item.nro_legajo,
+                    encargado_contacto_id=item.encargado_contacto_id,
+                    encargado_nombre=None,
+                )
+                for item in scoped_rows
+                if item.id is not None
+            ]
+        else:
+            project_items = [item for item in all_items if item.idproyecto == idproyecto]
+        if filtrar_por_contacto and contacto_id is not None and not has_scoped_nomina:
             assigned_to_contact = [
                 item
                 for item in project_items
@@ -747,6 +787,51 @@ class ParteDiarioProcess:
                 project_items = assigned_to_contact
         return project_items, all_items
 
+    def _load_nominas_desde_tarja_nomina(
+        self,
+        idproyecto: int,
+        *,
+        contacto_id: int | None,
+        fecha: date | None,
+    ) -> tuple[bool, list[Nomina]]:
+        if fecha is None:
+            return False, []
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        contacto_filter = (
+            Tarja.contacto_id == contacto_id
+            if contacto_id is not None
+            else Tarja.contacto_id.is_(None)
+        )
+        tarja_id = self._session.exec(
+            select(Tarja.id)
+            .where(Tarja.idproyecto == idproyecto)
+            .where(Tarja.fechainicio == fechainicio)
+            .where(Tarja.fechafinal == fechafinal)
+            .where(Tarja.deleted_at.is_(None))
+            .where(contacto_filter)
+        ).first()
+        if tarja_id is None:
+            return False, []
+        has_registros = self._session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        if has_registros is None:
+            return False, []
+        query = (
+            select(Nomina)
+            .join(TarjaNomina, TarjaNomina.nomina_id == Nomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .where(TarjaNomina.fecha_desde <= fecha)
+            .where(TarjaNomina.fecha_hasta >= fecha)
+            .where(Nomina.deleted_at.is_(None))
+            .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
+        )
+        return True, list(self._session.exec(query).all())
+
     def _load_nominas_for_display(
         self,
         idproyecto: int,
@@ -755,6 +840,7 @@ class ParteDiarioProcess:
         command: str,
         alcance: str | None,
         nominas_completas: list[NominaItem],
+        fecha: date | None = None,
     ) -> list[NominaItem]:
         if _requests_global_nomina(command) or alcance == "global":
             return nominas_completas
@@ -762,12 +848,14 @@ class ParteDiarioProcess:
             nominas_proyecto, _ = self._load_nominas(
                 idproyecto,
                 contacto_id=contacto_id,
+                fecha=fecha,
                 filtrar_por_contacto=False,
             )
             return nominas_proyecto
         nominas_proyecto, _ = self._load_nominas(
             idproyecto,
             contacto_id=contacto_id,
+            fecha=fecha,
             filtrar_por_contacto=True,
         )
         return nominas_proyecto

@@ -55,8 +55,9 @@ from agente.v3.subprocesses.parte_diario.state import (
     ParteDiarioV3State,
 )
 from app.db import engine
-from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, Nomina, ParteDiario, Proyecto, ProyectoEncargado
+from app.models import CRMContacto, CRMOportunidad, EstadoParteDiario, Nomina, ParteDiario, Proyecto, ProyectoEncargado, Tarja, TarjaNomina
 from app.services.parte_diario_service import parte_diario_service
+from app.utils.quincenas import get_quincena_range
 
 logger = logging.getLogger(__name__)
 
@@ -534,6 +535,7 @@ class ParteDiarioSubprocess:
                         proyecto_id=int(state.proyecto_id),
                         contacto_id=state.contacto_id,
                         nombre_obra=state.nombre_obra,
+                        fecha=state.draft().fecha,
                         opciones_visibles=options,
                     )
                 if query_reply:
@@ -583,6 +585,7 @@ class ParteDiarioSubprocess:
                     proyecto_id=int(state.proyecto_id),
                     contacto_id=state.contacto_id,
                     nombre_obra=state.nombre_obra,
+                    fecha=state.draft().fecha,
                     opciones_visibles=[],
                 )
             if not query_reply:
@@ -625,6 +628,7 @@ class ParteDiarioSubprocess:
             nominas_proyecto, nominas_completas = process._load_nominas(
                 int(state.proyecto_id),
                 contacto_id=state.contacto_id,
+                fecha=_parse_iso_date(state.draft().fecha),
                 filtrar_por_contacto=True,
             )
             if _requests_global_nomina(command):
@@ -633,6 +637,7 @@ class ParteDiarioSubprocess:
                 nominas, _ = process._load_nominas(
                     int(state.proyecto_id),
                     contacto_id=state.contacto_id,
+                    fecha=_parse_iso_date(state.draft().fecha),
                     filtrar_por_contacto=False,
                 )
             else:
@@ -1890,16 +1895,74 @@ class ParteDiarioSubprocess:
     def _load_asistencia_nomina(self, state: ParteDiarioV3State) -> list[Nomina]:
         if not state.proyecto_id:
             return []
+        fecha = _parse_iso_date(state.draft().fecha)
         with Session(engine) as session:
-            return list(
-                session.exec(
-                    select(Nomina)
-                    .where(Nomina.idproyecto == int(state.proyecto_id))
-                    .where(Nomina.activo.is_(True))
-                    .where(Nomina.deleted_at.is_(None))
-                    .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
-                ).all()
+            if fecha is not None:
+                has_tarja_nomina, scoped = self._load_asistencia_nomina_desde_tarja_nomina(
+                    session,
+                    proyecto_id=int(state.proyecto_id),
+                    contacto_id=state.contacto_id,
+                    fecha=fecha,
+                )
+                if has_tarja_nomina:
+                    return scoped
+            query = (
+                select(Nomina)
+                .where(Nomina.idproyecto == int(state.proyecto_id))
+                .where(Nomina.activo.is_(True))
+                .where(Nomina.deleted_at.is_(None))
+                .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
             )
+            if state.contacto_id is not None:
+                query = query.where(Nomina.encargado_contacto_id == int(state.contacto_id))
+            if fecha is not None:
+                query = query.where((Nomina.fecha_ingreso.is_(None)) | (Nomina.fecha_ingreso <= fecha))
+                query = query.where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= fecha))
+            return list(session.exec(query).all())
+
+    @staticmethod
+    def _load_asistencia_nomina_desde_tarja_nomina(
+        session: Session,
+        *,
+        proyecto_id: int,
+        contacto_id: int | None,
+        fecha: date,
+    ) -> tuple[bool, list[Nomina]]:
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        contacto_filter = (
+            Tarja.contacto_id == int(contacto_id)
+            if contacto_id is not None
+            else Tarja.contacto_id.is_(None)
+        )
+        tarja_id = session.exec(
+            select(Tarja.id)
+            .where(Tarja.idproyecto == proyecto_id)
+            .where(Tarja.fechainicio == fechainicio)
+            .where(Tarja.fechafinal == fechafinal)
+            .where(Tarja.deleted_at.is_(None))
+            .where(contacto_filter)
+        ).first()
+        if tarja_id is None:
+            return False, []
+        has_registros = session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        if has_registros is None:
+            return False, []
+        query = (
+            select(Nomina)
+            .join(TarjaNomina, TarjaNomina.nomina_id == Nomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .where(TarjaNomina.fecha_desde <= fecha)
+            .where(TarjaNomina.fecha_hasta >= fecha)
+            .where(Nomina.deleted_at.is_(None))
+            .order_by(Nomina.apellido.asc(), Nomina.nombre.asc())
+        )
+        return True, list(session.exec(query).all())
 
     async def _parse_asistencia_entries(
         self,

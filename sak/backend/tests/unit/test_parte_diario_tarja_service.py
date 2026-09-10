@@ -296,6 +296,108 @@ def test_confirmacion_v3_con_parte_existente_sincroniza_tarja_detalle(db_session
     assert mensaje.metadata_json["agent_v3"]["result"]["confirmar_parte"] is True
 
 
+def test_confirmacion_v3_preserva_alta_existente_oculta_para_agente(db_session):
+    data = _seed_base(db_session)
+    falta_estado = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
+    ).one()
+    alta_estado = ParteDiarioEstado(abreviatura="ALT", nombre="Alta", activo=False)
+    nomina_alta = Nomina(
+        nombre="Falcon",
+        apellido="Ruiz",
+        dni="alta-preservada-agente",
+        idproyecto=data["proyecto"].id,
+        encargado_contacto_id=data["contacto"].id,
+    )
+    oportunidad = CRMOportunidad(
+        contacto_id=data["contacto"].id,
+        responsable_id=data["contacto"].responsable_id,
+    )
+    parte = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 9, 9),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add_all([alta_estado, nomina_alta, oportunidad, parte])
+    db_session.flush()
+    detalle_alta = ParteDiarioDetalle(
+        parte_diario_id=parte.id,
+        idnomina=nomina_alta.id,
+        idestado=alta_estado.id,
+        horas=Decimal("0"),
+        descripcion="Alta cargada desde formulario",
+    )
+    db_session.add(detalle_alta)
+    db_session.commit()
+
+    result = {
+        "type": "parte_diario_reply",
+        "parte_listo": True,
+        "confirmar_parte": True,
+        "cerrar_parte": True,
+        "idproyecto": data["proyecto"].id,
+        "contacto_id": data["contacto"].id,
+        "fecha": "2026-09-09",
+        "novedades": [
+            {
+                "idnomina": data["nomina_con_novedad"].id,
+                "idestado": falta_estado.id,
+                "estado_codigo": "FAL",
+                "horas": 0,
+                "descripcion": "Falto",
+            }
+        ],
+        "pendientes_ambiguos": [],
+        "conflictos_novedad": [],
+    }
+
+    persisted = parte_diario_service.create_or_update_from_agent_v3_confirmation(
+        db_session,
+        contacto_id=data["contacto"].id,
+        oportunidad_id=oportunidad.id,
+        result=result,
+        conversation_id="conv-preserve-alta",
+        provider="meta",
+        channel_type="whatsapp",
+        account_ref="account",
+        from_address="549111111",
+        to_address="549999999",
+        external_message_id="wamid-preserve-alta",
+        text="confirmar",
+        message_type="text",
+        raw_payload={"raw": True},
+        normalized_payload={"normalized": True},
+        received_at=datetime(2026, 9, 9, 12, 0, tzinfo=UTC),
+    )
+
+    assert persisted.id == parte.id
+    detalles_parte = db_session.exec(
+        select(ParteDiarioDetalle)
+        .where(ParteDiarioDetalle.parte_diario_id == parte.id)
+        .where(ParteDiarioDetalle.deleted_at.is_(None))
+        .order_by(ParteDiarioDetalle.idestado)
+    ).all()
+    assert {detalle.idestado for detalle in detalles_parte} == {alta_estado.id, falta_estado.id}
+    assert any(detalle.id == detalle_alta.id for detalle in detalles_parte)
+
+    tarja = db_session.exec(
+        select(Tarja)
+        .where(Tarja.idproyecto == data["proyecto"].id)
+        .where(Tarja.contacto_id == data["contacto"].id)
+        .where(Tarja.fechainicio == date(2026, 8, 26))
+        .where(Tarja.fechafinal == date(2026, 9, 10))
+    ).one()
+    detalle_tarja_alta = db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.tarja_id == tarja.id)
+        .where(TarjaDetalle.idnomina == nomina_alta.id)
+        .where(TarjaDetalle.fecha == date(2026, 9, 9))
+    ).one()
+    assert detalle_tarja_alta.horas == Decimal("9.00")
+    assert detalle_tarja_alta.parte_diario_detalle_id == detalle_alta.id
+
+
 def test_crear_parte_borrador_asegura_tarja_sin_nomina_ni_detalle(db_session):
     data = _seed_base(db_session)
 
@@ -411,11 +513,68 @@ def test_actualizar_parte_a_confirmado_genera_tarja_detalle_del_dia(db_session):
     assert default.horas == Decimal("9.00")
 
 
-def test_confirmar_parte_permite_novedad_de_nomina_fuera_del_encargado(db_session):
+def test_confirmar_parte_rechaza_novedad_de_nomina_fuera_del_encargado(db_session):
     data = _seed_base(db_session)
     falta_estado = db_session.exec(
         select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
     ).one()
+    parte = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 24),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add(parte)
+    db_session.commit()
+
+    try:
+        parte_diario_crud.update(
+            db_session,
+            parte.id,
+            {
+                "idproyecto": data["proyecto"].id,
+                "contacto_id": data["contacto"].id,
+                "fecha": "2026-06-24",
+                "estado": EstadoParteDiario.CONFIRMADO,
+                "detalles": [
+                    {
+                        "idnomina": data["nomina_otro_encargado"].id,
+                        "idestado": falta_estado.id,
+                        "horas": "0",
+                        "descripcion": "Novedad de apoyo externo",
+                    }
+                ],
+            },
+        )
+    except ValueError as exc:
+        assert "no corresponde al proyecto, encargado y fecha" in str(exc)
+    else:
+        raise AssertionError("Debe rechazar novedades de nomina fuera del encargado vigente")
+
+
+def test_confirmar_parte_usa_tarja_nomina_para_validar_novedad_tardia(db_session):
+    data = _seed_base(db_session)
+    falta_estado = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
+    ).one()
+    tarja = Tarja(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 6, 11),
+        fechafinal=date(2026, 6, 25),
+    )
+    db_session.add(tarja)
+    db_session.flush()
+    data["nomina_otro_encargado"].activo = False
+    db_session.add(
+        TarjaNomina(
+            tarja_id=tarja.id,
+            nomina_id=data["nomina_otro_encargado"].id,
+            fecha_desde=date(2026, 6, 24),
+            fecha_hasta=date(2026, 6, 24),
+            documentos=[],
+        )
+    )
     parte = ParteDiario(
         idproyecto=data["proyecto"].id,
         contacto_id=data["contacto"].id,
@@ -438,7 +597,7 @@ def test_confirmar_parte_permite_novedad_de_nomina_fuera_del_encargado(db_sessio
                     "idnomina": data["nomina_otro_encargado"].id,
                     "idestado": falta_estado.id,
                     "horas": "0",
-                    "descripcion": "Novedad de apoyo externo",
+                    "descripcion": "Novedad tardia",
                 }
             ],
         },
