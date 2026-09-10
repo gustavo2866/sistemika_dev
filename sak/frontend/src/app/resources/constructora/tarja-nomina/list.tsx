@@ -811,6 +811,7 @@ const TarjaNominaGrid = () => {
   const { data = [], isLoading, isFetching, error } = useListContext<TarjaNominaRecord>();
   const rows = data as TarjaNominaRecord[];
   const firstRow = rows[0];
+  const visibleDayKeys = getVisibleDayKeys(rows);
 
   if (error) {
     return (

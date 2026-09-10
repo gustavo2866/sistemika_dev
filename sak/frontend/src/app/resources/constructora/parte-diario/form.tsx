@@ -994,8 +994,8 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
           if (!bajaLoading) setBajaOpen(false);
         }}
         onSubmit={handleBajaNominaSelected}
-        proyectoId={proyectoId}
-        contactoId={contactoId}
+        proyectoId={proyectoId ?? null}
+        contactoId={contactoId ?? null}
         proyectoNombre={typeof proyecto?.nombre === "string" ? proyecto.nombre : undefined}
         contactoNombre={
           typeof contacto?.nombre_completo === "string" ? contacto.nombre_completo : undefined
@@ -1010,8 +1010,8 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
           if (!traspasoLoading) setTraspasoOpen(false);
         }}
         onSubmit={handleTraspasoNominaSelected}
-        proyectoId={proyectoId}
-        contactoId={contactoId}
+        proyectoId={proyectoId ?? null}
+        contactoId={contactoId ?? null}
         proyectoNombre={typeof proyecto?.nombre === "string" ? proyecto.nombre : undefined}
         contactoNombre={
           typeof contacto?.nombre_completo === "string" ? contacto.nombre_completo : undefined

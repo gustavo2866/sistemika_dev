@@ -900,7 +900,7 @@ const TarjaDetalleGrid = ({
                           <TarjaDetalleHorasCell cell={cell} />
                           {shouldShowEstado(cell?.estado) ? (
                             <span className="rounded bg-amber-100 px-0.5 text-[7px] font-semibold leading-3 text-amber-700">
-                              {cell.estado}
+                              {cell?.estado}
                             </span>
                           ) : null}
                         </div>
