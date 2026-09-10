@@ -14,7 +14,6 @@ from .proyecto_avance_router import proyecto_avance_router
 from .nomina_router import nomina_router
 from .nomina_catalogos_router import nomina_categoria_router, nomina_tarea_router
 from .partediario_router import parte_diario_router
-from .tarja_novedad_router import tarja_novedad_router
 from .crm import (
     crm_tipo_operacion_router,
     crm_motivo_perdida_router,
@@ -49,8 +48,6 @@ __all__ = [
     "nomina_categoria_router",
     "nomina_tarea_router",
     "parte_diario_router",
-    "tarja_novedad_router",
-    "crm_tipo_operacion_router",
     "crm_motivo_perdida_router",
     "crm_condicion_pago_router",
     "crm_tipo_evento_router",

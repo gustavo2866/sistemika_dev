@@ -34,9 +34,9 @@ class Tarja(Base, table=True):
     __auto_include_relations__: ClassVar[List[str]] = [
         "detalles.nomina.proyecto",
         "detalles.estado",
-        "novedades",
+        "nomina_registros",
     ]
-    __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "novedades"}
+    __expanded_list_relations__: ClassVar[set[str]] = {"detalles", "nomina_registros"}
 
     idproyecto: int = Field(
         foreign_key="proyectos.id",
@@ -68,7 +68,7 @@ class Tarja(Base, table=True):
         back_populates="tarja",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
-    novedades: List["TarjaNovedad"] = Relationship(
+    nomina_registros: List["TarjaNomina"] = Relationship(
         back_populates="tarja",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
@@ -123,57 +123,116 @@ class TarjaDetalle(Base, table=True):
     parte_diario_detalle: Optional["ParteDiarioDetalle"] = Relationship()
 
 
-class TarjaNovedad(Base, table=True):
-    """Resumen de novedades y ajustes de una tarja."""
+class TarjaNomina(Base, table=True):
+    """Registro de nómina asociado a una tarja."""
 
-    __tablename__ = "tarja_novedades"
+    __tablename__ = "tarja_nomina"
     __table_args__ = (
-        UniqueConstraint("tarja_id", "nomina_id", name="uq_tarja_novedades_tarja_nomina"),
+        UniqueConstraint("tarja_id", "nomina_id", name="uq_tarja_nomina_tarja_nomina"),
     )
+    # El endpoint expone las referencias como campos calculados resueltos en lote.
+    # Evita que GenericCRUD agregue selectinload para todas las relaciones.
+    __auto_include_relations__: ClassVar[List[str]] = []
+    __calculated_fields__: ClassVar[List[str]] = [
+        "empleado",
+        "dni",
+        "categoria_codigo",
+        "actividad_codigo",
+        "obra",
+        "encargado",
+        "tarja_fecha_desde",
+        "tarja_fecha_hasta",
+        "proyecto_id",
+        "encargado_id",
+        "tipo_novedad",
+        "editable",
+        *[f"D{day:02d}" for day in range(1, 16)],
+    ]
 
     tarja_id: int = Field(
         foreign_key="tarjas.id",
-        description="Tarja cabecera a la que pertenecen las novedades",
+        description="Tarja cabecera a la que pertenece el registro de nómina",
     )
     nomina_id: Optional[int] = Field(
         default=None,
         foreign_key="nominas.id",
-        description="Empleado de nomina asociado a la novedad",
+        description="Empleado de nomina asociado al registro",
     )
     nomina_categoria_id: Optional[int] = Field(
         default=None,
         foreign_key="nomina_categorias.id",
-        description="Categoria de nomina asociada a la novedad",
+        description="Categoria de nomina asociada",
     )
     nomina_tarea_id: Optional[int] = Field(
         default=None,
         foreign_key="nomina_tareas.id",
-        description="Tarea de nomina asociada a la novedad",
+        description="Tarea de nomina asociada",
     )
     horas_justificadas: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(8, 2), nullable=False, server_default="0"),
-        description="Total de horas justificadas por enfermedad",
+        description="Total de horas justificadas",
     )
     presentismo: bool = Field(
         default=False,
         sa_column=Column(Boolean, nullable=False, server_default="false"),
         description="Indica si corresponde presentismo",
     )
-    adicional: Decimal = Field(
+    presentismo_importe: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
-        description="Importe adicional de la novedad",
+        description="Importe por presentismo",
     )
-    premio: Decimal = Field(
+    adicional_importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
+        description="Importe adicional",
+    )
+    premio: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+        description="Indica si corresponde premio",
+    )
+    premio_importe: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
         description="Importe de premio",
     )
+    viatico: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+        description="Indica si corresponde viatico",
+    )
+    viatico_importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
+        description="Importe por viatico",
+    )
+    sueldo_importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
+        description="Importe de sueldo",
+    )
+    mejora_importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
+        description="Importe por mejora",
+    )
+    cargas_importe: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
+        description="Importe por cargas",
+    )
+    fecha_desde: date = Field(
+        description="Fecha de inicio del período asociado",
+    )
+    fecha_hasta: date = Field(
+        description="Fecha de fin del período asociado",
+    )
     observaciones: Optional[str] = Field(
         default=None,
         max_length=1000,
-        description="Observaciones adicionales de la novedad",
+        description="Observaciones adicionales del registro de nómina",
     )
     documentos: Optional[list[str]] = Field(
         default=None,
@@ -181,7 +240,7 @@ class TarjaNovedad(Base, table=True):
         description="Listado de URLs de certificados u otros documentos",
     )
 
-    tarja: "Tarja" = Relationship(back_populates="novedades")
+    tarja: "Tarja" = Relationship(back_populates="nomina_registros")
     nomina: Optional["Nomina"] = Relationship()
     nomina_categoria: Optional["NominaCategoria"] = Relationship()
     nomina_tarea: Optional["NominaTarea"] = Relationship()

@@ -77,7 +77,7 @@ from .partediario import (
 from .tarja import (
     Tarja,
     TarjaDetalle,
-    TarjaNovedad,
+    TarjaNomina,
     EstadoTarja,
 )
 
@@ -167,7 +167,7 @@ __all__ = [
     "OrigenDetalle",
     "Tarja",
     "TarjaDetalle",
-    "TarjaNovedad",
+    "TarjaNomina",
     "EstadoTarja",
 
     "EstadoOportunidad",

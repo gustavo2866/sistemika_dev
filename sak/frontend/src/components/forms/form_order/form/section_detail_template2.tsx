@@ -57,6 +57,7 @@ export type SectionDetailTemplate2Props = {
   optionalFields?: ComponentType<SectionDetailFieldsProps>;
   defaults: () => Record<string, unknown>;
   actions?: ReactNode;
+  inlineActions?: ReactNode;
   defaultOpen?: boolean;
   focusSelector?: string;
   focusFirstRowSignal?: number;
@@ -74,9 +75,11 @@ export type SectionDetailTemplate2Props = {
   variant?: "compact" | "table";
   addButtonLabel?: string;
   hideFooterAddButton?: boolean;
+  hideClearAction?: boolean;
   detailIteratorClassName?: string;
   detailContainerClassName?: string;
   cardClassName?: string;
+  canEditRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
   canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
 };
 
@@ -92,6 +95,7 @@ type DetailItemRowProps = {
   showExpandActionOnMobile?: boolean;
   showExpandAction?: boolean;
   variant?: "compact" | "table";
+  canEditRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
   canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
 };
 
@@ -107,6 +111,7 @@ const DetailItemRow = ({
   showExpandActionOnMobile = false,
   showExpandAction = false,
   variant = "compact",
+  canEditRow,
   canDeleteRow,
 }: DetailItemRowProps) => {
   const detailContext = useDetailSectionContext();
@@ -118,10 +123,13 @@ const DetailItemRow = ({
   const { getValues } = useFormContext();
   const [showOptional, setShowOptional] = useState(false);
   const { remove, index } = useSimpleFormIteratorItem();
-  const isActive = !detailContext.readOnly && activeIndex === index;
+  const rowValue = useWatch({ name: `${detailsSource}.${index}` }) as
+    | Record<string, unknown>
+    | undefined;
+  const canEdit = canEditRow ? canEditRow(rowValue ?? {}, index) : true;
+  const isActive = !detailContext.readOnly && canEdit && activeIndex === index;
   const hasOptional = Boolean(OptionalFields);
   const isTableVariant = variant === "table";
-  const rowValue = getValues(`${detailsSource}.${index}`) as Record<string, unknown> | undefined;
   const canDelete = canDeleteRow ? canDeleteRow(rowValue ?? {}, index) : true;
 
   const handleCollapse = useCallback(() => {
@@ -138,6 +146,16 @@ const DetailItemRow = ({
     }
   }, [detailsSource, getValues, index, remove, setActiveIndex]);
   const toggleOptional = () => setShowOptional((prev) => !prev);
+  const handleRowClick = useCallback(
+    (event: MouseEvent) => {
+      if (!canEdit) {
+        event.stopPropagation();
+        return;
+      }
+      onRowClick(index)(event);
+    },
+    [canEdit, index, onRowClick],
+  );
 
   useEffect(() => {
     if (detailContext.readOnly) return;
@@ -146,6 +164,12 @@ const DetailItemRow = ({
       setShowOptional(false);
     }
   }, [isActive, showOptional, detailContext.readOnly, showInfoWhenInactive]);
+
+  useEffect(() => {
+    if (canEdit || activeIndex !== index) return;
+    setShowOptional(false);
+    setActiveIndex(null);
+  }, [activeIndex, canEdit, index, setActiveIndex]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -168,10 +192,11 @@ const DetailItemRow = ({
           "rounded-none border-0 px-4 py-3 sm:min-h-[52px] sm:justify-center hover:bg-slate-50",
           "[&>[data-detail-edit-hint]]:hidden",
           isActive && "is-active bg-blue-50/50",
+          !canEdit && "[&>[data-detail-edit-hint]]:hidden",
         )
       : isActive
         ? "is-active border-primary/30 bg-primary/5 sm:border sm:border-primary/30 sm:bg-primary/5 sm:rounded-md sm:p-2"
-        : "sm:border-transparent",
+        : cn("sm:border-transparent", !canEdit && "[&>[data-detail-edit-hint]]:hidden"),
   );
 
   return (
@@ -186,7 +211,7 @@ const DetailItemRow = ({
     >
       <ResponsiveDetailRow
         className={rowClassName}
-        onClick={onRowClick(index)}
+        onClick={handleRowClick}
         onKeyDownCapture={(event) => {
           if (!isActive || event.key !== "Escape") return;
           event.preventDefault();
@@ -257,6 +282,7 @@ export const SectionDetailTemplate2 = ({
   optionalFields: OptionalFields,
   defaults,
   actions,
+  inlineActions,
   defaultOpen = true,
   focusSelector,
   focusFirstRowSignal,
@@ -274,9 +300,11 @@ export const SectionDetailTemplate2 = ({
   variant = "compact",
   addButtonLabel = "Agregar",
   hideFooterAddButton = false,
+  hideClearAction = false,
   detailIteratorClassName,
   detailContainerClassName,
   cardClassName,
+  canEditRow,
   canDeleteRow,
 }: SectionDetailTemplate2Props) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -560,7 +588,7 @@ export const SectionDetailTemplate2 = ({
           <PlusCircle className="h-3 w-3" />
           Agregar
         </DropdownMenuItem>
-        {hasDetails && !readOnly ? (
+        {hasDetails && !readOnly && !hideClearAction ? (
           <DropdownMenuItem
             className="gap-2 text-[9px] sm:text-[10px]"
             onClick={() => setConfirmOpen(true)}
@@ -596,10 +624,12 @@ export const SectionDetailTemplate2 = ({
   const headerActions = isTableVariant ? (
     <div className="flex items-center gap-2">
       {!readOnly ? directAddButton : null}
+      {inlineActions}
       {actionsMenu}
     </div>
   ) : (
     <div className="flex items-center gap-2">
+      {inlineActions}
       {actionsMenu}
       {toggleButton}
     </div>
@@ -699,6 +729,7 @@ export const SectionDetailTemplate2 = ({
                   showExpandActionOnMobile={showExpandActionOnMobile}
                   showExpandAction={showExpandAction}
                   variant={variant}
+                  canEditRow={canEditRow}
                   canDeleteRow={canDeleteRow}
                 />
               </DetailIterator>

@@ -14,6 +14,9 @@ from agente.v3.subprocesses.parte_diario.models import (
 from agente.v3.subprocesses.parte_diario.resolver import normalize_text
 
 
+_INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
+
+
 def resumen(state: ParteDiarioState) -> str:
     if state.sin_novedades_informado and not state.novedades:
         return "Sin novedades. Todos presentes."
@@ -21,6 +24,8 @@ def resumen(state: ParteDiarioState) -> str:
         return "(sin novedades cargadas)"
     rows = []
     for novedad in state.novedades:
+        if _is_internal_nomina_state(novedad.estado_codigo):
+            continue
         estado = novedad.estado_codigo or "estado pendiente"
         externo = _external_label(novedad)
         horas = _hours_text(novedad.estado_codigo, novedad.horas)
@@ -33,12 +38,14 @@ def resumen(state: ParteDiarioState) -> str:
         rows.append(f"- {novedad.nombre}{externo}: {estado}{hours_part}{motivo}")
     shown_pending_names = set()
     for pending in state.pendientes_ambiguos:
+        if _is_internal_nomina_state(pending.estado_codigo):
+            continue
         normalized_name = normalize_text(pending.nombre)
         if normalized_name in shown_pending_names:
             continue
         shown_pending_names.add(normalized_name)
         rows.append(_resumen_pendiente(pending))
-    return "\n".join(rows)
+    return "\n".join(rows) if rows else "(sin novedades cargadas)"
 
 
 def resumen_revision(state: ParteDiarioState) -> str:
@@ -52,6 +59,8 @@ def resumen_revision(state: ParteDiarioState) -> str:
     pendientes: list[str] = []
 
     for novedad in state.novedades:
+        if _is_internal_nomina_state(novedad.estado_codigo):
+            continue
         name = _short_person_name(novedad.nombre)
         code = str(novedad.estado_codigo or "").upper()
         hours = novedad.horas
@@ -68,6 +77,8 @@ def resumen_revision(state: ParteDiarioState) -> str:
             otras.append(_review_row(name, _review_present_suffix(hours)))
 
     for pending in state.pendientes_ambiguos:
+        if _is_internal_nomina_state(pending.estado_codigo):
+            continue
         name = _short_person_name(pending.nombre)
         suffix = _state_label(pending.estado_codigo) or "a validar"
         pendientes.append(_review_row(name, suffix))
@@ -107,6 +118,10 @@ def _state_label(code: str | None) -> str:
         "VAC": "Vacaciones",
     }
     return labels.get(str(code or "").upper(), str(code or "").upper())
+
+
+def _is_internal_nomina_state(code: str | None) -> bool:
+    return str(code or "").strip().upper() in _INTERNAL_NOMINA_STATE_CODES
 
 
 def _review_row(name: str, suffix: str | None = None) -> str:

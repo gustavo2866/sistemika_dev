@@ -24,12 +24,16 @@ export const TarjaNovedadCreate = ({
   const tarjaIdParam = params.get("tarja_id");
   const returnTo = params.get("returnTo");
   const nominaIdParam = params.get("nomina_id");
+  const fechaDesdeParam = params.get("fecha_desde");
+  const fechaHastaParam = params.get("fecha_hasta");
   const tarjaId = tarjaIdParam ? Number(tarjaIdParam) : undefined;
   const nominaId = nominaIdParam ? Number(nominaIdParam) : undefined;
   const defaultValues: TarjaNovedadFormValues = {
     ...TARJA_NOVEDAD_DEFAULT,
     ...(Number.isFinite(tarjaId) && tarjaId ? { tarja_id: tarjaId } : {}),
     ...(Number.isFinite(nominaId) && nominaId ? { nomina_id: nominaId } : {}),
+    ...(fechaDesdeParam ? { fecha_desde: fechaDesdeParam } : {}),
+    ...(fechaHastaParam ? { fecha_hasta: fechaHastaParam } : {}),
   };
   const lockReferences = Boolean(
     Number.isFinite(tarjaId) &&
@@ -40,7 +44,7 @@ export const TarjaNovedadCreate = ({
     <Create
       redirect={redirect ?? (embedded ? false : "list")}
       record={defaultValues}
-      title="Crear novedad de tarja"
+      title="Crear nomina de tarja"
       className="max-w-3xl w-full"
       transform={(data: any) => normalizeTarjaNovedadPayload(data)}
       showBreadcrumb={!embedded}
@@ -54,7 +58,7 @@ export const TarjaNovedadCreate = ({
                   navigate(returnTo, { replace: true });
                   return;
                 }
-                navigate("/tarja-novedades", { replace: true });
+                navigate("/tarja-nomina", { replace: true });
               },
             }
       }

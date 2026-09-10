@@ -32,8 +32,8 @@ type TarjaNovedadSummary = {
   id?: number | null;
   horas_justificadas?: number | null;
   presentismo?: boolean | null;
-  adicional?: number | null;
-  premio?: number | null;
+  adicional_importe?: number | null;
+  premio_importe?: number | null;
   observaciones?: string | null;
 };
 
@@ -57,6 +57,8 @@ type DayKey =
 type TarjaDetalleRow = {
   id: string;
   tarja_id: number | string;
+  proyecto_id?: number | string | null;
+  encargado_id?: number | string | null;
   obra?: string | null;
   idnomina: number | string;
   empleado: string;
@@ -134,7 +136,7 @@ const getTarjaDetalleExportCellText = (
   const workedHours = getRowWorkedHours(row);
   const justifiedHours = getRowJustifiedHours(row);
   const totalHours = workedHours + justifiedHours;
-  const totalBonus = Number(row.novedad?.adicional ?? 0) + Number(row.novedad?.premio ?? 0);
+  const totalBonus = Number(row.novedad?.adicional_importe ?? 0) + Number(row.novedad?.premio_importe ?? 0);
 
   switch (columnKey) {
     case "categoria":
@@ -322,7 +324,7 @@ const downloadTarjaDetallePdf = (
     const workedHours = getRowWorkedHours(row);
     const justifiedHours = getRowJustifiedHours(row);
     const totalHours = workedHours + justifiedHours;
-    const totalBonus = Number(row.novedad?.adicional ?? 0) + Number(row.novedad?.premio ?? 0);
+    const totalBonus = Number(row.novedad?.adicional_importe ?? 0) + Number(row.novedad?.premio_importe ?? 0);
 
     switch (column.key) {
       case "categoria":
@@ -528,6 +530,9 @@ const getJustifiedHours = (cell?: TarjaDetalleCell) => {
   return Math.max(getExpectedHours(cell?.fecha) - getWorkedHours(cell), 0);
 };
 
+const isTransferCell = (cell?: TarjaDetalleCell) =>
+  normalizeText(cell?.descripcion).startsWith("traspaso");
+
 const getRowWorkedHours = (row: TarjaDetalleRow) =>
   dayKeys.reduce((total, key) => total + getWorkedHours(row[key]), 0);
 
@@ -551,9 +556,19 @@ const hasAmount = (value?: number | null) => {
 const TarjaDetalleHorasCell = ({ cell }: { cell?: TarjaDetalleCell }) => {
   const horas = cell?.horas;
   return (
-    <span className="block min-h-4 text-center text-[9px] font-medium leading-4 text-slate-700">
-      {horas == null ? "" : formatHours(Number(horas))}
-    </span>
+    <>
+      <span className="block min-h-4 text-center text-[9px] font-medium leading-4 text-slate-700">
+        {horas == null ? "" : formatHours(Number(horas))}
+      </span>
+      {isTransferCell(cell) ? (
+        <span
+          className="block rounded bg-blue-50 px-0.5 text-center text-[7px] font-semibold leading-3 text-blue-700"
+          title={cell?.descripcion ?? "TRASPASO"}
+        >
+          TRA
+        </span>
+      ) : null}
+    </>
   );
 };
 
@@ -571,17 +586,26 @@ const TarjaDetalleRowActions = ({ row }: { row: TarjaDetalleRow }) => {
     const returnTo = `${location.pathname}${location.search}`;
     const existingId = row.novedad?.id;
     if (existingId != null) {
-      const params = new URLSearchParams({ returnTo });
-      navigate(`${createPath({ resource: "tarja-novedades", type: "edit", id: existingId })}?${params.toString()}`);
+      const params = new URLSearchParams({
+        returnTo,
+        horas_trabajadas: String(getRowWorkedHours(row)),
+      });
+      navigate(`${createPath({ resource: "tarja-nomina", type: "edit", id: existingId })}?${params.toString()}`);
       return;
     }
 
     const params = new URLSearchParams({
       tarja_id: String(row.tarja_id),
       nomina_id: String(row.idnomina),
+      ...(row.proyecto_id ? { proyecto_id: String(row.proyecto_id) } : {}),
+      ...(row.encargado_id ? { encargado_id: String(row.encargado_id) } : {}),
+      ...(row.obra ? { obra: row.obra } : {}),
+      fecha_desde: String(row.D01?.fecha ?? ""),
+      fecha_hasta: String(row.D15?.fecha ?? row.D01?.fecha ?? ""),
+      horas_trabajadas: String(getRowWorkedHours(row)),
       returnTo,
     });
-    navigate(`${createPath({ resource: "tarja-novedades", type: "create" })}?${params.toString()}`);
+    navigate(`${createPath({ resource: "tarja-nomina", type: "create" })}?${params.toString()}`);
   };
 
   return (
@@ -844,8 +868,8 @@ const TarjaDetalleGrid = ({
                 const justifiedHours = getRowJustifiedHours(row);
                 const totalHours = workedHours + justifiedHours;
                 const totalBonus =
-                  Number(row.novedad?.adicional ?? 0) +
-                  Number(row.novedad?.premio ?? 0);
+                  Number(row.novedad?.adicional_importe ?? 0) +
+                  Number(row.novedad?.premio_importe ?? 0);
 
                 return (
                   <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -899,14 +923,14 @@ const TarjaDetalleGrid = ({
                     <span className="block text-[9px] font-semibold leading-4">
                       {formatAmount(totalBonus)}
                     </span>
-                    {hasAmount(row.novedad?.adicional) ? (
+                    {hasAmount(row.novedad?.adicional_importe) ? (
                       <span className="block text-[6.5px] font-medium leading-[8px] text-slate-500">
-                        Adicional: {formatAmount(row.novedad?.adicional)}
+                        Adicional: {formatAmount(row.novedad?.adicional_importe)}
                       </span>
                     ) : null}
-                    {hasAmount(row.novedad?.premio) ? (
+                    {hasAmount(row.novedad?.premio_importe) ? (
                       <span className="block text-[6.5px] font-medium leading-[8px] text-slate-500">
-                        Premio: {formatAmount(row.novedad?.premio)}
+                        Premio: {formatAmount(row.novedad?.premio_importe)}
                       </span>
                     ) : null}
                   </td>

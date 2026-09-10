@@ -176,6 +176,7 @@ const resolveResource = (
   operation: DataProviderOperation,
 ) => {
   if (resource === "crm/crm-eventos") return "crm/eventos";
+  if (resource === "tarja-novedades") return "tarja-nomina";
   if (resource === "po-orders-approval") {
     return operation === "getList" ? "po-orders/approval-feed" : "po-orders";
   }

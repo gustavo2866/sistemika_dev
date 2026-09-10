@@ -14,7 +14,7 @@ from app.models.crm.contacto import CRMContacto
 from app.models.partediario import EstadoParteDiario, ParteDiario
 from app.models.proyecto import Proyecto
 from app.models.proyecto_encargado import ProyectoEncargado
-from app.models.tarja import Tarja, TarjaDetalle, TarjaNovedad
+from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
 from app.services.parte_diario_tarja_service import parte_diario_tarja_service
 
 
@@ -23,6 +23,14 @@ class GenerarTarjaRequest(BaseModel):
     fechainicio: date
     fechafinal: date
     contacto_id: int | None = Field(default=None, gt=0)
+
+
+class AsegurarTarjaNominaRequest(BaseModel):
+    tarja_id: int | None = Field(default=None, gt=0)
+    idproyecto: int | None = Field(default=None, gt=0)
+    contacto_id: int | None = Field(default=None, gt=0)
+    fechainicio: date | None = None
+    fechafinal: date | None = None
 
 
 DEFAULT_PROJECT_ESTADO = "02-ejecucion"
@@ -35,8 +43,8 @@ tarja_crud = NestedCRUD(
             "fk_field": "tarja_id",
             "allow_delete": True,
         },
-        "novedades": {
-            "model": TarjaNovedad,
+        "nomina_registros": {
+            "model": TarjaNomina,
             "fk_field": "tarja_id",
             "allow_delete": True,
         },
@@ -105,6 +113,7 @@ def _add_encargado_option(
     proyecto_id: int,
     contacto_id: int,
     nombre: str | None,
+    telefono: str | None,
     principal: bool,
 ) -> None:
     encargados = encargados_by_project.setdefault(proyecto_id, [])
@@ -116,14 +125,27 @@ def _add_encargado_option(
         existing["principal"] = bool(existing["principal"] or principal)
         if nombre and not existing.get("nombre"):
             existing["nombre"] = nombre
+        if telefono and not existing.get("telefono"):
+            existing["telefono"] = telefono
         return
     encargados.append(
         {
             "contacto_id": contacto_id,
             "nombre": nombre,
+            "telefono": telefono,
             "principal": principal,
         }
     )
+
+
+def _first_contact_phone(contacto: CRMContacto | None) -> str | None:
+    if contacto is None:
+        return None
+    phones = contacto.telefonos or []
+    if not phones:
+        return None
+    first = str(phones[0] or "").strip()
+    return first or None
 
 
 @tarja_router.get("/panel")
@@ -203,16 +225,16 @@ def get_tarja_panel(
                 for tarja_id, registros, horas in detalle_rows
             }
 
-            novedad_rows = session.exec(
+            nomina_rows = session.exec(
                 select(
-                    TarjaNovedad.tarja_id,
-                    func.count(TarjaNovedad.id),
-                    func.coalesce(func.sum(TarjaNovedad.adicional), 0),
-                    func.coalesce(func.sum(TarjaNovedad.premio), 0),
+                    TarjaNomina.tarja_id,
+                    func.count(TarjaNomina.id),
+                    func.coalesce(func.sum(TarjaNomina.adicional_importe), 0),
+                    func.coalesce(func.sum(TarjaNomina.premio_importe), 0),
                 )
-                .where(TarjaNovedad.tarja_id.in_(tarja_ids))
-                .where(TarjaNovedad.deleted_at.is_(None))
-                .group_by(TarjaNovedad.tarja_id)
+                .where(TarjaNomina.tarja_id.in_(tarja_ids))
+                .where(TarjaNomina.deleted_at.is_(None))
+                .group_by(TarjaNomina.tarja_id)
             ).all()
             novedad_stats_by_tarja = {
                 int(tarja_id): {
@@ -220,7 +242,7 @@ def get_tarja_panel(
                     "adicional": float(adicional or 0),
                     "premio": float(premio or 0),
                 }
-                for tarja_id, novedades, adicional, premio in novedad_rows
+                for tarja_id, novedades, adicional, premio in nomina_rows
             }
 
         encargado_stmt = (
@@ -248,6 +270,7 @@ def get_tarja_panel(
                 proyecto_id=int(encargado.proyecto_id),
                 contacto_id=contacto_id,
                 nombre=contacto.nombre_completo if contacto is not None else f"Contacto #{contacto_id}",
+                telefono=_first_contact_phone(contacto),
                 principal=bool(encargado.principal),
             )
 
@@ -287,11 +310,12 @@ def get_tarja_panel(
                 {
                     "contacto_id": contacto_id,
                     "nombre": contacto.nombre_completo,
+                    "telefono": _first_contact_phone(contacto),
                     "principal": False,
                 }
             )
         if not encargados:
-            encargados = [{"contacto_id": None, "nombre": None, "principal": True}]
+            encargados = [{"contacto_id": None, "nombre": None, "telefono": None, "principal": True}]
 
         for encargado in encargados:
             contacto_id = encargado["contacto_id"]
@@ -377,6 +401,7 @@ def get_tarja_panel(
                     "proyecto_nombre": project.nombre,
                     "proyecto_estado": project.estado,
                     "encargado": encargado["nombre"],
+                    "encargado_telefono": encargado.get("telefono"),
                     "encargado_principal": encargado["principal"],
                     "fecha_inicio": project.fecha_inicio.isoformat() if project.fecha_inicio else None,
                     "fecha_final": project.fecha_final.isoformat() if project.fecha_final else None,
@@ -415,4 +440,66 @@ def generar_tarja(
         )
         return filtrar_respuesta(tarja)
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@tarja_router.post("/asegurar-nomina")
+def asegurar_tarja_nomina(
+    payload: AsegurarTarjaNominaRequest,
+    session: Session = Depends(get_session),
+):
+    try:
+        if payload.tarja_id is not None:
+            tarja = session.get(Tarja, payload.tarja_id)
+            if tarja is None or tarja.deleted_at is not None:
+                raise ValueError("Tarja no encontrada")
+            idproyecto = tarja.idproyecto
+            contacto_id = tarja.contacto_id
+            fechainicio = tarja.fechainicio
+            fechafinal = tarja.fechafinal
+        else:
+            if (
+                payload.idproyecto is None
+                or payload.fechainicio is None
+                or payload.fechafinal is None
+            ):
+                raise ValueError(
+                    "Debe indicar la tarja o la obra y el rango de la quincena"
+                )
+            idproyecto = payload.idproyecto
+            contacto_id = payload.contacto_id
+            fechainicio = payload.fechainicio
+            fechafinal = payload.fechafinal
+
+        tarja, created = parte_diario_tarja_service.asegurar_nomina_quincena(
+            session,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id,
+            fechainicio=fechainicio,
+            fechafinal=fechafinal,
+        )
+        return {"id": tarja.id, "tarja_id": tarja.id, "creados": created}
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@tarja_router.post("/{tarja_id:int}/cerrar")
+def cerrar_tarja(
+    tarja_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        tarja, siguiente, created = parte_diario_tarja_service.cerrar_tarja(
+            session,
+            tarja_id,
+        )
+        return {
+            "id": tarja.id,
+            "estado": tarja.estado,
+            "tarja_siguiente_id": siguiente.id,
+            "nomina_siguiente_creada": created,
+        }
+    except ValueError as exc:
+        session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

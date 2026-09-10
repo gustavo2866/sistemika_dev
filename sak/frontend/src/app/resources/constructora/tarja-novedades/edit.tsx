@@ -32,7 +32,7 @@ export const TarjaNovedadEdit = ({
     <Edit
       id={id}
       redirect={redirect ?? (embedded ? false : "list")}
-      title="Editar novedad de tarja"
+      title="Editar nomina de tarja"
       className="max-w-3xl w-full"
       mutationMode="pessimistic"
       transform={(data: any) => normalizeTarjaNovedadPayload(data)}
@@ -48,7 +48,7 @@ export const TarjaNovedadEdit = ({
                   navigate(returnTo, { replace: true });
                   return;
                 }
-                navigate("/tarja-novedades", { replace: true });
+                navigate("/tarja-nomina", { replace: true });
               },
             }
       }

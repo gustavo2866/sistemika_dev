@@ -14,6 +14,9 @@ from agente.v3.subprocesses.parte_diario.resolver import normalize_text
 from app.models import EstadoParteDiario, Nomina, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto
 
 
+_INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
+
+
 class ParteDiarioQueryService:
     def __init__(self, *, session: Session, proyecto_id: int, contacto_id: int | None, nombre_obra: str | None) -> None:
         self._session = session
@@ -84,6 +87,8 @@ class ParteDiarioQueryService:
             if parte is None:
                 continue
             state_code = states_by_id.get(int(detail.idestado or 0))
+            if _is_internal_nomina_state(state_code):
+                continue
             if selected_state_id is not None and detail.idestado != selected_state_id:
                 continue
             if candidate_ids is not None and detail.idnomina not in candidate_ids:
@@ -255,10 +260,20 @@ class ParteDiarioQueryService:
             "Novedades:",
         ]
         states = self._estado_by_id()
-        for detail in detalles[:20]:
+        visible_details = [
+            detail
+            for detail in detalles
+            if not _is_internal_nomina_state(states.get(int(detail.idestado or 0)))
+        ]
+        if not visible_details:
+            return (
+                f"Parte diario de {self._nombre_obra} del {target_date.strftime('%d/%m/%Y')}: "
+                f"{estado_label}, sin novedades registradas."
+            )
+        for detail in visible_details[:20]:
             lines.append(f"- {self._detalle_label(detail, states)}")
-        if len(detalles) > 20:
-            lines.append(f"- ... y {len(detalles) - 20} registros mas.")
+        if len(visible_details) > 20:
+            lines.append(f"- ... y {len(visible_details) - 20} registros mas.")
         return "\n".join(lines)
 
     def consultar_partes_pendientes(self, *, desde: str | None = None, hasta: str | None = None) -> str:
@@ -421,3 +436,7 @@ def _nomina_label(item: Nomina) -> str:
 def _format_decimal(value: Decimal) -> str:
     as_float = float(value)
     return f"{as_float:g}"
+
+
+def _is_internal_nomina_state(code: str | None) -> bool:
+    return str(code or "").strip().upper() in _INTERNAL_NOMINA_STATE_CODES

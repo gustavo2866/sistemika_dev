@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from fastapi import Depends, HTTPException, Query, Response
 from sqlmodel import Session, select
@@ -9,8 +10,84 @@ from app.db import get_session
 from app.models.nomina import Nomina
 from app.models.proyecto import Proyecto
 
-# CRUD generico para Nomina
-nomina_crud = GenericCRUD(Nomina)
+
+class NominaCRUD(GenericCRUD[Nomina]):
+    DUPLICATE_ACTIVE_DNI_MESSAGE = "Ya existe un empleado activo con ese DNI"
+
+    @staticmethod
+    def _normalize_dni(value: Any) -> str:
+        return str(value or "").strip()
+
+    def _validate_active_dni_available(
+        self,
+        session: Session,
+        data: dict[str, Any],
+        *,
+        exclude_id: int | None = None,
+    ) -> None:
+        dni = self._normalize_dni(data.get("dni"))
+        if not dni:
+            return
+        activo = data.get("activo", True)
+        if activo is False or str(activo).strip().lower() in {"0", "false", "no", "off"}:
+            return
+
+        stmt = (
+            select(Nomina.id)
+            .where(Nomina.dni == dni)
+            .where(Nomina.activo.is_(True))
+            .where(Nomina.deleted_at.is_(None))
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(Nomina.id != exclude_id)
+        existing_id = session.exec(stmt).first()
+        if existing_id is not None:
+            raise ValueError(f"{self.DUPLICATE_ACTIVE_DNI_MESSAGE}: {dni}")
+
+    def _apply_filters(self, stmt, filters):
+        remaining_filters = dict(filters)
+        solo_sin_proyecto = str(
+            remaining_filters.pop("sin_proyecto", "")
+        ).strip().lower() in {"1", "true", "si", "sí"}
+        if solo_sin_proyecto:
+            stmt = stmt.where(Nomina.idproyecto.is_(None))
+        return super()._apply_filters(stmt, remaining_filters)
+
+
+    def create(self, session: Session, data: dict[str, Any], auto_commit: bool = True) -> Nomina:
+        self._validate_active_dni_available(session, data)
+        return super().create(session, data, auto_commit=auto_commit)
+
+    def update(
+        self,
+        session: Session,
+        obj_id: Any,
+        data: dict[str, Any],
+        check_version: bool = True,
+        auto_commit: bool = True,
+    ) -> Nomina | None:
+        existing = self.get(session, obj_id)
+        if existing is None:
+            return None
+        self._validate_active_dni_available(
+            session,
+            {
+                "dni": data.get("dni", existing.dni),
+                "activo": data.get("activo", existing.activo),
+            },
+            exclude_id=int(existing.id),
+        )
+        return super().update(
+            session,
+            obj_id,
+            data,
+            check_version=check_version,
+            auto_commit=auto_commit,
+        )
+
+
+# CRUD generico para Nomina, con disponibilidad resuelta desde la asignacion vigente.
+nomina_crud = NominaCRUD(Nomina)
 
 # Router generico siguiendo el patron existente
 nomina_router = create_generic_router(

@@ -248,6 +248,42 @@ class ParteDiarioService:
             mensaje_id=mensaje_id,
         )
 
+        from app.services.parte_diario_tarja_service import (
+            get_quincena_range,
+            parte_diario_tarja_service,
+        )
+
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        parte_diario_tarja_service.asegurar_nomina_quincena(
+            session,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id or None,
+            fechainicio=fechainicio,
+            fechafinal=fechafinal,
+            auto_commit=False,
+        )
+        destination_project_ids = {
+            int(item["idproyecto"])
+            for item in novedades_destino
+            if item.get("idproyecto") is not None
+        }
+        for destination_id in destination_project_ids:
+            parte_diario_tarja_service.asegurar_nomina_quincena(
+                session,
+                idproyecto=destination_id,
+                contacto_id=contacto_id or None,
+                fechainicio=fechainicio,
+                fechafinal=fechafinal,
+                auto_commit=False,
+            )
+        session.flush()
+        if target_estado == EstadoParteDiario.CONFIRMADO:
+            parte_diario_tarja_service.sincronizar_detalle_para_parte(
+                session,
+                parte,
+                auto_commit=False,
+            )
+
         return parte
 
     def _split_destination_novedades(
@@ -371,6 +407,7 @@ class ParteDiarioService:
                         origen=OrigenDetalle.AGENTE,
                     )
                 )
+
 
     @staticmethod
     def _extract_agent_metadata(metadata: dict[str, Any]) -> tuple[str, dict[str, Any]]:

@@ -6,18 +6,17 @@ import { useNotify } from "ra-core";
 import {
   ArrowLeft,
   CheckCircle2,
-  Eye,
   FileClock,
   FileQuestion,
   Loader2,
   Lock,
   LockOpen,
   MoreHorizontal,
-  Plus,
+  Download,
   RefreshCw,
   RotateCcw,
+  Sparkles,
   TableProperties,
-  Users,
 } from "lucide-react";
 
 import { AppBreadcrumb } from "@/components/app-breadcrumb";
@@ -73,6 +72,7 @@ type PanelRow = {
   proyecto_nombre: string;
   proyecto_estado?: string | null;
   encargado?: string | null;
+  encargado_telefono?: string | null;
   encargado_principal?: boolean | null;
   fecha_inicio?: string | null;
   fecha_final?: string | null;
@@ -109,13 +109,60 @@ type TarjaPanelResponse = {
   rows: PanelRow[];
 };
 
+type TarjaDetalleCell = {
+  fecha?: string | null;
+  horas?: number | null;
+  estado?: string | null;
+  estado_nombre?: string | null;
+  descripcion?: string | null;
+};
+
+type TarjaNovedadSummary = {
+  horas_justificadas?: number | null;
+  presentismo?: boolean | null;
+  adicional_importe?: number | null;
+  premio_importe?: number | null;
+  observaciones?: string | null;
+};
+
+type DayKey =
+  | "D01"
+  | "D02"
+  | "D03"
+  | "D04"
+  | "D05"
+  | "D06"
+  | "D07"
+  | "D08"
+  | "D09"
+  | "D10"
+  | "D11"
+  | "D12"
+  | "D13"
+  | "D14"
+  | "D15";
+
+type TarjaDetalleExportRow = {
+  id: string;
+  proyecto_nombre: string;
+  encargado?: string | null;
+  empleado: string;
+  dni?: string | null;
+  categoria_codigo?: string | null;
+  actividad_codigo?: string | null;
+  novedad?: TarjaNovedadSummary | null;
+} & Record<DayKey, TarjaDetalleCell>;
+
 type ActionTarget = {
   row: PanelRow;
   action: "generar" | "cerrar" | "reabrir";
 };
 
-const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
+const dayKeys = Array.from(
+  { length: 15 },
+  (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
+);
 
 const buildAuthHeaders = () => {
   const headers = new Headers({
@@ -206,23 +253,239 @@ const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado")
   return response.json();
 };
 
+const postCloseTarja = async (tarjaId: number) => {
+  const response = await fetch(`${apiUrl}/tarjas/${tarjaId}/cerrar`, {
+    method: "POST",
+    headers: buildAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return response.json();
+};
+
 const formatNumber = (value: number, maximumFractionDigits = 0) =>
   Number(value || 0).toLocaleString("es-AR", { maximumFractionDigits });
+
+const formatHours = (value: number) =>
+  value.toLocaleString("es-AR", { maximumFractionDigits: 1 });
 
 const hasAmount = (value?: number | null) => {
   const amount = Number(value ?? 0);
   return Number.isFinite(amount) && amount !== 0;
 };
 
-const buildNominaListUrl = (row: PanelRow) => {
-  const params = new URLSearchParams({
-    filter: JSON.stringify({
-      idproyecto: row.proyecto_id,
-      encargado_contacto_id: row.contacto_id ?? null,
-    }),
-  });
-  return `/nominas?${params.toString()}`;
+const escapeHtml = (value?: string | number | null) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const downloadBlob = (filename: string, blob: Blob) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 };
+
+const formatDayLabel = (cell?: TarjaDetalleCell, fallback?: string) => {
+  const date = String(cell?.fecha ?? "").slice(0, 10);
+  if (!date) return fallback ?? "";
+  const [, month, day] = date.split("-");
+  return `${day}/${month}`;
+};
+
+const isNonWorkingDay = (dateValue?: string | null) => {
+  const date = String(dateValue ?? "").slice(0, 10);
+  if (!date) return false;
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return day === 0;
+};
+
+const shouldShowEstado = (estado?: string | null) => {
+  const value = String(estado ?? "").trim().toUpperCase();
+  return Boolean(value && value !== "P");
+};
+
+const getWorkedHours = (row: TarjaDetalleExportRow) =>
+  dayKeys.reduce((total, key) => {
+    const horas = Number(row[key]?.horas ?? 0);
+    return total + (Number.isFinite(horas) ? horas : 0);
+  }, 0);
+
+const getTarjaDetalleExportCellText = (
+  row: TarjaDetalleExportRow,
+  columnKey:
+    | DayKey
+    | "proyecto"
+    | "encargado"
+    | "empleado"
+    | "categoria"
+    | "actividad"
+    | "horas"
+    | "presentismo"
+    | "bonos"
+    | "comentario",
+) => {
+  if (dayKeys.includes(columnKey as DayKey)) {
+    const cell = row[columnKey as DayKey];
+    const horas = cell?.horas == null ? "" : formatHours(Number(cell.horas));
+    const estado = shouldShowEstado(cell?.estado) ? String(cell?.estado ?? "") : "";
+    return [horas, estado].filter(Boolean).join(" ");
+  }
+
+  const workedHours = getWorkedHours(row);
+  const justifiedHours = Number(row.novedad?.horas_justificadas ?? 0);
+  const totalHours = workedHours + (Number.isFinite(justifiedHours) ? justifiedHours : 0);
+  const totalBonus =
+    Number(row.novedad?.adicional_importe ?? 0) + Number(row.novedad?.premio_importe ?? 0);
+
+  switch (columnKey) {
+    case "proyecto":
+      return row.proyecto_nombre;
+    case "encargado":
+      return row.encargado ?? "Sin encargado";
+    case "categoria":
+      return row.categoria_codigo ?? "";
+    case "actividad":
+      return row.actividad_codigo ?? "";
+    case "horas":
+      return formatHours(totalHours);
+    case "presentismo":
+      return `${row.novedad?.presentismo ? "SI" : "NO"} trab:${formatHours(workedHours)}${
+        justifiedHours ? ` just:${formatHours(justifiedHours)}` : ""
+      }`;
+    case "bonos":
+      return formatNumber(totalBonus);
+    case "comentario":
+      return row.novedad?.observaciones ?? "";
+    default:
+      return [row.empleado, row.dni].filter(Boolean).join(" ");
+  }
+};
+
+const downloadTarjaPanelExcel = (
+  filename: string,
+  title: string,
+  rows: TarjaDetalleExportRow[],
+) => {
+  const headers = [
+    "Proy",
+    "Enc",
+    "Emp",
+    ...dayKeys.map((key) => formatDayLabel(rows[0]?.[key], key).slice(0, 2)),
+    "Cat",
+    "Act",
+    "Hs",
+    "Pres",
+    "Bon",
+    "Com",
+  ];
+  const columnKeys = [
+    "proyecto",
+    "encargado",
+    "empleado",
+    ...dayKeys,
+    "categoria",
+    "actividad",
+    "horas",
+    "presentismo",
+    "bonos",
+    "comentario",
+  ] as const;
+  const bodyRows = rows
+    .map((row, rowIndex) => {
+      const cells = columnKeys
+        .map((columnKey) => {
+          const isSunday =
+            dayKeys.includes(columnKey as DayKey) &&
+            isNonWorkingDay(rows[0]?.[columnKey as DayKey]?.fecha);
+          const isDayColumn = dayKeys.includes(columnKey as DayKey);
+          const style = [
+            "border:1px solid #cbd5e1",
+            "mso-number-format:\\@",
+            isDayColumn ? "font-size:9px" : "font-size:10px",
+            isDayColumn ? "padding:2px 1px" : "padding:3px",
+            isDayColumn ? "text-align:center" : "",
+            isSunday ? "background:#e5e7eb" : rowIndex % 2 ? "background:#fafafa" : "",
+          ]
+            .filter(Boolean)
+            .join(";");
+          return `<td style="${style}">${escapeHtml(getTarjaDetalleExportCellText(row, columnKey))}</td>`;
+        })
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: Arial, sans-serif; }
+    h1 { font-size: 16px; margin: 0 0 12px 0; }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    th { border: 1px solid #cbd5e1; background: #000; color: #fff; font-size: 9px; padding: 3px 2px; }
+    .date-col { width: 24px; }
+    .project-col { width: 150px; }
+    .person-col { width: 130px; }
+    .small-col { width: 44px; }
+    .comment-col { width: 90px; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <table>
+    <colgroup>
+      <col class="project-col" />
+      <col class="person-col" />
+      <col class="person-col" />
+      ${dayKeys.map(() => `<col class="date-col" />`).join("")}
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="comment-col" />
+    </colgroup>
+    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+    <tbody>${bodyRows}</tbody>
+  </table>
+</body>
+</html>`;
+  const blob = new Blob([`\uFEFF${html}`], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+  downloadBlob(filename.replace(/\.(csv|xlsx?)$/i, ".xls"), blob);
+};
+
+const fetchTarjaDetalleRows = async (tarjaId: number): Promise<TarjaDetalleExportRow[]> => {
+  const params = new URLSearchParams({
+    filter: JSON.stringify({ tarja_id: tarjaId }),
+    range: JSON.stringify([0, 9999]),
+    sort: JSON.stringify(["empleado", "ASC"]),
+  });
+  const response = await fetch(`${apiUrl}/tarja-detalle?${params.toString()}`, {
+    headers: buildAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as TarjaDetalleExportRow[];
+};
+
+const buildSafeFilename = (value: string) =>
+  value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
 
 const buildParteDiarioDayUrl = (row: PanelRow, day: PanelDay, returnTo: string) => {
   const parteId = day.parte_ids[0];
@@ -238,6 +501,17 @@ const buildParteDiarioDayUrl = (row: PanelRow, day: PanelDay, returnTo: string) 
     params.set("contacto_id", String(row.contacto_id));
   }
   return `/parte-diario/create?${params.toString()}`;
+};
+
+const buildAgentChatUrl = (row: PanelRow, returnTo: string) => {
+  const params = new URLSearchParams({
+    source: "parte-diario",
+    message: `parte diario ${row.proyecto_nombre}`,
+    from_phone: row.encargado_telefono ?? "",
+    returnTo,
+  });
+  if (row.encargado?.trim()) params.set("from_name", row.encargado.trim());
+  return `/agente-chat?${params.toString()}`;
 };
 
 const getTarjaStatusLabel = (row: PanelRow) => {
@@ -426,7 +700,6 @@ const RowActions = ({
   const detailUrl = row.tarja
     ? `/tarjas/${row.tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`
     : null;
-  const nominaUrl = buildNominaListUrl(row);
   const puedeGenerar = Boolean(
     row.puede_generar &&
       row.parte_stats.esperados > 0 &&
@@ -448,31 +721,9 @@ const RowActions = ({
         </Button>
       );
     }
-    if (row.puede_cerrar) {
-      return (
-        <Button
-          type="button"
-          size="sm"
-          className="h-7 whitespace-nowrap px-2 text-[10px]"
-          onClick={() => onAction({ row, action: "cerrar" })}
-        >
-          <Lock className="size-3" />
-          Cerrar
-        </Button>
-      );
-    }
-    if (row.tarja) {
-      return (
-        <Button asChild type="button" variant="outline" size="sm" className="h-7 whitespace-nowrap px-2 text-[10px]">
-          <Link to={detailUrl ?? nominaUrl}>
-            <Eye className="size-3" />
-            {row.tarja.estado === "cerrado" ? "Ver" : "Abrir"}
-          </Link>
-        </Button>
-      );
-    }
     return null;
   })();
+  const hasAgentPhone = Boolean(row.encargado_telefono?.trim());
 
   return (
     <div className="flex w-[112px] items-center justify-end gap-1">
@@ -492,12 +743,19 @@ const RowActions = ({
               </Link>
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem asChild>
-            <Link to={nominaUrl}>
-              <Users className="mr-2 size-3.5" />
-              Nomina
-            </Link>
-          </DropdownMenuItem>
+          {hasAgentPhone ? (
+            <DropdownMenuItem asChild>
+              <Link to={buildAgentChatUrl(row, returnTo)}>
+                <Sparkles className="mr-2 size-3.5" />
+                Agente
+              </Link>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled title="El contacto no tiene telefono">
+              <Sparkles className="mr-2 size-3.5" />
+              Agente
+            </DropdownMenuItem>
+          )}
           {puedeGenerar ? (
             <DropdownMenuItem onSelect={() => onAction({ row, action: "generar" })}>
               <RotateCcw className="mr-2 size-3.5" />
@@ -538,27 +796,6 @@ const TarjaPanelTitle = ({ onBack }: { onBack: () => void }) => (
   </div>
 );
 
-const TarjaPanelActions = ({
-  startIso,
-  endIso,
-  returnTo,
-}: {
-  startIso: string;
-  endIso: string;
-  returnTo: string;
-}) => (
-  <div className="flex items-center gap-2">
-    <Button asChild size="sm" className={actionButtonClass}>
-      <Link
-        to={`/tarjas/create?fechainicio=${startIso}&fechafinal=${endIso}&returnTo=${encodeURIComponent(returnTo)}`}
-      >
-        <Plus className="size-3.5" />
-        Crear
-      </Link>
-    </Button>
-  </div>
-);
-
 export const TarjaPanel = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -574,6 +811,7 @@ export const TarjaPanel = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const startIso = useMemo(() => toISODate(range.start), [range.start]);
   const endIso = useMemo(() => toISODate(range.end), [range.end]);
@@ -784,6 +1022,43 @@ export const TarjaPanel = () => {
     ? Math.round((totals.partes_completos / totals.dias_esperados) * 100)
     : 0;
 
+  const handleExport = async () => {
+    const rowsWithTarja = visibleRows.filter((row) => row.tarja?.id);
+    if (!rowsWithTarja.length) {
+      notify("No hay tarjas para exportar con los filtros actuales", { type: "warning" });
+      return;
+    }
+
+    setExportLoading(true);
+    try {
+      const groupedRows = await Promise.all(
+        rowsWithTarja.map(async (row) => {
+          const detalleRows = await fetchTarjaDetalleRows(Number(row.tarja?.id));
+          return detalleRows.map((detalleRow) => ({
+            ...detalleRow,
+            proyecto_nombre: row.proyecto_nombre,
+            encargado: row.encargado ?? "Sin encargado",
+          }));
+        }),
+      );
+      const exportRows = groupedRows.flat();
+      if (!exportRows.length) {
+        notify("Las tarjas filtradas no tienen detalles para exportar", { type: "warning" });
+        return;
+      }
+
+      const title = `Tarjas ${startIso} - ${endIso}`;
+      const filename = buildSafeFilename(`tarjas-${startIso}-${endIso}.xls`);
+      downloadTarjaPanelExcel(filename, title, exportRows);
+    } catch (exportError) {
+      notify(exportError instanceof Error ? exportError.message : "No se pudo exportar", {
+        type: "warning",
+      });
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   const executeAction = async () => {
     if (!actionTarget) return;
     setActionLoading(true);
@@ -798,7 +1073,7 @@ export const TarjaPanel = () => {
         });
         notify("Tarja generada", { type: "info" });
       } else if (action === "cerrar" && row.tarja) {
-        await patchTarjaEstado(row.tarja.id, "cerrado");
+        await postCloseTarja(row.tarja.id);
         notify("Tarja cerrada", { type: "info" });
       } else if (action === "reabrir" && row.tarja) {
         await patchTarjaEstado(row.tarja.id, "borrador");
@@ -848,7 +1123,6 @@ export const TarjaPanel = () => {
 
       <div className="my-3 flex flex-wrap items-center justify-between gap-3">
         <TarjaPanelTitle onBack={handleBack} />
-        <TarjaPanelActions startIso={startIso} endIso={endIso} returnTo={returnTo} />
       </div>
 
       <div className="mb-3 rounded-lg bg-muted/30 px-2 pb-2 pt-4">
@@ -915,11 +1189,11 @@ export const TarjaPanel = () => {
             variant="outline"
             size="sm"
             className="ml-auto h-8 px-2 text-[11px]"
-            onClick={() => setRefreshKey((key) => key + 1)}
-            disabled={loading}
+            onClick={() => void handleExport()}
+            disabled={loading || exportLoading}
           >
-            {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-            Actualizar
+            {exportLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            Exportar
           </Button>
         </div>
       </div>

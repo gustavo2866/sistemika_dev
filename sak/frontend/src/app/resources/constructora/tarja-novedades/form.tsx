@@ -8,9 +8,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { FormOrderToolbar } from "@/components/forms";
 import {
   FormBoolean,
+  FormDate,
   FormNumber,
   FormReferenceAutocomplete,
   FormTextarea,
+  FormValue,
   HiddenInput,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
@@ -38,22 +40,65 @@ const LockedReferenceValue = ({
   </div>
 );
 
+const toAmount = (value: unknown) => {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? amount : 0;
+};
+
+const formatMoney = (value: number) =>
+  value.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const formatHoursValue = (value: number) =>
+  value.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const ReadOnlyNumber = ({
+  label,
+  value,
+  strong = false,
+  className,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  className?: string;
+}) => (
+  <FormValue
+    label={label}
+    widthClass="w-full"
+    className={className}
+    valueClassName={`justify-end bg-muted/30 tabular-nums text-muted-foreground ${strong ? "font-semibold text-foreground" : ""}`}
+  >
+    {value}
+  </FormValue>
+);
+
 const TarjaNovedadFields = ({
   lockReferences = false,
   defaultValues,
   empleadoLabel,
   empleadoCategoriaId,
   empleadoTareaId,
+  horasTrabajadas = 0,
 }: {
   lockReferences?: boolean;
   defaultValues?: Partial<TarjaNovedadFormValues>;
   empleadoLabel?: string;
   empleadoCategoriaId?: number | null;
   empleadoTareaId?: number | null;
+  horasTrabajadas?: number;
 }) => {
   const { setValue } = useFormContext<TarjaNovedadFormValues>();
   const categoriaValue = useWatch({ name: "nomina_categoria_id" });
   const tareaValue = useWatch({ name: "nomina_tarea_id" });
+  const horasJustificadas = useWatch({ name: "horas_justificadas" });
+  const horasTrabajadasValue = toAmount(horasTrabajadas);
+  const horasTotales = horasTrabajadasValue + toAmount(horasJustificadas);
 
   useEffect(() => {
     if (!categoriaValue && empleadoCategoriaId) {
@@ -119,30 +164,52 @@ const TarjaNovedadFields = ({
         }}
         widthClass="w-full"
       />
-      <FormNumber
-        source="horas_justificadas"
-        label="Horas justificadas"
-        min={0}
-        step="0.01"
-        widthClass="w-full"
-      />
-      <div className="flex items-end">
-        <FormBoolean source="presentismo" label="Presentismo" />
+      <div className="grid gap-2 md:col-span-2 md:grid-cols-4">
+        <ReadOnlyNumber
+          label="Horas Trabajadas"
+          value={formatHoursValue(horasTrabajadasValue)}
+        />
+        <FormNumber
+          source="horas_justificadas"
+          label="Horas Justificadas"
+          min={0}
+          step="0.01"
+          widthClass="w-full"
+        />
+        <ReadOnlyNumber
+          label="Horas Totales"
+          value={formatHoursValue(horasTotales)}
+        />
+        <FormNumber
+          source="adicional_importe"
+          label="Adicional"
+          min={0}
+          step="0.01"
+          widthClass="w-full"
+        />
       </div>
-      <FormNumber
-        source="adicional"
-        label="Adicional"
-        min={0}
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="premio"
-        label="Premio"
-        min={0}
-        step="0.01"
-        widthClass="w-full"
-      />
+      <div className="grid gap-2 md:col-span-2 md:grid-cols-3">
+        <div className="flex items-end">
+          <FormBoolean source="presentismo" label="Presentismo" />
+        </div>
+        <div className="flex items-end">
+          <FormBoolean source="viatico" label="Viatico" />
+        </div>
+        <div className="flex items-end">
+          <FormBoolean source="premio" label="Premio" />
+        </div>
+      </div>
+      {lockReferences ? (
+        <>
+          <HiddenInput source="fecha_desde" />
+          <HiddenInput source="fecha_hasta" />
+        </>
+      ) : (
+        <>
+          <FormDate source="fecha_desde" label="Fecha desde" widthClass="w-full" />
+          <FormDate source="fecha_hasta" label="Fecha hasta" widthClass="w-full" />
+        </>
+      )}
       <FormTextarea
         source="observaciones"
         label="Observaciones"
@@ -151,6 +218,81 @@ const TarjaNovedadFields = ({
         className="md:col-span-2 [&_textarea]:min-h-[72px]"
         maxLength={VALIDATION_RULES.OBSERVACIONES.MAX_LENGTH}
       />
+    </div>
+  );
+};
+
+const TarjaLiquidacionFields = () => {
+  const [
+    presentismoImporte,
+    premioImporte,
+    viaticoImporte,
+    sueldoImporte,
+    cargasImporte,
+    mejoraImporte,
+    adicionalImporte,
+  ] = useWatch<TarjaNovedadFormValues>({
+    name: [
+      "presentismo_importe",
+      "premio_importe",
+      "viatico_importe",
+      "sueldo_importe",
+      "cargas_importe",
+      "mejora_importe",
+      "adicional_importe",
+    ],
+  });
+
+  const total =
+    toAmount(presentismoImporte) +
+    toAmount(premioImporte) +
+    toAmount(viaticoImporte) +
+    toAmount(sueldoImporte) +
+    toAmount(cargasImporte) +
+    toAmount(mejoraImporte) +
+    toAmount(adicionalImporte);
+
+  return (
+    <div className="grid gap-2">
+      <div className="grid gap-2 md:grid-cols-3">
+        <ReadOnlyNumber
+          label="Presentismo"
+          value={formatMoney(toAmount(presentismoImporte))}
+        />
+        <ReadOnlyNumber
+          label="Sueldo"
+          value={formatMoney(toAmount(sueldoImporte))}
+        />
+        <ReadOnlyNumber
+          label="Cargas"
+          value={formatMoney(toAmount(cargasImporte))}
+        />
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        <ReadOnlyNumber
+          label="Adicional"
+          value={formatMoney(toAmount(adicionalImporte))}
+        />
+        <ReadOnlyNumber
+          label="Viatico"
+          value={formatMoney(toAmount(viaticoImporte))}
+        />
+        <ReadOnlyNumber
+          label="Premio"
+          value={formatMoney(toAmount(premioImporte))}
+        />
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        <ReadOnlyNumber
+          label="Mejoras"
+          value={formatMoney(toAmount(mejoraImporte))}
+        />
+        <ReadOnlyNumber
+          label="Total"
+          value={formatMoney(total)}
+          strong
+        />
+      </div>
     </div>
   );
 };
@@ -193,6 +335,12 @@ export const TarjaNovedadForm = ({
     [empleado?.apellido, empleado?.nombre].filter(Boolean).join(", ");
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo");
+  const horasTrabajadasParam = params.get("horas_trabajadas");
+  const horasTrabajadas = toAmount(horasTrabajadasParam);
+  const isReadOnlyNovedad =
+    (effectiveValues as { tipo_novedad?: string | null; editable?: boolean | null })
+      .editable === false ||
+    (effectiveValues as { tipo_novedad?: string | null }).tipo_novedad === "ALT";
 
   return (
     <SimpleForm<TarjaNovedadFormValues>
@@ -207,12 +355,13 @@ export const TarjaNovedadForm = ({
                 }
               : undefined
           }
+          saveProps={isReadOnlyNovedad ? { disabled: true } : undefined}
         />
       }
       defaultValues={effectiveValues}
     >
       <SectionBaseTemplate
-        title="Datos de la novedad"
+        title="Datos de nomina"
         main={
           <TarjaNovedadFields
             lockReferences={effectiveLockReferences}
@@ -220,8 +369,14 @@ export const TarjaNovedadForm = ({
             empleadoLabel={empleadoLabel}
             empleadoCategoriaId={empleado?.nomina_categoria_id}
             empleadoTareaId={empleado?.nomina_tarea_id}
+            horasTrabajadas={horasTrabajadas}
           />
         }
+        defaultOpen
+      />
+      <SectionBaseTemplate
+        title="Liquidacion"
+        main={<TarjaLiquidacionFields />}
         defaultOpen
       />
     </SimpleForm>

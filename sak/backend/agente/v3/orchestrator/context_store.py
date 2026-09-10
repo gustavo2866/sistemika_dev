@@ -53,5 +53,9 @@ class V3ContextStore:
         async with self._lock:
             self._contexts.clear()
 
+    async def reset_conversation(self, conversation_id: str) -> None:
+        async with self._lock:
+            self._contexts.pop(conversation_id, None)
+
 
 default_context_store = V3ContextStore()

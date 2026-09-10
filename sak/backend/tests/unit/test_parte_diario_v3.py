@@ -1793,6 +1793,110 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
     assert "Externo, Mario (Obra Externa)" in full_context_nomina
 
 
+def test_parte_diario_query_service_hides_nomina_internal_states(
+    db_session: Session,
+    monkeypatch,
+    seeded_parte_v3,
+):
+    monkeypatch.setattr("agente.v3.subprocesses.parte_diario.query_service._today", lambda: date(2026, 9, 3))
+    enfermedad = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "ENF")
+    ).one()
+    baja = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "BAJ")
+    ).one()
+    traspaso = ParteDiarioEstado(abreviatura="TRA", nombre="TRASPASO")
+    alta = ParteDiarioEstado(abreviatura="ALT", nombre="ALTA")
+    db_session.add_all([traspaso, alta])
+    db_session.flush()
+    sick_employee = Nomina(
+        nombre="Diego",
+        apellido="Cabrera",
+        dni="parte-v3-query-enf",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    transfer_employee = Nomina(
+        nombre="Jorge",
+        apellido="Acosta",
+        dni="parte-v3-query-tra",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    high_employee = Nomina(
+        nombre="Falcon",
+        apellido="Ruiz",
+        dni="parte-v3-query-alt",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    low_employee = Nomina(
+        nombre="Luis",
+        apellido="Conti",
+        dni="parte-v3-query-baj",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    db_session.add_all([sick_employee, transfer_employee, high_employee, low_employee])
+    db_session.flush()
+    parte = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+        fecha=date(2026, 9, 3),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add(parte)
+    db_session.flush()
+    db_session.add_all(
+        [
+            ParteDiarioDetalle(
+                parte_diario_id=parte.id,
+                idnomina=sick_employee.id,
+                idestado=enfermedad.id,
+                horas=Decimal("0"),
+                descripcion="enfermo",
+                origen=OrigenDetalle.AGENTE,
+            ),
+            ParteDiarioDetalle(
+                parte_diario_id=parte.id,
+                idnomina=transfer_employee.id,
+                idestado=traspaso.id,
+                horas=Decimal("0"),
+                descripcion='{"tipo":"traspaso"}',
+                origen=OrigenDetalle.AGENTE,
+            ),
+            ParteDiarioDetalle(
+                parte_diario_id=parte.id,
+                idnomina=high_employee.id,
+                idestado=alta.id,
+                horas=Decimal("9"),
+                descripcion="alta",
+                origen=OrigenDetalle.AGENTE,
+            ),
+            ParteDiarioDetalle(
+                parte_diario_id=parte.id,
+                idnomina=low_employee.id,
+                idestado=baja.id,
+                horas=Decimal("0"),
+                descripcion="baja",
+                origen=OrigenDetalle.AGENTE,
+            ),
+        ]
+    )
+    db_session.commit()
+    service = ParteDiarioQueryService(
+        session=db_session,
+        proyecto_id=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+        nombre_obra="Obra Centro",
+    )
+
+    all_novelties = service.consultar_novedades(desde="2026-09-03", hasta="2026-09-03")
+    report = service.consultar_parte_fecha(fecha="2026-09-03")
+
+    assert "Cabrera, Diego: ENF, 0h, motivo: enfermo" in all_novelties
+    assert "Cabrera, Diego: ENF, 0h, motivo: enfermo" in report
+    for hidden in ["Acosta, Jorge", "Ruiz, Falcon", "Conti, Luis", "TRA", "ALT", "BAJ", "traspaso"]:
+        assert hidden not in all_novelties
+        assert hidden not in report
+
+
 def test_parte_diario_query_service_treats_pendiente_as_borrador_and_sin_cargar():
     service = ParteDiarioQueryService.__new__(ParteDiarioQueryService)
     service._nombre_obra = "Obra Centro"
@@ -2070,6 +2174,163 @@ async def test_parte_diario_v3_initial_referenced_date_survives_project_selectio
     assert selected.context.process_state["fecha_objetivo"] == target_date
     assert selected.context.process_state["fecha_referida_explicita"] is True
     assert selected.reply_text == f"fecha={target_date}"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_initial_message_selects_project_by_name(monkeypatch):
+    class ProbeProcess(ParteDiarioSubprocess):
+        async def _preparar_fecha(self, context, state, *, reply_on_success=True, emisor=None):
+            assert reply_on_success is True
+            return self._active_result(
+                context,
+                state,
+                f"obra={state.nombre_obra}",
+                "prepared_probe",
+            )
+
+        async def _handle_carga(self, message, context, state):
+            pytest.fail("initial project shortcut must not reuse the command text as carga input")
+
+    monkeypatch.setattr(
+        ProbeProcess,
+        "_resolve_obra_options",
+        staticmethod(
+            lambda phone: [
+                parte_diario_handler.ParteDiarioOption(1, "Catamarca y Corrientes", 1, 10, 100),
+                parte_diario_handler.ParteDiarioOption(2, "AXION - Emilio Castelar 1003", 1, 20, 200),
+                parte_diario_handler.ParteDiarioOption(3, "Francia 118", 1, 30, 300),
+            ]
+        ),
+    )
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(
+        _message("parte diario francia"),
+        V3ConversationContext(conversation_id="conv-project-name"),
+    )
+
+    assert result.metadata["status"] == "prepared_probe"
+    assert result.context.process_state["proyecto_id"] == 300
+    assert result.context.process_state["nombre_obra"] == "Francia 118"
+    assert "En que obra" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_initial_message_selects_project_and_embedded_date(monkeypatch):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 9, 8))
+
+    class ProbeProcess(ParteDiarioSubprocess):
+        async def _preparar_fecha(self, context, state, *, reply_on_success=True, emisor=None):
+            return self._active_result(
+                context,
+                state,
+                f"fecha={state.draft().fecha}; obra={state.nombre_obra}",
+                "prepared_probe",
+            )
+
+        async def _handle_carga(self, message, context, state):
+            pytest.fail("initial project shortcut must not reuse the command text as carga input")
+
+    monkeypatch.setattr(
+        ProbeProcess,
+        "_resolve_obra_options",
+        staticmethod(
+            lambda phone: [
+                parte_diario_handler.ParteDiarioOption(1, "Catamarca y Corrientes", 1, 10, 100),
+                parte_diario_handler.ParteDiarioOption(2, "AXION - Emilio Castelar 1003", 1, 20, 200),
+                parte_diario_handler.ParteDiarioOption(3, "Francia 118", 1, 30, 300),
+            ]
+        ),
+    )
+    process = ProbeProcess(llm_client=FailingParteDiarioLLM())
+
+    result = await process.handle(
+        _message("parte diario francia 01/09"),
+        V3ConversationContext(conversation_id="conv-project-name-date"),
+    )
+
+    assert result.metadata["status"] == "prepared_probe"
+    assert result.context.process_state["proyecto_id"] == 300
+    assert result.context.process_state["nombre_obra"] == "Francia 118"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-09-01"
+    assert result.context.process_state["fecha_objetivo"] == "2026-09-01"
+    assert result.context.process_state["fecha_referida_explicita"] is True
+    assert result.reply_text == "fecha=2026-09-01; obra=Francia 118"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_single_project_initial_command_uses_standard_start_reply(monkeypatch):
+    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 9, 8))
+
+    class ProbeProcess(ParteDiarioSubprocess):
+        async def _preparar_fecha(self, context, state, *, reply_on_success=True, emisor=None):
+            assert reply_on_success is True
+            return self._active_result(
+                context,
+                state,
+                f"fecha={state.draft().fecha}; obra={state.nombre_obra}",
+                "prepared_probe",
+            )
+
+        async def _handle_carga(self, message, context, state):
+            pytest.fail("single-project initial command must not be treated as carga input")
+
+    monkeypatch.setattr(
+        ProbeProcess,
+        "_resolve_obra_options",
+        staticmethod(
+            lambda phone: [
+                parte_diario_handler.ParteDiarioOption(1, "AXION - Emilio Castelar 1003", 1, 20, 200),
+            ]
+        ),
+    )
+    process = ProbeProcess(llm_client=FailingParteDiarioLLM())
+
+    result = await process.handle(
+        _message("parte diario AXION - Emilio Castelar 1003 01/09/2026"),
+        V3ConversationContext(conversation_id="conv-single-project-start"),
+    )
+
+    assert result.metadata["status"] == "prepared_probe"
+    assert result.context.process_state["proyecto_id"] == 200
+    assert result.context.process_state["nombre_obra"] == "AXION - Emilio Castelar 1003"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-09-01"
+    assert result.context.process_state["fecha_objetivo"] == "2026-09-01"
+    assert result.context.process_state["fecha_referida_explicita"] is True
+    assert result.reply_text == "fecha=2026-09-01; obra=AXION - Emilio Castelar 1003"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_obra_selection_accepts_project_name():
+    class ProbeProcess(ParteDiarioSubprocess):
+        async def _preparar_fecha(self, context, state, *, reply_on_success=True, emisor=None):
+            return self._active_result(
+                context,
+                state,
+                f"obra={state.nombre_obra}",
+                "prepared_probe",
+            )
+
+    state = ParteDiarioV3State(
+        etapa="seleccionar_obra",
+        opciones_obra=[
+            parte_diario_handler.ParteDiarioOption(1, "Catamarca y Corrientes", 1, 10, 100),
+            parte_diario_handler.ParteDiarioOption(2, "AXION - Emilio Castelar 1003", 1, 20, 200),
+            parte_diario_handler.ParteDiarioOption(3, "Francia 118", 1, 30, 300),
+        ],
+    )
+    context = V3ConversationContext(
+        conversation_id="conv-project-name-selection",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+
+    result = await process.handle(_message("francia"), context)
+
+    assert result.metadata["status"] == "prepared_probe"
+    assert result.context.process_state["proyecto_id"] == 300
+    assert result.context.process_state["nombre_obra"] == "Francia 118"
 
 
 @pytest.mark.asyncio
@@ -3366,6 +3627,52 @@ def test_parte_diario_v3_resumen_omits_absence_zero_hours_legajo_and_shortens_ex
     assert "Serrano, Juan David: FAL, 0h" not in reply
     assert "legajo" not in reply
     assert "- Medina, Ivan (AXION): FAL" in reply
+
+
+def test_parte_diario_v3_resumen_hides_nomina_internal_states():
+    state = ParteDiarioState(
+        oportunidad_id=1,
+        idproyecto=10,
+        fecha="2026-09-03",
+        novedades=[
+            NovedadPersonal(
+                nombre="Acosta, Jorge",
+                estado_codigo="TRA",
+                horas=0,
+                descripcion='{"tipo":"traspaso"}',
+            ),
+            NovedadPersonal(
+                nombre="Ruiz, Falcon",
+                estado_codigo="ALT",
+                horas=9,
+                descripcion="alta",
+            ),
+            NovedadPersonal(
+                nombre="Conti, Luis",
+                estado_codigo="BAJ",
+                horas=0,
+                descripcion="baja",
+            ),
+            NovedadPersonal(
+                nombre="Cabrera, Diego",
+                estado_codigo="ENF",
+                horas=0,
+                descripcion="enfermo",
+            ),
+        ],
+        pendientes_ambiguos=[
+            PendienteAmbiguo(nombre="Fernandez, Karina", estado_codigo="TRA", descripcion="traspaso"),
+        ],
+    )
+
+    reply = renderer.confirmado(state)
+
+    assert "Cabrera, Diego (sin validar): ENF, 0h, motivo: enfermo" in reply
+    assert "Acosta, Jorge" not in reply
+    assert "Ruiz, Falcon" not in reply
+    assert "Conti, Luis" not in reply
+    assert "Fernandez, Karina" not in reply
+    assert "traspaso" not in reply
 
 
 def test_parte_diario_v3_validation_without_candidates_allows_retry_none_or_new_load():

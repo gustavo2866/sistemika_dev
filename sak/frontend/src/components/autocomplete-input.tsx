@@ -58,6 +58,7 @@ export const AutocompleteInput = (
         | ((option: Choice | undefined) => React.ReactNode);
       onSelectionChange?: (choice: Choice | null) => void;
       optionFilter?: (choice: Choice) => boolean;
+      optionSort?: (left: Choice, right: Choice) => number;
     },
 ) => {
   const {
@@ -194,6 +195,9 @@ export const AutocompleteInput = (
   let finalChoices = props.optionFilter
     ? allChoices.filter(props.optionFilter)
     : allChoices;
+  if (props.optionSort) {
+    finalChoices = [...finalChoices].sort(props.optionSort);
+  }
   if (createItem) {
     finalChoices = [...finalChoices, createItem];
   }

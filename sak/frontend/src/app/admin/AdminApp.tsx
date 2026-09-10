@@ -37,6 +37,7 @@ import {
   Phone,
   Settings,
   ClipboardList,
+  Bot,
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -237,11 +238,12 @@ import {
 } from "@/app/resources/constructora/tarjas";
 import { TarjaDetalleList } from "@/app/resources/constructora/tarja-detalle/list";
 import {
-  TarjaNovedadList,
-  TarjaNovedadCreate,
-  TarjaNovedadEdit,
-  TarjaNovedadShow,
-} from "@/app/resources/constructora/tarja-novedades";
+  TarjaNominaList,
+  TarjaNominaCreate,
+  TarjaNominaEdit,
+  TarjaNominaShow,
+  TarjaNominaTraslado,
+} from "@/app/resources/constructora/tarja-nomina";
 import {
   NominaList,
   NominaCreate,
@@ -366,6 +368,7 @@ import {
   CRMCelularShow,
 } from "@/app/resources/crm/crm-celulares";
 import { CRMChatList, CRMChatShow } from "@/app/resources/crm/crm-chat";
+import { AgentChatList } from "@/app/resources/agente-chat";
 import {
   CRMMensajeList,
   CRMMensajeCreate,
@@ -835,14 +838,14 @@ const AdminApp = () => {
         options={{ label: "Tarja Detalle" }}
       />
       <Resource
-        name="tarja-novedades"
-        list={TarjaNovedadList}
-        create={TarjaNovedadCreate}
-        edit={TarjaNovedadEdit}
-        show={TarjaNovedadShow}
+        name="tarja-nomina"
+        list={TarjaNominaList}
+        create={TarjaNominaCreate}
+        edit={TarjaNominaEdit}
+        show={TarjaNominaShow}
         recordRepresentation="id"
         icon={ClipboardCheck}
-        options={{ label: "Tarja Novedades" }}
+        options={{ label: "Tarja Nomina" }}
       />
       <Resource
         name="parte-diario"
@@ -853,6 +856,13 @@ const AdminApp = () => {
         recordRepresentation="descripcion"
         icon={NotebookPen}
         options={{ label: "Parte Diario" }}
+      />
+      <Resource
+        name="agente-chat"
+        list={AgentChatList}
+        recordRepresentation="id"
+        icon={Bot}
+        options={{ label: "Chat agente" }}
       />
       <Resource
         name="parte-diario-estados"
@@ -1082,6 +1092,7 @@ const AdminApp = () => {
         <Route path="/crm/panel" element={<CRMOportunidadPanelPage />} />
         <Route path="/tarjas/panel" element={<TarjaPanel />} />
         <Route path="/tarjas/:id/detalle" element={<TarjaDetalleList />} />
+        <Route path="/tarja-nomina/:id/trasladar" element={<TarjaNominaTraslado />} />
         <Route path="/administracion/reporte-powerbi" element={<PowerBiReportPage />} />
         <Route path="/crm/oportunidades/:id/accion_cotizar" element={<CRMOportunidadAccionCotizar />} />
         <Route path="/crm/oportunidades/:id/accion_reservar" element={<CRMOportunidadAccionReservar />} />

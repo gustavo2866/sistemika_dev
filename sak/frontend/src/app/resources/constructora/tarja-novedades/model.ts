@@ -43,8 +43,17 @@ export type TarjaNovedad = {
   nomina_tarea_id?: number | null;
   horas_justificadas: number;
   presentismo: boolean;
-  adicional: number;
-  premio: number;
+  presentismo_importe: number;
+  adicional_importe: number;
+  premio: boolean;
+  premio_importe: number;
+  viatico: boolean;
+  viatico_importe: number;
+  sueldo_importe: number;
+  mejora_importe: number;
+  cargas_importe: number;
+  fecha_desde: string;
+  fecha_hasta: string;
   observaciones?: string | null;
   documentos?: string[] | null;
   created_at: string;
@@ -58,8 +67,17 @@ export const tarjaNovedadSchema = z.object({
   nomina_tarea_id: optionalId,
   horas_justificadas: amountFromInput,
   presentismo: booleanFromInput,
-  adicional: amountFromInput,
-  premio: amountFromInput,
+  presentismo_importe: amountFromInput,
+  adicional_importe: amountFromInput,
+  premio: booleanFromInput,
+  premio_importe: amountFromInput,
+  viatico: booleanFromInput,
+  viatico_importe: amountFromInput,
+  sueldo_importe: amountFromInput,
+  mejora_importe: amountFromInput,
+  cargas_importe: amountFromInput,
+  fecha_desde: z.string().min(1),
+  fecha_hasta: z.string().min(1),
   observaciones: z.preprocess(
     emptyToUndefined,
     z.string().max(VALIDATION_RULES.OBSERVACIONES.MAX_LENGTH).optional(),
@@ -75,8 +93,17 @@ export const TARJA_NOVEDAD_DEFAULT: TarjaNovedadFormValues = {
   nomina_tarea_id: undefined,
   horas_justificadas: 0,
   presentismo: false,
-  adicional: 0,
-  premio: 0,
+  presentismo_importe: 0,
+  adicional_importe: 0,
+  premio: false,
+  premio_importe: 0,
+  viatico: false,
+  viatico_importe: 0,
+  sueldo_importe: 0,
+  mejora_importe: 0,
+  cargas_importe: 0,
+  fecha_desde: "",
+  fecha_hasta: "",
   observaciones: "",
 };
 
@@ -104,8 +131,15 @@ export const normalizeTarjaNovedadPayload = (data: unknown) => {
       : Number(payload.nomina_tarea_id);
   payload.horas_justificadas = Number(payload.horas_justificadas ?? 0);
   payload.presentismo = Boolean(payload.presentismo);
-  payload.adicional = Number(payload.adicional ?? 0);
-  payload.premio = Number(payload.premio ?? 0);
+  payload.presentismo_importe = Number(payload.presentismo_importe ?? 0);
+  payload.adicional_importe = Number(payload.adicional_importe ?? 0);
+  payload.premio = Boolean(payload.premio);
+  payload.premio_importe = Number(payload.premio_importe ?? 0);
+  payload.viatico = Boolean(payload.viatico);
+  payload.viatico_importe = Number(payload.viatico_importe ?? 0);
+  payload.sueldo_importe = Number(payload.sueldo_importe ?? 0);
+  payload.mejora_importe = Number(payload.mejora_importe ?? 0);
+  payload.cargas_importe = Number(payload.cargas_importe ?? 0);
   payload.observaciones = trimNullableText(payload.observaciones as string | null);
 
   return payload;

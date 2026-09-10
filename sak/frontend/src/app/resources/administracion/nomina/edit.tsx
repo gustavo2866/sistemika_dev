@@ -4,15 +4,7 @@ import { Edit } from "@/components/edit";
 import { FormOrderDeleteButton } from "@/components/forms";
 import { NominaForm } from "./form";
 import { normalizeNominaPayload } from "./model";
-import { NominaBackButton } from "./navigation-title";
 import { useLocation, useNavigate } from "react-router-dom";
-
-const NominaEditTitle = () => (
-  <div className="flex items-center gap-2">
-    <NominaBackButton />
-    <span>Editar empleado</span>
-  </div>
-);
 
 export const NominaEdit = ({
   embedded = false,
@@ -34,7 +26,7 @@ export const NominaEdit = ({
     <Edit
       id={id}
       redirect={resolvedRedirect}
-      title={<NominaEditTitle />}
+      title="Editar empleado"
       mutationMode="pessimistic"
       transform={(data: any) => normalizeNominaPayload(data)}
       showBreadcrumb={!embedded}

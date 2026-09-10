@@ -141,7 +141,7 @@ const HIDDEN_RESOURCES = [
   "nomina-tareas",
   "parte-diario",
   "tarja-detalle",
-  "tarja-novedades",
+  "tarja-nomina",
   "parte-diario-estados",
   "proy-presupuestos",
   "proyecto-encargados",

@@ -18,11 +18,23 @@ if str(BACKEND_ROOT) not in sys.path:
 
 os.environ.setdefault("JWT_SECRET", "test-secret")
 
-# Parchar SQLite para aceptar JSONB (lo trata como JSON texto).
+# Parchar SQLite para aceptar JSONB (lo trata como JSON texto) y defaults tipo PostgreSQL.
 # Debe hacerse ANTES de importar los modelos que usan JSONB.
-from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler  # noqa: E402
+from sqlalchemy.dialects.sqlite.base import SQLiteCompiler, SQLiteTypeCompiler  # noqa: E402
 
 SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "JSON"  # type: ignore[attr-defined]
+
+
+def _sqlite_visit_textclause(self, clause, **kw):
+    sql = clause.text
+    if "timezone('utc'::text, now())" in sql:
+        return "CURRENT_TIMESTAMP"
+    if "now()" in sql:
+        sql = sql.replace("now()", "CURRENT_TIMESTAMP")
+    return sql
+
+
+SQLiteCompiler.visit_textclause = _sqlite_visit_textclause  # type: ignore[attr-defined]
 
 import pytest  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402

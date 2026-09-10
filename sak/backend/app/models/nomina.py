@@ -25,7 +25,6 @@ class Nomina(Base, table=True):
     apellido: str = Field(max_length=120, description="Apellido del empleado")
     dni: str = Field(
         max_length=20,
-        unique=True,
         index=True,
         description="Documento de identidad",
     )

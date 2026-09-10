@@ -304,6 +304,15 @@ class ParteDiarioSubprocess:
         draft = state.draft()
         if draft.fecha:
             return
+        target_date = _parse_fecha_reference_in_text(text)
+        if target_date is not None:
+            if target_date > _today():
+                return
+            draft.fecha = target_date.isoformat()
+            state.set_draft(draft)
+            state.fecha_objetivo = draft.fecha
+            state.fecha_referida_explicita = True
+            return
         weekday = _weekday_only_reference(text)
         if weekday is not None:
             state.dia_semana_objetivo = weekday
@@ -361,10 +370,22 @@ class ParteDiarioSubprocess:
             if _is_date_menu_command(command) or _parse_fecha_value(message.text):
                 return await self._handle_fecha_selection(message, context, state, emisor=emisor)
             await self._infer_initial_date(message, state)
+            if _is_parte_diario_start_command(command):
+                return await self._preparar_fecha(context, state, emisor=emisor)
             prepared = await self._preparar_fecha(context, state, reply_on_success=False, emisor=emisor)
             if prepared is not None:
                 return prepared
             return await self._handle_carga(message, context, state)
+
+        selected_by_text = _select_obra_option_from_text(message.text, options)
+        if selected_by_text is not None:
+            state.set_obra(selected_by_text)
+            if state.modo_pendientes:
+                return self._show_pending_parts_selection(context, state)
+            if _is_date_menu_command(command) or _parse_fecha_value(message.text):
+                return await self._handle_fecha_selection(message, context, state, emisor=emisor)
+            await self._infer_initial_date(message, state)
+            return await self._preparar_fecha(context, state, emisor=emisor)
 
         state.etapa = "seleccionar_obra"
         state.opciones_obra = options
@@ -390,6 +411,17 @@ class ParteDiarioSubprocess:
                 source="parte_diario_obra_selection",
                 prefix="Carga de parte diario cancelada.",
             )
+        selected_by_text = _select_obra_option_from_text(message.text, state.opciones_obra)
+        if selected_by_text is not None:
+            state.set_obra(selected_by_text)
+            state.fecha_menu_pendiente = False
+            if state.modo_pendientes:
+                state.texto_fecha_inicial = None
+                return self._show_pending_parts_selection(context, state)
+            if state.texto_fecha_inicial:
+                await self._infer_initial_date_text(state.texto_fecha_inicial, state)
+                state.texto_fecha_inicial = None
+            return await self._preparar_fecha(context, state, emisor=emisor)
         try:
             selected_option = int(command)
         except ValueError:
@@ -2905,6 +2937,54 @@ def _seleccionar_obra(state: ParteDiarioV3State) -> str:
     return f"En que obra queres cargar el parte diario?\n{options}"
 
 
+def _select_obra_option_from_text(
+    text: str | None,
+    options: list[ParteDiarioOption],
+) -> ParteDiarioOption | None:
+    query = _obra_selection_query(text)
+    if not query or not options:
+        return None
+    scored = [
+        (project_match_score(query, option.nombre), option)
+        for option in options
+    ]
+    strong = [(score, option) for score, option in scored if score >= 0.75]
+    if len(strong) != 1:
+        return None
+    return strong[0][1]
+
+
+def _obra_selection_query(text: str | None) -> str:
+    tokens = [
+        token
+        for token in normalize_text(text).split()
+        if token
+        not in {
+            "parte",
+            "partes",
+            "diario",
+            "diarios",
+            "cargar",
+            "carga",
+            "cargo",
+            "obra",
+            "obras",
+            "pendiente",
+            "pendientes",
+            "de",
+            "del",
+            "la",
+            "el",
+            "en",
+            "para",
+            "por",
+            "quiero",
+            "necesito",
+        }
+    ]
+    return " ".join(tokens)
+
+
 def _render_fecha_menu(
     options: list[ParteDiarioFechaOption],
     *,
@@ -3504,6 +3584,34 @@ def _parse_fecha_value(text: str | None) -> str | None:
         return None
 
 
+def _parse_fecha_reference_in_text(text: str | None) -> date | None:
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    iso_match = re.search(r"\b(20\d{2}-\d{1,2}-\d{1,2})\b", raw)
+    if iso_match:
+        try:
+            return date.fromisoformat(iso_match.group(1))
+        except ValueError:
+            return None
+    match = re.search(r"\b(\d{1,2})\s*(?:/|-)\s*(\d{1,2})(?:\s*(?:/|-)\s*(\d{2,4}))?\b", raw)
+    if not match:
+        return None
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year_text = match.group(3)
+    if year_text:
+        year = int(year_text)
+        if year < 100:
+            year += 2000
+    else:
+        year = _today().year
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
 def _looks_like_internal_query(text: str) -> bool:
     command = _normalize_command(text)
     query_terms = {
@@ -3865,6 +3973,11 @@ def _normalize_phone(value: str | None) -> str:
 
 def _is_date_menu_command(command: str) -> bool:
     return command in {"parte diario", "parte diarios", "partes diarios"}
+
+
+def _is_parte_diario_start_command(command: str) -> bool:
+    tokens = set(command.split())
+    return "parte" in tokens and ("diario" in tokens or "diarios" in tokens)
 
 
 def _is_pending_parts_command(command: str) -> bool:

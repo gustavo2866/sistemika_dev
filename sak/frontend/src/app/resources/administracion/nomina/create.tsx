@@ -3,7 +3,6 @@
 import { Create } from "@/components/create";
 import { NominaForm } from "./form";
 import { normalizeNominaPayload } from "./model";
-import { NominaBackButton } from "./navigation-title";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export const NominaCreate = ({
@@ -22,12 +21,7 @@ export const NominaCreate = ({
   return (
     <Create
       redirect={resolvedRedirect}
-      title={
-        <div className="flex items-center gap-2">
-          <NominaBackButton returnTo={returnTo ?? undefined} />
-          <span>Registrar empleado</span>
-        </div>
-      }
+      title="Registrar empleado"
       transform={(data: any) => normalizeNominaPayload(data)}
       showBreadcrumb={!embedded}
       showHeader={!embedded}

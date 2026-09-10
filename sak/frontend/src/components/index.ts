@@ -50,6 +50,7 @@ export * from "./reference-input";
 export * from "./reference-many-count";
 export * from "./reference-many-field";
 export * from "./refresh-button";
+export * from "./resource-back-button";
 export * from "./saved-queries";
 export * from "./search-input";
 export * from "./select-field";

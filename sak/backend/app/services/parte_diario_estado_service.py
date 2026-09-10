@@ -20,6 +20,7 @@ DEFAULT_PARTE_DIARIO_ESTADOS = (
     ParteDiarioEstadoSeed("FER", "FERIADO"),
     ParteDiarioEstadoSeed("PER", "PERMISO"),
     ParteDiarioEstadoSeed("LLV", "LLUVIA"),
+    ParteDiarioEstadoSeed("BAJ", "BAJA"),
 )
 
 

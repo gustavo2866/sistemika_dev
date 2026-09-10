@@ -15,7 +15,7 @@ from app.models.nomina import Nomina
 from app.models.nomina_catalogos import NominaCategoria, NominaTarea
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.proyecto import Proyecto
-from app.models.tarja import Tarja, TarjaDetalle, TarjaNovedad
+from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
 
 
 router = APIRouter(prefix="/tarja-detalle", tags=["tarja-detalle"])
@@ -129,17 +129,17 @@ def list_tarja_detalle(
         )
     if only_bonos:
         nominas_con_bonos = (
-            select(TarjaNovedad.nomina_id)
-            .where(TarjaNovedad.tarja_id == tarja.id)
-            .where(TarjaNovedad.deleted_at.is_(None))
-            .where(TarjaNovedad.nomina_id.is_not(None))
+            select(TarjaNomina.nomina_id)
+            .where(TarjaNomina.tarja_id == tarja.id)
+            .where(TarjaNomina.deleted_at.is_(None))
+            .where(TarjaNomina.nomina_id.is_not(None))
             .where(
                 or_(
-                    TarjaNovedad.adicional != 0,
-                    TarjaNovedad.premio != 0,
+                    TarjaNomina.adicional_importe != 0,
+                    TarjaNomina.premio_importe != 0,
                 )
             )
-            .group_by(TarjaNovedad.nomina_id)
+            .group_by(TarjaNomina.nomina_id)
         )
         base_stmt = base_stmt.where(TarjaDetalle.idnomina.in_(nominas_con_bonos))
     if only_parte_novedades:
@@ -186,13 +186,13 @@ def list_tarja_detalle(
         .order_by(Nomina.apellido, Nomina.nombre, TarjaDetalle.fecha)
     ).all()
     novedades = session.exec(
-        select(TarjaNovedad, NominaCategoria, NominaTarea)
-        .outerjoin(NominaCategoria, NominaCategoria.id == TarjaNovedad.nomina_categoria_id)
-        .outerjoin(NominaTarea, NominaTarea.id == TarjaNovedad.nomina_tarea_id)
-        .where(TarjaNovedad.tarja_id == tarja.id)
-        .where(TarjaNovedad.deleted_at.is_(None))
-        .where(TarjaNovedad.nomina_id.in_(nomina_ids))
-        .order_by(TarjaNovedad.id)
+        select(TarjaNomina, NominaCategoria, NominaTarea)
+        .outerjoin(NominaCategoria, NominaCategoria.id == TarjaNomina.nomina_categoria_id)
+        .outerjoin(NominaTarea, NominaTarea.id == TarjaNomina.nomina_tarea_id)
+        .where(TarjaNomina.tarja_id == tarja.id)
+        .where(TarjaNomina.deleted_at.is_(None))
+        .where(TarjaNomina.nomina_id.in_(nomina_ids))
+        .order_by(TarjaNomina.id)
     ).all()
     novedades_by_nomina = {
         int(novedad.nomina_id): {
@@ -212,6 +212,8 @@ def list_tarja_detalle(
             {
                 "id": f"{tarja.id}:{nomina_id}",
                 "tarja_id": tarja.id,
+                "proyecto_id": tarja.idproyecto,
+                "encargado_id": tarja.contacto_id,
                 "obra": obra,
                 "idnomina": nomina_id,
                 "empleado": f"{nomina.apellido}, {nomina.nombre}",
@@ -230,8 +232,15 @@ def list_tarja_detalle(
                 "nomina_id": novedad.nomina_id,
                 "horas_justificadas": float(novedad.horas_justificadas),
                 "presentismo": novedad.presentismo,
-                "adicional": float(novedad.adicional),
-                "premio": float(novedad.premio),
+                "presentismo_importe": float(novedad.presentismo_importe),
+                "adicional_importe": float(novedad.adicional_importe),
+                "premio": novedad.premio,
+                "premio_importe": float(novedad.premio_importe),
+                "viatico": novedad.viatico,
+                "viatico_importe": float(novedad.viatico_importe),
+                "sueldo_importe": float(novedad.sueldo_importe),
+                "mejora_importe": float(novedad.mejora_importe),
+                "cargas_importe": float(novedad.cargas_importe),
                 "observaciones": novedad.observaciones,
             }
             row["categoria_codigo"] = novedad_data["categoria_codigo"]

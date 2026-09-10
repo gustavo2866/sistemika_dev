@@ -60,7 +60,7 @@ from app.routers.nomina_catalogos_router import nomina_categoria_router, nomina_
 from app.routers.parte_diario_estado_router import parte_diario_estado_router
 from app.routers.partediario_router import parte_diario_router
 from app.routers.tarja_detalle_router import router as tarja_detalle_router
-from app.routers.tarja_novedad_router import tarja_novedad_router
+from app.routers.tarja_nomina_router import tarja_nomina_router
 from app.routers.tarja_router import tarja_router
 from app.routers.constructora_proyectos_conceptos_router import constructora_proyectos_conceptos_router
 from app.routers.constructora_pedido_router import constructora_pedido_router
@@ -255,7 +255,7 @@ app.include_router(nomina_tarea_router)
 app.include_router(parte_diario_estado_router)
 app.include_router(parte_diario_router)
 app.include_router(tarja_detalle_router)
-app.include_router(tarja_novedad_router)
+app.include_router(tarja_nomina_router)
 app.include_router(tarja_router)
 app.include_router(constructora_proyectos_conceptos_router)
 app.include_router(constructora_pedido_router)
