@@ -59,6 +59,7 @@ from app.models import (
     User,
 )
 from app.models.tarja import Tarja, TarjaNomina
+from app.routers.partediario_router import ParteDiarioCRUD
 from app.services.parte_diario_service import parte_diario_service
 from app.services.parte_diario_estado_service import seed_parte_diario_estados
 
@@ -515,7 +516,22 @@ async def test_parte_diario_v3_listado_usa_tarja_nomina_vigente_por_encargado_y_
             ).to_dict(),
         },
     )
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="Ruiz, Pablo",
+                        estado_codigo="P",
+                        horas=4,
+                        nombre_proyecto="axion",
+                        fuera_de_proyecto=True,
+                    ),
+                ]
+            )
+        )
+    )
 
     result = await process.handle(_message("listado"), context)
 
@@ -793,114 +809,94 @@ def test_parte_diario_v3_fecha_visible_incluye_dia_completo():
     assert "Que novedades hubo ese dia?" in reply
 
 
-@pytest.mark.asyncio
-async def test_parte_diario_v3_novedades_parsea_se_accidento():
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+def test_parte_diario_v3_listado_parsea_referencia_numerada_sin_interpretar_motivo():
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="Medina, Ivan",
+                        estado_codigo="ENF",
+                        descripcion="enfermo en casa",
+                    ),
+                ]
+            )
+        )
+    )
     options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
-    estados = [
-        EstadoItem(id=1, abreviatura="FAL", nombre="Falta"),
-        EstadoItem(id=2, abreviatura="ACC", nombre="Accidente"),
-    ]
 
-    parsed, error = await process._parse_asistencia_entries("23 se accidento", options, estados)
-
-    assert error is None
-    assert parsed[0][5] is None
-    assert parsed[0][0].idnomina == 123
-    assert parsed[0][1].abreviatura == "ACC"
-
-
-@pytest.mark.asyncio
-async def test_parte_diario_v3_novedades_usa_llm_si_motivo_no_matchea_local():
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
-    estados = [
-        EstadoItem(id=1, abreviatura="FAL", nombre="Falta"),
-        EstadoItem(id=2, abreviatura="PER", nombre="Permiso"),
-    ]
-
-    parsed, error = await process._parse_asistencia_entries("23 tramite personal", options, estados)
-
-    assert error is None
-    assert parsed[0][1].abreviatura == "PER"
-
-
-@pytest.mark.asyncio
-async def test_parte_diario_v3_listado_parsea_trabajo_con_horas():
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
-    estados = [
-        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
-        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
-    ]
-
-    parsed, error = await process._parse_asistencia_entries("23 trabajo 10hs", options, estados)
+    parsed, error = process._parse_asistencia_entries("23 se accidento", options)
 
     assert error is None
     assert parsed[0][0].idnomina == 123
-    assert parsed[0][1].abreviatura == "P"
-    assert parsed[0][2] == "trabajo 10hs"
-    assert parsed[0][3] == 10.0
+    assert parsed[0][1] == "se accidento"
 
 
-@pytest.mark.asyncio
-async def test_parte_diario_v3_listado_parsea_trabajo_en_otra_obra_sin_horas():
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
-    estados = [
-        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
-        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
+def test_parte_diario_v3_listado_parsea_multiples_referencias_numeradas():
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="Ruiz, Pablo",
+                        estado_codigo="P",
+                        horas=4,
+                        nombre_proyecto="axion",
+                        fuera_de_proyecto=True,
+                    ),
+                ]
+            )
+        )
+    )
+    options = [
+        ParteDiarioAsistenciaOption(opcion=1, idnomina=123, nombre="Juan", apellido="Perez"),
+        ParteDiarioAsistenciaOption(opcion=8, idnomina=456, nombre="Ana", apellido="Gomez"),
     ]
 
-    parsed, error = await process._parse_asistencia_entries("23 fue a Francia 118", options, estados)
+    parsed, error = process._parse_asistencia_entries("1 accidente, 8 enfermo", options)
 
     assert error is None
-    assert parsed[0][0].idnomina == 123
-    assert parsed[0][1].abreviatura == "P"
-    assert parsed[0][3] == 9.0
-    assert parsed[0][4] == "francia 118"
-
-
-@pytest.mark.asyncio
-async def test_parte_diario_v3_listado_parsea_trabajo_en_otra_obra_con_horas():
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
-    estados = [
-        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
-        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
+    assert [(option.idnomina, motivo) for option, motivo in parsed] == [
+        (123, "accidente"),
+        (456, "enfermo"),
     ]
 
-    parsed, error = await process._parse_asistencia_entries("23 trabajo en Francia 118 7hs", options, estados)
+
+def test_parte_diario_v3_listado_normaliza_input_comun_con_idnomina():
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="Medina, Ivan",
+                        estado_codigo="ENF",
+                        descripcion="enfermo en casa",
+                    ),
+                ]
+            )
+        )
+    )
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+
+    parsed, error = process._parse_asistencia_entries("23 trabajo en Francia 118 7hs", options)
 
     assert error is None
-    assert parsed[0][1].abreviatura == "P"
-    assert parsed[0][3] == 7.0
-    assert parsed[0][4] == "francia 118"
-
-
-@pytest.mark.asyncio
-async def test_parte_diario_v3_listado_resuelve_id_de_obra_destino():
-    class ProbeProcess(ParteDiarioSubprocess):
-        def _resolve_asistencia_external_project(self, state, project_text):
-            return 200, "Francia 118", None
-
-    process = ProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
-    estados = [
-        EstadoItem(id=1, abreviatura="P", nombre="PRESENTE"),
-        EstadoItem(id=2, abreviatura="FAL", nombre="Falta"),
-    ]
-
-    parsed, error = await process._parse_asistencia_entries(
-        "23 fue a Francia 118",
-        options,
-        estados,
-        state=ParteDiarioV3State(proyecto_id=100),
+    assert process._asistencia_interpreter_text(parsed) == (
+        "[idnomina=123] Perez, Juan: trabajo en Francia 118 7hs"
     )
 
-    assert error is None
-    assert parsed[0][4] == "Francia 118"
-    assert parsed[0][5] == 200
+
+def test_parte_diario_v3_listado_rechaza_numero_fuera_de_pagina():
+    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
+    options = [ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")]
+
+    parsed, error = process._parse_asistencia_entries("24 enfermo", options)
+
+    assert parsed == []
+    assert "El numero 24 no esta en esta pagina" in str(error)
 
 
 def test_parte_diario_v3_listado_aplica_presente_con_horas():
@@ -987,6 +983,38 @@ def test_parte_diario_v3_carga_agrega_empleado_actual_en_otra_obra_sin_horas():
     assert result.next_state.novedades[0].nombre_proyecto == "Francia 118"
 
 
+def test_parte_diario_v3_executor_prioriza_idnomina_resuelto():
+    state = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    nominas = [
+        NominaItem(idnomina=123, nombre="Juan", apellido="Perez", idproyecto=100),
+        NominaItem(idnomina=124, nombre="Pedro", apellido="Perez", idproyecto=100),
+    ]
+    estados = [EstadoItem(id=1, abreviatura="ACC", nombre="Accidente")]
+
+    result = execute_plan(
+        state,
+        TurnPlan(
+            operations=[
+                ParteDiarioOperation(
+                    type="agregar_novedad",
+                    idnomina=124,
+                    nombre="Perez",
+                    estado_codigo="ACC",
+                    descripcion="accidente",
+                )
+            ]
+        ),
+        nominas,
+        nominas,
+        estados,
+    )
+
+    assert result.errors == []
+    assert result.next_state.pendientes_ambiguos == []
+    assert result.next_state.novedades[0].idnomina == 124
+    assert result.next_state.novedades[0].nombre == "Perez, Pedro"
+
+
 def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
     class FakeResult:
         def __init__(self, rows):
@@ -996,7 +1024,13 @@ def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
             return self._rows
 
     class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
         def exec(self, query):
+            self.calls += 1
+            if self.calls > 1:
+                return FakeResult([])
             return FakeResult(
                 [
                     SimpleNamespace(id=200, nombre="Francia 118"),
@@ -1024,12 +1058,1101 @@ def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
     assert plan.operations[0].estado_codigo == "P"
 
 
+@pytest.mark.asyncio
+async def test_parte_diario_v3_trabajo_en_obra_con_varios_encargados_pide_encargado(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz = Nomina(nombre="Pablo", apellido="Ruiz", dni="parte-v3-ruiz-axion", idproyecto=seeded_parte_v3["project"].id)
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    encargado_axion_1 = CRMContacto(
+        nombre_completo="Encargado Axion Uno",
+        telefonos=["549333333"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    encargado_axion_2 = CRMContacto(
+        nombre_completo="Encargado Axion Dos",
+        telefonos=["549444444"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(axion)
+    db_session.add(encargado_axion_1)
+    db_session.add(encargado_axion_2)
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=axion.id,
+            contacto_id=encargado_axion_1.id,
+            activo=True,
+        )
+    )
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=axion.id,
+            contacto_id=encargado_axion_2.id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    state = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 10).isoformat(),
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": state.to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=4,
+                        fuera_de_proyecto=True,
+                        nombre_proyecto="axion",
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("ruiz trabajo 4hs en axion"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["esperando"] == "confirmacion_ambiguos"
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "encargado"
+    assert draft["pendientes_ambiguos"][0]["idproyecto_destino"] == axion.id
+    assert {item["nombre"] for item in draft["pendientes_ambiguos"][0]["opciones_encargado_destino"]} == {
+        "Encargado Axion Uno",
+        "Encargado Axion Dos",
+    }
+    assert "A que encargado de Axion corresponde Ruiz?" in (result.reply_text or "")
+    assert "Encargado Axion Uno" in (result.reply_text or "")
+    assert "Encargado Axion Dos" in (result.reply_text or "")
+
+    selected = await process.handle(_message("1", external_id="wamid-axion-manager"), result.context)
+    selected_draft = selected.context.process_state["parte_state"]
+
+    assert selected_draft["pendientes_ambiguos"] == []
+    assert selected_draft["novedades"][0]["idnomina"] == ruiz.id
+    assert selected_draft["novedades"][0]["fuera_de_proyecto"] is True
+    assert selected_draft["novedades"][0]["idproyecto_destino"] == axion.id
+    assert selected_draft["novedades"][0]["contacto_id_destino"] == encargado_axion_2.id
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_obra_destino_sin_match_muestra_obras_activas_resumidas(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    medina = Nomina(
+        nombre="Ivan",
+        apellido="Medina",
+        dni="parte-v3-medina-cister",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    active_project = Proyecto(
+        nombre="ALPHA SISTEMIKA OBRA LARGA",
+        estado="02-ejecucion",
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    inactive_project = Proyecto(
+        nombre="CISTER TERMINADA NO VA",
+        estado="04-terminados",
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(medina)
+    db_session.add(active_project)
+    db_session.add(inactive_project)
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 2).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="medina",
+                        estado_codigo="P",
+                        horas=9,
+                        fuera_de_proyecto=True,
+                        nombre_proyecto="cister",
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("medina trabajo en cister 9hs"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "obra"
+    assert draft["pendientes_ambiguos"][0]["idnomina_resuelto"] == medina.id
+    assert draft["pendientes_ambiguos"][0]["opciones_proyecto_destino"][0]["nombre"] == active_project.nombre
+    assert "A que obra fue Medina?" in (result.reply_text or "")
+    assert "ALPHA SISTEMIKA OBRA" in (result.reply_text or "")
+    assert "CISTER TERMINADA" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_obra_destino_no_referenciada_muestra_obras_activas(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    medina = Nomina(
+        nombre="Ivan",
+        apellido="Medina",
+        dni="parte-v3-medina-sin-obra",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    active_project = Proyecto(
+        nombre="OBRA DESTINO ACTIVA MUY LARGA",
+        estado="01-plan",
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(medina)
+    db_session.add(active_project)
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 2).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="medina",
+                        estado_codigo="P",
+                        horas=9,
+                        fuera_de_proyecto=True,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("medina fue a otra obra 9hs"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "obra"
+    assert draft["pendientes_ambiguos"][0]["opciones_proyecto_destino"][0]["nombre"] == active_project.nombre
+    assert "A que obra fue Medina?" in (result.reply_text or "")
+    assert "OBRA DESTINO ACTIVA" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_usa_validacion_comun_para_encargado_destino(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz = Nomina(
+        nombre="Pablo",
+        apellido="Ruiz",
+        dni="parte-v3-listado-ruiz-axion",
+        idproyecto=seeded_parte_v3["project"].id,
+        encargado_contacto_id=seeded_parte_v3["contact"].id,
+    )
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    encargado_axion_1 = CRMContacto(
+        nombre_completo="Encargado Axion Uno",
+        telefonos=["549333337"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    encargado_axion_2 = CRMContacto(
+        nombre_completo="Encargado Axion Dos",
+        telefonos=["549444447"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(axion)
+    db_session.add(encargado_axion_1)
+    db_session.add(encargado_axion_2)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_1.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_2.id, activo=True))
+    db_session.commit()
+    draft = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 10).isoformat(),
+    )
+    state = ParteDiarioV3State(
+        etapa="novedades",
+        contacto_id=seeded_parte_v3["contact"].id,
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        proyecto_id=seeded_parte_v3["project"].id,
+        nombre_obra="Obra Centro",
+        asistencia_opciones=[
+            ParteDiarioAsistenciaOption(opcion=1, idnomina=ruiz.id, nombre="Pablo", apellido="Ruiz"),
+        ],
+        parte_state=draft.to_dict(),
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="Ruiz, Pablo",
+                        estado_codigo="P",
+                        horas=4,
+                        nombre_proyecto="axion",
+                        fuera_de_proyecto=True,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("1 trabajo 4hs en axion"), context)
+
+    loaded = result.context.process_state["parte_state"]
+    assert result.context.process_state["etapa"] == "validacion_carga"
+    assert result.context.process_state["validacion_origen"] == "novedades"
+    assert result.context.process_state["validacion_tipo"] == "encargado_destino"
+    assert loaded["novedades"] == []
+    assert loaded["esperando"] == "confirmacion_ambiguos"
+    assert loaded["validacion_origen"] == "novedades"
+    assert loaded["pendientes_ambiguos"][0]["idnomina_resuelto"] == ruiz.id
+    assert loaded["pendientes_ambiguos"][0]["destino_pendiente"] == "encargado"
+    assert loaded["pendientes_ambiguos"][0]["idproyecto_destino"] == axion.id
+    assert "A que encargado de Axion corresponde Ruiz, Pablo?" in (result.reply_text or "")
+
+    selected = await process.handle(_message("Encargado Axion Uno", external_id="wamid-listado-manager"), result.context)
+    selected_draft = selected.context.process_state["parte_state"]
+
+    assert selected.context.process_state["etapa"] == "novedades"
+    assert selected.context.process_state["validacion_origen"] is None
+    assert selected.context.process_state["validacion_tipo"] is None
+    assert selected_draft["pendientes_ambiguos"] == []
+    assert selected_draft["esperando"] is None
+    assert selected_draft["validacion_origen"] is None
+    assert selected_draft["novedades"][0]["idnomina"] == ruiz.id
+    assert selected_draft["novedades"][0]["fuera_de_proyecto"] is True
+    assert selected_draft["novedades"][0]["idproyecto_destino"] == axion.id
+    assert selected_draft["novedades"][0]["contacto_id_destino"] == encargado_axion_1.id
+    assert "Cargado." in (selected.reply_text or "")
+    assert "Listado - Obra Centro" in (selected.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_no_trata_enfermo_en_casa_como_transferencia(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    medina = Nomina(
+        nombre="Ivan",
+        apellido="Medina",
+        dni="parte-v3-listado-medina-en-casa",
+        idproyecto=seeded_parte_v3["project"].id,
+        encargado_contacto_id=seeded_parte_v3["contact"].id,
+    )
+    db_session.add(medina)
+    db_session.commit()
+    draft = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 10).isoformat(),
+    )
+    state = ParteDiarioV3State(
+        etapa="novedades",
+        contacto_id=seeded_parte_v3["contact"].id,
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        proyecto_id=seeded_parte_v3["project"].id,
+        nombre_obra="Obra Centro",
+        asistencia_opciones=[
+            ParteDiarioAsistenciaOption(opcion=1, idnomina=medina.id, nombre="Ivan", apellido="Medina"),
+        ],
+        parte_state=draft.to_dict(),
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state=state.to_dict(),
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="Medina, Ivan",
+                        estado_codigo="ENF",
+                        descripcion="enfermo en casa",
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("1 enfermo en casa"), context)
+
+    loaded = result.context.process_state["parte_state"]
+    assert loaded["pendientes_ambiguos"] == []
+    assert loaded["novedades"][0]["idnomina"] == medina.id
+    assert loaded["novedades"][0]["estado_codigo"] == "ENF"
+    assert loaded["novedades"][0]["fuera_de_proyecto"] is False
+    assert loaded["novedades"][0]["validar_destino_trabajo"] is False
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_listado_delega_input_normalizado_al_llm_comun(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    class CapturingLLM(FakeParteDiarioLLM):
+        def __init__(self, plan: TurnPlan) -> None:
+            super().__init__(plan)
+            self.messages: list[str] = []
+
+        async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+            self.messages.append(mensaje)
+            return self.plan
+
+    medina = Nomina(
+        nombre="Ivan",
+        apellido="Medina",
+        dni="parte-v3-listado-medina-normalizado",
+        idproyecto=seeded_parte_v3["project"].id,
+        encargado_contacto_id=seeded_parte_v3["contact"].id,
+    )
+    db_session.add(medina)
+    db_session.commit()
+    draft = ParteDiarioState(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 6, 10).isoformat(),
+    )
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state=ParteDiarioV3State(
+            etapa="novedades",
+            contacto_id=seeded_parte_v3["contact"].id,
+            oportunidad_id=seeded_parte_v3["opportunity"].id,
+            proyecto_id=seeded_parte_v3["project"].id,
+            nombre_obra="Obra Centro",
+            asistencia_opciones=[
+                ParteDiarioAsistenciaOption(opcion=1, idnomina=medina.id, nombre="Ivan", apellido="Medina"),
+            ],
+            parte_state=draft.to_dict(),
+        ).to_dict(),
+    )
+    llm = CapturingLLM(
+        TurnPlan(
+            operations=[
+                ParteDiarioOperation(
+                    type="agregar_novedad",
+                    nombre="Medina, Ivan",
+                    estado_codigo="ENF",
+                    descripcion="enfermo",
+                ),
+            ]
+        )
+    )
+    process = ParteDiarioSubprocess(llm_client=llm)
+
+    result = await process.handle(_message("1 enfermo"), context)
+
+    loaded = result.context.process_state["parte_state"]
+    assert llm.messages == [f"[idnomina={medina.id}] Medina, Ivan: enfermo"]
+    assert loaded["novedades"][0]["idnomina"] == medina.id
+    assert loaded["novedades"][0]["estado_codigo"] == "ENF"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_infiere_obra_destino_si_llm_no_marca_fuera_de_proyecto(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz = Nomina(
+        nombre="Cristian Tomas",
+        apellido="Ruiz",
+        dni="parte-v3-ruiz-axion-infer",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    encargado_axion_1 = CRMContacto(
+        nombre_completo="Encargado Axion Uno",
+        telefonos=["549333335"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    encargado_axion_2 = CRMContacto(
+        nombre_completo="Encargado Axion Dos",
+        telefonos=["549444445"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(axion)
+    db_session.add(encargado_axion_1)
+    db_session.add(encargado_axion_2)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_1.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_2.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 3).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=3,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("ruiz trabajo 3hs en axion"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["pendientes_ambiguos"][0]["nombre"] == "ruiz"
+    assert draft["pendientes_ambiguos"][0]["nombre_proyecto"] == "Axion"
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "encargado"
+    assert "A que encargado de Axion corresponde Ruiz?" in (result.reply_text or "")
+    assert "RUIZ, CRISTIAN TOMAS: P, 3h" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_trabajo_con_horas_sin_obra_no_es_transferencia(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    medina = Nomina(
+        nombre="Ivan",
+        apellido="Medina",
+        dni="parte-v3-medina-horas-sin-obra",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    db_session.add(medina)
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 3).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="medina",
+                        estado_codigo="P",
+                        horas=4,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("medina trabajo 4hs"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["pendientes_ambiguos"] == []
+    assert draft["novedades"][0]["idnomina"] == medina.id
+    assert draft["novedades"][0]["horas"] == 4
+    assert draft["novedades"][0]["fuera_de_proyecto"] is False
+    assert draft["novedades"][0]["validar_destino_trabajo"] is False
+
+
+@pytest.mark.parametrize(
+    ("mensaje", "horas"),
+    [
+        ("medina trabajo 4hs en francia", 4),
+        ("medina estuvo en francia", None),
+        ("mande a medina a francia", None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_parte_diario_v3_infiere_transferencia_por_frase_destino(
+    db_session: Session,
+    seeded_parte_v3,
+    mensaje: str,
+    horas: float | None,
+):
+    medina = Nomina(
+        nombre="Ivan",
+        apellido="Medina",
+        dni=f"parte-v3-medina-destino-{normalize_text(mensaje).replace(' ', '-')}",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    francia = Proyecto(nombre="Francia", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    encargado = CRMContacto(
+        nombre_completo="Encargado Francia",
+        telefonos=[f"549777{len(mensaje)}"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(medina)
+    db_session.add(francia)
+    db_session.add(encargado)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=francia.id, contacto_id=encargado.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Obra Centro",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 3).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="medina",
+                        estado_codigo="P",
+                        horas=horas,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message(mensaje), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["pendientes_ambiguos"] == []
+    assert draft["novedades"][0]["idnomina"] == medina.id
+    assert draft["novedades"][0]["fuera_de_proyecto"] is True
+    assert draft["novedades"][0]["validar_destino_trabajo"] is True
+    assert draft["novedades"][0]["idproyecto_destino"] == francia.id
+    assert draft["novedades"][0]["contacto_id_destino"] == encargado.id
+    assert draft["novedades"][0]["nombre_proyecto"] == "Francia"
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_empleado_externo_trabajo_en_obra_pide_encargado_destino(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    ruiz = Nomina(nombre="Cristian Tomas", apellido="Ruiz", dni="parte-v3-ruiz-en-axion", idproyecto=axion.id)
+    encargado_axion_1 = CRMContacto(
+        nombre_completo="Edgardo (Axion)",
+        telefonos=["549333337"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    encargado_axion_2 = CRMContacto(
+        nombre_completo="Gustavo Test",
+        telefonos=["549444447"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(axion)
+    db_session.flush()
+    ruiz.idproyecto = axion.id
+    db_session.add(ruiz)
+    db_session.add(encargado_axion_1)
+    db_session.add(encargado_axion_2)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_1.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_2.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 3).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=3,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("ruiz trabajo 3hs en axion"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["pendientes_ambiguos"][0]["idnomina_resuelto"] == ruiz.id
+    assert draft["pendientes_ambiguos"][0]["validar_destino_trabajo"] is True
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "encargado"
+    assert draft["pendientes_ambiguos"][0]["idproyecto_destino"] == axion.id
+    assert "A que encargado de Axion corresponde Ruiz?" in (result.reply_text or "")
+    assert "RUIZ, CRISTIAN TOMAS (AXION): P, 3h" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_empleado_externo_sin_trabajo_en_obra_no_pide_destino(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    falta = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
+    ).one()
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    db_session.add(axion)
+    db_session.flush()
+    ruiz = Nomina(nombre="Cristian Tomas", apellido="Ruiz", dni="parte-v3-ruiz-falta-axion", idproyecto=axion.id)
+    encargado_axion_1 = CRMContacto(
+        nombre_completo="Encargado Axion Uno",
+        telefonos=["549333338"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    encargado_axion_2 = CRMContacto(
+        nombre_completo="Encargado Axion Dos",
+        telefonos=["549444448"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(encargado_axion_1)
+    db_session.add(encargado_axion_2)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_1.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_2.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 3).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo=falta.abreviatura,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("ruiz falto"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["pendientes_ambiguos"] == []
+    assert draft["novedades"][0]["idnomina"] == ruiz.id
+    assert draft["novedades"][0]["validar_destino_trabajo"] is False
+    assert draft["novedades"][0]["idproyecto_destino"] is None
+    assert draft["novedades"][0]["contacto_id_destino"] is None
+    assert "A que encargado" not in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_flujo_deriva_a_parte_destino_con_encargado_validado(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz = Nomina(
+        nombre="Cristian Tomas",
+        apellido="Ruiz",
+        dni="parte-v3-ruiz-axion-e2e",
+        idproyecto=seeded_parte_v3["project"].id,
+    )
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    edgardo = CRMContacto(
+        nombre_completo="Edgardo Axion",
+        telefonos=["549555333"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    otro = CRMContacto(
+        nombre_completo="Otro Axion",
+        telefonos=["549555444"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(axion)
+    db_session.add(edgardo)
+    db_session.add(otro)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=edgardo.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=otro.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 2).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=4,
+                    ),
+                ]
+            )
+        )
+    )
+
+    asks_manager = await process.handle(_message("ruiz trabajo 4hs en axion"), context)
+    selected = await process.handle(_message("Edgardo Axion", external_id="wamid-axion-edgardo"), asks_manager.context)
+    closed = await process.handle(_message("cerrar", external_id="wamid-axion-cerrar"), selected.context)
+
+    assert closed.metadata["parte_listo"] is True
+    parte_destino = db_session.exec(
+        select(ParteDiario)
+        .where(ParteDiario.idproyecto == axion.id)
+        .where(ParteDiario.fecha == date(2026, 9, 2))
+        .where(ParteDiario.deleted_at.is_(None))
+    ).one()
+    assert parte_destino.contacto_id == edgardo.id
+    detalle_destino = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_destino.id)
+    ).one()
+    assert detalle_destino.idnomina == ruiz.id
+    assert detalle_destino.horas == Decimal("4.00")
+    detalle_origen = db_session.exec(
+        select(ParteDiarioDetalle)
+        .where(ParteDiarioDetalle.parte_diario_id != parte_destino.id)
+        .where(ParteDiarioDetalle.idnomina == ruiz.id)
+    ).one()
+    assert detalle_origen.horas == Decimal("5.00")
+    assert f"[parte_diario_destino_id={parte_destino.id}]" in (detalle_origen.descripcion or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_resuelve_encargado_destino_mencionado_en_mensaje(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz = Nomina(nombre="Pablo", apellido="Ruiz", dni="parte-v3-ruiz-axion-edgardo", idproyecto=seeded_parte_v3["project"].id)
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    edgardo = CRMContacto(
+        nombre_completo="Edgardo Axion",
+        telefonos=["549555555"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    otro = CRMContacto(
+        nombre_completo="Otro Axion",
+        telefonos=["549555556"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(axion)
+    db_session.add(edgardo)
+    db_session.add(otro)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=edgardo.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=otro.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 2).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=9,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("ruiz trabajo 9hs en axion con edgardo"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["pendientes_ambiguos"] == []
+    assert draft["novedades"][0]["idnomina"] == ruiz.id
+    assert draft["novedades"][0]["idproyecto_destino"] == axion.id
+    assert draft["novedades"][0]["contacto_id_destino"] == edgardo.id
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_no_acepta_encargado_destino_si_no_fue_mencionado(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz = Nomina(nombre="Pablo", apellido="Ruiz", dni="parte-v3-ruiz-axion-hallucinated", idproyecto=seeded_parte_v3["project"].id)
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    edgardo = CRMContacto(
+        nombre_completo="Edgardo Axion",
+        telefonos=["549555557"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    otro = CRMContacto(
+        nombre_completo="Otro Axion",
+        telefonos=["549555558"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz)
+    db_session.add(axion)
+    db_session.add(edgardo)
+    db_session.add(otro)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=edgardo.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=otro.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 2).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=4,
+                        fuera_de_proyecto=True,
+                        nombre_proyecto="axion",
+                        contacto_id_destino=edgardo.id,
+                    ),
+                ]
+            )
+        )
+    )
+
+    result = await process.handle(_message("ruiz trabajo 4hs en axion"), context)
+
+    draft = result.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "encargado"
+    assert "A que encargado de Axion corresponde Ruiz?" in (result.reply_text or "")
+
+
+@pytest.mark.asyncio
+async def test_parte_diario_v3_persona_ambigua_con_obra_destino_pide_encargado_despues_de_persona(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    ruiz_pablo = Nomina(nombre="Pablo", apellido="Ruiz", dni="parte-v3-ruiz-axion-amb-1", idproyecto=seeded_parte_v3["project"].id)
+    ruiz_teresa = Nomina(nombre="Teresa", apellido="Ruiz", dni="parte-v3-ruiz-axion-amb-2", idproyecto=seeded_parte_v3["project"].id)
+    axion = Proyecto(nombre="Axion", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    edgardo = CRMContacto(
+        nombre_completo="Edgardo",
+        telefonos=["549555559"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    otro = CRMContacto(
+        nombre_completo="Otro",
+        telefonos=["549555560"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(ruiz_pablo)
+    db_session.add(ruiz_teresa)
+    db_session.add(axion)
+    db_session.add(edgardo)
+    db_session.add(otro)
+    db_session.flush()
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=edgardo.id, activo=True))
+    db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=otro.id, activo=True))
+    db_session.commit()
+    context = V3ConversationContext(
+        conversation_id="meta:account:549111111",
+        active_process="parteDiario",
+        process_state={
+            "etapa": "carga",
+            "contacto_id": seeded_parte_v3["contact"].id,
+            "oportunidad_id": seeded_parte_v3["opportunity"].id,
+            "proyecto_id": seeded_parte_v3["project"].id,
+            "nombre_obra": "Francia 118",
+            "parte_state": ParteDiarioState(
+                oportunidad_id=seeded_parte_v3["opportunity"].id,
+                idproyecto=seeded_parte_v3["project"].id,
+                fecha=date(2026, 9, 2).isoformat(),
+            ).to_dict(),
+        },
+    )
+    process = ParteDiarioSubprocess(
+        llm_client=FakeParteDiarioLLM(
+            TurnPlan(
+                operations=[
+                    ParteDiarioOperation(
+                        type="agregar_novedad",
+                        nombre="ruiz",
+                        estado_codigo="P",
+                        horas=4,
+                    ),
+                ]
+            )
+        )
+    )
+
+    asks_person = await process.handle(_message("ruiz trabajo 4hs en axion"), context)
+    asks_manager = await process.handle(_message("Pablo Ruiz", external_id="wamid-ruiz-pablo"), asks_person.context)
+
+    draft = asks_manager.context.process_state["parte_state"]
+    assert draft["novedades"] == []
+    assert draft["pendientes_ambiguos"][0]["idnomina_resuelto"] == ruiz_pablo.id
+    assert draft["pendientes_ambiguos"][0]["fuera_de_proyecto"] is True
+    assert draft["pendientes_ambiguos"][0]["destino_pendiente"] == "encargado"
+    assert "A que encargado de Axion corresponde Ruiz?" in (asks_manager.reply_text or "")
+
+
 def test_parte_diario_v3_persistencia_deriva_empleado_a_obra_destino():
+    class FakeResult:
+        def first(self):
+            return 1
+
     class FakeSession:
         def get(self, model, item_id):
             if model is Nomina and item_id == 123:
                 return SimpleNamespace(idproyecto=100)
             return None
+
+        def exec(self, query):
+            return FakeResult()
 
     current_items, destination_items = parte_diario_service._split_destination_novedades(
         FakeSession(),
@@ -1044,6 +2167,7 @@ def test_parte_diario_v3_persistencia_deriva_empleado_a_obra_destino():
                 "fuera_de_proyecto": True,
                 "nombre_proyecto": "Francia 118",
                 "idproyecto_destino": 200,
+                "contacto_id_destino": 300,
             }
         ],
         idproyecto=100,
@@ -1065,11 +2189,18 @@ def test_parte_diario_v3_persistencia_deriva_empleado_a_obra_destino():
 
 
 def test_parte_diario_v3_persistencia_deriva_horas_remanentes_a_origen():
+    class FakeResult:
+        def first(self):
+            return 1
+
     class FakeSession:
         def get(self, model, item_id):
             if model is Nomina and item_id == 123:
                 return SimpleNamespace(idproyecto=100)
             return None
+
+        def exec(self, query):
+            return FakeResult()
 
     current_items, destination_items = parte_diario_service._split_destination_novedades(
         FakeSession(),
@@ -1084,6 +2215,7 @@ def test_parte_diario_v3_persistencia_deriva_horas_remanentes_a_origen():
                 "fuera_de_proyecto": True,
                 "nombre_proyecto": "Francia 118",
                 "idproyecto_destino": 200,
+                "contacto_id_destino": 300,
             }
         ],
         idproyecto=100,
@@ -1095,11 +2227,18 @@ def test_parte_diario_v3_persistencia_deriva_horas_remanentes_a_origen():
 
 
 def test_parte_diario_v3_persistencia_deriva_origen_cero_si_no_hay_horas_o_supera_jornada():
+    class FakeResult:
+        def first(self):
+            return 1
+
     class FakeSession:
         def get(self, model, item_id):
             if model is Nomina:
                 return SimpleNamespace(idproyecto=100)
             return None
+
+        def exec(self, query):
+            return FakeResult()
 
     current_without_hours, destination_without_hours = parte_diario_service._split_destination_novedades(
         FakeSession(),
@@ -1112,6 +2251,7 @@ def test_parte_diario_v3_persistencia_deriva_origen_cero_si_no_hay_horas_o_super
                 "fuera_de_proyecto": True,
                 "nombre_proyecto": "Francia 118",
                 "idproyecto_destino": 200,
+                "contacto_id_destino": 300,
             }
         ],
         idproyecto=100,
@@ -1128,6 +2268,7 @@ def test_parte_diario_v3_persistencia_deriva_origen_cero_si_no_hay_horas_o_super
                 "fuera_de_proyecto": True,
                 "nombre_proyecto": "Francia 118",
                 "idproyecto_destino": 200,
+                "contacto_id_destino": 300,
             }
         ],
         idproyecto=100,
@@ -1176,6 +2317,7 @@ def test_parte_diario_v3_persistencia_crea_parte_destino_borrador(monkeypatch):
                 "estado_codigo": "P",
                 "horas": 5.0,
                 "descripcion": "Trabajo derivado",
+                "contacto_id_destino": 206,
             }
         ],
         result={"type": "parte_diario_reply"},
@@ -1187,8 +2329,229 @@ def test_parte_diario_v3_persistencia_crea_parte_destino_borrador(monkeypatch):
     partes = [item for item in fake_session.added if isinstance(item, ParteDiario)]
     details = [item for item in fake_session.added if isinstance(item, ParteDiarioDetalle)]
     assert partes[0].estado == EstadoParteDiario.BORRADOR
+    assert partes[0].contacto_id == 206
     assert details[0].parte_diario_id == 500
     assert details[0].horas == Decimal("5.0")
+
+
+def test_parte_diario_v3_persistencia_rechaza_derivacion_sin_encargado_destino():
+    class FakeSession:
+        def get(self, model, item_id):
+            if model is Nomina and item_id == 123:
+                return SimpleNamespace(idproyecto=100)
+            return None
+
+    with pytest.raises(ValueError, match="requiere encargado destino"):
+        parte_diario_service._split_destination_novedades(
+            FakeSession(),
+            [
+                {
+                    "idnomina": 123,
+                    "idestado": 1,
+                    "estado_codigo": "P",
+                    "horas": 4.0,
+                    "fuera_de_proyecto": True,
+                    "nombre_proyecto": "Axion",
+                    "idproyecto_destino": 200,
+                }
+            ],
+            idproyecto=100,
+            fecha=date(2026, 9, 2),
+        )
+
+
+def test_parte_diario_v3_persistencia_crea_parte_destino_con_encargado_destino(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    axion = Proyecto(nombre="AXION - Emilio Castelar 1003", responsable_id=seeded_parte_v3["contact"].responsable_id)
+    encargado_axion = CRMContacto(
+        nombre_completo="Edgardo Axion",
+        telefonos=["549555111"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    otro_encargado_axion = CRMContacto(
+        nombre_completo="Otro Axion",
+        telefonos=["549555222"],
+        responsable_id=seeded_parte_v3["contact"].responsable_id,
+    )
+    db_session.add(axion)
+    db_session.add(encargado_axion)
+    db_session.add(otro_encargado_axion)
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=axion.id,
+            contacto_id=encargado_axion.id,
+            activo=True,
+        )
+    )
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=axion.id,
+            contacto_id=otro_encargado_axion.id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    result = {
+        "type": "parte_diario_reply",
+        "parte_listo": True,
+        "confirmar_parte": True,
+        "cerrar_parte": True,
+        "idproyecto": seeded_parte_v3["project"].id,
+        "contacto_id": seeded_parte_v3["contact"].id,
+        "fecha": "2026-09-02",
+        "novedades": [
+            {
+                "nombre": "Ruiz, Cristian Tomas",
+                "idnomina": seeded_parte_v3["employee_1"].id,
+                "idestado": presente.id,
+                "estado_codigo": "P",
+                "horas": 4,
+                "descripcion": "trabajo 4hs en axion",
+                "fuera_de_proyecto": True,
+                "nombre_proyecto": axion.nombre,
+                "idproyecto_destino": axion.id,
+                "contacto_id_destino": encargado_axion.id,
+            }
+        ],
+        "pendientes_ambiguos": [],
+        "conflictos_novedad": [],
+    }
+
+    parte_origen = parte_diario_service.create_or_update_from_agent_v3_confirmation(
+        db_session,
+        contacto_id=seeded_parte_v3["contact"].id,
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        result=result,
+        conversation_id="conv-destino-contacto",
+        provider="meta",
+        channel_type="whatsapp",
+        account_ref="account",
+        from_address="549111111",
+        to_address="549999999",
+        external_message_id="wamid-destino-contacto",
+        text="cerrar",
+        message_type="text",
+        raw_payload={"raw": True},
+        normalized_payload={"normalized": True},
+        received_at=datetime(2026, 9, 2, 12, 0, tzinfo=UTC),
+    )
+
+    parte_destino = db_session.exec(
+        select(ParteDiario)
+        .where(ParteDiario.idproyecto == axion.id)
+        .where(ParteDiario.fecha == date(2026, 9, 2))
+        .where(ParteDiario.deleted_at.is_(None))
+    ).one()
+    assert parte_origen.contacto_id == seeded_parte_v3["contact"].id
+    assert parte_destino.contacto_id == encargado_axion.id
+    assert parte_destino.contacto_id != seeded_parte_v3["contact"].id
+    detalle_destino = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_destino.id)
+    ).one()
+    assert detalle_destino.idnomina == seeded_parte_v3["employee_1"].id
+    assert detalle_destino.horas == Decimal("4.00")
+    detalle_origen = db_session.exec(
+        select(ParteDiarioDetalle)
+        .where(ParteDiarioDetalle.parte_diario_id == parte_origen.id)
+        .where(ParteDiarioDetalle.idnomina == seeded_parte_v3["employee_1"].id)
+    ).one()
+    assert f"[parte_diario_destino_id={parte_destino.id}]" in (detalle_origen.descripcion or "")
+
+
+def test_parte_diario_v3_eliminar_novedad_origen_elimina_destino(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    origin = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+        fecha=date(2026, 9, 4),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    destination = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=None,
+        fecha=date(2026, 9, 5),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add(origin)
+    db_session.add(destination)
+    db_session.flush()
+    origin_detail = ParteDiarioDetalle(
+        parte_diario_id=origin.id,
+        idnomina=seeded_parte_v3["employee_1"].id,
+        horas=Decimal("5.00"),
+        descripcion=f"Trabajo en obra destino [parte_diario_destino_id={destination.id}]",
+        origen=OrigenDetalle.AGENTE,
+    )
+    destination_detail = ParteDiarioDetalle(
+        parte_diario_id=destination.id,
+        idnomina=seeded_parte_v3["employee_1"].id,
+        horas=Decimal("4.00"),
+        origen=OrigenDetalle.AGENTE,
+    )
+    db_session.add(origin_detail)
+    db_session.add(destination_detail)
+    db_session.commit()
+    origin_detail_id = origin_detail.id
+    destination_detail_id = destination_detail.id
+
+    ParteDiarioCRUD._delete_detalle(db_session, origin_detail)
+    db_session.commit()
+
+    assert db_session.get(ParteDiarioDetalle, origin_detail_id) is None
+    assert db_session.get(ParteDiarioDetalle, destination_detail_id) is None
+
+
+def test_parte_diario_v3_eliminar_novedad_destino_elimina_origen(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    origin = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+        fecha=date(2026, 9, 6),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    destination = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=None,
+        fecha=date(2026, 9, 7),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add(origin)
+    db_session.add(destination)
+    db_session.flush()
+    origin_detail = ParteDiarioDetalle(
+        parte_diario_id=origin.id,
+        idnomina=seeded_parte_v3["employee_1"].id,
+        horas=Decimal("5.00"),
+        descripcion=f"Trabajo en obra destino [parte_diario_destino_id={destination.id}]",
+        origen=OrigenDetalle.AGENTE,
+    )
+    destination_detail = ParteDiarioDetalle(
+        parte_diario_id=destination.id,
+        idnomina=seeded_parte_v3["employee_1"].id,
+        horas=Decimal("4.00"),
+        origen=OrigenDetalle.AGENTE,
+    )
+    db_session.add(origin_detail)
+    db_session.add(destination_detail)
+    db_session.commit()
+    origin_detail_id = origin_detail.id
+    destination_detail_id = destination_detail.id
+
+    ParteDiarioCRUD._delete_detalle(db_session, destination_detail)
+    db_session.commit()
+
+    assert db_session.get(ParteDiarioDetalle, origin_detail_id) is None
+    assert db_session.get(ParteDiarioDetalle, destination_detail_id) is None
 
 
 def test_parte_diario_v3_persistencia_rechaza_parte_destino_confirmado(monkeypatch):
@@ -1232,6 +2595,7 @@ def test_parte_diario_v3_persistencia_rechaza_parte_destino_confirmado(monkeypat
                     "estado_codigo": "P",
                     "horas": 8.0,
                     "descripcion": "Trabajo derivado",
+                    "contacto_id_destino": 206,
                 }
             ],
             result={"type": "parte_diario_reply"},
@@ -4190,7 +5554,9 @@ async def test_parte_diario_v3_load_asks_to_select_similar_pending_name(seeded_p
 
     loaded = await process.handle(_message("Petro falto"), context)
     loaded_draft = loaded.context.process_state["parte_state"]
-    assert loaded.context.process_state["etapa"] == "carga"
+    assert loaded.context.process_state["etapa"] == "validacion_carga"
+    assert loaded.context.process_state["validacion_origen"] == "carga"
+    assert loaded.context.process_state["validacion_tipo"] == "persona"
     assert loaded.context.process_state["parte_state"]["esperando"] == "confirmacion_ambiguos"
     assert loaded_draft["validacion_origen"] == "carga"
     assert loaded_draft["pendientes_ambiguos"][0]["lista_candidatos_mostrada"] is True
@@ -4205,11 +5571,13 @@ async def test_parte_diario_v3_load_asks_to_select_similar_pending_name(seeded_p
 
     assert not carga_agent.calls
     assert selected.context.process_state["etapa"] == "carga"
+    assert selected.context.process_state["validacion_origen"] is None
+    assert selected.context.process_state["validacion_tipo"] is None
     assert selected.context.process_state["parte_state"]["esperando"] is None
     assert selected.context.process_state["parte_state"]["validacion_origen"] is None
     assert selected.metadata["carga_agent_source"] == "deterministic"
     assert selected.metadata["carga_agent_action"] == "seleccionar_persona"
-    assert "Perez, Pedro: FAL, 0h" in (selected.reply_text or "")
+    assert "Perez, Pedro: FAL" in (selected.reply_text or "")
     assert "Hay alguna otra novedad?" in (selected.reply_text or "")
     assert "Opcion 1" not in (loaded.reply_text or "")
 
@@ -4234,21 +5602,23 @@ async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisiona
     loaded = await process.handle(_message("NINGUNO", external_id="wamid-test-3"), validating.context)
 
     assert loaded.context.process_state["etapa"] == "carga"
+    assert loaded.context.process_state["validacion_origen"] is None
+    assert loaded.context.process_state["validacion_tipo"] is None
     assert loaded.context.process_state["parte_state"]["esperando"] is None
     assert loaded.metadata["result"]["parte_listo"] is False
     assert "Petro quedo registrado sin validar" in (loaded.reply_text or "")
-    assert "Petro (sin validar): FAL, 0h" in (loaded.reply_text or "")
+    assert "Petro (sin validar): FAL" in (loaded.reply_text or "")
     assert "Hay alguna otra novedad?" in (loaded.reply_text or "")
 
-    review = await process.handle(_message("no", external_id="wamid-test-review"), loaded.context)
-    confirmation = await process.handle(_message("2", external_id="wamid-test-2"), review.context)
-    result = await process.handle(_message("ok", external_id="wamid-test-4"), confirmation.context)
+    result = await process.handle(_message("no", external_id="wamid-test-review"), loaded.context)
 
-    assert result.context.process_state["etapa"] == "continuar"
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["validacion_origen"] is None
+    assert result.context.process_state["validacion_tipo"] is None
     assert result.metadata["result"]["cerrar_parte"] is True
-    assert "Petro (sin validar): FAL, 0h" in (result.reply_text or "")
+    assert "Petro (sin validar): FAL" in (result.reply_text or "")
     assert len(result.additional_messages) == 1
-    assert "Ahora corresponde cargar el parte del dia" in result.additional_messages[0].text
+    assert "Ahora seguimos con el parte de hoy" in result.additional_messages[0].text
     parte_id = result.metadata["parte_diario_id"]
     details = db_session.exec(
         select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_id)

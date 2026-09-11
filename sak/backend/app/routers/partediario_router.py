@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 import json
+import re
 from typing import Any
 
 from sqlalchemy import func
@@ -23,6 +24,8 @@ from fastapi import Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 # Define NestedCRUD for ParteDiario with its nested detalles
+DESTINATION_PART_REF_RE = re.compile(r"\s*\[parte_diario_destino_id=(\d+)\]\s*$")
+
 
 class ParteDiarioCRUD(NestedCRUD):
     ALTA_ESTADO_CODIGO = "ALT"
@@ -31,6 +34,16 @@ class ParteDiarioCRUD(NestedCRUD):
 
     @staticmethod
     def _delete_detalle(
+        session: Session,
+        detalle: ParteDiarioDetalle,
+    ) -> None:
+        related_details = ParteDiarioCRUD._find_related_destination_details(session, detalle)
+        ParteDiarioCRUD._delete_single_detalle(session, detalle)
+        for related in related_details:
+            ParteDiarioCRUD._delete_single_detalle(session, related)
+
+    @staticmethod
+    def _delete_single_detalle(
         session: Session,
         detalle: ParteDiarioDetalle,
     ) -> None:
@@ -46,6 +59,52 @@ class ParteDiarioCRUD(NestedCRUD):
                 tarja_detalle.parte_diario_detalle_id = None
                 session.add(tarja_detalle)
         session.delete(detalle)
+
+    @staticmethod
+    def _find_related_destination_details(
+        session: Session,
+        detalle: ParteDiarioDetalle,
+    ) -> list[ParteDiarioDetalle]:
+        if detalle.idnomina is None:
+            return []
+
+        destination_part_id = ParteDiarioCRUD._extract_destination_part_id(detalle.descripcion)
+        if destination_part_id is not None:
+            stmt = (
+                select(ParteDiarioDetalle)
+                .where(ParteDiarioDetalle.parte_diario_id == destination_part_id)
+                .where(ParteDiarioDetalle.idnomina == int(detalle.idnomina))
+                .where(ParteDiarioDetalle.deleted_at.is_(None))
+            )
+            if detalle.id is not None:
+                stmt = stmt.where(ParteDiarioDetalle.id != int(detalle.id))
+            return list(session.exec(stmt).all())
+
+        if detalle.parte_diario_id is None:
+            return []
+        stmt = (
+            select(ParteDiarioDetalle)
+            .where(ParteDiarioDetalle.idnomina == int(detalle.idnomina))
+            .where(ParteDiarioDetalle.descripcion.contains("parte_diario_destino_id="))
+            .where(ParteDiarioDetalle.deleted_at.is_(None))
+        )
+        if detalle.id is not None:
+            stmt = stmt.where(ParteDiarioDetalle.id != int(detalle.id))
+        return [
+            related
+            for related in session.exec(stmt).all()
+            if ParteDiarioCRUD._extract_destination_part_id(related.descripcion) == int(detalle.parte_diario_id)
+        ]
+
+    @staticmethod
+    def _extract_destination_part_id(description: str | None) -> int | None:
+        match = DESTINATION_PART_REF_RE.search(str(description or ""))
+        if match is None:
+            return None
+        try:
+            return int(match.group(1))
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _delete_alta_nomina_if_needed(

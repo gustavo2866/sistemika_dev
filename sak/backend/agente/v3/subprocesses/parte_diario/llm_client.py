@@ -242,6 +242,7 @@ def _parse_turn_plan(raw: dict[str, Any]) -> TurnPlan:
                 ParteDiarioOperation(
                     type=operation_type,
                     nombre=str(raw_operation.get("nombre") or "").strip() or None,
+                    idnomina=_parse_int(raw_operation.get("idnomina")),
                     alcance=str(raw_operation.get("alcance") or "").strip() or None,
                     estado_codigo=str(raw_operation.get("estado_codigo") or "").strip().upper() or None,
                     horas=_parse_float(raw_operation.get("horas")),
@@ -249,6 +250,10 @@ def _parse_turn_plan(raw: dict[str, Any]) -> TurnPlan:
                     descripcion=str(raw_operation.get("descripcion") or "").strip() or None,
                     fuera_de_proyecto=bool(raw_operation.get("fuera_de_proyecto")),
                     nombre_proyecto=str(raw_operation.get("nombre_proyecto") or "").strip() or None,
+                    contacto_id_destino=_parse_int(raw_operation.get("contacto_id_destino")),
+                    nombre_encargado_destino=(
+                        str(raw_operation.get("nombre_encargado_destino") or "").strip() or None
+                    ),
                     fecha=str(raw_operation.get("fecha") or "").strip() or None,
                     requested=str(raw_operation.get("requested") or "").strip() or None,
                     reply=str(raw_operation.get("reply") or "").strip() or None,
@@ -309,6 +314,15 @@ def _parse_float(value: Any) -> float | None:
         return None
 
 
+def _parse_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
     codes = [item.abreviatura.upper() for item in estados]
     return {
@@ -331,6 +345,7 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                             "properties": {
                                 "type": {"type": "string", "enum": OPERATION_TYPES},
                                 "nombre": {"type": ["string", "null"]},
+                                "idnomina": {"type": ["integer", "null"]},
                                 "alcance": {"type": ["string", "null"], "enum": ["propia", "obra", "global", None]},
                                 "estado_codigo": {"enum": [*codes, None]},
                                 "horas": {"type": ["number", "null"]},
@@ -345,6 +360,7 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                             "required": [
                                 "type",
                                 "nombre",
+                                "idnomina",
                                 "alcance",
                                 "estado_codigo",
                                 "horas",

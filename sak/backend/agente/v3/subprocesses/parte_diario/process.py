@@ -23,6 +23,8 @@ from agente.v3.subprocesses.parte_diario.executor import (
 )
 from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.models import (
+    DestinoEncargadoOption,
+    DestinoProyectoOption,
     EstadoItem,
     ExecutionResult,
     NominaItem,
@@ -49,6 +51,7 @@ from app.models import (
     ParteDiarioDetalle,
     ParteDiarioEstado,
     Proyecto,
+    ProyectoEncargado,
     Tarja,
     TarjaNomina,
 )
@@ -59,6 +62,21 @@ BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
 logger = logging.getLogger(__name__)
 _RESERVED_OPERATIONS = {"confirmar", "cancelar"}
 _MUTATING_OPERATIONS = {"agregar_novedad", "modificar_novedad", "eliminar_novedad", "sin_novedades"}
+_ACTIVE_DESTINATION_PROJECT_STATES = ("01-plan", "02-ejecucion", "03-conclusion")
+_DESTINATION_CONNECTORS = {"en", "a", "al", "para", "hacia", "hasta"}
+_PRE_RESOLVED_NOMINA_RE = re.compile(
+    r"^\s*\[idnomina=(\d+)\]\s*([^:\n]+?)\s*:\s*(.*?)\s*$",
+    flags=re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _PreResolvedNominaEntry:
+    idnomina: int
+    nombre: str
+    text: str
+
+
 @dataclass(slots=True)
 class TurnResult:
     payload: dict[str, Any] = field(default_factory=dict)
@@ -189,6 +207,7 @@ class ParteDiarioProcess:
                     "No pude interpretar el parte diario. Proba nuevamente con una descripcion breve.",
                 )
             plan = fallback_plan
+        _apply_pre_resolved_nomina(plan, message_text)
 
         validation_error = _validate_plan(plan)
         if validation_error:
@@ -223,7 +242,7 @@ class ParteDiarioProcess:
             if date_error:
                 return self._simple_reply(date_error, keep_active=False)
 
-        project_error = self._resolve_external_project_operations(plan, int(project.id))
+        project_error = self._resolve_external_project_operations(plan, int(project.id), message_text)
         if project_error:
             return self._state_reply(state, project_error)
 
@@ -253,42 +272,109 @@ class ParteDiarioProcess:
             result.keep_active = False
         return self._from_execution(result, plan=plan)
 
-    def _resolve_external_project_operations(self, plan: TurnPlan, current_project_id: int) -> str | None:
+    def _resolve_external_project_operations(
+        self,
+        plan: TurnPlan,
+        current_project_id: int,
+        message_text: str = "",
+    ) -> str | None:
         for operation in plan.operations:
             if operation.type not in {"agregar_novedad", "modificar_novedad"}:
                 continue
-            if not operation.fuera_de_proyecto and not operation.nombre_proyecto:
+            operation_text = _message_text_for_operation(operation, message_text)
+            if not _is_destination_work_operation(operation, operation_text):
                 continue
-            if not str(operation.nombre_proyecto or "").strip():
-                return "Indica a que obra fue a trabajar."
-            resolved_project_id, resolved_project_name, error = self._resolve_external_project_name(
+            operation.validar_destino_trabajo = True
+            inferred_project = _infer_external_project_from_message(operation, operation_text)
+            if inferred_project:
+                operation.fuera_de_proyecto = True
+                operation.nombre_proyecto = operation.nombre_proyecto or inferred_project
+            operation.fuera_de_proyecto = True
+            self._resolve_external_destination_operation(
+                operation,
+                current_project_id=current_project_id,
+                message_text=operation_text,
+            )
+            operation.estado_codigo = operation.estado_codigo or "P"
+        return None
+
+    def _resolve_external_destination_operation(
+        self,
+        operation: ParteDiarioOperation,
+        *,
+        current_project_id: int,
+        message_text: str,
+    ) -> None:
+        if operation.idproyecto_destino is None:
+            resolved_project_id, resolved_project_name, project_options = self._resolve_external_project_name(
                 operation.nombre_proyecto,
                 current_project_id,
             )
-            if error:
-                return error
-            operation.fuera_de_proyecto = True
+            if resolved_project_id is None:
+                operation.destino_pendiente = "obra"
+                operation.opciones_proyecto_destino = project_options
+                return
             operation.idproyecto_destino = resolved_project_id
             operation.nombre_proyecto = resolved_project_name
-            operation.estado_codigo = operation.estado_codigo or "P"
-        return None
+        self._resolve_external_destination_manager(operation, message_text=message_text)
+
+    def _resolve_external_destination_manager(
+        self,
+        target: ParteDiarioOperation | PendienteAmbiguo,
+        *,
+        message_text: str,
+    ) -> None:
+        destination_id = target.idproyecto_destino
+        if destination_id is None:
+            target.destino_pendiente = "obra"
+            return
+        managers = self._load_destination_managers(int(destination_id))
+        if not managers:
+            target.destino_pendiente = "encargado"
+            target.opciones_encargado_destino = []
+            return
+        if len(managers) == 1:
+            selected = managers[0]
+            target.contacto_id_destino = selected.contacto_id
+            target.nombre_encargado_destino = selected.nombre
+            target.destino_pendiente = None
+            target.opciones_encargado_destino = None
+            return
+        selected = _match_destination_manager(
+            message_text,
+            managers,
+            project_text=target.nombre_proyecto,
+        )
+        if selected is not None:
+            target.contacto_id_destino = selected.contacto_id
+            target.nombre_encargado_destino = selected.nombre
+            target.destino_pendiente = None
+            target.opciones_encargado_destino = None
+            return
+        target.destino_pendiente = "encargado"
+        target.opciones_encargado_destino = managers
 
     def _resolve_external_project_name(
         self,
         project_text: str | None,
         current_project_id: int,
-    ) -> tuple[int | None, str | None, str | None]:
+    ) -> tuple[int | None, str | None, list[DestinoProyectoOption]]:
         query = str(project_text or "").strip()
-        if not query:
-            return None, None, "Indica a que obra fue a trabajar."
         projects = list(
             self._session.exec(
                 select(Proyecto)
                 .where(Proyecto.deleted_at.is_(None))
                 .where(Proyecto.id != current_project_id)
+                .where(
+                    (Proyecto.estado.is_(None))
+                    | (Proyecto.estado.in_(_ACTIVE_DESTINATION_PROJECT_STATES))
+                )
                 .order_by(Proyecto.nombre.asc())
             ).all()
         )
+        all_options = _project_options(projects)
+        if not query:
+            return None, None, all_options
         matches = [
             (project_match_score(query, project.nombre), project)
             for project in projects
@@ -296,13 +382,32 @@ class ParteDiarioProcess:
         matches = [(score, project) for score, project in matches if score >= 0.55]
         matches.sort(key=lambda pair: (-pair[0], str(pair[1].nombre or "")))
         if not matches:
-            return None, None, f"No encontre la obra destino '{query}'. Indica el nombre de la obra."
+            return None, None, all_options
         best_score, best_project = matches[0]
         close = [project for score, project in matches if best_score - score <= 0.05]
         if len(close) > 1:
-            names = ", ".join(str(project.nombre) for project in close[:3])
-            return None, None, f"La obra destino '{query}' es ambigua. Opciones: {names}."
-        return int(best_project.id), str(best_project.nombre or "").strip(), None
+            return None, None, _project_options(close)
+        return int(best_project.id), str(best_project.nombre or "").strip(), []
+
+    def _load_destination_managers(self, project_id: int) -> list[DestinoEncargadoOption]:
+        rows = self._session.exec(
+            select(ProyectoEncargado, CRMContacto)
+            .join(CRMContacto, CRMContacto.id == ProyectoEncargado.contacto_id)
+            .where(ProyectoEncargado.proyecto_id == project_id)
+            .where(ProyectoEncargado.activo.is_(True))
+            .where(ProyectoEncargado.deleted_at.is_(None))
+            .where(CRMContacto.deleted_at.is_(None))
+            .order_by(ProyectoEncargado.principal.desc(), CRMContacto.nombre_completo.asc())
+        ).all()
+        return [
+            DestinoEncargadoOption(
+                opcion=index,
+                contacto_id=int(contact.id),
+                nombre=_contact_label(contact),
+            )
+            for index, (_assignment, contact) in enumerate(rows, start=1)
+            if contact.id is not None
+        ]
 
     def _handle_exact_confirmation(
         self,
@@ -418,8 +523,12 @@ class ParteDiarioProcess:
             pending.pagina_candidatos = 0
             pending.lista_candidatos_mostrada = False
             pending.idnomina_resuelto = selected.idnomina
-            pending.fuera_de_proyecto = selected.fuera_de_proyecto
-            pending.nombre_proyecto = selected.nombre_proyecto
+            pending.fuera_de_proyecto = pending.fuera_de_proyecto or selected.fuera_de_proyecto
+            pending.nombre_proyecto = pending.nombre_proyecto or selected.nombre_proyecto
+            if pending.validar_destino_trabajo and (
+                pending.obra_destino_pendiente or pending.encargado_destino_pendiente
+            ):
+                return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
             if pending.estado_pendiente:
                 return self._state_reply(state, renderer.preguntar_estado(pending, estados))
 
@@ -479,8 +588,47 @@ class ParteDiarioProcess:
                     renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
                 )
             pending.idnomina_resuelto = selected.idnomina
-            pending.fuera_de_proyecto = selected.fuera_de_proyecto
-            pending.nombre_proyecto = selected.nombre_proyecto
+            pending.fuera_de_proyecto = pending.fuera_de_proyecto or selected.fuera_de_proyecto
+            pending.nombre_proyecto = pending.nombre_proyecto or selected.nombre_proyecto
+            if pending.validar_destino_trabajo and (
+                pending.obra_destino_pendiente or pending.encargado_destino_pendiente
+            ):
+                return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
+            if pending.estado_pendiente:
+                return self._state_reply(state, renderer.preguntar_estado(pending, estados))
+
+        if pending.obra_destino_pendiente:
+            selected_project = _match_destination_project(text, pending.opciones_proyecto_destino or [])
+            if selected_project is None:
+                return self._state_reply(
+                    state,
+                    renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
+                )
+            pending.idproyecto_destino = selected_project.proyecto_id
+            pending.nombre_proyecto = selected_project.nombre
+            pending.destino_pendiente = None
+            pending.opciones_proyecto_destino = None
+            self._resolve_external_destination_manager(pending, message_text=text)
+            if pending.obra_destino_pendiente or pending.encargado_destino_pendiente:
+                return self._state_reply(state, renderer.preguntar_pendiente(pending, estados))
+            if pending.estado_pendiente:
+                return self._state_reply(state, renderer.preguntar_estado(pending, estados))
+
+        if pending.encargado_destino_pendiente:
+            selected_manager = _match_destination_manager_selection(
+                text,
+                pending.opciones_encargado_destino or [],
+                project_text=pending.nombre_proyecto,
+            )
+            if selected_manager is None:
+                return self._state_reply(
+                    state,
+                    renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
+                )
+            pending.contacto_id_destino = selected_manager.contacto_id
+            pending.nombre_encargado_destino = selected_manager.nombre
+            pending.destino_pendiente = None
+            pending.opciones_encargado_destino = None
             if pending.estado_pendiente:
                 return self._state_reply(state, renderer.preguntar_estado(pending, estados))
 
@@ -560,7 +708,7 @@ class ParteDiarioProcess:
         *,
         prefix: str | None = None,
     ) -> TurnResult:
-        if state.validacion_origen == "carga":
+        if state.validacion_origen in {"carga", "novedades"}:
             state.esperando = None
             state.validacion_origen = None
             result = self._state_reply(state, renderer.actualizado(state))
@@ -1065,6 +1213,10 @@ def _validate_pending_business_rules(pending: PendienteAmbiguo) -> str | None:
         and pending.horas < 9
     ):
         return f"Para {pending.nombre}, una jornada menor a 9 horas requiere indicar el motivo."
+    if pending.validar_destino_trabajo and (
+        pending.idproyecto_destino is None or pending.contacto_id_destino is None
+    ):
+        return f"Para {pending.nombre}, falta validar obra y encargado destino."
     return None
 
 
@@ -1080,6 +1232,10 @@ def _validate_state_business_rules(state: ParteDiarioState) -> list[str]:
             and not str(novedad.descripcion or "").strip()
         ):
             errors.append(f"Para {novedad.nombre}, una jornada menor a 9 horas requiere indicar el motivo.")
+        if novedad.validar_destino_trabajo and (
+            novedad.idproyecto_destino is None or novedad.contacto_id_destino is None
+        ):
+            errors.append(f"Para {novedad.nombre}, falta validar obra y encargado destino.")
     return errors
 
 
@@ -1319,6 +1475,248 @@ def _parse_optional_int(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _project_options(projects: list[Proyecto]) -> list[DestinoProyectoOption]:
+    return [
+        DestinoProyectoOption(
+            opcion=index,
+            proyecto_id=int(project.id),
+            nombre=str(project.nombre or "").strip(),
+        )
+        for index, project in enumerate(projects[:10], start=1)
+        if project.id is not None and str(project.nombre or "").strip()
+    ]
+
+
+def _match_destination_manager(
+    message_text: str,
+    managers: list[DestinoEncargadoOption],
+    *,
+    project_text: str | None = None,
+) -> DestinoEncargadoOption | None:
+    normalized_message = normalize_text(message_text)
+    if not normalized_message:
+        return None
+    ignored_tokens = _destination_manager_ignored_tokens(project_text)
+    message_tokens = set(normalized_message.split())
+    exact_matches = []
+    for manager in managers:
+        manager_name = normalize_text(manager.nombre)
+        manager_tokens = set(manager_name.split())
+        decisive_tokens = {token for token in manager_tokens if token not in ignored_tokens}
+        has_decisive_token = bool(decisive_tokens & message_tokens)
+        if manager_name and (
+            manager_name == normalized_message
+            or manager_name in normalized_message
+            or (normalized_message in manager_name and has_decisive_token)
+        ):
+            if not ignored_tokens or has_decisive_token or manager_name == normalized_message:
+                exact_matches.append(manager)
+    exact_unique = {item.contacto_id: item for item in exact_matches}
+    if len(exact_unique) == 1:
+        return next(iter(exact_unique.values()))
+    token_counts: dict[str, int] = {}
+    manager_tokens_by_id: dict[int, list[str]] = {}
+    for manager in managers:
+        tokens = [
+            token
+            for token in normalize_text(manager.nombre).split()
+            if len(token) >= 3 and token not in ignored_tokens
+        ]
+        manager_tokens_by_id[manager.contacto_id] = tokens
+        for token in set(tokens):
+            token_counts[token] = token_counts.get(token, 0) + 1
+    matches = []
+    for manager in managers:
+        tokens = [
+            token
+            for token in manager_tokens_by_id.get(manager.contacto_id, [])
+            if token_counts.get(token) == 1
+        ]
+        if tokens and any(token in message_tokens for token in tokens):
+            matches.append(manager)
+    unique = {item.contacto_id: item for item in matches}
+    return next(iter(unique.values())) if len(unique) == 1 else None
+
+
+def _destination_manager_ignored_tokens(project_text: str | None) -> set[str]:
+    return {
+        token
+        for token in normalize_text(project_text).split()
+        if len(token) >= 3
+    }
+
+
+def _match_destination_project(
+    text: str,
+    projects: list[DestinoProyectoOption],
+) -> DestinoProyectoOption | None:
+    command = _normalize_command(text)
+    numbers = re.findall(r"\d+", command)
+    if len(numbers) == 1:
+        selected_index = int(numbers[0])
+        return next((item for item in projects if item.opcion == selected_index), None)
+    normalized_text = normalize_text(text)
+    matches = [
+        item
+        for item in projects
+        if normalized_text and normalize_text(item.nombre) in normalized_text
+    ]
+    if not matches:
+        matches = [
+            item
+            for item in projects
+            if project_match_score(normalized_text, item.nombre) >= 0.75
+        ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _infer_external_project_from_message(
+    operation: ParteDiarioOperation,
+    message_text: str,
+) -> str | None:
+    if str(operation.nombre_proyecto or "").strip():
+        return None
+    if not _operation_has_destination_work_signal(operation):
+        return None
+    return _destination_project_text_from_message(message_text)
+
+
+def _is_destination_work_operation(
+    operation: ParteDiarioOperation,
+    message_text: str,
+) -> bool:
+    if operation.type not in {"agregar_novedad", "modificar_novedad"}:
+        return False
+    if not _operation_has_destination_work_signal(operation):
+        return False
+    if operation.fuera_de_proyecto or operation.idproyecto_destino is not None:
+        return True
+    if str(operation.nombre_proyecto or "").strip():
+        return True
+    return _destination_project_text_from_message(message_text) is not None
+
+
+def _operation_has_destination_work_signal(operation: ParteDiarioOperation) -> bool:
+    normalized_code = str(operation.estado_codigo or "").strip().upper()
+    if normalized_code and normalized_code != "P":
+        return False
+    return bool(
+        operation.fuera_de_proyecto
+        or str(operation.nombre_proyecto or "").strip()
+        or operation.idproyecto_destino is not None
+        or operation.horas is not None
+        or operation.horas_extra is not None
+        or normalized_code == "P"
+    )
+
+
+def _apply_pre_resolved_nomina(plan: TurnPlan, message_text: str) -> None:
+    entries = _pre_resolved_nomina_entries(message_text)
+    if not entries:
+        return
+    operations = [
+        operation
+        for operation in plan.operations
+        if operation.type in {"agregar_novedad", "modificar_novedad", "eliminar_novedad"}
+    ]
+    if not operations:
+        return
+
+    remaining_entries = list(entries)
+    for operation in operations:
+        if operation.idnomina is not None:
+            continue
+        selected = _match_pre_resolved_entry(operation, remaining_entries)
+        if selected is None and len(operations) == len(entries) and remaining_entries:
+            selected = remaining_entries[0]
+        if selected is None:
+            continue
+        operation.idnomina = selected.idnomina
+        operation.nombre = operation.nombre or selected.nombre
+        remaining_entries.remove(selected)
+
+
+def _match_pre_resolved_entry(
+    operation: ParteDiarioOperation,
+    entries: list[_PreResolvedNominaEntry],
+) -> _PreResolvedNominaEntry | None:
+    operation_name = normalize_text(operation.nombre)
+    if not operation_name:
+        return None
+    matches = [
+        entry
+        for entry in entries
+        if operation_name == normalize_text(entry.nombre)
+        or operation_name in normalize_text(entry.nombre)
+        or normalize_text(entry.nombre) in operation_name
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _message_text_for_operation(operation: ParteDiarioOperation, message_text: str) -> str:
+    entries = _pre_resolved_nomina_entries(message_text)
+    if not entries:
+        return message_text
+    if operation.idnomina is not None:
+        selected = next((entry for entry in entries if entry.idnomina == operation.idnomina), None)
+        if selected is not None:
+            return selected.text
+    selected = _match_pre_resolved_entry(operation, entries)
+    return selected.text if selected is not None else message_text
+
+
+def _pre_resolved_nomina_entries(message_text: str) -> list[_PreResolvedNominaEntry]:
+    entries: list[_PreResolvedNominaEntry] = []
+    for line in str(message_text or "").splitlines():
+        match = _PRE_RESOLVED_NOMINA_RE.match(line)
+        if not match:
+            continue
+        name = match.group(2).strip()
+        detail = match.group(3).strip()
+        entries.append(
+            _PreResolvedNominaEntry(
+                idnomina=int(match.group(1)),
+                nombre=name,
+                text=f"{name} {detail}".strip(),
+            )
+        )
+    return entries
+
+
+def _destination_project_text_from_message(message_text: str) -> str | None:
+    normalized = normalize_text(message_text)
+    if not normalized:
+        return None
+    tokens = normalized.split()
+    connector_index = next(
+        (index for index in range(len(tokens) - 1, -1, -1) if tokens[index] in _DESTINATION_CONNECTORS),
+        None,
+    )
+    if connector_index is None:
+        return None
+    project_text = " ".join(tokens[connector_index + 1 :])
+    project_text = re.sub(r"^(?:la|el)\s+", " ", project_text)
+    project_text = re.sub(r"^(?:obra|proyecto)\s+", " ", project_text)
+    project_text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:h|hs|hora|horas)\b", " ", project_text)
+    project_text = re.sub(r"\b(?:otra|otro)\s+obra\b", " ", project_text)
+    project_text = re.sub(r"\s+", " ", project_text).strip()
+    return project_text or None
+
+
+def _match_destination_manager_selection(
+    text: str,
+    managers: list[DestinoEncargadoOption],
+    *,
+    project_text: str | None = None,
+) -> DestinoEncargadoOption | None:
+    command = _normalize_command(text)
+    numbers = re.findall(r"\d+", command)
+    if len(numbers) == 1:
+        selected_index = int(numbers[0])
+        return next((item for item in managers if item.opcion == selected_index), None)
+    return _match_destination_manager(text, managers, project_text=project_text)
 
 
 def _contact_label(contact: CRMContacto) -> str:

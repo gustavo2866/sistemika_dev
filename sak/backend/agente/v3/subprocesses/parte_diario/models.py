@@ -16,6 +16,50 @@ def _float_or_none(value: Any) -> float | None:
 
 
 @dataclass(slots=True)
+class DestinoProyectoOption:
+    opcion: int
+    proyecto_id: int
+    nombre: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "DestinoProyectoOption | None":
+        try:
+            opcion = int(raw.get("opcion") or 0)
+            proyecto_id = int(raw.get("proyecto_id") or 0)
+        except (TypeError, ValueError):
+            return None
+        nombre = str(raw.get("nombre") or "").strip()
+        if opcion <= 0 or proyecto_id <= 0 or not nombre:
+            return None
+        return cls(opcion=opcion, proyecto_id=proyecto_id, nombre=nombre)
+
+
+@dataclass(slots=True)
+class DestinoEncargadoOption:
+    opcion: int
+    contacto_id: int
+    nombre: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "DestinoEncargadoOption | None":
+        try:
+            opcion = int(raw.get("opcion") or 0)
+            contacto_id = int(raw.get("contacto_id") or 0)
+        except (TypeError, ValueError):
+            return None
+        nombre = str(raw.get("nombre") or "").strip()
+        if opcion <= 0 or contacto_id <= 0 or not nombre:
+            return None
+        return cls(opcion=opcion, contacto_id=contacto_id, nombre=nombre)
+
+
+@dataclass(slots=True)
 class EstadoItem:
     id: int
     abreviatura: str
@@ -72,6 +116,9 @@ class NovedadPersonal:
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
     idproyecto_destino: int | None = None
+    contacto_id_destino: int | None = None
+    nombre_encargado_destino: str | None = None
+    validar_destino_trabajo: bool = False
     nro_legajo: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,6 +138,9 @@ class NovedadPersonal:
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nombre_proyecto=raw.get("nombre_proyecto"),
             idproyecto_destino=raw.get("idproyecto_destino"),
+            contacto_id_destino=raw.get("contacto_id_destino"),
+            nombre_encargado_destino=raw.get("nombre_encargado_destino"),
+            validar_destino_trabajo=bool(raw.get("validar_destino_trabajo")),
             nro_legajo=raw.get("nro_legajo"),
         )
 
@@ -111,6 +161,12 @@ class PendienteAmbiguo:
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
     idproyecto_destino: int | None = None
+    contacto_id_destino: int | None = None
+    nombre_encargado_destino: str | None = None
+    validar_destino_trabajo: bool = False
+    destino_pendiente: str | None = None
+    opciones_proyecto_destino: list[DestinoProyectoOption] | None = None
+    opciones_encargado_destino: list[DestinoEncargadoOption] | None = None
     intentos_estado: int = 0
     pagina_candidatos: int = 0
     lista_candidatos_mostrada: bool = False
@@ -123,11 +179,29 @@ class PendienteAmbiguo:
     def estado_pendiente(self) -> bool:
         return self.idestado is None and not self.fuera_de_proyecto
 
+    @property
+    def obra_destino_pendiente(self) -> bool:
+        return self.fuera_de_proyecto and self.destino_pendiente == "obra"
+
+    @property
+    def encargado_destino_pendiente(self) -> bool:
+        return self.fuera_de_proyecto and self.destino_pendiente == "encargado"
+
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["candidatos"] = [item.to_dict() for item in self.candidatos] if self.candidatos else None
         payload["candidatos_externos"] = (
             [item.to_dict() for item in self.candidatos_externos] if self.candidatos_externos else None
+        )
+        payload["opciones_proyecto_destino"] = (
+            [item.to_dict() for item in self.opciones_proyecto_destino]
+            if self.opciones_proyecto_destino
+            else None
+        )
+        payload["opciones_encargado_destino"] = (
+            [item.to_dict() for item in self.opciones_encargado_destino]
+            if self.opciones_encargado_destino
+            else None
         )
         return payload
 
@@ -135,6 +209,8 @@ class PendienteAmbiguo:
     def from_dict(cls, raw: dict[str, Any]) -> "PendienteAmbiguo":
         candidates = raw.get("candidatos")
         external_candidates = raw.get("candidatos_externos")
+        project_options = raw.get("opciones_proyecto_destino")
+        manager_options = raw.get("opciones_encargado_destino")
         return cls(
             nombre=str(raw.get("nombre") or ""),
             idestado=raw.get("idestado"),
@@ -154,6 +230,32 @@ class PendienteAmbiguo:
             fuera_de_proyecto=bool(raw.get("fuera_de_proyecto")),
             nombre_proyecto=raw.get("nombre_proyecto"),
             idproyecto_destino=raw.get("idproyecto_destino"),
+            contacto_id_destino=raw.get("contacto_id_destino"),
+            nombre_encargado_destino=raw.get("nombre_encargado_destino"),
+            validar_destino_trabajo=bool(raw.get("validar_destino_trabajo")),
+            destino_pendiente=str(raw.get("destino_pendiente") or "").strip() or None,
+            opciones_proyecto_destino=(
+                [
+                    parsed
+                    for item in project_options
+                    if isinstance(item, dict)
+                    for parsed in [DestinoProyectoOption.from_dict(item)]
+                    if parsed is not None
+                ]
+                if isinstance(project_options, list)
+                else None
+            ),
+            opciones_encargado_destino=(
+                [
+                    parsed
+                    for item in manager_options
+                    if isinstance(item, dict)
+                    for parsed in [DestinoEncargadoOption.from_dict(item)]
+                    if parsed is not None
+                ]
+                if isinstance(manager_options, list)
+                else None
+            ),
             intentos_estado=int(raw.get("intentos_estado") or 0),
             pagina_candidatos=int(raw.get("pagina_candidatos") or 0),
             lista_candidatos_mostrada=bool(raw.get("lista_candidatos_mostrada")),
@@ -252,6 +354,7 @@ class ParteDiarioState:
 class ParteDiarioOperation:
     type: str
     nombre: str | None = None
+    idnomina: int | None = None
     alcance: str | None = None
     estado_codigo: str | None = None
     horas: float | None = None
@@ -260,6 +363,12 @@ class ParteDiarioOperation:
     fuera_de_proyecto: bool = False
     nombre_proyecto: str | None = None
     idproyecto_destino: int | None = None
+    contacto_id_destino: int | None = None
+    nombre_encargado_destino: str | None = None
+    validar_destino_trabajo: bool = False
+    destino_pendiente: str | None = None
+    opciones_proyecto_destino: list[DestinoProyectoOption] | None = None
+    opciones_encargado_destino: list[DestinoEncargadoOption] | None = None
     fecha: str | None = None
     requested: str | None = None
     reply: str | None = None

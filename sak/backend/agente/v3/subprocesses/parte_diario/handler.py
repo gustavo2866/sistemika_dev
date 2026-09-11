@@ -43,7 +43,6 @@ from agente.v3.subprocesses.parte_diario.resolver import (
     filter_candidate_selection,
     normalize_text,
     parse_candidate_selection,
-    parse_estado_local,
     project_match_score,
 )
 from agente.v3.subprocesses.parte_diario.state import (
@@ -62,6 +61,8 @@ from app.utils.quincenas import get_quincena_range
 logger = logging.getLogger(__name__)
 
 ASISTENCIA_PAGE_SIZE = 8
+_VALIDATION_WAITING_STATES = {"confirmacion_ambiguos", "resolucion_conflictos"}
+_VALIDATION_ORIGIN_STAGES = {"carga", "novedades"}
 
 
 class ParteDiarioSubprocess:
@@ -110,6 +111,10 @@ class ParteDiarioSubprocess:
             return await self._handle_pendientes(message, context, state, emisor=emisor)
 
         if state.etapa == "novedades":
+            draft = state.draft()
+            if _draft_has_carga_validation(draft):
+                _activate_carga_validation(state, origin="novedades")
+                return await self._handle_validacion(message, context, state)
             return await self._handle_asistencia(message, context, state)
 
         if state.etapa == "apoyos":
@@ -124,10 +129,16 @@ class ParteDiarioSubprocess:
         if state.etapa == "cierre":
             return await self._handle_cierre(message, context, state)
 
-        if state.etapa == "validacion":
+        if state.etapa in {"validacion", "validacion_carga"}:
+            if state.etapa == "validacion":
+                state.etapa = "validacion_carga"
             return await self._handle_validacion(message, context, state)
 
         if state.etapa == "carga":
+            draft = state.draft()
+            if _draft_has_carga_validation(draft):
+                _activate_carga_validation(state, origin="carga")
+                return await self._handle_validacion(message, context, state)
             return await self._handle_carga(message, context, state)
 
         if state.etapa == "menu":
@@ -157,7 +168,21 @@ class ParteDiarioSubprocess:
         if command in {"elegir opcion", "ver opciones", "opciones"}:
             return self._show_validation_options(context, state, reset_page=True)
         if pending is None:
+            _clear_carga_validation(state, next_stage=_validation_return_stage(state, draft))
+            if state.etapa == "novedades":
+                return self._show_asistencia_page(context, state, prefix="Cargado.")
             return await self._handle_parte_diario(message, context, state)
+        if getattr(pending, "obra_destino_pendiente", False) or getattr(pending, "encargado_destino_pendiente", False):
+            return await self._handle_parte_diario(
+                message,
+                context,
+                state,
+                forced_text=message.text or "",
+                extra_result_metadata={
+                    "carga_agent_source": "deterministic",
+                    "carga_agent_action": "seleccionar_destino",
+                },
+            )
 
         if getattr(pending, "nombre_no_encontrado", False) and not _validation_candidates(pending):
             command = _normalize_command(message.text)
@@ -179,8 +204,11 @@ class ParteDiarioSubprocess:
                     draft.pendientes_ambiguos.pop(0)
                 draft.esperando = None
                 draft.validacion_origen = None
-                state.etapa = "carga"
                 state.set_draft(draft)
+                next_stage = _validation_return_stage(state, draft)
+                _clear_carga_validation(state, next_stage=next_stage)
+                if next_stage == "novedades":
+                    return self._show_asistencia_page(context, state, prefix=f"No cargo {skipped_name}.")
                 return self._active_result(
                     context,
                     state,
@@ -1084,7 +1112,7 @@ class ParteDiarioSubprocess:
         draft.esperando = None
         draft.validacion_origen = None
         state.set_draft(draft)
-        state.etapa = "carga"
+        _clear_carga_validation(state, next_stage="carga")
         reply = _volver_carga_reply(draft, obra=state.nombre_obra)
         return self._active_result(
             context,
@@ -1219,6 +1247,7 @@ class ParteDiarioSubprocess:
         draft.esperando = None
         draft.validacion_origen = None
         state.set_draft(draft)
+        _clear_carga_validation(state)
         state.etapa = "carga"
         result = await self._handle_carga(message, context, state)
         result.metadata.setdefault("interrupted_status", status)
@@ -1312,6 +1341,10 @@ class ParteDiarioSubprocess:
     ) -> V3ProcessResult:
         draft = state.draft()
         if draft.esperando == "confirmacion_ambiguos":
+            _activate_carga_validation(state, origin="carga")
+            return await self._handle_validacion(message, context, state)
+        if draft.esperando == "resolucion_conflictos":
+            _activate_carga_validation(state, origin="carga")
             return await self._handle_validacion(message, context, state)
         if draft.esperando == "confirmacion_sin_novedades":
             command = _normalize_command(message.text)
@@ -1694,6 +1727,11 @@ class ParteDiarioSubprocess:
         if command in {"salir"}:
             return self._finish_asistencia(context, state)
 
+        draft = state.draft()
+        if draft.esperando in {"confirmacion_ambiguos", "resolucion_conflictos"}:
+            _activate_carga_validation(state, origin="novedades")
+            return await self._handle_asistencia_validation(message, context, state)
+
         if state.asistencia_reemplazo_pendiente:
             if command in {"ok", "si", "confirmar"}:
                 return self._confirm_asistencia_reemplazo(context, state)
@@ -1719,78 +1757,136 @@ class ParteDiarioSubprocess:
         if command in {"no", "nadie", "ninguno", "ninguna"} or command.startswith("no "):
             return self._advance_asistencia_page(context, state)
 
-        with Session(engine) as session:
-            estados = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))._load_estados()
-            parsed, error = await self._parse_asistencia_entries(
-                message.text or "",
-                state.asistencia_opciones,
-                estados,
-                state=state,
-            )
+        parsed, error = self._parse_asistencia_entries(
+            message.text or "",
+            state.asistencia_opciones,
+        )
 
         if error:
             reply = f"{error}\n\n{self._asistencia_current_page_text(state)}"
             return self._active_result(context, state, reply, "asistencia_invalid_response")
 
-        draft = state.draft()
-        existing_entries = [
-            (
-                option,
-                estado,
-                motivo,
-                horas,
-                nombre_proyecto,
-                idproyecto_destino,
-                self._find_asistencia_existing(draft, option.idnomina),
-            )
-            for option, estado, motivo, horas, nombre_proyecto, idproyecto_destino in parsed
-        ]
-        replacement_entries = [item for item in existing_entries if item[6] is not None]
-        if replacement_entries:
-            if len(parsed) > 1:
-                reply = (
-                    "Para reemplazar una novedad ya cargada, indica solo esa persona.\n\n"
-                    f"{self._asistencia_current_page_text(state)}"
+        return await self._execute_asistencia_entries(message, context, state, parsed)
+
+    async def _handle_asistencia_validation(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+    ) -> V3ProcessResult:
+        with Session(engine) as session:
+            process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))
+            process_result = await process.handle(
+                SimpleNamespace(
+                    oportunidad_id=state.oportunidad_id,
+                    contacto_id=state.contacto_id,
+                    is_project=True,
+                    active_process=self.name,
+                    process_state=state.parte_state,
+                    message=SimpleNamespace(contenido=message.text or ""),
                 )
-                return self._active_result(context, state, reply, "asistencia_replace_single_required")
-            option, estado, motivo, horas, nombre_proyecto, idproyecto_destino, existing = replacement_entries[0]
-            state.asistencia_reemplazo_pendiente = {
-                "option": option.to_dict(),
-                "estado_id": estado.id,
-                "estado_codigo": estado.abreviatura.upper(),
-                "motivo": motivo,
-                "horas": horas,
-                "fuera_de_proyecto": bool(nombre_proyecto),
-                "nombre_proyecto": nombre_proyecto,
-                "idproyecto_destino": idproyecto_destino,
-                "estado_anterior": getattr(existing, "estado_codigo", None),
-            }
-            reply = self._asistencia_reemplazo_text(state)
+            )
+        state.parte_state = dict(process_result.process_state or {})
+        draft = state.draft()
+        if draft.esperando in {"confirmacion_ambiguos", "resolucion_conflictos"}:
+            _activate_carga_validation(state, origin=_validation_origin(state, draft, default="novedades"))
+            reply = str((process_result.payload or {}).get("reply_to_user") or "").strip()
             return self._active_result(
                 context,
                 state,
-                reply,
-                "asistencia_replace_confirmation",
-                _confirmation_metadata(reply),
+                reply or _validation_text_menu(draft.pendientes_ambiguos[0] if draft.pendientes_ambiguos else None),
+                "asistencia_validation_required",
+            )
+        _clear_carga_validation(state, next_stage="novedades")
+        return self._show_asistencia_page(context, state, prefix="Cargado.")
+
+    async def _execute_asistencia_entries(
+        self,
+        message: V3InboundMessage,
+        context: V3ConversationContext,
+        state: ParteDiarioV3State,
+        parsed,
+    ) -> V3ProcessResult:
+        normalized_text = self._asistencia_interpreter_text(parsed)
+        with Session(engine) as session:
+            process = ParteDiarioProcess(session=session, llm_client=_llm_for_stage(self._llm, "carga"))
+            process_result = await process.handle(
+                SimpleNamespace(
+                    oportunidad_id=state.oportunidad_id,
+                    contacto_id=state.contacto_id,
+                    is_project=True,
+                    active_process=self.name,
+                    process_state=state.parte_state,
+                    message=SimpleNamespace(contenido=normalized_text),
+                )
             )
 
-        for option, estado, motivo, horas, nombre_proyecto, idproyecto_destino in parsed:
-            self._apply_asistencia_novedad(
-                draft,
+        state.parte_state = dict(process_result.process_state or {})
+        payload = dict(process_result.payload or {})
+        next_draft = state.draft()
+        errors = payload.get("errores") or []
+        process_status = str(((payload.get("parte_diario") or {}).get("status") or "")).strip()
+        reply_to_user = str(payload.get("reply_to_user") or "").strip()
+
+        if errors:
+            reply = f"{reply_to_user or renderer.actualizado(next_draft, errors)}\n\n{self._asistencia_current_page_text(state)}"
+            return self._active_result(context, state, reply, "asistencia_invalid_response")
+
+        if next_draft.conflictos_novedad:
+            next_draft.esperando = "resolucion_conflictos"
+            next_draft.validacion_origen = "novedades"
+            state.set_draft(next_draft)
+            _activate_carga_validation(state, origin="novedades")
+            return self._active_result(
+                context,
                 state,
-                option=option,
-                estado_id=estado.id,
-                estado_codigo=estado.abreviatura.upper(),
-                motivo=motivo,
-                horas=horas,
-                fuera_de_proyecto=bool(nombre_proyecto),
-                nombre_proyecto=nombre_proyecto,
-                idproyecto_destino=idproyecto_destino,
+                renderer.preguntar_conflicto(next_draft.conflictos_novedad[0]),
+                "asistencia_validation_required",
             )
-        draft.sin_novedades_informado = False
-        draft.esperando = None
-        state.set_draft(draft)
+
+        if next_draft.pendientes_ambiguos:
+            next_draft.esperando = "confirmacion_ambiguos"
+            next_draft.validacion_origen = "novedades"
+            state.set_draft(next_draft)
+            _activate_carga_validation(state, origin="novedades")
+            return self._active_result(
+                context,
+                state,
+                _validation_text_menu(next_draft.pendientes_ambiguos[0]),
+                "asistencia_validation_required",
+            )
+
+        if process_status in {"clarification", "offtopic"}:
+            reply = f"{reply_to_user or renderer.falta_informacion()}\n\n{self._asistencia_current_page_text(state)}"
+            return self._active_result(context, state, reply, "asistencia_invalid_response")
+
+        next_draft.sin_novedades_informado = False
+        next_draft.esperando = None
+        state.set_draft(next_draft)
+        self._record_asistencia_entries(state, parsed)
         return self._advance_asistencia_page(context, state, prefix="Cargado.")
+
+    @staticmethod
+    def _asistencia_interpreter_text(parsed) -> str:
+        return "\n".join(
+            f"[idnomina={option.idnomina}] {option.nombre_completo}: {motivo}"
+            for option, motivo in parsed
+        )
+
+    def _record_asistencia_entries(self, state: ParteDiarioV3State, parsed) -> None:
+        draft = state.draft()
+        for option, motivo in parsed:
+            novedad = self._find_asistencia_existing(draft, option.idnomina)
+            if novedad is None:
+                continue
+            state.asistencia_registros.append(
+                ParteDiarioAsistenciaRegistro(
+                    nombre=option.nombre_completo,
+                    estado_codigo=str(novedad.estado_codigo or "").upper(),
+                    motivo=novedad.descripcion or motivo,
+                    horas=novedad.horas,
+                )
+            )
 
     def _show_asistencia_page(
         self,
@@ -1964,13 +2060,10 @@ class ParteDiarioSubprocess:
         )
         return True, list(session.exec(query).all())
 
-    async def _parse_asistencia_entries(
-        self,
+    @staticmethod
+    def _parse_asistencia_entries(
         text: str,
         options: list[ParteDiarioAsistenciaOption],
-        estados,
-        *,
-        state: ParteDiarioV3State | None = None,
     ):
         normalized_text = re.sub(r"\s+y\s+(?=\d+\b)", "\n", text or "", flags=re.IGNORECASE)
         parts = [part.strip() for part in re.split(r"[,;\n]+", normalized_text) if part.strip()]
@@ -1989,102 +2082,8 @@ class ParteDiarioSubprocess:
             if option is None:
                 available = ", ".join(str(item.opcion) for item in options)
                 return [], f"El numero {number} no esta en esta pagina. Opciones disponibles: {available}."
-            estado, horas = await self._resolve_asistencia_detail(motive, estados)
-            nombre_proyecto = None
-            idproyecto_destino = None
-            external_project_text = _extract_external_work_project_text(motive)
-            if external_project_text:
-                estado = self._present_estado(estados)
-                if estado is None:
-                    return [], "No encontre el estado PRESENTE para cargar trabajo en otra obra."
-                hours = _parse_hours_from_text(motive, require_unit=True)
-                horas = hours if hours is not None else 9.0
-                if state is not None:
-                    idproyecto_destino, nombre_proyecto, project_error = self._resolve_asistencia_external_project(
-                        state,
-                        external_project_text,
-                    )
-                    if project_error:
-                        return [], project_error
-                else:
-                    nombre_proyecto = external_project_text
-                    idproyecto_destino = None
-            if estado is None:
-                return [], f"No pude identificar '{motive}'. Proba con falta, enfermedad, accidente, presente o trabajo 8hs."
-            parsed.append((option, estado, motive, horas, nombre_proyecto, idproyecto_destino))
+            parsed.append((option, motive))
         return parsed, None
-
-    async def _resolve_asistencia_detail(self, text: str, estados):
-        estado = await self._resolve_estado_for_motive(text, estados)
-        if estado is None:
-            return None, None
-        normalized_code = str(estado.abreviatura or "").upper()
-        if normalized_code != "P":
-            return estado, 0.0
-        hours = _parse_hours_from_text(text)
-        return estado, hours if hours is not None else 9.0
-
-    @staticmethod
-    def _present_estado(estados):
-        return next((item for item in estados if str(item.abreviatura or "").upper() == "P"), None)
-
-    def _resolve_asistencia_external_project(
-        self,
-        state: ParteDiarioV3State,
-        project_text: str,
-    ) -> tuple[int | None, str | None, str | None]:
-        current_project_id = int(state.proyecto_id or 0)
-        if not current_project_id:
-            return None, None, "No pude resolver la obra destino porque el parte no tiene obra activa."
-        with Session(engine) as session:
-            projects = list(
-                session.exec(
-                    select(Proyecto)
-                    .where(Proyecto.deleted_at.is_(None))
-                    .where(Proyecto.id != current_project_id)
-                    .order_by(Proyecto.nombre.asc())
-                ).all()
-            )
-        scored = [
-            (project_match_score(project_text, project.nombre), project)
-            for project in projects
-        ]
-        matches = [(score, project) for score, project in scored if score >= 0.55]
-        matches.sort(key=lambda pair: (-pair[0], str(pair[1].nombre or "")))
-        if not matches:
-            return None, None, f"No encontre la obra destino '{project_text}'. Indica el nombre de la obra."
-        best_score, best_project = matches[0]
-        close = [project for score, project in matches if best_score - score <= 0.05]
-        if len(close) > 1:
-            names = ", ".join(str(project.nombre) for project in close[:3])
-            return None, None, f"La obra destino '{project_text}' es ambigua. Opciones: {names}."
-        return int(best_project.id), str(best_project.nombre or "").strip(), None
-
-    async def _resolve_estado_for_motive(self, text: str, estados):
-        estado = parse_estado_local(text, estados) or self._resolve_estado_from_text(text, estados)
-        if estado is not None:
-            return estado
-        try:
-            code = await self._llm.interpretar_estado_pendiente(text, estados)
-        except Exception:
-            logger.exception("No se pudo interpretar estado de novedad con LLM")
-            return None
-        normalized_code = str(code or "").strip().upper()
-        if normalized_code == "NO_DETERMINADO":
-            return None
-        return next((item for item in estados if item.abreviatura.upper() == normalized_code), None)
-
-    @staticmethod
-    def _resolve_estado_from_text(text: str, estados):
-        normalized = normalize_text(text)
-        for estado in estados:
-            code = normalize_text(estado.abreviatura)
-            name = normalize_text(estado.nombre)
-            if code and code in normalized.split():
-                return estado
-            if name and (name in normalized or normalized in name):
-                return estado
-        return None
 
     def _confirm_asistencia_reemplazo(
         self,
@@ -2269,6 +2268,8 @@ class ParteDiarioSubprocess:
                     "back_to_load",
                 )
 
+        entry_stage = state.etapa
+        entry_validation_origin = state.validacion_origen or state.draft().validacion_origen
         started = time.perf_counter()
         with Session(engine) as session:
             mapped_text = forced_text or _map_menu_text(message.text or "", state)
@@ -2357,6 +2358,27 @@ class ParteDiarioSubprocess:
         if (process_result.keep_active or _should_keep_active_after_readonly(state, payload)) and not payload.get("cancelado"):
             state.parte_state = dict(process_result.process_state or {})
             status = _status_from_payload(payload)
+            draft_after = state.draft()
+            if _draft_has_carga_validation(draft_after) and entry_stage in {
+                "carga",
+                "novedades",
+                "validacion",
+                "validacion_carga",
+            }:
+                origin_default = (
+                    entry_validation_origin
+                    or ("novedades" if entry_stage == "novedades" else "carga")
+                )
+                origin = _validation_origin(state, draft_after, default=origin_default)
+                if origin in _VALIDATION_ORIGIN_STAGES:
+                    _activate_carga_validation(state, origin=origin)
+            elif entry_stage in {"validacion", "validacion_carga"}:
+                origin = str(entry_validation_origin or state.validacion_origen or "").strip()
+                if origin == "novedades":
+                    _clear_carga_validation(state, next_stage="novedades")
+                    return self._show_asistencia_page(context, state, prefix="Cargado.")
+                if origin == "carga":
+                    _clear_carga_validation(state, next_stage="carga")
             if status in {"sin_novedades", "confirmation_required"}:
                 draft = state.draft()
                 if _draft_date_before_today(draft):
@@ -3370,6 +3392,67 @@ def _draft_status(draft) -> str:
     return "borrador" if draft.parte_id else "sin cargar"
 
 
+def _draft_has_carga_validation(draft) -> bool:
+    return (
+        draft.esperando in _VALIDATION_WAITING_STATES
+        or bool(draft.pendientes_ambiguos)
+        or bool(draft.conflictos_novedad)
+    )
+
+
+def _activate_carga_validation(
+    state: ParteDiarioV3State,
+    *,
+    origin: str | None = None,
+) -> None:
+    draft = state.draft()
+    resolved_origin = _validation_origin(state, draft, default=origin or "carga")
+    if resolved_origin not in _VALIDATION_ORIGIN_STAGES:
+        resolved_origin = origin or "carga"
+    if draft.esperando not in _VALIDATION_WAITING_STATES:
+        if draft.conflictos_novedad:
+            draft.esperando = "resolucion_conflictos"
+        elif draft.pendientes_ambiguos:
+            draft.esperando = "confirmacion_ambiguos"
+    draft.validacion_origen = resolved_origin
+    state.set_draft(draft)
+    state.validacion_origen = resolved_origin
+    state.validacion_tipo = _validation_type_from_draft(draft)
+    state.etapa = "validacion_carga"
+
+
+def _clear_carga_validation(state: ParteDiarioV3State, *, next_stage: str | None = None) -> None:
+    state.validacion_tipo = None
+    state.validacion_origen = None
+    if next_stage:
+        state.etapa = next_stage  # type: ignore[assignment]
+
+
+def _validation_origin(state: ParteDiarioV3State, draft, *, default: str = "carga") -> str:
+    origin = str(state.validacion_origen or draft.validacion_origen or default or "carga").strip()
+    return origin or "carga"
+
+
+def _validation_return_stage(state: ParteDiarioV3State, draft) -> str:
+    origin = _validation_origin(state, draft)
+    return "novedades" if origin == "novedades" else "carga"
+
+
+def _validation_type_from_draft(draft) -> str | None:
+    if draft.esperando == "resolucion_conflictos" or draft.conflictos_novedad:
+        return "conflicto"
+    if not draft.pendientes_ambiguos:
+        return None
+    pending = draft.pendientes_ambiguos[0]
+    if getattr(pending, "obra_destino_pendiente", False):
+        return "obra_destino"
+    if getattr(pending, "encargado_destino_pendiente", False):
+        return "encargado_destino"
+    if getattr(pending, "estado_pendiente", False):
+        return "estado"
+    return "persona"
+
+
 def _llm_for_stage(llm_client, etapa: str):
     if hasattr(llm_client, "for_stage"):
         return llm_client.for_stage(etapa)
@@ -3416,7 +3499,6 @@ def _format_reply(reply: str, state: ParteDiarioV3State, payload: dict) -> str:
         state.etapa = "cierre"
         return _replace_tail(_add_obra_to_reply(reply, state.nombre_obra), _salida_confirmacion_tail())
     if draft.esperando in {"confirmacion_ambiguos", "resolucion_conflictos"}:
-        state.etapa = "carga" if draft.validacion_origen == "carga" else "validacion"
         if draft.esperando == "confirmacion_ambiguos" and draft.pendientes_ambiguos:
             pending = draft.pendientes_ambiguos[0]
             pending.lista_candidatos_mostrada = True
@@ -3456,7 +3538,7 @@ def _reply_interactive_metadata(state: ParteDiarioV3State, reply: str) -> dict |
         return _review_metadata(reply)
     if state.etapa == "confirmar_salida":
         return _confirmation_metadata(reply)
-    if state.etapa == "validacion":
+    if state.etapa in {"validacion", "validacion_carga"}:
         return _validation_metadata(state)
     return None
 
@@ -3520,6 +3602,22 @@ def _validation_rows(pending) -> list[InteractiveListRow]:
 def _validation_text_menu(pending) -> str:
     if pending is None:
         return "Necesito identificar la persona. Escribi el nombre o NINGUNO."
+    if getattr(pending, "obra_destino_pendiente", False):
+        options = "\n".join(
+            f"{option.opcion}. {_destination_option_label(option.nombre)}"
+            for option in getattr(pending, "opciones_proyecto_destino", None) or []
+        )
+        suffix = f"\n\n{options}" if options else ""
+        return f"A que obra fue {_display_person_name(pending.nombre)}?{suffix}"
+    if getattr(pending, "encargado_destino_pendiente", False):
+        options = "; ".join(
+            f"{option.opcion}. {option.nombre}"
+            for option in getattr(pending, "opciones_encargado_destino", None) or []
+        )
+        obra = str(getattr(pending, "nombre_proyecto", None) or "").strip()
+        obra_text = f" de {obra}" if obra else ""
+        suffix = f"\n\n{options}" if options else ""
+        return f"A que encargado{obra_text} corresponde {_display_person_name(pending.nombre)}?{suffix}"
     candidates = _validation_candidates(pending)
     if not candidates:
         return (
@@ -3592,7 +3690,15 @@ def _candidate_conversational_label(candidate, *, include_project: bool = True) 
 
 
 def _project_short_label(nombre_proyecto: str | None) -> str:
-    return str(nombre_proyecto or "").strip()[:6].strip() or "OTRA"
+    text = str(nombre_proyecto or "").strip()
+    if text.lower().startswith("obra "):
+        return text[5:].strip()[:4].strip().upper() or "OTRA"
+    return text[:6].strip() or "OTRA"
+
+
+def _destination_option_label(value: str | None) -> str:
+    text = str(value or "").strip()
+    return text[:20].rstrip()
 
 
 def _candidate_button_title(candidate, index: int) -> str:
@@ -4072,37 +4178,6 @@ def _apoyos_next_steps() -> str:
         "Para cargar faltas o accidentes, escribi LISTADO. "
         "Para terminar el parte, responde GUARDAR o CERRAR."
     )
-
-
-def _extract_external_work_project_text(text: str | None) -> str:
-    normalized = normalize_text(text)
-    if not normalized:
-        return ""
-    work_tokens = {
-        "trabajo",
-        "trabaja",
-        "trabajando",
-        "trabajar",
-        "vino",
-        "fue",
-        "va",
-        "apoyo",
-        "apoyar",
-        "mande",
-        "mandaron",
-        "envie",
-        "enviaron",
-    }
-    if not (work_tokens & set(normalized.split())) and "otra obra" not in normalized:
-        return ""
-    matches = list(re.finditer(r"\b(?:en|a|para)\s+(?:la\s+)?(?:obra\s+)?(.+)$", normalized))
-    if not matches:
-        return ""
-    project_text = matches[-1].group(1)
-    project_text = re.sub(r"\b\d+(?:\.\d+)?\s*(?:h|hs|hora|horas)\b", " ", project_text)
-    project_text = re.sub(r"\b(?:otra|otro)\s+obra\b", " ", project_text)
-    project_text = re.sub(r"\s+", " ", project_text).strip()
-    return project_text
 
 
 def _parse_hours_from_text(text: str | None, *, require_unit: bool = False) -> float | None:

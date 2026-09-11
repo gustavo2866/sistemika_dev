@@ -16,6 +16,7 @@ ParteDiarioStage = Literal[
     "carga",
     "revision",
     "validacion",
+    "validacion_carga",
     "cierre",
     "continuar",
     "pendientes",
@@ -212,6 +213,8 @@ class ParteDiarioV3State:
     asistencia_opciones: list[ParteDiarioAsistenciaOption] = field(default_factory=list)
     asistencia_registros: list[ParteDiarioAsistenciaRegistro] = field(default_factory=list)
     asistencia_reemplazo_pendiente: dict[str, Any] = field(default_factory=dict)
+    validacion_origen: str | None = None
+    validacion_tipo: str | None = None
     parte_state: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -226,6 +229,7 @@ class ParteDiarioV3State:
             "carga",
             "revision",
             "validacion",
+            "validacion_carga",
             "cierre",
             "continuar",
             "pendientes",
@@ -287,6 +291,8 @@ class ParteDiarioV3State:
             asistencia_opciones=asistencia_options,
             asistencia_registros=asistencia_registros,
             asistencia_reemplazo_pendiente=dict(data.get("asistencia_reemplazo_pendiente") or {}),
+            validacion_origen=str(data.get("validacion_origen") or "").strip() or None,
+            validacion_tipo=str(data.get("validacion_tipo") or "").strip() or None,
             parte_state=dict(data.get("parte_state") or {}),
         )
 
@@ -312,6 +318,8 @@ class ParteDiarioV3State:
             "asistencia_opciones": [option.to_dict() for option in self.asistencia_opciones],
             "asistencia_registros": [item.to_dict() for item in self.asistencia_registros],
             "asistencia_reemplazo_pendiente": dict(self.asistencia_reemplazo_pendiente),
+            "validacion_origen": self.validacion_origen,
+            "validacion_tipo": self.validacion_tipo,
             "parte_state": dict(self.parte_state),
         }
 

@@ -219,11 +219,18 @@ def _agregar_novedad(
     estados: list[EstadoItem],
 ) -> str | None:
     nombre = str(operation.nombre or "").strip()
+    resolved_by_id = _resolve_nomina_by_id(operation.idnomina, nominas_proyecto, nominas_completas)
+    if resolved_by_id is not None and not nombre:
+        nombre = resolved_by_id.nombre_completo
     if not nombre:
         return "No pude identificar a que persona corresponde una novedad."
     if not _has_concrete_attendance_update(operation):
         return f"No pude identificar la novedad para {nombre}. Indica si falto, trabajo horas o el motivo."
-    if operation.fuera_de_proyecto and not str(operation.nombre_proyecto or "").strip():
+    if (
+        operation.fuera_de_proyecto
+        and not operation.validar_destino_trabajo
+        and not str(operation.nombre_proyecto or "").strip()
+    ):
         return f"Indica a que obra fue a trabajar {nombre}."
     estado = resolve_estado_codigo(operation.estado_codigo, estados)
     if estado is None and operation.fuera_de_proyecto:
@@ -235,8 +242,14 @@ def _agregar_novedad(
         estado = resolve_estado_codigo("P", estados)
     if operation.horas_extra is not None and estado and estado.abreviatura.upper() != "P":
         return f"Para {nombre}, las horas extra solo pueden registrarse como PRESENTE."
-    resolved = NominaResolver.resolve(nombre, nominas_proyecto, nominas_completas)
-    if resolved.error:
+    if operation.idnomina is not None:
+        if resolved_by_id is None:
+            return f"No encontre a {nombre} en la nomina activa."
+        resolved = None
+    else:
+        resolved = NominaResolver.resolve(nombre, nominas_proyecto, nominas_completas)
+    item = resolved_by_id if resolved is None else None
+    if resolved is not None and resolved.error:
         state.pendientes_ambiguos.append(
             PendienteAmbiguo(
                 nombre=nombre,
@@ -246,12 +259,18 @@ def _agregar_novedad(
                 horas_extra=operation.horas_extra,
                 descripcion=operation.descripcion,
                 idproyecto_destino=operation.idproyecto_destino,
+                contacto_id_destino=operation.contacto_id_destino,
+                nombre_encargado_destino=operation.nombre_encargado_destino,
+                validar_destino_trabajo=operation.validar_destino_trabajo,
+                destino_pendiente=operation.destino_pendiente,
+                opciones_proyecto_destino=operation.opciones_proyecto_destino,
+                opciones_encargado_destino=operation.opciones_encargado_destino,
                 nombre_no_encontrado=True,
             )
         )
         state.sin_novedades_informado = False
         return None
-    if resolved.ambiguo:
+    if resolved is not None and resolved.ambiguo:
         project_candidates = resolved.candidatos or []
         candidates = project_candidates or resolved.candidatos_externos or []
         if (
@@ -259,6 +278,7 @@ def _agregar_novedad(
             and estado.abreviatura.upper() == "P"
             and operation.horas is not None
             and operation.horas < 9
+            and not operation.fuera_de_proyecto
             and project_candidates
             and all(not item.fuera_de_proyecto for item in project_candidates)
         ):
@@ -274,14 +294,22 @@ def _agregar_novedad(
                 candidatos=candidates,
                 candidatos_externos=resolved.candidatos_externos,
                 mostrando_candidatos_externos=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
-                fuera_de_proyecto=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
+                fuera_de_proyecto=operation.fuera_de_proyecto
+                or (bool(candidates) and all(item.fuera_de_proyecto for item in candidates)),
+                nombre_proyecto=operation.nombre_proyecto,
                 idproyecto_destino=operation.idproyecto_destino,
+                contacto_id_destino=operation.contacto_id_destino,
+                nombre_encargado_destino=operation.nombre_encargado_destino,
+                validar_destino_trabajo=operation.validar_destino_trabajo,
+                destino_pendiente=operation.destino_pendiente,
+                opciones_proyecto_destino=operation.opciones_proyecto_destino,
+                opciones_encargado_destino=operation.opciones_encargado_destino,
             )
         )
         state.sin_novedades_informado = False
         return None
 
-    item = resolved.match
+    item = item or (resolved.match if resolved is not None else None)
     if item is None:
         return f"No encontre a {nombre} en la nomina activa."
     if estado is None and not item.fuera_de_proyecto:
@@ -291,8 +319,44 @@ def _agregar_novedad(
                 horas=operation.horas,
                 horas_extra=operation.horas_extra,
                 descripcion=operation.descripcion,
+                candidatos=[item],
                 idnomina_resuelto=item.idnomina,
                 idproyecto_destino=operation.idproyecto_destino,
+                contacto_id_destino=operation.contacto_id_destino,
+                nombre_encargado_destino=operation.nombre_encargado_destino,
+                validar_destino_trabajo=operation.validar_destino_trabajo,
+                destino_pendiente=operation.destino_pendiente,
+                opciones_proyecto_destino=operation.opciones_proyecto_destino,
+                opciones_encargado_destino=operation.opciones_encargado_destino,
+            )
+        )
+        state.sin_novedades_informado = False
+        return None
+    if operation.validar_destino_trabajo and (
+        operation.destino_pendiente
+        or operation.idproyecto_destino is None
+        or operation.contacto_id_destino is None
+    ):
+        state.pendientes_ambiguos.append(
+            PendienteAmbiguo(
+                nombre=nombre,
+                idestado=estado.id if estado else None,
+                estado_codigo=estado.abreviatura if estado else None,
+                horas=operation.horas,
+                horas_extra=operation.horas_extra,
+                descripcion=operation.descripcion,
+                candidatos=[item],
+                idnomina_resuelto=item.idnomina,
+                fuera_de_proyecto=True,
+                nombre_proyecto=operation.nombre_proyecto,
+                idproyecto_destino=operation.idproyecto_destino,
+                contacto_id_destino=operation.contacto_id_destino,
+                nombre_encargado_destino=operation.nombre_encargado_destino,
+                validar_destino_trabajo=True,
+                destino_pendiente=operation.destino_pendiente
+                or ("obra" if operation.idproyecto_destino is None else "encargado"),
+                opciones_proyecto_destino=operation.opciones_proyecto_destino,
+                opciones_encargado_destino=operation.opciones_encargado_destino,
             )
         )
         state.sin_novedades_informado = False
@@ -307,9 +371,29 @@ def _agregar_novedad(
         fuera_de_proyecto=operation.fuera_de_proyecto,
         nombre_proyecto=operation.nombre_proyecto,
         idproyecto_destino=operation.idproyecto_destino,
+        contacto_id_destino=operation.contacto_id_destino,
+        nombre_encargado_destino=operation.nombre_encargado_destino,
+        validar_destino_trabajo=operation.validar_destino_trabajo,
     )
     _registrar_o_encolar_conflicto(state, novedad)
     state.sin_novedades_informado = False
+    return None
+
+
+def _resolve_nomina_by_id(
+    idnomina: int | None,
+    nominas_proyecto: list[NominaItem],
+    nominas_completas: list[NominaItem],
+) -> NominaItem | None:
+    try:
+        target = int(idnomina or 0)
+    except (TypeError, ValueError):
+        return None
+    if target <= 0:
+        return None
+    for item in [*nominas_proyecto, *nominas_completas]:
+        if item.idnomina == target:
+            return item
     return None
 
 
@@ -323,10 +407,13 @@ def _build_novedad(
     fuera_de_proyecto: bool = False,
     nombre_proyecto: str | None = None,
     idproyecto_destino: int | None = None,
+    contacto_id_destino: int | None = None,
+    nombre_encargado_destino: str | None = None,
+    validar_destino_trabajo: bool = False,
 ) -> NovedadPersonal:
     external = nomina.fuera_de_proyecto or fuera_de_proyecto
-    project_name = nombre_proyecto if fuera_de_proyecto else nomina.nombre_proyecto
-    destination_id = idproyecto_destino if fuera_de_proyecto else None
+    project_name = nombre_proyecto if validar_destino_trabajo or fuera_de_proyecto else nomina.nombre_proyecto
+    destination_id = idproyecto_destino if validar_destino_trabajo else None
     return NovedadPersonal(
         nombre=nomina.nombre_completo or nombre,
         idnomina=nomina.idnomina,
@@ -342,6 +429,9 @@ def _build_novedad(
         fuera_de_proyecto=external,
         nombre_proyecto=project_name,
         idproyecto_destino=destination_id,
+        contacto_id_destino=contacto_id_destino if validar_destino_trabajo else None,
+        nombre_encargado_destino=nombre_encargado_destino if validar_destino_trabajo else None,
+        validar_destino_trabajo=validar_destino_trabajo,
         nro_legajo=nomina.nro_legajo,
     )
 
@@ -398,6 +488,9 @@ def registrar_pendiente_resuelto(
         fuera_de_proyecto=pending.fuera_de_proyecto,
         nombre_proyecto=pending.nombre_proyecto,
         idproyecto_destino=pending.idproyecto_destino,
+        contacto_id_destino=pending.contacto_id_destino,
+        nombre_encargado_destino=pending.nombre_encargado_destino,
+        validar_destino_trabajo=pending.validar_destino_trabajo,
     )
     _registrar_o_encolar_conflicto(state, novedad)
 
@@ -419,6 +512,9 @@ def registrar_pendiente_sin_validar(state: ParteDiarioState, pending: PendienteA
             fuera_de_proyecto=pending.fuera_de_proyecto,
             nombre_proyecto=pending.nombre_proyecto,
             idproyecto_destino=pending.idproyecto_destino,
+            contacto_id_destino=pending.contacto_id_destino,
+            nombre_encargado_destino=pending.nombre_encargado_destino,
+            validar_destino_trabajo=pending.validar_destino_trabajo,
         )
     )
 

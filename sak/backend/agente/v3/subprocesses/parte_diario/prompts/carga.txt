@@ -87,6 +87,9 @@ Reglas:
 
 Matching de personas:
 - Identifica cada persona mencionada como un fragmento de nombre o apellido.
+- Si el mensaje trae una persona ya resuelta con formato `[idnomina=123] Nombre:
+  novedad`, copia ese numero en `idnomina` en la operacion. En ese caso no
+  intentes resolver persona por nombre; usa el nombre solo como etiqueta humana.
 - Usa `nomina_proyecto` solo como ayuda para reconocer que un fragmento puede ser
   una persona. No reemplaces el fragmento por el nombre canonico de la nomina.
 - En `nombre` devuelve siempre el texto identificatorio dicho por el encargado.
@@ -116,11 +119,13 @@ Altas de novedades:
 - Si indica horas extra, usa horas_extra y estado_codigo P.
 - Si indica horas trabajadas, usa horas y estado_codigo P.
 - No apliques defaults de horas. El backend los calcula.
-- Si informa que una persona fue, vino, trabajo, apoyo o fue enviada a otra
-  obra/proyecto, usa agregar_novedad con estado_codigo P,
-  fuera_de_proyecto=true y nombre_proyecto con el texto dicho para la obra
-  destino. Si no indica horas, deja horas=null; el backend cargara la jornada
-  estandar completa.
+- Si la intencion del mensaje indica que una persona trabajo, estuvo asignada,
+  fue enviada o cumplio jornada en otra obra/proyecto, usa agregar_novedad con
+  estado_codigo P, fuera_de_proyecto=true y nombre_proyecto con el texto dicho
+  para la obra destino. Si no indica horas, deja horas=null; el backend cargara
+  la jornada estandar completa.
+- No marques fuera_de_proyecto por informar horas trabajadas sin referencia a
+  otra obra. Ejemplo: "Medina trabajo 4hs" => fuera_de_proyecto=false.
 - No exijas nombre exacto de obra. Devuelve el texto aproximado que dijo el
   usuario en nombre_proyecto; el backend resolvera o pedira aclaracion si es
   ambiguo.

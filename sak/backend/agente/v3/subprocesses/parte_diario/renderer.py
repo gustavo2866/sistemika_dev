@@ -182,7 +182,10 @@ def _external_label(novedad) -> str:
 
 
 def _project_short_label(nombre_proyecto: str | None) -> str:
-    return str(nombre_proyecto or "").strip()[:6].strip()
+    text = str(nombre_proyecto or "").strip()
+    if text.lower().startswith("obra "):
+        return text[5:].strip()[:4].strip().upper()
+    return text[:6].strip()
 
 
 def actualizado(state: ParteDiarioState, errors: list[str] | None = None) -> str:
@@ -258,11 +261,29 @@ def preguntar_pendiente(pending: PendienteAmbiguo, estados: list[EstadoItem]) ->
         unvalidated_option = f"{len(candidates) + 1}. Registrar como {pending.nombre} sin validar"
         options = f"{options}\n{unvalidated_option}" if options else unvalidated_option
         return f"A cual {pending.nombre} te referis?\n{options}"
+    if pending.obra_destino_pendiente:
+        options = "\n".join(
+            f"{option.opcion}. {_destination_option_label(option.nombre)}"
+            for option in pending.opciones_proyecto_destino or []
+        )
+        return f"A que obra fue {pending.nombre}?\n{options}".rstrip()
+    if pending.encargado_destino_pendiente:
+        options = "\n".join(
+            f"{option.opcion}. {option.nombre}"
+            for option in pending.opciones_encargado_destino or []
+        )
+        obra = f" de {pending.nombre_proyecto}" if pending.nombre_proyecto else ""
+        return f"A que encargado{obra} corresponde {pending.nombre}?\n{options}".rstrip()
     return preguntar_estado(pending, estados)
 
 
 def validacion_requerida(question: str) -> str:
     return f"Antes de continuar, necesito completar la validacion pendiente.\n\n{question}"
+
+
+def _destination_option_label(value: str | None) -> str:
+    text = str(value or "").strip()
+    return text[:20].rstrip()
 
 
 def _candidate_label(candidate: NominaItem) -> str:
