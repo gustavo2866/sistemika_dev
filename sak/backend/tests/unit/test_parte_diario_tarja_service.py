@@ -513,7 +513,7 @@ def test_actualizar_parte_a_confirmado_genera_tarja_detalle_del_dia(db_session):
     assert default.horas == Decimal("9.00")
 
 
-def test_confirmar_parte_rechaza_novedad_de_nomina_fuera_del_encargado(db_session):
+def test_actualizar_parte_generico_no_valida_nomina_fuera_del_encargado(db_session):
     data = _seed_base(db_session)
     falta_estado = db_session.exec(
         select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
@@ -527,29 +527,32 @@ def test_confirmar_parte_rechaza_novedad_de_nomina_fuera_del_encargado(db_sessio
     db_session.add(parte)
     db_session.commit()
 
-    try:
-        parte_diario_crud.update(
-            db_session,
-            parte.id,
-            {
-                "idproyecto": data["proyecto"].id,
-                "contacto_id": data["contacto"].id,
-                "fecha": "2026-06-24",
-                "estado": EstadoParteDiario.CONFIRMADO,
-                "detalles": [
-                    {
-                        "idnomina": data["nomina_otro_encargado"].id,
-                        "idestado": falta_estado.id,
-                        "horas": "0",
-                        "descripcion": "Novedad de apoyo externo",
-                    }
-                ],
-            },
-        )
-    except ValueError as exc:
-        assert "no corresponde al proyecto, encargado y fecha" in str(exc)
-    else:
-        raise AssertionError("Debe rechazar novedades de nomina fuera del encargado vigente")
+    updated = parte_diario_crud.update(
+        db_session,
+        parte.id,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "idnomina": data["nomina_otro_encargado"].id,
+                    "idestado": falta_estado.id,
+                    "horas": "0",
+                    "descripcion": "Novedad de apoyo externo",
+                }
+            ],
+        },
+    )
+
+    assert updated.estado == EstadoParteDiario.CONFIRMADO
+    detalle = db_session.exec(
+        select(ParteDiarioDetalle)
+        .where(ParteDiarioDetalle.parte_diario_id == updated.id)
+        .where(ParteDiarioDetalle.idnomina == data["nomina_otro_encargado"].id)
+    ).one()
+    assert detalle.idestado == falta_estado.id
 
 
 def test_confirmar_parte_usa_tarja_nomina_para_validar_novedad_tardia(db_session):

@@ -9,12 +9,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from agente.v3.llm import AgentSDKClient
-from agente.v3.subprocesses.parte_diario.models import NominaItem, PendienteAmbiguo
-from agente.v3.subprocesses.parte_diario.resolver import normalize_text, parse_candidate_selection
+from agente.v3.subprocesses.parte_diario.domain.models import NominaItem, PendienteAmbiguo
+from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
+from agente.v3.subprocesses.parte_diario.domain.empleados import parse_candidate_selection
 
 
 class ParteDiarioCargaAgentOutput(BaseModel):
-    action: Literal["seleccionar_persona", "registrar_sin_validar", "procesar_como_novedad", "pedir_aclaracion"]
+    action: Literal["seleccionar_persona", "procesar_como_novedad", "pedir_aclaracion"]
     candidate_id: int | None = Field(default=None)
     text: str | None = Field(default=None)
     reason: str | None = Field(default=None)
@@ -50,7 +51,6 @@ class ParteDiarioCargaAgentClient:
                     "message_text": message_text,
                     "pending_name": pending.nombre,
                     "candidates": [item.to_dict() for item in candidates],
-                    "accepted_none_command": "NINGUNO",
                 },
                 ensure_ascii=False,
             )
@@ -61,7 +61,7 @@ class ParteDiarioCargaAgentClient:
 def fallback_person_validation(message_text: str, pending: PendienteAmbiguo) -> ParteDiarioCargaAgentOutput:
     command = normalize_text(message_text).upper()
     if command in {"NINGUNO", "NINGUNA", "NINGUNO DE ESOS", "NINGUNA DE ESAS"}:
-        return ParteDiarioCargaAgentOutput(action="registrar_sin_validar", reason="fallback_none")
+        return ParteDiarioCargaAgentOutput(action="pedir_aclaracion", reason="fallback_none")
     selected = parse_candidate_selection(message_text, _visible_candidates(pending))
     if selected is not None:
         return ParteDiarioCargaAgentOutput(
@@ -130,7 +130,7 @@ Sos el agente de carga de parte diario de obra.
 Tu tarea en este punto es resolver una aclaracion de persona pendiente.
 
 Reglas:
-- Si el usuario escribe NINGUNO, devolve action="registrar_sin_validar".
+- Solo se puede elegir una persona de los candidatos enviados, pertenecientes a la nomina vigente de la obra y encargado. Nunca registrar sin validar; si no hay coincidencia, pedir_aclaracion.
 - Si el usuario identifica un candidato por nombre, apellido, legajo o numero, usa resolver_candidato y devolve action="seleccionar_persona" con candidate_id.
 - Si el usuario escribe una nueva novedad en vez de aclarar la persona, usa detectar_novedad y devolve action="procesar_como_novedad" con text igual al mensaje original.
 - Si no alcanza para decidir, devolve action="pedir_aclaracion".

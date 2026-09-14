@@ -15,11 +15,11 @@ from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDe
 from app.models.proyecto_encargado import ProyectoEncargado
 from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
 from app.services.parte_diario_tarja_service import (
-    get_jornada_esperada,
     get_quincena_range,
     parte_diario_tarja_service,
 )
-from agente.v3.subprocesses.parte_diario.calendario import es_dia_laborable
+from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable
+from app.utils.jornada import get_jornada_esperada
 from fastapi import Depends, HTTPException, Query
 from sqlmodel import Session, select
 
@@ -484,12 +484,15 @@ class ParteDiarioCRUD(NestedCRUD):
         data: dict[str, Any],
         *,
         existing: ParteDiario | None = None,
+        validate_scope: bool = True,
     ) -> None:
         detalles = data.get("detalles")
         if not isinstance(detalles, list):
             return
 
         self._validate_detalles_nomina_unicos(data, existing=existing)
+        if not validate_scope:
+            return
 
         nomina_ids = {
             int(detalle["idnomina"])
@@ -783,7 +786,12 @@ class ParteDiarioCRUD(NestedCRUD):
     ):
         existing = session.get(ParteDiario, obj_id)
         self._normalizar_detalles_baja(session, data, existing=existing)
-        self._validate_nomina_detalles(session, data, existing=existing)
+        self._validate_nomina_detalles(
+            session,
+            data,
+            existing=existing,
+            validate_scope=False,
+        )
         self._asegurar_tarja_borrador(session, data, existing=existing)
         parte = super().update(session, obj_id, data, check_version=check_version)
         if parte and parte.estado == EstadoParteDiario.CONFIRMADO:

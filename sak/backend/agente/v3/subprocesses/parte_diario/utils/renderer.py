@@ -3,21 +3,42 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
+from app.utils.jornada import get_jornada_esperada
 
-from agente.v3.subprocesses.parte_diario.models import (
-    ConflictoNovedad,
-    EstadoItem,
-    NominaItem,
-    ParteDiarioState,
-    PendienteAmbiguo,
-)
-from agente.v3.subprocesses.parte_diario.resolver import normalize_text
+from app.models import Nomina, ParteDiarioDetalle
+from agente.v3.subprocesses.parte_diario.utils import calendario
+from agente.v3.subprocesses.parte_diario.utils.texto import _format_decimal
+
+from agente.v3.subprocesses.parte_diario.domain.models import ConflictoNovedad, EstadoItem, NominaItem, ParteDiarioDraft, PendienteAmbiguo
+from agente.v3.subprocesses.parte_diario.models import ExecutionResult, TurnPlan, TurnResult
+from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 
 
 _INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
 
 
-def resumen(state: ParteDiarioState) -> str:
+# Muestra el borrador y las acciones que confirman la revision sin otra pregunta.
+def menu_revision(state) -> str:
+    draft = state.draft()
+    summary = resumen(draft)
+    if not (draft.novedades or draft.pendientes_ambiguos or draft.conflictos_novedad):
+        summary = "Sin novedades. Todos presentes."
+    return (f"Resumen del parte\nObra: {state.nombre_obra}\nFecha: {draft.fecha}\n{summary}\n\n"
+            "1. Guardar\n2. Volver a carga\nSALIR para descartar cambios.")
+
+
+# Solicita consentimiento explicito antes de descartar cambios no guardados.
+def confirmar_descarte() -> str:
+    return "Queres descartar los cambios no guardados?\n1. Si, descartar\n2. No, volver"
+
+
+# Presenta la fecha del siguiente parte antes de abrirlo.
+def propuesta_continuar(fecha: str) -> str:
+    return f"Queres cargar el parte del {fecha}?\n1. Si\n2. No, finalizar"
+
+
+def resumen(state: ParteDiarioDraft) -> str:
     if state.sin_novedades_informado and not state.novedades:
         return "Sin novedades. Todos presentes."
     if not state.novedades and not state.pendientes_ambiguos:
@@ -44,11 +65,11 @@ def resumen(state: ParteDiarioState) -> str:
         if normalized_name in shown_pending_names:
             continue
         shown_pending_names.add(normalized_name)
-        rows.append(_resumen_pendiente(pending))
+        rows.append(_resumen_pendiente(pending, state.fecha))
     return "\n".join(rows) if rows else "(sin novedades cargadas)"
 
 
-def resumen_revision(state: ParteDiarioState) -> str:
+def resumen_revision(state: ParteDiarioDraft) -> str:
     if state.sin_novedades_informado and not state.novedades and not state.pendientes_ambiguos:
         return "Sin novedades. Todos presentes."
 
@@ -65,13 +86,13 @@ def resumen_revision(state: ParteDiarioState) -> str:
         code = str(novedad.estado_codigo or "").upper()
         hours = novedad.horas
         if novedad.fuera_de_proyecto:
-            otra_obra.append(_review_row(name, _review_hours_suffix(hours)))
+            otra_obra.append(_review_row(name, _review_hours_suffix(hours, state.fecha)))
             continue
         if code and code != "P":
             ausencias.append(_review_row(name, _state_label(novedad.estado_codigo)))
             continue
-        if hours is not None and hours > 9:
-            horas_extra.append(_review_row(name, f"{hours - 9:g}"))
+        if hours is not None and hours > get_jornada_esperada(state.fecha):
+            horas_extra.append(_review_row(name, f"{hours - float(get_jornada_esperada(state.fecha)):g}"))
             continue
         if code == "P" or hours is not None:
             otras.append(_review_row(name, _review_present_suffix(hours)))
@@ -129,8 +150,8 @@ def _review_row(name: str, suffix: str | None = None) -> str:
     return f"{name} ({clean_suffix})" if clean_suffix else name
 
 
-def _review_hours_suffix(hours: float | None) -> str | None:
-    if hours is None or hours == 9:
+def _review_hours_suffix(hours: float | None, fecha: date | str) -> str | None:
+    if hours is None or hours == get_jornada_esperada(fecha):
         return None
     return f"{hours:g}h"
 
@@ -141,9 +162,9 @@ def _review_present_suffix(hours: float | None) -> str | None:
     return f"{hours:g}h"
 
 
-def _resumen_pendiente(pending: PendienteAmbiguo) -> str:
+def _resumen_pendiente(pending: PendienteAmbiguo, fecha: date | str) -> str:
     estado = pending.estado_codigo or "estado pendiente"
-    horas = _pending_hours(pending)
+    horas = _pending_hours(pending, fecha)
     horas_text = _hours_text(pending.estado_codigo, horas)
     hours_part = f", {horas_text}" if horas_text else ""
     motivo = (
@@ -160,16 +181,17 @@ def _hours_text(estado_codigo: str | None, horas: float | None) -> str:
     return f"{horas:g}h" if horas is not None else "horas pendientes"
 
 
-def _pending_hours(pending: PendienteAmbiguo) -> float | None:
+# Muestra los defaults del pendiente usando la fecha del borrador.
+def _pending_hours(pending: PendienteAmbiguo, fecha: date | str) -> float | None:
     if pending.horas_extra is not None:
-        return 9.0 + pending.horas_extra
+        return float(get_jornada_esperada(fecha)) + pending.horas_extra
     if pending.horas is not None:
         return pending.horas
     normalized_code = str(pending.estado_codigo or "").upper()
     if normalized_code and normalized_code != "P":
         return 0.0
     if pending.fuera_de_proyecto or normalized_code == "P":
-        return 9.0
+        return float(get_jornada_esperada(fecha))
     return None
 
 
@@ -188,24 +210,63 @@ def _project_short_label(nombre_proyecto: str | None) -> str:
     return text[:6].strip()
 
 
-def actualizado(state: ParteDiarioState, errors: list[str] | None = None) -> str:
+# Presenta el borrador preparado y pregunta por las novedades de la fecha activa.
+def inicio_carga(state) -> str:
+    from agente.v3.subprocesses.parte_diario.utils import calendario
+
+    draft = state.draft()
+    title = "Parte diario recuperado" if draft.parte_id else "Parte diario en carga"
+    question = "Que novedades hubo hoy?" if draft.fecha == calendario.hoy().isoformat() else "Que novedades hubo ese dia?"
+    if draft.novedades or draft.pendientes_ambiguos or draft.sin_novedades_informado:
+        question = "Queres agregar o corregir alguna novedad?"
+    return f"{title}:\nFecha: {_fecha_humana(draft.fecha)}\nObra: {state.nombre_obra}\n\n{resumen(draft)}\n\n{question}"
+
+
+# Conserva la respuesta de carga y reemplaza las instrucciones de cierre heredadas.
+def seguimiento_carga(state, reply: str, *, question: str = "Hay alguna otra novedad?") -> str:
+    tails = (
+        "Cuando termines, escribi CONFIRMAR.", "Para guardarlo, responde CONFIRMAR.",
+        "Para resolver las aclaraciones, responde CONFIRMAR.",
+        "Novedades registradas. Escribi CONFIRMAR para guardar.",
+        "Para descartar el parte diario completo, responde CANCELAR.",
+    )
+    reply = reply.strip()
+    for tail in tails:
+        if reply.endswith(tail):
+            reply = reply[:-len(tail)].rstrip()
+    if not reply:
+        reply = resumen(state.draft())
+    if "\nFecha:" in reply and "\nObra:" not in reply:
+        lines = reply.splitlines()
+        index = next(index for index, line in enumerate(lines) if line.startswith("Fecha:"))
+        lines.insert(index + 1, f"Obra: {state.nombre_obra}")
+        reply = "\n".join(lines)
+    return f"{reply}\n\n{question}"
+
+
+def actualizado(state: ParteDiarioDraft, errors: list[str] | None = None) -> str:
     prefix = ""
     if errors:
         prefix = "\n".join(errors) + "\n\n"
     return f"{prefix}Parte diario actualizado:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}\n\nCuando termines, escribi CONFIRMAR."
 
 
-def solicitar_confirmacion(state: ParteDiarioState) -> str:
+# Presenta lo cargado sin anunciar una confirmacion ni exigir guardar.
+def mostrar_borrador(state: ParteDiarioDraft) -> str:
+    return f"Parte diario cargado:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}"
+
+
+def solicitar_confirmacion(state: ParteDiarioDraft) -> str:
     has_clarifications = bool(state.pendientes_ambiguos or state.conflictos_novedad)
     action = "Para resolver las aclaraciones, responde CONFIRMAR." if has_clarifications else "Para guardarlo, responde CONFIRMAR."
     return f"Parte diario para confirmar:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}\n\n{action}"
 
 
-def confirmar_cierre_validado(state: ParteDiarioState) -> str:
+def confirmar_cierre_validado(state: ParteDiarioDraft) -> str:
     return f"Parte diario listo para cerrar:\nFecha: {_fecha_humana(state.fecha)}\n\n{resumen(state)}\n\nConfirmas cerrar el parte diario?"
 
 
-def consulta(state: ParteDiarioState) -> str:
+def consulta(state: ParteDiarioDraft) -> str:
     if state.parte_id is None:
         return f"No hay un parte diario guardado para el {_fecha_humana(state.fecha)}."
     return confirmado(state)
@@ -231,7 +292,7 @@ def sin_novedades_rechazado() -> str:
     return "Ya hay novedades cargadas. Las conserve. Eliminalas o responde CANCELAR antes de informar todos presentes."
 
 
-def confirmado(state: ParteDiarioState, *, cerrado: bool = False) -> str:
+def confirmado(state: ParteDiarioDraft, *, cerrado: bool = False) -> str:
     title = "*PARTE DIARIO CONFIRMADO*" if cerrado else "*PARTE DIARIO GUARDADO*"
     return (
         f"{title}\n"
@@ -242,7 +303,7 @@ def confirmado(state: ParteDiarioState, *, cerrado: bool = False) -> str:
     )
 
 
-def _resumen_bullets(state: ParteDiarioState) -> str:
+def _resumen_bullets(state: ParteDiarioDraft) -> str:
     return "\n".join(
         f"• {row[2:]}" if row.startswith("- ") else row
         for row in resumen(state).splitlines()
@@ -258,8 +319,7 @@ def preguntar_pendiente(pending: PendienteAmbiguo, estados: list[EstadoItem]) ->
             f"{index}. {_candidate_label(candidate)}"
             for index, candidate in enumerate(candidates, start=1)
         )
-        unvalidated_option = f"{len(candidates) + 1}. Registrar como {pending.nombre} sin validar"
-        options = f"{options}\n{unvalidated_option}" if options else unvalidated_option
+        options = f"{options}\nNO para descartar la novedad."
         return f"A cual {pending.nombre} te referis?\n{options}"
     if pending.obra_destino_pendiente:
         options = "\n".join(
@@ -391,3 +451,175 @@ def _fecha_humana(value: date | str | None) -> str:
         except ValueError:
             return str(value or "").strip()
     return f"{_weekday_label(target_date)} {target_date.strftime('%d/%m/%Y')}"
+
+
+# region Resultados de interpretacion y borrador
+
+# Serializa novedades, pendientes y metadata de interpretacion para los consumidores del resultado.
+def payload_ejecucion(result: ExecutionResult, *, plan: TurnPlan | None = None) -> dict:
+    state = result.next_state
+    process_metadata = {
+        "status": result.status,
+        "operations": result.applied_operations,
+    }
+    if plan is not None:
+        process_metadata["llm_operations"] = [operation.type for operation in plan.operations]
+        process_metadata["llm_raw"] = plan.raw_response
+        process_metadata["llm_ms"] = plan.llm_ms
+    return {
+        "type": "parte_diario_reply",
+        "reply_to_user": result.reply,
+        "parte_listo": result.parte_listo,
+        "cerrar_parte": result.cerrar_parte,
+        "confirmar_parte": result.cerrar_parte,
+        "close_after_materialization": result.parte_listo,
+        "cancelado": result.cancelado,
+        "oportunidad_id": state.oportunidad_id,
+        "idproyecto": state.idproyecto,
+        "contacto_id": state.contacto_id,
+        "fecha": state.fecha,
+        "parte_id_existente": state.parte_id,
+        "sin_novedades_informado": state.sin_novedades_informado,
+        "novedades": [item.to_dict() for item in state.novedades],
+        "pendientes_ambiguos": [item.to_dict() for item in state.pendientes_ambiguos],
+        "conflictos_novedad": [item.to_dict() for item in state.conflictos_novedad],
+        "errores": result.errors,
+        "parte_diario": process_metadata,
+    }
+
+
+# Convierte una ejecucion de novedades en respuesta de dominio y estado serializado.
+def resultado_ejecucion(result: ExecutionResult, *, plan: TurnPlan | None = None) -> TurnResult:
+    return TurnResult(
+        payload=payload_ejecucion(result, plan=plan),
+        keep_active=result.keep_active,
+        process_state=result.next_state.to_dict(),
+    )
+
+
+# Devuelve un texto junto con el borrador que debe conservar la conversacion.
+def respuesta_borrador(state: ParteDiarioDraft, text: str) -> TurnResult:
+    return TurnResult(
+        payload=payload_ejecucion(ExecutionResult("waiting", state, text)),
+        keep_active=True,
+        process_state=state.to_dict(),
+    )
+
+
+# Construye una respuesta sin borrador e indica si el procesamiento sigue activo.
+def respuesta_simple(text: str, *, keep_active: bool) -> TurnResult:
+    return TurnResult(
+        payload={"type": "parte_diario_reply", "reply_to_user": text, "parte_listo": False},
+        keep_active=keep_active,
+    )
+
+# endregion
+
+# region Presentacion de consultas guardadas
+
+# Presenta la nomina general con el nombre de la obra de cada empleado.
+def nomina_completa(nominas: list[Nomina], proyectos: dict[int, str]) -> str:
+    lines = ["*NOMINA COMPLETA*"]
+    for item in nominas[:30]:
+        proyecto = proyectos.get(item.idproyecto)
+        suffix = f" ({proyecto})" if proyecto else ""
+        lines.append(f"- {etiqueta_nomina(item)}{suffix}")
+    return "\n".join(lines)
+
+# Presenta las novedades ya filtradas sin realizar consultas de base de datos.
+def consulta_novedades(
+    filtered: list[tuple[date, ParteDiarioDetalle]], states_by_id: dict[int, str],
+    nominas: dict[int, Nomina], proyectos: dict[int, str], proyecto_id: int,
+    nombre_obra: str, persona: str | None, normalized_state: str | None,
+    solo_horas_extras: bool, agrupar_por: str | None, horas_igual_a: float | None,
+) -> str:
+    if not filtered:
+        subject = f" para {persona}" if persona else ""
+        state_text = " con horas extras" if solo_horas_extras else (f" con estado {normalized_state}" if normalized_state else "")
+        return f"No encontre novedades{state_text}{subject} en {nombre_obra} en el periodo consultado."
+
+    if str(agrupar_por or "fecha").lower() == "persona":
+        grouped_by_person: dict[str, list[str]] = {}
+        for item_date, detail in filtered:
+            value = item_date.strftime("%d/%m/%Y")
+            if solo_horas_extras:
+                value = f"{value} ({_format_decimal(Decimal(str(detail.horas)) - get_jornada_esperada(item_date))}h extras)"
+            grouped_by_person.setdefault(_persona_detalle(detail, nominas, proyectos, proyecto_id), []).append(value)
+        lines = ["Horas extras registradas:" if solo_horas_extras else "Novedades registradas:"]
+        for person in sorted(grouped_by_person):
+            lines.append(f"- {person}: {', '.join(grouped_by_person[person])}")
+        return "\n".join(lines)
+
+    grouped: dict[date, list[str]] = {}
+    for item_date, detail in filtered:
+        label = _etiqueta_extras(detail, nominas, proyectos, proyecto_id, item_date) if solo_horas_extras else _etiqueta_detalle(detail, states_by_id, nominas, proyectos, proyecto_id)
+        grouped.setdefault(item_date, []).append(label)
+    if solo_horas_extras:
+        title = "Horas extras registradas:"
+    elif horas_igual_a == 0:
+        title = "Personas que no trabajaron:"
+    elif normalized_state == "FAL":
+        title = "Faltas registradas:"
+    else:
+        title = "Novedades registradas:"
+    lines = [title]
+    for item_date in sorted(grouped.keys(), reverse=True):
+        lines.append(f"- {item_date.strftime('%d/%m/%Y')}: " + "; ".join(grouped[item_date]))
+    return "\n".join(lines)
+
+
+# Forma el nombre visible del empleado como apellido y nombre.
+def etiqueta_nomina(item: Nomina) -> str:
+    return f"{item.apellido}, {item.nombre}"
+
+
+# Describe un detalle con persona, legajo, procedencia, motivo y horas.
+def _etiqueta_detalle(detail: ParteDiarioDetalle, states: dict[int, str], nominas: dict[int, Nomina], proyectos: dict[int, str], proyecto_id: int) -> str:
+    name = str(detail.nombre_provisorio or "").strip()
+    legajo = ""
+    external = ""
+    if detail.idnomina:
+        nomina = nominas.get(detail.idnomina)
+        if nomina is not None:
+            name = etiqueta_nomina(nomina)
+            legajo = f" (legajo {nomina.nro_legajo})" if nomina.nro_legajo else ""
+            external = _procedencia_nomina(nomina, proyectos, proyecto_id)
+    if not name:
+        name = "Persona sin identificar"
+    state = states.get(int(detail.idestado or 0), "estado pendiente")
+    hours = _format_decimal(detail.horas)
+    description = f", motivo: {detail.descripcion}" if detail.descripcion else ""
+    return f"{name}{legajo}{external}: {state}, {hours}h{description}"
+
+
+# Obtiene el nombre y la procedencia de un detalle, incluso si la persona es provisoria.
+def _persona_detalle(detail: ParteDiarioDetalle, nominas: dict[int, Nomina], proyectos: dict[int, str], proyecto_id: int) -> str:
+    name = str(detail.nombre_provisorio or "").strip()
+    if detail.idnomina:
+        nomina = nominas.get(detail.idnomina)
+        if nomina is not None:
+            return f"{etiqueta_nomina(nomina)}{_procedencia_nomina(nomina, proyectos, proyecto_id)}"
+    return name or "Persona sin identificar"
+
+
+# Describe la obra de procedencia cuando el empleado es externo.
+def _procedencia_nomina(nomina: Nomina, proyectos: dict[int, str], proyecto_id: int) -> str:
+    if nomina.idproyecto == proyecto_id:
+        return ""
+    project_name = None
+    if nomina.idproyecto:
+        project = proyectos.get(nomina.idproyecto)
+        project_name = project
+    suffix = f": {project_name}" if project_name else ""
+    return f" (otra nomina{suffix})"
+
+
+# Describe el excedente sobre la jornada de esa fecha y el total informado.
+def _etiqueta_extras(detail: ParteDiarioDetalle, nominas: dict[int, Nomina], proyectos: dict[int, str], proyecto_id: int, fecha: date) -> str:
+    extra = max(0.0, float(detail.horas) - float(get_jornada_esperada(fecha)))
+    return (
+        f"{_persona_detalle(detail, nominas, proyectos, proyecto_id)}: "
+        f"{_format_decimal(Decimal(str(extra)))}h extras ({_format_decimal(detail.horas)}h reportadas)"
+    )
+
+# endregion

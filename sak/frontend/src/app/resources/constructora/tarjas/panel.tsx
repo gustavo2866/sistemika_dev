@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useNotify } from "ra-core";
+import { useDataProvider, useNotify } from "ra-core";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -160,6 +160,7 @@ type ActionTarget = {
 };
 
 const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
+const TEST_CHAT_CONTACT_NAME = "Gustavo test";
 const allDayKeys = Array.from(
   { length: 16 },
   (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
@@ -793,12 +794,18 @@ const RowActions = ({
               {row.tarja ? "Regenerar" : "Generar"}
             </DropdownMenuItem>
           ) : null}
-          {row.puede_cerrar ? (
-            <DropdownMenuItem onSelect={() => onAction({ row, action: "cerrar" })}>
-              <Lock className="mr-2 size-3.5" />
-              Cerrar
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem
+            disabled={!row.puede_cerrar}
+            title={
+              row.puede_cerrar
+                ? "Cerrar tarja"
+                : "La tarja debe estar en borrador y no tener partes faltantes ni en borrador"
+            }
+            onSelect={() => onAction({ row, action: "cerrar" })}
+          >
+            <Lock className="mr-2 size-3.5" />
+            Cerrar
+          </DropdownMenuItem>
           {row.puede_reabrir ? (
             <DropdownMenuItem onSelect={() => onAction({ row, action: "reabrir" })}>
               <LockOpen className="mr-2 size-3.5" />
@@ -831,6 +838,7 @@ export const TarjaPanel = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const notify = useNotify();
+  const dataProvider = useDataProvider();
   const [searchParams, setSearchParams] = useSearchParams();
   const todayIso = useMemo(() => toISODate(new Date()), []);
   const [panel, setPanel] = useState<TarjaPanelResponse | null>(null);
@@ -841,6 +849,7 @@ export const TarjaPanel = () => {
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [openingTestChat, setOpeningTestChat] = useState(false);
   const [openingDetalleRowId, setOpeningDetalleRowId] = useState<string | null>(null);
 
   const fechaParam = searchParams.get("fecha");
@@ -852,6 +861,43 @@ export const TarjaPanel = () => {
   const selectedEncargado = searchParams.get("contacto_id");
   const selectedProjectEstado = searchParams.get("estado") ?? EXECUTION_PROJECT_ESTADO;
   const returnTo = `${location.pathname}${location.search}`;
+
+  const handleOpenTestChat = async () => {
+    setOpeningTestChat(true);
+    try {
+      const { data } = await dataProvider.getList<{
+        id: number;
+        nombre_completo: string;
+        telefonos?: string[] | null;
+      }>("crm/contactos", {
+        filter: { q: TEST_CHAT_CONTACT_NAME },
+        pagination: { page: 1, perPage: 100 },
+        sort: { field: "id", order: "ASC" },
+      });
+      const contacts = data.filter(
+        (contact) => contact.nombre_completo.trim().toLowerCase() === TEST_CHAT_CONTACT_NAME.toLowerCase(),
+      );
+      if (contacts.length !== 1) {
+        throw new Error(`No se pudo identificar un unico contacto ${TEST_CHAT_CONTACT_NAME}.`);
+      }
+      const contact = contacts[0];
+      const phone = contact.telefonos?.find((value) => value?.trim())?.replace(/\D/g, "");
+      if (!phone) {
+        throw new Error(`El contacto ${TEST_CHAT_CONTACT_NAME} no tiene telefono.`);
+      }
+      const params = new URLSearchParams({
+        from_name: contact.nombre_completo,
+        from_phone: phone,
+      });
+      navigate(`/agente-chat?${params.toString()}`, { state: { returnTo } });
+    } catch (chatError) {
+      notify(chatError instanceof Error ? chatError.message : "No se pudo abrir el chat de prueba.", {
+        type: "warning",
+      });
+    } finally {
+      setOpeningTestChat(false);
+    }
+  };
 
   useEffect(() => {
     if (fechaParam === startIso) return;
@@ -1268,6 +1314,18 @@ export const TarjaPanel = () => {
           >
             {exportLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
             Exportar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-[11px]"
+            title="Chat con Gustavo test"
+            onClick={() => void handleOpenTestChat()}
+            disabled={openingTestChat}
+          >
+            {openingTestChat ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+            IA
           </Button>
         </div>
       </div>

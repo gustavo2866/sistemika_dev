@@ -6,26 +6,19 @@ import json
 
 from sqlmodel import Session, select
 
-from agente.v3.subprocesses.parte_diario.calendario import es_dia_laborable
+from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable
 from app.models.nomina import Nomina
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDetalle
 from app.models.tarja import EstadoTarja, Tarja, TarjaDetalle, TarjaNomina
 from app.utils.quincenas import get_quincena_range
+from app.utils.jornada import get_jornada_esperada
 
 
 PRESENTISMO_EXCLUDED_ESTADOS = {"ENF", "ACC"}
 ALTA_ESTADO_CODIGO = "ALT"
 BAJA_ESTADO_CODIGO = "BAJ"
 TRASPASO_ESTADO_CODIGO = "TRA"
-
-
-def get_jornada_esperada(fecha: date) -> Decimal:
-    if not es_dia_laborable(fecha):
-        return Decimal("0")
-    if fecha.weekday() == 5:
-        return Decimal("6")
-    return Decimal("9")
 
 
 class ParteDiarioTarjaService:

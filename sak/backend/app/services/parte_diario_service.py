@@ -7,6 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 import re
 from typing import Any
+from app.utils.jornada import get_jornada_esperada
 
 from sqlalchemy import delete
 from sqlalchemy.orm.attributes import flag_modified
@@ -282,6 +283,7 @@ class ParteDiarioService:
             present_id = int(present.id)
         self._validate_novedades(
             novedades,
+            fecha=fecha,
             present_id=present_id,
             require_close_rules=target_estado == EstadoParteDiario.CONFIRMADO,
         )
@@ -345,7 +347,7 @@ class ParteDiarioService:
                     idnomina=None,
                     nombre_provisorio=nombre,
                     idestado=pending.get("idestado"),
-                    horas=Decimal(str(_provisional_hours(pending))),
+                    horas=Decimal(str(_provisional_hours(pending, fecha))),
                     descripcion=pending.get("descripcion"),
                     origen=OrigenDetalle.AGENTE,
                 )
@@ -449,7 +451,7 @@ class ParteDiarioService:
             destination["idproyecto"] = destination_id
             destination["contacto_id_destino"] = destination_contact_id
             destination["fecha"] = fecha.isoformat()
-            destination["horas"] = _destination_hours(destination)
+            destination["horas"] = _destination_hours(destination, fecha)
             destination["fuera_de_proyecto"] = True
             destination_items.append(destination)
 
@@ -480,6 +482,7 @@ class ParteDiarioService:
         if assignment is None:
             raise ValueError("El encargado destino no esta habilitado para la obra destino")
 
+    # Registra transferencias en destino, reabriendo confirmados sin guardar por separado.
     def _materialize_destination_novedades(
         self,
         session: Session,
@@ -531,10 +534,6 @@ class ParteDiarioService:
                 project = session.get(Proyecto, destination_id)
                 project_name = project.nombre if project is not None else destination_id
                 raise ValueError(f"El parte diario destino {project_name} ya fue cerrado")
-            elif parte.estado == EstadoParteDiario.CONFIRMADO:
-                project = session.get(Proyecto, destination_id)
-                project_name = project.nombre if project is not None else destination_id
-                raise ValueError(f"El parte diario destino {project_name} ya fue confirmado")
             else:
                 parte.contacto_id = destination_contact_id
                 parte.mensaje_origen_id = mensaje_id
@@ -555,7 +554,7 @@ class ParteDiarioService:
                         parte_diario_id=int(parte.id),
                         idnomina=int(item["idnomina"]),
                         idestado=item.get("idestado"),
-                        horas=Decimal(str(_destination_hours(item))),
+                        horas=Decimal(str(_destination_hours(item, fecha))),
                         ingreso=_parse_datetime(item.get("ingreso")),
                         egreso=_parse_datetime(item.get("egreso")),
                         descripcion=item.get("descripcion"),
@@ -646,7 +645,7 @@ class ParteDiarioService:
         for item in pendientes:
             nombre = item.get("nombre") or "persona"
             estado = item.get("estado_codigo") or "sin estado"
-            horas = _provisional_hours(item)
+            horas = _provisional_hours(item, fecha)
             lines.append(f"- {nombre} (a validar): {estado}, {horas}h")
         return f"Parte diario confirmado para {fecha}:\n" + "\n".join(lines)
 
@@ -686,6 +685,7 @@ class ParteDiarioService:
     def _validate_novedades(
         novedades: list[dict[str, Any]],
         *,
+        fecha: date,
         present_id: int | None,
         require_close_rules: bool,
     ) -> None:
@@ -710,9 +710,9 @@ class ParteDiarioService:
                 and not item.get("fuera_de_proyecto")
                 and present_id is not None
                 and item.get("idestado") == present_id
-                and hours < 9
+                and hours < get_jornada_esperada(fecha)
             ):
-                raise ValueError("PRESENTE requiere al menos 9 horas para personal interno")
+                raise ValueError(f"PRESENTE requiere al menos {get_jornada_esperada(fecha):g} horas para personal interno")
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -754,23 +754,22 @@ def _origin_hours_for_destination(item: dict[str, Any], fecha: date) -> float:
     if destination_hours is None:
         return 0.0
 
-    from app.services.parte_diario_tarja_service import get_jornada_esperada
-
     normal_hours = float(get_jornada_esperada(fecha))
     if destination_hours > normal_hours:
         return 0.0
     return max(normal_hours - destination_hours, 0.0)
 
 
-def _destination_hours(item: dict[str, Any]) -> float:
+# Completa la jornada en destino solo cuando no se informaron horas explicitas.
+def _destination_hours(item: dict[str, Any], fecha: date | str) -> float:
     value = item.get("horas")
     normalized_code = str(item.get("estado_codigo") or "").upper()
     if value is None:
-        return 9.0 if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
+        return float(get_jornada_esperada(fecha)) if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
     try:
         hours = float(value)
     except (TypeError, ValueError):
-        return 9.0 if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
+        return float(get_jornada_esperada(fecha)) if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
     return hours
 
 
@@ -783,14 +782,15 @@ def _parse_float(value: Any) -> float | None:
         return None
 
 
-def _provisional_hours(item: dict[str, Any]) -> float:
+# Normaliza horas provisorias con la misma jornada que el parte definitivo.
+def _provisional_hours(item: dict[str, Any], fecha: date | str) -> float:
     if item.get("horas") is not None:
         return float(item["horas"])
     if item.get("horas_extra") is not None:
-        return 9.0 + float(item["horas_extra"])
+        return float(get_jornada_esperada(fecha)) + float(item["horas_extra"])
     normalized_code = str(item.get("estado_codigo") or "").upper()
     if normalized_code == "P":
-        return 9.0
+        return float(get_jornada_esperada(fecha))
     return 0.0
 
 

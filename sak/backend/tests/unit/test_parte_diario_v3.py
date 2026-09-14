@@ -9,38 +9,32 @@ import pytest
 from sqlmodel import Session, select
 
 import agente.v3.subprocesses.parte_diario.handler as parte_diario_handler
-from agente.v3.subprocesses.parte_diario import renderer
+from agente.v3.subprocesses.parte_diario.utils import renderer
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessMessage, V3ProcessResult
-from agente.v3.subprocesses.parte_diario.carga_agent import ParteDiarioCargaAgentOutput
-from agente.v3.subprocesses.parte_diario.executor import execute_plan
+from agente.v3.subprocesses.parte_diario.adapters.carga_agent import ParteDiarioCargaAgentOutput
+from agente.v3.subprocesses.parte_diario.domain.novedades import execute_plan
 from agente.v3.subprocesses.parte_diario.handler import (
     ParteDiarioSubprocess,
+)
+from agente.v3.subprocesses.parte_diario.utils.calendario import (
     dia_operativo_anterior,
     es_dia_laborable,
     es_feriado,
-    resolver_fecha_default_parte_diario,
-    resolver_fecha_default_parte_diario_info,
 )
-from agente.v3.subprocesses.parte_diario.models import (
-    EstadoItem,
-    NominaItem,
-    NovedadPersonal,
-    ParteDiarioOperation,
-    ParteDiarioState,
-    PendienteAmbiguo,
-    TurnPlan,
-)
-from agente.v3.subprocesses.parte_diario.process import (
+from agente.v3.subprocesses.parte_diario.domain.models import EstadoItem, NominaItem, NovedadPersonal, ParteDiarioDraft, PendienteAmbiguo
+from agente.v3.subprocesses.parte_diario.models import ParteDiarioOperation, TurnPlan
+from agente.v3.subprocesses.parte_diario.utils.interpretacion import (
     _fallback_simple_attendance_plan,
     _normalize_attendance_transcription,
-    _today,
-    ParteDiarioProcess,
 )
-from agente.v3.subprocesses.parte_diario.query_service import ParteDiarioQueryService
-from agente.v3.subprocesses.parte_diario.resolver import NominaResolver, normalize_text, parse_candidate_selection
+from agente.v3.subprocesses.parte_diario.utils.calendario import hoy as _today
+from agente.v3.subprocesses.parte_diario.domain import empleados, obras
+from app import db
+from agente.v3.subprocesses.parte_diario.domain.parte_diario import ParteDiarioQueryService
+from agente.v3.subprocesses.parte_diario.domain.empleados import NominaResolver, parse_candidate_selection
+from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from agente.v3.subprocesses.parte_diario.state import (
     ParteDiarioAsistenciaOption,
-    ParteDiarioAsistenciaRegistro,
     ParteDiarioV3State,
 )
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioFechaOption
@@ -70,7 +64,7 @@ class FakeParteDiarioLLM:
         self.contextual_reply_text = contextual_reply
         self.contextual_calls: list[dict] = []
 
-    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados, *, contexto_conversacion=None):
         return self.plan
 
     async def interpretar_estado_pendiente(self, mensaje, estados):
@@ -85,7 +79,7 @@ class FailingParteDiarioLLM(FakeParteDiarioLLM):
     def __init__(self) -> None:
         super().__init__(TurnPlan())
 
-    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados, *, contexto_conversacion=None):
         raise ValueError("LLM no disponible")
 
 
@@ -190,7 +184,7 @@ def test_parte_diario_v3_simple_attendance_fallback_extracts_illness():
 
 @pytest.fixture()
 def seeded_parte_v3(db_session: Session, monkeypatch):
-    monkeypatch.setattr(parte_diario_handler, "engine", db_session.bind)
+    monkeypatch.setattr(db, "engine", db_session.bind)
     user = User(nombre="Tester", email="parte-v3@example.com")
     db_session.add(user)
     db_session.flush()
@@ -416,7 +410,7 @@ async def test_parte_diario_v3_mostrar_nomina_muestra_por_defecto_la_nomina_del_
             "contacto_id": seeded_parte_v3["contact"].id,
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 7, 4).isoformat(),
@@ -509,7 +503,7 @@ async def test_parte_diario_v3_listado_usa_tarja_nomina_vigente_por_encargado_y_
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Obra Centro",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 9).isoformat(),
@@ -541,7 +535,7 @@ async def test_parte_diario_v3_listado_usa_tarja_nomina_vigente_por_encargado_y_
 
 
 def test_parte_diario_v3_mostrar_nomina_filtra_por_nombre():
-    state = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-03")
+    state = ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-08-03")
     nomina = [
         NominaItem(idnomina=1, nombre="Ivan", apellido="Medina"),
         NominaItem(idnomina=2, nombre="Juan Manuel", apellido="Medina"),
@@ -575,30 +569,29 @@ def test_parte_diario_v3_nomina_display_scope_defaults_to_encargado(monkeypatch)
     ]
     calls: list[bool] = []
 
-    def fake_load_nominas(self, idproyecto, *, contacto_id=None, filtrar_por_contacto=True):
+    def fake_load_nominas(session, idproyecto, *, contacto_id=None, fecha=None, filtrar_por_contacto=True):
         calls.append(filtrar_por_contacto)
         if filtrar_por_contacto:
             return propias, globales
         return obra, globales
 
-    monkeypatch.setattr(ParteDiarioProcess, "_load_nominas", fake_load_nominas)
-    process = ParteDiarioProcess(session=None)
+    monkeypatch.setattr(empleados, "cargar_referencias", fake_load_nominas)
 
-    default_items = process._load_nominas_for_display(
+    default_items = empleados.listar_para_consulta(None,
         10,
         contacto_id=5,
         command="mostrar nomina",
         alcance=None,
         nominas_completas=globales,
     )
-    obra_items = process._load_nominas_for_display(
+    obra_items = empleados.listar_para_consulta(None,
         10,
         contacto_id=5,
         command="mostrar toda la obra",
         alcance=None,
         nominas_completas=globales,
     )
-    global_items = process._load_nominas_for_display(
+    global_items = empleados.listar_para_consulta(None,
         10,
         contacto_id=5,
         command="mostrar toda la nomina no solo la de esta obra",
@@ -640,7 +633,7 @@ def test_parte_diario_v3_mostrar_nomina_agrupa_compacto():
 
 
 def test_parte_diario_v3_plan_vacio_pide_aclaracion_sin_renderizar_actualizado():
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=1,
         idproyecto=10,
         fecha="2026-08-03",
@@ -800,7 +793,7 @@ def test_dia_operativo_anterior_skips_sunday():
 
 
 def test_parte_diario_v3_fecha_visible_incluye_dia_completo():
-    draft = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-08")
+    draft = ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-08-08")
 
     reply = parte_diario_handler._load_start_reply(draft, "sin cargar", obra="Francia 118")
 
@@ -901,7 +894,7 @@ def test_parte_diario_v3_listado_rechaza_numero_fuera_de_pagina():
 
 def test_parte_diario_v3_listado_aplica_presente_con_horas():
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    draft = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     state = ParteDiarioV3State(etapa="novedades")
     option = ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")
 
@@ -923,7 +916,7 @@ def test_parte_diario_v3_listado_aplica_presente_con_horas():
 
 def test_parte_diario_v3_listado_aplica_presente_en_otra_obra():
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    draft = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     state = ParteDiarioV3State(etapa="novedades")
     option = ParteDiarioAsistenciaOption(opcion=23, idnomina=123, nombre="Juan", apellido="Perez")
 
@@ -947,7 +940,7 @@ def test_parte_diario_v3_listado_aplica_presente_en_otra_obra():
 
 
 def test_parte_diario_v3_carga_agrega_empleado_actual_en_otra_obra_sin_horas():
-    state = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    state = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     nominas = [
         NominaItem(
             idnomina=123,
@@ -984,7 +977,7 @@ def test_parte_diario_v3_carga_agrega_empleado_actual_en_otra_obra_sin_horas():
 
 
 def test_parte_diario_v3_executor_prioriza_idnomina_resuelto():
-    state = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    state = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     nominas = [
         NominaItem(idnomina=123, nombre="Juan", apellido="Perez", idproyecto=100),
         NominaItem(idnomina=124, nombre="Pedro", apellido="Perez", idproyecto=100),
@@ -1038,7 +1031,7 @@ def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
                 ]
             )
 
-    process = ParteDiarioProcess(session=FakeSession(), llm_client=FakeParteDiarioLLM(TurnPlan()))
+    session = FakeSession()
     plan = TurnPlan(
         operations=[
             ParteDiarioOperation(
@@ -1050,7 +1043,7 @@ def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
         ]
     )
 
-    error = process._resolve_external_project_operations(plan, current_project_id=100)
+    error = obras.resolver_operaciones_destino(session, plan, current_project_id=100)
 
     assert error is None
     assert plan.operations[0].idproyecto_destino == 200
@@ -1095,7 +1088,7 @@ async def test_parte_diario_v3_trabajo_en_obra_con_varios_encargados_pide_encarg
         )
     )
     db_session.commit()
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -1188,7 +1181,7 @@ async def test_parte_diario_v3_obra_destino_sin_match_muestra_obras_activas_resu
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Obra Centro",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 2).isoformat(),
@@ -1252,7 +1245,7 @@ async def test_parte_diario_v3_obra_destino_no_referenciada_muestra_obras_activa
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Obra Centro",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 2).isoformat(),
@@ -1316,7 +1309,7 @@ async def test_parte_diario_v3_listado_usa_validacion_comun_para_encargado_desti
     db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_1.id, activo=True))
     db_session.add(ProyectoEncargado(proyecto_id=axion.id, contacto_id=encargado_axion_2.id, activo=True))
     db_session.commit()
-    draft = ParteDiarioState(
+    draft = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -1399,7 +1392,7 @@ async def test_parte_diario_v3_listado_no_trata_enfermo_en_casa_como_transferenc
     )
     db_session.add(medina)
     db_session.commit()
-    draft = ParteDiarioState(
+    draft = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -1455,7 +1448,7 @@ async def test_parte_diario_v3_listado_delega_input_normalizado_al_llm_comun(
             super().__init__(plan)
             self.messages: list[str] = []
 
-        async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+        async def interpret_turn(self, mensaje, state, nominas_proyecto, estados, *, contexto_conversacion=None):
             self.messages.append(mensaje)
             return self.plan
 
@@ -1468,7 +1461,7 @@ async def test_parte_diario_v3_listado_delega_input_normalizado_al_llm_comun(
     )
     db_session.add(medina)
     db_session.commit()
-    draft = ParteDiarioState(
+    draft = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -1549,7 +1542,7 @@ async def test_parte_diario_v3_infiere_obra_destino_si_llm_no_marca_fuera_de_pro
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 3).isoformat(),
@@ -1604,7 +1597,7 @@ async def test_parte_diario_v3_trabajo_con_horas_sin_obra_no_es_transferencia(
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Obra Centro",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 3).isoformat(),
@@ -1678,7 +1671,7 @@ async def test_parte_diario_v3_infiere_transferencia_por_frase_destino(
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Obra Centro",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 3).isoformat(),
@@ -1748,7 +1741,7 @@ async def test_parte_diario_v3_empleado_externo_trabajo_en_obra_pide_encargado_d
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 3).isoformat(),
@@ -1820,7 +1813,7 @@ async def test_parte_diario_v3_empleado_externo_sin_trabajo_en_obra_no_pide_dest
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 3).isoformat(),
@@ -1891,7 +1884,7 @@ async def test_parte_diario_v3_flujo_deriva_a_parte_destino_con_encargado_valida
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 2).isoformat(),
@@ -1973,7 +1966,7 @@ async def test_parte_diario_v3_resuelve_encargado_destino_mencionado_en_mensaje(
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 2).isoformat(),
@@ -2038,7 +2031,7 @@ async def test_parte_diario_v3_no_acepta_encargado_destino_si_no_fue_mencionado(
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 2).isoformat(),
@@ -2107,7 +2100,7 @@ async def test_parte_diario_v3_persona_ambigua_con_obra_destino_pide_encargado_d
             "oportunidad_id": seeded_parte_v3["opportunity"].id,
             "proyecto_id": seeded_parte_v3["project"].id,
             "nombre_obra": "Francia 118",
-            "parte_state": ParteDiarioState(
+            "parte_state": ParteDiarioDraft(
                 oportunidad_id=seeded_parte_v3["opportunity"].id,
                 idproyecto=seeded_parte_v3["project"].id,
                 fecha=date(2026, 9, 2).isoformat(),
@@ -2554,10 +2547,11 @@ def test_parte_diario_v3_eliminar_novedad_destino_elimina_origen(
     assert db_session.get(ParteDiarioDetalle, destination_detail_id) is None
 
 
-def test_parte_diario_v3_persistencia_rechaza_parte_destino_confirmado(monkeypatch):
+# Un destino cerrado no se reabre automaticamente al recibir transferencias.
+def test_parte_diario_v3_persistencia_rechaza_parte_destino_cerrado(monkeypatch):
     existing_destination = SimpleNamespace(
         id=500,
-        estado=EstadoParteDiario.CONFIRMADO,
+        estado=EstadoParteDiario.CERRADO,
         mensaje_origen_id=None,
     )
 
@@ -2604,14 +2598,14 @@ def test_parte_diario_v3_persistencia_rechaza_parte_destino_confirmado(monkeypat
             mensaje_id=900,
         )
     except ValueError as exc:
-        assert "parte diario destino 200 ya fue confirmado" in str(exc)
+        assert "parte diario destino 200 ya fue cerrado" in str(exc)
     else:
-        raise AssertionError("Debe rechazar el parte destino ya confirmado")
+        raise AssertionError("Debe rechazar el parte destino ya cerrado")
 
 
 def test_parte_diario_v3_listado_muestra_empleado_informado():
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    draft = ParteDiarioState(
+    draft = ParteDiarioDraft(
         oportunidad_id=10,
         idproyecto=100,
         fecha="2026-08-22",
@@ -2648,9 +2642,8 @@ def test_parte_diario_v3_listado_muestra_empleado_informado():
     assert "ya cargado" not in text
 
 
-def test_parte_diario_v3_novedades_finaliza_con_resumen_de_carga():
-    process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
-    draft = ParteDiarioState(
+def test_parte_diario_v3_borrador_conserva_novedades_sin_estado_conversacional():
+    draft = ParteDiarioDraft(
         oportunidad_id=10,
         idproyecto=100,
         fecha="2026-08-22",
@@ -2666,37 +2659,19 @@ def test_parte_diario_v3_novedades_finaliza_con_resumen_de_carga():
         ],
     )
     state = ParteDiarioV3State(
-        etapa="novedades",
+        etapa="listado",
         contacto_id=5,
         oportunidad_id=10,
         proyecto_id=100,
         nombre_obra="Francia 118",
-        asistencia_registros=[
-            ParteDiarioAsistenciaRegistro(
-                nombre="Cardenas, Ignacio",
-                estado_codigo="FAL",
-                motivo="falto Cardenas",
-            )
-        ],
         parte_state=draft.to_dict(),
     )
-    context = V3ConversationContext(
-        conversation_id="meta:account:549111111",
-        active_process="parteDiario",
-    )
-
-    result = process._finish_asistencia(context, state)
-
-    assert result.context.active_process == "parteDiario"
-    assert result.context.process_state["etapa"] == "carga"
-    assert result.metadata["status"] == "asistencia_finished"
-    assert "Parte diario actualizado:" in (result.reply_text or "")
-    assert "Fecha: sabado 22/08/2026" in (result.reply_text or "")
-    assert "Obra: Francia 118" in (result.reply_text or "")
-    assert "Cardenas, Ignacio: FAL, motivo: falto Cardenas" in (result.reply_text or "")
-    assert "Hay alguna otra novedad?" in (result.reply_text or "")
-    assert "Novedades finalizadas" not in (result.reply_text or "")
-    assert "Faltas cargadas" not in (result.reply_text or "")
+    restored = ParteDiarioV3State.from_dict(state.to_dict())
+    assert restored.etapa == "listado"
+    assert restored.draft().novedades == draft.novedades
+    assert "asistencia_registros" not in restored.to_dict()
+    assert "esperando" not in restored.draft().to_dict()
+    assert "validacion_origen" not in restored.draft().to_dict()
 
 
 @pytest.mark.asyncio
@@ -2705,7 +2680,7 @@ async def test_parte_diario_v3_listado_inicia_auxiliar_de_novedades():
         def _show_asistencia_page(self, context, state, *, prefix=None):
             return self._active_result(context, state, "Listado de prueba", "asistencia_page")
 
-    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    draft = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     context = V3ConversationContext(
         conversation_id="meta:account:549111111",
         active_process="parteDiario",
@@ -2729,7 +2704,7 @@ async def test_parte_diario_v3_listado_inicia_auxiliar_de_novedades():
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_apoyo_command_no_inicia_modalidad():
-    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    draft = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     captured = {}
 
     class ProbeProcess(ParteDiarioSubprocess):
@@ -2761,7 +2736,7 @@ async def test_parte_diario_v3_apoyo_command_no_inicia_modalidad():
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_apoyos_state_vuelve_a_carga():
-    draft = ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
+    draft = ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha="2026-08-22")
     process = ParteDiarioSubprocess(llm_client=FakeParteDiarioLLM(TurnPlan()))
     context = V3ConversationContext(
         conversation_id="conv-apoyos-old-state",
@@ -2800,7 +2775,7 @@ def test_parte_diario_v3_apoyos_next_steps_no_ofrece_modalidad_apoyo():
 
 def test_parte_diario_v3_fecha_visible_pregunta_hoy(monkeypatch):
     monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 8, 9))
-    draft = ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-09")
+    draft = ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-08-09")
 
     reply = parte_diario_handler._load_start_reply(draft, "sin cargar", obra="Francia 118")
 
@@ -2877,7 +2852,7 @@ async def test_parte_diario_v3_confirmation_required_today_guarda_borrador(monke
 
 
 def test_parte_diario_v3_sin_novedades_con_novedades_equivale_a_fin_carga():
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=1,
         idproyecto=1,
         fecha="2026-08-10",
@@ -2895,73 +2870,6 @@ def test_parte_diario_v3_sin_novedades_con_novedades_equivale_a_fin_carga():
     assert result.status == "confirmation_required"
     assert "Parte diario para confirmar" in result.reply
     assert "Ya hay novedades cargadas" not in result.reply
-
-
-def test_resolver_fecha_default_parte_diario_uses_today_when_previous_operational_day_is_closed(
-    db_session: Session,
-    monkeypatch,
-    seeded_parte_v3,
-):
-    monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 5, 12))
-    db_session.add(
-        ParteDiario(
-            idproyecto=seeded_parte_v3["project"].id,
-            contacto_id=seeded_parte_v3["contact"].id,
-            fecha=date(2026, 5, 11),
-            estado=EstadoParteDiario.CONFIRMADO,
-        )
-    )
-    db_session.add(
-        ParteDiario(
-            idproyecto=seeded_parte_v3["project"].id,
-            contacto_id=seeded_parte_v3["contact"].id,
-            fecha=date(2026, 5, 12),
-            estado=EstadoParteDiario.BORRADOR,
-        )
-    )
-    db_session.commit()
-
-    assert (
-        resolver_fecha_default_parte_diario(
-            seeded_parte_v3["project"].id,
-            contacto_id=seeded_parte_v3["contact"].id,
-        )
-        == "2026-05-12"
-    )
-
-
-def test_resolver_fecha_default_prefers_previous_operational_day(monkeypatch):
-    def fake_build_fecha_options(proyecto_id, *, contacto_id=None, today=None, days=7):
-        return [
-            ParteDiarioFechaOption(opcion=1, fecha="2026-08-10", estado="sin cargar"),
-            ParteDiarioFechaOption(opcion=2, fecha="2026-08-08", estado="borrador"),
-            ParteDiarioFechaOption(opcion=3, fecha="2026-08-07", estado="sin cargar"),
-        ]
-
-    monkeypatch.setattr(ParteDiarioSubprocess, "_build_fecha_options", staticmethod(fake_build_fecha_options))
-
-    fecha, pending_count = resolver_fecha_default_parte_diario_info(100, today=date(2026, 8, 10))
-
-    assert fecha == "2026-08-08"
-    assert pending_count == 3
-
-
-def test_resolver_fecha_default_uses_today_when_previous_operational_day_is_closed_and_ignores_old_pending(
-    monkeypatch,
-):
-    def fake_build_fecha_options(proyecto_id, *, contacto_id=None, today=None, days=7):
-        return [
-            ParteDiarioFechaOption(opcion=1, fecha="2026-08-10", estado="sin cargar"),
-            ParteDiarioFechaOption(opcion=2, fecha="2026-08-08", estado="confirmado"),
-            ParteDiarioFechaOption(opcion=3, fecha="2026-08-07", estado="borrador"),
-        ]
-
-    monkeypatch.setattr(ParteDiarioSubprocess, "_build_fecha_options", staticmethod(fake_build_fecha_options))
-
-    fecha, pending_count = resolver_fecha_default_parte_diario_info(100, today=date(2026, 8, 10))
-
-    assert fecha == "2026-08-10"
-    assert pending_count == 2
 
 
 @pytest.mark.asyncio
@@ -3094,7 +3002,7 @@ async def test_parte_diario_v3_partes_pendientes_in_load_uses_query_agent(monkey
         llm_client=FakeParteDiarioLLM(TurnPlan(operations=[ParteDiarioOperation(type="mostrar_nomina")])),
         query_agent_client=query_agent,
     )
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=10,
         idproyecto=100,
         fecha="2026-08-10",
@@ -3125,7 +3033,7 @@ async def test_parte_diario_v3_partes_pendientes_in_load_uses_query_agent(monkey
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_show_nomina_in_load_keeps_selected_project_context(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 30).isoformat(),
@@ -3163,7 +3071,7 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
     monkeypatch,
     seeded_parte_v3,
 ):
-    monkeypatch.setattr("agente.v3.subprocesses.parte_diario.query_service._today", lambda: date(2026, 5, 16))
+    monkeypatch.setattr("agente.v3.subprocesses.parte_diario.utils.calendario.hoy", lambda: date(2026, 5, 16))
     falta = db_session.exec(
         select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "FAL")
     ).one()
@@ -3270,8 +3178,10 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
         nombre_obra="Obra Centro",
     )
 
-    absences = service.consultar_faltas_persona(persona="Garcia", desde="2026-05-01", hasta="2026-05-16")
-    all_absences = service.consultar_faltas(desde="2026-05-01", hasta="2026-05-16")
+    absences = service.consultar_novedades(
+        persona="Garcia", desde="2026-05-01", hasta="2026-05-16", horas_igual_a=0, agrupar_por="persona",
+    )
+    all_absences = service.consultar_novedades(desde="2026-05-01", hasta="2026-05-16", horas_igual_a=0)
     generic_absences = service.consultar_novedades(
         estado_codigo="FAL",
         desde="2026-05-01",
@@ -3288,7 +3198,7 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
         desde="2026-05-01",
         hasta="2026-05-16",
     )
-    report = service.consultar_parte_fecha(fecha="2026-05-16")
+    report = service.consultar_partes(desde="2026-05-16", hasta="2026-05-16")
     pending = service.consultar_partes_pendientes(desde="2026-05-15", hasta="2026-05-16")
     generic_pending = service.consultar_partes(
         desde="2026-05-15",
@@ -3326,8 +3236,7 @@ def test_parte_diario_query_service_answers_absences_report_and_pending(
     assert "Perez, Pedro: P, 11h" in all_novelties
     assert "Externo, Mario (otra nomina: Obra Externa): P, 12h" in all_novelties
     assert "Normal, Laura" not in all_novelties
-    assert "Parte diario de Obra Centro del 16/05/2026: borrador." in report
-    assert "Garcia, Juan" in report
+    assert "16/05/2026: borrador" in report
     assert "16/05/2026: borrador" in pending
     assert "15/05/2026: sin cargar" in pending
     assert "16/05/2026: borrador" in generic_pending
@@ -3347,7 +3256,7 @@ def test_parte_diario_query_service_hides_nomina_internal_states(
     monkeypatch,
     seeded_parte_v3,
 ):
-    monkeypatch.setattr("agente.v3.subprocesses.parte_diario.query_service._today", lambda: date(2026, 9, 3))
+    monkeypatch.setattr("agente.v3.subprocesses.parte_diario.utils.calendario.hoy", lambda: date(2026, 9, 3))
     enfermedad = db_session.exec(
         select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "ENF")
     ).one()
@@ -3437,13 +3346,10 @@ def test_parte_diario_query_service_hides_nomina_internal_states(
     )
 
     all_novelties = service.consultar_novedades(desde="2026-09-03", hasta="2026-09-03")
-    report = service.consultar_parte_fecha(fecha="2026-09-03")
 
     assert "Cabrera, Diego: ENF, 0h, motivo: enfermo" in all_novelties
-    assert "Cabrera, Diego: ENF, 0h, motivo: enfermo" in report
     for hidden in ["Acosta, Jorge", "Ruiz, Falcon", "Conti, Luis", "TRA", "ALT", "BAJ", "traspaso"]:
         assert hidden not in all_novelties
-        assert hidden not in report
 
 
 def test_parte_diario_query_service_treats_pendiente_as_borrador_and_sin_cargar():
@@ -3690,7 +3596,7 @@ async def test_parte_diario_v3_initial_referenced_date_survives_project_selectio
     monkeypatch.setattr(parte_diario_handler, "_today", lambda: date(2026, 8, 10))
 
     class InferAfterProjectLLM(FakeParteDiarioLLM):
-        async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+        async def interpret_turn(self, mensaje, state, nominas_proyecto, estados, *, contexto_conversacion=None):
             return TurnPlan(operations=[ParteDiarioOperation(type="set_fecha", fecha=target_date)])
 
     class ProbeProcess(ParteDiarioSubprocess):
@@ -3908,7 +3814,7 @@ async def test_parte_diario_v3_explicit_closed_date_is_query(monkeypatch):
         nombre_obra="Francia 118",
         fecha_referida_explicita=True,
         fecha_objetivo=target_date,
-        parte_state=ParteDiarioState(oportunidad_id=10, idproyecto=100, fecha=target_date).to_dict(),
+        parte_state=ParteDiarioDraft(oportunidad_id=10, idproyecto=100, fecha=target_date).to_dict(),
     )
     process = ClosedProbeProcess(llm_client=FakeParteDiarioLLM(TurnPlan()))
 
@@ -3988,7 +3894,7 @@ async def test_parte_diario_v3_initial_inferred_date_is_loaded_before_today(
 async def test_parte_diario_v3_active_selected_date_is_not_overwritten_by_today_reference(seeded_parte_v3):
     selected_date = (_today() - timedelta(days=2)).isoformat()
     today = _today().isoformat()
-    draft = ParteDiarioState(
+    draft = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=selected_date,
@@ -4030,7 +3936,7 @@ async def test_parte_diario_v3_active_selected_date_is_not_overwritten_by_today_
 @pytest.mark.asyncio
 async def test_parte_diario_v3_load_does_not_validate_short_workday(seeded_parte_v3):
     fal_id = 2
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4082,7 +3988,7 @@ async def test_parte_diario_v3_load_does_not_validate_short_workday(seeded_parte
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_modify_for_missing_person_adds_new_attendance(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4132,7 +4038,7 @@ async def test_parte_diario_v3_modify_for_missing_person_adds_new_attendance(see
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_fallback_parses_simple_attendance_when_llm_fails(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 7, 30).isoformat(),
@@ -4166,7 +4072,7 @@ async def test_parte_diario_v3_fallback_parses_simple_attendance_when_llm_fails(
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_does_not_add_bare_transcribed_names(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4226,7 +4132,7 @@ async def test_parte_diario_v3_marks_ambiguous_surname_as_pending(
     db_session.add(ruiz_pablo)
     db_session.add(ruiz_teresa)
     db_session.commit()
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4273,7 +4179,7 @@ async def test_parte_diario_v3_resolves_disambiguated_person_name(
     db_session.add(ruiz_pablo)
     db_session.add(ruiz_teresa)
     db_session.commit()
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4309,7 +4215,7 @@ async def test_parte_diario_v3_resolves_disambiguated_person_name(
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_delete_removes_pending_ambiguous_novelty(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4348,7 +4254,7 @@ async def test_parte_diario_v3_delete_removes_pending_ambiguous_novelty(seeded_p
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_modify_updates_pending_ambiguous_novelty(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4426,7 +4332,7 @@ async def test_parte_diario_v3_multiple_projects_selection_does_not_interpret_op
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_empty_part_close_requires_confirmation(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 10).isoformat(),
@@ -4582,7 +4488,7 @@ async def test_parte_diario_v3_command_after_confirmation_uses_next_default_date
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_menu_guardar_persists_draft(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 5, 30).isoformat(),
@@ -4624,7 +4530,7 @@ async def test_parte_diario_v3_menu_guardar_persists_pending_as_provisional_deta
     accidente = db_session.exec(
         select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "ACC")
     ).one()
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=_today().isoformat(),
@@ -4683,7 +4589,7 @@ async def test_parte_diario_v3_menu_guardar_persists_pending_as_provisional_deta
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_menu_cerrar_activates_pending_validation(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 13).isoformat(),
@@ -4757,7 +4663,7 @@ async def test_parte_diario_v3_close_persists_after_pending_validation(
     db_session.add(ruiz_pablo)
     db_session.add(ruiz_teresa)
     db_session.flush()
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 13).isoformat(),
@@ -5147,7 +5053,7 @@ def test_parte_diario_v3_normalize_text_repairs_common_mojibake_accents():
 
 
 def test_parte_diario_v3_resumen_omits_absence_zero_hours_legajo_and_shortens_external_project():
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=1,
         idproyecto=10,
         fecha="2026-08-01",
@@ -5179,7 +5085,7 @@ def test_parte_diario_v3_resumen_omits_absence_zero_hours_legajo_and_shortens_ex
 
 
 def test_parte_diario_v3_resumen_hides_nomina_internal_states():
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=1,
         idproyecto=10,
         fecha="2026-09-03",
@@ -5276,7 +5182,7 @@ async def test_parte_diario_v3_validation_selects_compound_first_name(monkeypatc
         ],
         lista_candidatos_mostrada=False,
     )
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=10,
         idproyecto=20,
         fecha="2026-08-04",
@@ -5317,7 +5223,7 @@ async def test_parte_diario_v3_validation_list_with_ten_candidates_has_no_more(s
         NominaItem(idnomina=100 + index, nombre=f"Nombre {index}", apellido="Gonzalez")
         for index in range(1, 11)
     ]
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 7, 2).isoformat(),
@@ -5367,7 +5273,7 @@ async def test_parte_diario_v3_validation_list_shows_names_and_selects_by_name(
         NominaItem(idnomina=100 + index, nombre=f"Nombre {index}", apellido="Gonzalez")
         for index in range(1, 12)
     ]
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 7, 2).isoformat(),
@@ -5432,7 +5338,7 @@ async def test_parte_diario_v3_validation_list_shows_external_candidates_after_o
             fuera_de_proyecto=True,
         ),
     ]
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 7, 2).isoformat(),
@@ -5493,7 +5399,7 @@ async def test_parte_diario_v3_validation_list_shows_all_project_candidates(
         )
         for index in range(1, 8)
     ]
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 7, 2).isoformat(),
@@ -5631,7 +5537,7 @@ async def test_parte_diario_v3_unvalidated_selection_is_registered_as_provisiona
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_review_text_free_returns_to_load_and_processes_message(monkeypatch):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=10,
         idproyecto=20,
         fecha=date(2026, 5, 30).isoformat(),
@@ -5677,7 +5583,7 @@ async def test_parte_diario_v3_review_text_free_returns_to_load_and_processes_me
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_menu_salir_confirms_discard(seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 5, 30).isoformat(),
@@ -5798,7 +5704,7 @@ async def test_parte_diario_v3_pendientes_salir_finishes_without_asking_project(
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_confirm_persists_part_and_crm_message(db_session: Session, seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 5, 30).isoformat(),
@@ -5866,7 +5772,7 @@ async def test_parte_diario_v3_confirm_creates_new_part_when_soft_deleted_exists
     )
     db_session.commit()
 
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 29).isoformat(),
@@ -5922,7 +5828,7 @@ async def test_parte_diario_v3_crm_mensaje_contacto_puede_diferir_de_oportunidad
         )
     )
     db_session.commit()
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 6, 1).isoformat(),
@@ -5955,7 +5861,7 @@ async def test_parte_diario_v3_crm_mensaje_contacto_puede_diferir_de_oportunidad
 
 @pytest.mark.asyncio
 async def test_parte_diario_v3_close_persists_closed_part(db_session: Session, seeded_parte_v3):
-    state = ParteDiarioState(
+    state = ParteDiarioDraft(
         oportunidad_id=seeded_parte_v3["opportunity"].id,
         idproyecto=seeded_parte_v3["project"].id,
         fecha=date(2026, 5, 31).isoformat(),

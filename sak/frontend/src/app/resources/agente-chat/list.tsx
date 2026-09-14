@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Loader2, Send } from "lucide-react";
-import { useCreatePath, useNotify } from "ra-core";
+import { useCreatePath, useDataProvider, useNotify } from "ra-core";
 import { useSearchParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,16 @@ type AgentOutbound = {
 
 type AgentResultMetadata = {
   parte_diario_id?: number | string | null;
+  idproyecto?: number | string | null;
+  proyecto_id?: number | string | null;
+  contacto_id?: number | string | null;
+  nombre_obra?: string | null;
   result?: {
     parte_diario_id?: number | string | null;
+    idproyecto?: number | string | null;
+    proyecto_id?: number | string | null;
+    contacto_id?: number | string | null;
+    nombre_obra?: string | null;
   } | null;
 };
 
@@ -39,6 +47,21 @@ type AgentResult = {
 type ChatSendOptions = {
   fromName?: string;
   fromPhone?: string;
+};
+
+type ChatContextInfo = {
+  proyectoId: number | string | null;
+  contactoId: number | string | null;
+  obra: string | null;
+  encargado: string | null;
+};
+
+type ReferenceRecord = {
+  id: number | string;
+  nombre?: string | null;
+  nombre_completo?: string | null;
+  idproyecto?: number | string | null;
+  contacto_id?: number | string | null;
 };
 
 const POLL_INTERVAL_MS = 200;
@@ -123,9 +146,24 @@ const pollAgentResult = async (
 const resolveParteDiarioId = (metadata?: AgentResultMetadata) =>
   metadata?.parte_diario_id ?? metadata?.result?.parte_diario_id ?? null;
 
+const resolveContextFromMetadata = (metadata?: AgentResultMetadata): Partial<ChatContextInfo> => ({
+  proyectoId: metadata?.idproyecto ?? metadata?.proyecto_id ?? metadata?.result?.idproyecto ?? metadata?.result?.proyecto_id ?? null,
+  contactoId: metadata?.contacto_id ?? metadata?.result?.contacto_id ?? null,
+  obra: metadata?.nombre_obra ?? metadata?.result?.nombre_obra ?? null,
+});
+
+const compactContextLine = (context: ChatContextInfo) => {
+  const parts = [
+    context.obra ? `Obra: ${context.obra}` : null,
+    context.encargado ? `Encargado: ${context.encargado}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+};
+
 export const AgentChatList = () => {
   const notify = useNotify();
   const createPath = useCreatePath();
+  const dataProvider = useDataProvider();
   const [searchParams] = useSearchParams();
   const source = searchParams.get("source")?.trim() ?? "";
   const initialMessage = searchParams.get("message")?.trim() ?? "";
@@ -141,6 +179,12 @@ export const AgentChatList = () => {
   const [savedParteDiarioId, setSavedParteDiarioId] = useState<number | string | null>(
     initialParteDiarioId || null,
   );
+  const [chatContext, setChatContext] = useState<ChatContextInfo>({
+    proyectoId: null,
+    contactoId: null,
+    obra: null,
+    encargado: null,
+  });
   const [resetReady, setResetReady] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
@@ -153,6 +197,15 @@ export const AgentChatList = () => {
 
   const appendMessages = useCallback((items: ChatMessage[]) => {
     setMessages((current) => [...current, ...items]);
+  }, []);
+
+  const mergeChatContext = useCallback((next: Partial<ChatContextInfo>) => {
+    setChatContext((current) => ({
+      proyectoId: next.proyectoId ?? current.proyectoId,
+      contactoId: next.contactoId ?? current.contactoId,
+      obra: next.obra ?? current.obra,
+      encargado: next.encargado ?? current.encargado,
+    }));
   }, []);
 
   const handleSend = useCallback(async (textOverride?: string) => {
@@ -179,6 +232,7 @@ export const AgentChatList = () => {
       const outbounds = result.outbounds ?? [];
       const parteDiarioId = resolveParteDiarioId(result.metadata);
       if (parteDiarioId) setSavedParteDiarioId(parteDiarioId);
+      mergeChatContext(resolveContextFromMetadata(result.metadata));
       if (!outbounds.length) {
         appendMessages([
           {
@@ -208,7 +262,54 @@ export const AgentChatList = () => {
         draftRef.current?.focus();
       });
     }
-  }, [appendMessages, draft, fromName, fromPhone, notify, requiresSourcePhone, sending]);
+  }, [appendMessages, draft, fromName, fromPhone, mergeChatContext, notify, requiresSourcePhone, sending]);
+
+  useEffect(() => {
+    if (!initialParteDiarioId) return;
+    let ignore = false;
+    dataProvider
+      .getOne<ReferenceRecord>("parte-diario", { id: initialParteDiarioId })
+      .then(({ data }) => {
+        if (ignore) return;
+        mergeChatContext({
+          proyectoId: data.idproyecto ?? null,
+          contactoId: data.contacto_id ?? null,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [dataProvider, initialParteDiarioId, mergeChatContext]);
+
+  useEffect(() => {
+    if (!chatContext.proyectoId || chatContext.obra) return;
+    let ignore = false;
+    dataProvider
+      .getOne<ReferenceRecord>("proyectos", { id: chatContext.proyectoId })
+      .then(({ data }) => {
+        if (!ignore && data.nombre) mergeChatContext({ obra: data.nombre });
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [chatContext.obra, chatContext.proyectoId, dataProvider, mergeChatContext]);
+
+  useEffect(() => {
+    if (!chatContext.contactoId || chatContext.encargado) return;
+    let ignore = false;
+    dataProvider
+      .getOne<ReferenceRecord>("crm/contactos", { id: chatContext.contactoId })
+      .then(({ data }) => {
+        const name = data.nombre_completo || data.nombre;
+        if (!ignore && name) mergeChatContext({ encargado: name });
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [chatContext.contactoId, chatContext.encargado, dataProvider, mergeChatContext]);
 
   const backToParteDiario = savedParteDiarioId
     ? (() => {
@@ -218,6 +319,7 @@ export const AgentChatList = () => {
         return `${path}?${params.toString()}`;
       })()
     : undefined;
+  const contextLine = compactContextLine(chatContext);
 
   useEffect(
     () => {
@@ -261,9 +363,12 @@ export const AgentChatList = () => {
           <div className="flex size-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
             <Bot className="size-4" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold text-slate-900">Chat agente</h1>
             <p className="truncate text-[10px] text-slate-500">{contactLabel}</p>
+            {contextLine ? (
+              <p className="truncate text-[10px] font-medium text-slate-700">{contextLine}</p>
+            ) : null}
           </div>
         </header>
 

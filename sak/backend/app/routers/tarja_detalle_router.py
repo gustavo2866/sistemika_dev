@@ -120,12 +120,12 @@ def list_tarja_detalle(
     sort_by, sort_dir = _parse_sort(sort)
 
     base_stmt = (
-        select(TarjaDetalle.idnomina)
-        .join(Nomina, Nomina.id == TarjaDetalle.idnomina)
-        .where(TarjaDetalle.tarja_id == tarja.id)
-        .where(TarjaDetalle.deleted_at.is_(None))
-        .where(TarjaDetalle.idnomina.is_not(None))
-        .group_by(TarjaDetalle.idnomina, Nomina.apellido, Nomina.nombre, Nomina.dni)
+        select(TarjaNomina.nomina_id)
+        .join(Nomina, Nomina.id == TarjaNomina.nomina_id)
+        .where(TarjaNomina.tarja_id == tarja.id)
+        .where(TarjaNomina.deleted_at.is_(None))
+        .where(TarjaNomina.nomina_id.is_not(None))
+        .group_by(TarjaNomina.nomina_id, Nomina.apellido, Nomina.nombre, Nomina.dni)
     )
     if search:
         pattern = f"%{search}%"
@@ -150,7 +150,7 @@ def list_tarja_detalle(
             )
             .group_by(TarjaNomina.nomina_id)
         )
-        base_stmt = base_stmt.where(TarjaDetalle.idnomina.in_(nominas_con_bonos))
+        base_stmt = base_stmt.where(TarjaNomina.nomina_id.in_(nominas_con_bonos))
     if only_parte_novedades:
         nominas_con_novedades = (
             select(TarjaDetalle.idnomina)
@@ -169,12 +169,12 @@ def list_tarja_detalle(
             )
             .group_by(TarjaDetalle.idnomina)
         )
-        base_stmt = base_stmt.where(TarjaDetalle.idnomina.in_(nominas_con_novedades))
+        base_stmt = base_stmt.where(TarjaNomina.nomina_id.in_(nominas_con_novedades))
 
     total = session.exec(select(func.count()).select_from(base_stmt.subquery())).one()
     order_columns = {
         "empleado": (Nomina.apellido, Nomina.nombre),
-        "idnomina": (TarjaDetalle.idnomina,),
+        "idnomina": (TarjaNomina.nomina_id,),
     }.get(sort_by, (Nomina.apellido, Nomina.nombre))
     for column in order_columns:
         base_stmt = base_stmt.order_by(column.desc() if sort_dir == "desc" else column.asc())
@@ -213,47 +213,59 @@ def list_tarja_detalle(
         if novedad.nomina_id is not None
     }
 
+    nominas = session.exec(
+        select(Nomina)
+        .where(Nomina.id.in_(nomina_ids))
+        .order_by(Nomina.apellido, Nomina.nombre)
+    ).all()
+    nominas_by_id = {int(nomina.id): nomina for nomina in nominas}
+
     rows: dict[int, dict[str, Any]] = {}
+    for nomina_id in nomina_ids:
+        nomina = nominas_by_id.get(int(nomina_id))
+        if nomina is None:
+            continue
+        novedad_data = novedades_by_nomina.get(int(nomina_id))
+        novedad = novedad_data["novedad"] if novedad_data is not None else None
+        rows[int(nomina_id)] = {
+            "id": f"{tarja.id}:{int(nomina_id)}",
+            "tarja_id": tarja.id,
+            "proyecto_id": tarja.idproyecto,
+            "encargado_id": tarja.contacto_id,
+            "obra": obra,
+            "idnomina": int(nomina_id),
+            "empleado": f"{nomina.apellido}, {nomina.nombre}",
+            "dni": nomina.dni,
+            "categoria_codigo": novedad_data["categoria_codigo"] if novedad_data is not None else None,
+            "actividad_codigo": novedad_data["actividad_codigo"] if novedad_data is not None else None,
+            "novedad": (
+                {
+                    "id": novedad.id,
+                    "nomina_id": novedad.nomina_id,
+                    "horas_justificadas": float(novedad.horas_justificadas),
+                    "presentismo": novedad.presentismo,
+                    "presentismo_importe": float(novedad.presentismo_importe),
+                    "adicional_importe": float(novedad.adicional_importe),
+                    "premio": novedad.premio,
+                    "premio_importe": float(novedad.premio_importe),
+                    "viatico": novedad.viatico,
+                    "viatico_importe": float(novedad.viatico_importe),
+                    "sueldo_importe": float(novedad.sueldo_importe),
+                    "mejora_importe": float(novedad.mejora_importe),
+                    "cargas_importe": float(novedad.cargas_importe),
+                    "observaciones": novedad.observaciones,
+                }
+                if novedad is not None
+                else None
+            ),
+            **_build_empty_days(tarja.fechainicio, tarja.fechafinal),
+        }
+
     for detalle, nomina, estado in detalles:
         nomina_id = int(nomina.id)
-        row = rows.setdefault(
-            nomina_id,
-            {
-                "id": f"{tarja.id}:{nomina_id}",
-                "tarja_id": tarja.id,
-                "proyecto_id": tarja.idproyecto,
-                "encargado_id": tarja.contacto_id,
-                "obra": obra,
-                "idnomina": nomina_id,
-                "empleado": f"{nomina.apellido}, {nomina.nombre}",
-                "dni": nomina.dni,
-                "categoria_codigo": None,
-                "actividad_codigo": None,
-                "novedad": None,
-                **_build_empty_days(tarja.fechainicio, tarja.fechafinal),
-            },
-        )
-        novedad_data = novedades_by_nomina.get(nomina_id)
-        novedad = novedad_data["novedad"] if novedad_data is not None else None
-        if novedad is not None:
-            row["novedad"] = {
-                "id": novedad.id,
-                "nomina_id": novedad.nomina_id,
-                "horas_justificadas": float(novedad.horas_justificadas),
-                "presentismo": novedad.presentismo,
-                "presentismo_importe": float(novedad.presentismo_importe),
-                "adicional_importe": float(novedad.adicional_importe),
-                "premio": novedad.premio,
-                "premio_importe": float(novedad.premio_importe),
-                "viatico": novedad.viatico,
-                "viatico_importe": float(novedad.viatico_importe),
-                "sueldo_importe": float(novedad.sueldo_importe),
-                "mejora_importe": float(novedad.mejora_importe),
-                "cargas_importe": float(novedad.cargas_importe),
-                "observaciones": novedad.observaciones,
-            }
-            row["categoria_codigo"] = novedad_data["categoria_codigo"]
-            row["actividad_codigo"] = novedad_data["actividad_codigo"]
+        row = rows.get(nomina_id)
+        if row is None:
+            continue
         day_index = (detalle.fecha - tarja.fechainicio).days + 1
         if 1 <= day_index <= _tarja_day_slots(tarja.fechainicio, tarja.fechafinal):
             row[_day_key(day_index)] = {

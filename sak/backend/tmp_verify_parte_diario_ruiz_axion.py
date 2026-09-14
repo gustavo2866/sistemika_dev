@@ -7,7 +7,8 @@ from sqlmodel import Session, select
 
 from agente.v3.contracts import V3ConversationContext, V3InboundMessage
 from agente.v3.subprocesses.parte_diario.handler import ParteDiarioSubprocess
-from agente.v3.subprocesses.parte_diario.models import ParteDiarioOperation, ParteDiarioState, TurnPlan
+from agente.v3.subprocesses.parte_diario.models import ParteDiarioOperation, TurnPlan
+from agente.v3.subprocesses.parte_diario.domain.models import ParteDiarioDraft
 from app.db import engine
 from app.models import CRMOportunidad, Proyecto
 
@@ -17,7 +18,7 @@ TARGET_DATE = date(2026, 9, 3)
 
 
 class FakeLLM:
-    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados):
+    async def interpret_turn(self, mensaje, state, nominas_proyecto, estados, *, contexto_conversacion=None):
         return TurnPlan(
             operations=[
                 ParteDiarioOperation(
@@ -72,7 +73,7 @@ async def main() -> None:
                 "oportunidad_id": opportunity.id,
                 "proyecto_id": project.id,
                 "nombre_obra": project.nombre,
-                "parte_state": ParteDiarioState(
+                "parte_state": ParteDiarioDraft(
                     oportunidad_id=opportunity.id,
                     idproyecto=project.id,
                     fecha=TARGET_DATE.isoformat(),

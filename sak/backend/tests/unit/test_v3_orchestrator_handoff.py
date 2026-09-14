@@ -8,6 +8,38 @@ from agente.v3.outbox.queue import V3Outbox
 from agente.v3.subprocesses.registry import V3SubprocessRegistry
 
 
+# Comprueba que el selector recibe un contexto nuevo antes de elegir el subproceso.
+@pytest.mark.asyncio
+async def test_orchestrator_descarta_conversacion_de_ayer_antes_del_despacho(monkeypatch):
+    from datetime import datetime
+    from unittest.mock import AsyncMock
+    from agente.v3.orchestrator import context_store
+
+    now = datetime.fromisoformat("2026-09-12T12:00:00+00:00")
+    monkeypatch.setattr(context_store, "utc_now", lambda: now)
+    store = V3ContextStore()
+    await store.save(V3ConversationContext(
+        conversation_id="conv-1", active_process="parteDiario",
+        created_at=datetime.fromisoformat("2026-09-11T12:00:00+00:00"),
+        process_state={"etapa": "revision"},
+    ))
+    selector = FakeSelector()
+    selector.resolve = AsyncMock(wraps=selector.resolve)
+    process = FakeTargetProcess(PROCESS_GENERAL)
+    orchestrator = V3Orchestrator(
+        context_store=store, outbox=V3Outbox(),
+        subprocess_registry=V3SubprocessRegistry([process]), process_selector=selector,
+    )
+    result, _ = await orchestrator.process_message(_message("hola", PROCESS_GENERAL))
+    selector.resolve.assert_awaited_once()
+    recovered = selector.resolve.call_args.args[1]
+    assert recovered.active_process is None
+    assert recovered.process_state == {}
+    assert recovered.created_at == now
+    assert result.metadata["selected_process"] == PROCESS_GENERAL
+    assert process.messages[0][1].process_state == {}
+
+
 class FakeSelector:
     async def resolve(self, message, context):
         return V3ProcessSelection(

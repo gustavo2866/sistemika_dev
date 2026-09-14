@@ -40,6 +40,7 @@ class OpenAIChatClient:
         response_format: dict[str, Any],
         user_content: str = "Interpreta el turno y responde solo JSON.",
         max_tokens: int = 1000,
+        history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY no configurada")
@@ -53,6 +54,7 @@ class OpenAIChatClient:
                 max_tokens=max_tokens,
                 messages=[
                     {"role": "system", "content": system_prompt},
+                    *(history or []),
                     {"role": "user", "content": user_content},
                 ],
             )

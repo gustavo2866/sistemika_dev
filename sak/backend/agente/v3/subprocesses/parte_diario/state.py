@@ -1,11 +1,15 @@
-"""Estado wrapper de parteDiario para agente v3."""
+"""Estado de la conversacion: etapa, menus visibles, retorno y borrador.
+
+etapa es el unico selector del procesador del siguiente mensaje. validacion_origen
+y salida_origen conservan el lugar de retorno; no son etapas paralelas.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
-from agente.v3.subprocesses.parte_diario.models import ParteDiarioState as ParteDiarioDraftState
+from agente.v3.subprocesses.parte_diario.domain.models import ParteDiarioDraft
 
 
 ParteDiarioStage = Literal[
@@ -14,16 +18,18 @@ ParteDiarioStage = Literal[
     "cargar_fecha",
     "seleccionar_fecha",
     "carga",
+    "carga_aclaracion",
     "revision",
-    "validacion",
-    "validacion_carga",
-    "cierre",
+    "carga_validar_empleado",
+    "carga_validar_obra",
+    "carga_validar_encargado",
+    "carga_validar_estado",
+    "carga_validar_conflicto",
+    "carga_cambiar_fecha",
     "continuar",
     "pendientes",
-    "novedades",
-    "apoyos",
+    "listado",
     "confirmar_salida",
-    "menu",
     "finalizado",
 ]
 
@@ -36,6 +42,7 @@ class ParteDiarioOption:
     oportunidad_id: int
     proyecto_id: int
 
+    # Reconstruye el contexto o la opcion desde los datos guardados.
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioOption | None":
         try:
@@ -56,6 +63,7 @@ class ParteDiarioOption:
             proyecto_id=proyecto_id,
         )
 
+    # Serializa solo los campos operativos de la conversacion.
     def to_dict(self) -> dict[str, Any]:
         return {
             "opcion": self.opcion,
@@ -73,6 +81,7 @@ class ParteDiarioFechaOption:
     estado: str
     parte_id: int | None = None
 
+    # Reconstruye el contexto o la opcion desde los datos guardados.
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioFechaOption | None":
         try:
@@ -86,6 +95,7 @@ class ParteDiarioFechaOption:
             return None
         return cls(opcion=opcion, fecha=fecha, estado=estado, parte_id=parte_id)
 
+    # Serializa solo los campos operativos de la conversacion.
     def to_dict(self) -> dict[str, Any]:
         return {
             "opcion": self.opcion,
@@ -94,31 +104,6 @@ class ParteDiarioFechaOption:
             "parte_id": self.parte_id,
         }
 
-
-@dataclass(slots=True)
-class ParteDiarioApoyoProyectoOption:
-    opcion: int
-    proyecto_id: int
-    nombre: str
-
-    @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioApoyoProyectoOption | None":
-        try:
-            opcion = int(raw.get("opcion") or 0)
-            proyecto_id = int(raw.get("proyecto_id") or 0)
-        except (TypeError, ValueError):
-            return None
-        nombre = str(raw.get("nombre") or "").strip()
-        if opcion <= 0 or proyecto_id <= 0 or not nombre:
-            return None
-        return cls(opcion=opcion, proyecto_id=proyecto_id, nombre=nombre)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "opcion": self.opcion,
-            "proyecto_id": self.proyecto_id,
-            "nombre": self.nombre,
-        }
 
 
 @dataclass(slots=True)
@@ -131,10 +116,12 @@ class ParteDiarioAsistenciaOption:
     proyecto_id: int | None = None
     nombre_proyecto: str | None = None
 
+    # Obtiene el nombre visible de la opcion de empleado.
     @property
     def nombre_completo(self) -> str:
         return f"{self.apellido}, {self.nombre}".strip(", ")
 
+    # Reconstruye el contexto o la opcion desde los datos guardados.
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioAsistenciaOption | None":
         try:
@@ -159,6 +146,7 @@ class ParteDiarioAsistenciaOption:
             nombre_proyecto=nombre_proyecto,
         )
 
+    # Serializa solo los campos operativos de la conversacion.
     def to_dict(self) -> dict[str, Any]:
         return {
             "opcion": self.opcion,
@@ -171,25 +159,6 @@ class ParteDiarioAsistenciaOption:
         }
 
 
-@dataclass(slots=True)
-class ParteDiarioAsistenciaRegistro:
-    nombre: str
-    estado_codigo: str
-    motivo: str
-    horas: float | None = None
-
-    @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "ParteDiarioAsistenciaRegistro | None":
-        nombre = str(raw.get("nombre") or "").strip()
-        estado_codigo = str(raw.get("estado_codigo") or "").strip().upper()
-        motivo = str(raw.get("motivo") or "").strip()
-        if not nombre or not estado_codigo or not motivo:
-            return None
-        return cls(nombre=nombre, estado_codigo=estado_codigo, motivo=motivo, horas=_parse_float(raw.get("horas")))
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"nombre": self.nombre, "estado_codigo": self.estado_codigo, "motivo": self.motivo, "horas": self.horas}
-
 
 @dataclass(slots=True)
 class ParteDiarioV3State:
@@ -200,46 +169,30 @@ class ParteDiarioV3State:
     nombre_obra: str | None = None
     opciones_obra: list[ParteDiarioOption] = field(default_factory=list)
     opciones_fecha: list[ParteDiarioFechaOption] = field(default_factory=list)
-    fecha_menu_pendiente: bool = False
     fecha_referida_explicita: bool = False
-    fecha_objetivo: str | None = None
-    dia_semana_objetivo: int | None = None
     texto_fecha_inicial: str | None = None
     modo_pendientes: bool = False
-    apoyo_proyecto_id: int | None = None
-    apoyo_proyecto_nombre: str | None = None
-    opciones_apoyo_proyecto: list[ParteDiarioApoyoProyectoOption] = field(default_factory=list)
+    modo_apertura: Literal["diario", "puntual"] = "puntual"
     asistencia_offset: int = 0
     asistencia_opciones: list[ParteDiarioAsistenciaOption] = field(default_factory=list)
-    asistencia_registros: list[ParteDiarioAsistenciaRegistro] = field(default_factory=list)
-    asistencia_reemplazo_pendiente: dict[str, Any] = field(default_factory=dict)
     validacion_origen: str | None = None
-    validacion_tipo: str | None = None
+    aclaracion_origen: str | None = None
+    aclaracion_pregunta: str | None = None
+    accion_cierre: str | None = None
+    salida_origen: str | None = None
+    fecha_siguiente: str | None = None
+    historial: list[dict[str, str]] = field(default_factory=list)
     parte_state: dict[str, Any] = field(default_factory=dict)
 
+    # Reconstruye el contexto o la opcion desde los datos guardados.
     @classmethod
     def from_dict(cls, raw: dict[str, Any] | None) -> "ParteDiarioV3State":
         data = raw or {}
         etapa = str(data.get("etapa") or "inicial")
-        if etapa not in {
-            "inicial",
-            "seleccionar_obra",
-            "cargar_fecha",
-            "seleccionar_fecha",
-            "carga",
-            "revision",
-            "validacion",
-            "validacion_carga",
-            "cierre",
-            "continuar",
-            "pendientes",
-            "novedades",
-            "apoyos",
-            "confirmar_salida",
-            "menu",
-            "finalizado",
-        }:
-            etapa = "inicial"
+        validacion_origen = str(data.get("validacion_origen") or "").strip() or None
+        parte_state = dict(data.get("parte_state") or {})
+        if etapa not in get_args(ParteDiarioStage):
+            raise ValueError(f"Etapa de parte diario no admitida: {etapa}")
         options: list[ParteDiarioOption] = []
         for option in data.get("opciones_obra", []):
             if isinstance(option, dict):
@@ -258,18 +211,6 @@ class ParteDiarioV3State:
                 parsed = ParteDiarioAsistenciaOption.from_dict(option)
                 if parsed is not None:
                     asistencia_options.append(parsed)
-        asistencia_registros: list[ParteDiarioAsistenciaRegistro] = []
-        for item in data.get("asistencia_registros", []):
-            if isinstance(item, dict):
-                parsed = ParteDiarioAsistenciaRegistro.from_dict(item)
-                if parsed is not None:
-                    asistencia_registros.append(parsed)
-        apoyo_project_options: list[ParteDiarioApoyoProyectoOption] = []
-        for option in data.get("opciones_apoyo_proyecto", []):
-            if isinstance(option, dict):
-                parsed = ParteDiarioApoyoProyectoOption.from_dict(option)
-                if parsed is not None:
-                    apoyo_project_options.append(parsed)
         return cls(
             etapa=etapa,  # type: ignore[arg-type]
             contacto_id=_parse_int(data.get("contacto_id")),
@@ -278,24 +219,23 @@ class ParteDiarioV3State:
             nombre_obra=str(data.get("nombre_obra") or "").strip() or None,
             opciones_obra=options,
             opciones_fecha=date_options,
-            fecha_menu_pendiente=bool(data.get("fecha_menu_pendiente")),
             fecha_referida_explicita=bool(data.get("fecha_referida_explicita")),
-            fecha_objetivo=str(data.get("fecha_objetivo") or "").strip() or None,
-            dia_semana_objetivo=_parse_int(data.get("dia_semana_objetivo")),
             texto_fecha_inicial=str(data.get("texto_fecha_inicial") or "").strip() or None,
             modo_pendientes=bool(data.get("modo_pendientes")),
-            apoyo_proyecto_id=_parse_int(data.get("apoyo_proyecto_id")),
-            apoyo_proyecto_nombre=str(data.get("apoyo_proyecto_nombre") or "").strip() or None,
-            opciones_apoyo_proyecto=apoyo_project_options,
+            modo_apertura=data.get("modo_apertura", "puntual"),
             asistencia_offset=_parse_int(data.get("asistencia_offset")) or 0,
             asistencia_opciones=asistencia_options,
-            asistencia_registros=asistencia_registros,
-            asistencia_reemplazo_pendiente=dict(data.get("asistencia_reemplazo_pendiente") or {}),
-            validacion_origen=str(data.get("validacion_origen") or "").strip() or None,
-            validacion_tipo=str(data.get("validacion_tipo") or "").strip() or None,
-            parte_state=dict(data.get("parte_state") or {}),
+            validacion_origen=validacion_origen,
+            aclaracion_origen=data.get("aclaracion_origen"),
+            aclaracion_pregunta=data.get("aclaracion_pregunta"),
+            accion_cierre=str(data.get("accion_cierre") or "").strip() or None,
+            salida_origen=data.get("salida_origen"),
+            fecha_siguiente=data.get("fecha_siguiente"),
+            historial=[dict(turno) for turno in data.get("historial", [])][-12:],
+            parte_state=parte_state,
         )
 
+    # Serializa solo los campos operativos de la conversacion.
     def to_dict(self) -> dict[str, Any]:
         return {
             "etapa": self.etapa,
@@ -305,27 +245,36 @@ class ParteDiarioV3State:
             "nombre_obra": self.nombre_obra,
             "opciones_obra": [option.to_dict() for option in self.opciones_obra],
             "opciones_fecha": [option.to_dict() for option in self.opciones_fecha],
-            "fecha_menu_pendiente": self.fecha_menu_pendiente,
             "fecha_referida_explicita": self.fecha_referida_explicita,
-            "fecha_objetivo": self.fecha_objetivo,
-            "dia_semana_objetivo": self.dia_semana_objetivo,
             "texto_fecha_inicial": self.texto_fecha_inicial,
             "modo_pendientes": self.modo_pendientes,
-            "apoyo_proyecto_id": self.apoyo_proyecto_id,
-            "apoyo_proyecto_nombre": self.apoyo_proyecto_nombre,
-            "opciones_apoyo_proyecto": [option.to_dict() for option in self.opciones_apoyo_proyecto],
+            "modo_apertura": self.modo_apertura,
             "asistencia_offset": self.asistencia_offset,
             "asistencia_opciones": [option.to_dict() for option in self.asistencia_opciones],
-            "asistencia_registros": [item.to_dict() for item in self.asistencia_registros],
-            "asistencia_reemplazo_pendiente": dict(self.asistencia_reemplazo_pendiente),
             "validacion_origen": self.validacion_origen,
-            "validacion_tipo": self.validacion_tipo,
+            "aclaracion_origen": self.aclaracion_origen,
+            "aclaracion_pregunta": self.aclaracion_pregunta,
+            "accion_cierre": self.accion_cierre,
+            "salida_origen": self.salida_origen,
+            "fecha_siguiente": self.fecha_siguiente,
+            "historial": [dict(turno) for turno in self.historial],
             "parte_state": dict(self.parte_state),
         }
 
+    # Conserva los ultimos doce intercambios completos, separados del borrador.
+    def registrar_turno(self, mensaje: str, respuesta: str) -> None:
+        self.historial = (self.historial + [{
+            "usuario": mensaje,
+            "asistente": respuesta,
+            "etapa": self.etapa,
+            "fecha_parte": str(self.parte_state.get("fecha") or ""),
+        }])[-12:]
+
+    # Indica si se completo el contexto base necesario para cargar el parte.
     def has_resolved_obra(self) -> bool:
         return self.contacto_id is not None and self.oportunidad_id is not None and self.proyecto_id is not None
 
+    # Conserva la obra elegida y habilita la seleccion de fecha.
     def set_obra(self, option: ParteDiarioOption) -> None:
         self.contacto_id = option.contacto_id
         self.oportunidad_id = option.oportunidad_id
@@ -334,8 +283,9 @@ class ParteDiarioV3State:
         self.opciones_obra = []
         self.etapa = "seleccionar_fecha"
 
-    def draft(self) -> ParteDiarioDraftState:
-        draft = ParteDiarioDraftState.from_dict(
+    # Reconstruye el borrador con el contacto y la obra de la conversacion.
+    def draft(self) -> ParteDiarioDraft:
+        draft = ParteDiarioDraft.from_dict(
             self.parte_state,
             oportunidad_id=int(self.oportunidad_id or 0),
             idproyecto=self.proyecto_id,
@@ -343,24 +293,17 @@ class ParteDiarioV3State:
         draft.contacto_id = self.contacto_id
         return draft
 
-    def set_draft(self, draft: ParteDiarioDraftState) -> None:
+    # Conserva el borrador actualizado sin alterar la etapa conversacional.
+    def set_draft(self, draft: ParteDiarioDraft) -> None:
         draft.contacto_id = self.contacto_id
         self.parte_state = draft.to_dict()
 
 
+# Interpreta identificadores y offsets opcionales del contexto.
 def _parse_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
     except (TypeError, ValueError):
         return None

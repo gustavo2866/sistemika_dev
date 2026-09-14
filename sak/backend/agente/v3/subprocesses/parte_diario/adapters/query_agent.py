@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from agente.v3.llm import AgentSDKClient
-from agente.v3.subprocesses.parte_diario.process import _today
-from agente.v3.subprocesses.parte_diario.query_service import ParteDiarioQueryService
+from agente.v3.subprocesses.parte_diario.utils import calendario
+from agente.v3.subprocesses.parte_diario.domain.parte_diario import ParteDiarioQueryService
 
 
 class ParteDiarioQueryAgentOutput(BaseModel):
@@ -46,7 +46,7 @@ class ParteDiarioQueryAgentClient:
             nombre_obra=nombre_obra,
             fecha=fecha,
         )
-        tools = _build_tools(service)
+        tools = _build_tools(service, message_text=message_text)
         client = AgentSDKClient(
             name="sak_parte_diario_query_v3",
             model=self.model,
@@ -62,7 +62,7 @@ class ParteDiarioQueryAgentClient:
                     "proyecto_id": proyecto_id,
                     "contacto_id": contacto_id,
                     "obra": nombre_obra,
-                    "fecha_referencia": fecha or _today().isoformat(),
+                    "fecha_referencia": fecha or calendario.hoy().isoformat(),
                     "opciones_visibles": opciones_visibles or [],
                 },
                 ensure_ascii=False,
@@ -71,7 +71,7 @@ class ParteDiarioQueryAgentClient:
         return str(output.respuesta or "").strip()
 
 
-def _build_tools(service: ParteDiarioQueryService) -> list[Any]:
+def _build_tools(service: ParteDiarioQueryService, *, message_text: str) -> list[Any]:
     try:
         from agents import function_tool
     except ImportError as exc:
@@ -148,8 +148,8 @@ Reglas:
 - Solo si el usuario pide explicitamente "toda la nomina", "nomina completa" o equivalente, usa consultar_contexto_parte(tipo="nomina_completa").
 - Para fechas, usa formato ISO YYYY-MM-DD. Resolve referencias relativas usando fecha_referencia del input.
 - Para novedades, ausencias, faltas, accidentes, permisos, presentes u horas, usa consultar_novedades.
-- Regla de horas: la nomina de la obra que trabaja normal no aparece como novedad y se asume 9h.
-- En nomina de la obra, una novedad con 0h es ausencia y el estado indica el motivo; entre 0h y 9h es trabajo parcial con motivo; mas de 9h debe ser estado P y el excedente sobre 9h son horas extras.
+- Regla de horas: la jornada ordinaria depende de la fecha del parte: lunes a viernes 9h, sabado 6h, domingo 0h. La nomina de la obra que trabaja esa jornada normal no aparece como novedad.
+- En nomina de la obra, una novedad con 0h es ausencia y el estado indica el motivo; horas menores a la jornada de esa fecha son trabajo parcial con motivo; por encima de esa jornada debe ser estado P y el excedente son horas extras. Usa solo_horas_extras para consultar extras, no un umbral fijo de 9h.
 - Personal de otra nomina solo registra las horas destinadas a esta obra; esas horas no son horas extras de esta obra. Si preguntas por ese personal, usa alcance_personal="otra_nomina" o "todos" y aclara que es otra nomina.
 - "Faltar", "falto", "no trabajo" o "quienes no trabajaron" significa estar reportado con horas=0; no depende del motivo. Usa consultar_novedades con horas_igual_a=0.
 - Para "quien falto", usa consultar_novedades con horas_igual_a=0 sin persona.

@@ -9,19 +9,15 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from agente.v3.llm import OpenAIChatClient, compact_json, load_prompt
-from agente.v3.subprocesses.parte_diario.models import (
-    EstadoItem,
-    NominaItem,
-    ParteDiarioOperation,
-    ParteDiarioState,
-    TurnPlan,
-)
+from agente.v3.subprocesses.parte_diario.domain.models import EstadoItem, NominaItem, ParteDiarioDraft
+from agente.v3.subprocesses.parte_diario.models import ParteDiarioOperation, TurnPlan
 
 
-PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
 
 OPERATION_TYPES = [
+    "retomar_carga",
     "agregar_novedad",
     "modificar_novedad",
     "eliminar_novedad",
@@ -58,6 +54,7 @@ COMMAND_ACTION_TO_OPERATION = {
 }
 
 BACKEND_ACTION_TYPES = [
+    "resume_loading",
     "none",
     "add_novelty",
     "update_novelty",
@@ -72,6 +69,7 @@ BACKEND_ACTION_TYPES = [
 ]
 
 BACKEND_ACTION_TO_OPERATION = {
+    "resume_loading": "retomar_carga",
     "finish_loading": "solicitar_confirmacion",
     "sin_novedades": "sin_novedades",
     "show_summary": "mostrar_parte",
@@ -103,9 +101,11 @@ class ParteDiarioLLMClient:
     async def interpret_turn(
         self,
         mensaje: str,
-        state: ParteDiarioState,
+        state: ParteDiarioDraft,
         nominas_proyecto: list[NominaItem],
         estados: list[EstadoItem],
+        *,
+        contexto_conversacion: dict[str, Any] | None = None,
     ) -> TurnPlan:
         prompt = load_prompt(PROMPTS_DIR / _prompt_name_for_stage(self.stage))
         payload = {
@@ -113,6 +113,7 @@ class ParteDiarioLLMClient:
             "fecha_referencia": datetime.now(BUENOS_AIRES).date().isoformat(),
             "zona_horaria": "America/Argentina/Buenos_Aires",
             "parte": state.to_dict(),
+            "contexto_conversacion": contexto_conversacion or {},
             "nomina_proyecto": [item.nombre_completo for item in nominas_proyecto],
             "estados_activos": [
                 {"codigo": item.abreviatura, "nombre": item.nombre}
@@ -125,10 +126,17 @@ class ParteDiarioLLMClient:
             .replace("{etapa}", self.stage)
         )
         started = time.perf_counter()
+        history = [
+            {"role": role, "content": turno[field]}
+            for turno in (contexto_conversacion or {}).get("historial", [])
+            for role, field in (("user", "usuario"), ("assistant", "asistente"))
+        ]
         raw = await self._chat.complete_json(
             system_prompt=system_prompt,
-            response_format=_turn_schema(estados),
-            max_tokens=1000,
+            user_content=compact_json(payload),
+            response_format=_turn_schema(estados, etapa=(contexto_conversacion or {}).get("etapa", self.stage)),
+            max_tokens=4096,
+            history=history,
         )
         plan = _parse_turn_plan(raw)
         plan.llm_ms = round((time.perf_counter() - started) * 1000)
@@ -323,8 +331,13 @@ def _parse_int(value: Any) -> int | None:
         return None
 
 
-def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
+# Ofrece acciones validas para la etapa sin modificar los catalogos compartidos.
+def _turn_schema(estados: list[EstadoItem], *, etapa: str = "carga") -> dict[str, Any]:
     codes = [item.abreviatura.upper() for item in estados]
+    actions = [action for action in BACKEND_ACTION_TYPES
+               if etapa == "carga_aclaracion" or action != "resume_loading"]
+    operations = [operation for operation in OPERATION_TYPES
+                  if etapa == "carga_aclaracion" or operation != "retomar_carga"]
     return {
         "type": "json_schema",
         "json_schema": {
@@ -336,14 +349,15 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                 "properties": {
                     "message_kind": {"type": "string", "enum": ["comando", "novedad", "aclaracion"]},
                     "command_action": {"type": "string", "enum": COMMAND_ACTION_TYPES},
-                    "backend_action": {"type": "string", "enum": BACKEND_ACTION_TYPES},
+                    "backend_action": {"type": "string", "enum": actions},
                     "operations": {
                         "type": "array",
+                        "description": "Acciones ejecutables del turno; una por cada novedad afectada. Vacia solo si falta informacion o la accion de flujo se expresa en backend_action.",
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
                             "properties": {
-                                "type": {"type": "string", "enum": OPERATION_TYPES},
+                                "type": {"type": "string", "enum": operations},
                                 "nombre": {"type": ["string", "null"]},
                                 "idnomina": {"type": ["integer", "null"]},
                                 "alcance": {"type": ["string", "null"], "enum": ["propia", "obra", "global", None]},
@@ -374,7 +388,10 @@ def _turn_schema(estados: list[EstadoItem]) -> dict[str, Any]:
                             ],
                         },
                     },
-                    "reply": {"type": ["string", "null"]},
+                    "reply": {
+                        "type": ["string", "null"],
+                        "description": "Pregunta concreta si falta informacion. Null si se devuelven acciones; el backend comunica el resultado real.",
+                    },
                     "alcance": {"type": ["string", "null"], "enum": ["propia", "obra", "global", None]},
                 },
                 "required": [

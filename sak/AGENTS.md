@@ -29,3 +29,16 @@ Instrucciones para agentes automatizados que trabajen en este repo.
 - Si aplica, usar componentes del kit `shadcn admin`.
 - Solo usar componentes de `shadcn/ui` como ultima instancia.
 - Evitar crear componentes nuevos si ya existe uno reutilizable.
+
+## Parte Diario del Agente v3
+- Estructura y contratos: `backend/agente/v3/subprocesses/parte_diario/README.md`.
+- Antes de modificar el subproceso, leer ese README y aplicar su guia de cambios. Documenta el patron vigente, las responsabilidades y las particularidades actuales.
+- Un cambio funcional no autoriza alterar el patron: cualquier cambio de arquitectura debe acordarse y documentarse explicitamente. No reintroducir capas o caminos alternativos de forma incidental.
+- Al finalizar, comprobar las reglas del README y actualizar la documentacion si cambia el contrato o el comportamiento descrito. Criterios de seleccion y procedimiento pytest: `backend/agente/v3/subprocesses/parte_diario/PRUEBAS.md`.
+- `flows` conduce las etapas; `domain` agrupa acceso a datos y reglas por entidad; `utils` contiene interpretacion local y presentacion; `adapters` integra servicios externos.
+- No agregar SQL a flows ni acceso a datos al renderer. Usar `app.db.engine`, sin dependencias de domain hacia el handler.
+- El respaldo `handler_back.py` es referencia historica, no una implementacion ejecutable alternativa.
+- Datos de entidades y borrador en `domain/models.py`; contratos de procesamiento en `models.py`; contexto conversacional en `state.py`. `etapa` es el unico selector del procesador del mensaje.
+- Comandos comunes en `flows/comandos.py` antes del match; comandos locales por estado. `NO` en carga abre revision sin LLM; las preguntas del interprete usan `carga_aclaracion`, con pregunta y origen conservados. No usar un flag de despacho paralelo.
+- Las funciones de domain pueden recibir el estado completo; no agregar una capa para descomponer sus parametros.
+- Jornada de partes y tarjas: usar `app.utils.jornada.get_jornada_esperada` con la fecha del parte (lunes a viernes 9h, sabado 6h, domingo 0h), sin defaults horarios fijos ni usar la fecha de la conversacion.

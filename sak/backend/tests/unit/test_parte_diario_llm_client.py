@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import pytest
 
-from agente.v3.subprocesses.parte_diario.llm_client import ParteDiarioLLMClient, _parse_turn_plan
-from agente.v3.subprocesses.parte_diario.models import ParteDiarioState
+from agente.v3.subprocesses.parte_diario.adapters.llm import ParteDiarioLLMClient, _parse_turn_plan
+from agente.v3.subprocesses.parte_diario.domain.models import EstadoItem, NominaItem, ParteDiarioDraft
+from agente.v3.subprocesses.parte_diario.domain.novedades import execute_plan
 
 
 class FakeChatClient:
@@ -18,6 +20,22 @@ class FakeChatClient:
         return self.next_response
 
 
+# El contrato solo ofrece retorno cuando hay un estado de aclaracion que terminar.
+@pytest.mark.asyncio
+@pytest.mark.parametrize("etapa", ["carga", "listado", "carga_aclaracion", "carga_validar_estado", "cierre"])
+async def test_schema_retoma_solo_desde_aclaracion(etapa):
+    chat = FakeChatClient()
+    await ParteDiarioLLMClient(chat_client=chat).interpret_turn(
+        "limpia todo", ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-09-12"),
+        [], [], contexto_conversacion={"etapa": etapa},
+    )
+    properties = chat.calls[0]["response_format"]["json_schema"]["schema"]["properties"]
+    assert ("resume_loading" in properties["backend_action"]["enum"]) == (etapa == "carga_aclaracion")
+    assert ("retomar_carga" in properties["operations"]["items"]["properties"]["type"]["enum"]) == (etapa == "carga_aclaracion")
+    assert "ask_clarification" in properties["backend_action"]["enum"]
+    assert "eliminar_novedad" in properties["operations"]["items"]["properties"]["type"]["enum"]
+
+
 @pytest.mark.asyncio
 async def test_prompt_includes_local_date_and_weekday_resolution_rules():
     chat = FakeChatClient()
@@ -25,22 +43,78 @@ async def test_prompt_includes_local_date_and_weekday_resolution_rules():
 
     await client.interpret_turn(
         "mostrame el parte diario del viernes",
-        ParteDiarioState(oportunidad_id=1, idproyecto=10),
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10),
         [],
         [],
     )
 
     prompt = chat.calls[0]["system_prompt"]
-    assert '"fecha_referencia":"' in prompt
-    assert '"zona_horaria":"America/Argentina/Buenos_Aires"' in prompt
-    assert '"mensaje":"mostrame el parte diario del viernes"' in prompt
-    assert "`fecha_referencia` representa HOY" in prompt
-    assert '"el viernes pasado"' in prompt
+    payload = json.loads(chat.calls[0]["user_content"])
+    assert payload["fecha_referencia"]
+    assert payload["zona_horaria"] == "America/Argentina/Buenos_Aires"
+    assert payload["mensaje"] == "mostrame el parte diario del viernes"
     assert "estrictamente anterior a hoy" in prompt
-    assert "lunes de la semana anterior, no a hoy" in prompt
-    assert "parte diario del martes" in prompt
-    assert "operacion ejecutable por si misma" in prompt
-    assert "set_fecha para el viernes correspondiente y luego mostrar_parte" in prompt
+    assert 'Si hoy es lunes, "lunes" es el lunes anterior' in prompt
+    assert "inicio o consulta tambien genera set_fecha" in prompt
+
+
+# El prompt comun especifica que el destino pertenece a una persona, no a todo el lote.
+@pytest.mark.asyncio
+async def test_carga_prompt_asigna_destino_por_persona():
+    chat = FakeChatClient()
+    client = ParteDiarioLLMClient(chat_client=chat).for_stage("carga")
+    await client.interpret_turn(
+        "medina trabajo 12 hs, ponce trabajo en francia",
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10), [], [],
+    )
+    prompt = chat.calls[0]["system_prompt"]
+    assert "Asigna el destino por persona" in prompt
+    assert "Informar horas sin otra obra no implica transferencia" in prompt
+    assert "mencionada para otra persona" in prompt
+    assert "sabado 6h, domingo 0h" in prompt
+    assert "si no se indican horas, horas=null" in prompt
+
+
+# Comprueba el contrato comun y que ejecutar sus operaciones conserva motivo y horas.
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modo", ["carga", "listado"])
+async def test_motivo_especifico_y_horas_independientes(modo):
+    chat = FakeChatClient()
+    nominas = [NominaItem(101, "Xavier", "Delgado"), NominaItem(102, "Paco", "Gerlo")]
+    estados = [EstadoItem(1, "P", "PRESENTE"), EstadoItem(2, "FAL", "FALTA"),
+               EstadoItem(3, "ACC", "ACCIDENTE"), EstadoItem(4, "PER", "PERMISO")]
+    chat.next_response = {
+        "operations": [
+            {"type": "agregar_novedad", "nombre": "Delgado", "estado_codigo": "ACC",
+             "idnomina": 101 if modo == "listado" else None, "horas": None},
+            {"type": "agregar_novedad", "nombre": "Gerlo", "estado_codigo": "PER",
+             "idnomina": 102 if modo == "listado" else None, "horas": 3},
+        ], "reply": None,
+    }
+    mensaje = ("[idnomina=101] Delgado, Xavier: se quebro el braso\n"
+               "[idnomina=102] Gerlo, Paco: pidio salir para ir al banco trabajo 3hs"
+               if modo == "listado" else
+               "Delgado se quebro el braso, Gerlo pidio salir para ir al banco trabajo 3hs")
+    draft = ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-09-12")
+    plan = await ParteDiarioLLMClient(chat_client=chat).interpret_turn(
+        mensaje, draft, nominas, estados, contexto_conversacion={"etapa": modo},
+    )
+    prompt = chat.calls[0]["system_prompt"]
+    payload = json.loads(chat.calls[0]["user_content"])
+    assert "El motivo especifico tiene prioridad" in prompt
+    assert "Estado y horas son datos independientes" in prompt
+    assert "errores ortograficos comprensibles" in prompt
+    assert "Usa estos codigos solo si estan activos" in prompt
+    assert payload["estados_activos"] == [
+        {"codigo": estado.abreviatura, "nombre": estado.nombre} for estado in estados
+    ]
+    assert payload["mensaje"] == mensaje
+    result = execute_plan(draft, plan, nominas, nominas, estados)
+    assert not result.errors
+    assert not result.next_state.pendientes_ambiguos
+    assert [(n.idnomina, n.estado_codigo, n.horas) for n in result.next_state.novedades] == [
+        (101, "ACC", 0), (102, "PER", 3),
+    ]
 
 
 @pytest.mark.asyncio
@@ -68,18 +142,17 @@ async def test_prompt_requires_preserving_active_date_without_new_temporal_refer
 
     await client.interpret_turn(
         "cabrera trabajo 3 hs",
-        ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-05-29"),
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-05-29"),
         [],
         [],
     )
 
     prompt = chat.calls[0]["system_prompt"]
-    assert '"mensaje":"cabrera trabajo 3 hs"' in prompt
-    assert '"fecha":"2026-05-29"' in prompt
-    assert "`parte.fecha` es la fecha operativa del parte en carga" in prompt
-    assert "Nunca agregues set_fecha si el mensaje actual no menciona una fecha explicita o" in prompt
-    assert "conserva esa fecha sin" in prompt
-    assert "emitir set_fecha" in prompt
+    payload = json.loads(chat.calls[0]["user_content"])
+    assert payload["mensaje"] == "cabrera trabajo 3 hs"
+    assert payload["parte"]["fecha"] == "2026-05-29"
+    assert "Conserva parte.fecha salvo referencia temporal en el mensaje actual" in prompt
+    assert "no exige otro set_fecha" in prompt
     assert "Tiempos verbales como" in prompt
 
 
@@ -90,7 +163,7 @@ async def test_cierre_prompt_reserves_exact_save_close_commands():
 
     await client.interpret_turn(
         "agrega vera 4 hs",
-        ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-05-29"),
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-05-29"),
         [],
         [],
     )
@@ -129,30 +202,26 @@ async def test_carga_prompt_requires_command_classification_before_novelty_parsi
 
     await client.interpret_turn(
         "no ninguna",
-        ParteDiarioState(oportunidad_id=1, idproyecto=10, fecha="2026-08-01"),
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-08-01"),
         [],
         [],
     )
 
     prompt = chat.calls[0]["system_prompt"]
     response_schema = chat.calls[0]["response_format"]["json_schema"]["schema"]
-    assert "Rol conversacional" in prompt
-    assert "backend_action=\"finish_loading\"" in prompt
-    assert "`sin_novedades`: registrar que no hubo novedades" in prompt
-    assert 'Cuando la pregunta activa es "Hay alguna otra novedad?"' in prompt
-    assert 'usa `backend_action="finish_loading"`' in prompt
-    assert "afirmativa breve sin detalle de novedad" in prompt
+    assert "Usa finish_loading solo cuando se entiende que el usuario termino la carga" in prompt
+    assert "sin_novedades declara ausencia de novedades" in prompt
+    assert "Esto no aplica a una accion ya definida" in prompt
     assert 'backend_action="ask_clarification"' in prompt
-    assert "pedi que indique la novedad" in prompt
-    assert "No dependas de palabras exactas" in prompt
-    assert "intencion conversacional" in prompt
-    assert "salida silenciosa" in prompt
-    assert "No intentes cubrir frases por patron fijo" in prompt
+    assert "No uses una lista de frases" in prompt
+    assert "Contrato de decision del turno (prioritario)" in prompt
+    assert "Entender o aceptar una orden no equivale a ejecutarla" in prompt
+    assert "El rechazo actual prevalece sobre la solicitud anterior" in prompt
+    assert "No exijas que el mensaje actual vuelva a nombrarlos" in prompt
     assert "El alcance de busqueda no reemplaza el filtro" in prompt
-    assert 'nombre="ruiz"' in prompt
     assert "fuera_de_proyecto=true" in prompt
     assert "nombre_proyecto" in prompt
-    assert "jornada" in prompt and "estandar completa" in prompt
+    assert "No apliques defaults ni sumes extras" in prompt
     assert response_schema["required"] == [
         "message_kind",
         "command_action",
@@ -226,6 +295,13 @@ def test_parse_turn_plan_maps_no_novelty_backend_action_to_operation():
     )
 
     assert [operation.type for operation in plan.operations] == ["sin_novedades"]
+
+
+# Rechazar una propuesta retoma el modo de carga sin cambios ni revision.
+@pytest.mark.parametrize("operations", [[], [{"type": "retomar_carga"}]])
+def test_parse_turn_plan_retoma_carga_sin_duplicar(operations):
+    plan = _parse_turn_plan({"backend_action": "resume_loading", "operations": operations})
+    assert [op.type for op in plan.operations] == ["retomar_carga"]
 
 
 def test_parse_turn_plan_preserves_primitive_operations_for_natural_corrections():
