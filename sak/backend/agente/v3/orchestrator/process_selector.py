@@ -26,7 +26,7 @@ PROCESS_NAMES = {PROCESS_GENERAL, PROCESS_PEDIDO_OBRA, PROCESS_PARTE_DIARIO}
 PROCESS_CATALOG: dict[str, str] = {
     PROCESS_GENERAL: "Saludos, dudas generales, mensajes ambiguos o navegacion conversacional.",
     PROCESS_PEDIDO_OBRA: "Pedidos, modificaciones o consultas de materiales para obra.",
-    PROCESS_PARTE_DIARIO: "Asistencia, ausencias, horas, novedades o estado del personal de obra.",
+    PROCESS_PARTE_DIARIO: "Novedades, apoyos, ausencias, horas o estado del personal de obra.",
 }
 
 @dataclass(slots=True)
@@ -129,7 +129,10 @@ class V3ProcessSelector:
         if not text:
             return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 1.0, "Mensaje sin texto.")
 
-        if "parte diario" in text or "partes diarios" in text or "asistencia" in text:
+        if text in {"pendiente", "pendientes"} or "parte pendiente" in text or "partes pendientes" in text:
+            return V3ProcessSelection(PROCESS_PARTE_DIARIO, "fast_path", 0.9, "Referencia clara a parte pendiente.")
+
+        if "reportar" in text or "parte diario" in text or "partes diarios" in text or "novedades" in text or "apoyos" in text or "apoyo" in text:
             return V3ProcessSelection(PROCESS_PARTE_DIARIO, "fast_path", 0.9, "Referencia clara a parte diario.")
 
         if "pedido" in text and ("material" in text or "obra" in text):

@@ -1,4 +1,4 @@
-Interpreta el motivo de asistencia informado por el usuario.
+Interpreta el motivo de la novedad informado por el usuario.
 
 Estados permitidos:
 {estados}

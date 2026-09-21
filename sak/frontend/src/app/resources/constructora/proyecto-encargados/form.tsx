@@ -30,10 +30,14 @@ const ProyectoEncargadoFields = () => (
       widthClass="w-full"
     />
     <FormReferenceAutocomplete
-      referenceProps={{ source: "contacto_id", reference: "crm/contactos" }}
+      referenceProps={{
+        source: "contacto_id",
+        reference: "crm/contactos",
+        filter: { "tipo.nombre": "Encargado" },
+      }}
       inputProps={{
         optionText: "nombre_completo",
-        label: "Contacto",
+        label: "Encargado",
         validate: required(),
       }}
       widthClass="w-full"

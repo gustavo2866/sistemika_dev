@@ -16,7 +16,7 @@ import {
   useResourceContext,
 } from "ra-core";
 import { useNavigate } from "react-router-dom";
-import { Eye, MoreHorizontal, Trash2 } from "lucide-react";
+import { Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -41,14 +41,23 @@ export const FormOrderListRowActions = ({
   className,
   extraMenuItems,
   showShow = true,
+  showEdit = false,
   showDelete = true,
+  validateDelete,
+  getEditPath,
   refreshEventName,
 }: {
   contextSearch?: string;
   className?: string;
   extraMenuItems?: ReactNode;
   showShow?: boolean;
+  showEdit?: boolean;
   showDelete?: boolean;
+  validateDelete?: (record: Record<string, unknown>) => Promise<{
+    allowed: boolean;
+    message: string;
+  }>;
+  getEditPath?: (record: Record<string, unknown>) => string | undefined;
   refreshEventName?: string;
 }) => {
   return (
@@ -58,7 +67,10 @@ export const FormOrderListRowActions = ({
         className={className}
         extraMenuItems={extraMenuItems}
         showShow={showShow}
+        showEdit={showEdit}
         showDelete={showDelete}
+        validateDelete={validateDelete}
+        getEditPath={getEditPath}
         refreshEventName={refreshEventName}
       />
     </RowActionDialogProvider>
@@ -70,14 +82,23 @@ const FormOrderListRowActionsContent = ({
   className,
   extraMenuItems,
   showShow = true,
+  showEdit = false,
   showDelete = true,
+  validateDelete,
+  getEditPath,
   refreshEventName,
 }: {
   contextSearch?: string;
   className?: string;
   extraMenuItems?: ReactNode;
   showShow?: boolean;
+  showEdit?: boolean;
   showDelete?: boolean;
+  validateDelete?: (record: Record<string, unknown>) => Promise<{
+    allowed: boolean;
+    message: string;
+  }>;
+  getEditPath?: (record: Record<string, unknown>) => string | undefined;
   refreshEventName?: string;
 }) => {
   const record = useRecordContext();
@@ -100,7 +121,7 @@ const FormOrderListRowActionsContent = ({
     event.stopPropagation();
   };
 
-  const buildPath = (type: "show") => {
+  const buildPath = (type: "show" | "edit") => {
     if (!resource || !record?.id) return "";
     const base = createPath({ resource, type, id: record.id });
     return contextSearch ? `${base}${contextSearch}` : base;
@@ -110,6 +131,13 @@ const FormOrderListRowActionsContent = ({
     stopRowClick(event);
     if (busy || !resource || !record?.id) return;
     navigate(buildPath("show"));
+  };
+
+  const handleEdit = (event: React.MouseEvent) => {
+    stopRowClick(event);
+    if (busy || !resource || !record?.id) return;
+    const customPath = getEditPath?.(record as Record<string, unknown>);
+    navigate(customPath || buildPath("edit"));
   };
 
   const handleDelete = async () => {
@@ -125,6 +153,47 @@ const FormOrderListRowActionsContent = ({
     } catch (error) {
       console.error(error);
       notify("No se pudo eliminar", { type: "warning" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteRequest = async (event: React.MouseEvent) => {
+    stopRowClick(event);
+    if (busy) return;
+
+    if (!validateDelete) {
+      dialog?.openDialog({
+        title: "Eliminar registro",
+        content: "Seguro que deseas eliminar este registro?",
+        confirmLabel: "Eliminar",
+        confirmColor: "warning",
+        onConfirm: handleDelete,
+      });
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const validation = await validateDelete(record as Record<string, unknown>);
+      dialog?.openDialog({
+        title: "Eliminar registro",
+        content: validation.message,
+        confirmLabel: "Eliminar",
+        confirmColor: "warning",
+        confirmDisabled: !validation.allowed,
+        onConfirm: handleDelete,
+      });
+    } catch (error) {
+      console.error(error);
+      dialog?.openDialog({
+        title: "Eliminar registro",
+        content: "No se pudo validar si el registro puede eliminarse.",
+        confirmLabel: "Eliminar",
+        confirmColor: "warning",
+        confirmDisabled: true,
+        onConfirm: handleDelete,
+      });
     } finally {
       setBusy(false);
     }
@@ -150,6 +219,16 @@ const FormOrderListRowActionsContent = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-32 sm:w-40" forceMount>
+        {showEdit ? (
+          <DropdownMenuItem
+            onClick={handleEdit}
+            disabled={busy}
+            className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+          >
+            <Pencil className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+            Editar
+          </DropdownMenuItem>
+        ) : null}
         {showShow ? (
           <DropdownMenuItem
             onClick={handleShow}
@@ -162,17 +241,7 @@ const FormOrderListRowActionsContent = ({
         ) : null}
         {!isLocked && showDelete ? (
           <DropdownMenuItem
-            onClick={(event) => {
-              stopRowClick(event);
-              if (busy) return;
-              dialog?.openDialog({
-                title: "Eliminar registro",
-                content: "Seguro que deseas eliminar este registro?",
-                confirmLabel: "Eliminar",
-                confirmColor: "warning",
-                onConfirm: handleDelete,
-              });
-            }}
+            onClick={handleDeleteRequest}
             disabled={busy}
             variant="destructive"
             className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"

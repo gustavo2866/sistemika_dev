@@ -2,13 +2,6 @@
 
 import { z } from "zod";
 
-export const CATEGORIA_CHOICES = [
-  { id: "oficial", name: "Oficial" },
-  { id: "medio_oficial", name: "Medio Oficial" },
-  { id: "ayudante", name: "Ayudante" },
-  { id: "administrativo", name: "Administrativo" },
-];
-
 export const ESTADO_CHOICES = [
   { id: true, name: "Activo" },
   { id: false, name: "Inactivo" },
@@ -36,6 +29,11 @@ const requiredId = z.preprocess(
   z.coerce.number().int().positive(),
 );
 
+const optionalId = z.preprocess(
+  emptyToUndefined,
+  z.coerce.number().int().positive().optional(),
+);
+
 const optionalDate = z.preprocess(emptyToUndefined, z.string().optional());
 
 const optionalAmount = z.preprocess(
@@ -55,13 +53,9 @@ export const nominaSchema = z.object({
   nombre: z.string().min(1).max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),
   apellido: z.string().min(1).max(VALIDATION_RULES.APELLIDO.MAX_LENGTH),
   dni: z.string().min(1).max(VALIDATION_RULES.DNI.MAX_LENGTH),
-  categoria: z.enum([
-    "oficial",
-    "medio_oficial",
-    "ayudante",
-    "administrativo",
-  ]),
   idproyecto: requiredId,
+  nomina_categoria_id: optionalId,
+  nomina_tarea_id: optionalId,
   encargado_contacto_id: z.preprocess(
     emptyToUndefined,
     z.coerce.number().int().positive().optional(),
@@ -88,8 +82,9 @@ export const NOMINA_DEFAULT: NominaFormValues = {
   nombre: "",
   apellido: "",
   dni: "",
-  categoria: "ayudante",
   idproyecto: 0,
+  nomina_categoria_id: undefined,
+  nomina_tarea_id: undefined,
   encargado_contacto_id: undefined,
   email: "",
   telefono: "",
@@ -132,6 +127,16 @@ export const normalizeNominaPayload = (data: unknown) => {
 
   if (payload.idproyecto != null && payload.idproyecto !== "") {
     payload.idproyecto = Number(payload.idproyecto);
+  }
+  if (payload.nomina_categoria_id === "") {
+    payload.nomina_categoria_id = null;
+  } else if (payload.nomina_categoria_id != null) {
+    payload.nomina_categoria_id = Number(payload.nomina_categoria_id);
+  }
+  if (payload.nomina_tarea_id === "") {
+    payload.nomina_tarea_id = null;
+  } else if (payload.nomina_tarea_id != null) {
+    payload.nomina_tarea_id = Number(payload.nomina_tarea_id);
   }
   if (payload.encargado_contacto_id === "") {
     payload.encargado_contacto_id = null;

@@ -21,6 +21,15 @@ Runtime activo del agente para WhatsApp/channel.
 - `cierre`: pide confirmacion final con `CONFIRMAR`, permite `VOLVER` o `SALIR`.
 - `finalizado`: cierra el subproceso.
 
+## Vigencia del contexto
+
+Al recuperar una conversacion, `orchestrator/context_store.py` compara su `created_at`
+con el dia actual en `America/Argentina/Buenos_Aires`. Si se creo antes de hoy,
+reemplaza el contexto por uno nuevo antes de seleccionar el subproceso. Esta regla
+es comun a todos los subprocesos y no depende de `updated_at` ni de la fecha del
+parte diario. Solo se descarta el contexto en memoria: no se borran datos guardados
+ni el historial de mensajes.
+
 ## Integracion LLM
 
 La infraestructura comun vive en `llm/`:

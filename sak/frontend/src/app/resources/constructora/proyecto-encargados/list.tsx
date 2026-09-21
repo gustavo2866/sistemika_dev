@@ -15,6 +15,7 @@ import {
   TextListColumn,
   buildListFilters,
 } from "@/components/forms/form_order";
+import { PROYECTO_ESTADO_CHOICES } from "../proyectos/model";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -25,11 +26,12 @@ const LIST_FILTERS = buildListFilters(
         reference: "proyectos",
         label: "Proyecto",
         alwaysOn: true,
+        className: "w-[240px] min-w-0 shrink-0",
       },
       selectProps: {
         optionText: "nombre",
         emptyText: "Todos",
-        className: "w-[180px]",
+        className: "w-full min-w-0",
       },
     },
     {
@@ -37,12 +39,23 @@ const LIST_FILTERS = buildListFilters(
       referenceProps: {
         source: "contacto_id",
         reference: "crm/contactos",
-        label: "Contacto",
+        label: "Encargado",
+        className: "w-[200px] min-w-0 shrink-0",
       },
       selectProps: {
+        label: "Encargado",
         optionText: "nombre_completo",
         emptyText: "Todos",
-        className: "w-[180px]",
+        className: "w-full min-w-0",
+      },
+    },
+    {
+      type: "select",
+      props: {
+        source: "proyecto_estado",
+        label: "Estado del proyecto",
+        choices: PROYECTO_ESTADO_CHOICES,
+        emptyText: "Todos",
       },
     },
     {
@@ -137,13 +150,13 @@ export const ProyectoEncargadoList = ({
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
         {!hideProyectoColumn ? (
-          <TextListColumn source="proyecto_id" label="Proyecto" className="w-[220px]">
+          <TextListColumn source="proyecto_id" label="Proyecto" className="w-[170px]">
             <ReferenceField source="proyecto_id" reference="proyectos" link={false}>
               <ListText source="nombre" className="whitespace-normal break-words" />
             </ReferenceField>
           </TextListColumn>
         ) : null}
-        <TextListColumn source="contacto_id" label="Contacto" className="w-[220px]">
+        <TextListColumn source="contacto_id" label="Encargado" className="w-[170px]">
           <ReferenceField source="contacto_id" reference="crm/contactos" link={false}>
             <ListText source="nombre_completo" className="whitespace-normal break-words" />
           </ReferenceField>
@@ -152,8 +165,8 @@ export const ProyectoEncargadoList = ({
         <BooleanListColumn source="activo" label="Activo" className="w-[80px]" />
         {!embedded ? (
           <>
-            <DateListColumn source="desde" label="Desde" className="w-[100px]" />
-            <DateListColumn source="hasta" label="Hasta" className="w-[100px]" />
+            <DateListColumn source="desde" label="Desde" className="w-[85px]" />
+            <DateListColumn source="hasta" label="Hasta" className="w-[85px]" />
             <TextListColumn source="notas" label="Notas">
               <ListText source="notas" className="whitespace-normal break-words" />
             </TextListColumn>

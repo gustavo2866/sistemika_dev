@@ -52,6 +52,19 @@ const numberFromInputSchema = z.preprocess(
   z.number().finite(),
 );
 
+export const getParteDiarioJornadaEsperada = (value: unknown) => {
+  const raw =
+    value instanceof Date && !Number.isNaN(value.getTime())
+      ? value.toISOString()
+      : String(value ?? "").trim();
+  const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!isoMatch) return 0;
+  const day = new Date(`${isoMatch[1]}T00:00:00Z`).getUTCDay();
+  if (day === 0) return 0;
+  if (day === 6) return 6;
+  return 9;
+};
+
 export type ParteDiarioDetalle = {
   id?: number | string;
   idnomina?: number | null;
@@ -99,16 +112,29 @@ const parteDiarioDetalleSchema = z.object({
   ),
 });
 
-export const parteDiarioSchema = z.object({
-  idproyecto: numberFromInputSchema.pipe(z.number().int().positive()),
-  contacto_id: optionalIdSchema,
-  fecha: z.string().min(1),
-  estado: z.enum(["borrador", "confirmado", "cerrado"]).default("borrador"),
-  descripcion: optionalStringSchema.pipe(
-    z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
-  ),
-  detalles: z.array(parteDiarioDetalleSchema).default([]),
-});
+export const parteDiarioSchema = z
+  .object({
+    idproyecto: numberFromInputSchema.pipe(z.number().int().positive()),
+    contacto_id: optionalIdSchema,
+    fecha: z.string().min(1),
+    estado: z.enum(["borrador", "confirmado", "cerrado"]).default("borrador"),
+    descripcion: optionalStringSchema.pipe(
+      z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
+    ),
+    detalles: z.array(parteDiarioDetalleSchema).default([]),
+  })
+  .superRefine((values, context) => {
+    const jornada = getParteDiarioJornadaEsperada(values.fecha);
+    values.detalles.forEach((detalle, index) => {
+      if (detalle.horas < jornada && detalle.idestado == null) {
+        context.addIssue({
+          code: "custom",
+          path: ["detalles", index, "idestado"],
+          message: `El estado es obligatorio cuando las horas son menores a ${jornada} h.`,
+        });
+      }
+    });
+  });
 
 export type ParteDiarioFormValues = z.infer<typeof parteDiarioSchema>;
 

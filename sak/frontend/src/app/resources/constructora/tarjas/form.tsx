@@ -35,6 +35,11 @@ import {
   type TarjaFormValues,
 } from "./model";
 
+const BOOLEAN_CHOICES = [
+  { id: true, name: "SI" },
+  { id: false, name: "NO" },
+];
+
 const getNominaLabel = (
   record?: Record<string, unknown>,
   tarjaProyectoId?: number | null,
@@ -126,11 +131,24 @@ const TarjaMainFields = () => (
 
 const TarjaOptionalFields = () => (
   <div className="mt-1 rounded-md border border-muted/60 bg-muted/30 p-2">
-    <div className="grid gap-2 md:grid-cols-[130px_260px] md:items-start">
+    <div className="grid gap-2 md:grid-cols-[130px_140px_120px_260px] md:items-start">
       <FormDate
         source="fechafinal"
         label="Final"
         widthClass="w-full md:w-[130px]"
+      />
+      <FormNumber
+        source="premio"
+        label="Premio"
+        min={0}
+        step="0.01"
+        widthClass="w-full md:w-[140px]"
+      />
+      <FormSelect
+        source="viaticos"
+        label="Viaticos"
+        choices={BOOLEAN_CHOICES}
+        widthClass="w-full md:w-[120px]"
       />
       <FormText
         source="descripcion"

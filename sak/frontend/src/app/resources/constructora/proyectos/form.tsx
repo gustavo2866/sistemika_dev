@@ -601,77 +601,84 @@ const ProyectoCabeceraMainFields = () => (
 );
 
 const ProyectoCabeceraOptionalFields = () => (
-  <div className="mt-1 rounded-md border border-muted/60 bg-muted/30 p-2">
-    <div className="grid gap-2 md:grid-cols-4">
-      <div className="md:col-span-2">
-        <ProyectoOportunidadField />
-      </div>
-      <ReferenceInput source="responsable_id" reference="users" label="Responsable">
-        <FormSelect
-          optionText="nombre"
-          label="Responsable"
+  <div className="mt-1 space-y-2">
+    <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+      <div className="grid gap-2 md:grid-cols-4">
+        <div className="md:col-span-2">
+          <ProyectoOportunidadField />
+        </div>
+        <ReferenceInput source="responsable_id" reference="users" label="Responsable">
+          <FormSelect
+            optionText="nombre"
+            label="Responsable"
+            widthClass="w-full"
+          />
+        </ReferenceInput>
+        <FormNumber
+          source="centro_costo"
+          label="Centro de costo"
+          step="1"
           widthClass="w-full"
         />
-      </ReferenceInput>
-      <FormNumber
-        source="centro_costo"
-        label="Centro de costo"
-        step="1"
-        widthClass="w-full"
-      />
-      <FormDate
-        source="fecha_inicio"
-        label="Fecha de inicio"
-        widthClass="w-full"
-      />
-      <FormDate
-        source="fecha_final"
-        label="Fecha final"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="superficie"
-        label="Superficie %"
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="ingresos"
-        label="Ingresos"
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="importe_mat"
-        label="Materiales"
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="importe_mo"
-        label="Mano de obra"
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="terceros"
-        label="Terceros"
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormNumber
-        source="herramientas"
-        label="Herramientas"
-        step="0.01"
-        widthClass="w-full"
-      />
-      <FormTextarea
-        source="comentario"
-        label="Comentario"
-        widthClass="w-full md:col-span-4"
-        className="md:col-span-4 [&_textarea]:min-h-[72px]"
-        maxLength={PROYECTO_VALIDATIONS.COMENTARIO_MAX}
-      />
+        <FormDate
+          source="fecha_inicio"
+          label="Fecha de inicio"
+          widthClass="w-full"
+        />
+        <FormDate
+          source="fecha_final"
+          label="Fecha final"
+          widthClass="w-full"
+        />
+        <FormNumber
+          source="superficie"
+          label="Superficie %"
+          step="0.01"
+          widthClass="w-full"
+        />
+        <FormTextarea
+          source="comentario"
+          label="Comentario"
+          widthClass="w-full md:col-span-4"
+          className="md:col-span-4 [&_textarea]:min-h-[72px]"
+          maxLength={PROYECTO_VALIDATIONS.COMENTARIO_MAX}
+        />
+      </div>
+    </div>
+    <div className="rounded-md border border-muted/60 bg-muted/30 p-2">
+      <div className="mb-2 text-xs font-semibold text-foreground">Presupuestos totales</div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <FormNumber
+          source="ingresos"
+          label="Ingresos"
+          step="0.01"
+          widthClass="w-full"
+        />
+        <FormNumber
+          source="importe_mat"
+          label="Materiales"
+          step="0.01"
+          widthClass="w-full"
+        />
+        <FormNumber
+          source="importe_mo"
+          label="Mano de obra"
+          step="0.01"
+          widthClass="w-full"
+        />
+        <FormNumber
+          source="terceros"
+          label="Terceros"
+          step="0.01"
+          widthClass="w-full"
+        />
+        <FormNumber
+          source="herramientas"
+          label="Herramientas"
+          step="0.01"
+          widthClass="w-full"
+        />
+      </div>
     </div>
   </div>
 );

@@ -47,7 +47,7 @@ export type FilterBuilderItem =
   | {
       type: "reference";
       key?: Key;
-      referenceProps: ReferenceInputProps;
+      referenceProps: ReferenceInputProps & { className?: string };
       selectProps?: SelectInputProps;
       children?: ReactNode;
     }

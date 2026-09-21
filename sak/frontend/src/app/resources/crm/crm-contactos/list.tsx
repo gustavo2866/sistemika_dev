@@ -72,7 +72,13 @@ const listFilters = buildListFilters(
 
 const listActionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
-const CRMContactoListTitle = ({ onBack }: { onBack: () => void }) => (
+const CRMContactoListTitle = ({
+  onBack,
+  title,
+}: {
+  onBack: () => void;
+  title: string;
+}) => (
   <>
     <div className="sm:hidden">
       <Button
@@ -86,7 +92,7 @@ const CRMContactoListTitle = ({ onBack }: { onBack: () => void }) => (
       </Button>
       <div className="-mt-0.5 flex items-center justify-center gap-2">
         <Users className="h-4 w-4" />
-        <span>CRM Contactos</span>
+        <span>{title}</span>
       </div>
     </div>
     <span className="hidden items-center gap-3 sm:inline-flex">
@@ -101,37 +107,52 @@ const CRMContactoListTitle = ({ onBack }: { onBack: () => void }) => (
       </Button>
       <span className="inline-flex items-center gap-2">
         <Users className="h-4 w-4" />
-        CRM Contactos
+        {title}
       </span>
     </span>
   </>
 );
 
-const CRMContactoListActions = () => (
+const CRMContactoListActions = ({
+  filters,
+  createTo,
+}: {
+  filters: typeof listFilters;
+  createTo?: string;
+}) => (
   <div className="flex items-center gap-2">
     <FilterButton
-      filters={listFilters}
+      filters={filters}
       size="sm"
       buttonClassName={listActionButtonClass}
     />
-    <CreateButton className={listActionButtonClass} label="Crear" />
+    <CreateButton className={listActionButtonClass} label="Crear" to={createTo} />
     <ExportButton className={listActionButtonClass} label="Exportar" />
   </div>
 );
 
-type CRMContactoListProps = {
+export type CRMContactoListProps = {
   embedded?: boolean;
   rowClick?: any;
   perPage?: number;
+  createTo?: string;
+  fixedTipoNombre?: string;
+  title?: string;
 };
 
 export const CRMContactoList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 5,
+  perPage = 10,
+  createTo,
+  fixedTipoNombre,
+  title = "CRM Contactos",
 }: CRMContactoListProps = {}) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const filters = fixedTipoNombre
+    ? listFilters.filter((filterElement) => filterElement.props?.source !== "tipo_id")
+    : listFilters;
 
   const handleBack = () => {
     const returnTo = getReturnToFromLocation(location);
@@ -148,9 +169,10 @@ export const CRMContactoList = ({
 
   return (
     <List
-      title={embedded ? "CRM - Contactos" : <CRMContactoListTitle onBack={handleBack} />}
-      filters={listFilters}
-      actions={<CRMContactoListActions />}
+      title={embedded ? title : <CRMContactoListTitle onBack={handleBack} title={title} />}
+      filters={filters}
+      actions={<CRMContactoListActions filters={filters} createTo={createTo} />}
+      filter={fixedTipoNombre ? { "tipo.nombre": fixedTipoNombre } : undefined}
       debounce={300}
       perPage={perPage}
       pagination={<ListPaginator />}
@@ -180,11 +202,13 @@ export const CRMContactoList = ({
         <TextListColumn source="email" label="Email" className="w-[200px]">
           <ListText source="email" className="whitespace-normal break-words" />
         </TextListColumn>
-        <TextListColumn source="tipo_id" label="Tipo" className="w-[120px]">
-          <ReferenceField source="tipo_id" reference="crm/catalogos/tipos-contacto" link={false}>
-            <ListText source="nombre" className="whitespace-normal break-words" />
-          </ReferenceField>
-        </TextListColumn>
+        {!fixedTipoNombre ? (
+          <TextListColumn source="tipo_id" label="Tipo" className="w-[120px]">
+            <ReferenceField source="tipo_id" reference="crm/catalogos/tipos-contacto" link={false}>
+              <ListText source="nombre" className="whitespace-normal break-words" />
+            </ReferenceField>
+          </TextListColumn>
+        ) : null}
         <TextListColumn label="Acciones" className="w-[80px]">
           <FormOrderListRowActions showShow={!embedded} />
         </TextListColumn>

@@ -85,7 +85,10 @@ const stringifyErrorDetail = (detail: unknown): string | undefined => {
   return String(detail);
 };
 
-const extractErrorMessage = (error: unknown) => {
+export const extractErrorMessage = (
+  error: unknown,
+  fallback = "Error inesperado",
+) => {
   const err = error as {
     body?: {
       detail?: unknown;
@@ -100,7 +103,7 @@ const extractErrorMessage = (error: unknown) => {
     err?.body?.error?.message ||
     err?.body?.message ||
     err?.message ||
-    "Error inesperado";
+    fallback;
 
   const notNullMatch = /null value in column "([^"]+)"/i.exec(rawMessage);
   if (notNullMatch?.[1]) {
@@ -114,6 +117,9 @@ const extractErrorMessage = (error: unknown) => {
     if (constraint === "ix_propiedades_nombre") {
       return "Ya existe una propiedad con ese nombre.";
     }
+    if (constraint.includes("partes_diario_proyecto_fecha_contacto")) {
+      return "Ya existe un parte diario para la obra, el encargado y la fecha seleccionados.";
+    }
     return "Registro duplicado. Verifica los datos.";
   }
 
@@ -126,7 +132,16 @@ const withErrorHandling =
     try {
       return await fn(...args);
     } catch (error) {
-      toast.error(extractErrorMessage(error));
+      const message = extractErrorMessage(error);
+      const params = args[1] as
+        | { meta?: { suppressErrorNotification?: boolean } }
+        | undefined;
+      if (!params?.meta?.suppressErrorNotification) {
+        toast.error(message);
+      }
+      if (error instanceof Error) {
+        error.message = message;
+      }
       throw error;
     }
   }) as T;
@@ -176,6 +191,7 @@ const resolveResource = (
   operation: DataProviderOperation,
 ) => {
   if (resource === "crm/crm-eventos") return "crm/eventos";
+  if (resource === "tarja-novedades") return "tarja-nomina";
   if (resource === "po-orders-approval") {
     return operation === "getList" ? "po-orders/approval-feed" : "po-orders";
   }
@@ -192,6 +208,28 @@ export const dataProvider: DataProvider = {
   ...baseProvider,
   getList: withErrorHandling((resource, params) => {
     const resolved = resolveResource(resource, "getList");
+    const meta = params?.meta as { fields?: string | string[]; include?: string | string[] } | undefined;
+    if (meta?.fields || meta?.include) {
+      const query = new URLSearchParams();
+      query.set("sort", JSON.stringify([params?.sort?.field ?? "id", params?.sort?.order ?? "ASC"]));
+      const page = params?.pagination?.page ?? 1;
+      const perPage = params?.pagination?.perPage ?? 25;
+      const start = (page - 1) * perPage;
+      query.set("range", JSON.stringify([start, start + perPage - 1]));
+      query.set("filter", JSON.stringify(params?.filter ?? {}));
+      if (meta.fields) {
+        query.set("fields", Array.isArray(meta.fields) ? meta.fields.join(",") : meta.fields);
+      }
+      if (meta.include) {
+        query.set("include", Array.isArray(meta.include) ? meta.include.join(",") : meta.include);
+      }
+      const url = `${apiUrl}/${resolved}?${query.toString()}`;
+      return httpClient(url, { signal: params?.signal }).then(({ headers, json }) => {
+        const contentRange = headers.get("Content-Range");
+        const total = contentRange ? Number(contentRange.split("/").pop()) : json.length;
+        return { data: json, total: Number.isFinite(total) ? total : json.length };
+      });
+    }
     if (resolved === "crm/eventos" && params?.filter && "default_scope" in params.filter) {
       const { default_scope, ...restFilter } = params.filter as Record<string, unknown>;
       return (async () => {

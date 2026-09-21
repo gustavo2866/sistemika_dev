@@ -1,594 +1,232 @@
 # parteDiario v3
 
-Este documento describe el flujo esperado del subproceso `parteDiario` en agente v3.
+Guia del patron vigente y mapa para ubicar cambios. Los criterios y procedimientos
+de verificacion estan en [PRUEBAS.md](PRUEBAS.md). Un cambio funcional no autoriza
+alterar la arquitectura: cualquier cambio de patron debe acordarse y documentarse.
 
-## Objetivo
+## Arquitectura
 
-Registrar el parte diario de una obra desde WhatsApp, manteniendo el estado conversacional en v3 y guardando en DB al elegir `GUARDAR` o `CERRAR`.
+| Componente | Responsabilidad | Ubicacion |
+| --- | --- | --- |
+| Orquestador | Recuperar/crear contexto, elegir subproceso y encolar respuestas. | [orchestrator/service.py](../../orchestrator/service.py) |
+| Subproceso / handler | Reconstruir estado, atender comandos comunes, despachar por etapa y devolver resultado. | [handler.py](handler.py) |
+| Flows | Gestionar preguntas, comandos locales, selecciones y transiciones de estados relacionados. | `flows/` |
+| Domain | Reunir acceso a datos y reglas por entidad, reutilizando servicios del backend. | `domain/` |
 
-El parte diario debe contener solo novedades explicitas. Si el usuario informa que no hubo novedades o que todos trabajaron normalmente, se crea el parte sin detalles.
+El handler recibe `V3InboundMessage` y `V3ConversationContext`; no recibe webhooks.
+Devuelve `V3ProcessResult` con respuesta y contexto actualizado al orquestador.
+Las transiciones sin pregunta pueden continuar en el mismo turno; una respuesta
+detiene el procesamiento. No reinterpretar el texto ya consumido en la nueva etapa.
+Un cambio de subproceso se solicita al orquestador, no se llama a otro handler.
 
-Flujo normal esperado:
+### Donde ubicar cada funcion
 
-- `parte diario` sin fecha explicita abre primero el dia operativo anterior si esta pendiente.
-- Por ahora `es_feriado` solo considera feriado al domingo; luego se reemplazara por calendario real.
-- Si el dia operativo anterior se cierra correctamente, el agente abre automaticamente el parte de hoy.
-- Si el parte de hoy se termina sin mas novedades, el agente finaliza la carga; internamente queda editable.
+| Ubicacion | Contenido |
+| --- | --- |
+| `domain/parte_diario.py` | Recuperacion, fechas disponibles, consultas y persistencia de partes; incluye `ParteDiarioQueryService`. |
+| `domain/novedades.py` | Operaciones normalizadas, novedades, horas, pendientes y conflictos del borrador. |
+| `domain/empleados.py` | Nomina y resolucion de personas; carga exclusivamente desde la tarja vigente de obra/encargado. |
+| `domain/obras.py`, `domain/encargados.py` | Resolucion de obra y encargado de destino. |
+| `domain/models.py` | Entidades serializables y `ParteDiarioDraft`. |
+| `models.py` / `state.py` | Contratos de operaciones/resultados / contexto conversacional y menus. |
+| `adapters/` y `prompts/` | Integraciones, instrucciones y contratos LLM especificos de parte diario. |
+| `utils/` | Texto, calendario, normalizacion y renderer sin acceso a DB. |
 
-## Entrada al Subproceso
+Los clientes de Chat Completions y Agents SDK en `agente/v3/llm/` son generales.
+Los adapters de parte diario les agregan contexto, prompts y herramientas propias.
+Chat Completions interpreta novedades y motivos; Agents SDK atiende aclaraciones
+de persona y consultas con herramientas. Cada flow puede elegir su mecanismo;
+no es obligatorio un prompt por flow ni usar el SDK para mantener un dialogo.
+WhatsApp y outbox son generales; `adapters/whatsapp.py` solo reexporta componentes.
 
-`parteDiario` no recibe webhooks ni mensajes crudos.
-
-La recepcion del mensaje pertenece a las capas de channel/inbox y al orquestador v3:
-
-1. channel normaliza el webhook o mensaje entrante;
-2. inbox procesa el `V3InboundMessage`;
-3. el orquestador carga contexto y decide el subproceso;
-4. si corresponde, el orquestador deriva el mensaje a `ParteDiarioSubprocess.handle(...)`.
-
-El flujo documentado abajo empieza cuando `parteDiario` ya recibio un `V3InboundMessage` derivado por el orquestador.
-
-## Estados del Subproceso
-
-El estado principal se guarda en `ParteDiarioV3State.etapa`.
-
-Estados posibles:
-
-- `inicial`
-- `seleccionar_obra`
-- `seleccionar_fecha`
-- `carga`
-- `revision`
-- `validacion`
-- `cierre`
-- `confirmar_salida`
-- `finalizado`
-
-Nota de compatibilidad: `cargar_fecha` puede aparecer en conversaciones viejas persistidas, pero ya no es un estado conversacional principal. El handler lo trata como una transicion interna de preparacion de fecha y lo mueve a `carga` o `seleccionar_fecha`.
-
-## Estados de Dominio del Parte
-
-Estos son los estados reales de `ParteDiario.estado` en DB:
-
-- `borrador`: parte editable por el agente.
-- `cerrado`: parte cerrado por administracion, solo lectura para el agente.
-
-Valores usados en menues:
-
-- `borrador`: existe `ParteDiario` y se puede editar.
-- `cerrado`: existe `ParteDiario` y no se puede editar desde WhatsApp.
-- `sin cargar`: no existe `ParteDiario` para esa obra y fecha; no es un estado persistido.
-
-Nota: si en algun flujo aparece el texto `abierto`, debe entenderse como alias visual de `borrador`, no como estado de dominio.
-
-## Patron de Comandos e Inferencia
-
-`parteDiario` sigue el mismo criterio que `pedidoObra`:
-
-- cada `etapa` define primero sus comandos locales aceptados;
-- los comandos locales no pasan por LLM;
-- si el mensaje no coincide con un comando local de la etapa, se interpreta con LLM;
-- el LLM usa un prompt propio segun la etapa conversacional.
-
-Prompts v3:
-
-- `prompts/carga.txt`: interpreta texto libre durante la carga de novedades.
-- `prompts/cierre.txt`: interpreta texto libre cuando el parte ya esta para confirmar.
-- `prompts/estado_pendiente.txt`: interpreta respuestas de motivo/estado pendiente.
-
-El cliente LLM propio de v3 es `llm_client.py`. El handler le entrega al proceso una instancia configurada para la etapa actual, evitando guardar la etapa como estado mutable compartido del cliente.
-
-Estructura tecnica actual:
-
-- v3 posee handler, estado wrapper, cliente LLM y prompts propios;
-- la ejecucion de operaciones vive en `executor.py`;
-- la coordinacion conversacional interna vive en `process.py`;
-- la resolucion de nomina y estados vive en `resolver.py`;
-- las respuestas deterministicas viven en `renderer.py`;
-- los modelos serializables del draft viven en `models.py`.
-
-El subproceso `parteDiario` es autocontenido dentro de v3.
-
-## Flujo por Estado
-
-### `inicial`
-
-Es el punto de entrada del subproceso. Su responsabilidad principal es resolver la obra asociada al contacto.
-
-Comportamiento:
-
-- Si no hay obra asociada, responde error y pasa a `finalizado`.
-- Si hay una sola obra, guarda `contacto_id`, `oportunidad_id`, `proyecto_id` y continua.
-- Si hay varias obras, guarda `opciones_obra` y pasa a `seleccionar_obra`.
-- Con obra asignada, avanza al flujo de fecha.
-
-Regla importante:
-
-- `inicial` no debe interpretar comandos globales fuera de su contexto.
-- La resolucion de fecha pertenece al flujo de `seleccionar_fecha`.
-- La carga de novedades pertenece a `carga`.
-
-Transiciones:
-
-- obra resuelta -> `seleccionar_fecha` y preparacion interna de fecha;
-- varias obras -> `seleccionar_obra`;
-- sin obra -> `finalizado`.
-
-### `seleccionar_obra`
-
-Toma la opcion de obra elegida por el usuario.
-
-Comportamiento:
-
-- Si la opcion es valida, guarda `contacto_id`, `oportunidad_id`, `proyecto_id` y continua.
-- Si la opcion es invalida, vuelve a pedir una opcion valida.
-
-Transiciones:
-
-- obra seleccionada -> `seleccionar_fecha` y preparacion interna de fecha;
-- opcion invalida -> permanece en `seleccionar_obra`.
-
-### Preparacion interna de fecha
-
-No es un estado conversacional principal. Es el paso interno que se ejecuta desde `seleccionar_fecha` cuando ya hay una fecha definida o cuando el sistema puede asumir una fecha por defecto.
-
-Fuentes posibles de fecha:
-
-- fecha ya guardada en contexto;
-- fecha inferida por el LLM;
-- fecha seleccionada en `seleccionar_fecha`;
-- ausencia de fecha.
-
-Comportamiento:
-
-- Si no hay fecha asignada en contexto, asume `hoy`.
-- Con `proyecto_id + fecha`, consulta si existe `ParteDiario`.
-- Si no hay parte diario, mantiene el contexto de novedades ya interpretadas y pasa a `carga`.
-- Si hay parte diario editable, recupera novedades explicitas al contexto y pasa a `carga`.
-- Si hay parte diario no editable, devuelve mensaje indicando que no se puede editar y hace forward a `seleccionar_fecha`.
-- Si la fecha detectada cambia respecto de una fecha activa, puede pedir confirmacion antes de aplicar el cambio.
-
-Transiciones:
-
-- preparacion exitosa -> `carga`;
-- fecha no editable o invalida -> `seleccionar_fecha`;
-- fecha cerrada/confirmada -> consulta y finaliza.
-
-### `seleccionar_fecha`
-
-Arma el menu de fechas y toma la seleccion del usuario.
-
-Este estado interpreta el mensaje dentro del contexto de fecha: opcion numerica, fecha directa, pedido de menu, consulta de nomina o salida. Cuando obtiene una fecha valida, llama al paso interno de preparacion de fecha.
-
-Ejemplo:
+## Despacho y estados
 
 ```text
-1: 16/05/2026 sab (borrador)
-2: 15/05/2026 vie (cerrado)
-3: 14/05/2026 jue (sin cargar)
+Comando comun -> si no coincide, match etapa -> comando local -> LLM si corresponde
 ```
 
-Estados de fecha:
+`state.etapa` es el unico selector del procesador. No agregar `esperando` ni flags
+de despacho paralelos. Los campos de origen solo indican donde regresar.
+El despacho no repara estados inspeccionando el borrador; cada flow deja la etapa
+correcta. Una recuperacion de datos inconsistentes, si se requiere, va al inicio.
 
-- `sin cargar`: no existe parte para esa fecha.
-- `borrador`: existe parte editable.
-- `cerrado`: existe parte cerrado y no editable desde WhatsApp.
+| Estado | Responsable |
+| --- | --- |
+| `inicial`, `seleccionar_accion`, `seleccionar_obra` | `flows/entrada.py` presenta el menu y el handler resuelve la obra elegida. |
+| `cargar_fecha`, `seleccionar_fecha`, `pendientes` | `flows/fecha.py` |
+| `carga` / `listado` | `flows/carga.py` / `flows/listado.py` |
+| `carga_aclaracion` | `flows/aclaracion.py` |
+| `carga_validar_empleado`, `carga_validar_obra`, `carga_validar_encargado`, `carga_validar_estado`, `carga_validar_conflicto`, `carga_cambiar_fecha` | `flows/validacion_carga.py` |
+| `revision` / `confirmar_salida` / `continuar` | Los modulos del mismo nombre en `flows/`. |
+| `finalizado` | El handler limpia `process_state` y vuelve a `general`, sin eliminar la conversacion. Al guardar, la respuesta cierra con resultado, obra y fecha, sin anexar el menu general. |
 
-Comportamiento al seleccionar opcion:
+### Comandos y aclaraciones
 
-- `sin cargar`: guarda la fecha seleccionada y prepara internamente el parte.
-- `borrador`: guarda la fecha seleccionada y prepara internamente el parte.
-- `cerrado`: muestra novedades como consulta e informa que no se puede editar.
+- `PARTE DIARIO` sin parametros abre `1: REPORTAR`, `2: PENDIENTES`,
+  `3: SALIR`. `REPORTAR` y `PENDIENTES` tambien funcionan como accesos directos;
+  una solicitud con obra o fecha explicita conserva la apertura puntual directa.
+- `flows/comandos.py` centraliza `nomina`, `ver nomina` y `mostrar nomina`.
+  Se atienden antes del match, sin LLM, sin cambiar etapa, borrador ni pagina.
+  Si falta obra, se informa sin inferirla. Las consultas de lectura admitidas
+  durante validaciones tambien se atienden aqui y vuelven a mostrar la pregunta.
+- Cada estado tiene comandos locales propios: `NO` en carga abre revision;
+  LISTADO admite `SIGUIENTE` o el numero correlativo de la pagina siguiente y
+  `FINALIZAR` o `99`; en confirmar_salida, `NO` cancela el descarte. `SALIR`
+  abandona el parte desde cualquier circuito y confirma si hay cambios.
+- Una pregunta del interprete o un resultado que requiere corregir/reintentar
+  activa `carga_aclaracion`; los pendientes de entidades conservan sus estados
+  de validacion especificos. Se conservan
+  `aclaracion_pregunta` y `aclaracion_origen` (carga o listado). `SI` y `NO`
+  se interpretan con esa pregunta; no ejecutan los comandos locales de carga.
+  Si falla la llamada al LLM, tambien se pregunta: no se aplican novedades con
+  un interprete alternativo de palabras clave.
+- El interprete recibe borrador, catalogo, ultimos 12 intercambios, pregunta
+  pendiente y opciones de LISTADO. Una consulta comun no consume la aclaracion.
+- Si faltan datos, se mantiene la aclaracion. Si alcanza, se ejecutan las
+  operaciones comunes. Rechazar una propuesta devuelve `resume_loading`,
+  normalizado como `retomar_carga`: vuelve al origen sin cambios ni revision.
+  El contrato LLM solo ofrece ese retorno en `carga_aclaracion`; una solicitud
+  nueva en carga/LISTADO requiere operaciones o una pregunta, nunca ese retorno.
+- En aclaracion, `VOLVER` termina el loop y vuelve al origen conservando borrador
+  y pagina. `SALIR` y `CANCELAR` piden confirmar el descarte; rechazarlo recupera
+  la misma pregunta.
+- El historial lo mantiene la aplicacion, no una sesion persistente del SDK.
+  No reemplazar intenciones libres por listas crecientes de frases.
 
-Transiciones:
+## Camino comun y negocio
 
-- opcion valida editable o sin cargar -> preparacion interna -> `carga`;
-- opcion no editable -> permanece en `seleccionar_fecha` o pasa a `finalizado` si es solo consulta;
-- opcion invalida -> permanece en `seleccionar_fecha`.
+Texto libre y LISTADO convergen en `carga.interpretar_novedades`: interpretacion,
+operaciones normalizadas, resolucion y aplicacion al draft. LISTADO solo normaliza
+opciones a IDs y navega; no tiene otro clasificador ni ejecutor de novedades.
+Los IDs de nomina emitidos por el LLM solo se aceptan cuando estan respaldados por
+la normalizacion controlada de LISTADO; en texto libre se descartan y la identidad
+se resuelve por nombre contra la nomina vigente.
+Las aclaraciones reutilizan ese camino y conservan las referencias numeradas.
 
-### `carga`
+Los casos resueltos de un lote se aplican al borrador y los ambiguos quedan en
+cola. Se valida empleado, destino y motivo segun corresponda. Una transferencia
+pertenece a su operacion, no a todo el mensaje. Obra no identificada requiere menu;
+encargado unico se selecciona, varios requieren eleccion. El LLM interpreta;
+domain valida datos reales. No anunciar cambios que no se hayan ejecutado.
+Los movimientos internos de nomina (`ALT`, `BAJ`, `TRA`) se recuperan separados
+del borrador editable: ocupan la unica novedad permitida para ese empleado y parte,
+pero no se reenvian al persistir. Si el usuario intenta agregar, modificar o eliminar
+otra novedad para esa persona, el agente la rechaza en carga e informa el motivo.
 
-Acumula novedades del parte diario en memoria.
+Para cargar empleados, la unica nomina habilitada es `TarjaNomina` de la quincena,
+obra y encargado del parte, con `fecha_desde <= fecha_del_parte <= fecha_hasta`.
+Texto libre, IDs y LISTADO respetan ese mismo conjunto. No hay fallback a la
+asignacion actual ni a otras nominas. Como reparacion defensiva, si falta la tarja
+canonica o existe sin ningun `TarjaNomina`, se materializa una unica vez desde la
+asignacion base vigente de esa obra y encargado. Una nomina parcial o con registros
+eliminados no se completa ni revive automaticamente.
+Los menus de personas solo muestran candidatos locales; no existe alta sin validar.
+`NO` o `NINGUNO` descartan la novedad pendiente. Las consultas globales son solo
+lectura y no habilitan altas. El encargado de origen sigue pudiendo informar que
+su empleado trabajo en otra obra; el guardado materializa la novedad en destino.
+La opcion manual `Trabajo en` de Parte Diario reutiliza esa materializacion: no
+genera `TRA` ni cambia la obra o el encargado de `Nomina`. La interfaz precarga
+las horas de la jornada correspondiente y permite indicar las horas trabajadas en
+destino. Origen conserva `max(jornada - horas_destino, 0)` y destino recibe las
+horas informadas, con la misma distribucion que utiliza el agente. En el detalle
+de ambas tarjas se identifica visualmente con el codigo `OTR`; el estado persistido
+sigue siendo `P` y no se confunde con el traspaso permanente `TRA`.
 
-En esta etapa se aceptan mensajes libres como:
+LISTADO congela al iniciarse el catalogo completo `numero -> idnomina`; ese orden
+se conserva entre paginas, aclaraciones, reanudaciones y cambios posteriores de
+la base. La opcion `99` queda reservada para finalizar. Cada pagina muestra ocho
+empleados y las novedades acumuladas de paginas anteriores. Un lote valido avanza
+una sola pagina despues del ultimo pendiente; `SIGUIENTE` o el numero inicial de
+la pagina siguiente avanza sin novedades. `FINALIZAR` o `99`, y completar la ultima
+pagina, abren revision directamente. Rechazar o abandonar una aclaracion conserva
+la pagina. Las novedades ya cargadas muestran estado, horas, motivo, obra y encargado
+de destino cuando correspondan; volver desde revision no oculta esos datos. LISTADO
+solo normaliza IDs y reutiliza la interpretacion, validacion y ejecucion de carga.
+El motivo especifico prevalece sobre presencia o falta generica, y las horas
+explicitas se conservan independientemente del motivo.
+Si las horas informadas son menores a la jornada esperada y el motivo sigue siendo
+PRESENTE o no fue indicado, el camino comun deja la novedad pendiente y consulta
+el motivo antes de registrarla. La regla se aplica por igual a texto libre, LISTADO,
+correcciones y trabajo en otra obra; la respuesta conserva las horas informadas.
+
+Solo revision guarda: `1. Guardar`, `2. Volver a carga/listado` segun el origen y
+`3. Salir y descartar`. En carga, `GUARDAR`
+(tambien `GUARDAR BORRADOR`) deriva a revision y guarda en el mismo turno sin
+pregunta intermedia. `NO` presenta el resumen para revisar antes de guardar.
+Al confirmar el descarte, la respuesta informa solamente que los cambios no
+guardados fueron descartados; finaliza el subflujo sin anexar el menu general.
+El modo de apertura define el siguiente paso, no otro mecanismo de guardado.
+No hay etapa `cierre`
+ni validacion general conversacional posterior. Hoy se guarda BORRADOR, una fecha
+anterior CONFIRMADO; no se admiten fechas futuras. Un fallo conserva el borrador.
+Un trabajo temporal deja el parte destino en BORRADOR, incluso si estaba CONFIRMADO,
+conservando las otras novedades. Un destino CERRADO impide el guardado. Origen y
+destino se guardan juntos, sin confirmar transacciones intermedias.
+La tarja quincenal destino CERRADA tambien bloquea el alta o la eliminacion del
+trabajo temporal. Al eliminarlo con la tarja abierta se quitan la novedad y el
+detalle de tarja destino, y el parte destino vuelve a BORRADOR sin afectar `Nomina`.
+La jornada usa `app.utils.jornada.get_jornada_esperada(fecha_del_parte)`:
+lunes a viernes 9h, sabado 6h, domingo 0h. No duplicar defaults.
+`modo_apertura` conserva el recorrido elegido, sin reemplazar `etapa`:
+- `diario`: iniciado con `REPORTAR`, abre el habil anterior en borrador (vacio si no
+  existe, sin declarar todos presentes). Si ya esta confirmado/cerrado, abre hoy.
+  Al guardar el anterior, lo confirma y abre hoy automaticamente, sin preguntar.
+  Recupera el parte de hoy si existe, sin arrastrar novedades ni menus del anterior.
+  Al guardar hoy, queda BORRADOR y finaliza.
+- `puntual`: fecha explicita, relativa o elegida en un menu de fechas/pendientes.
+  Guarda solo esa fecha y finaliza; no abre hoy automaticamente.
+
+La apertura automatica no cuenta como una fecha solicitada por el usuario.
+Al finalizar se vuelve al agente general. `SALIR` no guarda. Descartar no borra
+partes persistidos. La caducidad del contexto depende de su fecha real de creacion,
+no de la fecha del parte, y pertenece a `orchestrator/context_store.py`.
+
+## Limpieza para repetir pruebas
+
+El script `backend/scripts/reset_parte_diario_tarjas.py` elimina los datos
+operativos de partes diarios y tarjas para comenzar una prueba desde cero. Incluye
+`partes_diario`, `partes_diario_detalles`, `tarjas`, `tarja_detalles`,
+`tarja_nomina` y la tabla legacy `tarja_novedades` si todavia existe. Conserva
+nominas, proyectos, encargados, estados y mensajes CRM.
+
+Desde la raiz del proyecto, revisar primero el alcance y las cantidades:
+
+```powershell
+python backend/scripts/reset_parte_diario_tarjas.py --dry-run
+```
+
+Para ejecutar la limpieza:
+
+```powershell
+python backend/scripts/reset_parte_diario_tarjas.py --apply
+```
+
+La ejecucion real muestra nuevamente las cantidades y exige escribir `LIMPIAR`.
+Se realiza en una unica transaccion, reinicia las identidades y no usa `CASCADE`,
+para impedir que se borren tablas ajenas al alcance declarado.
+
+El contexto conversacional v3 se mantiene en memoria y se limpia por separado.
+Luego de borrar la base, reiniciar el backend o llamar:
 
 ```text
-Serrano falto, Ruiz enfermo y Vera trabajo 4hs
-todos presentes
-sin novedades
+POST /api/agente/v3/inbox/reset
 ```
 
-El texto libre debe ser interpretado por el LLM v3 de `parteDiario`.
-
-El LLM puede detectar:
-
-- fecha referida;
-- novedades;
-- sin novedades;
-- consulta;
-- correcciones o eliminaciones.
-
-El handler v3 decide como aplicar la fecha detectada:
-
-- si no habia fecha activa, la usa;
-- si hay fecha activa distinta, pide confirmacion de cambio;
-- si la fecha esta cerrada, bloquea edicion;
-- si existe parte en `borrador`, recupera novedades.
-
-Durante la carga no se muestra menu de cierre. El agente confirma lo registrado
-y pregunta si hay alguna otra novedad.
-
-Comandos locales:
-
-- `NO`, `NADA MAS`, `LISTO`, `OK` o equivalentes: pasa a `revision`.
-- `GUARDAR`: guarda el parte como `borrador` por compatibilidad con texto escrito.
-- `CERRAR` o `FINALIZAR`: valida pendientes y reglas de cierre por compatibilidad con texto escrito.
-- `SALIR`: pasa a `confirmar_salida`.
-
-Regla importante:
-
-No se validan reglas de cierre durante la carga conversacional. Las validaciones
-se disparan al finalizar el parte desde `revision` o con el comando textual `CERRAR`.
-
-Transiciones:
-
-- carga normal -> permanece en `carga`;
-- fin de carga -> `revision`;
-- `GUARDAR` -> `continuar` o `finalizado` con parte `borrador`;
-- `CERRAR` sin pendientes -> `continuar` o `finalizado`;
-- `CERRAR` con pendientes -> `validacion`;
-- `SALIR` -> `confirmar_salida`.
-
-### `revision`
-
-Muestra el resumen final del draft y recien ahi presenta acciones interactivas.
-Los botones dejan de ser el mecanismo principal de carga y pasan a ser el
-mecanismo de cierre.
-
-Ejemplo:
-
-```text
-Resumen del parte
-Fecha: 2026-07-17
-Obra: Obra Centro
-
-Ausencias
-- Perez (Enfermedad)
-- Ruiz (Vacaciones)
-
-Horas extra
-- Medina (4)
-
-Otra obra
-- Vera
-
-Cerrar definitivamente?
-SI cierra el parte. NO lo deja pendiente.
-```
-
-Comandos locales:
-
-- `SI`: valida reglas de cierre y guarda en DB como confirmado.
-- `NO`: guarda en DB como `borrador`.
-- `SALIR`: pasa a `confirmar_salida`.
-
-Transiciones:
-
-- `NO` exitoso -> `continuar` o `finalizado`;
-- `SI` exitoso -> `continuar` o `finalizado`;
-- `SI` con pendientes -> `validacion`;
-- salir -> `confirmar_salida`.
-
-### `validacion`
-
-Resuelve las validaciones pendientes antes del cierre.
-
-Casos:
-
-- nombre ambiguo;
-- persona no encontrada;
-- estado faltante;
-- motivo faltante;
-- conflicto por persona repetida.
-
-Comportamiento:
-
-- Para personas no encontradas, busca nombres similares durante la carga y tambien antes del cierre.
-- Si encuentra similares en la obra actual, presenta solo esos candidatos y agrega `OTROS` si hay coincidencias externas.
-- Si el usuario responde `OTROS`, muestra los candidatos externos agrupados por obra con etiqueta corta.
-- La respuesta puede ser el nombre de un candidato, `NINGUNO`, `OTROS` cuando se muestra, un nuevo filtro de nombre o directamente una novedad.
-- `NINGUNO` registra la novedad sin persona validada.
-- Si no hay coincidencias, informa que no encontro a la persona y pide reingresar el nombre, escribir `NINGUNO` o informar una nueva novedad.
-- Al resolver un candidato, el resumen usa el nombre completo seleccionado y muestra el legajo si esta disponible.
-- Por ahora, lo aceptado sin validar no se registra en DB al confirmar.
-- Mientras hay validacion pendiente, el agente de carga interpreta la respuesta y decide si selecciona persona, registra sin validar, pide aclaracion o procesa el texto como nueva novedad.
-
-Ejemplo:
-
-```text
-A cual Petro te referis?
-
-Perez Pedro; Perez Pablo; Peretto Juan.
-
-Responde con el nombre, NINGUNO u OTROS.
-```
-
-Transiciones:
-
-- validacion resuelta y sin pendientes -> `cierre` con confirmacion `OK` / `VOLVER`;
-- quedan pendientes -> permanece en `validacion`;
-- seleccion sin validar -> se descarta del registro final por ahora y continua validacion o pasa a `cierre`.
-
-### `cierre`
-
-Estado tecnico usado cuando el parte ya supero validaciones y pide confirmacion
-final con `OK` / `VOLVER`.
-
-Si el cierre paso por `validacion`, antes de persistir se muestra el resumen final y se pide confirmacion:
-
-```text
-Opciones: OK / VOLVER.
-```
-
-- `1` o `OK`: persiste el parte como `cerrado`.
-- `2` o `VOLVER`: vuelve a `carga`.
-
-Si por compatibilidad llega un estado `cierre` sin validacion pendiente, el handler
-lo trata como `revision`.
-
-### `confirmar_salida`
-
-Pide confirmacion para descartar el parte en carga.
-
-Menu:
-
-```text
-Se perderan los cambios no guardados.
-
-Opciones: OK / VOLVER.
-```
-
-Comandos locales:
-
-- `1` o `OK`: descarta el estado en memoria.
-- `2` o `VOLVER`: vuelve a `carga`.
-
-Transiciones:
-
-- ok -> `seleccionar_fecha`;
-- volver -> `carga`.
-
-### `finalizado`
-
-Estado terminal.
-
-Comportamiento:
-
-- se limpia `active_process`;
-- se limpia `process_state`;
-- el orquestador guarda el contexto actualizado;
-- si hubo respuesta, el orquestador la envia por outbox.
-
-## Comandos Locales
-
-Los comandos locales no pasan por LLM. Los interpreta el handler v3 segun la etapa actual.
-
-### Comando de Inicio
-
-`Parte diario`
-
-Inicia el flujo del subproceso.
-
-Comportamiento esperado:
-
-- `inicial` reconoce el comando.
-- `inicial` resuelve la obra.
-- si hay varias obras, pasa a `seleccionar_obra`.
-- con obra asignada, entra al flujo de `seleccionar_fecha`.
-- la preparacion interna de fecha decide la fecha segun el contexto.
-
-Si no hay fecha asignada, la regla de preparacion interna es asumir `hoy`.
-
-### Menu de Fechas
-
-El menu de fechas pertenece al estado `seleccionar_fecha`.
-
-Se usa cuando el flujo necesita que el usuario elija otra fecha, por ejemplo porque la fecha actual no es editable o porque una accion local pide seleccionar fecha.
-
-```text
-1: 16/05/2026 sab (borrador)
-2: 15/05/2026 vie (cerrado)
-3: 14/05/2026 jue (sin cargar)
-```
-
-Estados posibles:
-
-- `borrador`: existe parte editable y se recuperan sus novedades.
-- `cerrado`: existe parte cerrado y no se edita desde WhatsApp.
-- `sin cargar`: no existe parte para esa fecha.
-
-### Seleccion de Fecha
-
-En etapa `seleccionar_fecha`, un numero selecciona la fecha correspondiente.
-
-Ejemplo:
-
-```text
-1
-```
-
-Resultado:
-
-- Si estaba `sin cargar`, guarda la fecha y prepara internamente el parte.
-- Si estaba `borrador`, guarda la fecha y prepara internamente el parte.
-- Si estaba `cerrado`, muestra el parte como consulta e informa que no se puede editar.
-
-### Carga
-
-Durante la carga:
-
-```text
-Hay alguna otra novedad?
-```
-
-- `NO`, `NADA MAS`, `LISTO`, `OK` o equivalentes: pasa a `revision`.
-- `GUARDAR`: finaliza la carga por compatibilidad con texto escrito.
-- `CERRAR` o `FINALIZAR`: intenta cerrar el parte y ejecuta validaciones.
-- `SALIR`: pide confirmacion para descartar.
-
-Si hay validaciones pendientes, `SI` desde `revision` o `CERRAR`
-pasa a la etapa `validacion`.
-
-### Revision
-
-```text
-Cerrar definitivamente?
-SI cierra el parte. NO lo deja pendiente.
-```
-
-- `SI`: valida y guarda en DB como confirmado.
-- `NO`: guarda en DB como `borrador`.
-- `SALIR`: pide confirmacion para descartar.
-
-### Validacion
-
-Durante la validacion se resuelven pendientes antes del cierre:
-
-- nombres ambiguos;
-- personas no encontradas;
-- estados o motivos faltantes;
-- conflictos por novedades repetidas.
-
-La busqueda por nombres similares se ejecuta aca, no durante la carga.
-
-`VOLVER` retorna a `carga` con el resumen del parte y sin menu principal.
-
-Cuando no quedan pendientes, el flujo pasa a `cierre`, muestra el resumen final y pide confirmacion con `OK` / `VOLVER`.
-
-### Cierre
-
-Cuando no hay pendientes, el cierre tecnico pide confirmacion final solo si viene
-de una validacion recien resuelta:
-
-Si el cierre viene de una validacion recien resuelta, primero se muestra:
-
-```text
-Opciones: OK / VOLVER.
-```
-
-- `1` o `OK`: guarda en DB como `cerrado`.
-- `2` o `VOLVER`: vuelve a `carga`.
-
-Luego de guardar o cerrar, el flujo continua con la siguiente fecha pendiente o finaliza.
-
-### Confirmar Salida
-
-```text
-Opciones: OK / VOLVER.
-```
-
-- `1` o `OK`: descarta el parte en carga y vuelve al menu inicial.
-- `2` o `VOLVER`: vuelve a la carga.
-
-## Texto Libre
-
-Los mensajes de contenido se interpretan con el LLM v3 de `parteDiario`.
-
-Ejemplos:
-
-```text
-ayer Serrano falto
-Ruiz enfermo y Vera trabajo 4hs
-hoy todos presentes
-mostrame el parte de ayer
-```
-
-El LLM debe devolver operaciones estructuradas, incluyendo cuando corresponda:
-
-- fecha referida;
-- novedades;
-- sin novedades;
-- consulta;
-- correcciones o eliminaciones.
-
-El LLM detecta la referencia semantica a fecha, pero el handler v3 decide como aplicarla contra estado y DB.
-
-## Regla de Persistencia
-
-El parte diario guardado o cerrado guarda:
-
-- cabecera `ParteDiario`;
-- detalles solo para novedades explicitas.
-
-No se generan detalles `DEFAULT` para toda la nomina.
-
-Ejemplos:
-
-- `Serrano falto`: guarda un detalle para Serrano.
-- `todos presentes`: guarda el parte sin detalles.
-- `sin novedades`: guarda el parte sin detalles.
-
-## Responsabilidades por Modulo
-
-### `handler.py`
-
-- Resolver obra.
-- Procesar comandos locales.
-- Mostrar menu de fechas.
-- Resolver seleccion de fecha.
-- Preparar internamente la fecha: asumir fecha, consultar parte existente y preparar contexto.
-- Coordinar carga, cierre, salida y persistencia.
-
-### `process.py`
-
-- Coordinar el draft conversacional interno del parte.
-- Cargar estados, nomina y parte existente desde DB.
-- Aplicar fechas detectadas o seleccionadas.
-- Manejar validaciones pendientes, conflictos y confirmacion exacta.
-- Delegar ejecucion de operaciones a `executor.py`.
-
-### `executor.py`
-
-- Ejecutar operaciones estructuradas del LLM o comandos internos.
-- Agregar, modificar, eliminar o mostrar novedades.
-- Registrar `sin_novedades`.
-- Encolar conflictos o validaciones pendientes.
-
-### `resolver.py`
-
-- Resolver personas contra nomina de la obra y nomina completa.
-- Resolver codigos de estado.
-- Interpretar selecciones locales de persona o motivo.
-
-### `renderer.py`
-
-- Generar respuestas deterministicas del proceso.
-- Renderizar resumen, confirmacion, consulta, validaciones y errores.
-
-### `models.py`
-
-- Definir el estado serializable del draft de parte diario.
-- Definir operaciones, novedades, pendientes, conflictos y resultado de ejecucion.
-
-### `state.py`
-
-- Serializar estado v3.
-- Guardar obra resuelta.
-- Guardar etapa.
-- Guardar opciones de obra y fecha.
-- Guardar el estado conversacional del parte.
-
-### LLM v3 de `parteDiario`
-
-- Vive en `backend/agente/v3/subprocesses/parte_diario/llm_client.py`.
-- Carga prompts desde `backend/agente/v3/subprocesses/parte_diario/prompts`.
-- Interpretar texto libre.
-- Detectar fecha mencionada.
-- Extraer novedades.
-- Devolver operaciones estructuradas.
-
-### Servicio de Persistencia
-
-- Crear o actualizar `ParteDiario`.
-- Reemplazar detalles existentes por novedades explicitas.
-- Crear `CRMMensaje` final de confirmacion para trazabilidad.
+## Reglas para cambios
+
+- Mantener el handler como coordinador; no reintroducir `process.py`, mixins
+  ni funciones que solo delegan sin aportar una responsabilidad.
+- Agrupar domain por entidad, con sus consultas y modificaciones en el mismo
+  modulo. No separar por tipo de operacion ni esconder negocio en utils.
+- Flows puede administrar sesiones con `app.db.engine`, pero no ejecutar SQL.
+  Domain no llama a flows, handler ni LLM; renderer recibe datos precargados.
+- Domain puede recibir el estado completo y usar utilidades de presentacion:
+  este patron no exige dominio puro ni capas adicionales para descomponer parametros.
+- Documentar el objetivo de cada rutina sobre su encabezado; usar regiones
+  coherentes en modulos extensos. No agregar carpetas sin necesidad funcional.
+- Verificar el camino activo y los retornos antes de terminar. Actualizar esta
+  guia si cambia un contrato y aplicar [los criterios de pruebas](PRUEBAS.md).
+  Informar lo verificado y sus limites, sin presentar propuestas como implementadas.
+
+`handler_back.py` y `prompts/cierre.txt` son referencias anteriores, no el flujo
+activo. No restaurar compatibilidad ni instrucciones historicas de forma incidental.

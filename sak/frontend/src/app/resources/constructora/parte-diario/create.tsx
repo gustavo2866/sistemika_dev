@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { NotebookPen } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ParteDiarioForm } from "./form";
+import { ParteDiarioBackButton } from "./navigation-title";
 import {
   PARTE_DIARIO_DEFAULTS,
   getEstadoParteBadgeClass,
@@ -17,11 +18,12 @@ type ParteDiarioCreateProps = {
   redirect?: BaseCreateProps["redirect"];
 };
 
-const ParteDiarioCreateTitle = () => (
+const ParteDiarioCreateTitle = ({ returnTo }: { returnTo?: string | null }) => (
   <div className="flex flex-wrap items-center gap-2">
-    <span className="inline-flex items-center gap-2">
-      <NotebookPen className="h-4 w-4" />
-      Registrar parte diario
+    <ParteDiarioBackButton returnTo={returnTo} />
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <NotebookPen className="h-4 w-4 shrink-0" />
+      <span className="truncate">Registrar parte diario</span>
     </span>
     <Badge variant="secondary" className={getEstadoParteBadgeClass("borrador")}>
       {getEstadoParteLabel("borrador")}
@@ -53,7 +55,7 @@ export const ParteDiarioCreate = ({
     <Create
       redirect={redirect ?? false}
       record={defaultValues}
-      title={<ParteDiarioCreateTitle />}
+      title={<ParteDiarioCreateTitle returnTo={returnTo} />}
       className="max-w-5xl w-full"
       transform={normalizeParteDiarioPayload}
       showBreadcrumb={!embedded}
@@ -72,7 +74,7 @@ export const ParteDiarioCreate = ({
             }
       }
     >
-      <ParteDiarioForm defaultValues={defaultValues} />
+      <ParteDiarioForm defaultValues={defaultValues} returnTo={returnTo} />
     </Create>
   );
 };

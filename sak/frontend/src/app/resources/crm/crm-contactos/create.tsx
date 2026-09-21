@@ -9,25 +9,29 @@ import { CRMContactoForm } from "./form";
 import { normalizeCRMContactoPayload } from "./model";
 import { CRMContactoBackButton } from "./navigation-title";
 
-type CRMContactoCreateProps = {
+export type CRMContactoCreateProps = {
   embedded?: boolean;
   onCreated?: (record: Record<string, unknown>) => void;
   onCancel?: () => void;
   redirect?: BaseCreateProps["redirect"];
+  fixedTipoNombre?: string;
+  entityTitle?: string;
 };
 
 const CRMContactoCreateTitle = ({
   fallbackTo,
   returnTo,
+  entityTitle,
 }: {
   fallbackTo?: string;
   returnTo?: string;
+  entityTitle: string;
 }) => (
   <div className="flex flex-wrap items-center gap-2">
     <CRMContactoBackButton fallbackTo={fallbackTo} returnTo={returnTo} />
     <span className="inline-flex items-center gap-2">
       <UserRound className="h-4 w-4" />
-      Crear contacto CRM
+      Crear {entityTitle}
     </span>
     <Badge variant="secondary" className="text-[11px]">
       Nuevo
@@ -40,6 +44,8 @@ export const CRMContactoCreate = ({
   onCreated,
   onCancel,
   redirect,
+  fixedTipoNombre,
+  entityTitle = "contacto CRM",
 }: CRMContactoCreateProps = {}) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,6 +59,7 @@ export const CRMContactoCreate = ({
         <CRMContactoCreateTitle
           fallbackTo={typeof redirect === "string" ? redirect : undefined}
           returnTo={returnTo ?? undefined}
+          entityTitle={entityTitle}
         />
       }
       className="max-w-2xl w-full"
@@ -77,7 +84,10 @@ export const CRMContactoCreate = ({
         },
       }}
     >
-      <CRMContactoForm onCancel={embedded ? onCancel : undefined} />
+      <CRMContactoForm
+        onCancel={embedded ? onCancel : undefined}
+        fixedTipoNombre={fixedTipoNombre}
+      />
     </Create>
   );
 };

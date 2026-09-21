@@ -42,7 +42,15 @@ class V3Outbox:
 
         error: str | None = None
         try:
-            if message.payload_type == "interactive" and message.interactive:
+            if message.delivery_mode == "simulated":
+                message.status = "simulated"
+                message.external_message_id = f"simulated.{message.id}"
+                message.raw_response = {
+                    "status": "simulated",
+                    "delivery_mode": "simulated",
+                    "message_id": message.external_message_id,
+                }
+            elif message.payload_type == "interactive" and message.interactive:
                 try:
                     await default_meta_channel.send_interactive(message)
                 except Exception as exc:
@@ -60,7 +68,8 @@ class V3Outbox:
                     }
             else:
                 await default_meta_channel.send_text(message)
-            message.status = "sent"
+            if message.delivery_mode != "simulated":
+                message.status = "sent"
         except Exception as exc:
             error = str(exc)
             message.status = "failed"
@@ -98,6 +107,7 @@ class V3Outbox:
             "to_address": message.to_address,
             "text": message.text,
             "payload_type": message.payload_type,
+            "delivery_mode": message.delivery_mode,
             "status": message.status,
             "external_message_id": message.external_message_id,
             "error": error,
@@ -138,6 +148,7 @@ class V3Outbox:
                 "text": message.text,
                 "payload_type": message.payload_type,
                 "interactive": message.interactive,
+                "delivery_mode": message.delivery_mode,
                 "status": message.status,
                 "external_message_id": message.external_message_id,
                 "raw_response": message.raw_response,
@@ -159,6 +170,7 @@ class V3Outbox:
                     "text": message.text,
                     "payload_type": message.payload_type,
                     "interactive": message.interactive,
+                    "delivery_mode": message.delivery_mode,
                     "status": message.status,
                     "external_message_id": message.external_message_id,
                     "raw_response": message.raw_response,

@@ -102,6 +102,7 @@ class V3OutboundMessage:
     payload_type: Literal["text", "interactive"] = "text"
     interactive: dict[str, Any] | None = None
     queue_name: str | None = None
+    delivery_mode: Literal["real", "simulated"] = "real"
     created_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime | None = None
     sent_at: datetime | None = None
@@ -117,6 +118,12 @@ class V3OutboundMessage:
         text: str,
         interactive: dict[str, Any] | None = None,
     ) -> "V3OutboundMessage":
+        agent_v3 = (source.normalized_payload or {}).get("agent_v3") or {}
+        delivery_mode = (
+            "simulated"
+            if isinstance(agent_v3, dict) and agent_v3.get("delivery_mode") == "simulated"
+            else "real"
+        )
         return cls(
             id=str(uuid4()),
             provider="meta",
@@ -129,6 +136,7 @@ class V3OutboundMessage:
             payload_type="interactive" if interactive else "text",
             interactive=interactive,
             queue_name=source.queue_name,
+            delivery_mode=delivery_mode,
         )
 
 

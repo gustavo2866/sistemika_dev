@@ -88,6 +88,49 @@ async def test_meta_provider_sends_text_inside_24h_window(db_session, meta_setti
     assert result.external_message_id == "wamid.text"
     assert captured["phone_number_id"] == "123456"
     assert captured["payload"]["type"] == "text"
+    assert captured["payload"]["to"] == "+541122233344"
+
+
+@pytest.mark.asyncio
+async def test_meta_provider_normalizes_argentina_interior_mobile_for_meta(db_session, meta_settings, monkeypatch):
+    captured = {}
+
+    async def fake_send_message(**kwargs):
+        captured.update(kwargs)
+        return {"messages": [{"id": "wamid.text"}]}
+
+    monkeypatch.setattr(
+        "app.modules.channels.providers.meta.provider.meta_graph_client.send_message",
+        fake_send_message,
+    )
+    channel_event_store.record(
+        db_session,
+        ChannelEventData(
+            provider="meta",
+            channel_type="whatsapp",
+            account_ref="account-1",
+            direction="inbound",
+            from_address="5493816976725",
+            to_address="5491100000000",
+            external_message_id="wamid.in",
+            occurred_at=datetime.now(UTC),
+        ),
+    )
+
+    result = await meta_provider.send_message(
+        db_session,
+        SendMessageCommand(
+            provider="meta",
+            channel_type="whatsapp",
+            account_ref="account-1",
+            to_address="5493816976725",
+            text="Pedido confirmado",
+        ),
+    )
+
+    assert result.status == "sent"
+    assert captured["payload"]["type"] == "text"
+    assert captured["payload"]["to"] == "+54381156976725"
 
 
 @pytest.mark.asyncio

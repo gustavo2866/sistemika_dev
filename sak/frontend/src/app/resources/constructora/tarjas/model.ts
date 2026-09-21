@@ -49,6 +49,21 @@ const optionalNumberFromInputSchema = z.preprocess(
   z.number().finite(),
 );
 
+const optionalBooleanFromInputSchema = z.preprocess(
+  (value) => {
+    if (value == null || value === "") return false;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value > 0;
+    if (typeof value === "string") {
+      const normalizedValue = value.trim().toLowerCase();
+      if (["1", "true", "si", "sí", "yes"].includes(normalizedValue)) return true;
+      if (["0", "false", "no"].includes(normalizedValue)) return false;
+    }
+    return value;
+  },
+  z.boolean(),
+);
+
 export type TarjaDetalle = {
   id?: number | string;
   idnomina?: number | null;
@@ -72,8 +87,10 @@ export type TarjaDetalle = {
 
 export type TarjaNovedad = {
   id?: number | string;
-  horas_enfermedad_justif?: number | null;
-  presentismo?: number | null;
+  nomina_id?: number | null;
+  horas_justificadas?: number | null;
+  presentismo?: boolean | null;
+  adicional?: number | null;
   premio?: number | null;
   observaciones?: string | null;
   documentos?: string[] | null;
@@ -87,6 +104,8 @@ export type Tarja = {
   fechafinal?: string | null;
   estado?: string | null;
   descripcion?: string | null;
+  premio?: number | null;
+  viaticos?: boolean | null;
   detalles?: TarjaDetalle[];
   novedades?: TarjaNovedad[];
   created_at?: string;
@@ -114,8 +133,10 @@ const tarjaDetalleSchema = z.object({
 
 const tarjaNovedadSchema = z.object({
   id: optionalIdSchema,
-  horas_enfermedad_justif: optionalNumberFromInputSchema,
-  presentismo: optionalNumberFromInputSchema,
+  nomina_id: optionalIdSchema,
+  horas_justificadas: optionalNumberFromInputSchema,
+  presentismo: optionalBooleanFromInputSchema,
+  adicional: optionalNumberFromInputSchema,
   premio: optionalNumberFromInputSchema,
   observaciones: z.preprocess(
     normalizeOptionalString,
@@ -134,6 +155,8 @@ export const tarjaSchema = z.object({
     normalizeOptionalString,
     z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
   ),
+  premio: optionalNumberFromInputSchema,
+  viaticos: optionalBooleanFromInputSchema,
   detalles: z.array(tarjaDetalleSchema).default([]),
   novedades: z.array(tarjaNovedadSchema).default([]),
 });
@@ -147,11 +170,15 @@ export const TARJA_DEFAULTS: TarjaFormValues = {
   fechafinal: "",
   estado: "borrador",
   descripcion: "",
+  premio: 0,
+  viaticos: false,
   detalles: [],
   novedades: [
     {
-      horas_enfermedad_justif: 0,
-      presentismo: 0,
+      nomina_id: undefined,
+      horas_justificadas: 0,
+      presentismo: false,
+      adicional: 0,
       premio: 0,
       observaciones: "",
       documentos: [],
@@ -182,6 +209,8 @@ export const normalizeTarjaPayload = (data: Partial<TarjaFormValues>) => {
     fechafinal,
     estado: data.estado === "cerrado" ? "cerrado" : "borrador",
     descripcion: trimNullableText(data.descripcion),
+    premio: Number(data.premio ?? 0),
+    viaticos: Boolean(data.viaticos),
     detalles: (data.detalles ?? []).map((detalle) => ({
       ...(detalle.id ? { id: Number(detalle.id) } : {}),
       idnomina: Number(detalle.idnomina),
@@ -195,8 +224,10 @@ export const normalizeTarjaPayload = (data: Partial<TarjaFormValues>) => {
     })),
     novedades: novedades.map((novedad) => ({
       ...(novedad.id ? { id: Number(novedad.id) } : {}),
-      horas_enfermedad_justif: Number(novedad.horas_enfermedad_justif ?? 0),
-      presentismo: Number(novedad.presentismo ?? 0),
+      nomina_id: null,
+      horas_justificadas: Number(novedad.horas_justificadas ?? 0),
+      presentismo: Boolean(novedad.presentismo),
+      adicional: Number(novedad.adicional ?? 0),
       premio: Number(novedad.premio ?? 0),
       observaciones: trimNullableText(novedad.observaciones),
       documentos: novedad.documentos ?? [],

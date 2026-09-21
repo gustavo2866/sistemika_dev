@@ -1,474 +1,1587 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useGetList, useListContext } from "ra-core";
+import { useDataProvider, useNotify } from "ra-core";
 import {
-  ClipboardCheck,
-  List as ListIcon,
+  ArrowLeft,
+  CheckCircle2,
+  FileClock,
+  FileQuestion,
   Loader2,
-  Plus,
-  SlidersHorizontal,
+  Lock,
+  LockOpen,
+  MoreHorizontal,
+  Pencil,
+  Download,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+  TableProperties,
+  Trophy,
 } from "lucide-react";
 
-import { List, LIST_CONTAINER_WIDE } from "@/components/list";
-import { FilterForm, StyledFilterDiv } from "@/components/filter-form";
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
+import { Confirm } from "@/components/confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { buildListFilters } from "@/components/forms/form_order";
 import {
-  QuincenaNavigator,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   getQuincenaRange,
   moveQuincena,
   parseDateOnly,
+  QuincenaNavigator,
   toISODate,
 } from "@/components/forms/quincena-navigator";
+import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
-import type { ProyectoRecord } from "../proyectos/model";
-import type { ParteDiarioRecord } from "../parte-diario/model";
-import { getEstadoTarjaBadgeClass, getEstadoTarjaLabel } from "./constants";
-import type { TarjaRecord } from "./model";
+import { PROYECTO_ESTADO_CHOICES } from "../proyectos/model";
 
-type ParteDiarioStats = {
-  confirmados: number;
-  borradores: number;
-  sinCargar: number;
+type PanelDayStatus = "faltante" | "borrador" | "completo" | "cerrado" | "descanso";
+
+type PanelDay = {
+  fecha: string;
+  dia: number;
+  weekday: number;
+  esperado: boolean;
+  estado: PanelDayStatus;
+  parte_ids: number[];
+  partes: number;
 };
 
-const ACTIVE_PROJECT_ESTADOS = ["01-plan", "02-ejecucion", "03-conclusion"];
-const PROJECT_COLORS = [
-  "#2563eb",
-  "#059669",
-  "#d97706",
-  "#7c3aed",
-  "#dc2626",
-  "#0891b2",
-  "#65a30d",
-  "#be123c",
-];
-const actionButtonClass = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
+type PanelTarja = {
+  id: number;
+  estado: "borrador" | "cerrado";
+  panel_estado: "borrador" | "lista_cerrar" | "cerrado";
+  fechainicio?: string | null;
+  fechafinal?: string | null;
+  registros: number;
+  horas: number;
+  novedades: number;
+  adicional: number;
+  premio_tarja: number;
+  viaticos: boolean;
+};
 
-const PANEL_FILTERS = buildListFilters(
-  [
-    {
-      type: "reference",
-      referenceProps: {
-        source: "idproyecto",
-        reference: "proyectos",
-        label: "Obra",
-        alwaysOn: true,
-      },
-      selectProps: {
-        optionText: "nombre",
-        emptyText: "Todas",
-        className: "w-[150px] sm:w-[190px]",
-      },
-    },
-  ],
-  { keyPrefix: "tarja-panel" },
+type PanelRow = {
+  id: string;
+  proyecto_id: number;
+  contacto_id?: number | null;
+  proyecto_nombre: string;
+  proyecto_estado?: string | null;
+  encargado?: string | null;
+  encargado_telefono?: string | null;
+  encargado_principal?: boolean | null;
+  fecha_inicio?: string | null;
+  fecha_final?: string | null;
+  dias: PanelDay[];
+  parte_stats: {
+    esperados: number;
+    completos: number;
+    borrador: number;
+    faltantes: number;
+    descanso: number;
+  };
+  tarja?: PanelTarja | null;
+  puede_generar: boolean;
+  puede_cerrar: boolean;
+  puede_reabrir: boolean;
+};
+
+type TarjaPanelResponse = {
+  range: {
+    fechainicio: string;
+    fechafinal: string;
+  };
+  totals: {
+    obras: number;
+    dias_esperados: number;
+    partes_completos: number;
+    partes_borrador: number;
+    partes_faltantes: number;
+    sin_tarja: number;
+    tarjas_borrador: number;
+    tarjas_listas: number;
+    tarjas_cerradas: number;
+  };
+  rows: PanelRow[];
+};
+
+type TarjaDetalleCell = {
+  fecha?: string | null;
+  horas?: number | null;
+  estado?: string | null;
+  estado_nombre?: string | null;
+  descripcion?: string | null;
+};
+
+type TarjaNovedadSummary = {
+  id?: number | null;
+  horas_justificadas?: number | null;
+  presentismo?: boolean | null;
+  presentismo_importe?: number | null;
+  adicional_importe?: number | null;
+  premio_importe?: number | null;
+  viatico_importe?: number | null;
+  sueldo_importe?: number | null;
+  cargas_importe?: number | null;
+  mejora_importe?: number | null;
+  observaciones?: string | null;
+};
+
+type DayKey =
+  | "D01"
+  | "D02"
+  | "D03"
+  | "D04"
+  | "D05"
+  | "D06"
+  | "D07"
+  | "D08"
+  | "D09"
+  | "D10"
+  | "D11"
+  | "D12"
+  | "D13"
+  | "D14"
+  | "D15"
+  | "D16";
+
+type TarjaDetalleExportRow = {
+  id: string;
+  proyecto_nombre: string;
+  encargado?: string | null;
+  empleado: string;
+  dni?: string | null;
+  nro_legajo?: string | null;
+  categoria_codigo?: string | null;
+  actividad_codigo?: string | null;
+  tarja_premio?: number | null;
+  tarja_viaticos?: boolean | null;
+  novedad?: TarjaNovedadSummary | null;
+} & Partial<Record<DayKey, TarjaDetalleCell>>;
+
+type ActionTarget = {
+  row: PanelRow;
+  action: "generar" | "cerrar" | "reabrir";
+};
+
+type PremioTarget = {
+  row: PanelRow;
+  tarjaId: number | null;
+};
+
+const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
+const TEST_CHAT_CONTACT_NAME = "Gustavo test";
+const allDayKeys = Array.from(
+  { length: 16 },
+  (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
 );
+const isDayKey = (value: unknown): value is DayKey =>
+  typeof value === "string" && allDayKeys.includes(value as DayKey);
+const getVisibleDayKeys = (rows: TarjaDetalleExportRow[]) =>
+  allDayKeys.filter((key) => key !== "D16" || rows.some((row) => row.D16 !== undefined));
 
-const getProjectColor = (idproyecto?: number | string | null) => {
-  const id = Number(idproyecto ?? 0);
-  return PROJECT_COLORS[Math.abs(id) % PROJECT_COLORS.length];
-};
-
-const isProjectActiveInRange = (
-  project: ProyectoRecord,
-  startIso: string,
-  endIso: string,
-) => {
-  const projectStart = String(project.fecha_inicio ?? "").slice(0, 10);
-  const projectEnd = String(project.fecha_final ?? "").slice(0, 10);
-  if (projectStart && projectStart > endIso) return false;
-  if (projectEnd && projectEnd < startIso) return false;
-  return true;
-};
-
-const countProjectDaysInRange = (
-  project: ProyectoRecord,
-  startIso: string,
-  endIso: string,
-) => {
-  const projectStart = String(project.fecha_inicio ?? "").slice(0, 10);
-  const projectEnd = String(project.fecha_final ?? "").slice(0, 10);
-  const effectiveStart = projectStart && projectStart > startIso ? projectStart : startIso;
-  const effectiveEnd = projectEnd && projectEnd < endIso ? projectEnd : endIso;
-  if (effectiveStart > effectiveEnd) return 0;
-  const start = parseDateOnly(effectiveStart);
-  const end = parseDateOnly(effectiveEnd);
-  return Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
-};
-
-const buildParteDiarioPanelUrl = (
-  idproyecto: number | string,
-  startIso: string,
-) => {
-  const params = new URLSearchParams({
-    fecha: startIso,
-    filter: JSON.stringify({ idproyecto: Number(idproyecto) }),
+const buildAuthHeaders = () => {
+  const headers = new Headers({
+    Accept: "application/json",
+    "Content-Type": "application/json",
   });
-  return `/parte-diario/panel?${params.toString()}`;
+  if (typeof window === "undefined") return headers;
+  const token = window.localStorage.getItem("auth_token");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return headers;
 };
 
-const TarjaPanelToolbar = ({
-  rangeStart,
-  rangeEnd,
-  quincenaNumber,
-  selectedDate,
-  onPrevious,
-  onNext,
-  onSelectedDateChange,
+const extractActionErrorMessage = async (response: Response) => {
+  try {
+    const payload = await response.json();
+    const detail = payload?.detail;
+    if (typeof detail === "string") return detail;
+    if (typeof detail?.error?.message === "string") return detail.error.message;
+    if (typeof payload?.message === "string") return payload.message;
+  } catch {
+    // Keep the generic message below.
+  }
+  return "No se pudo completar la accion";
+};
+
+const fetchTarjaPanel = async ({
+  startIso,
+  endIso,
+  projectId,
+  projectEstado,
+  signal,
 }: {
-  rangeStart: Date;
-  rangeEnd: Date;
-  quincenaNumber: number;
-  selectedDate: string;
-  onPrevious: () => void;
-  onNext: () => void;
-  onSelectedDateChange: (value: string) => void;
+  startIso: string;
+  endIso: string;
+  projectId?: string | null;
+  projectEstado?: string | null;
+  signal?: AbortSignal;
 }) => {
-  const { filterValues } = useListContext();
-  const hasActiveFilters = Boolean(filterValues?.idproyecto);
-  const [showFilters, setShowFilters] = useState(hasActiveFilters);
+  const params = new URLSearchParams({
+    fechainicio: startIso,
+    fechafinal: endIso,
+  });
+  params.set("estado", projectEstado ?? "");
+  if (projectId) params.set("idproyecto", projectId);
+
+  const response = await fetch(`${apiUrl}/tarjas/panel?${params.toString()}`, {
+    cache: "no-store",
+    headers: buildAuthHeaders(),
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as TarjaPanelResponse;
+};
+
+const postGenerateTarja = async ({
+  idproyecto,
+  contacto_id,
+  fechainicio,
+  fechafinal,
+}: {
+  idproyecto: number;
+  contacto_id?: number | null;
+  fechainicio: string;
+  fechafinal: string;
+}) => {
+  const response = await fetch(`${apiUrl}/tarjas/generar`, {
+    method: "POST",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ idproyecto, contacto_id: contacto_id ?? null, fechainicio, fechafinal }),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as { id?: number; tarja_id?: number };
+};
+
+const postEnsureTarjaNomina = async ({
+  idproyecto,
+  contacto_id,
+  fechainicio,
+  fechafinal,
+}: {
+  idproyecto: number;
+  contacto_id?: number | null;
+  fechainicio: string;
+  fechafinal: string;
+}) => {
+  const response = await fetch(`${apiUrl}/tarjas/asegurar-nomina`, {
+    method: "POST",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ idproyecto, contacto_id: contacto_id ?? null, fechainicio, fechafinal }),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as { id?: number; tarja_id?: number; viaticos?: boolean };
+};
+
+const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado") => {
+  const response = await fetch(`${apiUrl}/tarjas/${tarjaId}`, {
+    method: "PATCH",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ estado }),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return response.json();
+};
+
+const patchTarjaBonos = async (tarjaId: number, premio: number, viaticos: boolean) => {
+  const response = await fetch(`${apiUrl}/tarjas/${tarjaId}`, {
+    method: "PATCH",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ premio, viaticos }),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return response.json();
+};
+
+const postCloseTarja = async (tarjaId: number) => {
+  const response = await fetch(`${apiUrl}/tarjas/${tarjaId}/cerrar`, {
+    method: "POST",
+    headers: buildAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return response.json();
+};
+
+const formatNumber = (value: number, maximumFractionDigits = 0) =>
+  Number(value || 0).toLocaleString("es-AR", { maximumFractionDigits });
+
+const formatHours = (value: number) =>
+  value.toLocaleString("es-AR", { maximumFractionDigits: 1 });
+
+const hasAmount = (value?: number | null) => {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) && amount !== 0;
+};
+
+const escapeHtml = (value?: string | number | null) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const downloadBlob = (filename: string, blob: Blob) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
+const formatDayLabel = (cell?: TarjaDetalleCell, fallback?: string) => {
+  const date = String(cell?.fecha ?? "").slice(0, 10);
+  if (!date) return fallback ?? "";
+  const [, month, day] = date.split("-");
+  return `${day}/${month}`;
+};
+
+const isNonWorkingDay = (dateValue?: string | null) => {
+  const date = String(dateValue ?? "").slice(0, 10);
+  if (!date) return false;
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return day === 0;
+};
+
+const shouldShowEstado = (estado?: string | null) => {
+  const value = String(estado ?? "").trim().toUpperCase();
+  return Boolean(value && value !== "P");
+};
+
+const getWorkedHours = (row: TarjaDetalleExportRow) =>
+  allDayKeys.reduce((total, key) => {
+    const horas = Number(row[key]?.horas ?? 0);
+    return total + (Number.isFinite(horas) ? horas : 0);
+  }, 0);
+
+const getTarjaDetalleExportCellText = (
+  row: TarjaDetalleExportRow,
+  columnKey:
+    | DayKey
+    | "proyecto"
+    | "encargado"
+    | "legajo"
+    | "empleado"
+    | "categoria"
+    | "actividad"
+    | "horas_trabajadas"
+    | "horas_justificadas"
+    | "presentismo"
+    | "adicional"
+    | "premio"
+    | "viatico"
+    | "im_presentismo"
+    | "im_premio"
+    | "im_viatico"
+    | "im_sueldo_bruto"
+    | "im_cargas"
+    | "im_mejoras"
+    | "comentario"
+    | "id_tarja_nomina",
+) => {
+  if (isDayKey(columnKey)) {
+    const cell = row[columnKey as DayKey];
+    const horas = cell?.horas == null ? "" : formatHours(Number(cell.horas));
+    const estado = shouldShowEstado(cell?.estado) ? String(cell?.estado ?? "") : "";
+    return [horas, estado].filter(Boolean).join(" ");
+  }
+
+  const workedHours = getWorkedHours(row);
+  const justifiedHours = Number(row.novedad?.horas_justificadas ?? 0);
+  switch (columnKey) {
+    case "proyecto":
+      return row.proyecto_nombre;
+    case "encargado":
+      return row.encargado ?? "Sin encargado";
+    case "legajo":
+      return row.nro_legajo ?? "";
+    case "categoria":
+      return row.categoria_codigo ?? "";
+    case "actividad":
+      return row.actividad_codigo ?? "";
+    case "horas_trabajadas":
+      return formatHours(workedHours);
+    case "horas_justificadas":
+      return formatHours(Number.isFinite(justifiedHours) ? justifiedHours : 0);
+    case "presentismo":
+      return row.novedad?.presentismo ? "S" : "N";
+    case "adicional":
+      return formatNumber(Number(row.novedad?.adicional_importe ?? 0));
+    case "premio":
+      return hasAmount(row.tarja_premio) ? "S" : "N";
+    case "viatico":
+      return row.tarja_viaticos ? "S" : "N";
+    case "im_presentismo":
+      return formatNumber(Number(row.novedad?.presentismo_importe ?? 0));
+    case "im_premio":
+      return formatNumber(Number(row.novedad?.premio_importe ?? 0));
+    case "im_viatico":
+      return formatNumber(Number(row.novedad?.viatico_importe ?? 0));
+    case "im_sueldo_bruto":
+      return formatNumber(Number(row.novedad?.sueldo_importe ?? 0));
+    case "im_cargas":
+      return formatNumber(Number(row.novedad?.cargas_importe ?? 0));
+    case "im_mejoras":
+      return formatNumber(Number(row.novedad?.mejora_importe ?? 0));
+    case "comentario":
+      return row.novedad?.observaciones ?? "";
+    case "id_tarja_nomina":
+      return row.novedad?.id ?? "";
+    default:
+      return [row.empleado, row.dni].filter(Boolean).join(" ");
+  }
+};
+
+const downloadTarjaPanelExcel = (
+  filename: string,
+  title: string,
+  rows: TarjaDetalleExportRow[],
+) => {
+  const visibleDayKeys = getVisibleDayKeys(rows);
+  const headers = [
+    "Proy",
+    "Enc",
+    "Legajo",
+    "Emp",
+    ...visibleDayKeys.map((key) => formatDayLabel(rows[0]?.[key]).slice(0, 2)),
+    "Cat",
+    "Act",
+    "Hs Trab",
+    "Hs Just",
+    "Coment",
+    "Adicional",
+    "Premio S/N",
+    "Pres S/N",
+    "Viatico S/N",
+    "im_presentismo",
+    "im_premio",
+    "im_viatico",
+    "im_sueldoBruto",
+    "im_Cargas",
+    "im_Mejoras",
+    "ID",
+  ];
+  const columnKeys = [
+    "proyecto",
+    "encargado",
+    "legajo",
+    "empleado",
+    ...visibleDayKeys,
+    "categoria",
+    "actividad",
+    "horas_trabajadas",
+    "horas_justificadas",
+    "comentario",
+    "adicional",
+    "premio",
+    "presentismo",
+    "viatico",
+    "im_presentismo",
+    "im_premio",
+    "im_viatico",
+    "im_sueldo_bruto",
+    "im_cargas",
+    "im_mejoras",
+    "id_tarja_nomina",
+  ] as const;
+  const bodyRows = rows
+    .map((row, rowIndex) => {
+      const cells = columnKeys
+        .map((columnKey) => {
+          const isSunday =
+            isDayKey(columnKey) &&
+            isNonWorkingDay(rows[0]?.[columnKey]?.fecha);
+          const isDayColumn = isDayKey(columnKey);
+          const isImportAmountColumn = String(columnKey).startsWith("im_");
+          const isIdColumn = columnKey === "id_tarja_nomina";
+          const style = [
+            "border:1px solid #cbd5e1",
+            "mso-number-format:\\@",
+            isIdColumn ? "mso-protection:locked" : "mso-protection:unlocked",
+            isDayColumn ? "font-size:9px" : "font-size:10px",
+            isDayColumn ? "padding:2px 1px" : "padding:3px",
+            isDayColumn ? "text-align:center" : "",
+            isSunday
+              ? "background:#e5e7eb"
+              : isImportAmountColumn || isIdColumn
+                ? "background:#e5e7eb"
+                : rowIndex % 2
+                  ? "background:#fafafa"
+                  : "",
+          ]
+            .filter(Boolean)
+            .join(";");
+          return `<td style="${style}">${escapeHtml(getTarjaDetalleExportCellText(row, columnKey))}</td>`;
+        })
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+
+  const html = `<!doctype html>
+<html xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: Arial, sans-serif; }
+    h1 { font-size: 16px; margin: 0 0 12px 0; }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    thead tr { height: 30px; mso-height-source:userset; }
+    th { border: 1px solid #cbd5e1; background: #e5e7eb; color: #111827; font-size: 8.4px; line-height: 11px; padding: 4px 2px; font-weight: 600; vertical-align: middle; white-space: normal; }
+    .date-col { width: 24px; }
+    .project-col { width: 150px; }
+    .person-col { width: 130px; }
+    .small-col { width: 44px; }
+    .amount-col { width: 68px; }
+    .comment-col { width: 90px; }
+    .id-col { width: 54px; }
+  </style>
+  <!--[if gte mso 9]><xml>
+    <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+      <x:Name>Tarjas</x:Name>
+      <x:WorksheetOptions><x:ProtectContents>True</x:ProtectContents></x:WorksheetOptions>
+    </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+  </xml><![endif]-->
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <table>
+    <colgroup>
+      <col class="project-col" />
+      <col class="person-col" />
+      <col class="small-col" />
+      <col class="person-col" />
+      ${visibleDayKeys.map(() => `<col class="date-col" />`).join("")}
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="comment-col" />
+      <col class="amount-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="id-col" />
+    </colgroup>
+    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+    <tbody>${bodyRows}</tbody>
+  </table>
+</body>
+</html>`;
+  const blob = new Blob([`\uFEFF${html}`], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+  downloadBlob(filename.replace(/\.(csv|xlsx?)$/i, ".xls"), blob);
+};
+
+const fetchTarjaDetalleRows = async (tarjaId: number): Promise<TarjaDetalleExportRow[]> => {
+  const params = new URLSearchParams({
+    filter: JSON.stringify({ tarja_id: tarjaId }),
+    range: JSON.stringify([0, 9999]),
+    sort: JSON.stringify(["empleado", "ASC"]),
+  });
+  const response = await fetch(`${apiUrl}/tarja-detalle?${params.toString()}`, {
+    headers: buildAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return (await response.json()) as TarjaDetalleExportRow[];
+};
+
+const fetchPanelRowExportRows = async (row: PanelRow): Promise<TarjaDetalleExportRow[]> => {
+  const tarja = row.tarja;
+  if (!tarja?.id) return [];
+  const detalleRows = await fetchTarjaDetalleRows(Number(tarja.id));
+  return detalleRows.map((detalleRow) => ({
+    ...detalleRow,
+    proyecto_nombre: row.proyecto_nombre,
+    encargado: row.encargado ?? "Sin encargado",
+    tarja_premio: tarja.premio_tarja ?? 0,
+    tarja_viaticos: tarja.viaticos ?? false,
+  }));
+};
+
+const buildSafeFilename = (value: string) =>
+  value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+
+const buildParteDiarioDayUrl = (row: PanelRow, day: PanelDay, returnTo: string) => {
+  const parteId = day.parte_ids[0];
+  if (parteId) {
+    return `/parte-diario/${parteId}?returnTo=${encodeURIComponent(returnTo)}`;
+  }
+  const params = new URLSearchParams({
+    idproyecto: String(row.proyecto_id),
+    fecha: day.fecha,
+    returnTo,
+  });
+  if (row.contacto_id) {
+    params.set("contacto_id", String(row.contacto_id));
+  }
+  return `/parte-diario/create?${params.toString()}`;
+};
+
+const buildAgentChatUrl = (row: PanelRow, returnTo: string) => {
+  const params = new URLSearchParams({
+    source: "parte-diario",
+    message: `parte diario ${row.proyecto_nombre}`,
+    from_phone: row.encargado_telefono ?? "",
+    returnTo,
+  });
+  if (row.encargado?.trim()) params.set("from_name", row.encargado.trim());
+  return `/agente-chat?${params.toString()}`;
+};
+
+const getTarjaStatusLabel = (row: PanelRow) => {
+  if (!row.tarja) return "Sin tarja";
+  if (row.tarja.panel_estado === "lista_cerrar") return "Lista para cerrar";
+  if (row.tarja.estado === "cerrado") return "Cerrada";
+  return "Borrador";
+};
+
+const getTarjaStatusClass = (row: PanelRow) => {
+  if (!row.tarja) return "bg-slate-100 text-slate-700";
+  if (row.tarja.panel_estado === "lista_cerrar") return "bg-blue-100 text-blue-700";
+  if (row.tarja.estado === "cerrado") return "bg-emerald-100 text-emerald-700";
+  return "bg-amber-100 text-amber-700";
+};
+
+const dayStatusConfig: Record<
+  PanelDayStatus,
+  { label: string; short: string; className: string; icon: React.ReactNode }
+> = {
+  completo: {
+    label: "Parte completo",
+    short: "C",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: <CheckCircle2 className="size-2.5" />,
+  },
+  cerrado: {
+    label: "Parte cerrado",
+    short: "T",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+    icon: <Lock className="size-2.5" />,
+  },
+  borrador: {
+    label: "Parte en borrador",
+    short: "B",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: <FileClock className="size-2.5" />,
+  },
+  faltante: {
+    label: "Parte faltante",
+    short: "F",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+    icon: <FileQuestion className="size-2.5" />,
+  },
+  descanso: {
+    label: "Dia no requerido",
+    short: "-",
+    className: "border-slate-200 bg-slate-50 text-slate-400",
+    icon: null,
+  },
+};
+
+const KpiTile = ({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  tone: "slate" | "emerald" | "amber" | "rose" | "blue";
+}) => {
+  const toneClass = {
+    slate: "border-slate-200 bg-white text-slate-700",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    rose: "border-rose-200 bg-rose-50 text-rose-700",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+  }[tone];
 
   return (
-    <div className="rounded-lg bg-muted/30 p-1 sm:p-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <QuincenaNavigator
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-          quincenaNumber={quincenaNumber}
-          selectedDate={selectedDate}
-          onPrevious={onPrevious}
-          onNext={onNext}
-          onSelectedDateChange={onSelectedDateChange}
-        />
+    <div className={cn("rounded-md border px-3 py-2", toneClass)}>
+      <div className="text-[10px] font-medium text-slate-500">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold leading-none">{value}</div>
+    </div>
+  );
+};
 
-        <Button
-          type="button"
-          variant={hasActiveFilters || showFilters ? "secondary" : "outline"}
-          size="sm"
-          className="h-6 shrink-0 px-2 text-[10px]"
-          aria-expanded={showFilters}
-          onClick={() => setShowFilters((current) => !current)}
+const DayStrip = ({ row, returnTo }: { row: PanelRow; returnTo: string }) => (
+  <div
+    className="grid w-max grid-flow-col auto-cols-[18px] gap-0.5"
+    aria-label={`Partes diarios de ${row.proyecto_nombre}`}
+  >
+    {row.dias.map((day) => {
+      const config = dayStatusConfig[day.estado];
+      return (
+        <Link
+          key={day.fecha}
+          to={buildParteDiarioDayUrl(row, day, returnTo)}
+          className={cn(
+            "flex h-7 w-[18px] flex-col items-center justify-center rounded border text-[7px] font-semibold leading-none",
+            config.className,
+          )}
+          title={`${day.fecha} - ${config.label}${day.partes ? ` (${day.partes})` : ""}`}
         >
-          <SlidersHorizontal className="size-3" />
-          Filtros
-        </Button>
+          <span className="mb-0.5 text-[6px] font-medium opacity-70">{day.dia}</span>
+          {config.icon ?? <span>{config.short}</span>}
+        </Link>
+      );
+    })}
+  </div>
+);
 
-        {showFilters ? (
-          <FilterForm
-            filters={PANEL_FILTERS}
-            formComponent={StyledFilterDiv}
-            className="list-filters pointer-events-auto flex min-w-0 flex-wrap items-end gap-2 [&_.filter-field]:items-end"
-          />
-        ) : null}
+const ProgressCell = ({ row }: { row: PanelRow }) => {
+  const expected = row.parte_stats.esperados || 0;
+  const completed = row.parte_stats.completos || 0;
+  const percent = expected ? Math.round((completed / expected) * 100) : 0;
+
+  return (
+    <div className="w-[96px]">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="font-semibold text-slate-700">{percent}%</span>
+        <span className="text-slate-500">
+          {completed}/{expected}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={cn(
+            "h-full rounded-full",
+            percent === 100 ? "bg-emerald-500" : row.parte_stats.faltantes ? "bg-rose-500" : "bg-amber-500",
+          )}
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+      <div className="mt-1 grid grid-cols-3 gap-0.5 text-[7px] font-medium">
+        <span className="text-emerald-700">C {row.parte_stats.completos}</span>
+        <span className="text-amber-700">B {row.parte_stats.borrador}</span>
+        <span className="text-rose-700">F {row.parte_stats.faltantes}</span>
       </div>
     </div>
   );
 };
 
-const TarjaCard = ({
-  tarja,
-  projectName,
-  onOpen,
-}: {
-  tarja: TarjaRecord;
-  projectName: string;
-  onOpen: () => void;
-}) => {
-  const detalles = Array.isArray(tarja.detalles) ? tarja.detalles : [];
-  const totalHoras = detalles.reduce((total, detalle) => {
-    const horas = Number(detalle.horas ?? 0);
-    return total + (Number.isFinite(horas) ? horas : 0);
-  }, 0);
-
+const TarjaCell = ({ row }: { row: PanelRow }) => {
+  const tarja = row.tarja;
   return (
-    <button
-      type="button"
-      className="relative w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 pl-3 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-      onClick={onOpen}
-    >
-      <span
-        className="absolute left-0 top-0 h-full w-1 rounded-l-md"
-        style={{ backgroundColor: getProjectColor(tarja.idproyecto) }}
-      />
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1">
-        <span className="truncate text-[10px] font-semibold leading-tight text-slate-800">
-          {projectName}
-        </span>
-        <Badge
-          variant="secondary"
-          className={cn(
-            "h-4 shrink-0 px-1 py-0 text-[7px] leading-none",
-            getEstadoTarjaBadgeClass(tarja.estado),
-          )}
-        >
-          {getEstadoTarjaLabel(tarja.estado)}
-        </Badge>
-      </div>
-      <div className="mt-0.5 text-[8px] leading-tight text-slate-500">
-        {detalles.length} registros ·{" "}
-        {totalHoras.toLocaleString("es-AR", { maximumFractionDigits: 2 })} hs
-      </div>
-      {tarja.descripcion ? (
-        <div className="mt-0.5 truncate text-[8px] text-slate-400">
-          {tarja.descripcion}
+    <div className="w-[140px] space-y-1">
+      <Badge variant="secondary" className={cn("h-5 px-2 text-[10px]", getTarjaStatusClass(row))}>
+        {getTarjaStatusLabel(row)}
+      </Badge>
+      {tarja ? (
+        <div className="text-[9px] leading-tight text-slate-500">
+          <div>{formatNumber(tarja.registros)} registros</div>
+          <div>{formatNumber(tarja.horas, 2)} hs</div>
         </div>
-      ) : null}
-    </button>
+      ) : (
+        <div className="text-[10px] text-slate-400">Pendiente de generar</div>
+      )}
+    </div>
   );
 };
 
-const PendingTarjaRow = ({
-  project,
-  startIso,
-  stats,
+const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
+  if (!tarja) {
+    return <span className="text-[10px] text-slate-400">-</span>;
+  }
+  const total = Number(tarja.adicional || 0) + Number(tarja.premio_tarja || 0);
+  return (
+    <div className="w-[118px] text-[9px] leading-tight tabular-nums text-slate-600">
+      <div className="text-[12px] font-semibold leading-4 text-slate-900">
+        {formatNumber(total, 2)}
+      </div>
+      {hasAmount(tarja.adicional) ? (
+        <div className="text-[8px] font-medium text-slate-500">
+          Adicional: {formatNumber(tarja.adicional, 2)}
+        </div>
+      ) : null}
+      {hasAmount(tarja.premio_tarja) ? (
+        <div className="text-[8px] font-medium text-slate-500">
+          Premio tarja: {formatNumber(tarja.premio_tarja, 2)}
+        </div>
+      ) : null}
+      <div className="text-[8px] font-medium text-slate-500">
+        Viatico: {tarja.viaticos ? "Si" : "No"}
+      </div>
+    </div>
+  );
+};
+
+const RowActions = ({
+  row,
+  returnTo,
+  onAction,
+  onOpenPremio,
+  onOpenDetalle,
+  onExport,
+  detalleLoading,
+  exportLoading,
 }: {
-  project: ProyectoRecord;
-  startIso: string;
-  stats: ParteDiarioStats;
-}) => (
-  <div className="flex min-h-5 w-full items-center gap-1 rounded px-1 py-0 text-left text-[8px] leading-[0.8rem] text-slate-500 transition hover:bg-slate-50">
-    <span
-      className="size-1 shrink-0 rounded-full"
-      style={{ backgroundColor: getProjectColor(project.id) }}
-    />
-    <span
-      className="w-[88px] min-w-0 shrink-0 truncate sm:w-[104px]"
-      title={project.nombre ?? `Obra #${project.id}`}
-    >
-      {project.nombre ?? `Obra #${project.id}`}
-    </span>
-    <span className="flex min-w-0 flex-1 items-center gap-1 text-[7px] font-medium">
-      <span className="text-emerald-600" title="Partes diarios confirmados">
-        C: {stats.confirmados}
-      </span>
-      <span className="text-amber-600" title="Partes diarios en borrador">
-        B: {stats.borradores}
-      </span>
-      <span className="text-slate-400" title="Partes diarios sin cargar">
-        S: {stats.sinCargar}
-      </span>
-    </span>
+  row: PanelRow;
+  returnTo: string;
+  onAction: (target: ActionTarget) => void;
+  onOpenPremio: (row: PanelRow) => void;
+  onOpenDetalle: (row: PanelRow) => void;
+  onExport: (row: PanelRow) => void;
+  detalleLoading?: boolean;
+  exportLoading?: boolean;
+}) => {
+  const puedeGenerar = Boolean(
+    row.puede_generar &&
+      row.parte_stats.esperados > 0 &&
+      row.parte_stats.faltantes === 0 &&
+      row.parte_stats.borrador === 0,
+  );
+
+  const primary = (() => {
+    if (!row.tarja && puedeGenerar) {
+      return (
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 whitespace-nowrap px-2 text-[10px]"
+          onClick={() => onAction({ row, action: "generar" })}
+        >
+          <RefreshCw className="size-3" />
+          Generar
+        </Button>
+      );
+    }
+    return null;
+  })();
+  const hasAgentPhone = Boolean(row.encargado_telefono?.trim());
+
+  return (
+    <div className="flex w-[112px] items-center justify-end gap-1">
+      {primary}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Mas acciones">
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-40">
+          <DropdownMenuItem onSelect={() => onOpenPremio(row)}>
+            <Trophy className="mr-2 size-3.5" />
+            Bonos
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={detalleLoading}
+            onSelect={() => onOpenDetalle(row)}
+          >
+            {detalleLoading ? (
+              <Loader2 className="mr-2 size-3.5 animate-spin" />
+            ) : (
+              <TableProperties className="mr-2 size-3.5" />
+            )}
+            Tarja detalle
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!row.tarja?.id || exportLoading}
+            onSelect={() => onExport(row)}
+          >
+            {exportLoading ? (
+              <Loader2 className="mr-2 size-3.5 animate-spin" />
+            ) : (
+              <Download className="mr-2 size-3.5" />
+            )}
+            Exportar
+          </DropdownMenuItem>
+          {hasAgentPhone ? (
+            <DropdownMenuItem asChild>
+              <Link to={buildAgentChatUrl(row, returnTo)}>
+                <Sparkles className="mr-2 size-3.5" />
+                Agente
+              </Link>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled title="El contacto no tiene telefono">
+              <Sparkles className="mr-2 size-3.5" />
+              Agente
+            </DropdownMenuItem>
+          )}
+          {puedeGenerar ? (
+            <DropdownMenuItem onSelect={() => onAction({ row, action: "generar" })}>
+              <RotateCcw className="mr-2 size-3.5" />
+              {row.tarja ? "Regenerar" : "Generar"}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            disabled={!row.puede_cerrar}
+            title={
+              row.puede_cerrar
+                ? "Cerrar tarja"
+                : "La tarja debe estar en borrador y no tener partes faltantes ni en borrador"
+            }
+            onSelect={() => onAction({ row, action: "cerrar" })}
+          >
+            <Lock className="mr-2 size-3.5" />
+            Cerrar
+          </DropdownMenuItem>
+          {row.puede_reabrir ? (
+            <DropdownMenuItem onSelect={() => onAction({ row, action: "reabrir" })}>
+              <LockOpen className="mr-2 size-3.5" />
+              Reabrir
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link to={`/proyectos/${row.proyecto_id}?returnTo=${encodeURIComponent(returnTo)}`}>
+              <Pencil className="mr-2 size-3.5" />
+              Editar obra
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
+const TarjaPanelTitle = ({ onBack }: { onBack: () => void }) => (
+  <div className="flex min-w-0 items-center gap-3">
     <Button
       type="button"
       variant="ghost"
-      size="sm"
-      disabled
-      className="h-4 shrink-0 rounded px-1 text-[6px] has-[>svg]:px-1"
-      title="Generar tarja (próximamente)"
+      className="h-8 px-2 text-sm font-medium text-primary"
+      onClick={onBack}
     >
-      Generar
+      <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+      Volver
     </Button>
-    <Button
-      asChild
-      variant="outline"
-      size="sm"
-      className="h-4 shrink-0 rounded px-1 text-[6px] has-[>svg]:px-1"
-    >
-      <Link to={buildParteDiarioPanelUrl(project.id, startIso)}>Partes</Link>
-    </Button>
+    <TableProperties className="size-5 shrink-0" />
+    <h2 className="truncate text-xl font-bold tracking-tight sm:text-2xl">Tarjas - Control</h2>
   </div>
 );
 
-const TarjaStatusColumn = ({
-  title,
-  count,
-  tone,
-  emptyLabel,
-  compact = false,
-  children,
-}: {
-  title: string;
-  count: number;
-  tone: "amber" | "blue" | "emerald";
-  emptyLabel: string;
-  compact?: boolean;
-  children: React.ReactNode;
-}) => {
-  const toneClass = {
-    amber: "border-amber-200 bg-amber-50/70 text-amber-700",
-    blue: "border-blue-200 bg-blue-50/70 text-blue-700",
-    emerald: "border-emerald-200 bg-emerald-50/70 text-emerald-700",
-  }[tone];
-
-  return (
-    <section className="flex min-h-[480px] flex-col bg-white">
-      <div className={cn("flex items-center justify-between border-b px-3 py-2", toneClass)}>
-        <span className="text-[11px] font-semibold">{title}</span>
-        <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[8px] font-semibold">
-          {count}
-        </span>
-      </div>
-      <div
-        className={cn(
-          "flex-1 overflow-y-auto p-2",
-          compact ? "space-y-0" : "space-y-1.5",
-        )}
-      >
-        {count ? (
-          children
-        ) : (
-          <div className="rounded-md border border-dashed border-slate-200 px-2 py-4 text-center text-[10px] text-slate-400">
-            {emptyLabel}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-};
-
-const TarjaPanelActions = ({
-  startIso,
-  endIso,
-  returnTo,
-}: {
-  startIso: string;
-  endIso: string;
-  returnTo: string;
-}) => (
-  <div className="flex items-center gap-2">
-    <Button asChild variant="outline" size="sm" className={actionButtonClass}>
-      <Link to="/tarjas">
-        <ListIcon className="size-3.5" />
-        Lista
-      </Link>
-    </Button>
-    <Button asChild size="sm" className={actionButtonClass}>
-      <Link
-        to={`/tarjas/create?fechainicio=${startIso}&fechafinal=${endIso}&returnTo=${encodeURIComponent(returnTo)}`}
-      >
-        <Plus className="size-3.5" />
-        Crear
-      </Link>
-    </Button>
-  </div>
-);
-
-const TarjaPanelBody = ({
-  startIso,
-  endIso,
-  returnTo,
-}: {
-  startIso: string;
-  endIso: string;
-  returnTo: string;
-}) => {
+export const TarjaPanel = () => {
   const navigate = useNavigate();
-  const { data = [], filterValues, isLoading, isFetching, error } =
-    useListContext<TarjaRecord>();
-  const projectFilter = filterValues?.idproyecto;
-  const projectFilterPayload = useMemo(() => {
-    const payload: Record<string, unknown> = {
-      estado: { in: ACTIVE_PROJECT_ESTADOS },
-    };
-    if (projectFilter) payload.id = Number(projectFilter);
-    return payload;
-  }, [projectFilter]);
+  const location = useLocation();
+  const notify = useNotify();
+  const dataProvider = useDataProvider();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const todayIso = useMemo(() => toISODate(new Date()), []);
+  const [panel, setPanel] = useState<TarjaPanelResponse | null>(null);
+  const [optionsPanel, setOptionsPanel] = useState<TarjaPanelResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportingRowId, setExportingRowId] = useState<string | null>(null);
+  const [openingTestChat, setOpeningTestChat] = useState(false);
+  const [openingDetalleRowId, setOpeningDetalleRowId] = useState<string | null>(null);
+  const [premioTarget, setPremioTarget] = useState<PremioTarget | null>(null);
+  const [premioValue, setPremioValue] = useState("0");
+  const [viaticosValue, setViaticosValue] = useState(false);
+  const [premioLoading, setPremioLoading] = useState(false);
 
-  const { data: projectData = [], isLoading: projectsLoading } =
-    useGetList<ProyectoRecord>("proyectos", {
-      pagination: { page: 1, perPage: 500 },
-      sort: { field: "nombre", order: "ASC" },
-      filter: projectFilterPayload,
-    });
-  const parteFilter = useMemo(() => {
-    const filter: Record<string, unknown> = {
-      fecha: { gte: startIso, lte: endIso },
-    };
-    if (projectFilter) filter.idproyecto = Number(projectFilter);
-    return filter;
-  }, [endIso, projectFilter, startIso]);
-  const {
-    data: parteData = [],
-    isLoading: partesLoading,
-    isFetching: partesFetching,
-    error: partesError,
-  } = useGetList<ParteDiarioRecord>("parte-diario", {
-    pagination: { page: 1, perPage: 1000 },
-    sort: { field: "fecha", order: "ASC" },
-    filter: parteFilter,
-  });
+  const fechaParam = searchParams.get("fecha");
+  const selectedDate = fechaParam ?? todayIso;
+  const range = useMemo(() => getQuincenaRange(parseDateOnly(selectedDate)), [selectedDate]);
+  const startIso = useMemo(() => toISODate(range.start), [range.start]);
+  const endIso = useMemo(() => toISODate(range.end), [range.end]);
+  const selectedProject = searchParams.get("idproyecto");
+  const selectedEncargado = searchParams.get("contacto_id");
+  const selectedProjectEstado = searchParams.get("estado") ?? EXECUTION_PROJECT_ESTADO;
+  const returnTo = `${location.pathname}${location.search}`;
 
-  const tarjas = data as TarjaRecord[];
-  const projects = projectData as ProyectoRecord[];
-  const projectsById = useMemo(
-    () => new Map(projects.map((project) => [String(project.id), project])),
-    [projects],
-  );
-  const generatedProjectIds = useMemo(
-    () => new Set(tarjas.map((tarja) => String(tarja.idproyecto ?? ""))),
-    [tarjas],
-  );
-  const pendingProjects = useMemo(
-    () =>
-      projects.filter(
-        (project) =>
-          isProjectActiveInRange(project, startIso, endIso) &&
-          !generatedProjectIds.has(String(project.id)),
-      ),
-    [endIso, generatedProjectIds, projects, startIso],
-  );
-  const parteStatsByProject = useMemo(() => {
-    const grouped = new Map<
-      string,
-      { confirmados: number; borradores: number; loadedDates: Set<string> }
-    >();
-    (parteData as ParteDiarioRecord[]).forEach((parte) => {
-      const projectId = String(parte.idproyecto ?? "");
-      const dateKey = String(parte.fecha ?? "").slice(0, 10);
-      if (!projectId || !dateKey) return;
-      const stats = grouped.get(projectId) ?? {
-        confirmados: 0,
-        borradores: 0,
-        loadedDates: new Set<string>(),
-      };
-      if (parte.estado === "confirmado") {
-        stats.confirmados += 1;
-      } else {
-        stats.borradores += 1;
+  const handleOpenTestChat = async () => {
+    setOpeningTestChat(true);
+    try {
+      const { data } = await dataProvider.getList<{
+        id: number;
+        nombre_completo: string;
+        telefonos?: string[] | null;
+      }>("crm/contactos", {
+        filter: { q: TEST_CHAT_CONTACT_NAME },
+        pagination: { page: 1, perPage: 100 },
+        sort: { field: "id", order: "ASC" },
+      });
+      const contacts = data.filter(
+        (contact) => contact.nombre_completo.trim().toLowerCase() === TEST_CHAT_CONTACT_NAME.toLowerCase(),
+      );
+      if (contacts.length !== 1) {
+        throw new Error(`No se pudo identificar un unico contacto ${TEST_CHAT_CONTACT_NAME}.`);
       }
-      stats.loadedDates.add(dateKey);
-      grouped.set(projectId, stats);
-    });
-
-    return new Map(
-      pendingProjects.map((project) => {
-        const stats = grouped.get(String(project.id));
-        const expectedDays = countProjectDaysInRange(project, startIso, endIso);
-        return [
-          String(project.id),
-          {
-            confirmados: stats?.confirmados ?? 0,
-            borradores: stats?.borradores ?? 0,
-            sinCargar: Math.max(0, expectedDays - (stats?.loadedDates.size ?? 0)),
-          } satisfies ParteDiarioStats,
-        ];
-      }),
-    );
-  }, [endIso, parteData, pendingProjects, startIso]);
-  const draftTarjas = tarjas.filter((tarja) => tarja.estado === "borrador");
-  const closedTarjas = tarjas.filter((tarja) => tarja.estado === "cerrado");
-  const loading =
-    isLoading ||
-    isFetching ||
-    projectsLoading ||
-    partesLoading ||
-    partesFetching;
-
-  const openTarja = (tarja: TarjaRecord) => {
-    navigate(`/tarjas/${tarja.id}?returnTo=${encodeURIComponent(returnTo)}`, {
-      state: { returnTo },
-    });
+      const contact = contacts[0];
+      const phone = contact.telefonos?.find((value) => value?.trim())?.replace(/\D/g, "");
+      if (!phone) {
+        throw new Error(`El contacto ${TEST_CHAT_CONTACT_NAME} no tiene telefono.`);
+      }
+      const params = new URLSearchParams({
+        from_name: contact.nombre_completo,
+        from_phone: phone,
+      });
+      navigate(`/agente-chat?${params.toString()}`, { state: { returnTo } });
+    } catch (chatError) {
+      notify(chatError instanceof Error ? chatError.message : "No se pudo abrir el chat de prueba.", {
+        type: "warning",
+      });
+    } finally {
+      setOpeningTestChat(false);
+    }
   };
 
+  useEffect(() => {
+    if (fechaParam === startIso) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("fecha", startIso);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [fechaParam, setSearchParams, startIso]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetchTarjaPanel({
+      startIso,
+      endIso,
+      projectId: selectedProject,
+      projectEstado: selectedProjectEstado,
+      signal: controller.signal,
+    })
+      .then(setPanel)
+      .catch((fetchError) => {
+        if (fetchError?.name === "AbortError") return;
+        setError(fetchError instanceof Error ? fetchError.message : "No se pudo cargar el panel");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [endIso, refreshKey, selectedProject, selectedProjectEstado, startIso]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchTarjaPanel({
+      startIso,
+      endIso,
+      projectId: null,
+      projectEstado: selectedProjectEstado,
+      signal: controller.signal,
+    })
+      .then(setOptionsPanel)
+      .catch((fetchError) => {
+        if (fetchError?.name !== "AbortError") {
+          setOptionsPanel(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [endIso, refreshKey, selectedProjectEstado, startIso]);
+
+  const handleProjectChange = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value) {
+          next.set("idproyecto", value);
+        } else {
+          next.delete("idproyecto");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const handleProjectEstadoChange = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("idproyecto");
+        next.delete("contacto_id");
+        if (value) {
+          next.set("estado", value);
+        } else {
+          next.set("estado", "");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const handleEncargadoChange = (value: string) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("idproyecto");
+        if (value) {
+          next.set("contacto_id", value);
+        } else {
+          next.delete("contacto_id");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const setQuincenaDate = (date: Date) => {
+    const nextRange = getQuincenaRange(date);
+    const nextDate = toISODate(nextRange.start);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("fecha", nextDate);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  const handlePreviousQuincena = () => {
+    setQuincenaDate(moveQuincena(range.start, -1));
+  };
+
+  const handleNextQuincena = () => {
+    setQuincenaDate(moveQuincena(range.start, 1));
+  };
+
+  const handleSelectedDateChange = (value: string) => {
+    setQuincenaDate(parseDateOnly(value));
+  };
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/tarjas");
+  };
+
+  const rowsForEstado = useMemo(
+    () =>
+      (panel?.rows ?? []).filter(
+        (row) => !selectedProjectEstado || row.proyecto_estado === selectedProjectEstado,
+      ),
+    [panel?.rows, selectedProjectEstado],
+  );
+  const visibleRows = useMemo(
+    () =>
+      rowsForEstado.filter((row) => {
+        if (!selectedEncargado) return true;
+        const rowEncargadoId = row.contacto_id ? String(row.contacto_id) : "sin-encargado";
+        return rowEncargadoId === selectedEncargado;
+      }),
+    [rowsForEstado, selectedEncargado],
+  );
+  const projectOptions = useMemo(() => {
+    const options = new Map<number, string>();
+    const optionRows = optionsPanel?.rows ?? panel?.rows ?? [];
+    optionRows.forEach((row) => {
+      if (!options.has(row.proyecto_id)) {
+        options.set(row.proyecto_id, row.proyecto_nombre);
+      }
+    });
+    return Array.from(options.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [optionsPanel?.rows, panel?.rows]);
+  const encargadoOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    rowsForEstado.forEach((row) => {
+      const id = row.contacto_id ? String(row.contacto_id) : "sin-encargado";
+      if (!options.has(id)) {
+        options.set(id, row.encargado ?? "Sin encargado");
+      }
+    });
+    return Array.from(options.entries())
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [rowsForEstado]);
+  const totals = useMemo<TarjaPanelResponse["totals"]>(
+    () =>
+      visibleRows.reduce(
+        (acc, row) => {
+          acc.obras += 1;
+          acc.dias_esperados += row.parte_stats.esperados;
+          acc.partes_completos += row.parte_stats.completos;
+          acc.partes_borrador += row.parte_stats.borrador;
+          acc.partes_faltantes += row.parte_stats.faltantes;
+          if (!row.tarja) {
+            acc.sin_tarja += 1;
+          } else if (row.tarja.estado === "cerrado") {
+            acc.tarjas_cerradas += 1;
+          } else if (row.tarja.panel_estado === "lista_cerrar") {
+            acc.tarjas_listas += 1;
+          } else {
+            acc.tarjas_borrador += 1;
+          }
+          return acc;
+        },
+        {
+          obras: 0,
+          dias_esperados: 0,
+          partes_completos: 0,
+          partes_borrador: 0,
+          partes_faltantes: 0,
+          sin_tarja: 0,
+          tarjas_borrador: 0,
+          tarjas_listas: 0,
+          tarjas_cerradas: 0,
+        },
+      ),
+    [visibleRows],
+  );
+  const completionPercent = totals.dias_esperados
+    ? Math.round((totals.partes_completos / totals.dias_esperados) * 100)
+    : 0;
+
+  const handleExport = async () => {
+    const rowsWithTarja = visibleRows.filter((row) => row.tarja?.id);
+    if (!rowsWithTarja.length) {
+      notify("No hay tarjas para exportar con los filtros actuales", { type: "warning" });
+      return;
+    }
+
+    setExportLoading(true);
+    try {
+      const groupedRows = await Promise.all(
+        rowsWithTarja.map(fetchPanelRowExportRows),
+      );
+      const exportRows = groupedRows.flat();
+      if (!exportRows.length) {
+        notify("Las tarjas filtradas no tienen detalles para exportar", { type: "warning" });
+        return;
+      }
+
+      const title = `Tarjas ${startIso} - ${endIso}`;
+      const filename = buildSafeFilename(`tarjas-${startIso}-${endIso}.xls`);
+      downloadTarjaPanelExcel(filename, title, exportRows);
+    } catch (exportError) {
+      notify(exportError instanceof Error ? exportError.message : "No se pudo exportar", {
+        type: "warning",
+      });
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportRow = async (row: PanelRow) => {
+    if (!row.tarja?.id || exportingRowId) return;
+    setExportingRowId(row.id);
+    try {
+      const exportRows = await fetchPanelRowExportRows(row);
+      if (!exportRows.length) {
+        notify("La tarja seleccionada no tiene nomina para exportar", { type: "warning" });
+        return;
+      }
+      const title = `Tarja ${row.proyecto_nombre} - ${row.encargado ?? "Sin encargado"} - ${startIso} - ${endIso}`;
+      const filename = buildSafeFilename(
+        `tarja-${row.proyecto_nombre}-${row.encargado ?? "sin-encargado"}-${startIso}-${endIso}.xls`,
+      );
+      downloadTarjaPanelExcel(filename, title, exportRows);
+    } catch (exportError) {
+      notify(exportError instanceof Error ? exportError.message : "No se pudo exportar", {
+        type: "warning",
+      });
+    } finally {
+      setExportingRowId(null);
+    }
+  };
+
+  const executeAction = async () => {
+    if (!actionTarget) return;
+    setActionLoading(true);
+    try {
+      const { row, action } = actionTarget;
+      if (action === "generar") {
+        await postGenerateTarja({
+          idproyecto: row.proyecto_id,
+          contacto_id: row.contacto_id,
+          fechainicio: startIso,
+          fechafinal: endIso,
+        });
+        notify("Tarja generada", { type: "info" });
+      } else if (action === "cerrar" && row.tarja) {
+        await postCloseTarja(row.tarja.id);
+        notify("Tarja cerrada", { type: "info" });
+      } else if (action === "reabrir" && row.tarja) {
+        await patchTarjaEstado(row.tarja.id, "borrador");
+        notify("Tarja reabierta", { type: "info" });
+      }
+      setActionTarget(null);
+      setRefreshKey((key) => key + 1);
+    } catch (actionError) {
+      notify(actionError instanceof Error ? actionError.message : "No se pudo completar la accion", {
+        type: "warning",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenDetalle = async (row: PanelRow) => {
+    if (row.tarja?.id) {
+      navigate(`/tarjas/${row.tarja.id}/detalle?returnTo=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+
+    setOpeningDetalleRowId(row.id);
+    try {
+      const generated = await postEnsureTarjaNomina({
+        idproyecto: row.proyecto_id,
+        contacto_id: row.contacto_id,
+        fechainicio: startIso,
+        fechafinal: endIso,
+      });
+      const tarjaId = Number(generated.tarja_id ?? generated.id);
+      if (!Number.isFinite(tarjaId) || tarjaId <= 0) {
+        throw new Error("No se pudo resolver la tarja generada");
+      }
+      notify("Tarja preparada", { type: "info" });
+      setRefreshKey((key) => key + 1);
+      navigate(`/tarjas/${tarjaId}/detalle?returnTo=${encodeURIComponent(returnTo)}`);
+    } catch (openError) {
+      notify(openError instanceof Error ? openError.message : "No se pudo abrir el detalle", {
+        type: "warning",
+      });
+    } finally {
+      setOpeningDetalleRowId(null);
+    }
+  };
+
+  const handleOpenPremio = async (row: PanelRow) => {
+    setPremioTarget({ row, tarjaId: row.tarja?.id ?? null });
+    setPremioValue(String(row.tarja?.premio_tarja ?? 0));
+    setViaticosValue(Boolean(row.tarja?.viaticos));
+    if (row.tarja?.id) return;
+
+    setPremioLoading(true);
+    try {
+      const generated = await postEnsureTarjaNomina({
+        idproyecto: row.proyecto_id,
+        contacto_id: row.contacto_id,
+        fechainicio: startIso,
+        fechafinal: endIso,
+      });
+      const tarjaId = Number(generated.tarja_id ?? generated.id);
+      if (!Number.isFinite(tarjaId) || tarjaId <= 0) {
+        throw new Error("No se pudo resolver la tarja generada");
+      }
+      setPremioTarget({ row, tarjaId });
+      setViaticosValue(Boolean(generated.viaticos));
+      setRefreshKey((key) => key + 1);
+      notify("Tarja generada", { type: "info" });
+    } catch (premioError) {
+      setPremioTarget(null);
+      notify(
+        premioError instanceof Error ? premioError.message : "No se pudo preparar la tarja",
+        { type: "warning" },
+      );
+    } finally {
+      setPremioLoading(false);
+    }
+  };
+
+  const handleSavePremio = async () => {
+    if (!premioTarget?.tarjaId) return;
+    const premio = Number(premioValue.replace(",", "."));
+    if (!Number.isFinite(premio) || premio < 0) {
+      notify("Ingresa un importe de premio valido.", { type: "warning" });
+      return;
+    }
+
+    setPremioLoading(true);
+    try {
+      await patchTarjaBonos(premioTarget.tarjaId, premio, viaticosValue);
+      notify("Bonos actualizados", { type: "info" });
+      setPremioTarget(null);
+      setRefreshKey((key) => key + 1);
+    } catch (premioError) {
+      notify(
+        premioError instanceof Error ? premioError.message : "No se pudo actualizar el premio",
+        { type: "warning" },
+      );
+    } finally {
+      setPremioLoading(false);
+    }
+  };
+
+  const actionCopy = (() => {
+    if (!actionTarget) return null;
+    const projectName = [
+      actionTarget.row.proyecto_nombre,
+      actionTarget.row.encargado,
+    ].filter(Boolean).join(" / ");
+    if (actionTarget.action === "cerrar") {
+      return {
+        title: "Cerrar tarja",
+        content: `Se cerrara la tarja de ${projectName}.`,
+        confirm: "Cerrar",
+      };
+    }
+    if (actionTarget.action === "reabrir") {
+      return {
+        title: "Reabrir tarja",
+        content: `La tarja de ${projectName} volvera a estado borrador.`,
+        confirm: "Reabrir",
+      };
+    }
+    return {
+      title: actionTarget.row.tarja ? "Regenerar tarja" : "Generar tarja",
+      content: `Se generara la tarja de ${projectName} para la quincena seleccionada.`,
+      confirm: "Generar",
+    };
+  })();
+
   return (
-    <>
-      {error || partesError ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
-          No se pudo cargar el panel de tarjas.
+    <div className="w-full max-w-none min-w-0 overflow-x-hidden pr-2">
+      <AppBreadcrumb items={[{ label: "Tarjas", current: true }]} />
+
+      <div className="my-3 flex flex-wrap items-center justify-between gap-3">
+        <TarjaPanelTitle onBack={handleBack} />
+      </div>
+
+      <div className="mb-3 rounded-lg bg-muted/30 px-2 pb-2 pt-4">
+        <div className="flex w-full flex-wrap items-start gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            <QuincenaNavigator
+              rangeStart={range.start}
+              rangeEnd={range.end}
+              quincenaNumber={range.number}
+              selectedDate={startIso}
+              onPrevious={handlePreviousQuincena}
+              onNext={handleNextQuincena}
+              onSelectedDateChange={handleSelectedDateChange}
+              showSelectedDate={false}
+            />
+            <label className="relative flex h-8 text-[10px] font-medium leading-none text-blue-700">
+              <span className="absolute -top-3 left-0">Estado</span>
+              <select
+                value={selectedProjectEstado}
+                onChange={(event) => handleProjectEstadoChange(event.target.value)}
+                className="h-8 w-[150px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Todos</option>
+                {PROYECTO_ESTADO_CHOICES.map((estado) => (
+                  <option key={estado.id} value={estado.id}>
+                    {estado.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="relative flex h-8 text-[10px] font-medium leading-none text-blue-700">
+              <span className="absolute -top-3 left-0">Encargado</span>
+              <select
+                value={selectedEncargado ?? ""}
+                onChange={(event) => handleEncargadoChange(event.target.value)}
+                className="h-8 w-[210px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Todos</option>
+                {encargadoOptions.map((encargado) => (
+                  <option key={encargado.id} value={encargado.id}>
+                    {encargado.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="relative flex h-8 text-[10px] font-medium leading-none text-blue-700">
+              <span className="absolute -top-3 left-0">idproyecto</span>
+              <select
+                value={selectedProject ?? ""}
+                onChange={(event) => handleProjectChange(event.target.value)}
+                className="h-8 w-[230px] rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="">Todas</option>
+                {projectOptions.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto h-8 px-2 text-[11px]"
+            onClick={() => void handleExport()}
+            disabled={loading || exportLoading}
+          >
+            {exportLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            Exportar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-[11px]"
+            title="Chat con Gustavo test"
+            onClick={() => void handleOpenTestChat()}
+            disabled={openingTestChat}
+          >
+            {openingTestChat ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+            IA
+          </Button>
+        </div>
+      </div>
+
+      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <KpiTile label="Obra/enc." value={totals.obras} tone="slate" />
+        <KpiTile label="Avance partes" value={`${completionPercent}%`} tone="emerald" />
+        <KpiTile label="Faltantes" value={totals.partes_faltantes} tone="rose" />
+        <KpiTile label="Borradores" value={totals.partes_borrador} tone="amber" />
+        <KpiTile label="Listas" value={totals.tarjas_listas} tone="blue" />
+        <KpiTile label="Cerradas" value={totals.tarjas_cerradas} tone="emerald" />
+      </div>
+
+      {error ? (
+        <div className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
+          {error}
         </div>
       ) : null}
 
@@ -477,151 +1590,176 @@ const TarjaPanelBody = ({
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm">
               <Loader2 className="size-3.5 animate-spin" />
-              Cargando quincena
+              Cargando panel
             </span>
           </div>
         ) : null}
-        <div className="grid grid-flow-col auto-cols-[280px] overflow-x-auto md:grid-flow-row md:grid-cols-3 md:divide-x md:divide-slate-200 md:overflow-x-hidden">
-          <TarjaStatusColumn
-            title="Pendientes"
-            count={pendingProjects.length}
-            tone="amber"
-            emptyLabel="Todas las tarjas fueron generadas"
-            compact
-          >
-            {pendingProjects.map((project) => (
-              <PendingTarjaRow
-                key={project.id}
-                project={project}
-                startIso={startIso}
-                stats={
-                  parteStatsByProject.get(String(project.id)) ?? {
-                    confirmados: 0,
-                    borradores: 0,
-                    sinCargar: 0,
-                  }
-                }
-              />
-            ))}
-          </TarjaStatusColumn>
-
-          <TarjaStatusColumn
-            title="Borrador"
-            count={draftTarjas.length}
-            tone="blue"
-            emptyLabel="Sin tarjas en borrador"
-          >
-            {draftTarjas.map((tarja) => (
-              <TarjaCard
-                key={tarja.id}
-                tarja={tarja}
-                projectName={
-                  projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
-                  `Obra #${tarja.idproyecto}`
-                }
-                onOpen={() => openTarja(tarja)}
-              />
-            ))}
-          </TarjaStatusColumn>
-
-          <TarjaStatusColumn
-            title="Cerradas"
-            count={closedTarjas.length}
-            tone="emerald"
-            emptyLabel="Sin tarjas cerradas"
-          >
-            {closedTarjas.map((tarja) => (
-              <TarjaCard
-                key={tarja.id}
-                tarja={tarja}
-                projectName={
-                  projectsById.get(String(tarja.idproyecto ?? ""))?.nombre ??
-                  `Obra #${tarja.idproyecto}`
-                }
-                onOpen={() => openTarja(tarja)}
-              />
-            ))}
-          </TarjaStatusColumn>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1160px] table-fixed border-collapse text-[11px]">
+            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+              <tr className="border-b border-slate-200">
+                <th className="w-[310px] px-3 py-2 text-left font-semibold">Obra</th>
+                <th className="w-[360px] px-2 py-2 text-left font-semibold">Partes diarios</th>
+                <th className="w-[105px] px-2 py-2 text-left font-semibold">Avance</th>
+                <th className="w-[145px] px-2 py-2 text-left font-semibold">Tarja</th>
+                <th className="w-[125px] px-2 py-2 text-left font-semibold">Bonos</th>
+                <th className="w-[120px] px-3 py-2 text-right font-semibold">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.length ? (
+                visibleRows.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-100 align-top hover:bg-blue-50/30">
+                    <td className="px-3 py-3">
+                      <div className="truncate text-[12px] font-semibold text-slate-900" title={row.proyecto_nombre}>
+                        {row.proyecto_nombre}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] text-slate-500">
+                        <span>{row.proyecto_estado ?? "sin estado"}</span>
+                        {row.fecha_inicio ? <span>Inicio {row.fecha_inicio}</span> : null}
+                      </div>
+                      <div className="mt-1 line-clamp-1 text-[10px] leading-tight text-slate-600">
+                        {row.encargado ?? "-"}
+                        {row.encargado_principal ? (
+                          <span className="ml-1 text-[8px] font-medium text-blue-600">principal</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="overflow-hidden px-2 py-3">
+                      <DayStrip row={row} returnTo={returnTo} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <ProgressCell row={row} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <TarjaCell row={row} />
+                    </td>
+                    <td className="px-2 py-3">
+                      <BonosCell tarja={row.tarja} />
+                    </td>
+                    <td className="px-3 py-3">
+                      <RowActions
+                        row={row}
+                        returnTo={returnTo}
+                        onAction={setActionTarget}
+                        onOpenPremio={(targetRow) => void handleOpenPremio(targetRow)}
+                        onOpenDetalle={handleOpenDetalle}
+                        onExport={(targetRow) => void handleExportRow(targetRow)}
+                        detalleLoading={openingDetalleRowId === row.id}
+                        exportLoading={exportingRowId === row.id}
+                      />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-3 py-10 text-center text-[12px] text-slate-400">
+                    Sin obras para la quincena seleccionada
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
-    </>
-  );
-};
 
-export const TarjaPanel = () => {
-  const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const todayIso = useMemo(() => toISODate(new Date()), []);
-  const initialDate = searchParams.get("fecha") ?? todayIso;
-  const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [range, setRange] = useState(() => getQuincenaRange(parseDateOnly(initialDate)));
-  const startIso = useMemo(() => toISODate(range.start), [range.start]);
-  const endIso = useMemo(() => toISODate(range.end), [range.end]);
-  const returnTo = `${location.pathname}${location.search}`;
-
-  const setQuincenaFromDate = useCallback(
-    (value: string) => {
-      const date = parseDateOnly(value);
-      const nextIso = toISODate(date);
-      setSelectedDate(nextIso);
-      setRange(getQuincenaRange(date));
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current);
-          next.set("fecha", nextIso);
-          return next;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams],
-  );
-
-  const moveTo = (direction: -1 | 1) => {
-    setQuincenaFromDate(toISODate(moveQuincena(range.start, direction)));
-  };
-
-  return (
-    <List
-      resource="tarjas"
-      title={
-        <span className="inline-flex items-center gap-2">
-          <ClipboardCheck className="size-5" />
-          Tarjas - Quincena
-        </span>
-      }
-      filters={PANEL_FILTERS}
-      actions={
-        <TarjaPanelActions
-          startIso={startIso}
-          endIso={endIso}
-          returnTo={returnTo}
-        />
-      }
-      perPage={500}
-      pagination={false}
-      sort={{ field: "idproyecto", order: "ASC" }}
-      filter={{
-        fechainicio: { lte: endIso },
-        fechafinal: { gte: startIso },
-      }}
-      containerClassName={LIST_CONTAINER_WIDE}
-      showFilters={false}
-      topContent={
-        <TarjaPanelToolbar
-          rangeStart={range.start}
-          rangeEnd={range.end}
-          quincenaNumber={range.number}
-          selectedDate={selectedDate}
-          onPrevious={() => moveTo(-1)}
-          onNext={() => moveTo(1)}
-          onSelectedDateChange={setQuincenaFromDate}
-        />
-      }
-      filterDebounce={300}
-    >
-      <TarjaPanelBody startIso={startIso} endIso={endIso} returnTo={returnTo} />
-    </List>
+      <Confirm
+        isOpen={Boolean(actionTarget)}
+        loading={actionLoading}
+        title={actionCopy?.title ?? ""}
+        content={actionCopy?.content ?? ""}
+        confirm={actionCopy?.confirm ?? "Confirmar"}
+        onClose={() => {
+          if (!actionLoading) setActionTarget(null);
+        }}
+        onConfirm={() => {
+          void executeAction();
+        }}
+      />
+      <Dialog
+        open={premioTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !premioLoading) setPremioTarget(null);
+        }}
+      >
+        <DialogContent className="gap-3 p-4 sm:max-w-sm">
+          <DialogHeader className="gap-1">
+            <DialogTitle className="text-base">Bonos</DialogTitle>
+            <DialogDescription className="text-xs">
+              {premioTarget
+                ? [premioTarget.row.proyecto_nombre, premioTarget.row.encargado]
+                    .filter(Boolean)
+                    .join(" - ")
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
+              Premio
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                value={premioValue}
+                disabled={premioLoading}
+                onChange={(event) => setPremioValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !premioLoading && premioTarget?.tarjaId) {
+                    event.preventDefault();
+                    void handleSavePremio();
+                  }
+                }}
+                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
+              />
+            </label>
+            <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
+              Adicional
+              <input
+                type="text"
+                readOnly
+                value={formatNumber(premioTarget?.row.tarja?.adicional ?? 0, 2)}
+                className="h-9 w-full min-w-0 rounded-md border border-input bg-muted/40 px-3 text-sm tabular-nums text-muted-foreground outline-none"
+              />
+            </label>
+          </div>
+          <div className="flex items-center justify-between rounded-md border border-input px-3 py-2">
+            <label htmlFor="tarja-viaticos" className="text-xs font-medium text-slate-700">
+              Viatico
+            </label>
+            <Switch
+              id="tarja-viaticos"
+              checked={viaticosValue}
+              disabled={premioLoading}
+              onCheckedChange={setViaticosValue}
+            />
+          </div>
+          {premioLoading && !premioTarget?.tarjaId ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Generando tarja
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={premioLoading}
+              onClick={() => setPremioTarget(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={premioLoading || !premioTarget?.tarjaId}
+              onClick={() => void handleSavePremio()}
+            >
+              {premioLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

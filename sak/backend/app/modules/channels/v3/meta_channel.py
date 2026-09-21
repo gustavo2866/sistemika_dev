@@ -80,6 +80,7 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str
         for change in entry.get("changes", []) or []:
             value = change.get("value", {}) or {}
             metadata = value.get("metadata", {}) or {}
+            delivery_mode = "simulated" if metadata.get("delivery_mode") == "simulated" else "real"
             account_ref = str(metadata.get("phone_number_id") or metadata.get("display_phone_number") or "")
             to_phone = str(metadata.get("display_phone_number") or metadata.get("phone_number_id") or "")
             for msg_data in value.get("messages", []) or []:
@@ -97,6 +98,7 @@ def _raw_meta_to_v3_inbound_messages(payload: dict[str, Any], *, queue_name: str
                     "conversation_id": conversation_id,
                     "agent_v3": {
                         "queue": queue_name,
+                        "delivery_mode": delivery_mode,
                     },
                     "mensaje": {
                         "meta_message_id": external_message_id,
@@ -450,6 +452,7 @@ def _agent_v3_metadata(outbound: V3OutboundMessage) -> dict[str, Any]:
         "source_message_id": outbound.source_message_id,
         "source_external_message_id": outbound.source_external_message_id,
         "queue": outbound.queue_name,
+        "delivery_mode": outbound.delivery_mode,
     }
 
 

@@ -90,6 +90,22 @@ cd backend
 pytest tests/ -v
 ```
 
+### Reiniciar datos de Parte Diario y tarjas
+
+Desde la raiz del proyecto:
+
+```powershell
+python backend/scripts/reset_parte_diario_tarjas.py --dry-run
+python backend/scripts/reset_parte_diario_tarjas.py --apply
+```
+
+`--dry-run` solo informa cantidades. `--apply` exige escribir `LIMPIAR` y borra
+partes diarios, detalles y la estructura de tarjas, conservando nominas,
+proyectos, encargados, estados y mensajes CRM. Luego se debe reiniciar el backend
+o llamar `POST /api/agente/v3/inbox/reset` para limpiar el contexto en memoria.
+El alcance completo esta documentado en
+[`backend/agente/v3/subprocesses/parte_diario/README.md`](backend/agente/v3/subprocesses/parte_diario/README.md#limpieza-para-repetir-pruebas).
+
 ## 📚 API Endpoints
 
 ### CRUD Resources

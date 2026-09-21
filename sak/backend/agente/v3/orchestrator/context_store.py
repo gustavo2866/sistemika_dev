@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from zoneinfo import ZoneInfo
 
 from agente.v3.contracts import V3ConversationContext, utc_now
+
+CONVERSATION_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 
 class V3ContextStore:
@@ -14,11 +17,13 @@ class V3ContextStore:
         self._contexts: dict[str, V3ConversationContext] = {}
         self._lock = asyncio.Lock()
 
+    # Recupera el contexto del dia o reemplaza el anterior sin tocar datos de los subprocesos en DB.
     async def load_or_create(self, conversation_id: str) -> V3ConversationContext:
         async with self._lock:
+            now = utc_now()
             current = self._contexts.get(conversation_id)
-            if current is None:
-                current = V3ConversationContext(conversation_id=conversation_id)
+            if current is None or current.created_at.astimezone(CONVERSATION_TZ).date() < now.astimezone(CONVERSATION_TZ).date():
+                current = V3ConversationContext(conversation_id=conversation_id, created_at=now, updated_at=now)
                 self._contexts[conversation_id] = current
             return current.copy()
 
@@ -52,6 +57,10 @@ class V3ContextStore:
     async def reset(self) -> None:
         async with self._lock:
             self._contexts.clear()
+
+    async def reset_conversation(self, conversation_id: str) -> None:
+        async with self._lock:
+            self._contexts.pop(conversation_id, None)
 
 
 default_context_store = V3ContextStore()

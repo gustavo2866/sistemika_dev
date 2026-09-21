@@ -159,6 +159,10 @@ def _menu_selection(command: str) -> tuple[str, str] | None:
         return "pedidoObra", "pedido obra"
     if command in {"2", "parte diario"}:
         return "parteDiario", "parte diario"
+    if command == "reportar":
+        return "parteDiario", "reportar"
+    if command in {"pendiente", "pendientes", "parte pendiente", "parte pendientes", "partes pendiente", "partes pendientes"}:
+        return "parteDiario", "pendientes"
     return None
 
 
