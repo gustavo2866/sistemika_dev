@@ -111,7 +111,7 @@ async def test_aclaracion_incompleta_y_consulta_libre(datos):
     assert result.reply_text.endswith("De que empleado?")
 
 
-# CANCELAR pide descarte; rechazarlo recupera la pregunta y SALIR termina solo la aclaracion.
+# CANCELAR y SALIR piden descarte; VOLVER termina solo la aclaracion.
 @pytest.mark.asyncio
 async def test_aclaracion_cancelar_descarte_y_volver(datos):
     llm = FakeLLM(TurnPlan(reply="Que novedades queres quitar?"))
@@ -124,12 +124,16 @@ async def test_aclaracion_cancelar_descarte_y_volver(datos):
     assert result.context.process_state == {**snapshot, "historial": result.context.process_state["historial"]}
     assert result.reply_text == "Que novedades queres quitar?"
     result = await process.handle(mensaje("salir"), result.context)
+    assert estado(result).etapa == "confirmar_salida"
+    result = await process.handle(mensaje("2"), result.context)
+    assert estado(result).etapa == "carga_aclaracion"
+    result = await process.handle(mensaje("volver"), result.context)
     assert estado(result).etapa == "carga"
     assert estado(result).aclaracion_origen is None
     assert len(llm.calls) == 1
 
 
-# Un fallo mantiene la aclaracion hasta resolver o salir, sin perder la pagina ni el borrador.
+# SALIR pide descartar desde aclaracion y cancelar recupera la pregunta y su pagina.
 @pytest.mark.asyncio
 @pytest.mark.parametrize("modo", ["carga", "listado"])
 @pytest.mark.parametrize("fallo", ["sin_interpretacion", "horas_invalidas"])
@@ -158,13 +162,21 @@ async def test_fallo_abre_loop_y_salir_conserva_origen(datos, modo, fallo):
     assert estado(result).aclaracion_origen == modo
     result = await process.handle(mensaje("SALIR"), result.context)
     current = estado(result)
-    assert current.etapa == modo
+    assert current.etapa == "confirmar_salida"
+    assert current.salida_origen == "carga_aclaracion"
+    result = await process.handle(mensaje("2"), result.context)
+    current = estado(result)
+    assert current.etapa == "carga_aclaracion"
     assert current.draft().to_dict() == snapshot.draft().to_dict()
     assert current.asistencia_offset == snapshot.asistencia_offset
     assert current.asistencia_opciones == snapshot.asistencia_opciones
-    assert current.aclaracion_pregunta is None
-    assert current.aclaracion_origen is None
+    assert current.aclaracion_pregunta is not None
+    assert current.aclaracion_origen == modo
     assert current.salida_origen is None
+    result = await process.handle(mensaje("VOLVER"), result.context)
+    assert estado(result).etapa == modo
+    assert estado(result).aclaracion_pregunta is None
+    assert estado(result).aclaracion_origen is None
     assert len(llm.calls) == 3
 
 
@@ -195,7 +207,9 @@ async def test_error_parcial_de_lote_abre_aclaracion(datos):
     assert estado(result).draft().novedades[0].estado_codigo == "ENF"
     assert "?" in result.reply_text
     result = await process.handle(mensaje("salir"), result.context)
-    assert estado(result).etapa == "carga"
+    assert estado(result).etapa == "confirmar_salida"
+    result = await process.handle(mensaje("2"), result.context)
+    assert estado(result).etapa == "carga_aclaracion"
     assert estado(result).draft().novedades[0].estado_codigo == "ENF"
 
 

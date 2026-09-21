@@ -25,17 +25,22 @@ class _PreResolvedNominaEntry:
     text: str
 
 
-# Mantiene las identidades elegidas en LISTADO aunque el interprete proponga otro ID.
+# Mantiene las identidades elegidas en LISTADO y descarta IDs no respaldados por su normalizacion.
 def _apply_pre_resolved_nomina(plan: TurnPlan, message_text: str) -> str | None:
     entries = _pre_resolved_nomina_entries(message_text)
-    if not entries:
-        return
     operations = [
         operation
         for operation in plan.operations
         if operation.type in {"agregar_novedad", "modificar_novedad", "eliminar_novedad"}
     ]
     if not operations:
+        return
+    if not entries:
+        # En texto libre el LLM identifica a la persona por nombre, pero no es una
+        # fuente confiable de IDs. El dominio resolvera esos nombres contra la
+        # nomina vigente. LISTADO es el unico camino que inserta IDs verificados.
+        for operation in operations:
+            operation.idnomina = None
         return
 
     remaining_entries = list(entries)

@@ -26,6 +26,7 @@ from agente.v3.subprocesses.parte_diario.state import (
 # Conserva datos anidados y evita compartir listas al copiar el borrador.
 def test_borrador_roundtrip_y_copia_independiente():
     novedad = NovedadPersonal("Medina", idnomina=10, estado_codigo="P", horas=4)
+    interna = NovedadPersonal("Neto", idnomina=13, estado_codigo="ALT", horas=9)
     pendiente = PendienteAmbiguo(
         "Perez", candidatos=[NominaItem(11, "Juan", "Perez")],
         candidatos_externos=[NominaItem(12, "Pedro", "Perez", fuera_de_proyecto=True)],
@@ -35,7 +36,7 @@ def test_borrador_roundtrip_y_copia_independiente():
     )
     draft = ParteDiarioDraft(
         oportunidad_id=1, idproyecto=2, contacto_id=3, fecha="2026-09-11",
-        novedades=[novedad], pendientes_ambiguos=[pendiente],
+        novedades=[novedad], novedades_internas=[interna], pendientes_ambiguos=[pendiente],
         conflictos_novedad=[ConflictoNovedad(10, "Medina", [novedad])],
         fecha_propuesta="2026-09-10",
     )
@@ -44,8 +45,10 @@ def test_borrador_roundtrip_y_copia_independiente():
     copied = draft.copy()
     copied.pendientes_ambiguos[0].candidatos.clear()
     copied.conflictos_novedad[0].opciones[0].horas = 8
+    copied.novedades_internas[0].horas = 0
     assert draft.pendientes_ambiguos[0].candidatos
     assert draft.conflictos_novedad[0].opciones[0].horas == 4
+    assert draft.novedades_internas[0].horas == 9
 
 
 # La serializacion preserva etapa, origen y pagina sin controles dentro del draft.
@@ -57,6 +60,11 @@ def test_conversacion_roundtrip_con_menus_y_retorno():
         opciones_obra=[ParteDiarioOption(1, "Francia", 3, 1, 2)],
         opciones_fecha=[ParteDiarioFechaOption(1, "2026-09-11", "BORRADOR", 4)],
         asistencia_opciones=[ParteDiarioAsistenciaOption(21, 10, "Juan", "Perez")],
+        asistencia_catalogo=[
+            ParteDiarioAsistenciaOption(21, 10, "Juan", "Perez"),
+            ParteDiarioAsistenciaOption(22, 11, "Pedro", "Sosa"),
+        ],
+        revision_origen="listado",
     )
     state.set_draft(ParteDiarioDraft(
         oportunidad_id=1, idproyecto=2, fecha="2026-09-11",

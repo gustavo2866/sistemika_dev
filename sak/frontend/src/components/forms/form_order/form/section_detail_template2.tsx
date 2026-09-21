@@ -81,6 +81,11 @@ export type SectionDetailTemplate2Props = {
   cardClassName?: string;
   canEditRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
   canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
+  onRequestDeleteRow?: (
+    rowValue: Record<string, unknown>,
+    index: number,
+    remove: () => void,
+  ) => void;
 };
 
 type DetailItemRowProps = {
@@ -97,6 +102,7 @@ type DetailItemRowProps = {
   variant?: "compact" | "table";
   canEditRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
   canDeleteRow?: (rowValue: Record<string, unknown>, index: number) => boolean;
+  onRequestDeleteRow?: SectionDetailTemplate2Props["onRequestDeleteRow"];
 };
 
 const DetailItemRow = ({
@@ -113,6 +119,7 @@ const DetailItemRow = ({
   variant = "compact",
   canEditRow,
   canDeleteRow,
+  onRequestDeleteRow,
 }: DetailItemRowProps) => {
   const detailContext = useDetailSectionContext();
   if (!detailContext) {
@@ -131,6 +138,13 @@ const DetailItemRow = ({
   const hasOptional = Boolean(OptionalFields);
   const isTableVariant = variant === "table";
   const canDelete = canDeleteRow ? canDeleteRow(rowValue ?? {}, index) : true;
+  const requestRemove = useCallback(() => {
+    if (onRequestDeleteRow) {
+      onRequestDeleteRow(rowValue ?? {}, index, remove);
+      return;
+    }
+    remove();
+  }, [index, onRequestDeleteRow, remove, rowValue]);
 
   const handleCollapse = useCallback(() => {
     setShowOptional(false);
@@ -206,7 +220,7 @@ const DetailItemRow = ({
         showOptional,
         toggleOptional,
         collapse: handleCollapse,
-        remove,
+        remove: requestRemove,
       }}
     >
       <ResponsiveDetailRow
@@ -306,6 +320,7 @@ export const SectionDetailTemplate2 = ({
   cardClassName,
   canEditRow,
   canDeleteRow,
+  onRequestDeleteRow,
 }: SectionDetailTemplate2Props) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -731,6 +746,7 @@ export const SectionDetailTemplate2 = ({
                   variant={variant}
                   canEditRow={canEditRow}
                   canDeleteRow={canDeleteRow}
+                  onRequestDeleteRow={onRequestDeleteRow}
                 />
               </DetailIterator>
             </ArrayInput>

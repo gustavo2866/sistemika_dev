@@ -97,6 +97,19 @@ async def test_selector_deriva_parte_pendiente_a_parte_diario(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["REPORTAR", "PENDIENTES"])
+async def test_selector_deriva_comandos_directos_a_parte_diario(monkeypatch, text):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    selector = V3ProcessSelector()
+    context = V3ConversationContext(conversation_id="conv-1")
+
+    selection = await selector.resolve(_message(text), context)
+
+    assert selection.process_name == PROCESS_PARTE_DIARIO
+    assert selection.mode == "fast_path"
+
+
+@pytest.mark.asyncio
 async def test_selector_deriva_novedades_a_parte_diario(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     selector = V3ProcessSelector()

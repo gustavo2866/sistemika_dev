@@ -326,7 +326,7 @@ def test_tarja_nomina_delete_alta_removes_related_records(db_session):
     assert empleado.activo is False
 
 
-def test_tarja_nomina_delete_alta_preserves_employee_with_other_nomina(db_session):
+def test_tarja_nomina_delete_alta_elimina_asignaciones_posteriores(db_session):
     user = User(nombre="Tester", email="tarja-nomina-alta-delete-other@example.com")
     db_session.add(user)
     db_session.flush()
@@ -383,9 +383,9 @@ def test_tarja_nomina_delete_alta_preserves_employee_with_other_nomina(db_sessio
 
     db_session.refresh(empleado)
     db_session.refresh(registro_otro)
-    assert empleado.deleted_at is None
-    assert empleado.activo is True
-    assert registro_otro.deleted_at is None
+    assert empleado.deleted_at is not None
+    assert empleado.activo is False
+    assert registro_otro.deleted_at is not None
 
 
 def test_nomina_filter_excludes_every_employee_assigned_to_a_project(db_session):

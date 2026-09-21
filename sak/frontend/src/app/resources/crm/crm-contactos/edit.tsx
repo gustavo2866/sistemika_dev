@@ -11,18 +11,22 @@ import { CRMContactoForm } from "./form";
 import { normalizeCRMContactoPayload, type CRMContacto } from "./model";
 import { CRMContactoBackButton } from "./navigation-title";
 
-type CRMContactoEditProps = {
+export type CRMContactoEditProps = {
   embedded?: boolean;
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
+  fixedTipoNombre?: string;
+  entityTitle?: string;
 };
 
 const CRMContactoEditTitle = ({
   fallbackTo,
   returnTo,
+  entityTitle,
 }: {
   fallbackTo?: string;
   returnTo?: string;
+  entityTitle: string;
 }) => {
   const { record } = useEditContext<CRMContacto>();
 
@@ -31,7 +35,7 @@ const CRMContactoEditTitle = ({
       <CRMContactoBackButton fallbackTo={fallbackTo} returnTo={returnTo} />
       <span className="inline-flex items-center gap-2">
         <UserRound className="h-4 w-4" />
-        Editar contacto CRM
+        Editar {entityTitle}
       </span>
       {record?.id ? (
         <Badge variant="outline" className="text-[11px]">
@@ -52,6 +56,8 @@ export const CRMContactoEdit = ({
   embedded = false,
   id,
   redirect,
+  fixedTipoNombre,
+  entityTitle = "contacto CRM",
 }: CRMContactoEditProps = {}) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -67,6 +73,7 @@ export const CRMContactoEdit = ({
         <CRMContactoEditTitle
           fallbackTo={typeof redirect === "string" ? redirect : undefined}
           returnTo={returnTo ?? undefined}
+          entityTitle={entityTitle}
         />
       }
       className="max-w-2xl w-full"
@@ -88,7 +95,7 @@ export const CRMContactoEdit = ({
         },
       }}
     >
-      <CRMContactoForm />
+      <CRMContactoForm fixedTipoNombre={fixedTipoNombre} />
     </Edit>
   );
 };

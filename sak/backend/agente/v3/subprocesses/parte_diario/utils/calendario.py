@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from agente.v3.subprocesses.parte_diario.utils.texto import _normalize_command
 
 BUENOS_AIRES = ZoneInfo("America/Argentina/Buenos_Aires")
+DIAS_SEMANA = ("lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo")
 
 
 def es_feriado(value: date) -> bool:
@@ -17,6 +18,11 @@ def es_feriado(value: date) -> bool:
 
 def es_dia_laborable(value: date) -> bool:
     return not es_feriado(value)
+
+
+# Devuelve el nombre castellano del dia para presentaciones conversacionales.
+def nombre_dia(value: date) -> str:
+    return DIAS_SEMANA[value.weekday()]
 
 
 def fecha_es_feriado(value: str | date | None) -> bool:

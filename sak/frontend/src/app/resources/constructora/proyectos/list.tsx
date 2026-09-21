@@ -173,7 +173,7 @@ const ProyectoListBody = ({
 export const ProyectoList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 5,
+  perPage = 10,
   createTo,
 }: ProyectoListProps = {}) => {
   const navigate = useNavigate();

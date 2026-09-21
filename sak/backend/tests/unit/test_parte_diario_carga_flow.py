@@ -11,6 +11,7 @@ from agente.v3.contracts import V3ConversationContext
 from agente.v3.subprocesses.parte_diario import handler
 from agente.v3.subprocesses.parte_diario.adapters.carga_agent import fallback_person_validation
 from agente.v3.subprocesses.parte_diario.domain import novedades, parte_diario
+from agente.v3.subprocesses.parte_diario.domain.models import NovedadPersonal
 from agente.v3.subprocesses.parte_diario.flows import validacion_carga
 from agente.v3.subprocesses.parte_diario.models import ParteDiarioOperation, TurnPlan
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
@@ -110,6 +111,76 @@ async def test_texto_multiple_aplica_solo_al_draft(datos, db_session):
     assert len(llm.calls) == 1
     assert llm.stages == ["carga"]
     assert not db_session.exec(select(ParteDiario)).all()
+
+
+@pytest.mark.asyncio
+async def test_texto_libre_descarta_ids_llm_y_resuelve_lote_por_nombre(datos, db_session):
+    acosta = datos.empleados[2]
+    acosta.apellido = "Acosta"
+    db_session.add(acosta)
+    db_session.commit()
+    medina, vera = datos.empleados[:2]
+    llm = FakeLLM(plan(
+        dict(type="agregar_novedad", nombre="Medina", idnomina=99999, estado_codigo="ENF"),
+        dict(type="agregar_novedad", nombre="Vera", idnomina=medina.id, estado_codigo="PER"),
+        dict(type="agregar_novedad", nombre="Acosta", idnomina=vera.id, estado_codigo="P", horas=12),
+    ))
+
+    result = await proceso(llm).handle(
+        mensaje("Medina enfermo, Vera pidio permiso y Acosta trabajo 12hs"),
+        contexto(datos.obra),
+    )
+
+    current = estado(result)
+    assert current.etapa == "carga"
+    novedades_por_id = {item.idnomina: item for item in current.draft().novedades}
+    assert set(novedades_por_id) == {medina.id, vera.id, acosta.id}
+    assert novedades_por_id[medina.id].estado_codigo == "ENF"
+    assert novedades_por_id[vera.id].estado_codigo == "PER"
+    assert novedades_por_id[acosta.id].horas == 12
+    assert "No encontre" not in result.reply_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("modo", ["carga", "listado"])
+async def test_novedad_interna_bloquea_segunda_novedad_antes_de_guardar(datos, modo):
+    ctx = contexto(datos.obra)
+    current = ParteDiarioV3State.from_dict(ctx.process_state)
+    draft = current.draft()
+    draft.sin_novedades_informado = False
+    draft.novedades_internas = [
+        NovedadPersonal(
+            nombre="Medina, Ivan",
+            idnomina=datos.empleados[0].id,
+            estado_codigo="ALT",
+            horas=9,
+        )
+    ]
+    current.set_draft(draft)
+    ctx.process_state = current.to_dict()
+    process = proceso(FakeLLM(plan(
+        dict(type="modificar_novedad", nombre="Medina, Ivan", estado_codigo="PER", horas=4),
+    )))
+    text = "Medina con permiso trabajo 4hs"
+    if modo == "listado":
+        opened = await process.handle(mensaje("listado"), ctx)
+        opened_state = estado(opened)
+        option = next(
+            item for item in opened_state.asistencia_opciones
+            if item.idnomina == datos.empleados[0].id
+        )
+        assert f"{option.opcion} - Medina, Ivan - ALT, 9h" in opened.reply_text
+        text = f"{option.opcion} permiso trabajo 4hs"
+        ctx = opened.context
+
+    result = await process.handle(mensaje(text), ctx)
+
+    assert "ya tiene ALT registrado en este parte" in result.reply_text
+    assert "Solo se admite una novedad por empleado" in result.reply_text
+    assert estado(result).draft().novedades == []
+    assert estado(result).draft().novedades_internas[0].estado_codigo == "ALT"
+    assert estado(result).etapa == "carga_aclaracion"
+    assert estado(result).aclaracion_origen == modo
 
 
 # La aclaracion pasa por el cliente real, conserva el borrador y permite precisar el cambio.
@@ -305,7 +376,9 @@ async def test_listado_normaliza_ids_y_comparte_interprete(datos):
     assert f"[idnomina={datos.empleados[0].id}]" in llm.calls[0]
     assert f"[idnomina={datos.empleados[1].id}]" in llm.calls[0]
     assert {n.idnomina for n in estado(result).draft().novedades} == {e.id for e in datos.empleados[:2]}
-    assert estado(result).etapa == "carga"
+    assert estado(result).etapa == "revision"
+    assert estado(result).revision_origen == "listado"
+    assert "2. Volver al listado" in result.reply_text
 
 
 @pytest.mark.asyncio
@@ -361,7 +434,7 @@ async def test_lote_no_comparte_destino_entre_novedades(datos, db_session, modo)
     assert not by_id[medina.id].validar_destino_trabajo
     assert by_id[medina.id].idproyecto_destino is None
     result = await process.handle(mensaje("2"), result.context)
-    assert estado(result).etapa == "carga"
+    assert estado(result).etapa == ("revision" if modo == "listado" else "carga")
     draft = estado(result).draft()
     assert not draft.pendientes_ambiguos
     by_id = {item.idnomina: item for item in draft.novedades}
@@ -403,10 +476,14 @@ async def test_transferencia_desconocida_pide_obra_y_encargado(datos):
     result = await process.handle(mensaje("1"), invalid.context)
     assert estado(result).etapa == "carga_validar_encargado"
     result = await process.handle(mensaje("2"), result.context)
+    assert estado(result).etapa == "carga_validar_estado"
+    assert "Cual fue el motivo de la jornada reducida?" in result.reply_text
+    result = await process.handle(mensaje("permiso"), result.context)
     novelty = estado(result).draft().novedades[0]
     assert novelty.idproyecto_destino == datos.destino.id
     assert novelty.contacto_id_destino == datos.encargados[1].id
     assert novelty.horas == 4
+    assert novelty.estado_codigo == "PER"
     assert estado(result).etapa == "carga"
     assert len(llm.calls) == 1
 
@@ -432,12 +509,15 @@ async def test_transferencia_un_encargado_no_pregunta(datos, db_session):
     db_session.commit()
     llm = FakeLLM(plan(dict(type="agregar_novedad", nombre="Medina", estado_codigo="P", horas=4,
                            fuera_de_proyecto=True, nombre_proyecto=datos.destino.nombre)))
-    result = await proceso(llm).handle(mensaje(f"Medina trabajo 4hs en {datos.destino.nombre}"), contexto(datos.obra))
+    process = proceso(llm)
+    result = await process.handle(mensaje(f"Medina trabajo 4hs en {datos.destino.nombre}"), contexto(datos.obra))
+    assert estado(result).etapa == "carga_validar_estado"
+    result = await process.handle(mensaje("permiso"), result.context)
     assert estado(result).etapa == "carga"
     assert estado(result).draft().novedades[0].contacto_id_destino == datos.encargados[0].id
 
 
-# Avanza solo cuando termina todo el lote; la ultima pagina devuelve el control a carga.
+# Avanza solo cuando termina todo el lote; la ultima pagina abre revision.
 @pytest.mark.asyncio
 @pytest.mark.parametrize("extras", [0, 9])
 async def test_listado_avanza_despues_de_validar_todo_el_lote(datos, db_session, extras):
@@ -470,10 +550,16 @@ async def test_listado_avanza_despues_de_validar_todo_el_lote(datos, db_session,
     assert estado(result).etapa == "carga_validar_encargado"
     assert estado(result).asistencia_offset == 0
     result = await process.handle(mensaje("1"), result.context)
+    assert estado(result).etapa == "carga_validar_estado"
+    assert estado(result).asistencia_offset == 0
+    assert len(estado(result).draft().pendientes_ambiguos) == 2
+    result = await process.handle(mensaje("permiso"), result.context)
     assert estado(result).etapa == "carga_validar_encargado"
     assert estado(result).asistencia_offset == 0
     assert len(estado(result).draft().pendientes_ambiguos) == 1
     result = await process.handle(mensaje("2"), result.context)
+    assert estado(result).etapa == "carga_validar_estado"
+    result = await process.handle(mensaje("permiso"), result.context)
     assert not estado(result).draft().pendientes_ambiguos
     assert estado(result).validacion_origen is None
     assert len(estado(result).draft().novedades) == 3
@@ -481,11 +567,13 @@ async def test_listado_avanza_despues_de_validar_todo_el_lote(datos, db_session,
     if extras:
         assert estado(result).etapa == "listado"
         assert estado(result).asistencia_offset == 8
-        assert "Empleados 9-13 de 13" in result.reply_text
+        assert "Pagina 2 de 2" in result.reply_text
+        assert "Cargado:" in result.reply_text
+        assert "1 - Medina, Ivan - PER, 5h" in result.reply_text
         assert [o.opcion for o in estado(result).asistencia_opciones] == list(range(9, 14))
-        result = await process.handle(mensaje("no"), result.context)
-    assert estado(result).etapa == "carga"
-    assert not estado(result).asistencia_opciones
+        result = await process.handle(mensaje("FINALIZAR"), result.context)
+    assert estado(result).etapa == "revision"
+    assert estado(result).revision_origen == "listado"
 
 
 @pytest.mark.asyncio
@@ -539,20 +627,205 @@ async def test_motivo_pendiente_no_es_transferencia(datos):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("modo", ["carga", "listado"])
+async def test_presente_con_jornada_parcial_pide_motivo_en_ambos_flujos(datos, modo):
+    llm = FakeLLM(plan(dict(
+        type="agregar_novedad",
+        nombre="Medina, Ivan" if modo == "listado" else "Medina",
+        estado_codigo="P",
+        horas=4,
+    )))
+    process = proceso(llm)
+    ctx = contexto(datos.obra)
+    text = "Medina trabajo 4hs"
+    if modo == "listado":
+        opened = await process.handle(mensaje("listado"), ctx)
+        option = next(
+            item.opcion for item in estado(opened).asistencia_opciones
+            if item.idnomina == datos.empleados[0].id
+        )
+        ctx = opened.context
+        text = f"{option} trabajo 4hs"
+
+    pending_result = await process.handle(mensaje(text), ctx)
+
+    current = estado(pending_result)
+    assert current.etapa == "carga_validar_estado"
+    assert current.validacion_origen == modo
+    assert not current.draft().novedades
+    assert current.draft().pendientes_ambiguos[0].horas == 4
+    assert "trabajo 4h" in pending_result.reply_text
+    assert "Cual fue el motivo de la jornada reducida?" in pending_result.reply_text
+    assert "BAJA" not in pending_result.reply_text
+
+    resolved = await process.handle(mensaje("permiso"), pending_result.context)
+
+    novelty = estado(resolved).draft().novedades[0]
+    assert novelty.estado_codigo == "PER"
+    assert novelty.horas == 4
+    assert not estado(resolved).draft().pendientes_ambiguos
+
+
+@pytest.mark.asyncio
+async def test_corregir_a_jornada_parcial_conserva_original_hasta_resolver_motivo(datos):
+    llm = FakeLLM(
+        plan(dict(type="agregar_novedad", nombre="Medina", estado_codigo="P", horas=9)),
+        plan(dict(type="modificar_novedad", nombre="Medina", estado_codigo="P", horas=4)),
+    )
+    process = proceso(llm)
+    loaded = await process.handle(mensaje("Medina trabajo 9hs"), contexto(datos.obra))
+
+    pending_result = await process.handle(mensaje("Medina trabajo 4hs"), loaded.context)
+
+    current = estado(pending_result)
+    assert current.etapa == "carga_validar_estado"
+    assert [(item.estado_codigo, item.horas) for item in current.draft().novedades] == [("P", 9)]
+    assert current.draft().pendientes_ambiguos[0].reemplaza_novedad is True
+
+    resolved = await process.handle(mensaje("accidente"), pending_result.context)
+
+    current = estado(resolved)
+    assert [(item.estado_codigo, item.horas) for item in current.draft().novedades] == [("ACC", 4)]
+    assert not current.draft().pendientes_ambiguos
+    assert not current.draft().conflictos_novedad
+
+
+@pytest.mark.asyncio
 async def test_listado_paginado_rechaza_opcion_ajena(datos, db_session):
     for i in range(8):
         db_session.add(Nomina(nombre="Extra", apellido=f"Zeta{i}", dni=f"extra-{i}",
                              idproyecto=datos.obra.proyecto_id, encargado_contacto_id=datos.obra.contacto_id))
     db_session.commit()
-    process = proceso(FakeLLM())
+    llm = FakeLLM()
+    process = proceso(llm)
     result = await process.handle(mensaje("listado"), contexto(datos.obra))
     assert len(estado(result).asistencia_opciones) == 8
+    assert "Fecha: 2026-09-11 - Pagina 1 de 2" in result.reply_text
+    assert "Informa todas las novedades de esta pagina en un mensaje." in result.reply_text
+    assert "Formato: numero + novedad." in result.reply_text
+    assert "SALIR abandona el parte." in result.reply_text
+    assert "9 - SIGUIENTE" in result.reply_text
+    assert "99 - FINALIZAR" in result.reply_text
     result = await process.handle(mensaje("10 enfermo"), result.context)
     assert "no esta en esta pagina" in result.reply_text
-    result = await process.handle(mensaje("no"), result.context)
+    result = await process.handle(mensaje("9"), result.context)
     assert estado(result).asistencia_opciones[0].opcion == 9
-    result = await process.handle(mensaje("no"), result.context)
-    assert estado(result).etapa == "carga"
+    result = await process.handle(mensaje("99"), result.context)
+    assert estado(result).etapa == "revision"
+    assert not llm.calls
+
+
+@pytest.mark.asyncio
+async def test_listado_congela_numeracion_durante_todo_el_recorrido(datos, db_session):
+    for i in range(9):
+        db_session.add(Nomina(nombre="Extra", apellido=f"Zeta{i}", dni=f"frozen-{i}",
+                             idproyecto=datos.obra.proyecto_id,
+                             encargado_contacto_id=datos.obra.contacto_id))
+    db_session.commit()
+    process = proceso(FakeLLM())
+    opened = await process.handle(mensaje("listado"), contexto(datos.obra))
+    frozen = estado(opened).asistencia_catalogo
+    assert len(frozen) == 13
+
+    agregado = Nomina(nombre="Nuevo", apellido="Aardvark", dni="frozen-new",
+                      idproyecto=datos.obra.proyecto_id,
+                      encargado_contacto_id=datos.obra.contacto_id)
+    db_session.add(agregado)
+    db_session.flush()
+    tarja = db_session.exec(select(Tarja).where(
+        Tarja.idproyecto == datos.obra.proyecto_id,
+        Tarja.contacto_id == datos.obra.contacto_id,
+    )).one()
+    db_session.add(TarjaNomina(tarja_id=tarja.id, nomina_id=agregado.id,
+        fecha_desde=date(2026, 9, 11), fecha_hasta=date(2026, 9, 25)))
+    db_session.commit()
+
+    result = await process.handle(mensaje("SIGUIENTE"), opened.context)
+    current = estado(result)
+    assert current.asistencia_catalogo == frozen
+    assert current.asistencia_opciones == frozen[8:]
+    assert agregado.id not in {item.idnomina for item in current.asistencia_catalogo}
+
+
+@pytest.mark.asyncio
+async def test_listado_salir_confirma_y_cancelar_recupera_pagina(datos):
+    process = proceso(FakeLLM())
+    opened = await process.handle(mensaje("listado"), contexto(datos.obra))
+    snapshot = estado(opened)
+
+    result = await process.handle(mensaje("SALIR"), opened.context)
+    assert estado(result).etapa == "confirmar_salida"
+    result = await process.handle(mensaje("2"), result.context)
+
+    current = estado(result)
+    assert current.etapa == "listado"
+    assert current.asistencia_catalogo == snapshot.asistencia_catalogo
+    assert current.asistencia_opciones == snapshot.asistencia_opciones
+    assert "LISTADO - Francia" in result.reply_text
+
+
+@pytest.mark.asyncio
+async def test_revision_de_listado_vuelve_al_catalogo_congelado(datos):
+    llm = FakeLLM(plan(dict(type="agregar_novedad", nombre="Medina, Ivan", estado_codigo="ENF")))
+    process = proceso(llm)
+    opened = await process.handle(mensaje("listado"), contexto(datos.obra))
+    option = next(item.opcion for item in estado(opened).asistencia_opciones
+                  if item.idnomina == datos.empleados[0].id)
+    reviewed = await process.handle(mensaje(f"{option} enfermo"), opened.context)
+    assert estado(reviewed).etapa == "revision"
+
+    result = await process.handle(mensaje("2"), reviewed.context)
+
+    assert estado(result).etapa == "listado"
+    assert estado(result).asistencia_catalogo == estado(opened).asistencia_catalogo
+    assert "1 - Medina, Ivan - ENF, 0h" in result.reply_text
+
+
+@pytest.mark.asyncio
+async def test_volver_al_listado_muestra_y_conserva_destino_al_corregir_horas(datos, db_session):
+    datos.destino.nombre = "Francia 118"
+    db_session.add(datos.destino)
+    db_session.commit()
+    llm = FakeLLM(
+        plan(dict(
+            type="agregar_novedad", nombre="Medina, Ivan", estado_codigo="P",
+            fuera_de_proyecto=True, nombre_proyecto="Francia", horas=9,
+        )),
+        plan(dict(type="modificar_novedad", nombre="Medina, Ivan", horas=4)),
+    )
+    process = proceso(llm)
+    opened = await process.handle(mensaje("listado"), contexto(datos.obra))
+    option = next(
+        item.opcion for item in estado(opened).asistencia_opciones
+        if item.idnomina == datos.empleados[0].id
+    )
+
+    reviewed = await process.handle(
+        mensaje(f"{option} trabajo en Francia con Bruno 9hs"),
+        opened.context,
+    )
+    assert estado(reviewed).etapa == "revision"
+    assert "Destino: Francia 118 / Bruno Encargado" in reviewed.reply_text
+
+    listed = await process.handle(mensaje("2"), reviewed.context)
+    assert estado(listed).etapa == "listado"
+    assert (
+        f"{option} - Medina, Ivan - P, 9h - "
+        "Destino: Francia 118 / Bruno Encargado"
+    ) in listed.reply_text
+
+    corrected = await process.handle(mensaje(f"{option} trabajo 4hs"), listed.context)
+    assert estado(corrected).etapa == "carga_validar_estado"
+    assert estado(corrected).draft().novedades[0].horas == 9
+    corrected = await process.handle(mensaje("permiso"), corrected.context)
+    novelty = estado(corrected).draft().novedades[0]
+    assert novelty.horas == 4
+    assert novelty.estado_codigo == "PER"
+    assert novelty.idproyecto_destino == datos.destino.id
+    assert novelty.contacto_id_destino == datos.encargados[1].id
+    assert novelty.nombre_proyecto == "Francia 118"
+    assert novelty.nombre_encargado_destino == "Bruno Encargado"
+    assert "Destino: Francia 118 / Bruno Encargado" in corrected.reply_text
 
 
 @pytest.mark.asyncio
@@ -777,7 +1050,7 @@ def test_estado_no_admitido_no_se_corrige(stage):
     assert original == {"etapa": stage}
 
 
-# Resolver el conflicto de la ultima pagina termina LISTADO sin validacion general.
+# Resolver el conflicto de la ultima pagina abre revision sin validacion general.
 @pytest.mark.asyncio
 async def test_conflicto_en_listado_termina_ultima_pagina_sin_validacion_general(datos, monkeypatch):
     def fail_general(*args, **kwargs):
@@ -795,7 +1068,7 @@ async def test_conflicto_en_listado_termina_ultima_pagina_sin_validacion_general
     result = await process.handle(mensaje(f"{option} accidente"), result.context)
     assert estado(result).etapa == "carga_validar_conflicto"
     result = await process.handle(mensaje("2"), result.context)
-    assert estado(result).etapa == "carga"
+    assert estado(result).etapa == "revision"
     assert estado(result).asistencia_offset == 0
-    assert not estado(result).asistencia_opciones
+    assert estado(result).revision_origen == "listado"
     assert estado(result).draft().novedades[0].estado_codigo == "ACC"

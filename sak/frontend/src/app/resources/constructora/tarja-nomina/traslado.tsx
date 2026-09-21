@@ -2,8 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { required, useDataProvider, useGetOne, useNotify } from "ra-core";
-import { useEffect, useMemo, useRef } from "react";
-import { useFormContext, useWatch } from "react-hook-form";
+import { useMemo } from "react";
+import { useFormContext } from "react-hook-form";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
@@ -13,6 +13,7 @@ import {
   FormErrorSummary,
   FormReferenceAutocomplete,
   FormValue,
+  HiddenInput,
   SectionBaseTemplate,
 } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/forms/form_order/simple_form";
@@ -32,7 +33,11 @@ type TarjaNominaTrasladoRecord = {
 
 type ProyectoEncargadoChoice = {
   id: number | string;
+  proyecto_id?: number | null;
   contacto_id?: number | null;
+  proyecto?: {
+    nombre?: string | null;
+  } | null;
   contacto?: {
     nombre_completo?: string | null;
     nombre?: string | null;
@@ -86,59 +91,54 @@ type TrasladoFormValues = z.infer<ReturnType<typeof buildTrasladoSchema>>;
 const getEncargadoLabel = (choice?: unknown) => {
   if (!choice || typeof choice !== "object") return "";
   const record = choice as ProyectoEncargadoChoice;
-  return (
+  const obra = record.proyecto?.nombre || `Obra #${record.proyecto_id ?? ""}`;
+  const encargado =
     record.contacto?.nombre_completo ||
     record.contacto?.nombre ||
-    (record.contacto_id ? `Encargado #${record.contacto_id}` : "")
-  );
+    (record.contacto_id ? `Encargado #${record.contacto_id}` : "Sin encargado");
+  return `${obra} - ${encargado}`;
 };
+
+const sortProyectoEncargadoByLabel = (
+  left: ProyectoEncargadoChoice,
+  right: ProyectoEncargadoChoice,
+) =>
+  getEncargadoLabel(left).localeCompare(getEncargadoLabel(right), "es", {
+    sensitivity: "base",
+  });
 
 const DestinoFields = () => {
   const { setValue } = useFormContext<TrasladoFormValues>();
-  const proyectoId = Number(useWatch({ name: "proyecto_id" }));
-  const previousProyectoId = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (!Number.isFinite(proyectoId) || proyectoId <= 0) return;
-    if (
-      previousProyectoId.current !== undefined &&
-      previousProyectoId.current !== proyectoId
-    ) {
-      setValue("proyecto_encargado_id", undefined as unknown as number, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
-    previousProyectoId.current = proyectoId;
-  }, [proyectoId, setValue]);
 
   return (
-    <div className="grid gap-2 md:grid-cols-3">
-      <FormReferenceAutocomplete
-        referenceProps={{ source: "proyecto_id", reference: "proyectos" }}
-        inputProps={{
-          optionText: "nombre",
-          label: "Obra destino",
-          placeholder: "Seleccionar",
-          validate: required(),
-        }}
-        widthClass="w-full"
-      />
+    <div className="grid gap-2 md:grid-cols-2">
+      <HiddenInput source="proyecto_id" />
       <FormReferenceAutocomplete
         referenceProps={{
           source: "proyecto_encargado_id",
           reference: "proyecto-encargados",
-          filter: proyectoId
-            ? { proyecto_id: proyectoId, activo: true }
-            : { proyecto_id: -1, activo: true },
+          filter: { activo: true },
+          sort: { field: "id", order: "ASC" },
         }}
         inputProps={{
           optionText: getEncargadoLabel,
           inputText: getEncargadoLabel,
-          label: "Encargado destino",
-          placeholder: "Seleccionar",
+          optionSort: sortProyectoEncargadoByLabel,
+          label: "Obra destino",
+          placeholder: "Obra - encargado",
           validate: required(),
-          disabled: !proyectoId,
+          onSelectionChange: (choice) => {
+            const proyectoId = Number(
+              (choice as ProyectoEncargadoChoice | null)?.proyecto_id,
+            );
+            setValue(
+              "proyecto_id",
+              Number.isFinite(proyectoId) && proyectoId > 0
+                ? proyectoId
+                : (undefined as unknown as number),
+              { shouldDirty: true, shouldValidate: true },
+            );
+          },
         }}
         widthClass="w-full"
       />

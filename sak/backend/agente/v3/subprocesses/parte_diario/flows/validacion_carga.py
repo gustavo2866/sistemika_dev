@@ -122,7 +122,7 @@ async def procesar(
     if state.etapa in ETAPAS:
         return reply
     if state.etapa == "listado":
-        return listado.avanzar(state, reply if reply.startswith("No cargo ") else "Cargado.")
+        return listado.avanzar(state, reply if reply.startswith("No cargo ") else "")
     return renderer.seguimiento_carga(state, reply)
 
 

@@ -104,7 +104,7 @@ async def interpretar_novedades(text: str, state: ParteDiarioV3State, llm_client
         return confirmar_salida.iniciar(state)
     if en_listado:
         if status == "updated" and not payload.get("errores"):
-            return listado.avanzar(state, "Cargado.")
+            return listado.avanzar(state)
         return listado.mostrar(state, renderer.seguimiento_carga(state, reply))
     return renderer.seguimiento_carga(state, reply)
 

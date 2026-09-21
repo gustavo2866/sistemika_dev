@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 from sqlmodel import select
 
+from agente.v3.contracts import V3ConversationContext
 from app.models import EstadoParteDiario, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado
 from tests.unit.test_parte_diario_carga_flow import FakeLLM, datos, estado, plan, proceso
 from tests.unit.test_parte_diario_handler_inicial import contexto, escenario
@@ -47,6 +48,8 @@ async def test_guardar_transferencia_con_destino_existente(datos, db_session, fe
     result = await process.handle(turno("Medina trabajo 5hs en otra obra"), ctx)
     assert estado(result).etapa == "carga_validar_encargado"
     result = await process.handle(turno("1"), result.context)
+    assert estado(result).etapa == "carga_validar_estado"
+    result = await process.handle(turno("permiso"), result.context)
     result = await process.handle(turno("listo"), result.context)
     result = await process.handle(turno("1"), result.context)
 
@@ -78,3 +81,40 @@ async def test_guardar_transferencia_con_destino_existente(datos, db_session, fe
         assert {d.idnomina: d.horas for d in detalles} == {
             datos.empleados[0].id: 5, datos.empleados[1].id: 4,
         }
+
+
+# Al recuperar el origen, reconstruye la obra y el encargado del parte destino enlazado.
+@pytest.mark.asyncio
+async def test_recuperar_transferencia_muestra_destino(datos):
+    ctx = contexto(datos.obra)
+    ctx.process_state["parte_state"]["fecha"] = "2026-09-12"
+    process = proceso(FakeLLM(plan(dict(
+        type="agregar_novedad",
+        nombre="Medina",
+        estado_codigo="P",
+        horas=4,
+        fuera_de_proyecto=True,
+        nombre_proyecto=datos.destino.nombre,
+    ))))
+    loaded = await process.handle(
+        turno(f"Medina trabajo 4hs en {datos.destino.nombre}"), ctx,
+    )
+    loaded = await process.handle(turno("1"), loaded.context)
+    assert estado(loaded).etapa == "carga_validar_estado"
+    loaded = await process.handle(turno("permiso"), loaded.context)
+    saved = await process.handle(turno("guardar"), loaded.context)
+    assert saved.metadata["status"] == "saved"
+
+    reopened = await proceso(FakeLLM()).handle(
+        turno("parte diario 12/09/2026"),
+        V3ConversationContext(conversation_id="reopen-destination"),
+    )
+
+    novelty = estado(reopened).draft().novedades[0]
+    assert novelty.fuera_de_proyecto is True
+    assert novelty.idproyecto_destino == datos.destino.id
+    assert novelty.contacto_id_destino == datos.encargados[0].id
+    assert novelty.nombre_proyecto == datos.destino.nombre
+    assert novelty.nombre_encargado_destino == "Ana Encargada"
+    assert f"Destino: {datos.destino.nombre} / Ana Encargada" in reopened.reply_text
+    assert "parte_diario_destino_id" not in reopened.reply_text

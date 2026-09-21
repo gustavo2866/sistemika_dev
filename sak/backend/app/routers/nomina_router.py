@@ -2,6 +2,7 @@ import json
 from typing import Any
 
 from fastapi import Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.core.generic_crud import GenericCRUD
@@ -9,6 +10,16 @@ from app.core.router import create_generic_router
 from app.db import get_session
 from app.models.nomina import Nomina
 from app.models.proyecto import Proyecto
+from app.models.proyecto_encargado import ProyectoEncargado
+from app.models.tarja import TarjaNomina
+from app.models.crm.catalogos import CRMTipoContacto
+from app.models.crm.contacto import CRMContacto
+
+
+class NominaAsignarEncargadoRequest(BaseModel):
+    nomina_ids: list[int] = Field(min_length=1)
+    proyecto_id: int = Field(gt=0)
+    contacto_id: int = Field(gt=0)
 
 
 class NominaCRUD(GenericCRUD[Nomina]):
@@ -53,10 +64,47 @@ class NominaCRUD(GenericCRUD[Nomina]):
             stmt = stmt.where(Nomina.idproyecto.is_(None))
         return super()._apply_filters(stmt, remaining_filters)
 
+    @staticmethod
+    def asegurar_relacion_proyecto_encargado(
+        session: Session,
+        proyecto_id: int | None,
+        contacto_id: int | None,
+    ) -> bool:
+        if proyecto_id is None or contacto_id is None:
+            return False
+        relacion_id = session.exec(
+            select(ProyectoEncargado.id)
+            .where(ProyectoEncargado.proyecto_id == int(proyecto_id))
+            .where(ProyectoEncargado.contacto_id == int(contacto_id))
+            .where(ProyectoEncargado.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        if relacion_id is not None:
+            return False
+        session.add(
+            ProyectoEncargado(
+                proyecto_id=int(proyecto_id),
+                contacto_id=int(contacto_id),
+                principal=False,
+                activo=True,
+            )
+        )
+        return True
 
     def create(self, session: Session, data: dict[str, Any], auto_commit: bool = True) -> Nomina:
         self._validate_active_dni_available(session, data)
-        return super().create(session, data, auto_commit=auto_commit)
+        empleado = super().create(session, data, auto_commit=False)
+        self.asegurar_relacion_proyecto_encargado(
+            session,
+            empleado.idproyecto,
+            empleado.encargado_contacto_id,
+        )
+        if auto_commit:
+            session.commit()
+            session.refresh(empleado)
+        else:
+            session.flush()
+        return empleado
 
     def update(
         self,
@@ -77,13 +125,46 @@ class NominaCRUD(GenericCRUD[Nomina]):
             },
             exclude_id=int(existing.id),
         )
-        return super().update(
+        empleado = super().update(
             session,
             obj_id,
             data,
             check_version=check_version,
-            auto_commit=auto_commit,
+            auto_commit=False,
         )
+        if empleado is None:
+            return None
+        self.asegurar_relacion_proyecto_encargado(
+            session,
+            empleado.idproyecto,
+            empleado.encargado_contacto_id,
+        )
+        if auto_commit:
+            session.commit()
+            session.refresh(empleado)
+        else:
+            session.flush()
+        return empleado
+
+    def delete(self, session: Session, obj_id: Any, hard: bool = False) -> bool:
+        tarja_nomina_id = session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.nomina_id == int(obj_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        if tarja_nomina_id is not None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "No se puede eliminar el empleado porque pertenece a una Tarja Nomina.",
+                        "details": {"nomina_id": int(obj_id)},
+                    }
+                },
+            )
+        return super().delete(session, obj_id, hard=hard)
 
 
 # CRUD generico para Nomina, con disponibilidad resuelta desde la asignacion vigente.
@@ -96,6 +177,91 @@ nomina_router = create_generic_router(
     prefix="/nominas",
     tags=["nominas"],
 )
+
+
+@nomina_router.post("/asignar-encargado")
+def asignar_encargado_a_nomina(
+    payload: NominaAsignarEncargadoRequest,
+    session: Session = Depends(get_session),
+):
+    proyecto = session.exec(
+        select(Proyecto)
+        .where(Proyecto.id == payload.proyecto_id)
+        .where(Proyecto.deleted_at.is_(None))
+    ).first()
+    if proyecto is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "El proyecto seleccionado no existe o fue eliminado.",
+                    "details": {"proyecto_id": payload.proyecto_id},
+                }
+            },
+        )
+
+    contacto = session.exec(
+        select(CRMContacto)
+        .join(CRMTipoContacto, CRMTipoContacto.id == CRMContacto.tipo_id)
+        .where(CRMContacto.id == payload.contacto_id)
+        .where(CRMContacto.deleted_at.is_(None))
+        .where(CRMTipoContacto.nombre == "Encargado")
+        .where(CRMTipoContacto.activo.is_(True))
+    ).first()
+    if contacto is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "El contacto seleccionado no es un encargado activo.",
+                    "details": {"contacto_id": payload.contacto_id},
+                }
+            },
+        )
+
+    nomina_ids = list(dict.fromkeys(payload.nomina_ids))
+    empleados = list(
+        session.exec(
+            select(Nomina)
+            .where(Nomina.id.in_(nomina_ids))
+            .where(Nomina.deleted_at.is_(None))
+        ).all()
+    )
+    if len(empleados) != len(nomina_ids):
+        encontrados = {int(item.id) for item in empleados if item.id is not None}
+        faltantes = [item_id for item_id in nomina_ids if item_id not in encontrados]
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Uno o mas empleados seleccionados no existen o fueron eliminados.",
+                    "details": {"nomina_ids": faltantes},
+                }
+            },
+        )
+
+    for empleado in empleados:
+        empleado.idproyecto = payload.proyecto_id
+        empleado.encargado_contacto_id = payload.contacto_id
+        session.add(empleado)
+
+    relaciones_creadas = int(
+        nomina_crud.asegurar_relacion_proyecto_encargado(
+            session,
+            payload.proyecto_id,
+            payload.contacto_id,
+        )
+    )
+
+    session.commit()
+    return {
+        "id": payload.contacto_id,
+        "empleados_actualizados": len(empleados),
+        "relaciones_creadas": relaciones_creadas,
+    }
 
 
 @nomina_router.get("/proyectos")

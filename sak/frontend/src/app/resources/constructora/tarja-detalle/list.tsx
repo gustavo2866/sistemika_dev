@@ -2,14 +2,27 @@
 
 import { useRef, useState, type RefObject } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useCreatePath, useDataProvider, useListContext } from "ra-core";
+import { useCreatePath, useDataProvider, useGetOne, useListContext } from "ra-core";
 import { ArrowLeft, Download, FileSpreadsheet, FileText, Loader2, MoreHorizontal, Pencil, TableProperties, UserRound } from "lucide-react";
 
 import { List, LIST_CONTAINER_2XL } from "@/components/list";
 import { FilterButton } from "@/components/filter-form";
 import { buildListFilters, ListPaginator } from "@/components/forms/form_order";
 import { CompactSoloActivasToggleFilter } from "@/components/forms/form_order/list/solo_activas_toggle";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +81,58 @@ type TarjaDetalleRow = {
   actividad_codigo?: string | null;
   novedad?: TarjaNovedadSummary | null;
 } & Partial<Record<DayKey, TarjaDetalleCell>>;
+
+type ParteNovedadReference = {
+  id?: number | null;
+  fecha?: string | null;
+  estado?: string | null;
+  obra?: string | null;
+  encargado?: string | null;
+};
+
+type ParteNovedadDetail = {
+  id?: number | null;
+  codigo?: string | null;
+  estado?: string | null;
+  horas?: number | null;
+  jornada_esperada?: number | null;
+  horas_extra?: number | null;
+  ingreso?: string | null;
+  egreso?: string | null;
+  descripcion?: string | null;
+  origen?: string | null;
+  parte?: ParteNovedadReference | null;
+};
+
+type NominaNovedadDetail = {
+  nombre?: string | null;
+  apellido?: string | null;
+  dni?: string | null;
+  nro_legajo?: string | null;
+  email?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
+  fecha_nacimiento?: string | null;
+  fecha_ingreso?: string | null;
+  fecha_egreso?: string | null;
+  activo?: boolean | null;
+  obra?: string | null;
+  encargado?: string | null;
+  categoria?: string | null;
+  categoria_descripcion?: string | null;
+  actividad?: string | null;
+  actividad_descripcion?: string | null;
+  vigencia_tarja_desde?: string | null;
+  vigencia_tarja_hasta?: string | null;
+};
+
+type TarjaDetalleNovedadDetail = {
+  id: number;
+  fecha?: string | null;
+  novedad?: ParteNovedadDetail | null;
+  complementaria?: ParteNovedadDetail | null;
+  nomina?: NominaNovedadDetail | null;
+};
 
 const allDayKeys = Array.from(
   { length: 16 },
@@ -134,8 +199,11 @@ const getTarjaDetalleExportCellText = (
   if (isDayKey(columnKey)) {
     const cell = row[columnKey as DayKey];
     const horas = cell?.horas == null ? "" : formatHours(Number(cell.horas));
+    const codigoMovimiento = getMovementCode(cell);
+    const codigoHorasExtra = isOvertimeCell(cell) ? "EXT" : "";
     const estado = shouldShowEstado(cell?.estado) ? String(cell?.estado ?? "") : "";
-    return [horas, estado].filter(Boolean).join(" ");
+    const codigos = [...new Set([codigoMovimiento, codigoHorasExtra, estado].filter(Boolean))];
+    return [horas, ...codigos].filter(Boolean).join(" ");
   }
 
   const workedHours = getRowWorkedHours(row);
@@ -325,8 +393,11 @@ const downloadTarjaDetallePdf = (
     if ("dayKey" in column) {
       const cell = row[column.dayKey];
       const horas = cell?.horas == null ? "" : formatHours(Number(cell.horas));
+      const codigoMovimiento = getMovementCode(cell);
+      const codigoHorasExtra = isOvertimeCell(cell) ? "EXT" : "";
       const estado = shouldShowEstado(cell?.estado) ? String(cell?.estado ?? "") : "";
-      return [horas, estado].filter(Boolean).join(" ");
+      const codigos = [...new Set([codigoMovimiento, codigoHorasExtra, estado].filter(Boolean))];
+      return [horas, ...codigos].filter(Boolean).join(" ");
     }
 
     const workedHours = getRowWorkedHours(row);
@@ -517,6 +588,9 @@ const getExpectedHours = (dateValue?: string | null) => {
   return 9;
 };
 
+const getOvertimeHours = (cell?: TarjaDetalleCell) =>
+  Math.max(getWorkedHours(cell) - getExpectedHours(cell?.fecha), 0);
+
 const isIllnessCell = (cell?: TarjaDetalleCell) => {
   const values = [
     normalizeText(cell?.estado),
@@ -541,6 +615,36 @@ const getJustifiedHours = (cell?: TarjaDetalleCell) => {
 const isTransferCell = (cell?: TarjaDetalleCell) =>
   normalizeText(cell?.descripcion).startsWith("traspaso");
 
+const isTemporaryWorkCell = (cell?: TarjaDetalleCell) => {
+  const descripcion = String(cell?.descripcion ?? "").trim();
+  if (normalizeText(descripcion).startsWith("trabajo temporal desde obra")) {
+    return true;
+  }
+  try {
+    const payload = JSON.parse(
+      descripcion.replace(/\s*\[parte_diario_destino_id=\d+\]\s*$/, "").trim(),
+    );
+    return payload?.tipo === "trabajo_destino";
+  } catch {
+    return false;
+  }
+};
+
+const getMovementCode = (cell?: TarjaDetalleCell) => {
+  if (isTransferCell(cell)) return "TRA";
+  if (isTemporaryWorkCell(cell)) return "OTR";
+  return null;
+};
+
+const isOvertimeCell = (cell?: TarjaDetalleCell) => {
+  const estado = String(cell?.estado ?? "").trim().toUpperCase();
+  return (
+    getOvertimeHours(cell) > 0 &&
+    (!estado || estado === "P") &&
+    getMovementCode(cell) == null
+  );
+};
+
 const getRowWorkedHours = (row: TarjaDetalleRow) =>
   allDayKeys.reduce((total, key) => total + getWorkedHours(row[key]), 0);
 
@@ -561,20 +665,267 @@ const hasAmount = (value?: number | null) => {
   return Number.isFinite(amount) && amount !== 0;
 };
 
-const TarjaDetalleHorasCell = ({ cell }: { cell?: TarjaDetalleCell }) => {
+const formatDetailDate = (value?: string | null) => {
+  const normalized = String(value ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return "-";
+  const [year, month, day] = normalized.split("-");
+  return `${day}/${month}/${year}`;
+};
+
+const getReferenceLabel = (value?: Record<string, unknown> | null) => {
+  if (!value) return "";
+  return [value.obra, value.encargado].filter(Boolean).join(" - ");
+};
+
+const formatNovedadDescription = (value?: string | null) => {
+  const description = String(value ?? "").trim();
+  if (!description) return "Sin descripción";
+  try {
+    const payload = JSON.parse(description) as Record<string, unknown>;
+    const origen =
+      payload.origen && typeof payload.origen === "object"
+        ? (payload.origen as Record<string, unknown>)
+        : null;
+    const destino =
+      payload.destino && typeof payload.destino === "object"
+        ? (payload.destino as Record<string, unknown>)
+        : null;
+    const origenLabel = getReferenceLabel(origen);
+    const destinoLabel = getReferenceLabel(destino);
+    const horas = Number(payload.horas);
+    const horasLabel = Number.isFinite(horas) ? ` (${formatHours(horas)}h)` : "";
+    if (payload.tipo === "trabajo_destino") {
+      return destinoLabel
+        ? `Trabajó en ${destinoLabel}${horasLabel}.`
+        : `Trabajo en otra obra${horasLabel}.`;
+    }
+    if (origenLabel || destinoLabel) {
+      return [
+        origenLabel ? `Origen: ${origenLabel}.` : "",
+        destinoLabel ? `Destino: ${destinoLabel}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+  } catch {
+    return description;
+  }
+  return description;
+};
+
+const getNovedadDescription = (novedad: ParteNovedadDetail) => {
+  const description = formatNovedadDescription(novedad.descripcion);
+  if (novedad.codigo !== "EXT") return description;
+  const extras = formatHours(Number(novedad.horas_extra ?? 0));
+  const jornada = formatHours(Number(novedad.jornada_esperada ?? 0));
+  const overtimeDescription = `${extras}h extra sobre una jornada de ${jornada}h.`;
+  return description === "Sin descripción"
+    ? overtimeDescription
+    : `${overtimeDescription} ${description}`;
+};
+
+const DetailValue = ({ label, value }: { label: string; value?: string | number | null }) => (
+  <div className="min-w-0">
+    <div className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+      {label}
+    </div>
+    <div className="break-words text-xs text-foreground">{value ?? "-"}</div>
+  </div>
+);
+
+const NovedadDetalleDialog = ({
+  detalleId,
+  open,
+  onClose,
+}: {
+  detalleId: number | null;
+  open: boolean;
+  onClose: () => void;
+}) => {
+  const { data, isPending, error } = useGetOne<TarjaDetalleNovedadDetail>(
+    "tarja-detalle",
+    { id: detalleId ?? 0 },
+    { enabled: open && detalleId != null },
+  );
+  const nomina = data?.nomina;
+  const empleado = [nomina?.apellido, nomina?.nombre].filter(Boolean).join(", ");
+  const categoria = [nomina?.categoria, nomina?.categoria_descripcion]
+    .filter(Boolean)
+    .join(" - ");
+  const actividad = [nomina?.actividad, nomina?.actividad_descripcion]
+    .filter(Boolean)
+    .join(" - ");
+  const novedad = data?.novedad;
+  const parte = novedad?.parte;
+  const complementaria = data?.complementaria;
+  const parteComplementaria = complementaria?.parte;
+  const headerContext = [
+    parte?.obra,
+    parte?.encargado,
+    formatDetailDate(data?.fecha),
+    parte?.id ? `Parte #${parte.id}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="max-h-[85vh] gap-3 overflow-y-auto p-4 sm:max-w-2xl">
+        <DialogHeader className="gap-0.5 pr-5 text-left">
+          <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
+            <span>{empleado || "Detalle de la novedad"}</span>
+            {novedad?.codigo ? (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                {novedad.codigo}
+              </span>
+            ) : null}
+          </DialogTitle>
+          <DialogDescription className="text-[11px] leading-4">
+            {headerContext || "Información registrada en el parte diario"}
+          </DialogDescription>
+        </DialogHeader>
+        {isPending ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Cargando novedad
+          </div>
+        ) : error ? (
+          <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            No se pudo cargar el detalle de la novedad.
+          </div>
+        ) : data ? (
+          <div className="space-y-2">
+            {novedad ? (
+              <section className="grid gap-2 rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2 sm:grid-cols-[minmax(120px,0.7fr)_70px_minmax(0,2fr)]">
+                <DetailValue
+                  label="Estado"
+                  value={[novedad.codigo, novedad.estado].filter(Boolean).join(" - ") || "-"}
+                />
+                <DetailValue
+                  label="Horas"
+                  value={
+                    novedad.horas == null ? "-" : `${formatHours(Number(novedad.horas))}h`
+                  }
+                />
+                <DetailValue
+                  label="Descripción"
+                  value={getNovedadDescription(novedad)}
+                />
+              </section>
+            ) : null}
+            {complementaria ? (
+              <section className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-violet-200 bg-violet-50/60 px-3 py-2 text-[11px] leading-4 text-slate-700">
+                <span className="font-semibold text-violet-700">Relacionada</span>
+                <span>{complementaria.codigo ?? "Novedad"}</span>
+                {parteComplementaria?.id ? <span>Parte #{parteComplementaria.id}</span> : null}
+                <span>
+                  {[parteComplementaria?.obra, parteComplementaria?.encargado]
+                    .filter(Boolean)
+                    .join(" - ")}
+                </span>
+                <span>{formatDetailDate(parteComplementaria?.fecha)}</span>
+                {complementaria.horas != null ? (
+                  <span>{formatHours(Number(complementaria.horas))}h</span>
+                ) : null}
+                {parteComplementaria?.estado ? <span>{parteComplementaria.estado}</span> : null}
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {getNovedadDescription(complementaria)}
+                </span>
+              </section>
+            ) : null}
+            <Accordion type="single" collapsible className="rounded-md border border-slate-200 px-3">
+              <AccordionItem value="nomina">
+                <AccordionTrigger className="py-2 text-xs font-semibold hover:no-underline">
+                  Datos de nómina
+                </AccordionTrigger>
+                <AccordionContent className="pb-3">
+                  <div className="grid gap-x-4 gap-y-2 sm:grid-cols-4">
+                    <DetailValue label="DNI" value={nomina?.dni} />
+                    <DetailValue label="Legajo" value={nomina?.nro_legajo} />
+                    <DetailValue label="Ingreso" value={formatDetailDate(nomina?.fecha_ingreso)} />
+                    <DetailValue label="Egreso" value={formatDetailDate(nomina?.fecha_egreso)} />
+                    <DetailValue label="Estado" value={nomina?.activo ? "Activo" : "Inactivo"} />
+                    <DetailValue label="Obra actual" value={nomina?.obra} />
+                    <DetailValue label="Encargado" value={nomina?.encargado} />
+                    <DetailValue label="Categoría" value={categoria || "-"} />
+                    <DetailValue label="Actividad" value={actividad || "-"} />
+                    <DetailValue label="Teléfono" value={nomina?.telefono} />
+                    <DetailValue label="Email" value={nomina?.email} />
+                    <DetailValue
+                      label="Vigencia en tarja"
+                      value={`${formatDetailDate(nomina?.vigencia_tarja_desde)} - ${formatDetailDate(nomina?.vigencia_tarja_hasta)}`}
+                    />
+                    <div className="sm:col-span-4">
+                      <DetailValue label="Dirección" value={nomina?.direccion} />
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const NovedadCodeButton = ({
+  code,
+  title,
+  tone,
+  onClick,
+}: {
+  code: string;
+  title: string;
+  tone: "amber" | "blue" | "violet" | "cyan";
+  onClick?: () => void;
+}) => (
+  <button
+    type="button"
+    className={cn(
+      "block rounded px-0.5 text-center text-[7px] font-semibold leading-3 transition hover:ring-1 hover:ring-current focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-current",
+      tone === "violet" && "bg-violet-50 text-violet-700",
+      tone === "blue" && "bg-blue-50 text-blue-700",
+      tone === "amber" && "bg-amber-100 text-amber-700",
+      tone === "cyan" && "bg-cyan-100 text-cyan-800",
+    )}
+    title={`${title}. Ver detalle`}
+    onClick={onClick}
+  >
+    {code}
+  </button>
+);
+
+const TarjaDetalleHorasCell = ({
+  cell,
+  onShowNovedad,
+}: {
+  cell?: TarjaDetalleCell;
+  onShowNovedad?: () => void;
+}) => {
   const horas = cell?.horas;
+  const movementCode = getMovementCode(cell);
+  const overtime = isOvertimeCell(cell);
   return (
     <>
       <span className="block min-h-4 text-center text-[9px] font-medium leading-4 text-slate-700">
         {horas == null ? "" : formatHours(Number(horas))}
       </span>
-      {isTransferCell(cell) ? (
-        <span
-          className="block rounded bg-blue-50 px-0.5 text-center text-[7px] font-semibold leading-3 text-blue-700"
-          title={cell?.descripcion ?? "TRASPASO"}
-        >
-          TRA
-        </span>
+      {movementCode ? (
+        <NovedadCodeButton
+          code={movementCode}
+          tone={movementCode === "OTR" ? "violet" : "blue"}
+          title={movementCode === "OTR" ? "Trabajo en otra obra" : cell?.descripcion ?? "TRASPASO"}
+          onClick={onShowNovedad}
+        />
+      ) : null}
+      {overtime ? (
+        <NovedadCodeButton
+          code="EXT"
+          tone="cyan"
+          title={`${formatHours(getOvertimeHours(cell))}h extra`}
+          onClick={onShowNovedad}
+        />
       ) : null}
     </>
   );
@@ -800,6 +1151,7 @@ const TarjaDetalleGrid = ({
   tableRef: RefObject<HTMLTableElement | null>;
 }) => {
   const { data = [], isLoading, isFetching, error } = useListContext<TarjaDetalleRow>();
+  const [selectedDetalleId, setSelectedDetalleId] = useState<number | null>(null);
   const rows = data as TarjaDetalleRow[];
   const firstRow = rows[0];
   const visibleDayKeys = getVisibleDayKeys(rows);
@@ -898,11 +1250,26 @@ const TarjaDetalleGrid = ({
                         )}
                       >
                         <div className="flex flex-col items-center gap-0.5">
-                          <TarjaDetalleHorasCell cell={cell} />
-                          {shouldShowEstado(cell?.estado) ? (
-                            <span className="rounded bg-amber-100 px-0.5 text-[7px] font-semibold leading-3 text-amber-700">
-                              {cell?.estado}
-                            </span>
+                          <TarjaDetalleHorasCell
+                            cell={cell}
+                            onShowNovedad={
+                              cell?.detalle_id
+                                ? () => setSelectedDetalleId(Number(cell.detalle_id))
+                                : undefined
+                            }
+                          />
+                          {shouldShowEstado(cell?.estado) &&
+                          cell?.estado?.trim().toUpperCase() !== getMovementCode(cell) ? (
+                            <NovedadCodeButton
+                              code={String(cell?.estado ?? "")}
+                              tone="amber"
+                              title={cell?.estado_nombre ?? "Novedad"}
+                              onClick={
+                                cell?.detalle_id
+                                  ? () => setSelectedDetalleId(Number(cell.detalle_id))
+                                  : undefined
+                              }
+                            />
                           ) : null}
                         </div>
                       </td>
@@ -964,6 +1331,11 @@ const TarjaDetalleGrid = ({
           </tbody>
         </table>
       </div>
+      <NovedadDetalleDialog
+        detalleId={selectedDetalleId}
+        open={selectedDetalleId != null}
+        onClose={() => setSelectedDetalleId(null)}
+      />
     </div>
   );
 };

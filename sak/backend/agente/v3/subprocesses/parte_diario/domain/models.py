@@ -191,16 +191,17 @@ class PendienteAmbiguo:
     opciones_proyecto_destino: list[DestinoProyectoOption] | None = None
     opciones_encargado_destino: list[DestinoEncargadoOption] | None = None
     intentos_estado: int = 0
+    reemplaza_novedad: bool = False
 
     # Indica que aun falta identificar a la persona de esta novedad.
     @property
     def nombre_pendiente(self) -> bool:
         return (self.nombre_no_encontrado or bool(self.candidatos)) and self.idnomina_resuelto is None
 
-    # Indica que falta resolver el motivo de una novedad sin transferencia.
+    # Indica que falta resolver el motivo de la novedad.
     @property
     def estado_pendiente(self) -> bool:
-        return self.idestado is None and not self.fuera_de_proyecto
+        return self.idestado is None
 
     # Indica que la transferencia necesita una obra destino.
     @property
@@ -284,6 +285,7 @@ class PendienteAmbiguo:
                 else None
             ),
             intentos_estado=int(raw.get("intentos_estado") or 0),
+            reemplaza_novedad=bool(raw.get("reemplaza_novedad")),
         )
 
 
@@ -321,6 +323,8 @@ class ParteDiarioDraft:
     fecha: str | None = None
     parte_id: int | None = None
     novedades: list[NovedadPersonal] = field(default_factory=list)
+    # ALT, BAJ y TRA ocupan la novedad del empleado, pero no pertenecen al borrador editable.
+    novedades_internas: list[NovedadPersonal] = field(default_factory=list)
     sin_novedades_informado: bool = False
     pendientes_ambiguos: list[PendienteAmbiguo] = field(default_factory=list)
     conflictos_novedad: list[ConflictoNovedad] = field(default_factory=list)
@@ -336,6 +340,7 @@ class ParteDiarioDraft:
             "fecha": self.fecha,
             "parte_id": self.parte_id,
             "novedades": [item.to_dict() for item in self.novedades],
+            "novedades_internas": [item.to_dict() for item in self.novedades_internas],
             "sin_novedades_informado": self.sin_novedades_informado,
             "pendientes_ambiguos": [item.to_dict() for item in self.pendientes_ambiguos],
             "conflictos_novedad": [item.to_dict() for item in self.conflictos_novedad],
@@ -360,6 +365,9 @@ class ParteDiarioDraft:
             fecha=data.get("fecha"),
             parte_id=data.get("parte_id"),
             novedades=[NovedadPersonal.from_dict(item) for item in data.get("novedades") or []],
+            novedades_internas=[
+                NovedadPersonal.from_dict(item) for item in data.get("novedades_internas") or []
+            ],
             sin_novedades_informado=bool(data.get("sin_novedades_informado")),
             pendientes_ambiguos=[
                 PendienteAmbiguo.from_dict(item) for item in data.get("pendientes_ambiguos") or []

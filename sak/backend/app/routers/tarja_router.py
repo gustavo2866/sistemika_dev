@@ -230,7 +230,6 @@ def get_tarja_panel(
                     TarjaNomina.tarja_id,
                     func.count(TarjaNomina.id),
                     func.coalesce(func.sum(TarjaNomina.adicional_importe), 0),
-                    func.coalesce(func.sum(TarjaNomina.premio_importe), 0),
                 )
                 .where(TarjaNomina.tarja_id.in_(tarja_ids))
                 .where(TarjaNomina.deleted_at.is_(None))
@@ -240,9 +239,8 @@ def get_tarja_panel(
                 int(tarja_id): {
                     "novedades": int(novedades or 0),
                     "adicional": float(adicional or 0),
-                    "premio": float(premio or 0),
                 }
-                for tarja_id, novedades, adicional, premio in nomina_rows
+                for tarja_id, novedades, adicional in nomina_rows
             }
 
         encargado_stmt = (
@@ -370,7 +368,8 @@ def get_tarja_panel(
                     "horas": detalle_stats.get("horas", 0),
                     "novedades": novedad_stats.get("novedades", 0),
                     "adicional": novedad_stats.get("adicional", 0),
-                    "premio": novedad_stats.get("premio", 0),
+                    "premio_tarja": float(selected_tarja.premio or 0),
+                    "viaticos": bool(selected_tarja.viaticos),
                 }
 
             if tarja_payload is None:
@@ -478,7 +477,12 @@ def asegurar_tarja_nomina(
             fechainicio=fechainicio,
             fechafinal=fechafinal,
         )
-        return {"id": tarja.id, "tarja_id": tarja.id, "creados": created}
+        return {
+            "id": tarja.id,
+            "tarja_id": tarja.id,
+            "creados": created,
+            "viaticos": bool(tarja.viaticos),
+        }
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

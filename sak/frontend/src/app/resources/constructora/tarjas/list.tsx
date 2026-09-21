@@ -48,6 +48,7 @@ const LIST_FILTERS = buildListFilters(
         source: "contacto_id",
         reference: "crm/contactos",
         label: "Contacto",
+        filter: { "tipo.nombre": "Encargado" },
       },
       selectProps: {
         optionText: "nombre_completo",

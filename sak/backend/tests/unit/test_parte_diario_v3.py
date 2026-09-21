@@ -28,7 +28,7 @@ from agente.v3.subprocesses.parte_diario.utils.interpretacion import (
     _normalize_attendance_transcription,
 )
 from agente.v3.subprocesses.parte_diario.utils.calendario import hoy as _today
-from agente.v3.subprocesses.parte_diario.domain import empleados, obras
+from agente.v3.subprocesses.parte_diario.domain import empleados, obras, parte_diario as parte_diario_domain
 from app import db
 from agente.v3.subprocesses.parte_diario.domain.parte_diario import ParteDiarioQueryService
 from agente.v3.subprocesses.parte_diario.domain.empleados import NominaResolver, parse_candidate_selection
@@ -1006,6 +1006,42 @@ def test_parte_diario_v3_executor_prioriza_idnomina_resuelto():
     assert result.next_state.pendientes_ambiguos == []
     assert result.next_state.novedades[0].idnomina == 124
     assert result.next_state.novedades[0].nombre == "Perez, Pedro"
+
+
+@pytest.mark.parametrize("operation_type", ["agregar_novedad", "modificar_novedad", "eliminar_novedad"])
+def test_parte_diario_v3_rechaza_cambios_si_el_empleado_tiene_novedad_interna(operation_type):
+    state = ParteDiarioDraft(
+        oportunidad_id=10,
+        idproyecto=100,
+        fecha="2026-08-28",
+        novedades_internas=[
+            NovedadPersonal(
+                nombre="Neto, Rodrigo",
+                idnomina=123,
+                idestado=10,
+                estado_codigo="ALT",
+                horas=9,
+            )
+        ],
+    )
+    nominas = [NominaItem(idnomina=123, nombre="Rodrigo", apellido="Neto", idproyecto=100)]
+    estados = [EstadoItem(id=7, abreviatura="PER", nombre="PERMISO")]
+    operation = ParteDiarioOperation(
+        type=operation_type,
+        idnomina=123,
+        nombre="Neto, Rodrigo",
+        estado_codigo="PER",
+        horas=4,
+    )
+
+    result = execute_plan(state, TurnPlan(operations=[operation]), nominas, nominas, estados)
+
+    assert result.next_state.novedades == []
+    assert result.next_state.novedades_internas[0].estado_codigo == "ALT"
+    assert result.errors == [
+        "No se cargo la novedad de Neto, Rodrigo: ya tiene ALT registrado en este parte. "
+        "Solo se admite una novedad por empleado."
+    ]
 
 
 def test_parte_diario_v3_carga_resuelve_obra_destino_aproximada():
@@ -3421,6 +3457,45 @@ async def test_parte_diario_v3_date_selection_recovers_open_part(
     assert "Parte diario recuperado" in (selected.reply_text or "")
     assert "Obra: Obra Centro" in (selected.reply_text or "")
     assert "Queres agregar o corregir alguna novedad?" in (selected.reply_text or "")
+
+
+def test_parte_diario_v3_recovers_internal_novelty_as_non_editable(
+    db_session: Session,
+    seeded_parte_v3,
+):
+    alta = ParteDiarioEstado(abreviatura="ALT", nombre="ALTA", activo=False)
+    parte = ParteDiario(
+        idproyecto=seeded_parte_v3["project"].id,
+        fecha=date(2026, 8, 28),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add_all([alta, parte])
+    db_session.flush()
+    db_session.add(
+        ParteDiarioDetalle(
+            parte_diario_id=parte.id,
+            idnomina=seeded_parte_v3["employee_1"].id,
+            idestado=alta.id,
+            horas=Decimal("9"),
+            descripcion="17",
+            origen=OrigenDetalle.AGENTE,
+        )
+    )
+    db_session.commit()
+    state = ParteDiarioDraft(
+        oportunidad_id=seeded_parte_v3["opportunity"].id,
+        idproyecto=seeded_parte_v3["project"].id,
+        contacto_id=seeded_parte_v3["contact"].id,
+    )
+    estados = parte_diario_domain.cargar_estados(db_session)
+
+    error = parte_diario_domain.aplicar_fecha(db_session, state, "2026-08-28", estados)
+
+    assert error is None
+    assert state.parte_id == parte.id
+    assert state.novedades == []
+    assert state.novedades_internas[0].estado_codigo == "ALT"
+    assert state.novedades_internas[0].descripcion is None
 
 
 @pytest.mark.asyncio

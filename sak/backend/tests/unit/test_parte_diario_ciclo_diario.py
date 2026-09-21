@@ -36,7 +36,8 @@ async def test_ciclo_diario_recupera_anterior_y_hoy(datos, db_session, monkeypat
     actual = crear_parte(datos, db_session, hoy, datos.empleados[1])
     llm = FakeLLM(plan(dict(type="modificar_novedad", nombre="Medina", estado_codigo="ACC")))
     process = proceso(llm)
-    result = await process.handle(turno("parte diario"), V3ConversationContext(conversation_id="conv"))
+    menu = await process.handle(turno("parte diario"), V3ConversationContext(conversation_id="conv"))
+    result = await process.handle(turno("1"), menu.context)
     assert estado(result).modo_apertura == "diario"
     assert estado(result).draft().parte_id == previo.id
     result = await process.handle(turno("Medina tuvo un accidente"), result.context)
@@ -54,6 +55,7 @@ async def test_ciclo_diario_recupera_anterior_y_hoy(datos, db_session, monkeypat
     assert actual.estado == EstadoParteDiario.BORRADOR
     assert result.context.active_process == "general"
     assert result.context.process_state == {}
+    assert "1: REPORTAR" not in result.reply_text
     assert len(llm.calls) == 1
     assert len(db_session.exec(select(ParteDiario)).all()) == 2
 
@@ -62,7 +64,7 @@ async def test_ciclo_diario_recupera_anterior_y_hoy(datos, db_session, monkeypat
 @pytest.mark.asyncio
 async def test_ciclo_sin_anterior_prepara_vacio_y_abre_hoy(datos, db_session):
     process = proceso(FakeLLM())
-    result = await process.handle(turno("parte diario"), V3ConversationContext(conversation_id="conv"))
+    result = await process.handle(turno("reportar"), V3ConversationContext(conversation_id="conv"))
     assert estado(result).draft().fecha == "2026-09-11"
     assert not estado(result).draft().sin_novedades_informado
     assert not db_session.exec(select(ParteDiario)).all()
@@ -80,7 +82,7 @@ async def test_ciclo_sin_anterior_prepara_vacio_y_abre_hoy(datos, db_session):
 async def test_ciclo_anterior_completado_va_a_hoy(datos, db_session, estado_previo):
     previo = crear_parte(datos, db_session, "2026-09-11", datos.empleados[0], estado_previo)
     process = proceso(FakeLLM())
-    result = await process.handle(turno("parte diario"), V3ConversationContext(conversation_id="conv"))
+    result = await process.handle(turno("reportar"), V3ConversationContext(conversation_id="conv"))
     assert estado(result).modo_apertura == "diario"
     assert estado(result).draft().fecha == "2026-09-12"
     result = await process.handle(turno("guardar"), result.context)
@@ -107,7 +109,7 @@ async def test_apertura_puntual_guarda_solo_fecha_pedida(datos, db_session, text
 @pytest.mark.asyncio
 async def test_ciclo_error_guardado_no_abre_hoy(datos, monkeypatch):
     process = proceso(FakeLLM())
-    result = await process.handle(turno("parte diario"), V3ConversationContext(conversation_id="conv"))
+    result = await process.handle(turno("reportar"), V3ConversationContext(conversation_id="conv"))
 
     # Rechaza el guardado sin escribir datos ni preparar el siguiente parte.
     def rechazar(*args, **kwargs):

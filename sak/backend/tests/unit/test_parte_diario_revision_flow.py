@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from datetime import date
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -9,8 +10,16 @@ from sqlmodel import select
 
 from agente.v3.contracts import V3ConversationContext
 from agente.v3.subprocesses.parte_diario.domain import parte_diario
+from agente.v3.subprocesses.parte_diario.domain.models import NovedadPersonal
 from agente.v3.subprocesses.parte_diario.utils import calendario
-from app.models import CRMMensaje, EstadoParteDiario, ParteDiario, ParteDiarioDetalle
+from app.models import (
+    CRMMensaje,
+    EstadoParteDiario,
+    OrigenDetalle,
+    ParteDiario,
+    ParteDiarioDetalle,
+    ParteDiarioEstado,
+)
 from app.services.parte_diario_service import parte_diario_service
 from tests.unit.test_parte_diario_carga_flow import FakeLLM, datos, estado, plan, proceso
 from tests.unit.test_parte_diario_handler_inicial import contexto, escenario, mensaje
@@ -53,6 +62,12 @@ async def test_revision_persiste_parte_detalle_y_mensaje(datos, db_session, fech
     assert result.metadata["parte_diario_id"] == saved.id
     assert result.context.active_process == "general"
     assert result.context.process_state == {}
+    resultado = (
+        "Parte diario confirmado."
+        if expected == EstadoParteDiario.CONFIRMADO
+        else "Parte diario guardado como borrador."
+    )
+    assert result.reply_text == f"{resultado}\nObra: Francia\nFecha: {fecha}"
     assert len(llm.calls) == 1
 
 
@@ -82,6 +97,54 @@ async def test_revision_confirma_sin_novedades_sin_pregunta_extra(datos, db_sess
     assert db_session.exec(select(ParteDiario)).one()
     assert not db_session.exec(select(ParteDiarioDetalle)).all()
     assert result.metadata["result"]["sin_novedades_informado"]
+
+
+@pytest.mark.asyncio
+async def test_revision_no_reenvia_novedad_interna_al_guardar(datos, db_session):
+    alta = ParteDiarioEstado(abreviatura="ALT", nombre="ALTA", activo=False)
+    parte = ParteDiario(
+        idproyecto=datos.obra.proyecto_id,
+        contacto_id=datos.obra.contacto_id,
+        fecha=date(2026, 9, 11),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add_all([alta, parte])
+    db_session.flush()
+    detalle = ParteDiarioDetalle(
+        parte_diario_id=parte.id,
+        idnomina=datos.empleados[0].id,
+        idestado=alta.id,
+        horas=Decimal("9"),
+        descripcion="17",
+        origen=OrigenDetalle.AGENTE,
+    )
+    db_session.add(detalle)
+    db_session.commit()
+    ctx = contexto(datos.obra, "revision")
+    ctx.process_state["parte_state"].update(
+        parte_id=parte.id,
+        novedades_internas=[
+            NovedadPersonal(
+                nombre="Medina, Ivan",
+                idnomina=datos.empleados[0].id,
+                idestado=alta.id,
+                estado_codigo="ALT",
+                horas=9,
+            ).to_dict()
+        ],
+        sin_novedades_informado=False,
+    )
+
+    result = await proceso(FakeLLM()).handle(turno("1"), ctx)
+
+    assert result.metadata["status"] == "confirmed"
+    assert result.metadata["result"]["novedades"] == []
+    assert result.metadata["result"]["sin_novedades_informado"] is True
+    detalles = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
+    ).all()
+    assert detalles == [detalle]
+    assert detalles[0].idestado == alta.id
 
 
 # Un borrador guardado se puede retomar y actualizar sin duplicar parte ni detalles.
@@ -183,6 +246,8 @@ async def test_revision_persiste_trabajo_en_otra_obra(datos, db_session):
     process = proceso(llm)
     result = await process.handle(turno(f"Medina trabajo 4hs en {datos.destino.nombre}"), contexto(datos.obra))
     result = await process.handle(turno("1"), result.context)
+    assert estado(result).etapa == "carga_validar_estado"
+    result = await process.handle(turno("permiso"), result.context)
     result = await process.handle(turno("cerrar"), result.context)
     result = await process.handle(turno("1"), result.context)
     assert result.metadata["status"] == "confirmed"
@@ -237,6 +302,11 @@ async def test_descartar_no_borra_datos_guardados(datos, db_session):
     result = await process.handle(turno("1"), result.context)
     assert result.context.active_process == "general"
     assert result.context.process_state == {}
+    assert result.metadata["accion_cierre"] == "descartar"
+    assert result.reply_text == (
+        "Cambios no guardados descartados. Los datos guardados no se modificaron."
+    )
+    assert "PEDIDO OBRA" not in result.reply_text
     assert db_session.get(ParteDiario, parte_id) is not None
 
 

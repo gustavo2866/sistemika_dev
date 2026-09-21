@@ -27,9 +27,9 @@ async def procesar(text: str | None, state: ParteDiarioV3State, llm_client) -> s
     if text is None:
         return state.aclaracion_pregunta
     command = normalize_text(text)
-    if command == "cancelar":
+    if command in {"cancelar", "salir"}:
         return confirmar_salida.iniciar(state)
-    if command in {"salir", "volver"}:
+    if command == "volver":
         terminar(state)
         return listado.mostrar(state) if state.etapa == "listado" else renderer.inicio_carga(state)
     return await carga.interpretar_novedades(text, state, llm_client)

@@ -3,8 +3,6 @@ import json
 import re
 from typing import Any
 
-from sqlalchemy import func
-
 from app.core.nested_crud import NestedCRUD
 from app.models.base import filtrar_respuesta
 from app.core.router import create_generic_router
@@ -14,13 +12,17 @@ from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDetalle
 from app.models.proyecto_encargado import ProyectoEncargado
 from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
+from app.services.parte_diario_service import (
+    parte_diario_service,
+    strip_destination_part_reference,
+)
 from app.services.parte_diario_tarja_service import (
     get_quincena_range,
     parte_diario_tarja_service,
 )
 from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable
 from app.utils.jornada import get_jornada_esperada
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Response
 from sqlmodel import Session, select
 
 # Define NestedCRUD for ParteDiario with its nested detalles
@@ -38,8 +40,14 @@ class ParteDiarioCRUD(NestedCRUD):
         detalle: ParteDiarioDetalle,
     ) -> None:
         related_details = ParteDiarioCRUD._find_related_destination_details(session, detalle)
+        parte_diario_service.preparar_eliminacion_trabajo_destino(
+            session,
+            [detalle, *related_details],
+        )
         ParteDiarioCRUD._delete_single_detalle(session, detalle)
         for related in related_details:
+            if related.id is not None and session.get(ParteDiarioDetalle, int(related.id)) is None:
+                continue
             ParteDiarioCRUD._delete_single_detalle(session, related)
 
     @staticmethod
@@ -129,45 +137,11 @@ class ParteDiarioCRUD(NestedCRUD):
         if registro is None or registro.deleted_at is not None:
             return
 
-        tarja = session.get(Tarja, registro.tarja_id)
-        nomina_id = int(registro.nomina_id) if registro.nomina_id is not None else None
-        if tarja is None or nomina_id is None:
-            return
-
-        deleted_at = datetime.now(UTC)
-        for tarja_detalle in session.exec(
-            select(TarjaDetalle)
-            .where(TarjaDetalle.tarja_id == registro.tarja_id)
-            .where(TarjaDetalle.idnomina == nomina_id)
-            .where(TarjaDetalle.fecha >= tarja.fechainicio)
-            .where(TarjaDetalle.fecha <= tarja.fechafinal)
-            .where(TarjaDetalle.deleted_at.is_(None))
-        ).all():
-            tarja_detalle.parte_diario_detalle_id = None
-            tarja_detalle.deleted_at = deleted_at
-            tarja_detalle.updated_at = deleted_at
-            session.add(tarja_detalle)
-
-        registro.deleted_at = deleted_at
-        registro.updated_at = deleted_at
-        session.add(registro)
-
-        other_nomina_count = session.exec(
-            select(func.count())
-            .select_from(TarjaNomina)
-            .where(TarjaNomina.nomina_id == nomina_id)
-            .where(TarjaNomina.id != registro.id)
-            .where(TarjaNomina.deleted_at.is_(None))
-        ).one()
-        if int(other_nomina_count or 0) != 0:
-            return
-
-        nomina = session.get(Nomina, nomina_id)
-        if nomina is not None and nomina.deleted_at is None:
-            nomina.activo = False
-            nomina.deleted_at = deleted_at
-            nomina.updated_at = deleted_at
-            session.add(nomina)
+        parte_diario_tarja_service.eliminar_alta_nomina(
+            session,
+            detalle_alta=detalle,
+            registro_alta=registro,
+        )
 
     @staticmethod
     def _restore_traspaso_nomina_if_needed(
@@ -184,86 +158,10 @@ class ParteDiarioCRUD(NestedCRUD):
             != ParteDiarioCRUD.TRASPASO_ESTADO_CODIGO
         ):
             return
-
-        parte = session.get(ParteDiario, detalle.parte_diario_id)
-        if parte is None or parte.deleted_at is not None:
-            return
-        payload = ParteDiarioCRUD._parse_detalle_json(detalle.descripcion)
-        origen = payload.get("origen") if isinstance(payload.get("origen"), dict) else {}
-        destino = payload.get("destino") if isinstance(payload.get("destino"), dict) else {}
-        origen_proyecto_id = ParteDiarioCRUD._payload_int(origen.get("idproyecto")) or int(parte.idproyecto)
-        origen_contacto_id = ParteDiarioCRUD._payload_int(origen.get("contacto_id"))
-        if origen_contacto_id is None:
-            origen_contacto_id = parte.contacto_id
-        destino_proyecto_id = ParteDiarioCRUD._payload_int(destino.get("idproyecto"))
-        destino_contacto_id = ParteDiarioCRUD._payload_int(destino.get("contacto_id"))
-
-        quincena_inicio, quincena_final = get_quincena_range(parte.fecha)
-        source_tarja = ParteDiarioCRUD._get_tarja_quincena(
+        parte_diario_tarja_service.eliminar_traspaso_nomina(
             session,
-            idproyecto=origen_proyecto_id,
-            contacto_id=origen_contacto_id,
-            fechainicio=quincena_inicio,
-            fechafinal=quincena_final,
+            detalle_traspaso=detalle,
         )
-        nomina_id = int(detalle.idnomina)
-        now = datetime.now(UTC)
-
-        if destino_proyecto_id is not None:
-            destination_tarja = ParteDiarioCRUD._get_tarja_quincena(
-                session,
-                idproyecto=destino_proyecto_id,
-                contacto_id=destino_contacto_id,
-                fechainicio=quincena_inicio,
-                fechafinal=quincena_final,
-            )
-            if destination_tarja is not None and destination_tarja.id is not None:
-                for destination_detalle in session.exec(
-                    select(TarjaDetalle)
-                    .where(TarjaDetalle.tarja_id == int(destination_tarja.id))
-                    .where(TarjaDetalle.idnomina == nomina_id)
-                    .where(TarjaDetalle.fecha >= parte.fecha)
-                    .where(TarjaDetalle.fecha <= quincena_final)
-                    .where(TarjaDetalle.parte_diario_detalle_id == detalle.id)
-                ).all():
-                    session.delete(destination_detalle)
-                for destination_registro in session.exec(
-                    select(TarjaNomina)
-                    .where(TarjaNomina.tarja_id == int(destination_tarja.id))
-                    .where(TarjaNomina.nomina_id == nomina_id)
-                    .where(TarjaNomina.fecha_desde == parte.fecha)
-                    .where(TarjaNomina.deleted_at.is_(None))
-                ).all():
-                    session.delete(destination_registro)
-
-        if source_tarja is not None and source_tarja.id is not None:
-            for source_registro in session.exec(
-                select(TarjaNomina)
-                .where(TarjaNomina.tarja_id == int(source_tarja.id))
-                .where(TarjaNomina.nomina_id == nomina_id)
-                .where(TarjaNomina.deleted_at.is_(None))
-            ).all():
-                source_registro.fecha_hasta = source_tarja.fechafinal
-                if hasattr(source_registro, "updated_at"):
-                    source_registro.updated_at = now
-                session.add(source_registro)
-            ParteDiarioCRUD._restaurar_tarja_detalles_post_baja(
-                session,
-                tarja=source_tarja,
-                parte=parte,
-                nomina_id=nomina_id,
-                quincena_final=quincena_final,
-            )
-
-        nomina = session.get(Nomina, nomina_id)
-        if nomina is not None and nomina.deleted_at is None:
-            nomina.idproyecto = origen_proyecto_id
-            nomina.encargado_contacto_id = origen_contacto_id
-            nomina.activo = True
-            nomina.fecha_egreso = None
-            if hasattr(nomina, "updated_at"):
-                nomina.updated_at = now
-            session.add(nomina)
 
     @staticmethod
     def _restore_baja_nomina_if_needed(
@@ -416,32 +314,31 @@ class ParteDiarioCRUD(NestedCRUD):
             )
             if future_detalle is None and not es_dia_laborable(current):
                 continue
-            session.add(
-                TarjaDetalle(
-                    tarja_id=int(tarja.id),
-                    idnomina=nomina_id,
-                    fecha=current,
-                    idestado=(
-                        future_detalle.idestado
-                        if future_detalle is not None
-                        else presente.id
-                    ),
-                    horas=(
-                        future_detalle.horas
-                        if future_detalle is not None
-                        else get_jornada_esperada(current)
-                    ),
-                    descripcion=(
-                        future_detalle.descripcion
-                        if future_detalle is not None
-                        else None
-                    ),
-                    parte_diario_detalle_id=(
-                        int(future_detalle.id)
-                        if future_detalle is not None and future_detalle.id is not None
-                        else None
-                    ),
-                )
+            parte_diario_tarja_service.agregar_tarja_detalle(
+                session,
+                tarja_id=int(tarja.id),
+                nomina_id=nomina_id,
+                fecha=current,
+                estado_id=(
+                    future_detalle.idestado
+                    if future_detalle is not None
+                    else presente.id
+                ),
+                horas=(
+                    future_detalle.horas
+                    if future_detalle is not None
+                    else get_jornada_esperada(current)
+                ),
+                descripcion=(
+                    future_detalle.descripcion
+                    if future_detalle is not None
+                    else None
+                ),
+                parte_diario_detalle_id=(
+                    int(future_detalle.id)
+                    if future_detalle is not None and future_detalle.id is not None
+                    else None
+                ),
             )
 
     @staticmethod
@@ -752,7 +649,7 @@ class ParteDiarioCRUD(NestedCRUD):
     @staticmethod
     def _parse_detalle_json(value: str | None) -> dict[str, Any]:
         try:
-            parsed = json.loads(value or "{}")
+            parsed = json.loads(strip_destination_part_reference(value) or "{}")
         except (TypeError, ValueError):
             return {}
         return parsed if isinstance(parsed, dict) else {}
@@ -768,8 +665,10 @@ class ParteDiarioCRUD(NestedCRUD):
         return result if result > 0 else None
 
     def create(self, session: Session, data: dict[str, Any]):
+        parte_diario_service.normalizar_trabajos_destino_manuales(session, data)
         self._normalizar_detalles_baja(session, data)
         self._validate_nomina_detalles(session, data)
+        parte_diario_service.materializar_trabajos_destino_manuales(session, data)
         self._asegurar_tarja_borrador(session, data)
         parte = super().create(session, data)
         if parte.estado == EstadoParteDiario.CONFIRMADO:
@@ -785,12 +684,22 @@ class ParteDiarioCRUD(NestedCRUD):
         check_version: bool = True,
     ):
         existing = session.get(ParteDiario, obj_id)
+        parte_diario_service.normalizar_trabajos_destino_manuales(
+            session,
+            data,
+            existing=existing,
+        )
         self._normalizar_detalles_baja(session, data, existing=existing)
         self._validate_nomina_detalles(
             session,
             data,
             existing=existing,
             validate_scope=False,
+        )
+        parte_diario_service.materializar_trabajos_destino_manuales(
+            session,
+            data,
+            existing=existing,
         )
         self._asegurar_tarja_borrador(session, data, existing=existing)
         parte = super().update(session, obj_id, data, check_version=check_version)
@@ -818,6 +727,159 @@ parte_diario_router = create_generic_router(
     prefix="/parte-diario",
     tags=["parte-diario"],
 )
+
+
+def _parse_nomina_disponible_range(value: str | None) -> tuple[int, int]:
+    if not value:
+        return 0, 99
+    try:
+        parsed = json.loads(value)
+        return max(int(parsed[0]), 0), max(int(parsed[1]), 0)
+    except (TypeError, ValueError, IndexError, json.JSONDecodeError):
+        return 0, 99
+
+
+def _parse_nomina_disponible_sort(value: str | None) -> tuple[str, bool]:
+    allowed_fields = {"id", "apellido", "nombre", "dni"}
+    if not value:
+        return "apellido", False
+    try:
+        parsed = json.loads(value)
+        field = str(parsed[0] or "apellido")
+        descending = str(parsed[1] or "ASC").upper() == "DESC"
+        return (field if field in allowed_fields else "apellido"), descending
+    except (TypeError, ValueError, IndexError, json.JSONDecodeError):
+        return "apellido", False
+
+
+def _parse_nomina_disponible_filter(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def _nomina_ids_filter(value: Any) -> set[int] | None:
+    if value in (None, ""):
+        return None
+    raw_ids = value if isinstance(value, list) else [value]
+    ids: set[int] = set()
+    for raw_id in raw_ids:
+        try:
+            ids.add(int(raw_id))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+@parte_diario_router.get("/nomina-disponible")
+def list_nomina_disponible_para_parte(
+    response: Response,
+    session: Session = Depends(get_session),
+    sort: str | None = Query(None),
+    range: str | None = Query(None),
+    filter: str | None = Query(None),
+    q: str | None = Query(None),
+):
+    """Nómina seleccionable con las mismas reglas temporales que el guardado."""
+    filters = _parse_nomina_disponible_filter(filter)
+    requested_ids = _nomina_ids_filter(filters.get("id"))
+    idproyecto = parte_diario_crud._payload_int(filters.get("idproyecto"))
+    contacto_id = parte_diario_crud._payload_int(filters.get("contacto_id"))
+    fecha = parte_diario_crud._parse_fecha_parte(filters.get("fecha"))
+
+    candidate_stmt = select(Nomina.id).where(Nomina.deleted_at.is_(None))
+    if requested_ids is not None:
+        if not requested_ids:
+            candidate_ids: set[int] = set()
+        else:
+            candidate_stmt = candidate_stmt.where(Nomina.id.in_(requested_ids))
+            candidate_ids = {int(item) for item in session.exec(candidate_stmt).all()}
+    else:
+        candidate_ids = {int(item) for item in session.exec(candidate_stmt).all()}
+
+    if idproyecto is not None and fecha is not None:
+        valid_ids = parte_diario_crud._get_nomina_ids_vigentes_para_parte(
+            session,
+            nomina_ids=candidate_ids,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id,
+            fecha=fecha,
+        )
+    elif requested_ids is not None:
+        # React Admin consulta por ID para resolver el texto de una opción ya elegida.
+        valid_ids = candidate_ids
+    else:
+        valid_ids = set()
+
+    rows = list(
+        session.exec(
+            select(Nomina)
+            .where(Nomina.id.in_(valid_ids))
+            .where(Nomina.deleted_at.is_(None))
+        ).all()
+    ) if valid_ids else []
+
+    search = str(filters.get("q") or q or "").strip().casefold()
+    if search:
+        rows = [
+            item
+            for item in rows
+            if search in " ".join(
+                str(value or "")
+                for value in (item.apellido, item.nombre, item.dni, item.nro_legajo)
+            ).casefold()
+        ]
+
+    sort_field, descending = _parse_nomina_disponible_sort(sort)
+    rows.sort(
+        key=lambda item: (
+            str(getattr(item, sort_field, "") or "").casefold(),
+            str(item.apellido or "").casefold(),
+            str(item.nombre or "").casefold(),
+            int(item.id or 0),
+        ),
+        reverse=descending,
+    )
+    total = len(rows)
+    start, end = _parse_nomina_disponible_range(range)
+    paged = rows[start : end + 1]
+    last = start + len(paged) - 1 if paged else start
+    response.headers["Content-Range"] = f"items {start}-{last}/{total}"
+    return [filtrar_respuesta(item) for item in paged]
+
+
+@parte_diario_router.get("/nomina-disponible/{nomina_id:int}")
+def get_nomina_disponible_para_parte(
+    nomina_id: int,
+    session: Session = Depends(get_session),
+):
+    nomina = session.get(Nomina, nomina_id)
+    if nomina is None or nomina.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    return filtrar_respuesta(nomina)
+
+
+@parte_diario_router.get("/{parte_id}/baja-impacto/{nomina_id}")
+def get_baja_nomina_impacto(
+    parte_id: int,
+    nomina_id: int,
+    session: Session = Depends(get_session),
+):
+    parte = session.get(ParteDiario, parte_id)
+    if parte is None or parte.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Parte diario no encontrado")
+    nomina = session.get(Nomina, nomina_id)
+    if nomina is None or nomina.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    return parte_diario_tarja_service.obtener_impacto_baja(
+        session,
+        parte=parte,
+        nomina_id=nomina_id,
+    )
 
 
 @parte_diario_router.get("/detalles-nomina")

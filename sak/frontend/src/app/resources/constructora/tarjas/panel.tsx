@@ -12,11 +12,13 @@ import {
   Lock,
   LockOpen,
   MoreHorizontal,
+  Pencil,
   Download,
   RefreshCw,
   RotateCcw,
   Sparkles,
   TableProperties,
+  Trophy,
 } from "lucide-react";
 
 import { AppBreadcrumb } from "@/components/app-breadcrumb";
@@ -24,9 +26,19 @@ import { Confirm } from "@/components/confirm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -62,7 +74,8 @@ type PanelTarja = {
   horas: number;
   novedades: number;
   adicional: number;
-  premio: number;
+  premio_tarja: number;
+  viaticos: boolean;
 };
 
 type PanelRow = {
@@ -118,10 +131,16 @@ type TarjaDetalleCell = {
 };
 
 type TarjaNovedadSummary = {
+  id?: number | null;
   horas_justificadas?: number | null;
   presentismo?: boolean | null;
+  presentismo_importe?: number | null;
   adicional_importe?: number | null;
   premio_importe?: number | null;
+  viatico_importe?: number | null;
+  sueldo_importe?: number | null;
+  cargas_importe?: number | null;
+  mejora_importe?: number | null;
   observaciones?: string | null;
 };
 
@@ -149,14 +168,22 @@ type TarjaDetalleExportRow = {
   encargado?: string | null;
   empleado: string;
   dni?: string | null;
+  nro_legajo?: string | null;
   categoria_codigo?: string | null;
   actividad_codigo?: string | null;
+  tarja_premio?: number | null;
+  tarja_viaticos?: boolean | null;
   novedad?: TarjaNovedadSummary | null;
 } & Partial<Record<DayKey, TarjaDetalleCell>>;
 
 type ActionTarget = {
   row: PanelRow;
   action: "generar" | "cerrar" | "reabrir";
+};
+
+type PremioTarget = {
+  row: PanelRow;
+  tarjaId: number | null;
 };
 
 const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
@@ -266,7 +293,7 @@ const postEnsureTarjaNomina = async ({
   if (!response.ok) {
     throw new Error(await extractActionErrorMessage(response));
   }
-  return (await response.json()) as { id?: number; tarja_id?: number };
+  return (await response.json()) as { id?: number; tarja_id?: number; viaticos?: boolean };
 };
 
 const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado") => {
@@ -274,6 +301,18 @@ const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado")
     method: "PATCH",
     headers: buildAuthHeaders(),
     body: JSON.stringify({ estado }),
+  });
+  if (!response.ok) {
+    throw new Error(await extractActionErrorMessage(response));
+  }
+  return response.json();
+};
+
+const patchTarjaBonos = async (tarjaId: number, premio: number, viaticos: boolean) => {
+  const response = await fetch(`${apiUrl}/tarjas/${tarjaId}`, {
+    method: "PATCH",
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({ premio, viaticos }),
   });
   if (!response.ok) {
     throw new Error(await extractActionErrorMessage(response));
@@ -352,13 +391,24 @@ const getTarjaDetalleExportCellText = (
     | DayKey
     | "proyecto"
     | "encargado"
+    | "legajo"
     | "empleado"
     | "categoria"
     | "actividad"
-    | "horas"
+    | "horas_trabajadas"
+    | "horas_justificadas"
     | "presentismo"
-    | "bonos"
-    | "comentario",
+    | "adicional"
+    | "premio"
+    | "viatico"
+    | "im_presentismo"
+    | "im_premio"
+    | "im_viatico"
+    | "im_sueldo_bruto"
+    | "im_cargas"
+    | "im_mejoras"
+    | "comentario"
+    | "id_tarja_nomina",
 ) => {
   if (isDayKey(columnKey)) {
     const cell = row[columnKey as DayKey];
@@ -369,27 +419,45 @@ const getTarjaDetalleExportCellText = (
 
   const workedHours = getWorkedHours(row);
   const justifiedHours = Number(row.novedad?.horas_justificadas ?? 0);
-  const totalHours = workedHours + (Number.isFinite(justifiedHours) ? justifiedHours : 0);
-  const totalBonus =
-    Number(row.novedad?.adicional_importe ?? 0) + Number(row.novedad?.premio_importe ?? 0);
-
   switch (columnKey) {
     case "proyecto":
       return row.proyecto_nombre;
     case "encargado":
       return row.encargado ?? "Sin encargado";
+    case "legajo":
+      return row.nro_legajo ?? "";
     case "categoria":
       return row.categoria_codigo ?? "";
     case "actividad":
       return row.actividad_codigo ?? "";
-    case "horas":
-      return formatHours(totalHours);
+    case "horas_trabajadas":
+      return formatHours(workedHours);
+    case "horas_justificadas":
+      return formatHours(Number.isFinite(justifiedHours) ? justifiedHours : 0);
     case "presentismo":
-      return row.novedad?.presentismo ? "SI" : "NO";
-    case "bonos":
-      return formatNumber(totalBonus);
+      return row.novedad?.presentismo ? "S" : "N";
+    case "adicional":
+      return formatNumber(Number(row.novedad?.adicional_importe ?? 0));
+    case "premio":
+      return hasAmount(row.tarja_premio) ? "S" : "N";
+    case "viatico":
+      return row.tarja_viaticos ? "S" : "N";
+    case "im_presentismo":
+      return formatNumber(Number(row.novedad?.presentismo_importe ?? 0));
+    case "im_premio":
+      return formatNumber(Number(row.novedad?.premio_importe ?? 0));
+    case "im_viatico":
+      return formatNumber(Number(row.novedad?.viatico_importe ?? 0));
+    case "im_sueldo_bruto":
+      return formatNumber(Number(row.novedad?.sueldo_importe ?? 0));
+    case "im_cargas":
+      return formatNumber(Number(row.novedad?.cargas_importe ?? 0));
+    case "im_mejoras":
+      return formatNumber(Number(row.novedad?.mejora_importe ?? 0));
     case "comentario":
       return row.novedad?.observaciones ?? "";
+    case "id_tarja_nomina":
+      return row.novedad?.id ?? "";
     default:
       return [row.empleado, row.dni].filter(Boolean).join(" ");
   }
@@ -404,26 +472,48 @@ const downloadTarjaPanelExcel = (
   const headers = [
     "Proy",
     "Enc",
+    "Legajo",
     "Emp",
     ...visibleDayKeys.map((key) => formatDayLabel(rows[0]?.[key]).slice(0, 2)),
     "Cat",
     "Act",
-    "Hs",
-    "Pres",
-    "Bon",
-    "Com",
+    "Hs Trab",
+    "Hs Just",
+    "Coment",
+    "Adicional",
+    "Premio S/N",
+    "Pres S/N",
+    "Viatico S/N",
+    "im_presentismo",
+    "im_premio",
+    "im_viatico",
+    "im_sueldoBruto",
+    "im_Cargas",
+    "im_Mejoras",
+    "ID",
   ];
   const columnKeys = [
     "proyecto",
     "encargado",
+    "legajo",
     "empleado",
     ...visibleDayKeys,
     "categoria",
     "actividad",
-    "horas",
-    "presentismo",
-    "bonos",
+    "horas_trabajadas",
+    "horas_justificadas",
     "comentario",
+    "adicional",
+    "premio",
+    "presentismo",
+    "viatico",
+    "im_presentismo",
+    "im_premio",
+    "im_viatico",
+    "im_sueldo_bruto",
+    "im_cargas",
+    "im_mejoras",
+    "id_tarja_nomina",
   ] as const;
   const bodyRows = rows
     .map((row, rowIndex) => {
@@ -433,13 +523,22 @@ const downloadTarjaPanelExcel = (
             isDayKey(columnKey) &&
             isNonWorkingDay(rows[0]?.[columnKey]?.fecha);
           const isDayColumn = isDayKey(columnKey);
+          const isImportAmountColumn = String(columnKey).startsWith("im_");
+          const isIdColumn = columnKey === "id_tarja_nomina";
           const style = [
             "border:1px solid #cbd5e1",
             "mso-number-format:\\@",
+            isIdColumn ? "mso-protection:locked" : "mso-protection:unlocked",
             isDayColumn ? "font-size:9px" : "font-size:10px",
             isDayColumn ? "padding:2px 1px" : "padding:3px",
             isDayColumn ? "text-align:center" : "",
-            isSunday ? "background:#e5e7eb" : rowIndex % 2 ? "background:#fafafa" : "",
+            isSunday
+              ? "background:#e5e7eb"
+              : isImportAmountColumn || isIdColumn
+                ? "background:#e5e7eb"
+                : rowIndex % 2
+                  ? "background:#fafafa"
+                  : "",
           ]
             .filter(Boolean)
             .join(";");
@@ -451,21 +550,29 @@ const downloadTarjaPanelExcel = (
     .join("");
 
   const html = `<!doctype html>
-<html>
+<html xmlns:x="urn:schemas-microsoft-com:office:excel">
 <head>
   <meta charset="utf-8" />
   <style>
     body { font-family: Arial, sans-serif; }
     h1 { font-size: 16px; margin: 0 0 12px 0; }
     table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-    thead tr { height: 13px; }
-    th { border: 1px solid #cbd5e1; background: #e5e7eb; color: #111827; font-size: 7px; line-height: 9px; padding: 1px 2px; font-weight: 600; }
+    thead tr { height: 30px; mso-height-source:userset; }
+    th { border: 1px solid #cbd5e1; background: #e5e7eb; color: #111827; font-size: 8.4px; line-height: 11px; padding: 4px 2px; font-weight: 600; vertical-align: middle; white-space: normal; }
     .date-col { width: 24px; }
     .project-col { width: 150px; }
     .person-col { width: 130px; }
     .small-col { width: 44px; }
+    .amount-col { width: 68px; }
     .comment-col { width: 90px; }
+    .id-col { width: 54px; }
   </style>
+  <!--[if gte mso 9]><xml>
+    <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+      <x:Name>Tarjas</x:Name>
+      <x:WorksheetOptions><x:ProtectContents>True</x:ProtectContents></x:WorksheetOptions>
+    </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+  </xml><![endif]-->
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
@@ -473,14 +580,25 @@ const downloadTarjaPanelExcel = (
     <colgroup>
       <col class="project-col" />
       <col class="person-col" />
+      <col class="small-col" />
       <col class="person-col" />
       ${visibleDayKeys.map(() => `<col class="date-col" />`).join("")}
       <col class="small-col" />
       <col class="small-col" />
       <col class="small-col" />
       <col class="small-col" />
-      <col class="small-col" />
       <col class="comment-col" />
+      <col class="amount-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="small-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="amount-col" />
+      <col class="id-col" />
     </colgroup>
     <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
     <tbody>${bodyRows}</tbody>
@@ -506,6 +624,19 @@ const fetchTarjaDetalleRows = async (tarjaId: number): Promise<TarjaDetalleExpor
     throw new Error(await extractActionErrorMessage(response));
   }
   return (await response.json()) as TarjaDetalleExportRow[];
+};
+
+const fetchPanelRowExportRows = async (row: PanelRow): Promise<TarjaDetalleExportRow[]> => {
+  const tarja = row.tarja;
+  if (!tarja?.id) return [];
+  const detalleRows = await fetchTarjaDetalleRows(Number(tarja.id));
+  return detalleRows.map((detalleRow) => ({
+    ...detalleRow,
+    proyecto_nombre: row.proyecto_nombre,
+    encargado: row.encargado ?? "Sin encargado",
+    tarja_premio: tarja.premio_tarja ?? 0,
+    tarja_viaticos: tarja.viaticos ?? false,
+  }));
 };
 
 const buildSafeFilename = (value: string) =>
@@ -696,7 +827,7 @@ const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
   if (!tarja) {
     return <span className="text-[10px] text-slate-400">-</span>;
   }
-  const total = Number(tarja.adicional || 0) + Number(tarja.premio || 0);
+  const total = Number(tarja.adicional || 0) + Number(tarja.premio_tarja || 0);
   return (
     <div className="w-[118px] text-[9px] leading-tight tabular-nums text-slate-600">
       <div className="text-[12px] font-semibold leading-4 text-slate-900">
@@ -707,11 +838,14 @@ const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
           Adicional: {formatNumber(tarja.adicional, 2)}
         </div>
       ) : null}
-      {hasAmount(tarja.premio) ? (
+      {hasAmount(tarja.premio_tarja) ? (
         <div className="text-[8px] font-medium text-slate-500">
-          Premio: {formatNumber(tarja.premio, 2)}
+          Premio tarja: {formatNumber(tarja.premio_tarja, 2)}
         </div>
       ) : null}
+      <div className="text-[8px] font-medium text-slate-500">
+        Viatico: {tarja.viaticos ? "Si" : "No"}
+      </div>
     </div>
   );
 };
@@ -720,14 +854,20 @@ const RowActions = ({
   row,
   returnTo,
   onAction,
+  onOpenPremio,
   onOpenDetalle,
+  onExport,
   detalleLoading,
+  exportLoading,
 }: {
   row: PanelRow;
   returnTo: string;
   onAction: (target: ActionTarget) => void;
+  onOpenPremio: (row: PanelRow) => void;
   onOpenDetalle: (row: PanelRow) => void;
+  onExport: (row: PanelRow) => void;
   detalleLoading?: boolean;
+  exportLoading?: boolean;
 }) => {
   const puedeGenerar = Boolean(
     row.puede_generar &&
@@ -764,6 +904,10 @@ const RowActions = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-40">
+          <DropdownMenuItem onSelect={() => onOpenPremio(row)}>
+            <Trophy className="mr-2 size-3.5" />
+            Bonos
+          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={detalleLoading}
             onSelect={() => onOpenDetalle(row)}
@@ -774,6 +918,17 @@ const RowActions = ({
               <TableProperties className="mr-2 size-3.5" />
             )}
             Tarja detalle
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!row.tarja?.id || exportLoading}
+            onSelect={() => onExport(row)}
+          >
+            {exportLoading ? (
+              <Loader2 className="mr-2 size-3.5 animate-spin" />
+            ) : (
+              <Download className="mr-2 size-3.5" />
+            )}
+            Exportar
           </DropdownMenuItem>
           {hasAgentPhone ? (
             <DropdownMenuItem asChild>
@@ -812,6 +967,13 @@ const RowActions = ({
               Reabrir
             </DropdownMenuItem>
           ) : null}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link to={`/proyectos/${row.proyecto_id}?returnTo=${encodeURIComponent(returnTo)}`}>
+              <Pencil className="mr-2 size-3.5" />
+              Editar obra
+            </Link>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -849,8 +1011,13 @@ export const TarjaPanel = () => {
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportingRowId, setExportingRowId] = useState<string | null>(null);
   const [openingTestChat, setOpeningTestChat] = useState(false);
   const [openingDetalleRowId, setOpeningDetalleRowId] = useState<string | null>(null);
+  const [premioTarget, setPremioTarget] = useState<PremioTarget | null>(null);
+  const [premioValue, setPremioValue] = useState("0");
+  const [viaticosValue, setViaticosValue] = useState(false);
+  const [premioLoading, setPremioLoading] = useState(false);
 
   const fechaParam = searchParams.get("fecha");
   const selectedDate = fechaParam ?? todayIso;
@@ -1122,14 +1289,7 @@ export const TarjaPanel = () => {
     setExportLoading(true);
     try {
       const groupedRows = await Promise.all(
-        rowsWithTarja.map(async (row) => {
-          const detalleRows = await fetchTarjaDetalleRows(Number(row.tarja?.id));
-          return detalleRows.map((detalleRow) => ({
-            ...detalleRow,
-            proyecto_nombre: row.proyecto_nombre,
-            encargado: row.encargado ?? "Sin encargado",
-          }));
-        }),
+        rowsWithTarja.map(fetchPanelRowExportRows),
       );
       const exportRows = groupedRows.flat();
       if (!exportRows.length) {
@@ -1146,6 +1306,29 @@ export const TarjaPanel = () => {
       });
     } finally {
       setExportLoading(false);
+    }
+  };
+
+  const handleExportRow = async (row: PanelRow) => {
+    if (!row.tarja?.id || exportingRowId) return;
+    setExportingRowId(row.id);
+    try {
+      const exportRows = await fetchPanelRowExportRows(row);
+      if (!exportRows.length) {
+        notify("La tarja seleccionada no tiene nomina para exportar", { type: "warning" });
+        return;
+      }
+      const title = `Tarja ${row.proyecto_nombre} - ${row.encargado ?? "Sin encargado"} - ${startIso} - ${endIso}`;
+      const filename = buildSafeFilename(
+        `tarja-${row.proyecto_nombre}-${row.encargado ?? "sin-encargado"}-${startIso}-${endIso}.xls`,
+      );
+      downloadTarjaPanelExcel(filename, title, exportRows);
+    } catch (exportError) {
+      notify(exportError instanceof Error ? exportError.message : "No se pudo exportar", {
+        type: "warning",
+      });
+    } finally {
+      setExportingRowId(null);
     }
   };
 
@@ -1207,6 +1390,63 @@ export const TarjaPanel = () => {
       });
     } finally {
       setOpeningDetalleRowId(null);
+    }
+  };
+
+  const handleOpenPremio = async (row: PanelRow) => {
+    setPremioTarget({ row, tarjaId: row.tarja?.id ?? null });
+    setPremioValue(String(row.tarja?.premio_tarja ?? 0));
+    setViaticosValue(Boolean(row.tarja?.viaticos));
+    if (row.tarja?.id) return;
+
+    setPremioLoading(true);
+    try {
+      const generated = await postEnsureTarjaNomina({
+        idproyecto: row.proyecto_id,
+        contacto_id: row.contacto_id,
+        fechainicio: startIso,
+        fechafinal: endIso,
+      });
+      const tarjaId = Number(generated.tarja_id ?? generated.id);
+      if (!Number.isFinite(tarjaId) || tarjaId <= 0) {
+        throw new Error("No se pudo resolver la tarja generada");
+      }
+      setPremioTarget({ row, tarjaId });
+      setViaticosValue(Boolean(generated.viaticos));
+      setRefreshKey((key) => key + 1);
+      notify("Tarja generada", { type: "info" });
+    } catch (premioError) {
+      setPremioTarget(null);
+      notify(
+        premioError instanceof Error ? premioError.message : "No se pudo preparar la tarja",
+        { type: "warning" },
+      );
+    } finally {
+      setPremioLoading(false);
+    }
+  };
+
+  const handleSavePremio = async () => {
+    if (!premioTarget?.tarjaId) return;
+    const premio = Number(premioValue.replace(",", "."));
+    if (!Number.isFinite(premio) || premio < 0) {
+      notify("Ingresa un importe de premio valido.", { type: "warning" });
+      return;
+    }
+
+    setPremioLoading(true);
+    try {
+      await patchTarjaBonos(premioTarget.tarjaId, premio, viaticosValue);
+      notify("Bonos actualizados", { type: "info" });
+      setPremioTarget(null);
+      setRefreshKey((key) => key + 1);
+    } catch (premioError) {
+      notify(
+        premioError instanceof Error ? premioError.message : "No se pudo actualizar el premio",
+        { type: "warning" },
+      );
+    } finally {
+      setPremioLoading(false);
     }
   };
 
@@ -1402,8 +1642,11 @@ export const TarjaPanel = () => {
                         row={row}
                         returnTo={returnTo}
                         onAction={setActionTarget}
+                        onOpenPremio={(targetRow) => void handleOpenPremio(targetRow)}
                         onOpenDetalle={handleOpenDetalle}
+                        onExport={(targetRow) => void handleExportRow(targetRow)}
                         detalleLoading={openingDetalleRowId === row.id}
+                        exportLoading={exportingRowId === row.id}
                       />
                     </td>
                   </tr>
@@ -1433,6 +1676,89 @@ export const TarjaPanel = () => {
           void executeAction();
         }}
       />
+      <Dialog
+        open={premioTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !premioLoading) setPremioTarget(null);
+        }}
+      >
+        <DialogContent className="gap-3 p-4 sm:max-w-sm">
+          <DialogHeader className="gap-1">
+            <DialogTitle className="text-base">Bonos</DialogTitle>
+            <DialogDescription className="text-xs">
+              {premioTarget
+                ? [premioTarget.row.proyecto_nombre, premioTarget.row.encargado]
+                    .filter(Boolean)
+                    .join(" - ")
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
+              Premio
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                value={premioValue}
+                disabled={premioLoading}
+                onChange={(event) => setPremioValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !premioLoading && premioTarget?.tarjaId) {
+                    event.preventDefault();
+                    void handleSavePremio();
+                  }
+                }}
+                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
+              />
+            </label>
+            <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
+              Adicional
+              <input
+                type="text"
+                readOnly
+                value={formatNumber(premioTarget?.row.tarja?.adicional ?? 0, 2)}
+                className="h-9 w-full min-w-0 rounded-md border border-input bg-muted/40 px-3 text-sm tabular-nums text-muted-foreground outline-none"
+              />
+            </label>
+          </div>
+          <div className="flex items-center justify-between rounded-md border border-input px-3 py-2">
+            <label htmlFor="tarja-viaticos" className="text-xs font-medium text-slate-700">
+              Viatico
+            </label>
+            <Switch
+              id="tarja-viaticos"
+              checked={viaticosValue}
+              disabled={premioLoading}
+              onCheckedChange={setViaticosValue}
+            />
+          </div>
+          {premioLoading && !premioTarget?.tarjaId ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Generando tarja
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={premioLoading}
+              onClick={() => setPremioTarget(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={premioLoading || !premioTarget?.tarjaId}
+              onClick={() => void handleSavePremio()}
+            >
+              {premioLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

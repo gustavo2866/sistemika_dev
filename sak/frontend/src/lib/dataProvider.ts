@@ -85,7 +85,10 @@ const stringifyErrorDetail = (detail: unknown): string | undefined => {
   return String(detail);
 };
 
-const extractErrorMessage = (error: unknown) => {
+export const extractErrorMessage = (
+  error: unknown,
+  fallback = "Error inesperado",
+) => {
   const err = error as {
     body?: {
       detail?: unknown;
@@ -100,7 +103,7 @@ const extractErrorMessage = (error: unknown) => {
     err?.body?.error?.message ||
     err?.body?.message ||
     err?.message ||
-    "Error inesperado";
+    fallback;
 
   const notNullMatch = /null value in column "([^"]+)"/i.exec(rawMessage);
   if (notNullMatch?.[1]) {
@@ -114,6 +117,9 @@ const extractErrorMessage = (error: unknown) => {
     if (constraint === "ix_propiedades_nombre") {
       return "Ya existe una propiedad con ese nombre.";
     }
+    if (constraint.includes("partes_diario_proyecto_fecha_contacto")) {
+      return "Ya existe un parte diario para la obra, el encargado y la fecha seleccionados.";
+    }
     return "Registro duplicado. Verifica los datos.";
   }
 
@@ -126,7 +132,16 @@ const withErrorHandling =
     try {
       return await fn(...args);
     } catch (error) {
-      toast.error(extractErrorMessage(error));
+      const message = extractErrorMessage(error);
+      const params = args[1] as
+        | { meta?: { suppressErrorNotification?: boolean } }
+        | undefined;
+      if (!params?.meta?.suppressErrorNotification) {
+        toast.error(message);
+      }
+      if (error instanceof Error) {
+        error.message = message;
+      }
       throw error;
     }
   }) as T;

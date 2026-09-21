@@ -14,6 +14,7 @@ from agente.v3.subprocesses.parte_diario.domain.models import ParteDiarioDraft
 
 ParteDiarioStage = Literal[
     "inicial",
+    "seleccionar_accion",
     "seleccionar_obra",
     "cargar_fecha",
     "seleccionar_fecha",
@@ -175,9 +176,11 @@ class ParteDiarioV3State:
     modo_apertura: Literal["diario", "puntual"] = "puntual"
     asistencia_offset: int = 0
     asistencia_opciones: list[ParteDiarioAsistenciaOption] = field(default_factory=list)
+    asistencia_catalogo: list[ParteDiarioAsistenciaOption] = field(default_factory=list)
     validacion_origen: str | None = None
     aclaracion_origen: str | None = None
     aclaracion_pregunta: str | None = None
+    revision_origen: str | None = None
     accion_cierre: str | None = None
     salida_origen: str | None = None
     fecha_siguiente: str | None = None
@@ -211,6 +214,12 @@ class ParteDiarioV3State:
                 parsed = ParteDiarioAsistenciaOption.from_dict(option)
                 if parsed is not None:
                     asistencia_options.append(parsed)
+        asistencia_catalogo: list[ParteDiarioAsistenciaOption] = []
+        for option in data.get("asistencia_catalogo", []):
+            if isinstance(option, dict):
+                parsed = ParteDiarioAsistenciaOption.from_dict(option)
+                if parsed is not None:
+                    asistencia_catalogo.append(parsed)
         return cls(
             etapa=etapa,  # type: ignore[arg-type]
             contacto_id=_parse_int(data.get("contacto_id")),
@@ -225,9 +234,11 @@ class ParteDiarioV3State:
             modo_apertura=data.get("modo_apertura", "puntual"),
             asistencia_offset=_parse_int(data.get("asistencia_offset")) or 0,
             asistencia_opciones=asistencia_options,
+            asistencia_catalogo=asistencia_catalogo,
             validacion_origen=validacion_origen,
             aclaracion_origen=data.get("aclaracion_origen"),
             aclaracion_pregunta=data.get("aclaracion_pregunta"),
+            revision_origen=str(data.get("revision_origen") or "").strip() or None,
             accion_cierre=str(data.get("accion_cierre") or "").strip() or None,
             salida_origen=data.get("salida_origen"),
             fecha_siguiente=data.get("fecha_siguiente"),
@@ -251,9 +262,11 @@ class ParteDiarioV3State:
             "modo_apertura": self.modo_apertura,
             "asistencia_offset": self.asistencia_offset,
             "asistencia_opciones": [option.to_dict() for option in self.asistencia_opciones],
+            "asistencia_catalogo": [option.to_dict() for option in self.asistencia_catalogo],
             "validacion_origen": self.validacion_origen,
             "aclaracion_origen": self.aclaracion_origen,
             "aclaracion_pregunta": self.aclaracion_pregunta,
+            "revision_origen": self.revision_origen,
             "accion_cierre": self.accion_cierre,
             "salida_origen": self.salida_origen,
             "fecha_siguiente": self.fecha_siguiente,

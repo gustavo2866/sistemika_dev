@@ -93,11 +93,13 @@ def iniciar_hoy(state: ParteDiarioV3State) -> None:
     state.fecha_referida_explicita = False
     state.modo_pendientes = False
     state.asistencia_opciones = []
+    state.asistencia_catalogo = []
     state.asistencia_offset = 0
     state.validacion_origen = None
     state.aclaracion_origen = None
     state.aclaracion_pregunta = None
     state.accion_cierre = None
+    state.revision_origen = None
     state.salida_origen = None
     state.fecha_siguiente = None
     state.historial = []
@@ -148,7 +150,11 @@ def mostrar_menu(state: ParteDiarioV3State, prefix: str = "") -> str:
         return "No hay fechas disponibles para el parte diario."
     state.etapa = "pendientes" if state.modo_pendientes else "seleccionar_fecha"
     lines = [prefix, f"Obra: {state.nombre_obra}", "Selecciona la fecha del parte diario:"]
-    lines.extend(f"{item.opcion}: {item.fecha} ({item.estado})" for item in state.opciones_fecha)
+    lines.extend(
+        f"{item.opcion}: {calendario.nombre_dia(date.fromisoformat(item.fecha))} "
+        f"{item.fecha} ({item.estado})"
+        for item in state.opciones_fecha
+    )
     lines.append("Responde con el numero, la fecha o SALIR.")
     return "\n".join(line for line in lines if line)
 

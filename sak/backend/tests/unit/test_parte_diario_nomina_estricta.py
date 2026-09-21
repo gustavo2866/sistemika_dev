@@ -1,6 +1,6 @@
 """Limites de la nomina habilitada para cargar novedades del parte."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlmodel import select
@@ -58,18 +58,104 @@ def test_vigencia_tarja_por_fecha(nomina, db_session, dia, perez):
     assert not resolved.ambiguo
 
 
-# Ni la ausencia de tarja ni una tarja vacia habilitan la asignacion general de empleados.
+# La ausencia total se autocura materializando la nomina base en TarjaNomina.
 @pytest.mark.parametrize("vacia", [False, True])
-def test_sin_nomina_tarja_no_hay_fallback(datos, db_session, vacia):
+def test_sin_nomina_tarja_se_inicializa_desde_la_asignacion_base(datos, db_session, vacia):
     if vacia:
         db_session.add(Tarja(idproyecto=datos.obra.proyecto_id, contacto_id=datos.obra.contacto_id,
             fechainicio=date(2026, 9, 11), fechafinal=date(2026, 9, 25)))
         db_session.commit()
     locales, globales = empleados.cargar_referencias(db_session, datos.obra.proyecto_id,
         contacto_id=datos.obra.contacto_id, fecha=date(2026, 9, 11))
-    assert not locales
+    assert {item.idnomina for item in locales} == {item.id for item in datos.empleados}
     assert globales
-    assert empleados.NominaResolver.resolve("Medina", locales, globales).error
+    assert empleados.NominaResolver.resolve("Medina", locales, globales).match.idnomina == datos.empleados[0].id
+    tarja = db_session.exec(select(Tarja).where(
+        Tarja.idproyecto == datos.obra.proyecto_id,
+        Tarja.contacto_id == datos.obra.contacto_id,
+        Tarja.fechainicio == date(2026, 9, 11),
+        Tarja.fechafinal == date(2026, 9, 25),
+    )).one()
+    assert {item.nomina_id for item in db_session.exec(select(TarjaNomina).where(
+        TarjaNomina.tarja_id == tarja.id,
+        TarjaNomina.deleted_at.is_(None),
+    )).all()} == {item.id for item in datos.empleados}
+
+
+# Una nomina parcial es un snapshot intencional y no se completa silenciosamente.
+def test_nomina_parcial_no_se_reconcilia_con_asignacion_base(datos, db_session):
+    tarja = Tarja(idproyecto=datos.obra.proyecto_id, contacto_id=datos.obra.contacto_id,
+                  fechainicio=date(2026, 9, 11), fechafinal=date(2026, 9, 25))
+    db_session.add(tarja)
+    db_session.flush()
+    db_session.add(TarjaNomina(tarja_id=tarja.id, nomina_id=datos.empleados[0].id,
+        fecha_desde=date(2026, 9, 11), fecha_hasta=date(2026, 9, 25)))
+    db_session.commit()
+
+    locales, _ = empleados.cargar_referencias(db_session, datos.obra.proyecto_id,
+        contacto_id=datos.obra.contacto_id, fecha=date(2026, 9, 11))
+
+    assert [item.idnomina for item in locales] == [datos.empleados[0].id]
+    assert len(db_session.exec(select(TarjaNomina).where(
+        TarjaNomina.tarja_id == tarja.id,
+        TarjaNomina.deleted_at.is_(None),
+    )).all()) == 1
+
+
+# Los registros eliminados expresan una decision previa y no se restauran solos.
+def test_nomina_eliminada_no_se_revive(datos, db_session):
+    tarja = Tarja(idproyecto=datos.obra.proyecto_id, contacto_id=datos.obra.contacto_id,
+                  fechainicio=date(2026, 9, 11), fechafinal=date(2026, 9, 25))
+    db_session.add(tarja)
+    db_session.flush()
+    registro = TarjaNomina(tarja_id=tarja.id, nomina_id=datos.empleados[0].id,
+        fecha_desde=date(2026, 9, 11), fecha_hasta=date(2026, 9, 25),
+        deleted_at=datetime.now(UTC))
+    db_session.add(registro)
+    db_session.commit()
+
+    locales, _ = empleados.cargar_referencias(db_session, datos.obra.proyecto_id,
+        contacto_id=datos.obra.contacto_id, fecha=date(2026, 9, 11))
+
+    db_session.refresh(registro)
+    assert not locales
+    assert registro.deleted_at is not None
+    assert len(db_session.exec(select(TarjaNomina).where(
+        TarjaNomina.tarja_id == tarja.id,
+    )).all()) == 1
+
+
+# Una tarja del esquema historico no reemplaza la cabecera canonica 11-25.
+def test_tarja_legacy_no_impide_crear_quincena_canonica(datos, db_session):
+    legacy = Tarja(idproyecto=datos.obra.proyecto_id, contacto_id=datos.obra.contacto_id,
+                   fechainicio=date(2026, 9, 1), fechafinal=date(2026, 9, 15))
+    db_session.add(legacy)
+    db_session.commit()
+
+    locales, _ = empleados.cargar_referencias(db_session, datos.obra.proyecto_id,
+        contacto_id=datos.obra.contacto_id, fecha=date(2026, 9, 11))
+
+    assert {item.idnomina for item in locales} == {item.id for item in datos.empleados}
+    tarjas = db_session.exec(select(Tarja).where(
+        Tarja.idproyecto == datos.obra.proyecto_id,
+        Tarja.contacto_id == datos.obra.contacto_id,
+    )).all()
+    assert {(item.fechainicio, item.fechafinal) for item in tarjas} == {
+        (date(2026, 9, 1), date(2026, 9, 15)),
+        (date(2026, 9, 11), date(2026, 9, 25)),
+    }
+
+
+# Sin una asignacion base valida no se deja una cabecera vacia como efecto lateral.
+def test_sin_nomina_base_no_crea_tarja(escenario, db_session):
+    locales, _ = empleados.cargar_referencias(db_session, escenario.proyecto_id,
+        contacto_id=escenario.contacto_id, fecha=date(2026, 9, 11))
+
+    assert not locales
+    assert not db_session.exec(select(Tarja).where(
+        Tarja.idproyecto == escenario.proyecto_id,
+        Tarja.contacto_id == escenario.contacto_id,
+    )).all()
 
 
 # Un ID global o un nombre externo no habilitan el alta ni la opcion de registrar sin validar.
@@ -127,6 +213,8 @@ async def test_transferencia_desde_nomina_origen(nomina, db_session):
     result = await process.handle(turno("Medina trabajo 4hs en destino"), contexto(nomina.obra))
     assert estado(result).etapa == "carga_validar_encargado"
     result = await process.handle(turno("1"), result.context)
+    assert estado(result).etapa == "carga_validar_estado"
+    result = await process.handle(turno("permiso"), result.context)
     assert estado(result).etapa == "carga"
     result = await process.handle(turno("guardar"), result.context)
     assert result.metadata["status"] == "confirmed"

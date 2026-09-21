@@ -8,7 +8,7 @@ from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.adapters.llm import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.adapters.carga_agent import ParteDiarioCargaAgentClient
 from agente.v3.subprocesses.parte_diario.adapters.query_agent import ParteDiarioQueryAgentClient
-from agente.v3.subprocesses.parte_diario.flows import aclaracion, comandos, carga, confirmar_salida, continuar, fecha, listado, revision, validacion_carga
+from agente.v3.subprocesses.parte_diario.flows import aclaracion, comandos, carga, confirmar_salida, continuar, entrada, fecha, listado, revision, validacion_carga
 from agente.v3.subprocesses.parte_diario.domain import obras
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from agente.v3.subprocesses.parte_diario.domain.obras import project_match_score
@@ -45,7 +45,26 @@ class ParteDiarioSubprocess:
         # Solo las transiciones sin pregunta continuan dentro del mismo turno.
         while respuesta is None:
             match state.etapa:
-                case "inicial" | "seleccionar_obra":
+                case "inicial":
+                    if entrada.es_menu_inicial(message.text):
+                        respuesta = entrada.iniciar(state)
+                    else:
+                        respuesta = self._seleccionar_obra(message, state)
+                        tokens = set(normalize_text(message.text).split())
+                        if (
+                            tokens & {"parte", "partes"}
+                            or fecha.es_fecha_numerica(message.text or "")
+                            or entrada.es_reportar(message.text)
+                            or entrada.es_pendientes(message.text)
+                        ):
+                            texto = None
+                case "seleccionar_accion":
+                    respuesta = entrada.procesar(texto, state)
+                    if respuesta is None:
+                        accion = "partes pendientes" if state.modo_pendientes else "reportar"
+                        respuesta = self._seleccionar_obra(message, state, texto_inicial=accion)
+                    texto = None
+                case "seleccionar_obra":
                     inicial = state.etapa == "inicial"
                     respuesta = self._seleccionar_obra(message, state)
                     tokens = set(normalize_text(message.text).split())
@@ -85,8 +104,15 @@ class ParteDiarioSubprocess:
         return self._responder(context, state, respuesta, metadata, message.text or "")
 
     # Resuelve una obra asociada al remitente o solicita elegir entre sus opciones.
-    def _seleccionar_obra(self, message: V3InboundMessage, state: ParteDiarioV3State) -> str | None:
-        command = normalize_text(message.text)
+    def _seleccionar_obra(
+        self,
+        message: V3InboundMessage,
+        state: ParteDiarioV3State,
+        *,
+        texto_inicial: str | None = None,
+    ) -> str | None:
+        effective_text = texto_inicial if texto_inicial is not None else (message.text or "")
+        command = normalize_text(effective_text)
         if command == "salir":
             state.etapa = "finalizado"
             return "Carga de parte diario cancelada."
@@ -108,8 +134,8 @@ class ParteDiarioSubprocess:
             selected = matches[0] if len(matches) == 1 else None
 
         if not seleccion_pendiente:
-            state.texto_fecha_inicial = message.text or ""
-            state.modo_pendientes = command in {"parte pendiente", "parte pendientes", "partes pendiente", "partes pendientes"}
+            state.texto_fecha_inicial = effective_text
+            state.modo_pendientes = entrada.es_pendientes(effective_text)
             state.modo_apertura = "puntual" if state.modo_pendientes else "diario"
         if selected is None:
             state.etapa = "seleccionar_obra"
@@ -130,7 +156,8 @@ class ParteDiarioSubprocess:
         updated.active_process = "general" if finalizado else self.name
         reply = respuesta or "Finalizamos la seleccion de partes diarios."
         if finalizado:
-            reply = f"{reply}\n\n{GENERAL_MENU_TEXT}"
+            if not metadata.get("parte_listo") and state.accion_cierre not in {"descartar", "salir"}:
+                reply = f"{reply}\n\n{GENERAL_MENU_TEXT}"
         else:
             state.registrar_turno(mensaje, reply)
         updated.process_state = {} if finalizado else state.to_dict()

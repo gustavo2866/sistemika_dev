@@ -1,10 +1,11 @@
-"""Materializacion transaccional de partes diarios confirmados por el agente."""
+"""Materializacion transaccional de partes diarios y trabajos temporales en destino."""
 
 from __future__ import annotations
 
 import copy
 from datetime import date, datetime
 from decimal import Decimal
+import json
 import re
 from typing import Any
 from app.utils.jornada import get_jornada_esperada
@@ -25,12 +26,15 @@ from app.models import (
     ProyectoEncargado,
 )
 from app.models.enums import CanalMensaje, EstadoMensaje, TipoMensaje
+from app.models.tarja import EstadoTarja, Tarja, TarjaDetalle
 from app.modules.channels.persistence import channel_event_store
 from app.modules.channels.types import ChannelEventData
+from app.utils.quincenas import get_quincena_range
 
 
 INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
 DESTINATION_PART_REF_RE = re.compile(r"\s*\[parte_diario_destino_id=(\d+)\]\s*$")
+TEMPORARY_DESTINATION_WORK_TYPE = "trabajo_destino"
 
 
 class ParteDiarioService:
@@ -91,12 +95,46 @@ class ParteDiarioService:
             )
         session.exec(stmt)
 
+    def _validate_internal_detail_collisions(
+        self,
+        session: Session,
+        parte: ParteDiario,
+        novedades: list[dict[str, Any]],
+    ) -> None:
+        incoming_nomina_ids = {
+            int(item["idnomina"])
+            for item in novedades
+            if item.get("idnomina") is not None
+        }
+        if not incoming_nomina_ids:
+            return
+        rows = session.exec(
+            select(ParteDiarioDetalle, ParteDiarioEstado, Nomina)
+            .join(ParteDiarioEstado, ParteDiarioEstado.id == ParteDiarioDetalle.idestado)
+            .join(Nomina, Nomina.id == ParteDiarioDetalle.idnomina)
+            .where(ParteDiarioDetalle.parte_diario_id == int(parte.id))
+            .where(ParteDiarioDetalle.idnomina.in_(incoming_nomina_ids))
+            .where(ParteDiarioDetalle.deleted_at.is_(None))
+            .where(ParteDiarioEstado.abreviatura.in_(INTERNAL_NOMINA_STATE_CODES))
+            .where(ParteDiarioEstado.deleted_at.is_(None))
+        ).all()
+        if not rows:
+            return
+        labels = ", ".join(
+            f"{nomina.apellido}, {nomina.nombre} ({estado.abreviatura})"
+            for _, estado, nomina in rows
+        )
+        raise ValueError(
+            f"No se puede registrar otra novedad para {labels}. "
+            "Solo se admite una novedad por empleado en cada parte."
+        )
+
     @staticmethod
     def _delete_destination_detail_for_origin(
         session: Session,
         detalle: ParteDiarioDetalle,
     ) -> None:
-        destination_part_id = _extract_destination_part_id(detalle.descripcion)
+        destination_part_id = extract_destination_part_id(detalle.descripcion)
         if destination_part_id is None or detalle.idnomina is None:
             return
         related = session.exec(
@@ -308,6 +346,7 @@ class ParteDiarioService:
         else:
             if parte.estado in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO}:
                 raise ValueError("El parte diario ya fue confirmado")
+            self._validate_internal_detail_collisions(session, parte, novedades)
             if contacto_id > 0:
                 parte.contacto_id = contacto_id
             parte.mensaje_origen_id = mensaje_id
@@ -412,6 +451,249 @@ class ParteDiarioService:
 
         return parte
 
+    # Normaliza la representacion manual de "Trabajo en" sin convertirla en TRA.
+    def normalizar_trabajos_destino_manuales(
+        self,
+        session: Session,
+        data: dict[str, Any],
+        *,
+        existing: ParteDiario | None = None,
+    ) -> None:
+        detalles = data.get("detalles")
+        if not isinstance(detalles, list):
+            return
+        trabajos = [
+            (detalle, _parse_temporary_destination_work(detalle.get("descripcion")))
+            for detalle in detalles
+            if isinstance(detalle, dict)
+        ]
+        trabajos = [(detalle, payload) for detalle, payload in trabajos if payload is not None]
+        if not trabajos:
+            return
+
+        fecha = _parse_date_value(data.get("fecha", existing.fecha if existing is not None else None))
+        if fecha is None:
+            raise ValueError("El trabajo en otra obra requiere la fecha del parte diario")
+        presente = session.exec(
+            select(ParteDiarioEstado)
+            .where(ParteDiarioEstado.abreviatura == "P")
+            .where(ParteDiarioEstado.activo.is_(True))
+            .where(ParteDiarioEstado.deleted_at.is_(None))
+        ).first()
+        if presente is None:
+            raise ValueError("No existe el estado activo PRESENTE (P)")
+
+        for detalle, payload in trabajos:
+            horas_origen, _horas_destino = _destination_work_hours(
+                {
+                    "horas": payload.get("horas"),
+                    "estado_codigo": "P",
+                    "fuera_de_proyecto": True,
+                },
+                fecha,
+            )
+            detalle["idestado"] = int(presente.id)
+            detalle["horas"] = horas_origen
+
+    # Materializa en destino las asignaciones temporales cargadas por administracion.
+    def materializar_trabajos_destino_manuales(
+        self,
+        session: Session,
+        data: dict[str, Any],
+        *,
+        existing: ParteDiario | None = None,
+    ) -> None:
+        detalles = data.get("detalles")
+        if not isinstance(detalles, list):
+            return
+
+        fecha = _parse_date_value(data.get("fecha", existing.fecha if existing is not None else None))
+        source_project_id = _parse_optional_int(
+            data.get("idproyecto", existing.idproyecto if existing is not None else None)
+        )
+        source_contact_id = _parse_optional_int(
+            data.get("contacto_id", existing.contacto_id if existing is not None else None)
+        )
+        pending: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+        for detalle in detalles:
+            if not isinstance(detalle, dict):
+                continue
+            payload = _parse_temporary_destination_work(detalle.get("descripcion"))
+            if payload is None or extract_destination_part_id(detalle.get("descripcion")) is not None:
+                continue
+            if fecha is None or source_project_id is None or source_contact_id is None:
+                raise ValueError(
+                    "El trabajo en otra obra requiere proyecto, encargado y fecha de origen"
+                )
+            nomina_id = _parse_optional_int(detalle.get("idnomina"))
+            destino = payload.get("destino") if isinstance(payload.get("destino"), dict) else {}
+            destination_id = _parse_optional_int(destino.get("idproyecto"))
+            destination_contact_id = _parse_optional_int(destino.get("contacto_id"))
+            if nomina_id is None or destination_id is None or destination_contact_id is None:
+                raise ValueError(
+                    "El trabajo en otra obra requiere empleado, obra y encargado destino"
+                )
+            if destination_id == source_project_id:
+                raise ValueError("La obra destino debe ser diferente a la obra de origen")
+            self._validate_destination_manager(
+                session,
+                idproyecto=destination_id,
+                contacto_id=destination_contact_id,
+            )
+            project = session.get(Proyecto, destination_id)
+            project_name = str(
+                destino.get("obra") or (project.nombre if project is not None else "")
+            ).strip()
+            manager_name = str(destino.get("encargado") or "").strip()
+            _horas_origen, horas_destino = _destination_work_hours(
+                {
+                    "horas": payload.get("horas"),
+                    "estado_codigo": "P",
+                    "fuera_de_proyecto": True,
+                },
+                fecha,
+            )
+            persisted_payload = {
+                "tipo": TEMPORARY_DESTINATION_WORK_TYPE,
+                "horas": horas_destino,
+                "destino": {
+                    "idproyecto": destination_id,
+                    "contacto_id": destination_contact_id,
+                    "obra": project_name or None,
+                    "encargado": manager_name or None,
+                },
+            }
+            item = {
+                "idnomina": nomina_id,
+                "idestado": detalle.get("idestado"),
+                "estado_codigo": "P",
+                "horas": horas_destino,
+                "descripcion": f"Trabajo temporal desde obra #{source_project_id}",
+                "idproyecto_destino": destination_id,
+                "contacto_id_destino": destination_contact_id,
+                "idproyecto": destination_id,
+                "nombre_proyecto": project_name or None,
+                "fuera_de_proyecto": True,
+                "validar_destino_trabajo": True,
+            }
+            pending.append((detalle, persisted_payload, item))
+
+        if not pending or fecha is None or source_project_id is None or source_contact_id is None:
+            return
+
+        destination_part_ids = self._materialize_destination_novedades(
+            session,
+            [item for _detalle, _payload, item in pending],
+            result={
+                "idproyecto": source_project_id,
+                "contacto_id": source_contact_id,
+                "fecha": fecha.isoformat(),
+            },
+            fecha=fecha,
+            contacto_id=source_contact_id,
+            mensaje_id=None,
+        )
+
+        from app.services.parte_diario_tarja_service import (
+            get_quincena_range,
+            parte_diario_tarja_service,
+        )
+
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        initialized_destinations: set[tuple[int, int]] = set()
+        for detalle, payload, item in pending:
+            destination_id = int(item["idproyecto"])
+            destination_contact_id = int(item["contacto_id_destino"])
+            destination_key = (destination_id, destination_contact_id)
+            if destination_key not in initialized_destinations:
+                parte_diario_tarja_service.asegurar_nomina_quincena(
+                    session,
+                    idproyecto=destination_id,
+                    contacto_id=destination_contact_id,
+                    fechainicio=fechainicio,
+                    fechafinal=fechafinal,
+                    auto_commit=False,
+                )
+                initialized_destinations.add(destination_key)
+            destination_part_id = destination_part_ids[
+                (destination_id, destination_contact_id, int(item["idnomina"]))
+            ]
+            detalle["descripcion"] = _with_destination_part_reference(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                destination_part_id,
+            )
+
+    # Protege altas y eliminaciones de trabajos temporales sobre una tarja cerrada.
+    def validar_tarja_destino_abierta(
+        self,
+        session: Session,
+        *,
+        idproyecto: int,
+        contacto_id: int,
+        fecha: date,
+    ) -> Tarja | None:
+        fechainicio, fechafinal = get_quincena_range(fecha)
+        tarja = session.exec(
+            select(Tarja)
+            .where(Tarja.idproyecto == idproyecto)
+            .where(Tarja.contacto_id == contacto_id)
+            .where(Tarja.fechainicio == fechainicio)
+            .where(Tarja.fechafinal == fechafinal)
+            .where(Tarja.deleted_at.is_(None))
+        ).first()
+        if tarja is not None and tarja.estado == EstadoTarja.CERRADO:
+            project = session.get(Proyecto, idproyecto)
+            project_name = project.nombre if project is not None else idproyecto
+            raise ValueError(f"La tarja destino {project_name} ya fue cerrada")
+        return tarja
+
+    # Al eliminar cualquiera de las dos novedades enlazadas, revierte el destino.
+    def preparar_eliminacion_trabajo_destino(
+        self,
+        session: Session,
+        detalles: list[ParteDiarioDetalle],
+    ) -> None:
+        origin = next(
+            (
+                detalle
+                for detalle in detalles
+                if extract_destination_part_id(detalle.descripcion) is not None
+            ),
+            None,
+        )
+        if origin is None:
+            return
+        destination_part_id = extract_destination_part_id(origin.descripcion)
+        if destination_part_id is None:
+            return
+        destination_part = session.get(ParteDiario, destination_part_id)
+        if destination_part is None or destination_part.deleted_at is not None:
+            return
+        if destination_part.estado == EstadoParteDiario.CERRADO:
+            raise ValueError("El parte diario destino ya fue cerrado")
+        self.validar_tarja_destino_abierta(
+            session,
+            idproyecto=int(destination_part.idproyecto),
+            contacto_id=int(destination_part.contacto_id or 0),
+            fecha=destination_part.fecha,
+        )
+
+        destination_detail_ids = {
+            int(detalle.id)
+            for detalle in detalles
+            if detalle.id is not None
+            and detalle.parte_diario_id == destination_part_id
+        }
+        if destination_detail_ids:
+            for tarja_detalle in session.exec(
+                select(TarjaDetalle).where(
+                    TarjaDetalle.parte_diario_detalle_id.in_(destination_detail_ids)
+                )
+            ).all():
+                session.delete(tarja_detalle)
+        destination_part.estado = EstadoParteDiario.BORRADOR
+        session.add(destination_part)
+
     def _split_destination_novedades(
         self,
         session: Session,
@@ -447,16 +729,17 @@ class ParteDiarioService:
                 idproyecto=destination_id,
                 contacto_id=destination_contact_id,
             )
+            origin_hours, destination_hours = _destination_work_hours(normalized, fecha)
             destination = dict(normalized)
             destination["idproyecto"] = destination_id
             destination["contacto_id_destino"] = destination_contact_id
             destination["fecha"] = fecha.isoformat()
-            destination["horas"] = _destination_hours(destination, fecha)
+            destination["horas"] = destination_hours
             destination["fuera_de_proyecto"] = True
             destination_items.append(destination)
 
             origin = dict(normalized)
-            origin["horas"] = _origin_hours_for_destination(normalized, fecha)
+            origin["horas"] = origin_hours
             origin["fuera_de_proyecto"] = True
             project_name = str(origin.get("nombre_proyecto") or "").strip()
             if project_name and not str(origin.get("descripcion") or "").strip():
@@ -482,7 +765,7 @@ class ParteDiarioService:
         if assignment is None:
             raise ValueError("El encargado destino no esta habilitado para la obra destino")
 
-    # Registra transferencias en destino, reabriendo confirmados sin guardar por separado.
+    # Registra trabajos temporales en destino, reabriendo confirmados sin guardar por separado.
     def _materialize_destination_novedades(
         self,
         session: Session,
@@ -508,6 +791,12 @@ class ParteDiarioService:
             by_destination.setdefault((destination_id, destination_contact_id), []).append(item)
 
         for (destination_id, destination_contact_id), items in by_destination.items():
+            self.validar_tarja_destino_abierta(
+                session,
+                idproyecto=destination_id,
+                contacto_id=destination_contact_id,
+                fecha=fecha,
+            )
             destination_result = dict(result)
             destination_result["idproyecto"] = destination_id
             destination_result["fecha"] = fecha.isoformat()
@@ -536,7 +825,8 @@ class ParteDiarioService:
                 raise ValueError(f"El parte diario destino {project_name} ya fue cerrado")
             else:
                 parte.contacto_id = destination_contact_id
-                parte.mensaje_origen_id = mensaje_id
+                if mensaje_id is not None:
+                    parte.mensaje_origen_id = mensaje_id
                 parte.estado = destination_estado
                 session.add(parte)
                 session.flush()
@@ -721,12 +1011,46 @@ def _parse_datetime(value: Any) -> datetime | None:
     return datetime.fromisoformat(str(value))
 
 
-def _extract_destination_part_id(description: str | None) -> int | None:
+# Recupera la referencia persistida al parte generado en la obra destino.
+def extract_destination_part_id(description: str | None) -> int | None:
     match = DESTINATION_PART_REF_RE.search(str(description or ""))
     if match is None:
         return None
     try:
         return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+# Quita el marcador tecnico antes de devolver la descripcion al dominio conversacional.
+def strip_destination_part_reference(description: str | None) -> str | None:
+    clean = DESTINATION_PART_REF_RE.sub("", str(description or "")).strip()
+    return clean or None
+
+
+# Reconoce solo la asignacion temporal manual; TRA conserva su circuito propio.
+def _parse_temporary_destination_work(description: Any) -> dict[str, Any] | None:
+    clean = strip_destination_part_reference(str(description or ""))
+    if not clean:
+        return None
+    try:
+        payload = json.loads(clean)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("tipo") != TEMPORARY_DESTINATION_WORK_TYPE:
+        return None
+    return payload
+
+
+def _parse_date_value(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
     except (TypeError, ValueError):
         return None
 
@@ -749,17 +1073,6 @@ def _parse_optional_int(value: Any) -> int | None:
         return None
 
 
-def _origin_hours_for_destination(item: dict[str, Any], fecha: date) -> float:
-    destination_hours = _parse_float(item.get("horas"))
-    if destination_hours is None:
-        return 0.0
-
-    normal_hours = float(get_jornada_esperada(fecha))
-    if destination_hours > normal_hours:
-        return 0.0
-    return max(normal_hours - destination_hours, 0.0)
-
-
 # Completa la jornada en destino solo cuando no se informaron horas explicitas.
 def _destination_hours(item: dict[str, Any], fecha: date | str) -> float:
     value = item.get("horas")
@@ -771,6 +1084,18 @@ def _destination_hours(item: dict[str, Any], fecha: date | str) -> float:
     except (TypeError, ValueError):
         return float(get_jornada_esperada(fecha)) if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
     return hours
+
+
+# Distribuye una asignacion temporal igual para el agente y la carga manual.
+def _destination_work_hours(
+    item: dict[str, Any],
+    fecha: date | str,
+) -> tuple[float, float]:
+    destination_hours = _destination_hours(item, fecha)
+    if destination_hours < 0 or destination_hours > 24:
+        raise ValueError("Las horas en la obra destino deben estar entre 0 y 24")
+    normal_hours = float(get_jornada_esperada(fecha))
+    return max(normal_hours - destination_hours, 0.0), destination_hours
 
 
 def _parse_float(value: Any) -> float | None:

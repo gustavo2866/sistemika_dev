@@ -7,6 +7,7 @@ from app.utils.jornada import get_jornada_esperada
 
 _RESERVED_OPERATIONS = {"confirmar", "cancelar"}
 _MUTATING_OPERATIONS = {"agregar_novedad", "modificar_novedad", "eliminar_novedad", "sin_novedades"}
+INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
 
 from agente.v3.subprocesses.parte_diario.utils import renderer
 from agente.v3.subprocesses.parte_diario.domain.models import ConflictoNovedad, EstadoItem, NominaItem, NovedadPersonal, ParteDiarioDraft, PendienteAmbiguo
@@ -244,6 +245,12 @@ def _agregar_novedad(
         estado = resolve_estado_codigo("P", estados)
     if operation.horas_extra is not None and estado and estado.abreviatura.upper() != "P":
         return f"Para {nombre}, las horas extra solo pueden registrarse como PRESENTE."
+    if requiere_motivo_jornada_parcial(
+        fecha=state.fecha,
+        horas=operation.horas,
+        estado_codigo=estado.abreviatura if estado else None,
+    ):
+        estado = None
     if operation.idnomina is not None:
         if resolved_by_id is None:
             return f"No encontre a {nombre} en la nomina activa."
@@ -277,16 +284,6 @@ def _agregar_novedad(
     if resolved is not None and resolved.ambiguo:
         project_candidates = resolved.candidatos or []
         candidates = project_candidates or resolved.candidatos_externos or []
-        if (
-            estado
-            and estado.abreviatura.upper() == "P"
-            and operation.horas is not None
-            and operation.horas < get_jornada_esperada(state.fecha)
-            and not operation.fuera_de_proyecto
-            and project_candidates
-            and all(not item.fuera_de_proyecto for item in project_candidates)
-        ):
-            estado = None
         state.pendientes_ambiguos.append(
             PendienteAmbiguo(
                 nombre=nombre,
@@ -316,6 +313,9 @@ def _agregar_novedad(
     item = item or (resolved.match if resolved is not None else None)
     if item is None:
         return f"No encontre a {nombre} en la nomina activa."
+    internal = _find_internal_novedad(state, item.idnomina)
+    if internal is not None:
+        return _internal_novedad_error(internal)
     if estado is None and not item.fuera_de_proyecto:
         state.pendientes_ambiguos.append(
             PendienteAmbiguo(
@@ -506,6 +506,17 @@ def registrar_pendiente_resuelto(
         nombre_encargado_destino=pending.nombre_encargado_destino,
         validar_destino_trabajo=pending.validar_destino_trabajo,
     )
+    if pending.reemplaza_novedad and novedad.idnomina is not None:
+        state.novedades = [
+            item for item in state.novedades
+            if item.idnomina != novedad.idnomina
+        ]
+        state.conflictos_novedad = [
+            item for item in state.conflictos_novedad
+            if item.idnomina != novedad.idnomina
+        ]
+        state.novedades.append(novedad)
+        return
     _registrar_o_encolar_conflicto(state, novedad)
 
 
@@ -599,6 +610,38 @@ def _find_novedad(state: ParteDiarioDraft, nombre: str | None) -> NovedadPersona
     return matches[0] if len(matches) == 1 else None
 
 
+def _find_internal_novedad(
+    state: ParteDiarioDraft,
+    idnomina: int | None,
+) -> NovedadPersonal | None:
+    if idnomina is None:
+        return None
+    return next(
+        (item for item in state.novedades_internas if item.idnomina == idnomina),
+        None,
+    )
+
+
+def _find_internal_novedad_by_name(
+    state: ParteDiarioDraft,
+    nombre: str | None,
+) -> NovedadPersonal | None:
+    searched = set(normalize_text(nombre).split())
+    matches = [
+        item for item in state.novedades_internas
+        if searched and searched <= set(normalize_text(item.nombre).split())
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _internal_novedad_error(novedad: NovedadPersonal) -> str:
+    code = str(novedad.estado_codigo or "novedad").strip().upper()
+    return (
+        f"No se cargo la novedad de {novedad.nombre}: ya tiene {code} registrado "
+        "en este parte. Solo se admite una novedad por empleado."
+    )
+
+
 def _find_pending(state: ParteDiarioDraft, nombre: str | None) -> PendienteAmbiguo | None:
     searched = set(normalize_text(nombre).split())
     matches = [
@@ -626,6 +669,12 @@ def _modificar_novedad(
 ) -> str | None:
     novedad = _find_novedad(state, operation.nombre)
     if novedad is None:
+        internal = (
+            _find_internal_novedad(state, operation.idnomina)
+            or _find_internal_novedad_by_name(state, operation.nombre)
+        )
+        if internal is not None:
+            return _internal_novedad_error(internal)
         pending = _find_pending(state, operation.nombre)
         if pending is not None:
             error = _modificar_pendiente(pending, operation, estados)
@@ -655,6 +704,37 @@ def _modificar_novedad(
     )
     if operation.horas_extra is not None and str(proposed_code or "").upper() != "P":
         return f"Para {novedad.nombre}, las horas extra solo pueden registrarse como PRESENTE."
+    if requiere_motivo_jornada_parcial(
+        fecha=state.fecha,
+        horas=proposed_hours,
+        estado_codigo=proposed_code,
+    ):
+        candidate = next(
+            (item for item in nominas_proyecto if item.idnomina == novedad.idnomina),
+            None,
+        )
+        state.pendientes_ambiguos.append(
+            PendienteAmbiguo(
+                nombre=novedad.nombre,
+                horas=proposed_hours,
+                descripcion=operation.descripcion or novedad.descripcion,
+                candidatos=[candidate] if candidate is not None else None,
+                idnomina_resuelto=novedad.idnomina,
+                fuera_de_proyecto=proposed_external,
+                nombre_proyecto=operation.nombre_proyecto or novedad.nombre_proyecto,
+                idproyecto_destino=operation.idproyecto_destino or novedad.idproyecto_destino,
+                contacto_id_destino=operation.contacto_id_destino or novedad.contacto_id_destino,
+                nombre_encargado_destino=(
+                    operation.nombre_encargado_destino or novedad.nombre_encargado_destino
+                ),
+                validar_destino_trabajo=(
+                    operation.validar_destino_trabajo or novedad.validar_destino_trabajo
+                ),
+                reemplaza_novedad=True,
+            )
+        )
+        state.sin_novedades_informado = False
+        return None
     if estado:
         novedad.idestado = estado.id
         novedad.estado_codigo = estado.abreviatura
@@ -710,6 +790,12 @@ def _has_concrete_attendance_update(operation: ParteDiarioOperation) -> bool:
 def _eliminar_novedad(state: ParteDiarioDraft, operation: ParteDiarioOperation) -> str | None:
     novedad = _find_novedad(state, operation.nombre)
     if novedad is None:
+        internal = (
+            _find_internal_novedad(state, operation.idnomina)
+            or _find_internal_novedad_by_name(state, operation.nombre)
+        )
+        if internal is not None:
+            return _internal_novedad_error(internal)
         pending = _find_pending(state, operation.nombre)
         if pending is not None:
             state.pendientes_ambiguos.remove(pending)
@@ -729,6 +815,19 @@ def _eliminar_novedad(state: ParteDiarioDraft, operation: ParteDiarioOperation) 
 
 # region Integridad de las novedades
 
+# Exige un motivo cuando las horas informadas no completan la jornada del parte.
+def requiere_motivo_jornada_parcial(
+    *,
+    fecha: date | str,
+    horas: float | None,
+    estado_codigo: str | None,
+) -> bool:
+    if horas is None:
+        return False
+    jornada = float(get_jornada_esperada(fecha))
+    codigo = str(estado_codigo or "").strip().upper()
+    return jornada > 0 and horas < jornada and codigo in {"", "P"}
+
 # Resuelve el codigo de un motivo dentro del catalogo disponible.
 def resolve_estado_codigo(codigo: str | None, estados: list[EstadoItem]) -> EstadoItem | None:
     normalized = normalize_text(codigo).upper()
@@ -743,7 +842,10 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
     normalized = normalize_text(text)
     if normalized.isdigit():
         index = int(normalized) - 1
-        available = [estado for estado in estados if estado.abreviatura.upper() != "P"]
+        available = [
+            estado for estado in estados
+            if estado.abreviatura.upper() not in INTERNAL_NOMINA_STATE_CODES | {"P"}
+        ]
         return available[index] if 0 <= index < len(available) else None
     aliases = {
         "falto": "FAL",
@@ -769,6 +871,8 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
             if alias is not None:
                 break
     for estado in estados:
+        if estado.abreviatura.upper() in INTERNAL_NOMINA_STATE_CODES:
+            continue
         if alias == estado.abreviatura.upper():
             return estado
         if normalized in {normalize_text(estado.abreviatura), normalize_text(estado.nombre)}:
@@ -812,11 +916,10 @@ def _validate_pending_business_rules(pending: PendienteAmbiguo, fecha: date | st
     code = str(pending.estado_codigo or "").upper()
     if pending.horas_extra is not None and code != "P":
         return f"Para {pending.nombre}, las horas extra solo pueden registrarse como PRESENTE."
-    if (
-        not pending.fuera_de_proyecto
-        and code == "P"
-        and pending.horas is not None
-        and pending.horas < get_jornada_esperada(fecha)
+    if requiere_motivo_jornada_parcial(
+        fecha=fecha,
+        horas=pending.horas,
+        estado_codigo=code,
     ):
         return f"Para {pending.nombre}, una jornada menor a {get_jornada_esperada(fecha):g} horas requiere indicar el motivo."
     if pending.validar_destino_trabajo and (

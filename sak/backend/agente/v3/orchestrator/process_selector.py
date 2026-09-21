@@ -129,10 +129,10 @@ class V3ProcessSelector:
         if not text:
             return V3ProcessSelection(PROCESS_GENERAL, "fast_path", 1.0, "Mensaje sin texto.")
 
-        if "parte pendiente" in text or "partes pendientes" in text:
+        if text in {"pendiente", "pendientes"} or "parte pendiente" in text or "partes pendientes" in text:
             return V3ProcessSelection(PROCESS_PARTE_DIARIO, "fast_path", 0.9, "Referencia clara a parte pendiente.")
 
-        if "parte diario" in text or "partes diarios" in text or "novedades" in text or "apoyos" in text or "apoyo" in text:
+        if "reportar" in text or "parte diario" in text or "partes diarios" in text or "novedades" in text or "apoyos" in text or "apoyo" in text:
             return V3ProcessSelection(PROCESS_PARTE_DIARIO, "fast_path", 0.9, "Referencia clara a parte diario.")
 
         if "pedido" in text and ("material" in text or "obra" in text):

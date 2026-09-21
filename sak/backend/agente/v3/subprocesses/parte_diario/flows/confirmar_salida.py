@@ -23,6 +23,7 @@ def procesar(text: str, state: ParteDiarioV3State) -> str:
     if command in {"1", "si", "ok", "descartar", "confirmar"}:
         state.parte_state = {}
         state.salida_origen = None
+        state.accion_cierre = "descartar"
         state.etapa = "finalizado"
         return "Cambios no guardados descartados. Los datos guardados no se modificaron."
     if command not in {"2", "no", "volver", "continuar"}:

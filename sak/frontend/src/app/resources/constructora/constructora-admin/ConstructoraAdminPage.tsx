@@ -1,7 +1,7 @@
 "use client";
 
-import type { ComponentType } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router";
+import { Fragment, type ComponentType } from "react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { ResourceContextProvider } from "ra-core";
 
 import {
@@ -9,7 +9,6 @@ import {
   SetupContentPanel,
   SetupEmptyState,
   SetupLayout,
-  SetupSectionNav,
   type SetupCreateComponentProps,
   type SetupEditComponentProps,
   type SetupItem,
@@ -21,8 +20,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import {
@@ -31,6 +34,13 @@ import {
 } from "./constructoraAdminRegistry";
 
 const adminBasePath = "/constructora-admin";
+const encargadoItemKeys = new Set(["encargados", "proyecto-encargados"]);
+
+const getEncargadoItems = () =>
+  CONSTRUCTORA_ADMIN_ITEMS.filter((item) => encargadoItemKeys.has(item.key));
+
+const getTopLevelItems = () =>
+  CONSTRUCTORA_ADMIN_ITEMS.filter((item) => !encargadoItemKeys.has(item.key));
 
 const getAdminItemPath = (item: SetupItem) => `${adminBasePath}/${item.key}`;
 
@@ -73,24 +83,112 @@ const AdminOptionsMenu = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        {CONSTRUCTORA_ADMIN_ITEMS.map((item) => {
+        {getTopLevelItems().map((item, index) => {
           const isActive = item.key === currentKey;
 
           return (
-            <DropdownMenuItem
-              key={item.key}
-              className={cn(
-                "py-2 text-sm",
-                isActive && "bg-accent font-medium text-accent-foreground",
-              )}
-              onSelect={() => navigate(getAdminItemPath(item))}
-            >
-              {item.label}
-            </DropdownMenuItem>
+            <Fragment key={item.key}>
+              {index === 1 ? (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger
+                    className={cn(
+                      "py-2 text-sm",
+                      encargadoItemKeys.has(currentKey ?? "") &&
+                        "bg-accent font-medium text-accent-foreground",
+                    )}
+                  >
+                    Encargados
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-64">
+                    {getEncargadoItems().map((encargadoItem) => (
+                      <DropdownMenuItem
+                        key={encargadoItem.key}
+                        className={cn(
+                          "py-2 text-sm",
+                          encargadoItem.key === currentKey &&
+                            "bg-accent font-medium text-accent-foreground",
+                        )}
+                        onSelect={() => navigate(getAdminItemPath(encargadoItem))}
+                      >
+                        {encargadoItem.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              ) : null}
+              <DropdownMenuItem
+                className={cn(
+                  "py-2 text-sm",
+                  isActive && "bg-accent font-medium text-accent-foreground",
+                )}
+                onSelect={() => navigate(getAdminItemPath(item))}
+              >
+                {item.label}
+              </DropdownMenuItem>
+            </Fragment>
           );
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+};
+
+const AdminSectionNav = ({ currentKey }: { currentKey?: string | null }) => {
+  const encargadoActive = encargadoItemKeys.has(currentKey ?? "");
+  const topLevelItems = getTopLevelItems();
+  const navItemClass = (active: boolean) =>
+    cn(
+      "relative inline-flex h-8 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium transition-all duration-150",
+      active
+        ? "bg-background text-foreground shadow-sm ring-1 ring-border/70"
+        : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
+    );
+
+  return (
+    <nav aria-label="Secciones de admin" className="hidden overflow-x-auto md:block">
+      <div className="inline-flex min-w-0 items-center gap-1 rounded-xl border border-border/70 bg-muted/20 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+        {topLevelItems.map((item, index) => (
+          <div key={item.key} className="contents">
+            {index === 1 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={navItemClass(encargadoActive)}>
+                    {encargadoActive ? (
+                      <span className="absolute inset-y-1.5 left-1.5 w-[3px] rounded-full bg-foreground/80" />
+                    ) : null}
+                    <span className={cn("truncate", encargadoActive && "pl-2.5")}>
+                      Encargados
+                    </span>
+                    <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  {getEncargadoItems().map((encargadoItem) => (
+                    <DropdownMenuItem key={encargadoItem.key} asChild>
+                      <Link to={getAdminItemPath(encargadoItem)}>
+                        {encargadoItem.label}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            <Link
+              to={getAdminItemPath(item)}
+              aria-current={item.key === currentKey ? "page" : undefined}
+              className={navItemClass(item.key === currentKey)}
+            >
+              {item.key === currentKey ? (
+                <span className="absolute inset-y-1.5 left-1.5 w-[3px] rounded-full bg-foreground/80" />
+              ) : null}
+              <span className={cn("truncate", item.key === currentKey && "pl-2.5")}>
+                {item.label}
+              </span>
+            </Link>
+          </div>
+        ))}
+      </div>
+    </nav>
   );
 };
 
@@ -180,12 +278,7 @@ export const ConstructoraAdminPage = () => {
                 <div className="md:hidden">
                   <AdminOptionsMenu currentKey={selectedItem.key} />
                 </div>
-                <SetupSectionNav
-                  className="hidden md:block"
-                  items={CONSTRUCTORA_ADMIN_ITEMS}
-                  currentKey={selectedItem.key}
-                  getItemHref={getAdminItemPath}
-                />
+                <AdminSectionNav currentKey={selectedItem.key} />
               </>
             }
           />

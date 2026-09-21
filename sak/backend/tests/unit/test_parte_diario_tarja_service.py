@@ -2,6 +2,7 @@ import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import pytest
 from sqlmodel import select
 
 from app.models import (
@@ -398,6 +399,80 @@ def test_confirmacion_v3_preserva_alta_existente_oculta_para_agente(db_session):
     assert detalle_tarja_alta.parte_diario_detalle_id == detalle_alta.id
 
 
+def test_confirmacion_v3_rechaza_segunda_novedad_para_empleado_con_alta(db_session):
+    data = _seed_base(db_session)
+    permiso = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "PER")
+    ).one()
+    alta = ParteDiarioEstado(abreviatura="ALT", nombre="Alta", activo=False)
+    oportunidad = CRMOportunidad(
+        contacto_id=data["contacto"].id,
+        responsable_id=data["contacto"].responsable_id,
+    )
+    parte = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 8, 28),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add_all([alta, oportunidad, parte])
+    db_session.flush()
+    detalle_alta = ParteDiarioDetalle(
+        parte_diario_id=parte.id,
+        idnomina=data["nomina_con_novedad"].id,
+        idestado=alta.id,
+        horas=Decimal("9"),
+        descripcion="17",
+    )
+    db_session.add(detalle_alta)
+    db_session.commit()
+    result = {
+        "type": "parte_diario_reply",
+        "parte_listo": True,
+        "confirmar_parte": True,
+        "cerrar_parte": True,
+        "idproyecto": data["proyecto"].id,
+        "contacto_id": data["contacto"].id,
+        "fecha": "2026-08-28",
+        "novedades": [
+            {
+                "idnomina": data["nomina_con_novedad"].id,
+                "idestado": permiso.id,
+                "estado_codigo": "PER",
+                "horas": 4,
+                "descripcion": "trabajo",
+            }
+        ],
+        "pendientes_ambiguos": [],
+        "conflictos_novedad": [],
+    }
+
+    with pytest.raises(ValueError, match="Solo se admite una novedad por empleado"):
+        parte_diario_service.create_or_update_from_agent_v3_confirmation(
+            db_session,
+            contacto_id=data["contacto"].id,
+            oportunidad_id=oportunidad.id,
+            result=result,
+            conversation_id="conv-reject-second-novelty",
+            provider="meta",
+            channel_type="whatsapp",
+            account_ref="account",
+            from_address="549111111",
+            to_address="549999999",
+            external_message_id="wamid-reject-second-novelty",
+            text="confirmar",
+            message_type="text",
+            raw_payload={"raw": True},
+            normalized_payload={"normalized": True},
+            received_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+        )
+
+    detalles = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
+    ).all()
+    assert detalles == [detalle_alta]
+
+
 def test_crear_parte_borrador_asegura_tarja_sin_nomina_ni_detalle(db_session):
     data = _seed_base(db_session)
 
@@ -732,7 +807,54 @@ def test_eliminar_detalle_alta_desde_parte_elimina_tarja_nomina_y_nomina(db_sess
         horas=Decimal("0"),
         parte_diario_detalle_id=detalle_alta.id,
     )
-    db_session.add(tarja_detalle)
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    proyecto_destino = Proyecto(
+        nombre="Obra posterior al alta",
+        responsable_id=data["proyecto"].responsable_id,
+    )
+    db_session.add(proyecto_destino)
+    db_session.flush()
+    tarja_destino = Tarja(
+        idproyecto=proyecto_destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fechainicio=date(2026, 6, 11),
+        fechafinal=date(2026, 6, 25),
+        estado=EstadoTarja.BORRADOR,
+    )
+    parte_futuro = ParteDiario(
+        idproyecto=proyecto_destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fecha=date(2026, 6, 25),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add_all([tarja_detalle, tarja_destino, parte_futuro])
+    db_session.flush()
+    registro_destino = TarjaNomina(
+        tarja_id=tarja_destino.id,
+        nomina_id=nomina_alta.id,
+        fecha_desde=date(2026, 6, 25),
+        fecha_hasta=date(2026, 6, 25),
+    )
+    novedad_futura = ParteDiarioDetalle(
+        parte_diario_id=parte_futuro.id,
+        idnomina=nomina_alta.id,
+        idestado=presente.id,
+        horas=Decimal("4"),
+        descripcion="Trabajo posterior en otra obra",
+    )
+    db_session.add_all([registro_destino, novedad_futura])
+    db_session.flush()
+    detalle_destino = TarjaDetalle(
+        tarja_id=tarja_destino.id,
+        idnomina=nomina_alta.id,
+        fecha=date(2026, 6, 25),
+        idestado=presente.id,
+        horas=Decimal("4"),
+        parte_diario_detalle_id=novedad_futura.id,
+    )
+    db_session.add(detalle_destino)
     db_session.commit()
 
     parte_diario_crud.update(
@@ -748,15 +870,17 @@ def test_eliminar_detalle_alta_desde_parte_elimina_tarja_nomina_y_nomina(db_sess
     )
 
     db_session.refresh(registro)
+    db_session.refresh(registro_destino)
     db_session.refresh(nomina_alta)
     assert db_session.get(ParteDiarioDetalle, detalle_alta.id) is None
+    assert db_session.get(ParteDiarioDetalle, novedad_futura.id) is None
     assert registro.deleted_at is not None
+    assert registro_destino.deleted_at is not None
     assert db_session.exec(
         select(TarjaDetalle).where(TarjaDetalle.parte_diario_detalle_id == detalle_alta.id)
     ).all() == []
     assert db_session.exec(
         select(TarjaDetalle)
-        .where(TarjaDetalle.tarja_id == tarja.id)
         .where(TarjaDetalle.idnomina == nomina_alta.id)
         .where(TarjaDetalle.deleted_at.is_(None))
     ).all() == []
@@ -869,6 +993,54 @@ def test_cerrar_tarja_genera_nomina_de_la_quincena_siguiente(db_session):
         data["nomina_con_novedad"].id,
         data["nomina_default"].id,
     }
+
+
+def test_cerrar_tarja_cierra_solo_partes_confirmados_de_su_quincena(db_session):
+    data = _seed_base(db_session)
+    actual, _ = parte_diario_tarja_service.asegurar_nomina_quincena(
+        db_session,
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 6, 11),
+        fechafinal=date(2026, 6, 25),
+    )
+    confirmado = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 20),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    borrador = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 21),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    otro_encargado = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["otro_contacto"].id,
+        fecha=date(2026, 6, 20),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    otra_quincena = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 26),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add_all([confirmado, borrador, otro_encargado, otra_quincena])
+    db_session.commit()
+
+    parte_diario_tarja_service.cerrar_tarja(db_session, int(actual.id))
+
+    db_session.refresh(confirmado)
+    db_session.refresh(borrador)
+    db_session.refresh(otro_encargado)
+    db_session.refresh(otra_quincena)
+    assert confirmado.estado == EstadoParteDiario.CERRADO
+    assert borrador.estado == EstadoParteDiario.BORRADOR
+    assert otro_encargado.estado == EstadoParteDiario.CONFIRMADO
+    assert otra_quincena.estado == EstadoParteDiario.CONFIRMADO
 
 
 def test_confirmar_parte_requiere_borrador(db_session):
@@ -1218,6 +1390,88 @@ def test_confirmar_parte_con_alta_creada_desde_formulario(db_session):
     assert detalle_alta.horas == Decimal("9.00")
 
 
+def test_alta_posterior_no_genera_detalles_al_resincronizar_fechas_anteriores(db_session):
+    data = _seed_base(db_session)
+    alta_estado = ParteDiarioEstado(
+        abreviatura="ALT",
+        nombre="Alta",
+        activo=False,
+    )
+    nomina_alta = Nomina(
+        nombre="Leonardo",
+        apellido="Alta Sabado",
+        dni="tarja-alta-sabado",
+        fecha_ingreso=date(2026, 9, 19),
+        idproyecto=data["proyecto"].id,
+        encargado_contacto_id=data["contacto"].id,
+        activo=True,
+    )
+    db_session.add_all([alta_estado, nomina_alta])
+    db_session.commit()
+
+    parte_alta = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-09-19",
+            "estado": EstadoParteDiario.BORRADOR,
+            "detalles": [
+                {
+                    "idnomina": nomina_alta.id,
+                    "idestado": alta_estado.id,
+                    "horas": "6",
+                    "descripcion": "Alta del sabado",
+                }
+            ],
+        },
+    )
+    parte_diario_tarja_service.confirmar_parte(db_session, parte_alta.id)
+
+    parte_anterior = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-09-14",
+            "estado": EstadoParteDiario.BORRADOR,
+            "detalles": [],
+        },
+    )
+    parte_diario_tarja_service.confirmar_parte(db_session, parte_anterior.id)
+
+    tarja = parte_diario_tarja_service.get_tarja_para_parte(db_session, parte_alta.id)
+    assert tarja is not None
+    registro = db_session.exec(
+        select(TarjaNomina)
+        .where(TarjaNomina.tarja_id == tarja.id)
+        .where(TarjaNomina.nomina_id == nomina_alta.id)
+    ).one()
+    assert registro.fecha_desde == date(2026, 9, 19)
+    assert db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.tarja_id == tarja.id)
+        .where(TarjaDetalle.idnomina == nomina_alta.id)
+        .where(TarjaDetalle.fecha < date(2026, 9, 19))
+    ).all() == []
+
+    parte_diario_tarja_service.generar_tarja_desde_panel(
+        db_session,
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 9, 11),
+        fechafinal=date(2026, 9, 25),
+    )
+    fechas_alta = db_session.exec(
+        select(TarjaDetalle.fecha)
+        .where(TarjaDetalle.tarja_id == tarja.id)
+        .where(TarjaDetalle.idnomina == nomina_alta.id)
+        .order_by(TarjaDetalle.fecha)
+    ).all()
+    assert fechas_alta
+    assert min(fechas_alta) == date(2026, 9, 19)
+
+
 def test_confirmar_parte_con_baja_corta_nomina_y_borra_detalles_posteriores(db_session):
     data = _seed_base(db_session)
     baja_estado = db_session.exec(
@@ -1238,14 +1492,22 @@ def test_confirmar_parte_con_baja_corta_nomina_y_borra_detalles_posteriores(db_s
             "detalles": [],
         },
     )
-    db_session.add(
-        ParteDiario(
-            idproyecto=data["proyecto"].id,
-            contacto_id=data["contacto"].id,
-            fecha=date(2026, 6, 25),
-            estado=EstadoParteDiario.CONFIRMADO,
-        )
+    parte_futuro = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 25),
+        estado=EstadoParteDiario.CONFIRMADO,
     )
+    db_session.add(parte_futuro)
+    db_session.flush()
+    novedad_futura = ParteDiarioDetalle(
+        parte_diario_id=parte_futuro.id,
+        idnomina=nomina.id,
+        idestado=presente.id,
+        horas=Decimal("4"),
+        descripcion="Novedad posterior a la baja",
+    )
+    db_session.add(novedad_futura)
     tarja, _ = parte_diario_tarja_service.asegurar_nomina_quincena(
         db_session,
         idproyecto=data["proyecto"].id,
@@ -1304,6 +1566,7 @@ def test_confirmar_parte_con_baja_corta_nomina_y_borra_detalles_posteriores(db_s
         .where(TarjaDetalle.fecha > date(2026, 6, 24))
         .where(TarjaDetalle.fecha <= date(2026, 6, 25))
     ).all() == []
+    assert db_session.get(ParteDiarioDetalle, novedad_futura.id) is None
     db_session.refresh(registro)
     db_session.refresh(nomina)
     assert registro.fecha_hasta == date(2026, 6, 24)
@@ -1425,7 +1688,311 @@ def test_eliminar_detalle_baja_reactiva_nomina_y_restaura_detalles_posteriores(d
     ]
 
 
-def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(db_session):
+def test_baja_retroactiva_anula_traspaso_y_detalles_de_otra_obra(db_session):
+    data = _seed_base(db_session)
+    baja_estado = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "BAJ")
+    ).one()
+    traspaso_estado = ParteDiarioEstado(
+        abreviatura="TRA",
+        nombre="Traspaso",
+        activo=True,
+    )
+    destino = Proyecto(nombre="Obra Destino Baja", responsable_id=data["contacto"].responsable_id)
+    db_session.add_all([traspaso_estado, destino])
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=destino.id,
+            contacto_id=data["otro_contacto"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+    nomina = data["nomina_default"]
+
+    parte_destino = ParteDiario(
+        idproyecto=destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fecha=date(2026, 6, 25),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add(parte_destino)
+    parte_traspaso = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.BORRADOR,
+            "detalles": [],
+        },
+    )
+    descripcion = json.dumps(
+        {
+            "tipo": "traspaso",
+            "origen": {
+                "idproyecto": data["proyecto"].id,
+                "contacto_id": data["contacto"].id,
+                "obra": data["proyecto"].nombre,
+                "encargado": data["contacto"].nombre_completo,
+            },
+            "destino": {
+                "idproyecto": destino.id,
+                "contacto_id": data["otro_contacto"].id,
+                "obra": destino.nombre,
+                "encargado": data["otro_contacto"].nombre_completo,
+            },
+        }
+    )
+    parte_diario_crud.update(
+        db_session,
+        parte_traspaso.id,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "idnomina": nomina.id,
+                    "idestado": traspaso_estado.id,
+                    "horas": "0",
+                    "descripcion": descripcion,
+                }
+            ],
+        },
+    )
+    detalle_traspaso = db_session.exec(
+        select(ParteDiarioDetalle)
+        .where(ParteDiarioDetalle.parte_diario_id == parte_traspaso.id)
+        .where(ParteDiarioDetalle.idnomina == nomina.id)
+    ).one()
+    tarja_destino = parte_diario_tarja_service.get_tarja_para_parte(
+        db_session,
+        parte_destino.id,
+    )
+    assert tarja_destino is not None
+    registro_destino = db_session.exec(
+        select(TarjaNomina)
+        .where(TarjaNomina.tarja_id == tarja_destino.id)
+        .where(TarjaNomina.nomina_id == nomina.id)
+    ).one()
+
+    parte_baja = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-23",
+            "estado": EstadoParteDiario.BORRADOR,
+            "detalles": [],
+        },
+    )
+    impacto = parte_diario_tarja_service.obtener_impacto_baja(
+        db_session,
+        parte=parte_baja,
+        nomina_id=nomina.id,
+    )
+    assert impacto["novedades"] == 1
+    assert impacto["traslados"] == 1
+    assert impacto["tarja_detalles"] >= 2
+
+    parte_diario_crud.update(
+        db_session,
+        parte_baja.id,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-23",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "idnomina": nomina.id,
+                    "idestado": baja_estado.id,
+                    "horas": "0",
+                    "descripcion": "Baja retroactiva",
+                }
+            ],
+        },
+    )
+
+    assert db_session.get(ParteDiarioDetalle, detalle_traspaso.id) is None
+    assert db_session.get(TarjaNomina, registro_destino.id) is None
+    assert db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.idnomina == nomina.id)
+        .where(TarjaDetalle.fecha > date(2026, 6, 23))
+    ).all() == []
+    db_session.refresh(nomina)
+    assert nomina.idproyecto == data["proyecto"].id
+    assert nomina.encargado_contacto_id == data["contacto"].id
+    assert nomina.fecha_egreso == date(2026, 6, 23)
+    assert nomina.activo is False
+
+
+def test_baja_retroactiva_respeta_alta_posterior_como_nuevo_periodo(db_session):
+    data = _seed_base(db_session)
+    baja_estado = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "BAJ")
+    ).one()
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    alta_estado = ParteDiarioEstado(abreviatura="ALT", nombre="Alta", activo=False)
+    destino = Proyecto(nombre="Obra Reingreso", responsable_id=data["contacto"].responsable_id)
+    db_session.add_all([alta_estado, destino])
+    db_session.flush()
+    nomina = data["nomina_default"]
+
+    parte_baja = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-23",
+            "estado": EstadoParteDiario.BORRADOR,
+            "detalles": [],
+        },
+    )
+    parte_futuro = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 24),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    parte_alta = ParteDiario(
+        idproyecto=destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fecha=date(2026, 6, 25),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add_all([parte_futuro, parte_alta])
+    db_session.flush()
+    novedad_futura = ParteDiarioDetalle(
+        parte_diario_id=parte_futuro.id,
+        idnomina=nomina.id,
+        idestado=presente.id,
+        horas=Decimal("4"),
+        descripcion="Se anula por la baja",
+    )
+    detalle_alta = ParteDiarioDetalle(
+        parte_diario_id=parte_alta.id,
+        idnomina=nomina.id,
+        idestado=alta_estado.id,
+        horas=Decimal("9"),
+        descripcion="Reingreso posterior",
+    )
+    db_session.add_all([novedad_futura, detalle_alta])
+    db_session.flush()
+
+    tarja_origen = parte_diario_tarja_service.get_tarja_para_parte(db_session, parte_baja.id)
+    assert tarja_origen is not None
+    tarja_destino = Tarja(
+        idproyecto=destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fechainicio=date(2026, 6, 11),
+        fechafinal=date(2026, 6, 25),
+        estado=EstadoTarja.BORRADOR,
+    )
+    db_session.add(tarja_destino)
+    db_session.flush()
+    registro_reingreso = TarjaNomina(
+        tarja_id=tarja_destino.id,
+        nomina_id=nomina.id,
+        fecha_desde=date(2026, 6, 25),
+        fecha_hasta=date(2026, 6, 25),
+        documentos=[],
+    )
+    detalle_reingreso = TarjaDetalle(
+        tarja_id=tarja_destino.id,
+        idnomina=nomina.id,
+        fecha=date(2026, 6, 25),
+        idestado=presente.id,
+        horas=Decimal("9"),
+        parte_diario_detalle_id=detalle_alta.id,
+    )
+    db_session.add_all(
+        [
+            registro_reingreso,
+            detalle_reingreso,
+            TarjaDetalle(
+                tarja_id=tarja_origen.id,
+                idnomina=nomina.id,
+                fecha=date(2026, 6, 24),
+                idestado=presente.id,
+                horas=Decimal("4"),
+                parte_diario_detalle_id=novedad_futura.id,
+            ),
+        ]
+    )
+    nomina.idproyecto = destino.id
+    nomina.encargado_contacto_id = data["otro_contacto"].id
+    nomina.activo = True
+    nomina.fecha_egreso = None
+    db_session.add(nomina)
+    db_session.commit()
+
+    impacto = parte_diario_tarja_service.obtener_impacto_baja(
+        db_session,
+        parte=parte_baja,
+        nomina_id=nomina.id,
+    )
+    assert impacto["novedades"] == 1
+    assert impacto["proxima_alta"] == "2026-06-25"
+
+    parte_diario_crud.update(
+        db_session,
+        parte_baja.id,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-23",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "idnomina": nomina.id,
+                    "idestado": baja_estado.id,
+                    "horas": "0",
+                    "descripcion": "Baja antes del reingreso",
+                }
+            ],
+        },
+    )
+
+    assert db_session.get(ParteDiarioDetalle, novedad_futura.id) is None
+    assert db_session.get(ParteDiarioDetalle, detalle_alta.id) is not None
+    assert db_session.get(TarjaNomina, registro_reingreso.id) is not None
+    assert db_session.get(TarjaDetalle, detalle_reingreso.id) is not None
+    db_session.refresh(nomina)
+    assert nomina.idproyecto == destino.id
+    assert nomina.encargado_contacto_id == data["otro_contacto"].id
+    assert nomina.activo is True
+    assert nomina.fecha_egreso is None
+
+
+@pytest.mark.parametrize(
+    ("estado_final", "fechas_restauradas", "eliminar_desde_destino"),
+    [
+        (
+            EstadoParteDiario.CONFIRMADO,
+            [date(2026, 6, 24), date(2026, 6, 25)],
+            False,
+        ),
+        (EstadoParteDiario.BORRADOR, [date(2026, 6, 25)], False),
+        (
+            EstadoParteDiario.CONFIRMADO,
+            [date(2026, 6, 24), date(2026, 6, 25)],
+            True,
+        ),
+    ],
+)
+def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(
+    db_session,
+    estado_final,
+    fechas_restauradas,
+    eliminar_desde_destino,
+):
     data = _seed_base(db_session)
     presente = db_session.exec(
         select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
@@ -1446,6 +2013,15 @@ def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(db_sessio
             activo=True,
         )
     )
+    nomina_destino_existente = Nomina(
+        nombre="Ana",
+        apellido="Destino",
+        dni="tarja-parte-destino",
+        idproyecto=destino.id,
+        encargado_contacto_id=data["otro_contacto"].id,
+    )
+    db_session.add(nomina_destino_existente)
+    db_session.flush()
     nomina = data["nomina_default"]
 
     parte_origen = parte_diario_crud.create(
@@ -1464,7 +2040,19 @@ def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(db_sessio
         fecha=date(2026, 6, 25),
         estado=EstadoParteDiario.CONFIRMADO,
     )
-    db_session.add(parte_destino)
+    parte_destino_anterior = ParteDiario(
+        idproyecto=destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fecha=date(2026, 6, 11),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    parte_origen_futuro = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=date(2026, 6, 25),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add_all([parte_destino, parte_destino_anterior, parte_origen_futuro])
     tarja_origen, _ = parte_diario_tarja_service.asegurar_nomina_quincena(
         db_session,
         idproyecto=data["proyecto"].id,
@@ -1553,6 +2141,41 @@ def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(db_sessio
         parte_destino.id,
     )
     assert tarja_destino is not None
+    registros_destino = db_session.exec(
+        select(TarjaNomina)
+        .where(TarjaNomina.tarja_id == tarja_destino.id)
+        .where(TarjaNomina.deleted_at.is_(None))
+    ).all()
+    assert {registro.nomina_id for registro in registros_destino} == {
+        nomina_destino_existente.id,
+        nomina.id,
+    }
+    registro_existente = next(
+        registro
+        for registro in registros_destino
+        if registro.nomina_id == nomina_destino_existente.id
+    )
+    assert registro_existente.fecha_desde == date(2026, 6, 11)
+    assert registro_existente.fecha_hasta == date(2026, 6, 25)
+
+    parte_diario_tarja_service.sincronizar_detalle_para_parte(
+        db_session,
+        parte_destino_anterior,
+    )
+    detalle_destino_anterior = db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.tarja_id == tarja_destino.id)
+        .where(TarjaDetalle.idnomina == nomina_destino_existente.id)
+        .where(TarjaDetalle.fecha == date(2026, 6, 11))
+    ).one()
+    assert detalle_destino_anterior.horas == Decimal("9.00")
+    assert db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.tarja_id == tarja_destino.id)
+        .where(TarjaDetalle.idnomina == nomina.id)
+        .where(TarjaDetalle.fecha == date(2026, 6, 11))
+    ).first() is None
+
     detalles_destino = db_session.exec(
         select(TarjaDetalle)
         .where(TarjaDetalle.tarja_id == tarja_destino.id)
@@ -1585,23 +2208,46 @@ def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(db_sessio
         ),
     ]
 
-    parte_diario_crud.update(
-        db_session,
-        parte_origen.id,
-        {
-            "idproyecto": data["proyecto"].id,
-            "contacto_id": data["contacto"].id,
-            "fecha": "2026-06-24",
-            "estado": EstadoParteDiario.CONFIRMADO,
-            "detalles": [],
-        },
+    registro_destino = db_session.exec(
+        select(TarjaNomina)
+        .where(TarjaNomina.tarja_id == tarja_destino.id)
+        .where(TarjaNomina.nomina_id == nomina.id)
+        .where(TarjaNomina.deleted_at.is_(None))
+    ).one()
+    novedad_destino = ParteDiarioDetalle(
+        parte_diario_id=parte_destino.id,
+        idnomina=nomina.id,
+        idestado=presente.id,
+        horas=Decimal("4"),
+        descripcion="Novedad posterior en destino",
     )
+    db_session.add(novedad_destino)
+    db_session.commit()
+
+    if eliminar_desde_destino:
+        assert tarja_nomina_crud.delete(db_session, registro_destino.id) is True
+    else:
+        parte_diario_crud.update(
+            db_session,
+            parte_origen.id,
+            {
+                "idproyecto": data["proyecto"].id,
+                "contacto_id": data["contacto"].id,
+                "fecha": "2026-06-24",
+                "estado": estado_final,
+                "detalles": [],
+            },
+        )
 
     db_session.refresh(registro_origen)
     db_session.refresh(nomina)
     assert registro_origen.fecha_hasta == date(2026, 6, 25)
     assert nomina.idproyecto == data["proyecto"].id
     assert nomina.encargado_contacto_id == data["contacto"].id
+    assert nomina.fecha_egreso is None
+    assert nomina.activo is True
+    assert db_session.get(ParteDiarioDetalle, novedad_destino.id) is None
+    assert db_session.get(TarjaNomina, registro_destino.id) is None
     assert db_session.exec(
         select(TarjaDetalle)
         .where(TarjaDetalle.tarja_id == tarja_destino.id)
@@ -1611,9 +2257,18 @@ def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(db_sessio
         select(TarjaDetalle)
         .where(TarjaDetalle.tarja_id == tarja_origen.id)
         .where(TarjaDetalle.idnomina == nomina.id)
-        .where(TarjaDetalle.fecha > date(2026, 6, 24))
+        .where(TarjaDetalle.fecha >= date(2026, 6, 24))
+        .where(TarjaDetalle.deleted_at.is_(None))
+        .order_by(TarjaDetalle.fecha)
     ).all()
-    assert detalles_origen_restaurados == []
+    assert [
+        detalle.fecha
+        for detalle in detalles_origen_restaurados
+    ] == fechas_restauradas
+    assert all(
+        detalle.idestado == presente.id and detalle.horas == Decimal("9.00")
+        for detalle in detalles_origen_restaurados
+    )
 
 
 def test_actualizar_parte_rechaza_dos_novedades_misma_nomina_con_error_controlado(db_session):
@@ -1800,4 +2455,285 @@ def test_registrar_tarja_requiere_parte_confirmado(db_session):
         assert "parte diario confirmado" in str(exc)
     else:
         raise AssertionError("registrar_tarja debe rechazar partes en borrador")
+
+
+def test_trabajo_destino_manual_crea_novedad_temporal_sin_mover_nomina(db_session):
+    data = _seed_base(db_session)
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    destino = Proyecto(
+        nombre="Obra Temporal",
+        responsable_id=data["contacto"].responsable_id,
+    )
+    db_session.add(destino)
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=destino.id,
+            contacto_id=data["otro_contacto"].id,
+            activo=True,
+        )
+    )
+    db_session.commit()
+
+    nomina = data["nomina_default"]
+    proyecto_origen_id = nomina.idproyecto
+    encargado_origen_id = nomina.encargado_contacto_id
+    descripcion = json.dumps(
+        {
+            "tipo": "trabajo_destino",
+            "horas": 4,
+            "origen": {
+                "idproyecto": data["proyecto"].id,
+                "contacto_id": data["contacto"].id,
+            },
+            "destino": {
+                "idproyecto": destino.id,
+                "contacto_id": data["otro_contacto"].id,
+                "obra": destino.nombre,
+                "encargado": data["otro_contacto"].nombre_completo,
+            },
+        }
+    )
+
+    origen = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "idnomina": nomina.id,
+                    "idestado": presente.id,
+                    "horas": "5",
+                    "descripcion": descripcion,
+                }
+            ],
+        },
+    )
+
+    db_session.refresh(nomina)
+    assert nomina.idproyecto == proyecto_origen_id
+    assert nomina.encargado_contacto_id == encargado_origen_id
+
+    origen_detalle = db_session.exec(
+        select(ParteDiarioDetalle).where(
+            ParteDiarioDetalle.parte_diario_id == origen.id,
+            ParteDiarioDetalle.idnomina == nomina.id,
+        )
+    ).one()
+    assert origen_detalle.idestado == presente.id
+    assert origen_detalle.horas == Decimal("5.00")
+    assert "parte_diario_destino_id=" in str(origen_detalle.descripcion)
+    assert '"horas":4.0' in str(origen_detalle.descripcion)
+
+    parte_destino = db_session.exec(
+        select(ParteDiario).where(
+            ParteDiario.idproyecto == destino.id,
+            ParteDiario.contacto_id == data["otro_contacto"].id,
+            ParteDiario.fecha == date(2026, 6, 24),
+        )
+    ).one()
+    assert parte_destino.estado == EstadoParteDiario.BORRADOR
+    destino_detalle = db_session.exec(
+        select(ParteDiarioDetalle).where(
+            ParteDiarioDetalle.parte_diario_id == parte_destino.id,
+            ParteDiarioDetalle.idnomina == nomina.id,
+        )
+    ).one()
+    assert destino_detalle.idestado == presente.id
+    assert destino_detalle.horas == Decimal("4.00")
+
+    tarja_destino = parte_diario_tarja_service.get_tarja_para_parte(
+        db_session,
+        parte_destino.id,
+    )
+    assert tarja_destino is not None
+    assert db_session.exec(
+        select(TarjaDetalle).where(
+            TarjaDetalle.tarja_id == tarja_destino.id,
+            TarjaDetalle.idnomina == nomina.id,
+        )
+    ).all() == []
+
+    parte_diario_crud.update(
+        db_session,
+        parte_destino.id,
+        {
+            "idproyecto": destino.id,
+            "contacto_id": data["otro_contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "id": destino_detalle.id,
+                    "idnomina": nomina.id,
+                    "idestado": presente.id,
+                    "horas": "4",
+                    "descripcion": destino_detalle.descripcion,
+                }
+            ],
+        },
+    )
+    tarja_detalle_destino = db_session.exec(
+        select(TarjaDetalle).where(
+            TarjaDetalle.tarja_id == tarja_destino.id,
+            TarjaDetalle.idnomina == nomina.id,
+            TarjaDetalle.fecha == date(2026, 6, 24),
+        )
+    ).one()
+    assert tarja_detalle_destino.horas == Decimal("4.00")
+    db_session.refresh(nomina)
+    assert nomina.idproyecto == proyecto_origen_id
+    assert nomina.encargado_contacto_id == encargado_origen_id
+
+    parte_diario_crud.update(
+        db_session,
+        origen.id,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [
+                {
+                    "id": origen_detalle.id,
+                    "idnomina": nomina.id,
+                    "idestado": presente.id,
+                    "horas": "5",
+                    "descripcion": origen_detalle.descripcion,
+                }
+            ],
+        },
+    )
+    db_session.refresh(parte_destino)
+    assert parte_destino.estado == EstadoParteDiario.CONFIRMADO
+
+    tarja_destino.estado = EstadoTarja.CERRADO
+    db_session.add(tarja_destino)
+    db_session.commit()
+    with pytest.raises(ValueError, match="tarja destino .* ya fue cerrada"):
+        parte_diario_crud.update(
+            db_session,
+            origen.id,
+            {
+                "idproyecto": data["proyecto"].id,
+                "contacto_id": data["contacto"].id,
+                "fecha": "2026-06-24",
+                "estado": EstadoParteDiario.CONFIRMADO,
+                "detalles": [],
+            },
+        )
+    assert db_session.get(ParteDiarioDetalle, origen_detalle.id) is not None
+    assert db_session.get(ParteDiarioDetalle, destino_detalle.id) is not None
+    assert db_session.get(TarjaDetalle, tarja_detalle_destino.id) is not None
+
+    tarja_destino = db_session.get(Tarja, tarja_destino.id)
+    tarja_destino.estado = EstadoTarja.BORRADOR
+    db_session.add(tarja_destino)
+    db_session.commit()
+    parte_diario_crud.update(
+        db_session,
+        origen.id,
+        {
+            "idproyecto": data["proyecto"].id,
+            "contacto_id": data["contacto"].id,
+            "fecha": "2026-06-24",
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [],
+        },
+    )
+
+    db_session.refresh(parte_destino)
+    assert parte_destino.estado == EstadoParteDiario.BORRADOR
+    assert db_session.get(ParteDiarioDetalle, origen_detalle.id) is None
+    assert db_session.get(ParteDiarioDetalle, destino_detalle.id) is None
+    assert db_session.get(TarjaDetalle, tarja_detalle_destino.id) is None
+    tarja_origen = parte_diario_tarja_service.get_tarja_para_parte(db_session, origen.id)
+    assert tarja_origen is not None
+    detalle_origen_restaurado = db_session.exec(
+        select(TarjaDetalle).where(
+            TarjaDetalle.tarja_id == tarja_origen.id,
+            TarjaDetalle.idnomina == nomina.id,
+            TarjaDetalle.fecha == date(2026, 6, 24),
+        )
+    ).one()
+    assert detalle_origen_restaurado.horas == Decimal("9.00")
+
+
+def test_trabajo_destino_manual_rechaza_tarja_destino_cerrada(db_session):
+    data = _seed_base(db_session)
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    destino = Proyecto(
+        nombre="Obra Cerrada",
+        responsable_id=data["contacto"].responsable_id,
+    )
+    db_session.add(destino)
+    db_session.flush()
+    db_session.add(
+        ProyectoEncargado(
+            proyecto_id=destino.id,
+            contacto_id=data["otro_contacto"].id,
+            activo=True,
+        )
+    )
+    db_session.add(
+        ParteDiario(
+            idproyecto=destino.id,
+            contacto_id=data["otro_contacto"].id,
+            fecha=date(2026, 6, 24),
+            estado=EstadoParteDiario.BORRADOR,
+        )
+    )
+    db_session.add(
+        Tarja(
+            idproyecto=destino.id,
+            contacto_id=data["otro_contacto"].id,
+            fechainicio=date(2026, 6, 11),
+            fechafinal=date(2026, 6, 25),
+            estado=EstadoTarja.CERRADO,
+        )
+    )
+    db_session.commit()
+
+    descripcion = json.dumps(
+        {
+            "tipo": "trabajo_destino",
+            "destino": {
+                "idproyecto": destino.id,
+                "contacto_id": data["otro_contacto"].id,
+                "obra": destino.nombre,
+            },
+        }
+    )
+    with pytest.raises(ValueError, match="tarja destino .* ya fue cerrada"):
+        parte_diario_crud.create(
+            db_session,
+            {
+                "idproyecto": data["proyecto"].id,
+                "contacto_id": data["contacto"].id,
+                "fecha": "2026-06-24",
+                "estado": EstadoParteDiario.CONFIRMADO,
+                "detalles": [
+                    {
+                        "idnomina": data["nomina_default"].id,
+                        "idestado": presente.id,
+                        "horas": "0",
+                        "descripcion": descripcion,
+                    }
+                ],
+            },
+        )
+
+    assert db_session.exec(
+        select(ParteDiario).where(
+            ParteDiario.idproyecto == data["proyecto"].id,
+            ParteDiario.fecha == date(2026, 6, 24),
+        )
+    ).first() is None
 

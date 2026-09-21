@@ -17,14 +17,18 @@ from sqlmodel import Session, select
 from app import db
 
 from agente.v3.contracts import V3InboundMessage
-from agente.v3.subprocesses.parte_diario.domain import empleados, novedades, obras
+from agente.v3.subprocesses.parte_diario.domain import empleados, encargados, novedades, obras
 from agente.v3.subprocesses.parte_diario.domain.models import EstadoItem, NovedadPersonal, ParteDiarioDraft, PendienteAmbiguo
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioFechaOption, ParteDiarioV3State
 from agente.v3.subprocesses.parte_diario.utils import calendario, interpretacion, renderer
 from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable, fecha_es_feriado
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
-from app.models import EstadoParteDiario, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado
-from app.services.parte_diario_service import parte_diario_service
+from app.models import CRMContacto, EstadoParteDiario, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado
+from app.services.parte_diario_service import (
+    extract_destination_part_id,
+    parte_diario_service,
+    strip_destination_part_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,13 +227,13 @@ def buscar_parte(session: Session, idproyecto: int, fecha: str, *, contacto_id: 
     return session.exec(base_query).first()
 
 
-# Convierte detalles guardados por el agente en novedades y personas pendientes.
+# Recupera por separado novedades editables, movimientos internos y personas pendientes.
 def cargar_detalles(
     session: Session,
     parte: ParteDiario,
     estados: list[EstadoItem],
     idproyecto: int,
-) -> tuple[list[NovedadPersonal], list[PendienteAmbiguo]]:
+) -> tuple[list[NovedadPersonal], list[NovedadPersonal], list[PendienteAmbiguo]]:
     status_by_id = {item.id: item.abreviatura for item in estados}
     projects = obras.nombres_por_ids(session)
     rows = session.exec(
@@ -238,7 +242,51 @@ def cargar_detalles(
         .where(ParteDiarioDetalle.origen == OrigenDetalle.AGENTE)
         .where(ParteDiarioDetalle.deleted_at.is_(None))
     ).all()
-    novedades: list[NovedadPersonal] = []
+    stored_state_ids = {int(row.idestado) for row in rows if row.idestado is not None}
+    if stored_state_ids:
+        stored_states = session.exec(
+            select(ParteDiarioEstado)
+            .where(ParteDiarioEstado.id.in_(stored_state_ids))
+            .where(ParteDiarioEstado.deleted_at.is_(None))
+        ).all()
+        status_by_id.update(
+            {int(item.id): str(item.abreviatura or "").strip().upper() for item in stored_states}
+        )
+    destination_ids_by_detail: dict[int, int] = {}
+    for row in rows:
+        destination_part_id = extract_destination_part_id(row.descripcion)
+        if row.id is not None and destination_part_id is not None:
+            destination_ids_by_detail[int(row.id)] = destination_part_id
+    destination_part_ids = set(destination_ids_by_detail.values())
+    destination_parts = (
+        {
+            int(item.id): item
+            for item in session.exec(
+                select(ParteDiario).where(ParteDiario.id.in_(destination_part_ids))
+            ).all()
+            if item.id is not None
+        }
+        if destination_part_ids
+        else {}
+    )
+    destination_contact_ids = {
+        int(item.contacto_id)
+        for item in destination_parts.values()
+        if item.contacto_id is not None
+    }
+    destination_contacts = (
+        {
+            int(item.id): item
+            for item in session.exec(
+                select(CRMContacto).where(CRMContacto.id.in_(destination_contact_ids))
+            ).all()
+            if item.id is not None
+        }
+        if destination_contact_ids
+        else {}
+    )
+    editable_novedades: list[NovedadPersonal] = []
+    novedades_internas: list[NovedadPersonal] = []
     pendientes: list[PendienteAmbiguo] = []
     for row in rows:
         nomina = empleados.obtener(session, row.idnomina) if row.idnomina is not None else None
@@ -257,23 +305,53 @@ def cargar_detalles(
                 )
             )
             continue
-        external = nomina.idproyecto != idproyecto
-        novedades.append(
-            NovedadPersonal(
-                nombre=f"{nomina.apellido}, {nomina.nombre}",
-                idnomina=nomina.id,
-                idestado=row.idestado,
-                estado_codigo=status_by_id.get(row.idestado),
-                horas=float(row.horas),
-                ingreso=row.ingreso.isoformat() if row.ingreso else None,
-                egreso=row.egreso.isoformat() if row.egreso else None,
-                descripcion=row.descripcion,
-                fuera_de_proyecto=external,
-                nombre_proyecto=projects.get(nomina.idproyecto) if external else None,
-                nro_legajo=nomina.nro_legajo,
-            )
+        destination_part_id = destination_ids_by_detail.get(int(row.id)) if row.id is not None else None
+        destination_part = destination_parts.get(int(destination_part_id)) if destination_part_id is not None else None
+        external = destination_part_id is not None or nomina.idproyecto != idproyecto
+        destination_project_id = destination_part.idproyecto if destination_part is not None else None
+        destination_contact_id = destination_part.contacto_id if destination_part is not None else None
+        destination_contact = (
+            destination_contacts.get(int(destination_contact_id))
+            if destination_contact_id is not None
+            else None
         )
-    return novedades, pendientes
+        estado_codigo = status_by_id.get(row.idestado)
+        loaded = NovedadPersonal(
+            nombre=f"{nomina.apellido}, {nomina.nombre}",
+            idnomina=nomina.id,
+            idestado=row.idestado,
+            estado_codigo=estado_codigo,
+            horas=float(row.horas),
+            ingreso=row.ingreso.isoformat() if row.ingreso else None,
+            egreso=row.egreso.isoformat() if row.egreso else None,
+            descripcion=(
+                None
+                if str(estado_codigo or "").upper() in novedades.INTERNAL_NOMINA_STATE_CODES
+                else strip_destination_part_reference(row.descripcion)
+            ),
+            fuera_de_proyecto=external,
+            nombre_proyecto=(
+                projects.get(destination_project_id)
+                if destination_project_id is not None
+                else projects.get(nomina.idproyecto) if external else None
+            ),
+            idproyecto_destino=destination_project_id,
+            contacto_id_destino=destination_contact_id,
+            nombre_encargado_destino=(
+                encargados.etiqueta(destination_contact)
+                if destination_contact is not None
+                else None
+            ),
+            validar_destino_trabajo=destination_part_id is not None,
+            nro_legajo=nomina.nro_legajo,
+        )
+        target = (
+            novedades_internas
+            if str(estado_codigo or "").upper() in novedades.INTERNAL_NOMINA_STATE_CODES
+            else editable_novedades
+        )
+        target.append(loaded)
+    return editable_novedades, novedades_internas, pendientes
 
 
 # Asigna la fecha y combina el parte existente con las novedades del borrador.
@@ -295,8 +373,15 @@ def aplicar_fecha(
     if existing is None:
         state.parte_id = None
         state.retomado = False
+        state.novedades_internas = []
         return None
-    loaded, loaded_pending = cargar_detalles(session, existing, estados, int(state.idproyecto or 0))
+    loaded, loaded_internal, loaded_pending = cargar_detalles(
+        session,
+        existing,
+        estados,
+        int(state.idproyecto or 0),
+    )
+    state.novedades_internas = loaded_internal
     if not state.novedades and not state.pendientes_ambiguos:
         state.novedades = loaded
         state.pendientes_ambiguos = loaded_pending

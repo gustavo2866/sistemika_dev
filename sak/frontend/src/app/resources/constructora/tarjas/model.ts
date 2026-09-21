@@ -104,6 +104,8 @@ export type Tarja = {
   fechafinal?: string | null;
   estado?: string | null;
   descripcion?: string | null;
+  premio?: number | null;
+  viaticos?: boolean | null;
   detalles?: TarjaDetalle[];
   novedades?: TarjaNovedad[];
   created_at?: string;
@@ -153,6 +155,8 @@ export const tarjaSchema = z.object({
     normalizeOptionalString,
     z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
   ),
+  premio: optionalNumberFromInputSchema,
+  viaticos: optionalBooleanFromInputSchema,
   detalles: z.array(tarjaDetalleSchema).default([]),
   novedades: z.array(tarjaNovedadSchema).default([]),
 });
@@ -166,6 +170,8 @@ export const TARJA_DEFAULTS: TarjaFormValues = {
   fechafinal: "",
   estado: "borrador",
   descripcion: "",
+  premio: 0,
+  viaticos: false,
   detalles: [],
   novedades: [
     {
@@ -203,6 +209,8 @@ export const normalizeTarjaPayload = (data: Partial<TarjaFormValues>) => {
     fechafinal,
     estado: data.estado === "cerrado" ? "cerrado" : "borrador",
     descripcion: trimNullableText(data.descripcion),
+    premio: Number(data.premio ?? 0),
+    viaticos: Boolean(data.viaticos),
     detalles: (data.detalles ?? []).map((detalle) => ({
       ...(detalle.id ? { id: Number(detalle.id) } : {}),
       idnomina: Number(detalle.idnomina),

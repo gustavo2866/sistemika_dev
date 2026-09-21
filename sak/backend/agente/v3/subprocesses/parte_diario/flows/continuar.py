@@ -43,6 +43,8 @@ def procesar(text: str, state: ParteDiarioV3State) -> str | None:
     state.fecha_referida_explicita = False
     state.validacion_origen = None
     state.asistencia_opciones = []
+    state.asistencia_catalogo = []
     state.asistencia_offset = 0
+    state.revision_origen = None
     state.etapa = "cargar_fecha"
     return None

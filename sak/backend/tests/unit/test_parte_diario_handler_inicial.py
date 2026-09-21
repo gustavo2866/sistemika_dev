@@ -58,11 +58,26 @@ def contexto(option, etapa="carga"):
 
 
 @pytest.mark.asyncio
-async def test_inicio_resuelve_obra_fecha_y_no_guarda(escenario, db_session):
+async def test_parte_diario_muestra_menu_de_entrada(escenario, db_session):
+    llm = AsyncMock()
+    original = V3ConversationContext(conversation_id="conv")
+
+    result = await handler.ParteDiarioSubprocess(llm_client=llm).handle(
+        mensaje("parte diario"), original,
+    )
+
+    assert result.reply_text == "PARTE DIARIO\n1: REPORTAR\n2: PENDIENTES\n3: SALIR"
+    assert result.context.process_state["etapa"] == "seleccionar_accion"
+    assert not db_session.exec(select(ParteDiario)).all()
+    llm.normalize_initial_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reportar_resuelve_obra_fecha_y_no_guarda(escenario, db_session):
     """Verifica el recorrido inicial real y la ausencia de persistencia del paso 5."""
     llm = AsyncMock()
     original = V3ConversationContext(conversation_id="conv")
-    result = await handler.ParteDiarioSubprocess(llm_client=llm).handle(mensaje("parte diario"), original)
+    result = await handler.ParteDiarioSubprocess(llm_client=llm).handle(mensaje("reportar"), original)
     assert original.process_state == {}
     assert result.context.process_state["proyecto_id"] == escenario.proyecto_id
     assert result.context.process_state["parte_state"]["fecha"] == "2026-09-11"
@@ -70,6 +85,45 @@ async def test_inicio_resuelve_obra_fecha_y_no_guarda(escenario, db_session):
     assert "Que novedades hubo ese dia?" in result.reply_text
     assert not db_session.exec(select(ParteDiario)).all()
     llm.normalize_initial_request.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seleccion", ["1", "REPORTAR"])
+async def test_menu_reportar_inicia_circuito_diario(escenario, seleccion):
+    process = handler.ParteDiarioSubprocess(llm_client=AsyncMock())
+    menu = await process.handle(mensaje("parte diario"), V3ConversationContext(conversation_id="conv"))
+
+    result = await process.handle(mensaje(seleccion), menu.context)
+
+    assert result.context.process_state["etapa"] == "carga"
+    assert result.context.process_state["modo_apertura"] == "diario"
+    assert result.context.process_state["parte_state"]["fecha"] == "2026-09-11"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seleccion", ["2", "PENDIENTES"])
+async def test_menu_pendientes_muestra_fechas_disponibles(escenario, seleccion):
+    process = handler.ParteDiarioSubprocess(llm_client=AsyncMock())
+    menu = await process.handle(mensaje("parte diario"), V3ConversationContext(conversation_id="conv"))
+
+    result = await process.handle(mensaje(seleccion), menu.context)
+
+    assert result.context.process_state["etapa"] == "pendientes"
+    assert result.context.process_state["modo_pendientes"] is True
+    assert "Selecciona la fecha del parte diario:" in result.reply_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seleccion", ["3", "SALIR"])
+async def test_menu_salir_finaliza_sin_mostrar_menu_general(escenario, seleccion):
+    process = handler.ParteDiarioSubprocess(llm_client=AsyncMock())
+    menu = await process.handle(mensaje("parte diario"), V3ConversationContext(conversation_id="conv"))
+
+    result = await process.handle(mensaje(seleccion), menu.context)
+
+    assert result.context.active_process == "general"
+    assert result.context.process_state == {}
+    assert result.reply_text == "Finalizamos la seleccion de partes diarios."
 
 
 @pytest.mark.asyncio
@@ -141,6 +195,7 @@ async def test_pendientes_muestra_menu_y_selecciona(escenario):
     process = handler.ParteDiarioSubprocess(llm_client=AsyncMock())
     result = await process.handle(mensaje("partes pendientes"), V3ConversationContext(conversation_id="conv"))
     assert result.context.process_state["etapa"] == "pendientes"
+    assert "jueves 2026-09-10" in result.reply_text
     result = await process.handle(mensaje("2026-09-10"), result.context)
     assert result.context.process_state["parte_state"]["fecha"] == "2026-09-10"
     assert result.context.process_state["etapa"] == "carga"
@@ -184,7 +239,7 @@ async def test_recupera_parte_existente_o_consulta_cerrado(escenario, db_session
 async def test_sin_obra_y_salir_devuelven_contexto_general(escenario):
     """Comprueba la respuesta final sin obra y la salida desde seleccion de fecha."""
     process = handler.ParteDiarioSubprocess(llm_client=AsyncMock())
-    inbound = mensaje("parte diario")
+    inbound = mensaje("reportar")
     inbound.from_address = "desconocido"
     result = await process.handle(inbound, V3ConversationContext(conversation_id="conv"))
     assert "No encontre una obra" in result.reply_text

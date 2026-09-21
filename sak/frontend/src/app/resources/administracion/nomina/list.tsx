@@ -5,9 +5,10 @@ import { ReferenceField } from "@/components/reference-field";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
-import { useRecordContext } from "ra-core";
+import { useDataProvider, useRecordContext, type Exporter } from "ra-core";
 import {
   BooleanListColumn,
+  FormOrderBulkActionsToolbar,
   FormOrderListRowActions,
   ListColumn,
   ListPaginator,
@@ -19,6 +20,7 @@ import {
 } from "@/components/forms/form_order";
 import { ESTADO_CHOICES } from "./model";
 import { NominaBackButton } from "./navigation-title";
+import { NominaAsignarEncargadoButton } from "./asignar-encargado";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -38,6 +40,7 @@ const LIST_FILTERS = buildListFilters(
         source: "encargado_contacto_id",
         reference: "crm/contactos",
         label: "Encargado",
+        filter: { "tipo.nombre": "Encargado" },
       },
       selectProps: {
         optionText: "nombre_completo",
@@ -84,8 +87,9 @@ const LIST_FILTERS = buildListFilters(
       type: "reference",
       referenceProps: {
         source: "idproyecto",
-        reference: "nominas/proyectos",
+        reference: "proyectos",
         label: "Proyecto",
+        alwaysOn: true,
       },
       selectProps: {
         optionText: "nombre",
@@ -99,12 +103,129 @@ const LIST_FILTERS = buildListFilters(
 
 const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
+type NominaExportRecord = Record<string, unknown> & {
+  id: number;
+  apellido?: string | null;
+  nombre?: string | null;
+  encargado_contacto_id?: number | null;
+  proyecto?: { nombre?: string | null } | null;
+  nomina_categoria?: { descripcion?: string | null } | null;
+  nomina_tarea?: { descripcion?: string | null } | null;
+};
+
+const escapeExcelHtml = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const nominaXlsExporter: Exporter<NominaExportRecord> = async (
+  records,
+  fetchRelatedRecords,
+) => {
+  const encargados = await fetchRelatedRecords(
+    records,
+    "encargado_contacto_id",
+    "crm/contactos",
+  );
+  const columns: Array<[string, (record: NominaExportRecord) => unknown]> = [
+    ["ID", (record) => record.id],
+    ["Legajo", (record) => record.nro_legajo],
+    ["Apellido", (record) => record.apellido],
+    ["Nombre", (record) => record.nombre],
+    ["DNI", (record) => record.dni],
+    ["Email", (record) => record.email],
+    ["Telefono", (record) => record.telefono],
+    ["Direccion", (record) => record.direccion],
+    ["Fecha nacimiento", (record) => record.fecha_nacimiento],
+    ["Fecha ingreso", (record) => record.fecha_ingreso],
+    ["Fecha egreso", (record) => record.fecha_egreso],
+    ["Categoria", (record) => record.nomina_categoria?.descripcion],
+    ["Tarea", (record) => record.nomina_tarea?.descripcion],
+    ["Proyecto", (record) => record.proyecto?.nombre],
+    [
+      "Encargado",
+      (record) =>
+        record.encargado_contacto_id == null
+          ? ""
+          : encargados[record.encargado_contacto_id]?.nombre_completo,
+    ],
+    ["Activo", (record) => (record.activo ? "Si" : "No")],
+    ["Salario mensual", (record) => record.salario_mensual],
+  ];
+  const header = columns
+    .map(([label]) => `<th>${escapeExcelHtml(label)}</th>`)
+    .join("");
+  const body = records
+    .map(
+      (record) =>
+        `<tr>${columns
+          .map(([, getValue]) => `<td>${escapeExcelHtml(getValue(record))}</td>`)
+          .join("")}</tr>`,
+    )
+    .join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8" /><style>table{border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:4px;font-family:Arial,sans-serif;font-size:11px}th{background:#e5e7eb;font-weight:600}</style></head><body><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+  const url = URL.createObjectURL(
+    new Blob([`\uFEFF${html}`], {
+      type: "application/vnd.ms-excel;charset=utf-8;",
+    }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "nomina.xls";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
 const NombreCompletoField = () => {
   const record = useRecordContext<{ nombre?: string | null; apellido?: string | null }>();
   const apellido = String(record?.apellido ?? "").trim();
   const nombre = String(record?.nombre ?? "").trim();
   const value = [apellido, nombre].filter(Boolean).join(", ");
   return <span className="whitespace-normal break-words">{value || "-"}</span>;
+};
+
+const NominaRowActions = ({ rowClick }: { rowClick?: any }) => {
+  const dataProvider = useDataProvider();
+
+  const validateDelete = async (record: Record<string, unknown>) => {
+    const { total } = await dataProvider.getList("tarja-nomina", {
+      pagination: { page: 1, perPage: 1 },
+      sort: { field: "id", order: "ASC" },
+      filter: { nomina_id: record.id },
+      meta: { suppressErrorNotification: true },
+    });
+    const totalRegistros = total ?? 0;
+
+    if (totalRegistros > 0) {
+      return {
+        allowed: false,
+        message: `No se puede eliminar: el empleado pertenece a ${totalRegistros} registro${totalRegistros === 1 ? "" : "s"} de Tarja Nomina.`,
+      };
+    }
+
+    return {
+      allowed: true,
+      message: "Validacion correcta: el empleado no pertenece a ninguna Tarja Nomina. Deseas eliminarlo?",
+    };
+  };
+
+  return (
+    <FormOrderListRowActions
+      showEdit
+      showShow={false}
+      validateDelete={validateDelete}
+      getEditPath={(record) => {
+        if (typeof rowClick !== "function") return undefined;
+        const path = rowClick(record.id, "nominas", record);
+        return typeof path === "string" ? path : undefined;
+      }}
+    />
+  );
 };
 
 const NominaListTitle = () => (
@@ -140,14 +261,18 @@ const ListActions = ({ createTo }: { createTo?: string }) => (
       buttonClassName={ACTION_BUTTON_CLASS}
     />
     <CreateButton className={ACTION_BUTTON_CLASS} label="Crear" to={createTo} />
-    <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
+    <ExportButton
+      className={ACTION_BUTTON_CLASS}
+      label="Exportar"
+      exporter={nominaXlsExporter}
+    />
   </div>
 );
 
 export const NominaList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 5,
+  perPage = 10,
   createTo,
   filter,
   filterDefaultValues,
@@ -173,6 +298,11 @@ export const NominaList = ({
   >
     <ResponsiveDataTable
       rowClick={rowClick}
+      bulkActionsToolbar={
+        <FormOrderBulkActionsToolbar>
+          <NominaAsignarEncargadoButton />
+        </FormOrderBulkActionsToolbar>
+      }
       mobileConfig={{
         primaryField: "apellido",
         secondaryFields: ["nombre", "nomina_categoria_id", "nomina_tarea_id", "idproyecto", "encargado_contacto_id"],
@@ -184,7 +314,7 @@ export const NominaList = ({
         label="ID"
         className="w-[50px] text-center"
       />
-      <TextListColumn source="apellido" label="Apellido y nombre" className="w-[210px]">
+      <TextListColumn source="apellido" label="Apellido y nombre" className="w-[170px]">
         <NombreCompletoField />
       </TextListColumn>
       <ListColumn source="nomina_categoria_id" label="Categoria" className="w-[150px]">
@@ -192,7 +322,7 @@ export const NominaList = ({
           <ListText source="descripcion" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
-      <ListColumn source="nomina_tarea_id" label="Tarea" className="w-[150px]">
+      <ListColumn source="nomina_tarea_id" label="Tarea" className="w-[120px]">
         <ReferenceField source="nomina_tarea_id" reference="nomina-tareas">
           <ListText source="descripcion" className="whitespace-normal break-words" />
         </ReferenceField>
@@ -202,14 +332,14 @@ export const NominaList = ({
           <ListText source="nombre" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
-      <ListColumn source="encargado_contacto_id" label="Encargado" className="w-[160px]">
+      <ListColumn source="encargado_contacto_id" label="Encargado" className="w-[125px]">
         <ReferenceField source="encargado_contacto_id" reference="crm/contactos">
           <ListText source="nombre_completo" className="whitespace-normal break-words" />
         </ReferenceField>
       </ListColumn>
       <BooleanListColumn source="activo" label="Activo" className="w-[70px]" />
       <ListColumn label="Acciones" className="w-[56px]">
-        <FormOrderListRowActions />
+        <NominaRowActions rowClick={rowClick} />
       </ListColumn>
     </ResponsiveDataTable>
   </List>

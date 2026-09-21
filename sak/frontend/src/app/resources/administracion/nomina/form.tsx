@@ -99,6 +99,7 @@ const DatosLaboralesFields = () => (
       referenceProps={{
         source: "encargado_contacto_id",
         reference: "crm/contactos",
+        filter: { "tipo.nombre": "Encargado" },
       }}
       inputProps={{
         optionText: "nombre_completo",

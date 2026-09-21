@@ -26,7 +26,16 @@ import {
   type UseFormSetError,
 } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { ArrowRightLeft, CheckCircle2, Loader2, PlusCircle, Save, UserMinus, UserPlus } from "lucide-react";
+import {
+  ArrowRightLeft,
+  CheckCircle2,
+  Loader2,
+  MapPin,
+  PlusCircle,
+  Save,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
 import {
   NominaQuickCreateDialog,
   type CreatedNomina,
@@ -66,9 +75,11 @@ import {
 } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/simple-form";
 import { ReferenceInput } from "@/components/reference-input";
+import { dataProvider as directDataProvider, extractErrorMessage } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
 import {
   PARTE_DIARIO_DEFAULTS,
+  getParteDiarioJornadaEsperada,
   getParteDiarioDetalleDefaults,
   normalizeParteDiarioPayload,
   parteDiarioSchema,
@@ -96,28 +107,6 @@ const firstContactPhone = (value: unknown) => {
   return typeof first === "string" ? first.trim() : "";
 };
 
-const getRequestErrorMessage = (error: unknown, fallback: string) => {
-  const err = error as {
-    body?: {
-      detail?: unknown;
-      error?: { message?: string };
-      message?: string;
-    };
-    message?: string;
-  };
-  const detail = err.body?.detail;
-  if (typeof detail === "string") return detail;
-  if (detail && typeof detail === "object") {
-    const detailObj = detail as {
-      error?: { message?: string } | string;
-      message?: string;
-    };
-    if (typeof detailObj.error === "string") return detailObj.error;
-    return detailObj.error?.message || detailObj.message || JSON.stringify(detail);
-  }
-  return err.body?.error?.message || err.body?.message || err.message || fallback;
-};
-
 type ReferenceRecord = { id: number | string } & Record<string, unknown>;
 
 type ParteDiarioEstadoRecord = {
@@ -131,9 +120,46 @@ type BajaNominaFormValues = {
   idnomina?: number | string | null;
 };
 
+type BajaNominaImpacto = {
+  id: number | string;
+  novedades: number;
+  traslados: number;
+  tarja_detalles: number;
+  proxima_alta?: string | null;
+};
+
+type AltaDeletePending = {
+  remove: () => void;
+};
+
+const getBajaImpactoMessage = (impacto: BajaNominaImpacto) => {
+  const efectos: string[] = [];
+  if (impacto.novedades > 0) {
+    const novedades = `${impacto.novedades} ${
+      impacto.novedades === 1 ? "novedad posterior" : "novedades posteriores"
+    }`;
+    const traslados = impacto.traslados > 0
+      ? ` (${impacto.traslados} ${impacto.traslados === 1 ? "traslado" : "traslados"})`
+      : "";
+    efectos.push(`anulara ${novedades}${traslados}`);
+  }
+  if (impacto.tarja_detalles > 0) {
+    efectos.push(
+      `eliminara ${impacto.tarja_detalles} ${
+        impacto.tarja_detalles === 1 ? "registro de tarja" : "registros de tarja"
+      }`,
+    );
+  }
+  const limite = impacto.proxima_alta
+    ? ` No se modificara el reingreso del ${formatAgentChatDate(impacto.proxima_alta)}.`
+    : "";
+  return `La baja ${efectos.join(" y ")}. Los cambios se aplicaran al confirmar el parte.${limite}`;
+};
+
 type TraspasoNominaFormValues = {
   idnomina?: number | string | null;
   proyecto_encargado_id?: number | string | null;
+  horas?: number | string | null;
 };
 
 type ProyectoEncargadoRecord = {
@@ -183,15 +209,6 @@ const getQuincenaRange = (value: unknown) => {
   };
 };
 
-const getJornadaEsperada = (value: unknown) => {
-  const fecha = getParteDateValue(value);
-  if (!fecha) return 0;
-  const day = new Date(`${fecha}T00:00:00Z`).getUTCDay();
-  if (day === 0) return 0;
-  if (day === 6) return 6;
-  return 9;
-};
-
 const getNominaLabel = (record?: Record<string, unknown>) => {
   if (!record) return "";
   const proyecto = record.proyecto as { nombre?: string | null } | null | undefined;
@@ -220,10 +237,12 @@ const sortProyectoEncargadoByLabel = (left: ProyectoEncargadoRecord, right: Proy
     sensitivity: "base",
   });
 
-const getTraspasoDescripcionLabel = (value?: string | null) => {
+const getDestinoDescripcion = (value?: string | null) => {
   if (!value?.trim()) return "";
   try {
-    const parsed = JSON.parse(value);
+    const parsed = JSON.parse(
+      value.replace(/\s*\[parte_diario_destino_id=\d+\]\s*$/, "").trim(),
+    );
     const destino = parsed?.destino;
     if (!destino || typeof destino !== "object") return "";
     const label = typeof destino.label === "string" ? destino.label.trim() : "";
@@ -231,9 +250,26 @@ const getTraspasoDescripcionLabel = (value?: string | null) => {
     const obra = typeof destino.obra === "string" ? destino.obra.trim() : "";
     const encargado =
       typeof destino.encargado === "string" ? destino.encargado.trim() : "";
-    return [obra, encargado].filter(Boolean).join(" - ");
+    const destinoLabel = [obra, encargado].filter(Boolean).join(" - ");
+    const horasDestino = Number(parsed?.horas);
+    const horasLabel = Number.isFinite(horasDestino) ? `, ${horasDestino}h` : "";
+    return parsed?.tipo === "trabajo_destino" && destinoLabel
+      ? `Trabajó en: ${destinoLabel}${horasLabel}`
+      : destinoLabel;
   } catch {
     return "";
+  }
+};
+
+const isTrabajoDestinoDescripcion = (value: unknown) => {
+  if (typeof value !== "string") return false;
+  try {
+    const parsed = JSON.parse(
+      value.replace(/\s*\[parte_diario_destino_id=\d+\]\s*$/, "").trim(),
+    );
+    return parsed?.tipo === "trabajo_destino";
+  } catch {
+    return false;
   }
 };
 
@@ -245,6 +281,7 @@ const BajaNominaDialog = ({
   contactoId,
   proyectoNombre,
   contactoNombre,
+  fecha,
   fechaLabel,
   loading,
   excludedNominaIds,
@@ -256,15 +293,16 @@ const BajaNominaDialog = ({
   contactoId: number | null;
   proyectoNombre?: string;
   contactoNombre?: string;
+  fecha?: string;
   fechaLabel?: string;
   loading: boolean;
   excludedNominaIds: Set<number>;
 }) => {
   const notify = useNotify();
   const nominaFilter = {
-    activo: true,
     ...(proyectoId ? { idproyecto: proyectoId } : {}),
-    ...(contactoId ? { encargado_contacto_id: contactoId } : {}),
+    ...(contactoId ? { contacto_id: contactoId } : {}),
+    ...(fecha ? { fecha } : {}),
   };
 
   const handleSubmit = async (values: BajaNominaFormValues) => {
@@ -325,7 +363,7 @@ const BajaNominaDialog = ({
             <FormReferenceAutocomplete
               referenceProps={{
                 source: "idnomina",
-                reference: "nominas",
+                reference: "parte-diario/nomina-disponible",
                 filter: nominaFilter,
                 sort: { field: "apellido", order: "ASC" },
               }}
@@ -346,7 +384,8 @@ const BajaNominaDialog = ({
   );
 };
 
-const TraspasoNominaDialog = ({
+const DestinoNominaDialog = ({
+  tipo,
   open,
   onClose,
   onSubmit,
@@ -354,49 +393,75 @@ const TraspasoNominaDialog = ({
   contactoId,
   proyectoNombre,
   contactoNombre,
+  fecha,
   fechaLabel,
+  jornadaHoras,
   loading,
   excludedNominaIds,
 }: {
+  tipo: "traspaso" | "trabajo";
   open: boolean;
   onClose: () => void;
-  onSubmit: (values: { nominaId: number; proyectoEncargadoId: number }) => void | Promise<void>;
+  onSubmit: (values: {
+    nominaId: number;
+    proyectoEncargadoId: number;
+    horas?: number;
+  }) => void | Promise<void>;
   proyectoId: number | null;
   contactoId: number | null;
   proyectoNombre?: string;
   contactoNombre?: string;
+  fecha?: string;
   fechaLabel?: string;
+  jornadaHoras: number;
   loading: boolean;
   excludedNominaIds: Set<number>;
 }) => {
   const notify = useNotify();
+  const esTrabajoTemporal = tipo === "trabajo";
   const nominaFilter = {
-    activo: true,
     ...(proyectoId ? { idproyecto: proyectoId } : {}),
-    ...(contactoId ? { encargado_contacto_id: contactoId } : {}),
+    ...(contactoId ? { contacto_id: contactoId } : {}),
+    ...(fecha ? { fecha } : {}),
   };
 
   const handleSubmit = async (values: TraspasoNominaFormValues) => {
     const nominaId = resolveNumericId(values.idnomina);
     const proyectoEncargadoId = resolveNumericId(values.proyecto_encargado_id);
     if (!nominaId || !proyectoEncargadoId) {
-      notify("Selecciona empleado y destino para registrar el traspaso.", { type: "warning" });
+      notify(
+        esTrabajoTemporal
+          ? "Selecciona empleado y destino para registrar dónde trabajó."
+          : "Selecciona empleado y destino para registrar el traspaso.",
+        { type: "warning" },
+      );
+      return;
+    }
+    const horas = Number(values.horas);
+    if (esTrabajoTemporal && (!Number.isFinite(horas) || horas < 0 || horas > 24)) {
+      notify("Las horas en la obra destino deben estar entre 0 y 24.", { type: "warning" });
       return;
     }
     if (excludedNominaIds.has(nominaId)) {
       notify("El empleado ya tiene una novedad cargada en este parte.", { type: "warning" });
       return;
     }
-    await onSubmit({ nominaId, proyectoEncargadoId });
+    await onSubmit({
+      nominaId,
+      proyectoEncargadoId,
+      ...(esTrabajoTemporal ? { horas } : {}),
+    });
   };
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Traspaso de nomina</DialogTitle>
+          <DialogTitle>{esTrabajoTemporal ? "Trabajo en otra obra" : "Traspaso de nomina"}</DialogTitle>
           <DialogDescription>
-            Selecciona el empleado y la obra/encargado destino.
+            {esTrabajoTemporal
+              ? "Selecciona el empleado, el destino y las horas trabajadas."
+              : "Selecciona el empleado y la obra/encargado destino."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 rounded-md border border-muted/70 bg-muted/30 p-2 text-[11px] sm:grid-cols-3 sm:text-xs">
@@ -422,7 +487,11 @@ const TraspasoNominaDialog = ({
         <ResourceContextProvider value="parte-diario">
           <SimpleForm<TraspasoNominaFormValues>
             className="w-full max-w-none"
-            defaultValues={{ idnomina: null, proyecto_encargado_id: null }}
+            defaultValues={{
+              idnomina: null,
+              proyecto_encargado_id: null,
+              ...(esTrabajoTemporal ? { horas: jornadaHoras } : {}),
+            }}
             onSubmit={handleSubmit}
             toolbar={
               <FormOrderToolbar
@@ -432,11 +501,16 @@ const TraspasoNominaDialog = ({
             }
           >
             <FormErrorSummary />
-            <div className="grid gap-2 md:grid-cols-2">
+            <div
+              className={cn(
+                "grid gap-2",
+                esTrabajoTemporal ? "md:grid-cols-[1fr_1fr_140px]" : "md:grid-cols-2",
+              )}
+            >
               <FormReferenceAutocomplete
                 referenceProps={{
                   source: "idnomina",
-                  reference: "nominas",
+                  reference: "parte-diario/nomina-disponible",
                   filter: nominaFilter,
                   sort: { field: "apellido", order: "ASC" },
                 }}
@@ -461,12 +535,26 @@ const TraspasoNominaDialog = ({
                   optionText: getProyectoEncargadoLabel,
                   inputText: getProyectoEncargadoLabel,
                   optionSort: sortProyectoEncargadoByLabel,
+                  optionFilter: (choice) =>
+                    !esTrabajoTemporal || resolveNumericId(choice.proyecto_id) !== proyectoId,
                   label: "Destino",
                   validate: required(),
                   placeholder: "Obra - encargado",
                 }}
                 widthClass="w-full"
               />
+              {esTrabajoTemporal ? (
+                <FormNumber
+                  source="horas"
+                  label="Horas en obra destino"
+                  inputMode="decimal"
+                  step={0.25}
+                  min={0}
+                  max={24}
+                  widthClass="w-full"
+                  validate={required()}
+                />
+              ) : null}
             </div>
           </SimpleForm>
         </ResourceContextProvider>
@@ -580,8 +668,17 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
   const [quickCreateLoading, setQuickCreateLoading] = useState(false);
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaLoading, setBajaLoading] = useState(false);
+  const [bajaPendiente, setBajaPendiente] = useState<{
+    nominaId: number;
+    impacto: BajaNominaImpacto;
+  } | null>(null);
+  const [altaDeletePending, setAltaDeletePending] = useState<AltaDeletePending | null>(null);
+  const [traspasoDeletePending, setTraspasoDeletePending] =
+    useState<AltaDeletePending | null>(null);
   const [traspasoOpen, setTraspasoOpen] = useState(false);
   const [traspasoLoading, setTraspasoLoading] = useState(false);
+  const [trabajoDestinoOpen, setTrabajoDestinoOpen] = useState(false);
+  const [trabajoDestinoLoading, setTrabajoDestinoLoading] = useState(false);
   const idproyectoValue = useWatch({ name: "idproyecto" });
   const contactoValue = useWatch({ name: "contacto_id" });
   const fechaValue = useWatch({ name: "fecha" });
@@ -609,24 +706,46 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
     { enabled: Boolean(contactoId) },
   );
   const {
-    data: estadosNoEditables = [],
+    data: estadosParte = [],
     isPending: estadosNoEditablesPending,
   } = useGetList<ParteDiarioEstadoRecord>("parte-diario-estados", {
     pagination: { page: 1, perPage: 100 },
     sort: { field: "id", order: "ASC" },
-    filter: { activo: false },
+    filter: {},
   });
   const estadoNoEditableIds = useMemo(
     () =>
       new Set(
-        estadosNoEditables
+        estadosParte
+          .filter((estado) => estado.activo === false)
           .map((estado) => resolveNumericId(estado.id))
           .filter((id): id is number => id != null),
       ),
-    [estadosNoEditables],
+    [estadosParte],
+  );
+  const altaEstadoIds = useMemo(
+    () =>
+      new Set(
+        estadosParte
+          .filter((estado) => String(estado.abreviatura ?? "").trim().toUpperCase() === "ALT")
+          .map((estado) => resolveNumericId(estado.id))
+          .filter((id): id is number => id != null),
+      ),
+    [estadosParte],
+  );
+  const traspasoEstadoIds = useMemo(
+    () =>
+      new Set(
+        estadosParte
+          .filter((estado) => String(estado.abreviatura ?? "").trim().toUpperCase() === "TRA")
+          .map((estado) => resolveNumericId(estado.id))
+          .filter((id): id is number => id != null),
+      ),
+    [estadosParte],
   );
   const canEditDetalleRow = useCallback(
     (rowValue: Record<string, unknown>) => {
+      if (isTrabajoDestinoDescripcion(rowValue.descripcion)) return false;
       const estadoId = resolveNumericId(rowValue.idestado);
       if (estadoId == null) return true;
       if (estadosNoEditablesPending && estadoNoEditableIds.size === 0) {
@@ -635,6 +754,21 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
       return !estadoNoEditableIds.has(estadoId);
     },
     [estadoNoEditableIds, estadosNoEditablesPending],
+  );
+  const handleRequestDeleteDetalle = useCallback(
+    (rowValue: Record<string, unknown>, _index: number, remove: () => void) => {
+      const estadoId = resolveNumericId(rowValue.idestado);
+      if (estadoId != null && altaEstadoIds.has(estadoId)) {
+        setAltaDeletePending({ remove });
+        return;
+      }
+      if (estadoId != null && traspasoEstadoIds.has(estadoId)) {
+        setTraspasoDeletePending({ remove });
+        return;
+      }
+      remove();
+    },
+    [altaEstadoIds, traspasoEstadoIds],
   );
   const agentInitialMessage = useMemo(() => {
     const nombreObra = typeof proyecto?.nombre === "string" ? proyecto.nombre.trim() : "";
@@ -685,45 +819,89 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
     }
     setTraspasoOpen(true);
   };
+  const handleOpenTrabajoDestino = async () => {
+    const isValid = await form.trigger(["idproyecto", "contacto_id", "fecha"]);
+    if (!isValid || !proyectoId || !contactoId || !getQuincenaRange(fechaValue)) {
+      notify("Selecciona proyecto, encargado y fecha antes de registrar dónde trabajó.", {
+        type: "warning",
+      });
+      return;
+    }
+    setTrabajoDestinoOpen(true);
+  };
+  const addBajaNomina = async (nominaId: number) => {
+    const { data: bajaEstados } = await dataProvider.getList<{ id: number | string }>(
+      "parte-diario-estados",
+      {
+        filter: { abreviatura: "BAJ" },
+        pagination: { page: 1, perPage: 1 },
+        sort: { field: "id", order: "ASC" },
+      },
+    );
+    const bajaEstadoId = bajaEstados[0]?.id;
+    if (!bajaEstadoId) {
+      notify("No se encontro el estado BAJ para registrar la baja.", { type: "error" });
+      return;
+    }
+
+    const detalles = form.getValues("detalles") ?? [];
+    if (detalles.some((detalle) => resolveNumericId(detalle.idnomina) === nominaId)) {
+      notify("El empleado ya tiene una novedad cargada en este parte.", { type: "warning" });
+      return;
+    }
+    form.setValue(
+      "detalles",
+      [
+        ...detalles,
+        {
+          idnomina: nominaId,
+          horas: 0,
+          idestado: Number(bajaEstadoId),
+          ingreso: "",
+          egreso: "",
+          descripcion: "",
+        },
+      ],
+      { shouldDirty: true, shouldValidate: true },
+    );
+    setBajaOpen(false);
+    notify("Baja de nomina agregada como novedad", { type: "success" });
+  };
+
   const handleBajaNominaSelected = async (nominaId: number) => {
     setBajaLoading(true);
     try {
-      const { data: bajaEstados } = await dataProvider.getList<{ id: number | string }>(
-        "parte-diario-estados",
-        {
-          filter: { abreviatura: "BAJ" },
-          pagination: { page: 1, perPage: 1 },
-          sort: { field: "id", order: "ASC" },
-        },
-      );
-      const bajaEstadoId = bajaEstados[0]?.id;
-      if (!bajaEstadoId) {
-        notify("No se encontro el estado BAJ para registrar la baja.", { type: "error" });
-        return;
+      if (record?.id) {
+        const { data: impacto } = await dataProvider.getOne<BajaNominaImpacto>(
+          `parte-diario/${record.id}/baja-impacto`,
+          { id: nominaId },
+        );
+        if (impacto.novedades > 0 || impacto.tarja_detalles > 0) {
+          setBajaPendiente({ nominaId, impacto });
+          return;
+        }
       }
+      await addBajaNomina(nominaId);
+    } catch (error) {
+      notify(extractErrorMessage(error, "No se pudo analizar el impacto de la baja"), {
+        type: "error",
+      });
+    } finally {
+      setBajaLoading(false);
+    }
+  };
 
-      const detalles = form.getValues("detalles") ?? [];
-      if (detalles.some((detalle) => resolveNumericId(detalle.idnomina) === nominaId)) {
-        notify("El empleado ya tiene una novedad cargada en este parte.", { type: "warning" });
-        return;
-      }
-      form.setValue(
-        "detalles",
-        [
-          ...detalles,
-          {
-            idnomina: nominaId,
-            horas: 0,
-            idestado: Number(bajaEstadoId),
-            ingreso: "",
-            egreso: "",
-            descripcion: "",
-          },
-        ],
-        { shouldDirty: true, shouldValidate: true },
-      );
-      setBajaOpen(false);
-      notify("Baja de nomina agregada como novedad", { type: "success" });
+  const handleConfirmBajaNomina = async () => {
+    if (!bajaPendiente) return;
+    const { nominaId } = bajaPendiente;
+    setBajaLoading(true);
+    try {
+      await addBajaNomina(nominaId);
+      setBajaPendiente(null);
+    } catch (error) {
+      notify(extractErrorMessage(error, "No se pudo agregar la baja de nomina"), {
+        type: "error",
+      });
     } finally {
       setBajaLoading(false);
     }
@@ -810,6 +988,118 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
       setTraspasoLoading(false);
     }
   };
+  const handleTrabajoDestinoSelected = async ({
+    nominaId,
+    proyectoEncargadoId,
+    horas,
+  }: {
+    nominaId: number;
+    proyectoEncargadoId: number;
+    horas?: number;
+  }) => {
+    if (!proyectoId || !contactoId) return;
+    setTrabajoDestinoLoading(true);
+    try {
+      const [{ data: presenteEstados }, { data: destino }] = await Promise.all([
+        dataProvider.getList<{ id: number | string }>("parte-diario-estados", {
+          filter: { abreviatura: "P" },
+          pagination: { page: 1, perPage: 1 },
+          sort: { field: "id", order: "ASC" },
+        }),
+        dataProvider.getOne<ProyectoEncargadoRecord>("proyecto-encargados", {
+          id: proyectoEncargadoId,
+        }),
+      ]);
+      const presenteEstadoId = presenteEstados[0]?.id;
+      if (!presenteEstadoId) {
+        notify("No se encontro el estado P para registrar el trabajo temporal.", {
+          type: "error",
+        });
+        return;
+      }
+      const destinoProyectoId = resolveNumericId(destino.proyecto_id);
+      const destinoContactoId = resolveNumericId(destino.contacto_id);
+      if (!destinoProyectoId || !destinoContactoId) {
+        notify("No se pudo resolver la obra y encargado destino.", { type: "error" });
+        return;
+      }
+      if (destinoProyectoId === proyectoId) {
+        notify("La obra destino debe ser diferente a la obra de origen.", { type: "warning" });
+        return;
+      }
+      const range = getQuincenaRange(fechaValue);
+      if (!range) {
+        notify("No se pudo resolver la quincena del parte diario.", { type: "error" });
+        return;
+      }
+      const { data: tarjasDestino } = await dataProvider.getList<{
+        id: number | string;
+        estado?: string | null;
+      }>("tarjas", {
+        filter: {
+          idproyecto: destinoProyectoId,
+          contacto_id: destinoContactoId,
+          fechainicio: range.fechainicio,
+          fechafinal: range.fechafinal,
+        },
+        pagination: { page: 1, perPage: 1 },
+        sort: { field: "id", order: "ASC" },
+      });
+      if (
+        tarjasDestino.some((tarja) =>
+          ["cerrado", "confirmado"].includes(String(tarja.estado ?? "").toLowerCase()),
+        )
+      ) {
+        notify("La tarja de la obra destino ya esta cerrada.", { type: "warning" });
+        return;
+      }
+
+      const detalles = form.getValues("detalles") ?? [];
+      if (detalles.some((detalle) => resolveNumericId(detalle.idnomina) === nominaId)) {
+        notify("El empleado ya tiene una novedad cargada en este parte.", { type: "warning" });
+        return;
+      }
+      const horasDestino = Number(horas);
+      if (!Number.isFinite(horasDestino) || horasDestino < 0 || horasDestino > 24) {
+        notify("Las horas en la obra destino deben estar entre 0 y 24.", { type: "warning" });
+        return;
+      }
+      const horasOrigen = Math.max(
+        getParteDiarioJornadaEsperada(fechaValue) - horasDestino,
+        0,
+      );
+      const payload = {
+        tipo: "trabajo_destino",
+        horas: horasDestino,
+        destino: {
+          idproyecto: destinoProyectoId,
+          contacto_id: destinoContactoId,
+          obra: destino.proyecto?.nombre ?? null,
+          encargado:
+            destino.contacto?.nombre_completo ?? destino.contacto?.nombre ?? null,
+        },
+      };
+      form.setValue(
+        "detalles",
+        [
+          ...detalles,
+          {
+            idnomina: nominaId,
+            horas: horasOrigen,
+            idestado: Number(presenteEstadoId),
+            ingreso: "",
+            egreso: "",
+            descripcion: JSON.stringify(payload),
+          },
+        ],
+        { shouldDirty: true, shouldValidate: true },
+      );
+      setTrabajoDestinoOpen(false);
+      notify("Trabajo en otra obra agregado como novedad", { type: "success" });
+    } finally {
+      setTrabajoDestinoLoading(false);
+    }
+  };
   const handleNominaCreated = async (nomina: CreatedNomina) => {
     const range = getQuincenaRange(fechaValue);
     const nominaId = Number(nomina.id);
@@ -869,7 +1159,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
           ...detalles,
           {
             idnomina: nominaId,
-            horas: getJornadaEsperada(fechaValue),
+            horas: getParteDiarioJornadaEsperada(fechaValue),
             idestado: Number(altaEstadoId),
             ingreso: "",
             egreso: "",
@@ -899,6 +1189,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         showExpandAction={false}
         showInfoAction={false}
         canEditRow={canEditDetalleRow}
+        onRequestDeleteRow={handleRequestDeleteDetalle}
         addButtonLabel="Agregar novedad"
         hideClearAction
         inlineActions={
@@ -925,7 +1216,8 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
                 activeRowIndex != null ||
                 quickCreateLoading ||
                 bajaLoading ||
-                traspasoLoading
+                traspasoLoading ||
+                trabajoDestinoLoading
               }
               onClick={() => void handleOpenAltaNomina()}
             >
@@ -942,7 +1234,8 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
                 activeRowIndex != null ||
                 quickCreateLoading ||
                 bajaLoading ||
-                traspasoLoading
+                traspasoLoading ||
+                trabajoDestinoLoading
               }
               onClick={() => void handleOpenBajaNomina()}
             >
@@ -955,12 +1248,27 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
                 activeRowIndex != null ||
                 quickCreateLoading ||
                 bajaLoading ||
-                traspasoLoading
+                traspasoLoading ||
+                trabajoDestinoLoading
               }
               onClick={() => void handleOpenTraspasoNomina()}
             >
               <ArrowRightLeft className="h-3 w-3" />
               Traspaso de nomina
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2 text-[9px] sm:text-[10px]"
+              disabled={
+                activeRowIndex != null ||
+                quickCreateLoading ||
+                bajaLoading ||
+                traspasoLoading ||
+                trabajoDestinoLoading
+              }
+              onClick={() => void handleOpenTrabajoDestino()}
+            >
+              <MapPin className="h-3 w-3" />
+              Trabajó en
             </DropdownMenuItem>
           </>
         }
@@ -986,7 +1294,13 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         }
       />
       <ParteDiarioResumenTotales
-        addDisabled={activeRowIndex != null || quickCreateLoading || bajaLoading || traspasoLoading}
+        addDisabled={
+          activeRowIndex != null ||
+          quickCreateLoading ||
+          bajaLoading ||
+          traspasoLoading ||
+          trabajoDestinoLoading
+        }
         onAdd={() => setAddRequestSignal((current) => current + 1)}
       />
       <NominaQuickCreateDialog
@@ -1008,11 +1322,58 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         contactoNombre={
           typeof contacto?.nombre_completo === "string" ? contacto.nombre_completo : undefined
         }
+        fecha={getParteDateValue(fechaValue)}
         fechaLabel={formatAgentChatDate(fechaValue)}
         loading={bajaLoading}
         excludedNominaIds={detalleNominaIds}
       />
-      <TraspasoNominaDialog
+      <Confirm
+        isOpen={altaDeletePending != null}
+        title="Eliminar alta de nomina"
+        content="Al guardar el parte se eliminara el alta, todas las novedades posteriores del empleado y sus registros de tarja en cualquier obra desde la fecha del alta. Esta operacion no se puede deshacer."
+        confirm="Eliminar alta"
+        confirmColor="warning"
+        cancel="Volver"
+        onClose={() => setAltaDeletePending(null)}
+        onConfirm={() => {
+          altaDeletePending?.remove();
+          setAltaDeletePending(null);
+        }}
+      />
+      <Confirm
+        isOpen={traspasoDeletePending != null}
+        title="Eliminar traspaso de nomina"
+        content="Al guardar el parte se eliminaran las novedades y registros de tarja posteriores en el destino. El empleado volvera a la obra de origen desde la fecha del traspaso y se regeneraran sus horas. Esta operacion no se puede deshacer."
+        confirm="Eliminar traspaso"
+        confirmColor="warning"
+        cancel="Volver"
+        onClose={() => setTraspasoDeletePending(null)}
+        onConfirm={() => {
+          traspasoDeletePending?.remove();
+          setTraspasoDeletePending(null);
+        }}
+      />
+      <Confirm
+        isOpen={bajaPendiente != null}
+        loading={bajaLoading}
+        title="Confirmar baja retroactiva"
+        content={
+          bajaPendiente
+            ? getBajaImpactoMessage(bajaPendiente.impacto)
+            : ""
+        }
+        confirm="Agregar baja"
+        confirmColor="warning"
+        cancel="Volver"
+        onClose={() => {
+          if (!bajaLoading) setBajaPendiente(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmBajaNomina();
+        }}
+      />
+      <DestinoNominaDialog
+        tipo="traspaso"
         open={traspasoOpen}
         onClose={() => {
           if (!traspasoLoading) setTraspasoOpen(false);
@@ -1024,8 +1385,29 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         contactoNombre={
           typeof contacto?.nombre_completo === "string" ? contacto.nombre_completo : undefined
         }
+        fecha={getParteDateValue(fechaValue)}
         fechaLabel={formatAgentChatDate(fechaValue)}
+        jornadaHoras={getParteDiarioJornadaEsperada(fechaValue)}
         loading={traspasoLoading}
+        excludedNominaIds={detalleNominaIds}
+      />
+      <DestinoNominaDialog
+        tipo="trabajo"
+        open={trabajoDestinoOpen}
+        onClose={() => {
+          if (!trabajoDestinoLoading) setTrabajoDestinoOpen(false);
+        }}
+        onSubmit={handleTrabajoDestinoSelected}
+        proyectoId={proyectoId ?? null}
+        contactoId={contactoId ?? null}
+        proyectoNombre={typeof proyecto?.nombre === "string" ? proyecto.nombre : undefined}
+        contactoNombre={
+          typeof contacto?.nombre_completo === "string" ? contacto.nombre_completo : undefined
+        }
+        fecha={getParteDateValue(fechaValue)}
+        fechaLabel={formatAgentChatDate(fechaValue)}
+        jornadaHoras={getParteDiarioJornadaEsperada(fechaValue)}
+        loading={trabajoDestinoLoading}
         excludedNominaIds={detalleNominaIds}
       />
     </div>
@@ -1035,18 +1417,19 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
 const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) => {
   const descripcionSource = useWrappedSource("descripcion");
   const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
-  const traspasoDescripcionLabel = getTraspasoDescripcionLabel(descripcion);
-  const descripcionVisible = traspasoDescripcionLabel || descripcion;
+  const destinoDescripcionLabel = getDestinoDescripcion(descripcion);
+  const descripcionVisible = destinoDescripcionLabel || descripcion;
   const proyectoValue = useWatch({ name: "idproyecto" });
   const contactoValue = useWatch({ name: "contacto_id" });
+  const fechaValue = useWatch({ name: "fecha" });
   const proyectoId = resolveNumericId(proyectoValue);
   const contactoId = resolveNumericId(contactoValue);
   const hasDescripcion = Boolean(descripcionVisible?.trim());
   const readOnlyClassName = !isActive ? FORM_FIELD_READONLY_CLASS : undefined;
   const nominaFilter = {
-    activo: true,
     ...(proyectoId ? { idproyecto: proyectoId } : {}),
-    ...(contactoId ? { encargado_contacto_id: contactoId } : {}),
+    ...(contactoId ? { contacto_id: contactoId } : {}),
+    ...(getParteDateValue(fechaValue) ? { fecha: getParteDateValue(fechaValue) } : {}),
   };
 
   return (
@@ -1056,7 +1439,7 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
           <FormReferenceAutocomplete
             referenceProps={{
               source: "idnomina",
-              reference: "nominas",
+              reference: "parte-diario/nomina-disponible",
               filter: nominaFilter,
               sort: { field: "apellido", order: "ASC" },
             }}
@@ -1130,15 +1513,15 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
         label="Descripcion"
         className={cn(!hasDescripcion && "hidden sm:flex")}
       >
-        {traspasoDescripcionLabel ? (
+        {destinoDescripcionLabel ? (
           <div
             className={cn(
               "h-3.5 w-full truncate px-0.5 text-[8px] leading-3.5 text-muted-foreground sm:h-4 sm:px-1 sm:text-[9px] sm:leading-4",
               readOnlyClassName,
             )}
-            title={traspasoDescripcionLabel}
+            title={destinoDescripcionLabel}
           >
-            {traspasoDescripcionLabel}
+            {destinoDescripcionLabel}
           </div>
         ) : (
           <FormText
@@ -1161,19 +1544,51 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
 
 const ParteDiarioConfirmButton = ({ returnTo }: { returnTo?: string | null }) => {
   const record = useRecordContext<ParteDiarioRecord>();
-  const dataProvider = useDataProvider();
+  // Esta operacion maneja localmente los errores de negocio. Usar el proveedor
+  // directo evita que el proxy de React Admin los registre con console.error y
+  // que Next.js muestre su overlay de desarrollo para un 400 esperado.
+  const dataProvider = directDataProvider;
   const notify = useNotify();
   const refresh = useRefresh();
   const navigate = useNavigate();
   const form = useFormContext<ParteDiarioFormValues>();
+  const detalles = useWatch({ control: form.control, name: "detalles" });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const sinNovedades = !Array.isArray(detalles) || detalles.length === 0;
 
   const handleRequestConfirm = async () => {
     const isValid = await form.trigger();
     if (!isValid) {
       notify("Revisa los campos requeridos antes de confirmar.", { type: "warning" });
       return;
+    }
+    if (!record?.id) {
+      const values = form.getValues();
+      try {
+        const { data: existentes } = await dataProvider.getList<ParteDiarioRecord>(
+          "parte-diario",
+          {
+            filter: {
+              idproyecto: values.idproyecto,
+              contacto_id: values.contacto_id ?? null,
+              fecha: values.fecha,
+            },
+            pagination: { page: 1, perPage: 1 },
+            sort: { field: "id", order: "DESC" },
+          },
+        );
+        const existente = existentes[0];
+        if (existente) {
+          notify(
+            `Ya existe el parte diario #${existente.id} para la obra, el encargado y la fecha seleccionados. Abrilo desde el listado para editarlo.`,
+            { type: "warning" },
+          );
+          return;
+        }
+      } catch {
+        return;
+      }
     }
     setConfirmOpen(true);
   };
@@ -1190,9 +1605,11 @@ const ParteDiarioConfirmButton = ({ returnTo }: { returnTo?: string | null }) =>
             id: record.id,
             data: payload,
             previousData: record,
+            meta: { suppressErrorNotification: true },
           })
         : await dataProvider.create<ParteDiarioRecord>("parte-diario", {
             data: payload,
+            meta: { suppressErrorNotification: true },
           });
       form.reset(response.data as Partial<ParteDiarioFormValues>);
       notify("Parte diario confirmado", { type: "success" });
@@ -1200,7 +1617,7 @@ const ParteDiarioConfirmButton = ({ returnTo }: { returnTo?: string | null }) =>
       setConfirmOpen(false);
       navigate(returnTo || "/parte-diario", { replace: true });
     } catch (error) {
-      notify(getRequestErrorMessage(error, "No se pudo confirmar el parte diario"), { type: "error" });
+      notify(extractErrorMessage(error, "No se pudo confirmar el parte diario"), { type: "error" });
     } finally {
       setLoading(false);
     }
@@ -1227,7 +1644,11 @@ const ParteDiarioConfirmButton = ({ returnTo }: { returnTo?: string | null }) =>
         isOpen={confirmOpen}
         loading={loading}
         title="Confirmar parte diario"
-        content="Se guardaran los datos actuales y el parte diario quedara confirmado."
+        content={
+          sinNovedades
+            ? "El parte diario se registrara SIN NOVEDADES y quedara confirmado."
+            : "Se guardaran los datos actuales y el parte diario quedara confirmado."
+        }
         confirm="Confirmar"
         cancel="Cancelar"
         overlayClassName="bg-transparent backdrop-blur-0"
@@ -1335,17 +1756,41 @@ const ParteDiarioSaveButton = ({ returnTo }: { returnTo?: string | null }) => {
 };
 
 const ParteDiarioToolbar = ({ returnTo }: { returnTo?: string | null }) => {
+  const form = useFormContext<ParteDiarioFormValues>();
+  const { isDirty } = useFormState({ control: form.control });
   const navigate = useNavigate();
-  const handleCancel = () => {
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+
+  const leaveForm = () => {
     navigate(returnTo || "/parte-diario", { replace: true });
   };
 
+  const handleCancel = () => {
+    if (isDirty) {
+      setConfirmCancelOpen(true);
+      return;
+    }
+    leaveForm();
+  };
+
   return (
-    <div className="flex w-full items-center justify-end gap-2">
-      <FormOrderCancelButton onClick={handleCancel} />
-      <ParteDiarioSaveButton returnTo={returnTo} />
-      <ParteDiarioConfirmButton returnTo={returnTo} />
-    </div>
+    <>
+      <div className="flex w-full items-center justify-end gap-2">
+        <FormOrderCancelButton onClick={handleCancel} />
+        <ParteDiarioSaveButton returnTo={returnTo} />
+        <ParteDiarioConfirmButton returnTo={returnTo} />
+      </div>
+      <Confirm
+        isOpen={confirmCancelOpen}
+        title="Descartar cambios"
+        content="Hay cambios sin guardar. Si cancelas, se perderan todos los cambios realizados en el parte diario."
+        confirm="Descartar cambios"
+        confirmColor="warning"
+        cancel="Seguir editando"
+        onClose={() => setConfirmCancelOpen(false)}
+        onConfirm={leaveForm}
+      />
+    </>
   );
 };
 

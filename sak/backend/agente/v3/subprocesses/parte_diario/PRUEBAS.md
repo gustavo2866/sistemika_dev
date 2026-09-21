@@ -60,22 +60,29 @@ solo para obtener un resultado verde.
 
 ## Casos que no deben perderse
 
-- `NO` en carga abre revision sin LLM ni guardado; en LISTADO avanza; en
-  confirmar_salida rechaza el descarte; en carga_aclaracion interpreta la pregunta.
+- `NO` en carga abre revision sin LLM ni guardado y en confirmar_salida rechaza
+  el descarte. LISTADO navega con `SIGUIENTE`/numero correlativo y finaliza con
+  `FINALIZAR`/`99`, siempre sin LLM.
 - `nomina` funciona sin LLM y conserva etapa, borrador, pagina y pendientes.
 - Una consulta entre pregunta y respuesta no reemplaza la pregunta pendiente.
 - La aclaracion incompleta sigue preguntando; la completada aplica operaciones
   comunes; el rechazo vuelve al origen sin cambios ni cierre.
-- Los fallos de interpretacion o datos invalidos abren aclaracion. `SALIR` termina
-  ese loop sin LLM ni descarte, preservando el borrador y la pagina de origen.
-- LISTADO conserva IDs durante una aclaracion y no avanza hasta resolver el lote.
+- Los fallos de interpretacion o datos invalidos abren aclaracion. `VOLVER` termina
+  ese loop; `SALIR` pide descartar y cancelar recupera la misma pregunta.
+- LISTADO congela numero e ID durante todo el recorrido, conserva el catalogo al
+  reanudar o volver desde revision y no avanza hasta resolver el lote completo.
 - Resolver empleado, obra o encargado no pierde otras novedades del mensaje.
 - `test_parte_diario_nomina_estricta.py`: Perez unico local, vigencia inclusiva
-  por fecha del parte, tarja ausente/vacia sin fallback, bloqueo de ID externo,
-  ausencia de altas sin validar y transferencia desde origen. Las fixtures de
-  carga deben preparar TarjaNomina, no basta asignar obra/encargado en Nomina.
+  por fecha del parte, autocuracion de tarja ausente/vacia, preservacion de nomina
+  parcial, bloqueo de ID externo, ausencia de altas sin validar y transferencia
+  desde origen. Fuera del caso defensivo, las fixtures de carga deben preparar
+  TarjaNomina; no basta asignar obra/encargado en Nomina.
 - Las horas no borran el motivo; una obra mencionada no se propaga a otra persona.
+  Una jornada menor a la esperada no puede quedar como PRESENTE sin motivo: debe
+  preguntar y conservar las horas en texto libre, LISTADO, correcciones y destinos.
 - Guardar respeta fecha y jornada; fallar conserva datos; descartar no elimina DB.
+- El cierre guardado informa resultado, obra y fecha, libera el proceso y no anexa
+  el menu general en el mismo mensaje.
 - `GUARDAR` en carga persiste en un turno sin LLM; `NO` presenta revision y `1`
   guarda. En apertura puntual o al guardar hoy, finaliza sin ofrecer otra fecha.
   Si falla el guardado directo, conserva novedades y permite reintentar en revision.
@@ -83,9 +90,14 @@ solo para obtener un resultado verde.
   y abre hoy automaticamente; fecha explicita finaliza sin continuar. Probar
   anterior inexistente/completado, lunes despues del sabado y recuperacion de hoy
   sin arrastrar novedades. Un fallo de guardado no avanza de fecha.
-- `test_parte_diario_destino.py`: transferencia reabre destino CONFIRMADO como
-  BORRADOR, conserva otras novedades y no afecta otro encargado. Destino CERRADO
-  rechaza sin guardar el origen ni perder el borrador conversacional.
+- `test_parte_diario_destino.py`: trabajo temporal reabre destino CONFIRMADO como
+BORRADOR, conserva otras novedades y no afecta otro encargado. Destino CERRADO
+rechaza sin guardar el origen ni perder el borrador conversacional.
+- La carga manual `Trabajo en` no mueve `Nomina`; una tarja destino CERRADA bloquea
+  alta y eliminacion. Con tarja abierta, eliminar revierte la novedad y su costo
+  destino y restaura la jornada normal en origen. Las horas destino parten de la
+  jornada de la fecha y se distribuyen igual que en el agente: el origen conserva
+  `max(jornada - horas_destino, 0)`.
 
 ## LLM simulado y real
 

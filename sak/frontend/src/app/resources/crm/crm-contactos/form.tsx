@@ -38,8 +38,14 @@ const ResponsableDefaultSync = () => {
   return null;
 };
 
-// Asigna "Inmobiliaria" como tipo de contacto por defecto al crear.
-const TipoContactoDefaultSync = () => {
+// Asigna el tipo configurado al crear y lo mantiene fijo cuando el formulario lo requiere.
+const TipoContactoDefaultSync = ({
+  tipoNombre = "Inmobiliaria",
+  fixed = false,
+}: {
+  tipoNombre?: string;
+  fixed?: boolean;
+}) => {
   const record = useRecordContext<CRMContacto>();
   const { setValue } = useFormContext<CRMContactoFormValues>();
   const tipoId = useWatch({ name: "tipo_id" });
@@ -49,15 +55,17 @@ const TipoContactoDefaultSync = () => {
   });
 
   useEffect(() => {
-    if (record?.id || tipoId || tipos.length === 0) return;
-    const inmobiliaria = tipos.find((t: any) => t.nombre === "Inmobiliaria");
-    if (inmobiliaria) setValue("tipo_id", inmobiliaria.id, { shouldDirty: false });
-  }, [record?.id, tipoId, tipos, setValue]);
+    if ((!fixed && (record?.id || tipoId)) || tipos.length === 0) return;
+    const tipo = tipos.find((item: any) => item.nombre === tipoNombre);
+    if (tipo && tipoId !== tipo.id) {
+      setValue("tipo_id", tipo.id, { shouldDirty: false, shouldValidate: true });
+    }
+  }, [fixed, record?.id, setValue, tipoId, tipoNombre, tipos]);
 
   return null;
 };
 
-const CamposPrincipalesContacto = () => (
+const CamposPrincipalesContacto = ({ fixedTipo }: { fixedTipo: boolean }) => (
   <div className="grid gap-2 md:grid-cols-2">
     <FormText
       source="nombre_completo"
@@ -88,14 +96,16 @@ const CamposPrincipalesContacto = () => (
       maxLength={CRM_CONTACTO_VALIDATIONS.RED_SOCIAL_MAX}
       placeholder="@usuario"
     />
-    <ReferenceInput source="tipo_id" reference="crm/catalogos/tipos-contacto" label="Tipo de contacto">
-      <FormSelect
-        optionText="nombre"
-        emptyText="Seleccionar tipo"
-        widthClass="w-full"
-        validate={required()}
-      />
-    </ReferenceInput>
+    {!fixedTipo ? (
+      <ReferenceInput source="tipo_id" reference="crm/catalogos/tipos-contacto" label="Tipo de contacto">
+        <FormSelect
+          optionText="nombre"
+          emptyText="Seleccionar tipo"
+          widthClass="w-full"
+          validate={required()}
+        />
+      </ReferenceInput>
+    ) : null}
     <ReferenceInput source="responsable_id" reference="users" label="Responsable">
       <FormSelect
         optionText="nombre"
@@ -124,8 +134,10 @@ const AyudaContactoCRM = () => (
 
 export const CRMContactoForm = ({
   onCancel,
+  fixedTipoNombre,
 }: {
   onCancel?: () => void;
+  fixedTipoNombre?: string;
 }) => (
   <SimpleForm<CRMContactoFormValues>
     className="w-full max-w-2xl"
@@ -138,11 +150,14 @@ export const CRMContactoForm = ({
     defaultValues={CRM_CONTACTO_DEFAULTS}
   >
     <ResponsableDefaultSync />
-    <TipoContactoDefaultSync />
+    <TipoContactoDefaultSync
+      tipoNombre={fixedTipoNombre}
+      fixed={Boolean(fixedTipoNombre)}
+    />
     <FormErrorSummary />
     <SectionBaseTemplate
       title="Datos del contacto"
-      main={<CamposPrincipalesContacto />}
+      main={<CamposPrincipalesContacto fixedTipo={Boolean(fixedTipoNombre)} />}
       optional={<AyudaContactoCRM />}
       defaultOpen
     />

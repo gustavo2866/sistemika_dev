@@ -144,6 +144,11 @@ const EstadoTarjaShowField = () => {
   );
 };
 
+const ViaticosTarjaShowField = () => {
+  const record = useRecordContext<TarjaRecord>();
+  return <>{record?.viaticos ? "SI" : "NO"}</>;
+};
+
 export const TarjaShow = () => (
   <Show
     className="w-full max-w-5xl"
@@ -178,6 +183,9 @@ export const TarjaShow = () => (
           </FieldBlock>
           <FieldBlock label="Descripcion" className="md:col-span-2">
             <TextField source="descripcion" empty="-" />
+          </FieldBlock>
+          <FieldBlock label="Viaticos">
+            <ViaticosTarjaShowField />
           </FieldBlock>
         </div>
       </Card>

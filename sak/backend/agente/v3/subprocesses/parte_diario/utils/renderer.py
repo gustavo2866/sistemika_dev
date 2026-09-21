@@ -24,8 +24,9 @@ def menu_revision(state) -> str:
     summary = resumen(draft)
     if not (draft.novedades or draft.pendientes_ambiguos or draft.conflictos_novedad):
         summary = "Sin novedades. Todos presentes."
+    volver = "Volver al listado" if state.revision_origen == "listado" else "Volver a carga"
     return (f"Resumen del parte\nObra: {state.nombre_obra}\nFecha: {draft.fecha}\n{summary}\n\n"
-            "1. Guardar\n2. Volver a carga\nSALIR para descartar cambios.")
+            f"1. Guardar\n2. {volver}\n3. Salir y descartar")
 
 
 # Solicita consentimiento explicito antes de descartar cambios no guardados.
@@ -198,9 +199,25 @@ def _pending_hours(pending: PendienteAmbiguo, fecha: date | str) -> float | None
 def _external_label(novedad) -> str:
     if novedad.idnomina is None:
         return " (sin validar)"
-    if novedad.fuera_de_proyecto and novedad.nombre_proyecto:
-        return f" ({_project_short_label(novedad.nombre_proyecto)})"
+    destination = detalle_destino(novedad)
+    if destination:
+        return f" ({destination})"
     return ""
+
+
+# Expone obra y encargado de destino sin ocultar datos ya cargados.
+def detalle_destino(novedad) -> str:
+    if not novedad.fuera_de_proyecto:
+        return ""
+    project = str(novedad.nombre_proyecto or "").strip()
+    manager = str(novedad.nombre_encargado_destino or "").strip()
+    if project and manager:
+        return f"Destino: {project} / {manager}"
+    if project:
+        return f"Destino: {project}"
+    if manager:
+        return f"Encargado destino: {manager}"
+    return "Destino: otra obra"
 
 
 def _project_short_label(nombre_proyecto: str | None) -> str:
@@ -357,13 +374,21 @@ def _candidate_label(candidate: NominaItem) -> str:
 
 
 def preguntar_estado(pending: PendienteAmbiguo, estados: list[EstadoItem], *, exigir_numero: bool = False) -> str:
-    available = [estado for estado in estados if estado.abreviatura.upper() != "P"]
+    available = [
+        estado for estado in estados
+        if estado.abreviatura.upper() not in _INTERNAL_NOMINA_STATE_CODES | {"P"}
+    ]
     options = "\n".join(
         f"{index}. {estado.nombre}"
         for index, estado in enumerate(available, start=1)
     )
     suffix = "\nResponde con el numero de una opcion." if exigir_numero else ""
-    return f"Que le paso a {pending.nombre}?\n{options}{suffix}"
+    question = (
+        f"{pending.nombre} trabajo {pending.horas:g}h. Cual fue el motivo de la jornada reducida?"
+        if pending.horas is not None
+        else f"Que le paso a {pending.nombre}?"
+    )
+    return f"{question}\n{options}{suffix}"
 
 
 def preguntar_conflicto(conflict: ConflictoNovedad) -> str:

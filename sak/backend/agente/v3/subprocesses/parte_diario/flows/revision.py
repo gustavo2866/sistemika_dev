@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 # Presenta el resumen y deja la decision de persistencia para el siguiente mensaje.
-def iniciar(state: ParteDiarioV3State) -> str:
+def iniciar(state: ParteDiarioV3State, *, origen: str = "carga") -> str:
     state.etapa = "revision"
     state.accion_cierre = "guardar"
+    state.revision_origen = origen
     return renderer.menu_revision(state)
 
 
@@ -29,10 +30,17 @@ def iniciar(state: ParteDiarioV3State) -> str:
 def procesar(message: V3InboundMessage, state: ParteDiarioV3State) -> tuple[str, dict]:
     command = normalize_text(message.text)
     if command in {"volver", "editar", "seguir editando", "2"}:
-        state.etapa = "carga"
+        origen = state.revision_origen
+        state.revision_origen = None
         state.accion_cierre = None
+        if origen == "listado":
+            from agente.v3.subprocesses.parte_diario.flows import listado
+
+            state.etapa = "listado"
+            return listado.mostrar(state), {}
+        state.etapa = "carga"
         return renderer.inicio_carga(state), {}
-    if command == "salir":
+    if command in {"salir", "3"}:
         return confirmar_salida.iniciar(state), {}
     if command not in {"guardar", "guardar borrador", "1", "cerrar", "finalizar", "finalizar parte", "ok", "confirmar", "si"}:
         return renderer.menu_revision(state), {}
@@ -48,7 +56,13 @@ def procesar(message: V3InboundMessage, state: ParteDiarioV3State) -> tuple[str,
 
     state.accion_cierre = "guardar"
     state.etapa = "finalizado"
-    reply = "Parte diario confirmado." if metadata["status"] == "confirmed" else "Parte diario guardado como borrador."
+    draft = state.draft()
+    resultado = (
+        "Parte diario confirmado."
+        if metadata["status"] == "confirmed"
+        else "Parte diario guardado como borrador."
+    )
+    reply = f"{resultado}\nObra: {state.nombre_obra}\nFecha: {draft.fecha}"
     if state.modo_apertura == "diario" and state.draft().fecha < calendario.hoy().isoformat():
         fecha.iniciar_hoy(state)
     return reply, metadata

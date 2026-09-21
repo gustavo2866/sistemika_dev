@@ -21,6 +21,7 @@ from app.models.proyecto_encargado import ProyectoEncargado
 from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
 from app.models.crm.contacto import CRMContacto
 from app.services.gcs_storage_service import storage_service
+from app.services.parte_diario_tarja_service import parte_diario_tarja_service
 from sqlalchemy import String, and_, cast, func, or_
 from sqlmodel import Session, select
 
@@ -528,21 +529,27 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
         tarja = session.get(Tarja, obj.tarja_id)
         nomina_id = int(obj.nomina_id) if obj.nomina_id is not None else None
         alta_detalle = self._get_alta_parte_detalle(session, obj)
+        traspaso_detalle = self._get_traspaso_parte_detalle(session, obj)
+        if traspaso_detalle is not None:
+            parte_diario_tarja_service.eliminar_traspaso_nomina(
+                session,
+                detalle_traspaso=traspaso_detalle,
+            )
+            if hard:
+                session.delete(traspaso_detalle)
+            else:
+                traspaso_detalle.deleted_at = deleted_at
+                traspaso_detalle.updated_at = deleted_at
+                session.add(traspaso_detalle)
+            session.commit()
+            return True
+
         if alta_detalle is not None and tarja is not None and nomina_id is not None:
-            for detalle in session.exec(
-                select(TarjaDetalle)
-                .where(TarjaDetalle.tarja_id == obj.tarja_id)
-                .where(TarjaDetalle.idnomina == nomina_id)
-                .where(TarjaDetalle.fecha >= tarja.fechainicio)
-                .where(TarjaDetalle.fecha <= tarja.fechafinal)
-                .where(TarjaDetalle.deleted_at.is_(None))
-            ).all():
-                if hard:
-                    session.delete(detalle)
-                else:
-                    detalle.deleted_at = deleted_at
-                    detalle.updated_at = deleted_at
-                    session.add(detalle)
+            parte_diario_tarja_service.eliminar_alta_nomina(
+                session,
+                detalle_alta=alta_detalle,
+                registro_alta=obj,
+            )
 
             if hard:
                 session.delete(alta_detalle)
@@ -550,24 +557,6 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
                 alta_detalle.deleted_at = deleted_at
                 alta_detalle.updated_at = deleted_at
                 session.add(alta_detalle)
-
-            other_nomina_count = session.exec(
-                select(func.count())
-                .select_from(TarjaNomina)
-                .where(TarjaNomina.nomina_id == nomina_id)
-                .where(TarjaNomina.id != obj.id)
-                .where(TarjaNomina.deleted_at.is_(None))
-            ).one()
-            if int(other_nomina_count or 0) == 0:
-                nomina = session.get(Nomina, nomina_id)
-                if nomina is not None and nomina.deleted_at is None:
-                    if hard:
-                        session.delete(nomina)
-                    else:
-                        nomina.activo = False
-                        nomina.deleted_at = deleted_at
-                        nomina.updated_at = deleted_at
-                        session.add(nomina)
 
         if hard:
             session.delete(obj)
@@ -578,6 +567,29 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
 
         session.commit()
         return True
+
+    def _get_traspaso_parte_detalle(
+        self,
+        session: Session,
+        obj: TarjaNomina,
+    ) -> ParteDiarioDetalle | None:
+        if obj.nomina_id is None:
+            return None
+        return session.exec(
+            select(ParteDiarioDetalle)
+            .select_from(ParteDiarioDetalle)
+            .join(ParteDiarioEstado, ParteDiarioEstado.id == ParteDiarioDetalle.idestado)
+            .join(
+                TarjaDetalle,
+                TarjaDetalle.parte_diario_detalle_id == ParteDiarioDetalle.id,
+            )
+            .where(ParteDiarioEstado.abreviatura == "TRA")
+            .where(ParteDiarioEstado.deleted_at.is_(None))
+            .where(TarjaDetalle.tarja_id == obj.tarja_id)
+            .where(TarjaDetalle.idnomina == int(obj.nomina_id))
+            .where(TarjaDetalle.deleted_at.is_(None))
+            .where(ParteDiarioDetalle.deleted_at.is_(None))
+        ).first()
 
     def _get_alta_parte_detalle(
         self,
@@ -680,6 +692,10 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
                     f"Tarja {proyecto.nombre} "
                     f"{source_tarja.fechainicio.isoformat()} - "
                     f"{source_tarja.fechafinal.isoformat()}"
+                ),
+                viaticos=parte_diario_tarja_service.get_viaticos_default(
+                    session,
+                    int(proyecto.id),
                 ),
             )
             session.add(destination_tarja)

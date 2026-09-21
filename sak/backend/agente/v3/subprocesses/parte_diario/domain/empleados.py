@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -19,6 +20,9 @@ from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from app.utils.quincenas import get_quincena_range
 
 
+logger = logging.getLogger(__name__)
+
+
 # Recupera exclusivamente la nomina de tarja vigente para obra, encargado y fecha.
 def listar_para_carga(state: ParteDiarioV3State) -> list[ParteDiarioAsistenciaOption]:
     with Session(db.engine) as session:
@@ -28,7 +32,8 @@ def listar_para_carga(state: ParteDiarioV3State) -> list[ParteDiarioAsistenciaOp
         )
         return [
             ParteDiarioAsistenciaOption(
-                opcion=index, idnomina=int(row.id), nombre=row.nombre,
+                opcion=index if index < 99 else index + 1,
+                idnomina=int(row.id), nombre=row.nombre,
                 apellido=row.apellido, nro_legajo=row.nro_legajo,
             )
             for index, row in enumerate(rows, start=1)
@@ -192,6 +197,14 @@ def cargar_referencias(
     fecha: date | None = None,
     filtrar_por_contacto: bool = True,
 ) -> tuple[list[NominaItem], list[NominaItem]]:
+    scoped_rows: list[Nomina] = []
+    if filtrar_por_contacto:
+        _, scoped_rows = listar_desde_tarja(
+            session,
+            idproyecto,
+            contacto_id=contacto_id,
+            fecha=fecha,
+        )
     projects = {item.id: item.nombre for item in session.exec(select(Proyecto)).all()}
     today = calendario.hoy()
     rows = session.exec(
@@ -201,13 +214,6 @@ def cargar_referencias(
         .where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= today))
         .order_by(Nomina.apellido, Nomina.nombre)
     ).all()
-    scoped_rows: list[Nomina] = []
-    if filtrar_por_contacto:
-        _, scoped_rows = listar_desde_tarja(session,
-            idproyecto,
-            contacto_id=contacto_id,
-            fecha=fecha,
-        )
     row_ids = {item.id for item in rows if item.id is not None}
     base_rows = list(rows) + [
         item for item in scoped_rows if item.id is not None and item.id not in row_ids
@@ -265,7 +271,80 @@ def cargar_referencias(
     return project_items, all_items
 
 
-# Indica si existe nomina de tarja y devuelve sus empleados vigentes para la fecha.
+# Indica si hay empleados base que pueden inicializar la nomina de la quincena.
+def _hay_nomina_base(
+    session: Session,
+    idproyecto: int,
+    *,
+    contacto_id: int | None,
+    fechainicio: date,
+    fechafinal: date,
+) -> bool:
+    query = (
+        select(Nomina.id)
+        .where(Nomina.idproyecto == idproyecto)
+        .where(Nomina.activo.is_(True))
+        .where(Nomina.deleted_at.is_(None))
+        .where((Nomina.fecha_ingreso.is_(None)) | (Nomina.fecha_ingreso <= fechafinal))
+        .where((Nomina.fecha_egreso.is_(None)) | (Nomina.fecha_egreso >= fechainicio))
+        .limit(1)
+    )
+    if contacto_id is not None:
+        query = query.where(Nomina.encargado_contacto_id == contacto_id)
+    return session.exec(query).first() is not None
+
+
+# Crea la tarja canonica y su nomina solo ante una ausencia total reparable.
+def _asegurar_nomina_ausente(
+    session: Session,
+    idproyecto: int,
+    *,
+    contacto_id: int | None,
+    fechainicio: date,
+    fechafinal: date,
+    tarja_id: int | None,
+) -> int | None:
+    if tarja_id is not None:
+        registro_historico = session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.tarja_id == tarja_id)
+            .limit(1)
+        ).first()
+        if registro_historico is not None:
+            # Una nomina eliminada requiere revision explicita; no se revive sola.
+            return tarja_id
+    if not _hay_nomina_base(
+        session,
+        idproyecto,
+        contacto_id=contacto_id,
+        fechainicio=fechainicio,
+        fechafinal=fechafinal,
+    ):
+        return tarja_id
+
+    # Import local para conservar empleados como dominio y evitar ciclos de modelos.
+    from app.services.parte_diario_tarja_service import parte_diario_tarja_service
+
+    tarja, created = parte_diario_tarja_service.asegurar_nomina_quincena(
+        session,
+        idproyecto=idproyecto,
+        contacto_id=contacto_id,
+        fechainicio=fechainicio,
+        fechafinal=fechafinal,
+    )
+    logger.info(
+        "Nomina de tarja inicializada defensivamente",
+        extra={
+            "idproyecto": idproyecto,
+            "contacto_id": contacto_id,
+            "tarja_id": tarja.id,
+            "registros_creados": created,
+        },
+    )
+    return int(tarja.id)
+
+
+# Devuelve los empleados vigentes y autocura la ausencia total de tarja/nomina.
 def listar_desde_tarja(
     session: Session,
     idproyecto: int,
@@ -289,16 +368,33 @@ def listar_desde_tarja(
         .where(Tarja.deleted_at.is_(None))
         .where(contacto_filter)
     ).first()
-    if tarja_id is None:
-        return False, []
-    has_registros = session.exec(
-        select(TarjaNomina.id)
-        .where(TarjaNomina.tarja_id == int(tarja_id))
-        .where(TarjaNomina.deleted_at.is_(None))
-        .limit(1)
-    ).first()
+    has_registros = None
+    if tarja_id is not None:
+        has_registros = session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .limit(1)
+        ).first()
     if has_registros is None:
-        return False, []
+        tarja_id = _asegurar_nomina_ausente(
+            session,
+            idproyecto,
+            contacto_id=contacto_id,
+            fechainicio=fechainicio,
+            fechafinal=fechafinal,
+            tarja_id=int(tarja_id) if tarja_id is not None else None,
+        )
+        if tarja_id is None:
+            return False, []
+        has_registros = session.exec(
+            select(TarjaNomina.id)
+            .where(TarjaNomina.tarja_id == int(tarja_id))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        if has_registros is None:
+            return False, []
     query = (
         select(Nomina).distinct()
         .join(TarjaNomina, TarjaNomina.nomina_id == Nomina.id)

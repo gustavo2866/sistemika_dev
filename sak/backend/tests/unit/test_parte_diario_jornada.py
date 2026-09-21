@@ -7,7 +7,12 @@ import pytest
 from sqlmodel import select
 
 from app.models import ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, ProyectoEncargado
-from app.services.parte_diario_service import _destination_hours, _provisional_hours, ParteDiarioService
+from app.services.parte_diario_service import (
+    ParteDiarioService,
+    _destination_hours,
+    _destination_work_hours,
+    _provisional_hours,
+)
 from app.utils.jornada import get_jornada_esperada
 from agente.v3.subprocesses.parte_diario.domain import novedades
 from agente.v3.subprocesses.parte_diario.domain.models import PendienteAmbiguo
@@ -43,6 +48,26 @@ def test_defaults_normalizacion_y_presentacion(fecha, base):
     assert _destination_hours(dict(estado_codigo="P"), fecha) == base
     assert _destination_hours(dict(estado_codigo="P", horas=0), fecha) == 0
     assert _destination_hours(dict(estado_codigo="P", horas=12), fecha) == 12
+
+
+# Agente y formulario manual comparten la distribucion de horas entre obras.
+@pytest.mark.parametrize(
+    "horas_destino,horas_origen",
+    [(9, 0), (4, 5), (12, 0)],
+)
+def test_distribucion_horas_trabajo_destino(horas_destino, horas_origen):
+    assert _destination_work_hours(
+        {"estado_codigo": "P", "fuera_de_proyecto": True, "horas": horas_destino},
+        "2026-09-11",
+    ) == (horas_origen, horas_destino)
+
+
+def test_distribucion_horas_trabajo_destino_rechaza_fuera_de_rango():
+    with pytest.raises(ValueError, match="entre 0 y 24"):
+        _destination_work_hours(
+            {"estado_codigo": "P", "fuera_de_proyecto": True, "horas": 25},
+            "2026-09-11",
+        )
 
 
 # La base tambien decide jornada parcial y el maximo permitido al sumar extras.
@@ -112,6 +137,9 @@ async def test_transferencia_sabado_con_horas_explicitas(datos, db_session, hora
     ))))
     result = await process.handle(turno(f"Medina trabajo {horas}hs en {datos.destino.nombre}"), ctx)
     result = await process.handle(turno("1"), result.context)
+    if horas < 6:
+        assert estado(result).etapa == "carga_validar_estado"
+        result = await process.handle(turno("permiso"), result.context)
     result = await process.handle(turno("listo"), result.context)
     result = await process.handle(turno("1"), result.context)
     rows = db_session.exec(select(ParteDiario, ParteDiarioDetalle).join(

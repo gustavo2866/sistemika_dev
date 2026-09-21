@@ -63,6 +63,16 @@ class Tarja(Base, table=True):
         max_length=1000,
         description="Descripcion general de la tarja",
     )
+    premio: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
+        description="Importe de premio de la tarja",
+    )
+    viaticos: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+        description="Indica si la tarja incluye viaticos",
+    )
 
     detalles: List["TarjaDetalle"] = Relationship(
         back_populates="tarja",
