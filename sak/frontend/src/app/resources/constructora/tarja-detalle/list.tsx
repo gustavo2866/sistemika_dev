@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useCreatePath, useDataProvider, useGetOne, useListContext } from "ra-core";
+import { useCreatePath, useDataProvider, useGetOne, useListContext, useNotify } from "ra-core";
 import { ArrowLeft, Download, FileSpreadsheet, FileText, Loader2, MoreHorizontal, Pencil, TableProperties, UserRound } from "lucide-react";
 
 import { List, LIST_CONTAINER_2XL } from "@/components/list";
@@ -16,6 +16,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -44,9 +45,15 @@ type TarjaDetalleCell = {
 type TarjaNovedadSummary = {
   id?: number | null;
   horas_justificadas?: number | null;
+  horas_trabajadas?: number | null;
+  horas_liquidadas?: number | null;
   presentismo?: boolean | null;
+  presentismo_autorizado?: boolean | null;
+  presentismo_efectivo?: boolean | null;
+  presentismo_origen?: "automatico" | "manual" | "ninguno" | null;
   adicional_importe?: number | null;
   premio_importe?: number | null;
+  viatico_importe?: number | null;
   observaciones?: string | null;
 };
 
@@ -71,6 +78,8 @@ type DayKey =
 type TarjaDetalleRow = {
   id: string;
   tarja_id: number | string;
+  tarja_premio?: boolean | null;
+  tarja_viaticos?: boolean | null;
   proyecto_id?: number | string | null;
   encargado_id?: number | string | null;
   obra?: string | null;
@@ -209,7 +218,10 @@ const getTarjaDetalleExportCellText = (
   const workedHours = getRowWorkedHours(row);
   const justifiedHours = getRowJustifiedHours(row);
   const totalHours = workedHours + justifiedHours;
-  const totalBonus = Number(row.novedad?.adicional_importe ?? 0) + Number(row.novedad?.premio_importe ?? 0);
+  const totalBonus =
+    Number(row.novedad?.adicional_importe ?? 0) +
+    Number(row.novedad?.premio_importe ?? 0) +
+    Number(row.novedad?.viatico_importe ?? 0);
 
   switch (columnKey) {
     case "categoria":
@@ -219,7 +231,7 @@ const getTarjaDetalleExportCellText = (
     case "horas":
       return formatHours(totalHours);
     case "presentismo":
-      return row.novedad?.presentismo ? "SI" : "NO";
+      return (row.novedad?.presentismo_efectivo ?? row.novedad?.presentismo) ? "SI" : "NO";
     case "bonos":
       return formatAmount(totalBonus);
     case "comentario":
@@ -403,7 +415,10 @@ const downloadTarjaDetallePdf = (
     const workedHours = getRowWorkedHours(row);
     const justifiedHours = getRowJustifiedHours(row);
     const totalHours = workedHours + justifiedHours;
-    const totalBonus = Number(row.novedad?.adicional_importe ?? 0) + Number(row.novedad?.premio_importe ?? 0);
+    const totalBonus =
+      Number(row.novedad?.adicional_importe ?? 0) +
+      Number(row.novedad?.premio_importe ?? 0) +
+      Number(row.novedad?.viatico_importe ?? 0);
 
     switch (column.key) {
       case "categoria":
@@ -413,7 +428,7 @@ const downloadTarjaDetallePdf = (
       case "horas":
         return formatHours(totalHours);
       case "presentismo":
-        return `${row.novedad?.presentismo ? "SI" : "NO"} trab:${formatHours(workedHours)}${justifiedHours ? ` just:${formatHours(justifiedHours)}` : ""}`;
+        return `${(row.novedad?.presentismo_efectivo ?? row.novedad?.presentismo) ? "SI" : "NO"} trab:${formatHours(workedHours)}${justifiedHours ? ` just:${formatHours(justifiedHours)}` : ""}`;
       case "bonos":
         return formatAmount(totalBonus);
       case "comentario":
@@ -645,11 +660,17 @@ const isOvertimeCell = (cell?: TarjaDetalleCell) => {
   );
 };
 
-const getRowWorkedHours = (row: TarjaDetalleRow) =>
-  allDayKeys.reduce((total, key) => total + getWorkedHours(row[key]), 0);
+const getRowWorkedHours = (row: TarjaDetalleRow) => {
+  const calculated = Number(row.novedad?.horas_trabajadas);
+  if (Number.isFinite(calculated)) return calculated;
+  return allDayKeys.reduce((total, key) => total + getWorkedHours(row[key]), 0);
+};
 
-const getRowJustifiedHours = (row: TarjaDetalleRow) =>
-  allDayKeys.reduce((total, key) => total + getJustifiedHours(row[key]), 0);
+const getRowJustifiedHours = (row: TarjaDetalleRow) => {
+  const calculated = Number(row.novedad?.horas_justificadas);
+  if (Number.isFinite(calculated)) return calculated;
+  return allDayKeys.reduce((total, key) => total + getJustifiedHours(row[key]), 0);
+};
 
 const formatHours = (value: number) =>
   value.toLocaleString("es-AR", { maximumFractionDigits: 1 });
@@ -1056,10 +1077,31 @@ const TarjaDetalleActions = ({
   tarjaId?: string;
 }) => {
   const dataProvider = useDataProvider();
+  const notify = useNotify();
   const { data = [], filterValues, sort, total } = useListContext<TarjaDetalleRow>();
+  const numericTarjaId = Number(tarjaId);
+  const { data: tarja } = useGetOne<{
+    id: number | string;
+    premio?: boolean | null;
+    viaticos?: boolean | null;
+  }>(
+    "tarjas",
+    { id: numericTarjaId },
+    { enabled: Number.isFinite(numericTarjaId) && numericTarjaId > 0 },
+  );
   const [isExporting, setIsExporting] = useState(false);
+  const [updatingFlag, setUpdatingFlag] = useState<"premio" | "viaticos" | null>(null);
+  const [headerFlags, setHeaderFlags] = useState({ premio: false, viaticos: false });
   const rows = data as TarjaDetalleRow[];
   const obra = rows[0]?.obra ?? "";
+
+  useEffect(() => {
+    if (!tarja) return;
+    setHeaderFlags({
+      premio: Boolean(tarja.premio),
+      viaticos: Boolean(tarja.viaticos),
+    });
+  }, [tarja]);
 
   const getExportData = () => {
     const title = ["Tarja Detalle", tarjaId ? `#${tarjaId}` : "", obra]
@@ -1109,6 +1151,31 @@ const TarjaDetalleActions = ({
     }
   };
 
+  const handleHeaderFlagChange = async (
+    field: "premio" | "viaticos",
+    checked: boolean,
+  ) => {
+    if (!tarja || !Number.isFinite(numericTarjaId)) return;
+    setUpdatingFlag(field);
+    try {
+      await dataProvider.update("tarjas", {
+        id: numericTarjaId,
+        data: { [field]: checked },
+        previousData: tarja,
+      });
+      notify(`${field === "premio" ? "Premio" : "Viáticos"} actualizado`, {
+        type: "info",
+      });
+      setHeaderFlags((current) => ({ ...current, [field]: checked }));
+    } catch {
+      notify(`No se pudo actualizar ${field === "premio" ? "Premio" : "Viáticos"}`, {
+        type: "warning",
+      });
+    } finally {
+      setUpdatingFlag(null);
+    }
+  };
+
   return (
     <div className="flex items-center gap-2">
       <FilterButton
@@ -1116,6 +1183,28 @@ const TarjaDetalleActions = ({
         size="sm"
         buttonClassName={ACTION_BUTTON_CLASS}
       />
+      <div className="flex h-8 items-center gap-3 rounded-md border bg-muted/30 px-2.5 text-[9px] sm:text-[10px]">
+        <label className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground">
+          <span>Premio</span>
+          <Switch
+            checked={headerFlags.premio}
+            disabled={!tarja || updatingFlag !== null}
+            aria-label="Premio de cabecera"
+            onCheckedChange={(checked) => void handleHeaderFlagChange("premio", checked)}
+            className="!h-4 !w-7 !px-0 !py-0 [&_[data-slot=switch-thumb]]:size-3"
+          />
+        </label>
+        <label className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground">
+          <span>Viáticos</span>
+          <Switch
+            checked={headerFlags.viaticos}
+            disabled={!tarja || updatingFlag !== null}
+            aria-label="Viáticos de cabecera"
+            onCheckedChange={(checked) => void handleHeaderFlagChange("viaticos", checked)}
+            className="!h-4 !w-7 !px-0 !py-0 [&_[data-slot=switch-thumb]]:size-3"
+          />
+        </label>
+      </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -1230,7 +1319,8 @@ const TarjaDetalleGrid = ({
                 const totalHours = workedHours + justifiedHours;
                 const totalBonus =
                   Number(row.novedad?.adicional_importe ?? 0) +
-                  Number(row.novedad?.premio_importe ?? 0);
+                  Number(row.novedad?.premio_importe ?? 0) +
+                  Number(row.novedad?.viatico_importe ?? 0);
 
                 return (
                   <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50/70">
@@ -1285,7 +1375,9 @@ const TarjaDetalleGrid = ({
                     <span className="block text-[9px] font-medium leading-4">{formatHours(totalHours)}</span>
                   </td>
                   <td className="border-r border-slate-200 bg-slate-50 px-0.5 py-1 align-top text-center font-semibold leading-tight text-slate-800">
-                    <span className="block text-[8px]">{row.novedad?.presentismo ? "SI" : "NO"}</span>
+                    <span className="block text-[8px]">
+                      {(row.novedad?.presentismo_efectivo ?? row.novedad?.presentismo) ? "SI" : "NO"}
+                    </span>
                     <span className="block text-[6.5px] tabular-nums text-slate-500">
                       trab: {formatHours(workedHours)}
                     </span>
@@ -1307,6 +1399,11 @@ const TarjaDetalleGrid = ({
                     {hasAmount(row.novedad?.premio_importe) ? (
                       <span className="block text-[6.5px] font-medium leading-[8px] text-slate-500">
                         Premio: {formatAmount(row.novedad?.premio_importe)}
+                      </span>
+                    ) : null}
+                    {hasAmount(row.novedad?.viatico_importe) ? (
+                      <span className="block text-[6.5px] font-medium leading-[8px] text-slate-500">
+                        Viático: {formatAmount(row.novedad?.viatico_importe)}
                       </span>
                     ) : null}
                   </td>

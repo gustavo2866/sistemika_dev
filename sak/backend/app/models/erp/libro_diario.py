@@ -7,9 +7,9 @@ from typing import ClassVar, List, Optional
 from sqlalchemy import Column
 from sqlalchemy import BigInteger
 from sqlalchemy import DateTime
+from sqlalchemy import func
 from sqlalchemy import Numeric
 from sqlalchemy import SmallInteger
-from sqlalchemy import text
 from sqlmodel import Field
 
 from app.models.base import Base
@@ -54,7 +54,7 @@ class ErpLibroDiario(Base, table=True):
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
-            server_default=text("now()"),
+            server_default=func.now(),
         )
     )
     archivo_origen: Optional[str] = Field(default=None, max_length=255)

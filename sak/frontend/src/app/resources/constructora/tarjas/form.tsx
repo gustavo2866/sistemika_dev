@@ -137,11 +137,10 @@ const TarjaOptionalFields = () => (
         label="Final"
         widthClass="w-full md:w-[130px]"
       />
-      <FormNumber
+      <FormSelect
         source="premio"
         label="Premio"
-        min={0}
-        step="0.01"
+        choices={BOOLEAN_CHOICES}
         widthClass="w-full md:w-[140px]"
       />
       <FormSelect

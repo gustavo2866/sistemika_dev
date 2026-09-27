@@ -20,7 +20,7 @@ import {
   TextListColumn,
   buildListFilters,
 } from "@/components/forms/form_order";
-import { getProyectoUltimoAvance } from "./model";
+import { PROYECTO_ESTADO_CHOICES, getProyectoUltimoAvance } from "./model";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -35,10 +35,14 @@ const LIST_FILTERS = buildListFilters(
       },
     },
     {
-      type: "text",
+      type: "select",
       props: {
         source: "estado",
         label: "Estado",
+        choices: PROYECTO_ESTADO_CHOICES,
+        emptyText: "Todos",
+        alwaysOn: true,
+        className: "w-[130px] sm:w-[160px]",
       },
     },
     {

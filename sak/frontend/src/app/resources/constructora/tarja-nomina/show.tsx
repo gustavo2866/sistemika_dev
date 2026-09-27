@@ -28,7 +28,7 @@ export const TarjaNominaShow = () => (
       <TextField source="id" label="ID" />
       <TextField source="tarja_id" label="Tarja" />
       <NumberField source="horas_justificadas" label="Horas justificadas" />
-      <SelectField source="presentismo" choices={PRESENTISMO_CHOICES} />
+      <SelectField source="presentismo_efectivo" choices={PRESENTISMO_CHOICES} />
       <NumberField source="presentismo_importe" />
       <NumberField source="adicional_importe" />
       <SelectField source="premio" choices={PRESENTISMO_CHOICES} />

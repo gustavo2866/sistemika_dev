@@ -101,7 +101,7 @@ export const TarjaNovedadList = ({
         rowClick={resolvedRowClick}
         mobileConfig={{
           primaryField: "tarja_id",
-          secondaryFields: ["tipo_novedad", "horas_justificadas", "presentismo"],
+          secondaryFields: ["tipo_novedad", "horas_justificadas", "presentismo_efectivo"],
         }}
         className="text-[11px] [&_th]:text-[11px] [&_td]:text-[11px]"
       >
@@ -113,7 +113,7 @@ export const TarjaNovedadList = ({
           <ListText source="tipo_novedad" />
         </TextListColumn>
         <NumberListColumn source="horas_justificadas" label="Hs just." className="w-[76px] text-right" />
-        <BooleanListColumn source="presentismo" label="Presentismo" className="w-[86px]" />
+        <BooleanListColumn source="presentismo_efectivo" label="Presentismo" className="w-[86px]" />
         <NumberListColumn source="adicional_importe" label="Adicional" className="w-[86px] text-right" />
         <NumberListColumn source="premio_importe" label="Premio" className="w-[86px] text-right" />
         <TextListColumn source="observaciones" label="Observaciones">

@@ -26,6 +26,10 @@ class ParteDiarioEstado(Base, table=True):
         default=True,
         description="Indica si el estado esta disponible para usar",
     )
+    justifica: bool = Field(
+        default=False,
+        description="Indica si el estado justifica la novedad",
+    )
 
     def __str__(self) -> str:  # pragma: no cover
         return f"ParteDiarioEstado(id={self.id}, abreviatura='{self.abreviatura}', nombre='{self.nombre}')"

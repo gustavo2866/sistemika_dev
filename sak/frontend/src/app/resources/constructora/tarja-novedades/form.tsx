@@ -97,6 +97,7 @@ const TarjaNovedadFields = ({
   const categoriaValue = useWatch({ name: "nomina_categoria_id" });
   const tareaValue = useWatch({ name: "nomina_tarea_id" });
   const horasJustificadas = useWatch({ name: "horas_justificadas" });
+  const presentismoEfectivo = useWatch({ name: "presentismo_efectivo" });
   const horasTrabajadasValue = toAmount(horasTrabajadas);
   const horasTotales = horasTrabajadasValue + toAmount(horasJustificadas);
 
@@ -189,9 +190,10 @@ const TarjaNovedadFields = ({
         />
       </div>
       <div className="grid gap-2 md:col-span-2 md:grid-cols-3">
-        <div className="flex items-end">
-          <FormBoolean source="presentismo" label="Presentismo" />
-        </div>
+        <ReadOnlyNumber
+          label="Presentismo"
+          value={presentismoEfectivo ? "SI" : "NO"}
+        />
         <div className="flex items-end">
           <FormBoolean source="viatico" label="Viatico" />
         </div>

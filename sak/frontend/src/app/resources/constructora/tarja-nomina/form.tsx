@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { FormOrderToolbar } from "@/components/forms";
 import { Confirm } from "@/components/confirm";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { FileText, Plus, Trash2, Upload } from "lucide-react";
 import { apiUrl } from "@/lib/dataProvider";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,6 @@ import {
 import { NominaQuickCreateDialog } from "./nomina-quick-create-dialog";
 import {
   ArchivoViewerModal,
-  FormBoolean,
   FormDate,
   FormNumber,
   FormReferenceAutocomplete,
@@ -84,6 +84,26 @@ const formatHoursValue = (value: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+
+const getHorasLaborales = (fechaDesde?: string | null, fechaHasta?: string | null) => {
+  const parseIsoDate = (value?: string | null) => {
+    const match = String(value ?? "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const desde = parseIsoDate(fechaDesde);
+  const hasta = parseIsoDate(fechaHasta);
+  if (!desde || !hasta || desde > hasta) return 0;
+
+  let horas = 0;
+  for (const fecha = new Date(desde); fecha <= hasta; fecha.setUTCDate(fecha.getUTCDate() + 1)) {
+    const dia = fecha.getUTCDay();
+    horas += dia === 0 ? 0 : dia === 6 ? 6 : 9;
+  }
+  return horas;
+};
 
 const formatDateValue = (value?: string | null) => {
   const [year, month, day] = String(value ?? "").slice(0, 10).split("-");
@@ -236,7 +256,7 @@ const ReadOnlyNumber = ({
     label={label}
     widthClass="w-full"
     className={className}
-    valueClassName={`justify-end bg-muted/30 tabular-nums text-muted-foreground ${strong ? "font-semibold text-foreground" : ""}`}
+    valueClassName={`justify-end border-dashed bg-muted/50 tabular-nums text-muted-foreground ${strong ? "font-semibold text-foreground" : ""}`}
   >
     {value}
   </FormValue>
@@ -438,17 +458,27 @@ const TarjaNominaFields = ({
   empleadoCategoriaId,
   empleadoTareaId,
   horasTrabajadas = 0,
+  registroId,
 }: {
   empleadoCategoriaId?: number | null;
   empleadoTareaId?: number | null;
   horasTrabajadas?: number;
+  registroId?: number;
 }) => {
   const { setValue } = useFormContext<TarjaNominaFormValues>();
   const categoriaValue = useWatch({ name: "nomina_categoria_id" });
   const tareaValue = useWatch({ name: "nomina_tarea_id" });
   const horasJustificadas = useWatch({ name: "horas_justificadas" });
+  const presentismo = useWatch({ name: "presentismo" });
+  const fechaDesde = useWatch({ name: "fecha_desde" });
+  const fechaHasta = useWatch({ name: "fecha_hasta" });
+  const tarjaFechaDesde = useWatch({ name: "tarja_fecha_desde" });
+  const tarjaFechaHasta = useWatch({ name: "tarja_fecha_hasta" });
   const horasTrabajadasValue = toAmount(horasTrabajadas);
   const horasTotales = horasTrabajadasValue + toAmount(horasJustificadas);
+  const vigenciaDesde = [tarjaFechaDesde, fechaDesde].filter(Boolean).sort().at(-1);
+  const vigenciaHasta = [tarjaFechaHasta, fechaHasta].filter(Boolean).sort().at(0);
+  const horasLaborales = getHorasLaborales(vigenciaDesde, vigenciaHasta);
 
   useEffect(() => {
     if (!categoriaValue && empleadoCategoriaId) {
@@ -463,44 +493,49 @@ const TarjaNominaFields = ({
   }, [empleadoTareaId, setValue, tareaValue]);
 
   return (
-    <div className="grid gap-2 md:grid-cols-2">
-      <FormReferenceAutocomplete
-        referenceProps={{
-          source: "nomina_categoria_id",
-          reference: "nomina-categorias",
-          filter: { activa: true },
-        }}
-        inputProps={{
-          optionText: "descripcion",
-          label: "Categoria",
-          placeholder: "Seleccionar",
-        }}
-        widthClass="w-full"
-      />
-      <FormReferenceAutocomplete
-        referenceProps={{
-          source: "nomina_tarea_id",
-          reference: "nomina-tareas",
-          filter: { activa: true },
-        }}
-        inputProps={{
-          optionText: "descripcion",
-          label: "Actividad",
-          placeholder: "Seleccionar",
-        }}
-        widthClass="w-full"
-      />
-      <div className="grid gap-2 md:col-span-2 md:grid-cols-4">
+    <div className="grid gap-2">
+      <div className="grid items-end gap-2 md:grid-cols-[180px_220px]">
+        <FormReferenceAutocomplete
+          referenceProps={{
+            source: "nomina_categoria_id",
+            reference: "nomina-categorias",
+            filter: { activa: true },
+          }}
+          inputProps={{
+            optionText: "descripcion",
+            label: "Categoria",
+            placeholder: "Seleccionar",
+          }}
+          widthClass="w-full"
+          className="[&_[role=combobox]]:text-muted-foreground"
+        />
+        <FormReferenceAutocomplete
+          referenceProps={{
+            source: "nomina_tarea_id",
+            reference: "nomina-tareas",
+            filter: { activa: true },
+          }}
+          inputProps={{
+            optionText: "descripcion",
+            label: "Actividad",
+            placeholder: "Seleccionar",
+          }}
+          widthClass="w-full"
+          className="[&_[role=combobox]]:text-muted-foreground"
+        />
+      </div>
+      <div className="grid items-end gap-2 md:grid-cols-[repeat(4,minmax(0,96px))_minmax(12px,1fr)_120px_auto]">
+        <ReadOnlyNumber
+          label="Horas Laborales"
+          value={formatHoursValue(horasLaborales)}
+        />
         <ReadOnlyNumber
           label="Horas Trabajadas"
           value={formatHoursValue(horasTrabajadasValue)}
         />
-        <FormNumber
-          source="horas_justificadas"
+        <ReadOnlyNumber
           label="Horas Justificadas"
-          min={0}
-          step="0.01"
-          widthClass="w-full"
+          value={formatHoursValue(toAmount(horasJustificadas))}
         />
         <ReadOnlyNumber
           label="Horas Totales"
@@ -512,17 +547,21 @@ const TarjaNominaFields = ({
           min={0}
           step="0.01"
           widthClass="w-full"
+          className="md:col-start-6 [&_input]:border-primary/40 [&_input]:font-semibold"
         />
-      </div>
-      <div className="grid gap-2 md:col-span-2 md:grid-cols-3">
-        <div className="flex items-end">
-          <FormBoolean source="presentismo" label="Presentismo" />
-        </div>
-        <div className="flex items-end">
-          <FormBoolean source="viatico" label="Viatico" />
-        </div>
-        <div className="flex items-end">
-          <FormBoolean source="premio" label="Premio" />
+        <div className="md:col-start-7">
+          {registroId ? (
+            <TarjaPresentismoControl
+              registroId={registroId}
+              presentismoCalculado={Boolean(presentismo)}
+            />
+          ) : (
+            <ReadOnlyNumber
+              label="Presentismo"
+              value={presentismo ? "SI" : "NO"}
+              className="w-[68px]"
+            />
+          )}
         </div>
       </div>
       <FormTextarea
@@ -530,7 +569,7 @@ const TarjaNominaFields = ({
         label="Observaciones"
         rows={3}
         widthClass="w-full"
-        className="md:col-span-2 [&_textarea]:min-h-[72px]"
+        className="[&_textarea]:min-h-[72px]"
         maxLength={VALIDATION_RULES.OBSERVACIONES.MAX_LENGTH}
       />
     </div>
@@ -617,7 +656,7 @@ const TransferAwareToolbar = ({
   );
 };
 
-const TarjaLiquidacionFields = () => {
+const TarjaLiquidacionFields = ({ horasLiquidadas = 0 }: { horasLiquidadas?: number }) => {
   const [
     presentismoImporte,
     premioImporte,
@@ -649,7 +688,11 @@ const TarjaLiquidacionFields = () => {
 
   return (
     <div className="grid gap-2">
-      <div className="grid gap-2 md:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-4">
+        <ReadOnlyNumber
+          label="Horas liquidadas"
+          value={formatHoursValue(toAmount(horasLiquidadas))}
+        />
         <ReadOnlyNumber
           label="Presentismo"
           value={formatMoney(toAmount(presentismoImporte))}
@@ -688,6 +731,159 @@ const TarjaLiquidacionFields = () => {
           strong
         />
       </div>
+    </div>
+  );
+};
+
+type PresentismoAutorizacionStatus = {
+  id: number;
+  presentismo: boolean;
+  presentismo_autorizado: boolean;
+  presentismo_efectivo: boolean;
+  presentismo_origen: "automatico" | "manual" | "ninguno";
+  quincena_completa: boolean;
+  dias_esperados: number;
+  dias_faltantes: number;
+  dias_borrador: number;
+  puede_autorizar: boolean;
+};
+
+const TarjaPresentismoControl = ({
+  registroId,
+  presentismoCalculado,
+}: {
+  registroId: number;
+  presentismoCalculado: boolean;
+}) => {
+  const notify = useNotify();
+  const refresh = useRefresh();
+  const [status, setStatus] = useState<PresentismoAutorizacionStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [action, setAction] = useState<"autorizar" | "desautorizar" | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    void fetch(`${apiUrl}/tarja-nomina/${registroId}/presentismo-autorizacion`, {
+      headers: buildAuthHeaders(),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.detail ?? "No se pudo consultar el presentismo");
+        if (active) setStatus(payload as PresentismoAutorizacionStatus);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          notify(error instanceof Error ? error.message : "No se pudo consultar el presentismo", {
+            type: "warning",
+          });
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [notify, registroId]);
+
+  const openConfirmation = (nextAction: "autorizar" | "desautorizar") => {
+    setAction(nextAction);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = async () => {
+    if (!action) return;
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${apiUrl}/tarja-nomina/${registroId}/${action}-presentismo`,
+        { method: "POST", headers: buildAuthHeaders() },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail ?? `No se pudo ${action} el presentismo`);
+      }
+      setStatus(payload as PresentismoAutorizacionStatus);
+      setConfirmOpen(false);
+      setAction(null);
+      notify(action === "autorizar" ? "Presentismo autorizado" : "Presentismo desautorizado", {
+        type: "info",
+      });
+      refresh();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "No se pudo actualizar el presentismo", {
+        type: "warning",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const autorizado = Boolean(status?.presentismo_autorizado);
+  const puedeAutorizar = Boolean(status?.puede_autorizar);
+  const presentismo = status?.presentismo ?? presentismoCalculado;
+  const tooltip = autorizado
+    ? "Desautorizar presentismo"
+    : !status?.quincena_completa
+      ? status
+        ? `Pendiente: ${status.dias_faltantes} partes faltantes y ${status.dias_borrador} en borrador`
+        : "Verificando la quincena"
+      : presentismo
+        ? "El presentismo corresponde automáticamente"
+        : "Autorizar presentismo manualmente";
+
+  return (
+    <div className="flex items-end gap-1">
+      <div className="w-[68px]">
+        <ReadOnlyNumber
+          label="Presentismo"
+          value={presentismo ? "SI" : "NO"}
+          className="w-[68px] [&>div:last-child]:justify-start"
+        />
+      </div>
+      {!presentismo || autorizado ? (
+        <div className="grid w-14 gap-[1px] sm:gap-[2px]">
+          <div className="flex items-center justify-center gap-0.5 leading-none">
+            <span className="text-[7px] font-semibold text-muted-foreground">Autoriza</span>
+            {autorizado ? (
+              <span className="rounded bg-emerald-600 px-1 text-[8px] font-bold leading-[10px] text-white">
+                SI
+              </span>
+            ) : null}
+          </div>
+          <div className="flex h-5 items-center justify-center">
+            <Switch
+              checked={autorizado}
+              title={tooltip}
+              aria-label={tooltip}
+              className="!h-4 !w-7 !px-0 !py-0 [&_[data-slot=switch-thumb]]:size-3"
+              disabled={loading || (!autorizado && !puedeAutorizar)}
+              onCheckedChange={(checked) =>
+                openConfirmation(checked ? "autorizar" : "desautorizar")
+              }
+            />
+          </div>
+        </div>
+      ) : null}
+      <Confirm
+        isOpen={confirmOpen}
+        loading={loading}
+        title={action === "desautorizar" ? "Desautorizar presentismo" : "Autorizar presentismo"}
+        content={
+          action === "desautorizar"
+            ? "El presentismo volverá a quedar sin autorización."
+            : "Se registrará la autorización del presentismo para esta nómina."
+        }
+        confirm={action === "desautorizar" ? "Desautorizar" : "Autorizar"}
+        confirmColor={action === "desautorizar" ? "warning" : "primary"}
+        onClose={() => {
+          setConfirmOpen(false);
+          setAction(null);
+        }}
+        onConfirm={() => void handleConfirm()}
+      />
     </div>
   );
 };
@@ -897,6 +1093,8 @@ export const TarjaNominaForm = ({
       encargado_id?: number | null;
       tipo_novedad?: string | null;
       editable?: boolean | null;
+      horas_trabajadas?: number | null;
+      horas_liquidadas?: number | null;
     }
   >();
   const params = new URLSearchParams(location.search);
@@ -967,7 +1165,7 @@ export const TarjaNominaForm = ({
     "";
   const returnTo = params.get("returnTo");
   const horasTrabajadasParam = params.get("horas_trabajadas");
-  const horasTrabajadas = toAmount(horasTrabajadasParam);
+  const horasTrabajadas = toAmount(record?.horas_trabajadas ?? horasTrabajadasParam);
   const isCreate = !record?.id;
   const isReadOnlyNovedad =
     record?.editable === false || record?.tipo_novedad === "ALT";
@@ -1010,6 +1208,7 @@ export const TarjaNominaForm = ({
             empleadoCategoriaId={empleado?.nomina_categoria_id}
             empleadoTareaId={empleado?.nomina_tarea_id}
             horasTrabajadas={horasTrabajadas}
+            registroId={record?.id ? Number(record.id) : undefined}
           />
         }
         defaultOpen
@@ -1026,7 +1225,11 @@ export const TarjaNominaForm = ({
       />
       <SectionBaseTemplate
         title="Liquidacion"
-        main={<TarjaLiquidacionFields />}
+        main={
+          <TarjaLiquidacionFields
+            horasLiquidadas={toAmount(record?.horas_liquidadas)}
+          />
+        }
         defaultOpen={false}
       />
     </SimpleForm>

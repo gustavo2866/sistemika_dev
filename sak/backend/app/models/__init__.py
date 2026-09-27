@@ -100,7 +100,16 @@ from .constructora import (
     PedidoObraEstado,
     PedidoObraOrigen,
 )
-from .erp import (ErpRubro, ErpCuenta, ErpPresupuesto, ErpLibroDiario)
+from .erp import (
+    ErpRubro,
+    ErpCuenta,
+    ErpPresupuesto,
+    ErpLibroDiario,
+    ErpCashCuenta,
+    ErpCashSubcta,
+    ErpCashMap,
+    ErpCashDiario,
+)
 
 __all__ = [
     "Base", 
@@ -191,6 +200,10 @@ __all__ = [
     "ErpCuenta",
     "ErpPresupuesto",
     "ErpLibroDiario",
+    "ErpCashCuenta",
+    "ErpCashSubcta",
+    "ErpCashMap",
+    "ErpCashDiario",
 ]
 
 

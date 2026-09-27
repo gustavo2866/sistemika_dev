@@ -19,6 +19,7 @@ export const ParteDiarioEstadoShow = () => (
       <TextField source="abreviatura" label="Abreviatura" />
       <TextField source="nombre" label="Nombre" />
       <SelectField source="activo" choices={ESTADO_CHOICES} />
+      <SelectField source="justifica" choices={ESTADO_CHOICES} />
       <DateField source="created_at" />
       <DateField source="updated_at" />
     </SimpleShowLayout>

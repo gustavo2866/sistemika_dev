@@ -1,7 +1,6 @@
 "use client";
 
 import { Edit, type EditProps as BaseEditProps } from "@/components/edit";
-import { FormOrderDeleteButton } from "@/components/forms";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TarjaNominaForm } from "./form";
 import { normalizeTarjaNominaPayload } from "./model";
@@ -11,12 +10,6 @@ type TarjaNominaEditProps = {
   id?: BaseEditProps["id"];
   redirect?: BaseEditProps["redirect"];
 };
-
-const TarjaNominaEditActions = () => (
-  <div className="flex justify-end">
-    <FormOrderDeleteButton />
-  </div>
-);
 
 export const TarjaNominaEdit = ({
   embedded = false,
@@ -36,7 +29,7 @@ export const TarjaNominaEdit = ({
       className="max-w-3xl w-full"
       mutationMode="pessimistic"
       transform={(data: any) => normalizeTarjaNominaPayload(data)}
-      actions={<TarjaNominaEditActions />}
+      actions={false}
       showBreadcrumb={!embedded}
       showHeader={!embedded}
       mutationOptions={

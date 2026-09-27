@@ -32,6 +32,7 @@ def test_seed_parte_diario_estados_is_idempotent(db_session) -> None:
     rows = db_session.exec(select(ParteDiarioEstado)).all()
 
     assert len(rows) == len(DEFAULT_PARTE_DIARIO_ESTADOS)
+    assert all(row.justifica is False for row in rows)
 
 
 def test_seed_preserves_managed_catalog_values(db_session) -> None:

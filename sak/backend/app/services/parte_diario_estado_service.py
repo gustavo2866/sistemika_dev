@@ -40,6 +40,7 @@ def seed_parte_diario_estados(session: Session) -> int:
                 abreviatura=item.abreviatura,
                 nombre=item.nombre,
                 activo=True,
+                justifica=False,
             )
         )
         inserted += 1

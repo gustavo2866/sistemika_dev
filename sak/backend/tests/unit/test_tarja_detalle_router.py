@@ -44,6 +44,8 @@ def test_tarja_detalle_list_muestra_nomina_sin_detalles(db_session):
         idproyecto=proyecto.id,
         fechainicio=date(2026, 9, 1),
         fechafinal=date(2026, 9, 15),
+        premio=True,
+        viaticos=True,
     )
     db_session.add(tarja)
     db_session.flush()
@@ -79,10 +81,14 @@ def test_tarja_detalle_list_muestra_nomina_sin_detalles(db_session):
     assert rows[0]["empleado"] == "Perez, Juan"
     assert rows[0]["nro_legajo"] == "L-001"
     assert rows[0]["obra"] == "Obra Detalle"
+    assert rows[0]["tarja_premio"] is True
+    assert rows[0]["tarja_viaticos"] is True
     assert rows[0]["categoria_codigo"] == "OF"
     assert rows[0]["actividad_codigo"] == "ALB"
     assert rows[0]["novedad"]["id"] == registro.id
     assert rows[0]["novedad"]["presentismo"] is True
+    assert rows[0]["novedad"]["presentismo_efectivo"] is True
+    assert rows[0]["novedad"]["presentismo_origen"] == "automatico"
     assert rows[0]["D01"] == {
         "detalle_id": None,
         "fecha": "2026-09-01",

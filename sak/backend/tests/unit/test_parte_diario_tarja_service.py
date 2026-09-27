@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.models.tarja import EstadoTarja, Tarja, TarjaDetalle, TarjaNomina
 from app.routers.nomina_router import nomina_crud
+from app.routers.parte_diario_estado_router import parte_diario_estado_crud
 from app.routers.partediario_router import parte_diario_crud
 from app.routers.tarja_detalle_router import _build_empty_days
 from app.routers.tarja_nomina_router import tarja_nomina_crud
@@ -97,6 +98,146 @@ def test_get_quincena_range_usa_esquema_26_10_y_11_25():
         date(2026, 9, 26),
         date(2026, 10, 10),
     )
+
+
+def test_presentismo_suma_obras_y_limita_horas_extras_por_dia(db_session):
+    data = _seed_base(db_session)
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    destino = Proyecto(
+        nombre="Obra Presentismo Destino",
+        responsable_id=data["contacto"].responsable_id,
+    )
+    db_session.add(destino)
+    db_session.flush()
+    tarja_origen = Tarja(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 6, 22),
+        fechafinal=date(2026, 6, 23),
+    )
+    tarja_destino = Tarja(
+        idproyecto=destino.id,
+        contacto_id=data["otro_contacto"].id,
+        fechainicio=date(2026, 6, 22),
+        fechafinal=date(2026, 6, 23),
+    )
+    db_session.add_all([tarja_origen, tarja_destino])
+    db_session.flush()
+    registro = TarjaNomina(
+        tarja_id=tarja_origen.id,
+        nomina_id=data["nomina_default"].id,
+        fecha_desde=date(2026, 6, 22),
+        fecha_hasta=date(2026, 6, 23),
+    )
+    db_session.add_all(
+        [
+            registro,
+            TarjaDetalle(
+                tarja_id=tarja_origen.id,
+                idnomina=data["nomina_default"].id,
+                fecha=date(2026, 6, 22),
+                idestado=presente.id,
+                horas=Decimal("5"),
+            ),
+            TarjaDetalle(
+                tarja_id=tarja_destino.id,
+                idnomina=data["nomina_default"].id,
+                fecha=date(2026, 6, 22),
+                idestado=presente.id,
+                horas=Decimal("6"),
+            ),
+            TarjaDetalle(
+                tarja_id=tarja_origen.id,
+                idnomina=data["nomina_default"].id,
+                fecha=date(2026, 6, 23),
+                idestado=presente.id,
+                horas=Decimal("8"),
+            ),
+        ]
+    )
+    db_session.flush()
+
+    parte_diario_tarja_service._sync_tarja_nomina(
+        db_session,
+        tarja_destino,
+        [],
+    )
+    db_session.flush()
+
+    assert registro.horas_trabajadas == Decimal("17")
+    assert registro.horas_justificadas == Decimal("0")
+    assert registro.horas_liquidadas == Decimal("17")
+    assert registro.presentismo is False
+
+
+def test_presentismo_usa_estado_justifica_para_completar_la_jornada(db_session):
+    data = _seed_base(db_session)
+    justificado = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "PER")
+    ).one()
+    tarja = Tarja(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 6, 22),
+        fechafinal=date(2026, 6, 22),
+    )
+    db_session.add(tarja)
+    db_session.flush()
+    registro = TarjaNomina(
+        tarja_id=tarja.id,
+        nomina_id=data["nomina_default"].id,
+        fecha_desde=tarja.fechainicio,
+        fecha_hasta=tarja.fechafinal,
+    )
+    detalle = TarjaDetalle(
+        tarja_id=tarja.id,
+        idnomina=data["nomina_default"].id,
+        fecha=tarja.fechainicio,
+        idestado=justificado.id,
+        horas=Decimal("5"),
+    )
+    db_session.add_all([registro, detalle])
+    db_session.flush()
+
+    parte_diario_tarja_service.recalcular_resumen_nomina(
+        db_session,
+        nomina_ids={int(data["nomina_default"].id)},
+        fechainicio=tarja.fechainicio,
+        fechafinal=tarja.fechafinal,
+    )
+    db_session.flush()
+
+    assert registro.presentismo is False
+
+    parte_diario_estado_crud.update(
+        db_session,
+        justificado.id,
+        {"justifica": True},
+        check_version=False,
+    )
+    db_session.refresh(registro)
+
+    assert registro.horas_trabajadas == Decimal("5")
+    assert registro.horas_justificadas == Decimal("4")
+    assert registro.horas_liquidadas == Decimal("9")
+    assert registro.presentismo is True
+
+    tarja_nomina_crud.update(
+        db_session,
+        registro.id,
+        {
+            "observaciones": "Mantener calculo automatico",
+            "horas_justificadas": "99",
+            "presentismo": False,
+        },
+        check_version=False,
+    )
+    db_session.refresh(registro)
+
+    assert registro.horas_justificadas == Decimal("4")
+    assert registro.presentismo is True
 
 
 def test_tarja_detalle_expone_d16_solo_para_primera_quincena():
@@ -2133,7 +2274,7 @@ def test_confirmar_y_eliminar_traspaso_mueve_nomina_y_revierte_destino(
     ).all() == []
     db_session.refresh(registro_origen)
     db_session.refresh(nomina)
-    assert registro_origen.fecha_hasta == date(2026, 6, 24)
+    assert registro_origen.fecha_hasta == date(2026, 6, 23)
     assert nomina.idproyecto == destino.id
     assert nomina.encargado_contacto_id == data["otro_contacto"].id
     tarja_destino = parte_diario_tarja_service.get_tarja_para_parte(

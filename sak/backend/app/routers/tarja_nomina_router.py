@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models.nomina import Nomina
 from app.models.nomina_catalogos import NominaCategoria, NominaTarea
 from app.models.parte_diario_estado import ParteDiarioEstado
-from app.models.partediario import ParteDiarioDetalle
+from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDetalle
 from app.models.proyecto import Proyecto
 from app.models.proyecto_encargado import ProyectoEncargado
 from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
@@ -45,10 +45,113 @@ class TarjaNominaDocumentoDeleteRequest(BaseModel):
 
 class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
     ALTA_ESTADO_CODIGO = "ALT"
+    DERIVED_HOURS_FIELDS = {
+        "horas_justificadas",
+        "horas_trabajadas",
+        "horas_liquidadas",
+        "presentismo",
+    }
 
     @staticmethod
     def _is_truthy_filter(value: Any) -> bool:
         return str(value or "").strip().lower() in {"1", "true", "si", "sí"}
+
+    @staticmethod
+    def _iter_dates(start_date: date, end_date: date):
+        current = start_date
+        while current <= end_date:
+            yield current
+            current += timedelta(days=1)
+
+    def get_presentismo_autorizacion_status(
+        self,
+        session: Session,
+        registro: TarjaNomina,
+    ) -> dict[str, Any]:
+        tarja = session.get(Tarja, registro.tarja_id)
+        if tarja is None or tarja.deleted_at is not None:
+            raise ValueError("La tarja asociada no existe")
+        proyecto = session.get(Proyecto, tarja.idproyecto)
+        if proyecto is None or proyecto.deleted_at is not None:
+            raise ValueError("La obra asociada no existe")
+
+        fechas_esperadas = {
+            current
+            for current in self._iter_dates(tarja.fechainicio, tarja.fechafinal)
+            if current.weekday() != 6
+            and (proyecto.fecha_inicio is None or proyecto.fecha_inicio <= current)
+            and (proyecto.fecha_final is None or proyecto.fecha_final >= current)
+        }
+        stmt = (
+            select(ParteDiario)
+            .where(ParteDiario.idproyecto == tarja.idproyecto)
+            .where(ParteDiario.fecha >= tarja.fechainicio)
+            .where(ParteDiario.fecha <= tarja.fechafinal)
+            .where(ParteDiario.deleted_at.is_(None))
+        )
+        if tarja.contacto_id is None:
+            stmt = stmt.where(ParteDiario.contacto_id.is_(None))
+        else:
+            stmt = stmt.where(ParteDiario.contacto_id == tarja.contacto_id)
+        partes_por_fecha: dict[date, list[ParteDiario]] = {}
+        for parte in session.exec(stmt).all():
+            partes_por_fecha.setdefault(parte.fecha, []).append(parte)
+
+        fechas_faltantes = sorted(fechas_esperadas - partes_por_fecha.keys())
+        fechas_borrador = sorted(
+            fecha
+            for fecha in fechas_esperadas
+            if any(
+                parte.estado == EstadoParteDiario.BORRADOR
+                for parte in partes_por_fecha.get(fecha, [])
+            )
+        )
+        quincena_completa = bool(fechas_esperadas) and not fechas_faltantes and not fechas_borrador
+        return {
+            "id": registro.id,
+            "presentismo": bool(registro.presentismo),
+            "presentismo_autorizado": registro.presentismo_autorizado is True,
+            "presentismo_efectivo": registro.presentismo_efectivo,
+            "presentismo_origen": registro.presentismo_origen,
+            "quincena_completa": quincena_completa,
+            "dias_esperados": len(fechas_esperadas),
+            "dias_faltantes": len(fechas_faltantes),
+            "dias_borrador": len(fechas_borrador),
+            "puede_autorizar": (
+                quincena_completa
+                and not bool(registro.presentismo)
+                and registro.presentismo_autorizado is not True
+            ),
+        }
+
+    def autorizar_presentismo(
+        self,
+        session: Session,
+        registro: TarjaNomina,
+    ) -> dict[str, Any]:
+        status = self.get_presentismo_autorizacion_status(session, registro)
+        if not status["quincena_completa"]:
+            raise ValueError("No se puede autorizar hasta completar y confirmar toda la quincena")
+        if registro.presentismo:
+            raise ValueError("El presentismo ya corresponde por el cálculo automático")
+        registro.presentismo_autorizado = True
+        registro.updated_at = datetime.now(UTC)
+        session.add(registro)
+        session.commit()
+        session.refresh(registro)
+        return self.get_presentismo_autorizacion_status(session, registro)
+
+    def desautorizar_presentismo(
+        self,
+        session: Session,
+        registro: TarjaNomina,
+    ) -> dict[str, Any]:
+        registro.presentismo_autorizado = None
+        registro.updated_at = datetime.now(UTC)
+        session.add(registro)
+        session.commit()
+        session.refresh(registro)
+        return self.get_presentismo_autorizacion_status(session, registro)
 
     @staticmethod
     def _empty_days(start_date, end_date) -> dict[str, dict[str, Any]]:
@@ -403,6 +506,9 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
         data: dict[str, Any],
         auto_commit: bool = True,
     ) -> TarjaNomina:
+        data = dict(data)
+        for field in self.DERIVED_HOURS_FIELDS:
+            data.pop(field, None)
         tarja_id = data.get("tarja_id")
         nomina_id = data.get("nomina_id")
         if not tarja_id or not nomina_id:
@@ -455,8 +561,10 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
             ).first()
             fecha_baja = fecha_ingreso
             if registro_anterior is not None and registro_anterior.fecha_hasta >= fecha_ingreso:
-                registro_anterior.fecha_hasta = fecha_baja
-                registro_anterior.updated_at = datetime.now(UTC)
+                parte_diario_tarja_service.cerrar_vigencia_por_traspaso(
+                    registro_anterior,
+                    fecha_baja,
+                )
                 session.add(registro_anterior)
 
         categoria_id = data.get("nomina_categoria_id")
@@ -496,6 +604,13 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
                 if hasattr(existing, "updated_at"):
                     existing.updated_at = datetime.now(UTC)
                 session.add(existing)
+                session.flush()
+                parte_diario_tarja_service.recalcular_resumen_nomina(
+                    session,
+                    nomina_ids={int(nomina_id)},
+                    fechainicio=tarja.fechainicio,
+                    fechafinal=tarja.fechafinal,
+                )
                 if auto_commit:
                     session.commit()
                     session.refresh(existing)
@@ -503,7 +618,19 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
                     session.flush()
                 return existing
 
-        return super().create(session, data, auto_commit=auto_commit)
+        created = super().create(session, data, auto_commit=auto_commit)
+        parte_diario_tarja_service.recalcular_resumen_nomina(
+            session,
+            nomina_ids={int(nomina_id)},
+            fechainicio=tarja.fechainicio,
+            fechafinal=tarja.fechafinal,
+        )
+        if auto_commit:
+            session.commit()
+            session.refresh(created)
+        else:
+            session.flush()
+        return created
 
     def update(
         self,
@@ -518,7 +645,23 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
             and self._get_no_editable_parte_detalle(session, obj) is not None
         ):
             raise ValueError("Las novedades inactivas de nomina no se pueden editar")
-        return super().update(session, obj_id, data, check_version=check_version)
+        cleaned_data = dict(data)
+        for field in self.DERIVED_HOURS_FIELDS:
+            cleaned_data.pop(field, None)
+        updated = super().update(session, obj_id, cleaned_data, check_version=check_version)
+        if updated is None or updated.nomina_id is None:
+            return updated
+        tarja = session.get(Tarja, updated.tarja_id)
+        if tarja is not None and tarja.deleted_at is None:
+            parte_diario_tarja_service.recalcular_resumen_nomina(
+                session,
+                nomina_ids={int(updated.nomina_id)},
+                fechainicio=tarja.fechainicio,
+                fechafinal=tarja.fechafinal,
+            )
+            session.commit()
+            session.refresh(updated)
+        return updated
 
     def delete(self, session: Session, obj_id: Any, hard: bool = False) -> bool:
         obj = self.get(session, obj_id)
@@ -711,8 +854,11 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
             raise ValueError("El empleado ya existe en la tarja destino")
 
         now = datetime.now(UTC)
-        source.fecha_hasta = data.fecha
-        source.updated_at = now
+        parte_diario_tarja_service.cerrar_vigencia_por_traspaso(
+            source,
+            data.fecha,
+            updated_at=now,
+        )
         destination = TarjaNomina(
             tarja_id=int(destination_tarja.id),
             nomina_id=source.nomina_id,
@@ -736,7 +882,13 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
         nomina.activo = True
         nomina.updated_at = now
         session.add(nomina)
-
+        session.flush()
+        parte_diario_tarja_service.recalcular_resumen_nomina(
+            session,
+            nomina_ids={int(source.nomina_id)},
+            fechainicio=source_tarja.fechainicio,
+            fechafinal=source_tarja.fechafinal,
+        )
         session.commit()
         session.refresh(source)
         session.refresh(destination)
@@ -782,6 +934,44 @@ def _get_tarja_nomina_or_404(id: int, session: Session) -> TarjaNomina:
     if registro is None or registro.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Registro de nomina no encontrado")
     return registro
+
+
+@tarja_nomina_router.get("/{id:int}/presentismo-autorizacion")
+def get_presentismo_autorizacion(
+    id: int,
+    session: Session = Depends(get_session),
+):
+    registro = _get_tarja_nomina_or_404(id, session)
+    try:
+        return tarja_nomina_crud.get_presentismo_autorizacion_status(session, registro)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@tarja_nomina_router.post("/{id:int}/autorizar-presentismo")
+def autorizar_presentismo(
+    id: int,
+    session: Session = Depends(get_session),
+):
+    registro = _get_tarja_nomina_or_404(id, session)
+    try:
+        return tarja_nomina_crud.autorizar_presentismo(session, registro)
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@tarja_nomina_router.post("/{id:int}/desautorizar-presentismo")
+def desautorizar_presentismo(
+    id: int,
+    session: Session = Depends(get_session),
+):
+    registro = _get_tarja_nomina_or_404(id, session)
+    try:
+        return tarja_nomina_crud.desautorizar_presentismo(session, registro)
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _parse_documento_item(value: Any) -> dict[str, Any]:

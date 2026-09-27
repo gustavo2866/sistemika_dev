@@ -230,6 +230,7 @@ def get_tarja_panel(
                     TarjaNomina.tarja_id,
                     func.count(TarjaNomina.id),
                     func.coalesce(func.sum(TarjaNomina.adicional_importe), 0),
+                    func.coalesce(func.sum(TarjaNomina.premio_importe), 0),
                 )
                 .where(TarjaNomina.tarja_id.in_(tarja_ids))
                 .where(TarjaNomina.deleted_at.is_(None))
@@ -239,8 +240,9 @@ def get_tarja_panel(
                 int(tarja_id): {
                     "novedades": int(novedades or 0),
                     "adicional": float(adicional or 0),
+                    "premios": float(premios or 0),
                 }
-                for tarja_id, novedades, adicional in nomina_rows
+                for tarja_id, novedades, adicional, premios in nomina_rows
             }
 
         encargado_stmt = (
@@ -368,7 +370,8 @@ def get_tarja_panel(
                     "horas": detalle_stats.get("horas", 0),
                     "novedades": novedad_stats.get("novedades", 0),
                     "adicional": novedad_stats.get("adicional", 0),
-                    "premio_tarja": float(selected_tarja.premio or 0),
+                    "premios": novedad_stats.get("premios", 0),
+                    "premio_tarja": bool(selected_tarja.premio),
                     "viaticos": bool(selected_tarja.viaticos),
                 }
 

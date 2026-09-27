@@ -22,7 +22,7 @@ def test_tarja_panel_incluye_premio_definido_en_la_tarja(db_session):
         idproyecto=proyecto.id,
         fechainicio=date(2026, 9, 1),
         fechafinal=date(2026, 9, 15),
-        premio=Decimal("1250.50"),
+        premio=True,
     )
     db_session.add(tarja)
     db_session.flush()
@@ -48,7 +48,8 @@ def test_tarja_panel_incluye_premio_definido_en_la_tarja(db_session):
     assert len(panel["rows"]) == 1
     panel_tarja = panel["rows"][0]["tarja"]
     assert panel_tarja["adicional"] == 200
-    assert panel_tarja["premio_tarja"] == 1250.5
+    assert panel_tarja["premios"] == 900
+    assert panel_tarja["premio_tarja"] is True
     assert panel_tarja["viaticos"] is False
     assert "premio" not in panel_tarja
 
