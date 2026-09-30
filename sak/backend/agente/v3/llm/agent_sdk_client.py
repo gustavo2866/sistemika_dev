@@ -18,6 +18,7 @@ class AgentSDKClient:
         instructions: str,
         output_type: type[BaseModel],
         model: str | None = None,
+        reasoning_effort: str | None = None,
         api_key: str | None = None,
         tools: list[Any] | None = None,
         tracing_disabled: bool = True,
@@ -26,6 +27,7 @@ class AgentSDKClient:
         self.instructions = instructions
         self.output_type = output_type
         self.model = model or os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
+        self.reasoning_effort = reasoning_effort
         self.api_key = (api_key or os.getenv("OPENAI_API_KEY") or "").strip() or None
         self.tools = tools or []
         self.tracing_disabled = tracing_disabled
@@ -35,15 +37,20 @@ class AgentSDKClient:
         if not self.api_key:
             raise RuntimeError("OPENAI_API_KEY no configurada")
 
-        Agent, Runner, RunConfig = _load_agents_sdk()
+        Agent, ModelSettings, Runner, RunConfig = _load_agents_sdk()
         if self._agent is None:
-            self._agent = Agent(
-                name=self.name,
-                model=self.model,
-                instructions=self.instructions,
-                output_type=self.output_type,
-                tools=self.tools,
-            )
+            agent_args = {
+                "name": self.name,
+                "model": self.model,
+                "instructions": self.instructions,
+                "output_type": self.output_type,
+                "tools": self.tools,
+            }
+            if self.reasoning_effort:
+                agent_args["model_settings"] = ModelSettings(
+                    reasoning={"effort": self.reasoning_effort},
+                )
+            self._agent = Agent(**agent_args)
 
         result = await Runner.run(
             self._agent,
@@ -64,7 +71,7 @@ class AgentSDKClient:
 
 def _load_agents_sdk():
     try:
-        from agents import Agent, Runner, RunConfig
+        from agents import Agent, ModelSettings, Runner, RunConfig
     except ImportError as exc:
         raise RuntimeError("openai-agents no esta instalado") from exc
-    return Agent, Runner, RunConfig
+    return Agent, ModelSettings, Runner, RunConfig

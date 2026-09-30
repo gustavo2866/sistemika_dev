@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from agente.v3.llm import AgentSDKClient
+from agente.v3.subprocesses.parte_diario.adapters.model_config import resolve_parte_diario_model
 from agente.v3.subprocesses.parte_diario.domain.models import NominaItem, PendienteAmbiguo
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from agente.v3.subprocesses.parte_diario.domain.empleados import parse_candidate_selection
@@ -24,10 +24,11 @@ class ParteDiarioCargaAgentOutput(BaseModel):
 class ParteDiarioCargaAgentClient:
     """Resuelve respuestas conversacionales durante la carga del parte."""
 
-    def __init__(self, *, model: str | None = None) -> None:
-        self.model = model or os.getenv("OPENAI_PARTE_DIARIO_CARGA_AGENT_MODEL") or os.getenv(
-            "OPENAI_CHAT_REPLY_MODEL",
-            "gpt-4.1-mini",
+    def __init__(self, *, model: str | None = None, reasoning_effort: str | None = None) -> None:
+        self.model, self.reasoning_effort = resolve_parte_diario_model(
+            model,
+            specific_model_env="OPENAI_PARTE_DIARIO_CARGA_AGENT_MODEL",
+            reasoning_effort=reasoning_effort,
         )
 
     async def resolve_person_validation(
@@ -41,6 +42,7 @@ class ParteDiarioCargaAgentClient:
         client = AgentSDKClient(
             name="sak_parte_diario_carga_v3",
             model=self.model,
+            reasoning_effort=self.reasoning_effort,
             instructions=CARGA_AGENT_INSTRUCTIONS,
             output_type=ParteDiarioCargaAgentOutput,
             tools=tools,
@@ -97,9 +99,7 @@ def _build_tools(candidates: list[NominaItem]) -> list[Any]:
 
 
 def _visible_candidates(pending: PendienteAmbiguo) -> list[NominaItem]:
-    if pending.mostrando_candidatos_externos and pending.candidatos_externos:
-        return pending.candidatos_externos
-    return pending.candidatos or pending.candidatos_externos or []
+    return pending.candidatos or []
 
 
 def _looks_like_attendance_update(text: str | None) -> bool:

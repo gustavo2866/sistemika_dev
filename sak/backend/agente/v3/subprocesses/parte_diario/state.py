@@ -19,6 +19,7 @@ ParteDiarioStage = Literal[
     "cargar_fecha",
     "seleccionar_fecha",
     "carga",
+    "carga_todos",
     "carga_aclaracion",
     "revision",
     "carga_validar_empleado",

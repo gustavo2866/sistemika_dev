@@ -246,6 +246,8 @@ async def test_aclaracion_de_listado_retorna_por_camino_comun(datos, db_session,
         assert estado(result).asistencia_offset == 0
         result = await process.handle(mensaje("1"), result.context)
         result = await process.handle(mensaje("2"), result.context)
+        if estado(result).etapa == "carga_validar_estado":
+            result = await process.handle(mensaje("permiso"), result.context)
     assert estado(result).etapa == "listado"
     assert estado(result).asistencia_offset == (0 if resolucion == "rechazo" else 8)
     if resolucion != "rechazo":

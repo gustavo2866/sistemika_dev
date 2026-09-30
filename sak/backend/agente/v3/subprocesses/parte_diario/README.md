@@ -34,6 +34,9 @@ Un cambio de subproceso se solicita al orquestador, no se llama a otro handler.
 
 Los clientes de Chat Completions y Agents SDK en `agente/v3/llm/` son generales.
 Los adapters de parte diario les agregan contexto, prompts y herramientas propias.
+Parte Diario usa por defecto `gpt-6-luna` con razonamiento `low`, configurable con
+`OPENAI_PARTE_DIARIO_MODEL` y `OPENAI_PARTE_DIARIO_REASONING_EFFORT`, sin cambiar
+el modelo general de agente v3.
 Chat Completions interpreta novedades y motivos; Agents SDK atiende aclaraciones
 de persona y consultas con herramientas. Cada flow puede elegir su mecanismo;
 no es obligatorio un prompt por flow ni usar el SDK para mantener un dialogo.
@@ -54,7 +57,7 @@ correcta. Una recuperacion de datos inconsistentes, si se requiere, va al inicio
 | --- | --- |
 | `inicial`, `seleccionar_accion`, `seleccionar_obra` | `flows/entrada.py` presenta el menu y el handler resuelve la obra elegida. |
 | `cargar_fecha`, `seleccionar_fecha`, `pendientes` | `flows/fecha.py` |
-| `carga` / `listado` | `flows/carga.py` / `flows/listado.py` |
+| `carga` / `carga_todos` / `listado` | `flows/carga.py` / `flows/listado.py` |
 | `carga_aclaracion` | `flows/aclaracion.py` |
 | `carga_validar_empleado`, `carga_validar_obra`, `carga_validar_encargado`, `carga_validar_estado`, `carga_validar_conflicto`, `carga_cambiar_fecha` | `flows/validacion_carga.py` |
 | `revision` / `confirmar_salida` / `continuar` | Los modulos del mismo nombre en `flows/`. |
@@ -70,8 +73,10 @@ correcta. Una recuperacion de datos inconsistentes, si se requiere, va al inicio
   Si falta obra, se informa sin inferirla. Las consultas de lectura admitidas
   durante validaciones tambien se atienden aqui y vuelven a mostrar la pregunta.
 - Cada estado tiene comandos locales propios: `NO` en carga abre revision;
+  `TODOS` en carga solicita una unica novedad y la aplica a la nomina activa;
   LISTADO admite `SIGUIENTE` o el numero correlativo de la pagina siguiente y
-  `FINALIZAR` o `99`; en confirmar_salida, `NO` cancela el descarte. `SALIR`
+  `FINALIZAR` o `99`; ambos cierran LISTADO y vuelven a carga. En
+  confirmar_salida, `NO` cancela el descarte. `SALIR`
   abandona el parte desde cualquier circuito y confirma si hay cambios.
 - Una pregunta del interprete o un resultado que requiere corregir/reintentar
   activa `carga_aclaracion`; los pendientes de entidades conservan sus estados
@@ -102,28 +107,46 @@ Los IDs de nomina emitidos por el LLM solo se aceptan cuando estan respaldados p
 la normalizacion controlada de LISTADO; en texto libre se descartan y la identidad
 se resuelve por nombre contra la nomina vigente.
 Las aclaraciones reutilizan ese camino y conservan las referencias numeradas.
+En `carga`, el comando exacto `TODOS` abre `carga_todos`; el siguiente mensaje se
+interpreta como una unica plantilla y backend la expande a los IDs de la
+`TarjaNomina` vigente, sin exponer nombres al LLM. `VOLVER` cancela el alcance
+masivo. Las consultas comunes no lo consumen. Cada operacion expandida reutiliza
+las reglas normales: una novedad previa distinta genera conflicto y un movimiento
+interno (`ALT`, `BAJ`, `TRA`) no se sobrescribe silenciosamente.
 
 Los casos resueltos de un lote se aplican al borrador y los ambiguos quedan en
 cola. Se valida empleado, destino y motivo segun corresponda. Una transferencia
 pertenece a su operacion, no a todo el mensaje. Obra no identificada requiere menu;
-encargado unico se selecciona, varios requieren eleccion. El LLM interpreta;
-domain valida datos reales. No anunciar cambios que no se hayan ejecutado.
+encargado unico se selecciona, varios requieren eleccion. Si la obra destino no
+tiene encargado activo, se rechaza solo esa novedad, se informa el motivo y se
+continua la carga. En LISTADO, el rechazo se envia separado del menu y se vuelve
+a mostrar la misma pagina sin avanzar su posicion. El LLM interpreta; domain
+valida datos reales. No anunciar cambios que no se hayan ejecutado.
+La nomina identificada no se expone al interprete: este conserva el fragmento de
+nombre del usuario y domain resuelve las coincidencias. Si hay mas de una, la
+validacion de empleado presenta siempre un menu numerado y acepta el numero elegido.
 Los movimientos internos de nomina (`ALT`, `BAJ`, `TRA`) se recuperan separados
 del borrador editable: ocupan la unica novedad permitida para ese empleado y parte,
 pero no se reenvian al persistir. Si el usuario intenta agregar, modificar o eliminar
 otra novedad para esa persona, el agente la rechaza en carga e informa el motivo.
 
-Para cargar empleados, la unica nomina habilitada es `TarjaNomina` de la quincena,
+Para resolver empleados se consulta exclusivamente `TarjaNomina` de la quincena,
 obra y encargado del parte, con `fecha_desde <= fecha_del_parte <= fecha_hasta`.
-Texto libre, IDs y LISTADO respetan ese mismo conjunto. No hay fallback a la
-asignacion actual ni a otras nominas. Como reparacion defensiva, si falta la tarja
+Texto libre, IDs y LISTADO respetan ese mismo conjunto para dar de alta novedades.
+Las correcciones y eliminaciones primero buscan dentro del borrador: una persona
+materializada desde otra nomina puede modificarse o quitarse desde el parte donde
+ya figura, sin habilitar por eso nuevas altas de personal externo.
+Una coincidencia local se considera propia de ese parte aunque la asignacion base
+de `Nomina` ya apunte a otra obra. Como reparacion defensiva, si falta la tarja
 canonica o existe sin ningun `TarjaNomina`, se materializa una unica vez desde la
 asignacion base vigente de esa obra y encargado. Una nomina parcial o con registros
 eliminados no se completa ni revive automaticamente.
-Los menus de personas solo muestran candidatos locales; no existe alta sin validar.
-`NO` o `NINGUNO` descartan la novedad pendiente. Las consultas globales son solo
-lectura y no habilitan altas. El encargado de origen sigue pudiendo informar que
-su empleado trabajo en otra obra; el guardado materializa la novedad en destino.
+Los menus de personas solo muestran candidatos locales. No existe alta sin validar.
+`NO` o `NINGUNO` descartan la novedad pendiente. Las consultas de nomina pueden
+mantener alcance de obra o global, pero no habilitan mutaciones fuera de la nomina
+local. El encargado de origen sigue pudiendo informar que
+su empleado trabajo en otra obra; solo la obra de destino es externa y el guardado
+materializa alli una novedad derivada sin cambiar la pertenencia de la persona.
 La opcion manual `Trabajo en` de Parte Diario reutiliza esa materializacion: no
 genera `TRA` ni cambia la obra o el encargado de `Nomina`. La interfaz precarga
 las horas de la jornada correspondiente y permite indicar las horas trabajadas en
@@ -135,21 +158,29 @@ sigue siendo `P` y no se confunde con el traspaso permanente `TRA`.
 LISTADO congela al iniciarse el catalogo completo `numero -> idnomina`; ese orden
 se conserva entre paginas, aclaraciones, reanudaciones y cambios posteriores de
 la base. La opcion `99` queda reservada para finalizar. Cada pagina muestra ocho
-empleados y las novedades acumuladas de paginas anteriores. Un lote valido avanza
+empleados y las novedades acumuladas de paginas anteriores. Las novedades pueden
+separarse por coma, salto de linea o directamente por el siguiente numero visible;
+cantidades como `6 horas` no se interpretan como otra seleccion. Un lote valido avanza
 una sola pagina despues del ultimo pendiente; `SIGUIENTE` o el numero inicial de
 la pagina siguiente avanza sin novedades. `FINALIZAR` o `99`, y completar la ultima
-pagina, abren revision directamente. Rechazar o abandonar una aclaracion conserva
-la pagina. Las novedades ya cargadas muestran estado, horas, motivo, obra y encargado
-de destino cuando correspondan; volver desde revision no oculta esos datos. LISTADO
+pagina, cierran LISTADO y vuelven a carga sin mostrar el menu de revision; el
+borrador se conserva para permitir correcciones por nombre antes de revisar y guardar.
+Rechazar o abandonar una aclaracion conserva la pagina. Las novedades ya cargadas
+muestran estado, horas, motivo, obra y encargado
+de destino cuando correspondan; reabrir LISTADO desde carga no oculta esos datos. LISTADO
 solo normaliza IDs y reutiliza la interpretacion, validacion y ejecucion de carga.
 El motivo especifico prevalece sobre presencia o falta generica, y las horas
 explicitas se conservan independientemente del motivo.
+En una correccion, las horas solo son explicitas si aparecen en el mensaje actual:
+el interprete no las copia del borrador ni del historial. Cambiar `P, 12h` a `ENF`
+sin volver a mencionar horas envia `horas=null` y domain normaliza la enfermedad
+a `0h`; si el mensaje informa horas trabajadas, se conservan.
 Si las horas informadas son menores a la jornada esperada y el motivo sigue siendo
 PRESENTE o no fue indicado, el camino comun deja la novedad pendiente y consulta
 el motivo antes de registrarla. La regla se aplica por igual a texto libre, LISTADO,
 correcciones y trabajo en otra obra; la respuesta conserva las horas informadas.
 
-Solo revision guarda: `1. Guardar`, `2. Volver a carga/listado` segun el origen y
+Solo revision guarda: `1. Guardar`, `2. Volver a carga` y
 `3. Salir y descartar`. En carga, `GUARDAR`
 (tambien `GUARDAR BORRADOR`) deriva a revision y guarda en el mismo turno sin
 pregunta intermedia. `NO` presenta el resumen para revisar antes de guardar.

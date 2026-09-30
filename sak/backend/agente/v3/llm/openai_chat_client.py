@@ -15,11 +15,13 @@ class OpenAIChatClient:
         *,
         api_key: str | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
         client: AsyncOpenAI | None = None,
     ) -> None:
         api_key_raw = api_key or os.getenv("OPENAI_API_KEY") or ""
         self.api_key = api_key_raw.strip() or None
         self.model = model or os.getenv("OPENAI_CHAT_REPLY_MODEL", "gpt-4.1-mini")
+        self.reasoning_effort = reasoning_effort
         self._client: AsyncOpenAI | None = client
 
     @property
@@ -30,6 +32,7 @@ class OpenAIChatClient:
         return OpenAIChatClient(
             api_key=self.api_key,
             model=model or self.model,
+            reasoning_effort=self.reasoning_effort,
             client=self._client,
         )
 
@@ -48,15 +51,22 @@ class OpenAIChatClient:
             self._client = AsyncOpenAI(api_key=self.api_key)
 
         try:
-            completion = await self._client.chat.completions.create(
-                model=self.model,
-                response_format=response_format,
-                max_tokens=max_tokens,
-                messages=[
+            request: dict[str, Any] = {
+                "model": self.model,
+                "response_format": response_format,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     *(history or []),
                     {"role": "user", "content": user_content},
                 ],
+            }
+            if self.reasoning_effort:
+                request["reasoning_effort"] = self.reasoning_effort
+                request["max_completion_tokens"] = max_tokens
+            else:
+                request["max_tokens"] = max_tokens
+            completion = await self._client.chat.completions.create(
+                **request,
             )
         except APIConnectionError as exc:
             raise ValueError("No se pudo conectar a OpenAI") from exc

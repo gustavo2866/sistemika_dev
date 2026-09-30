@@ -463,6 +463,11 @@ def bloquear_otro_proceso() -> str:
     return "Hay un parte diario abierto. Confirmalo o responde CANCELAR antes de iniciar otro proceso."
 
 
+# Solicita la plantilla que se aplicara a cada integrante de la nomina activa.
+def preguntar_novedad_todos() -> str:
+    return "Que novedad queres aplicar a toda la nomina activa?"
+
+
 def _weekday_label(value: date) -> str:
     return ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"][value.weekday()]
 

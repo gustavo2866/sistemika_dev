@@ -15,7 +15,7 @@ from app import db
 from agente.v3.subprocesses.parte_diario.domain import empleados, encargados, novedades, obras
 from agente.v3.subprocesses.parte_diario.flows import carga, fecha
 from agente.v3.subprocesses.parte_diario.domain.models import EstadoItem, ParteDiarioDraft
-from agente.v3.subprocesses.parte_diario.models import TurnResult
+from agente.v3.subprocesses.parte_diario.models import ParteDiarioFlowResponse, TurnResult
 from agente.v3.subprocesses.parte_diario.domain.empleados import NominaResolver
 from agente.v3.subprocesses.parte_diario.domain.novedades import parse_estado_local, resolve_estado_codigo
 from agente.v3.subprocesses.parte_diario.utils import calendario, interpretacion
@@ -50,15 +50,25 @@ def tiene_pendientes(state: ParteDiarioV3State) -> bool:
 
 
 # Asigna al primer pendiente una etapa especifica y muestra la pregunta correspondiente.
-def preparar(state: ParteDiarioV3State) -> str:
+def preparar(state: ParteDiarioV3State) -> str | ParteDiarioFlowResponse:
     draft = state.draft()
     state.validacion_origen = state.validacion_origen or (
         "listado" if state.etapa == "listado" else "carga"
     )
+    rechazos = _descartar_destinos_sin_encargado(draft)
+    if rechazos:
+        state.set_draft(draft)
+    if rechazos and not (draft.fecha_propuesta or draft.conflictos_novedad or draft.pendientes_ambiguos):
+        origen = state.validacion_origen
+        terminar(state)
+        respuesta = "\n".join(rechazos)
+        if origen == "listado":
+            return ParteDiarioFlowResponse(respuesta, [listado.mostrar(state)])
+        return ParteDiarioFlowResponse(respuesta, ["Hay alguna otra novedad?"])
     if draft.fecha_propuesta:
         state.etapa = "carga_cambiar_fecha"
-        return renderer.preguntar_cambio_fecha(draft.fecha, draft.fecha_propuesta)
-    if draft.conflictos_novedad:
+        reply = renderer.preguntar_cambio_fecha(draft.fecha, draft.fecha_propuesta)
+    elif draft.conflictos_novedad:
         state.etapa = "carga_validar_conflicto"
         reply = renderer.preguntar_conflicto(draft.conflictos_novedad[0])
     elif draft.pendientes_ambiguos:
@@ -78,6 +88,8 @@ def preparar(state: ParteDiarioV3State) -> str:
         reply = menu_personas(pending) if kind == "empleado" else renderer.preguntar_pendiente(pending, estados)
     else:
         return terminar(state)
+    if rechazos:
+        return ParteDiarioFlowResponse("\n".join(rechazos), [reply])
     state.set_draft(draft)
     return reply
 
@@ -94,15 +106,11 @@ def terminar(state: ParteDiarioV3State) -> str:
 def menu_personas(pending: PendienteAmbiguo) -> str:
     people = empleados.candidatos_activos(pending)
     if not people:
-        return (f"No encontre a {pending.nombre} en la nomina activa.\n"
-                "Indica un empleado de la nomina de esta obra y encargado, o NO para descartar la novedad.")
+        return (f"No encontre a {pending.nombre} en la nomina vigente de esta obra y encargado.\n"
+                "Indica el nombre del empleado, o NO para descartar la novedad.")
     lines = [f"A cual {pending.nombre} te referis?"]
     for index, person in enumerate(people, start=1):
-        details = [value for value in (
-            person.nombre_proyecto if person.fuera_de_proyecto else None, person.encargado_nombre,
-        ) if value]
-        suffix = f" ({', '.join(details)})" if details else ""
-        lines.append(f"{index}. {person.nombre_completo}{suffix}")
+        lines.append(f"{index}. {person.nombre_completo}")
     lines.append("Responde con numero, nombre o NO para descartar la novedad.")
     return "\n".join(lines)
 
@@ -111,7 +119,7 @@ def menu_personas(pending: PendienteAmbiguo) -> str:
 async def procesar(
     text: str | None, state: ParteDiarioV3State,
     llm_client: ParteDiarioLLMClient, carga_agent: ParteDiarioCargaAgentClient,
-) -> str:
+) -> str | ParteDiarioFlowResponse:
     if text is None:
         return preparar(state)
     command = normalize_text(text)
@@ -122,7 +130,11 @@ async def procesar(
     if state.etapa in ETAPAS:
         return reply
     if state.etapa == "listado":
+        if reply.startswith("No cargo "):
+            return ParteDiarioFlowResponse(reply, [listado.mostrar(state)])
         return listado.avanzar(state, reply if reply.startswith("No cargo ") else "")
+    if reply.startswith("No cargo "):
+        return ParteDiarioFlowResponse(reply, ["Hay alguna otra novedad?"])
     return renderer.seguimiento_carga(state, reply)
 
 
@@ -130,7 +142,7 @@ async def procesar(
 async def resolver_respuesta(
     text: str, state: ParteDiarioV3State,
     llm_client: ParteDiarioLLMClient, carga_agent: ParteDiarioCargaAgentClient,
-) -> str:
+) -> str | ParteDiarioFlowResponse:
     command = normalize_text(text)
     if command in {"opciones", "ver opciones", "elegir opcion"}:
         return preparar(state)
@@ -149,6 +161,13 @@ async def resolver_respuesta(
     if tiene_pendientes(state):
         question = preparar(state)
         # El dominio incluye la explicacion y las opciones cuando rechaza un motivo.
+        if reply.startswith("No cargo "):
+            if isinstance(question, ParteDiarioFlowResponse):
+                return ParteDiarioFlowResponse(
+                    reply,
+                    [question.reply, *question.follow_up_messages],
+                )
+            return ParteDiarioFlowResponse(reply, [question])
         return reply if state.etapa == "carga_validar_estado" and reply else question
     terminar(state)
     return reply
@@ -248,6 +267,29 @@ def descartar_pendiente(state: ParteDiarioV3State) -> str:
     return f"No cargo {pending.nombre}."
 
 
+# Retira novedades cuyo destino no tiene encargado y devuelve sus explicaciones.
+def _descartar_destinos_sin_encargado(draft: ParteDiarioDraft) -> list[str]:
+    rechazados = [
+        pending
+        for pending in draft.pendientes_ambiguos
+        if pending.destino_sin_encargado
+    ]
+    if not rechazados:
+        return []
+    draft.pendientes_ambiguos = [
+        pending
+        for pending in draft.pendientes_ambiguos
+        if not pending.destino_sin_encargado
+    ]
+    return [
+        (
+            f"No cargo la novedad de {pending.nombre}: no se puede registrar porque "
+            f"la obra {pending.nombre_proyecto or 'seleccionada'} no tiene un encargado definido."
+        )
+        for pending in rechazados
+    ]
+
+
 # Resuelve el primer pendiente en orden: empleado, obra, encargado y motivo.
 async def _resolver_seleccion(
     session: Session,
@@ -261,6 +303,9 @@ async def _resolver_seleccion(
     draft = state.draft()
     if not draft.pendientes_ambiguos:
         return _terminar_pendientes(draft)
+    rechazos = _descartar_destinos_sin_encargado(draft)
+    if rechazos:
+        return renderer.respuesta_borrador(draft, "\n".join(rechazos))
     pending = draft.pendientes_ambiguos[0]
     if pending.nombre_no_encontrado:
         resolved = NominaResolver.resolve(text, nominas_proyecto, nominas_completas)
@@ -276,10 +321,8 @@ async def _resolver_seleccion(
         pending.nombre_no_encontrado = False
         if resolved.ambiguo:
             pending.candidatos = resolved.candidatos
-            pending.candidatos_externos = resolved.candidatos_externos
-            pending.mostrando_candidatos_externos = bool(pending.candidatos) and all(
-                item.fuera_de_proyecto for item in pending.candidatos
-            )
+            pending.candidatos_externos = None
+            pending.mostrando_candidatos_externos = False
             return renderer.respuesta_borrador(draft, renderer.preguntar_pendiente(pending, estados))
         selected = resolved.match
         if selected is None:
@@ -287,8 +330,6 @@ async def _resolver_seleccion(
             return renderer.respuesta_borrador(draft, renderer.preguntar_pendiente(pending, estados))
         pending.candidatos = [selected]
         pending.idnomina_resuelto = selected.idnomina
-        pending.fuera_de_proyecto = pending.fuera_de_proyecto or selected.fuera_de_proyecto
-        pending.nombre_proyecto = pending.nombre_proyecto or selected.nombre_proyecto
         if pending.validar_destino_trabajo and (
             pending.obra_destino_pendiente or pending.encargado_destino_pendiente
         ):
@@ -307,8 +348,6 @@ async def _resolver_seleccion(
                 renderer.validacion_requerida(renderer.preguntar_pendiente(pending, estados)),
             )
         pending.idnomina_resuelto = selected.idnomina
-        pending.fuera_de_proyecto = pending.fuera_de_proyecto or selected.fuera_de_proyecto
-        pending.nombre_proyecto = pending.nombre_proyecto or selected.nombre_proyecto
         if pending.validar_destino_trabajo and (
             pending.obra_destino_pendiente or pending.encargado_destino_pendiente
         ):
@@ -328,6 +367,9 @@ async def _resolver_seleccion(
         pending.destino_pendiente = None
         pending.opciones_proyecto_destino = None
         encargados.resolver_destino(session, pending, message_text=text)
+        rechazos = _descartar_destinos_sin_encargado(draft)
+        if rechazos:
+            return renderer.respuesta_borrador(draft, "\n".join(rechazos))
         if pending.obra_destino_pendiente or pending.encargado_destino_pendiente:
             return renderer.respuesta_borrador(draft, renderer.preguntar_pendiente(pending, estados))
         if pending.estado_pendiente:
@@ -373,12 +415,16 @@ async def _resolver_seleccion(
         pending.estado_codigo = selected_state.abreviatura
         pending.descripcion = _append_description(pending.descripcion, text)
 
-    if pending.idnomina_resuelto not in {item.idnomina for item in nominas_proyecto}:
+    nominas_habilitadas = {item.idnomina for item in nominas_proyecto}
+    if pending.idnomina_resuelto not in nominas_habilitadas:
         pending.idnomina_resuelto = None
         pending.nombre_no_encontrado = True
         pending.candidatos = None
         pending.candidatos_externos = None
-        return renderer.respuesta_borrador(draft, "El empleado no pertenece a la nomina vigente de esta obra y encargado.")
+        return renderer.respuesta_borrador(
+            draft,
+            "El empleado no pertenece a la nomina vigente de esta obra y encargado.",
+        )
 
     pending_error = novedades._validate_pending_business_rules(pending, draft.fecha)
     if pending_error:

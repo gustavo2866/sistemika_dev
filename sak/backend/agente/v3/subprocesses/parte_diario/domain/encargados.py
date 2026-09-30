@@ -13,7 +13,7 @@ from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text, _nor
 
 # region Encargados destino
 
-# Asigna el unico encargado, busca uno mencionado o deja pendiente su seleccion.
+# Asigna el unico encargado, pide elegir entre varios o marca la falta de configuracion.
 def resolver_destino(
     session: Session,
     target: ParteDiarioOperation | PendienteAmbiguo,
@@ -26,8 +26,8 @@ def resolver_destino(
         return
     managers = listar_destino(session, int(destination_id))
     if not managers:
-        target.destino_pendiente = "encargado"
-        target.opciones_encargado_destino = []
+        target.destino_pendiente = "sin_encargado"
+        target.opciones_encargado_destino = None
         return
     if len(managers) == 1:
         selected = managers[0]

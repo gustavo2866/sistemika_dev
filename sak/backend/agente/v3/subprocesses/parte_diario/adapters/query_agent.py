@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from agente.v3.llm import AgentSDKClient
+from agente.v3.subprocesses.parte_diario.adapters.model_config import resolve_parte_diario_model
 from agente.v3.subprocesses.parte_diario.utils import calendario
 from agente.v3.subprocesses.parte_diario.domain.parte_diario import ParteDiarioQueryService
 
@@ -21,10 +21,11 @@ class ParteDiarioQueryAgentOutput(BaseModel):
 class ParteDiarioQueryAgentClient:
     """Configura un Agent SDK con tools internas read-only del parte diario."""
 
-    def __init__(self, *, model: str | None = None) -> None:
-        self.model = model or os.getenv("OPENAI_PARTE_DIARIO_QUERY_AGENT_MODEL") or os.getenv(
-            "OPENAI_CHAT_REPLY_MODEL",
-            "gpt-4.1-mini",
+    def __init__(self, *, model: str | None = None, reasoning_effort: str | None = None) -> None:
+        self.model, self.reasoning_effort = resolve_parte_diario_model(
+            model,
+            specific_model_env="OPENAI_PARTE_DIARIO_QUERY_AGENT_MODEL",
+            reasoning_effort=reasoning_effort,
         )
 
     async def respond(
@@ -50,6 +51,7 @@ class ParteDiarioQueryAgentClient:
         client = AgentSDKClient(
             name="sak_parte_diario_query_v3",
             model=self.model,
+            reasoning_effort=self.reasoning_effort,
             instructions=QUERY_AGENT_INSTRUCTIONS,
             output_type=ParteDiarioQueryAgentOutput,
             tools=tools,

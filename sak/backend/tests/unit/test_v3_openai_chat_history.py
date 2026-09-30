@@ -28,3 +28,30 @@ async def test_complete_json_preserva_historial_y_usuarios(history):
         *(history or []),
         {"role": "user", "content": "si"},
     ]
+
+
+# Los modelos de razonamiento usan su parametro y el limite de completion actual.
+@pytest.mark.asyncio
+async def test_complete_json_configura_razonamiento():
+    create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content='{"operations": []}', refusal=None),
+    )]))
+    sdk = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    client = OpenAIChatClient(
+        api_key="test-key",
+        model="gpt-6-luna",
+        reasoning_effort="low",
+        client=sdk,
+    )
+
+    await client.complete_json(
+        system_prompt="Interpreta",
+        response_format={"type": "json_object"},
+        max_tokens=321,
+    )
+
+    request = create.call_args.kwargs
+    assert request["model"] == "gpt-6-luna"
+    assert request["reasoning_effort"] == "low"
+    assert request["max_completion_tokens"] == 321
+    assert "max_tokens" not in request

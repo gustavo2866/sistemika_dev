@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from agente.v3.llm import OpenAIChatClient, compact_json, load_prompt
+from agente.v3.subprocesses.parte_diario.adapters.model_config import resolve_parte_diario_model
 from agente.v3.subprocesses.parte_diario.domain.models import EstadoItem, NominaItem, ParteDiarioDraft
 from agente.v3.subprocesses.parte_diario.models import ParteDiarioOperation, TurnPlan
 
@@ -87,10 +88,19 @@ class ParteDiarioLLMClient:
         model: str | None = None,
         *,
         stage: str = "carga",
+        reasoning_effort: str | None = None,
         chat_client: OpenAIChatClient | None = None,
     ) -> None:
         self.stage = stage
-        self._chat = chat_client or OpenAIChatClient(api_key=api_key, model=model)
+        selected_model, selected_effort = resolve_parte_diario_model(
+            model,
+            reasoning_effort=reasoning_effort,
+        )
+        self._chat = chat_client or OpenAIChatClient(
+            api_key=api_key,
+            model=selected_model,
+            reasoning_effort=selected_effort,
+        )
 
     def for_stage(self, stage: str) -> "ParteDiarioLLMClient":
         return ParteDiarioLLMClient(
@@ -114,7 +124,6 @@ class ParteDiarioLLMClient:
             "zona_horaria": "America/Argentina/Buenos_Aires",
             "parte": state.to_dict(),
             "contexto_conversacion": contexto_conversacion or {},
-            "nomina_proyecto": [item.nombre_completo for item in nominas_proyecto],
             "estados_activos": [
                 {"codigo": item.abreviatura, "nombre": item.nombre}
                 for item in estados
@@ -168,7 +177,7 @@ class ParteDiarioLLMClient:
             system_prompt=system_prompt,
             response_format=_initial_request_schema(),
             user_content="Responde solo JSON normalizado.",
-            max_tokens=200,
+            max_tokens=1000,
         )
         return {
             "fecha": str(raw.get("fecha") or "").strip() or None,
@@ -224,7 +233,7 @@ class ParteDiarioLLMClient:
             system_prompt=system_prompt,
             response_format=_contextual_reply_schema(),
             user_content="Responde solo JSON con una ayuda breve.",
-            max_tokens=250,
+            max_tokens=1000,
         )
         reply = str(raw.get("reply") or "").strip()
         return reply or "Primero elegi una opcion del menu para continuar."

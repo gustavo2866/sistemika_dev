@@ -75,7 +75,7 @@ def execute_plan(
             continue
 
         if op_type == "eliminar_novedad":
-            error = _eliminar_novedad(current, operation)
+            error = _eliminar_novedad(current, operation, nominas_proyecto)
             if error:
                 errors.append(error)
             else:
@@ -253,7 +253,7 @@ def _agregar_novedad(
         estado = None
     if operation.idnomina is not None:
         if resolved_by_id is None:
-            return f"No encontre a {nombre} en la nomina activa."
+            return f"No encontre a {nombre} en la nomina vigente de esta obra y encargado."
         resolved = None
     else:
         resolved = NominaResolver.resolve(nombre, nominas_proyecto, nominas_completas)
@@ -282,8 +282,7 @@ def _agregar_novedad(
         state.sin_novedades_informado = False
         return None
     if resolved is not None and resolved.ambiguo:
-        project_candidates = resolved.candidatos or []
-        candidates = project_candidates or resolved.candidatos_externos or []
+        candidates = resolved.candidatos or []
         state.pendientes_ambiguos.append(
             PendienteAmbiguo(
                 nombre=nombre,
@@ -293,10 +292,7 @@ def _agregar_novedad(
                 horas_extra=operation.horas_extra,
                 descripcion=operation.descripcion,
                 candidatos=candidates,
-                candidatos_externos=resolved.candidatos_externos,
-                mostrando_candidatos_externos=bool(candidates) and all(item.fuera_de_proyecto for item in candidates),
-                fuera_de_proyecto=operation.fuera_de_proyecto
-                or (bool(candidates) and all(item.fuera_de_proyecto for item in candidates)),
+                fuera_de_proyecto=operation.fuera_de_proyecto,
                 nombre_proyecto=operation.nombre_proyecto,
                 idproyecto_destino=operation.idproyecto_destino,
                 contacto_id_destino=operation.contacto_id_destino,
@@ -312,7 +308,7 @@ def _agregar_novedad(
 
     item = item or (resolved.match if resolved is not None else None)
     if item is None:
-        return f"No encontre a {nombre} en la nomina activa."
+        return f"No encontre a {nombre} en la nomina vigente de esta obra y encargado."
     internal = _find_internal_novedad(state, item.idnomina)
     if internal is not None:
         return _internal_novedad_error(internal)
@@ -520,31 +516,6 @@ def registrar_pendiente_resuelto(
     _registrar_o_encolar_conflicto(state, novedad)
 
 
-def registrar_pendiente_sin_validar(state: ParteDiarioDraft, pending: PendienteAmbiguo) -> None:
-    state.novedades.append(
-        NovedadPersonal(
-            nombre=pending.nombre,
-            idnomina=None,
-            idestado=pending.idestado,
-            estado_codigo=pending.estado_codigo,
-            horas=normalizar_horas(
-                fecha=state.fecha,
-                horas=pending.horas,
-                horas_extra=pending.horas_extra,
-                estado_codigo=pending.estado_codigo,
-                fuera_de_proyecto=pending.fuera_de_proyecto,
-            ),
-            descripcion=pending.descripcion,
-            fuera_de_proyecto=pending.fuera_de_proyecto,
-            nombre_proyecto=pending.nombre_proyecto,
-            idproyecto_destino=pending.idproyecto_destino,
-            contacto_id_destino=pending.contacto_id_destino,
-            nombre_encargado_destino=pending.nombre_encargado_destino,
-            validar_destino_trabajo=pending.validar_destino_trabajo,
-        )
-    )
-
-
 def _registrar_o_encolar_conflicto(state: ParteDiarioDraft, novedad: NovedadPersonal) -> None:
     if novedad.idnomina is None:
         return
@@ -684,8 +655,9 @@ def _modificar_novedad(
         if _has_concrete_attendance_update(operation):
             return _agregar_novedad(state, operation, nominas_proyecto, nominas_completas, estados)
         return f"No encontre una unica novedad para {operation.nombre or 'esa persona'}."
-    if novedad.idnomina not in {item.idnomina for item in nominas_proyecto}:
-        return f"{novedad.nombre} no pertenece a la nomina vigente de esta obra y encargado."
+    # Una novedad ya presente en el parte pertenece al alcance editable del
+    # encargado, incluso cuando fue materializada desde otra nomina. La nomina
+    # local se exige al crear; no se vuelve a exigir para corregir el borrador.
     estado = resolve_estado_codigo(operation.estado_codigo, estados) if operation.estado_codigo else None
     if estado is None and operation.fuera_de_proyecto:
         estado = resolve_estado_codigo("P", estados)
@@ -787,7 +759,11 @@ def _has_concrete_attendance_update(operation: ParteDiarioOperation) -> bool:
     )
 
 
-def _eliminar_novedad(state: ParteDiarioDraft, operation: ParteDiarioOperation) -> str | None:
+def _eliminar_novedad(
+    state: ParteDiarioDraft,
+    operation: ParteDiarioOperation,
+    nominas_proyecto: list[NominaItem],
+) -> str | None:
     novedad = _find_novedad(state, operation.nombre)
     if novedad is None:
         internal = (
@@ -805,6 +781,8 @@ def _eliminar_novedad(state: ParteDiarioDraft, operation: ParteDiarioOperation) 
             state.conflictos_novedad.remove(conflict)
             return None
         return f"No encontre una unica novedad para {operation.nombre or 'esa persona'}."
+    # Si la novedad ya esta en el parte puede quitarse desde esta obra aunque el
+    # empleado pertenezca a la nomina que genero el trabajo temporal.
     state.novedades.remove(novedad)
     state.conflictos_novedad = [
         item for item in state.conflictos_novedad

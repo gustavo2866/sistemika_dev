@@ -61,23 +61,35 @@ solo para obtener un resultado verde.
 ## Casos que no deben perderse
 
 - `NO` en carga abre revision sin LLM ni guardado y en confirmar_salida rechaza
-  el descarte. LISTADO navega con `SIGUIENTE`/numero correlativo y finaliza con
-  `FINALIZAR`/`99`, siempre sin LLM.
+  el descarte. LISTADO navega con `SIGUIENTE`/numero correlativo y sale a carga
+  con `FINALIZAR`/`99` o al completar la ultima pagina, siempre sin LLM.
 - `nomina` funciona sin LLM y conserva etapa, borrador, pagina y pendientes.
+- `TODOS` solo en carga pide la novedad siguiente sin llamar al LLM; luego expande
+  una unica plantilla sobre la TarjaNomina activa. `VOLVER` cancela el alcance y
+  una consulta de nomina conserva la pregunta masiva.
 - Una consulta entre pregunta y respuesta no reemplaza la pregunta pendiente.
 - La aclaracion incompleta sigue preguntando; la completada aplica operaciones
   comunes; el rechazo vuelve al origen sin cambios ni cierre.
 - Los fallos de interpretacion o datos invalidos abren aclaracion. `VOLVER` termina
   ese loop; `SALIR` pide descartar y cancelar recupera la misma pregunta.
 - LISTADO congela numero e ID durante todo el recorrido, conserva el catalogo al
-  reanudar o volver desde revision y no avanza hasta resolver el lote completo.
+  reanudar una aclaracion y no avanza hasta resolver el lote completo. Al finalizar
+  vuelve a carga y limpia las opciones numeradas para evitar referencias obsoletas.
+- LISTADO separa selecciones consecutivas aunque no tengan coma (`2 accidente 6 enfermo`),
+  sin confundir cantidades como `6 horas` con otro empleado visible.
 - Resolver empleado, obra o encargado no pierde otras novedades del mensaje.
-- `test_parte_diario_nomina_estricta.py`: Perez unico local, vigencia inclusiva
-  por fecha del parte, autocuracion de tarja ausente/vacia, preservacion de nomina
-  parcial, bloqueo de ID externo, ausencia de altas sin validar y transferencia
-  desde origen. Fuera del caso defensivo, las fixtures de carga deben preparar
+- Un apellido o nombre con varios matches no se aclara dentro del LLM: el plan
+  conserva el fragmento literal y `carga_validar_empleado` muestra el menu numerado.
+- `test_parte_diario_nomina_estricta.py`: resolucion exclusiva contra la nomina
+  local, vigencia inclusiva por fecha del parte, autocuracion de tarja
+  ausente/vacia, preservacion de nomina parcial, ausencia de altas sin validar y
+  trabajo temporal informado desde origen. Una novedad externa ya materializada
+  en el parte puede corregirse o quitarse alli, aunque no habilita altas externas.
+  Fuera del caso defensivo, las fixtures de carga deben preparar
   TarjaNomina; no basta asignar obra/encargado en Nomina.
 - Las horas no borran el motivo; una obra mencionada no se propaga a otra persona.
+  Una correccion de `P, 12h` a `ENF` sin horas en el mensaje actual queda en `0h`:
+  el LLM no debe copiar las 12h existentes del borrador o del historial.
   Una jornada menor a la esperada no puede quedar como PRESENTE sin motivo: debe
   preguntar y conservar las horas en texto libre, LISTADO, correcciones y destinos.
 - Guardar respeta fecha y jornada; fallar conserva datos; descartar no elimina DB.
@@ -109,11 +121,15 @@ optativo con datos ficticios y ejecucion local, sin guardar partes en DB:
 python backend/scripts/parte_diario_llm_smoke.py --clasificacion-novedades
 python backend/scripts/parte_diario_llm_smoke.py --confirmacion-contextual
 python backend/scripts/parte_diario_llm_smoke.py --solicitudes-carga
+python backend/scripts/parte_diario_llm_smoke.py --seleccion-homonimos
+python backend/scripts/parte_diario_llm_smoke.py --todos
 ```
 
 Requiere `OPENAI_API_KEY` configurada en el entorno. El script no carga `.env`
-automaticamente. Usa `OPENAI_CHAT_REPLY_MODEL` o el default del cliente; las
-llamadas consumen API. Nunca imprimir claves ni usar datos reales para esta prueba.
+automaticamente. Usa `OPENAI_PARTE_DIARIO_MODEL` y
+`OPENAI_PARTE_DIARIO_REASONING_EFFORT`; sus defaults son `gpt-6-luna` y `low`.
+Las llamadas consumen API. Nunca imprimir claves ni usar datos reales para esta
+prueba.
 
 Clasificacion comprueba accidente, permiso, enfermedad, falta y horas por las dos
 entradas. Confirmacion comprueba aceptar/rechazar una eliminacion en aclaracion,
