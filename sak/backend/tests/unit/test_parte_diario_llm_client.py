@@ -71,8 +71,58 @@ async def test_carga_prompt_asigna_destino_por_persona():
     assert "Asigna el destino por persona" in prompt
     assert "Informar horas sin otra obra no implica transferencia" in prompt
     assert "mencionada para otra persona" in prompt
+    assert "El backend exige la nomina local para novedades nuevas" in prompt
+    assert "puede modificarse o eliminarse" in prompt
+    assert "novedades nuevas para empleados externos" in prompt
     assert "sabado 6h, domingo 0h" in prompt
     assert "si no se indican horas, horas=null" in prompt
+
+
+# El interprete conserva la referencia literal; el dominio arma el menu de homonimos.
+@pytest.mark.asyncio
+async def test_carga_prompt_delega_matches_de_persona_al_backend():
+    chat = FakeChatClient()
+    nominas = [
+        NominaItem(101, "Ricardo Sebastian", "Medina"),
+        NominaItem(102, "Roberto Martin", "Medina"),
+        NominaItem(103, "Ruben Alejandro", "Medina"),
+    ]
+
+    await ParteDiarioLLMClient(chat_client=chat).interpret_turn(
+        "medina trabajo 5hs",
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-09-28"),
+        nominas,
+        [EstadoItem(1, "P", "PRESENTE")],
+    )
+
+    prompt = chat.calls[0]["system_prompt"]
+    payload = json.loads(chat.calls[0]["user_content"])
+    assert "Nunca\n  preguntes cual candidato" in prompt
+    assert "el backend mostrara el menu numerado" in prompt
+    assert "nomina_proyecto" not in payload
+    assert "Ricardo Sebastian" not in chat.calls[0]["user_content"]
+
+
+# En el estado TODOS el modelo produce una plantilla, sin conocer ni enumerar la nomina.
+@pytest.mark.asyncio
+async def test_carga_todos_prompt_delega_expansion_al_backend():
+    chat = FakeChatClient()
+
+    await ParteDiarioLLMClient(chat_client=chat).for_stage("carga_todos").interpret_turn(
+        "trabajaron 9 horas",
+        ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-09-28"),
+        [NominaItem(101, "Ricardo", "Medina")],
+        [EstadoItem(1, "P", "PRESENTE")],
+        contexto_conversacion={"etapa": "carga_todos"},
+    )
+
+    prompt = chat.calls[0]["system_prompt"]
+    payload = json.loads(chat.calls[0]["user_content"])
+    assert "una unica plantilla para toda la nomina activa" in prompt
+    assert "exactamente una\n  operacion `agregar_novedad`" in prompt
+    assert "nombre=null" in prompt
+    assert payload["contexto_conversacion"]["etapa"] == "carga_todos"
+    assert "nomina_proyecto" not in payload
 
 
 # Comprueba el contrato comun y que ejecutar sus operaciones conserva motivo y horas.
@@ -103,6 +153,9 @@ async def test_motivo_especifico_y_horas_independientes(modo):
     payload = json.loads(chat.calls[0]["user_content"])
     assert "El motivo especifico tiene prioridad" in prompt
     assert "Estado y horas son datos independientes" in prompt
+    assert "No copies en `horas` ni en `horas_extra` valores existentes" in prompt
+    assert '"Medrano: P, 12h"' in prompt
+    assert '`estado_codigo="ENF"`, `horas=null`' in prompt
     assert "errores ortograficos comprensibles" in prompt
     assert "Usa estos codigos solo si estan activos" in prompt
     assert payload["estados_activos"] == [

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, ClassVar, List, Optional
 
 from sqlalchemy import Boolean, Column, DECIMAL, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from pydantic import computed_field
 from sqlmodel import Field, Relationship
 
 from .base import Base
@@ -20,6 +21,25 @@ if TYPE_CHECKING:
 class EstadoTarja(str, Enum):
     BORRADOR = "borrador"
     CERRADO = "cerrado"
+
+
+def resolver_presentismo(
+    presentismo_calculado: bool | None,
+    presentismo_autorizado: bool | None,
+) -> bool:
+    """Devuelve el presentismo final, incluyendo la excepción manual."""
+    return bool(presentismo_calculado or presentismo_autorizado is True)
+
+
+def resolver_origen_presentismo(
+    presentismo_calculado: bool | None,
+    presentismo_autorizado: bool | None,
+) -> str:
+    if presentismo_calculado:
+        return "automatico"
+    if presentismo_autorizado is True:
+        return "manual"
+    return "ninguno"
 
 
 class Tarja(Base, table=True):
@@ -63,10 +83,10 @@ class Tarja(Base, table=True):
         max_length=1000,
         description="Descripcion general de la tarja",
     )
-    premio: Decimal = Field(
-        default=Decimal("0"),
-        sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),
-        description="Importe de premio de la tarja",
+    premio: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+        description="Indica si la tarja tiene premio",
     )
     viaticos: bool = Field(
         default=False,
@@ -183,11 +203,40 @@ class TarjaNomina(Base, table=True):
         sa_column=Column(DECIMAL(8, 2), nullable=False, server_default="0"),
         description="Total de horas justificadas",
     )
+    horas_trabajadas: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(8, 2), nullable=False, server_default="0"),
+        description="Total de horas trabajadas",
+    )
+    horas_liquidadas: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(8, 2), nullable=False, server_default="0"),
+        description="Total de horas liquidadas",
+    )
     presentismo: bool = Field(
         default=False,
         sa_column=Column(Boolean, nullable=False, server_default="false"),
         description="Indica si corresponde presentismo",
     )
+    presentismo_autorizado: Optional[bool] = Field(
+        default=None,
+        sa_column=Column(Boolean, nullable=True),
+        description="Indica si el presentismo fue autorizado",
+    )
+
+    @computed_field(return_type=bool)
+    @property
+    def presentismo_efectivo(self) -> bool:
+        return resolver_presentismo(self.presentismo, self.presentismo_autorizado)
+
+    @computed_field(return_type=str)
+    @property
+    def presentismo_origen(self) -> str:
+        return resolver_origen_presentismo(
+            self.presentismo,
+            self.presentismo_autorizado,
+        )
+
     presentismo_importe: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(12, 2), nullable=False, server_default="0"),

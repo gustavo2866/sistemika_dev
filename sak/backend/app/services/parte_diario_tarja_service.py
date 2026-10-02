@@ -16,13 +16,28 @@ from app.utils.quincenas import get_quincena_range
 from app.utils.jornada import get_jornada_esperada
 
 
-PRESENTISMO_EXCLUDED_ESTADOS = {"ENF", "ACC"}
 ALTA_ESTADO_CODIGO = "ALT"
 BAJA_ESTADO_CODIGO = "BAJ"
 TRASPASO_ESTADO_CODIGO = "TRA"
 
 
 class ParteDiarioTarjaService:
+    @staticmethod
+    def cerrar_vigencia_por_traspaso(
+        registro: TarjaNomina,
+        fecha_traspaso: date,
+        *,
+        updated_at: datetime | None = None,
+    ) -> None:
+        """Cierra el origen el dia anterior; sin dias vigentes, lo da de baja."""
+        now = updated_at or datetime.now(UTC)
+        nueva_fecha_hasta = fecha_traspaso - timedelta(days=1)
+        if nueva_fecha_hasta < registro.fecha_desde:
+            registro.deleted_at = now
+        else:
+            registro.fecha_hasta = min(registro.fecha_hasta, nueva_fecha_hasta)
+        registro.updated_at = now
+
     @staticmethod
     def get_viaticos_default(session: Session, idproyecto: int) -> bool:
         proyecto = session.get(Proyecto, idproyecto)
@@ -144,6 +159,13 @@ class ParteDiarioTarjaService:
         tarja = session.get(Tarja, tarja_id)
         if tarja is None or tarja.deleted_at is not None:
             raise ValueError("Tarja no encontrada")
+
+        self.recalcular_resumen_nomina(
+            session,
+            fechainicio=tarja.fechainicio,
+            fechafinal=tarja.fechafinal,
+            tarja_id=int(tarja.id),
+        )
 
         now = datetime.now(UTC)
         tarja.estado = EstadoTarja.CERRADO
@@ -1015,9 +1037,10 @@ class ParteDiarioTarjaService:
                 .where(TarjaNomina.nomina_id == nomina_id)
                 .where(TarjaNomina.deleted_at.is_(None))
             ).all():
-                source_registro.fecha_hasta = parte.fecha
-                if hasattr(source_registro, "updated_at"):
-                    source_registro.updated_at = datetime.now(UTC)
+                self.cerrar_vigencia_por_traspaso(
+                    source_registro,
+                    parte.fecha,
+                )
                 session.add(source_registro)
 
             destination_tarja = self._find_or_create_tarja(
@@ -1594,57 +1617,148 @@ class ParteDiarioTarjaService:
             .where(TarjaNomina.tarja_id == tarja_id)
             .where(TarjaNomina.deleted_at.is_(None))
         ).all()
-        detalle_rows = session.exec(
+        detalle_nomina_ids = {
+            int(nomina_id)
+            for nomina_id in session.exec(
+                select(TarjaDetalle.idnomina)
+                .where(TarjaDetalle.tarja_id == tarja_id)
+                .where(TarjaDetalle.idnomina.is_not(None))
+                .where(TarjaDetalle.deleted_at.is_(None))
+            ).all()
+            if nomina_id is not None
+        }
+        nomina_ids = detalle_nomina_ids | {
+            int(registro.nomina_id)
+            for registro in existing_registros
+            if registro.nomina_id is not None
+        } | {
+            int(nomina.id)
+            for nomina in _nominas
+            if nomina.id is not None
+        }
+        self.recalcular_resumen_nomina(
+            session,
+            nomina_ids=nomina_ids,
+            fechainicio=tarja.fechainicio,
+            fechafinal=tarja.fechafinal,
+        )
+
+    def recalcular_resumen_nomina(
+        self,
+        session: Session,
+        *,
+        fechainicio: date,
+        fechafinal: date,
+        nomina_ids: set[int] | None = None,
+        tarja_id: int | None = None,
+    ) -> None:
+        """Recalcula horas y presentismo por empleado, consolidando todas sus obras."""
+        ids = set(nomina_ids or set())
+        if tarja_id is not None:
+            ids.update(
+                int(nomina_id)
+                for nomina_id in session.exec(
+                    select(TarjaNomina.nomina_id)
+                    .where(TarjaNomina.tarja_id == tarja_id)
+                    .where(TarjaNomina.nomina_id.is_not(None))
+                    .where(TarjaNomina.deleted_at.is_(None))
+                ).all()
+                if nomina_id is not None
+            )
+            ids.update(
+                int(nomina_id)
+                for nomina_id in session.exec(
+                    select(TarjaDetalle.idnomina)
+                    .where(TarjaDetalle.tarja_id == tarja_id)
+                    .where(TarjaDetalle.idnomina.is_not(None))
+                    .where(TarjaDetalle.deleted_at.is_(None))
+                ).all()
+                if nomina_id is not None
+            )
+        if not ids:
+            return
+
+        registros = session.exec(
+            select(TarjaNomina, Tarja)
+            .join(Tarja, Tarja.id == TarjaNomina.tarja_id)
+            .where(TarjaNomina.nomina_id.in_(ids))
+            .where(TarjaNomina.deleted_at.is_(None))
+            .where(Tarja.deleted_at.is_(None))
+            .where(Tarja.fechainicio <= fechafinal)
+            .where(Tarja.fechafinal >= fechainicio)
+        ).all()
+        if not registros:
+            return
+
+        detalle_desde = min(
+            max(registro_tarja.fechainicio, registro.fecha_desde)
+            for registro, registro_tarja in registros
+        )
+        detalle_hasta = max(
+            min(registro_tarja.fechafinal, registro.fecha_hasta)
+            for registro, registro_tarja in registros
+        )
+
+        detalles = session.exec(
             select(TarjaDetalle, ParteDiarioEstado)
             .outerjoin(ParteDiarioEstado, ParteDiarioEstado.id == TarjaDetalle.idestado)
-            .where(TarjaDetalle.tarja_id == tarja_id)
+            .where(TarjaDetalle.idnomina.in_(ids))
+            .where(TarjaDetalle.fecha >= detalle_desde)
+            .where(TarjaDetalle.fecha <= detalle_hasta)
             .where(TarjaDetalle.deleted_at.is_(None))
         ).all()
-        detalles_by_nomina: dict[int, list[tuple[TarjaDetalle, ParteDiarioEstado | None]]] = {}
-        for detalle, estado in detalle_rows:
+        detalles_by_nomina_fecha: dict[
+            tuple[int, date], list[tuple[TarjaDetalle, ParteDiarioEstado | None]]
+        ] = {}
+        for detalle, estado in detalles:
             if detalle.idnomina is None:
                 continue
-            detalles_by_nomina.setdefault(int(detalle.idnomina), []).append((detalle, estado))
+            detalles_by_nomina_fecha.setdefault(
+                (int(detalle.idnomina), detalle.fecha), []
+            ).append((detalle, estado))
 
-        for registro in existing_registros:
+        for registro, registro_tarja in registros:
             if registro.nomina_id is None:
                 continue
             nomina_id = int(registro.nomina_id)
-            registro.presentismo = self._calcular_presentismo(
-                tarja,
-                detalles_by_nomina.get(nomina_id, []),
+            desde = max(registro_tarja.fechainicio, registro.fecha_desde)
+            hasta = min(registro_tarja.fechafinal, registro.fecha_hasta)
+            horas_laborales = Decimal("0")
+            horas_trabajadas = Decimal("0")
+            horas_justificadas = Decimal("0")
+
+            for current_date in self._iter_dates(desde, hasta):
+                jornada = get_jornada_esperada(current_date)
+                if jornada <= 0:
+                    continue
+                horas_laborales += jornada
+                detalles_dia = detalles_by_nomina_fecha.get((nomina_id, current_date), [])
+                horas_dia = sum(
+                    (
+                        max(Decimal(str(detalle.horas or 0)), Decimal("0"))
+                        for detalle, _ in detalles_dia
+                    ),
+                    Decimal("0"),
+                )
+                horas_computables = min(horas_dia, jornada)
+                horas_trabajadas += horas_computables
+                if any(
+                    bool(estado and estado.justifica)
+                    for _, estado in detalles_dia
+                ):
+                    horas_justificadas += max(jornada - horas_computables, Decimal("0"))
+
+            horas_liquidadas = horas_trabajadas + horas_justificadas
+            registro.horas_trabajadas = horas_trabajadas
+            registro.horas_justificadas = horas_justificadas
+            registro.horas_liquidadas = horas_liquidadas
+            registro.presentismo = (
+                horas_laborales > 0
+                and horas_liquidadas >= horas_laborales
             )
             if hasattr(registro, "updated_at"):
                 registro.updated_at = datetime.now(UTC)
             session.add(registro)
-
-    def _calcular_presentismo(
-        self,
-        tarja: Tarja,
-        detalles: list[tuple[TarjaDetalle, ParteDiarioEstado | None]],
-    ) -> bool:
-        detalles_by_fecha = {detalle.fecha: (detalle, estado) for detalle, estado in detalles}
-        jornadas_consideradas = 0
-
-        for current_date in self._iter_dates(tarja.fechainicio, tarja.fechafinal):
-            jornada_esperada = get_jornada_esperada(current_date)
-            if jornada_esperada <= 0:
-                continue
-
-            detalle_estado = detalles_by_fecha.get(current_date)
-            if detalle_estado is None:
-                return False
-
-            detalle, estado = detalle_estado
-            estado_codigo = str(estado.abreviatura if estado else "").strip().upper()
-            if estado_codigo in PRESENTISMO_EXCLUDED_ESTADOS:
-                continue
-
-            jornadas_consideradas += 1
-            if Decimal(str(detalle.horas or 0)) < jornada_esperada:
-                return False
-
-        return jornadas_consideradas > 0
 
 
 parte_diario_tarja_service = ParteDiarioTarjaService()

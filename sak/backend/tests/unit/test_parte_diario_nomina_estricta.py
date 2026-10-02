@@ -1,13 +1,24 @@
 """Limites de la nomina habilitada para cargar novedades del parte."""
 
 from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 from sqlmodel import select
 
-from agente.v3.subprocesses.parte_diario.domain import empleados
-from agente.v3.subprocesses.parte_diario.domain.models import NominaItem
-from app.models import ParteDiario, ParteDiarioDetalle, Tarja, TarjaNomina
+from agente.v3.subprocesses.parte_diario.domain import empleados, novedades
+from agente.v3.subprocesses.parte_diario.domain.models import NominaItem, NovedadPersonal, ParteDiarioDraft
+from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
+from app.models import (
+    EstadoParteDiario,
+    OrigenDetalle,
+    ParteDiario,
+    ParteDiarioDetalle,
+    ParteDiarioEstado,
+    Tarja,
+    TarjaNomina,
+)
+from app.services.parte_diario_service import parte_diario_service
 from tests.unit.test_parte_diario_carga_flow import FakeLLM, datos, estado, plan, proceso
 from tests.unit.test_parte_diario_handler_inicial import contexto, escenario
 from tests.unit.test_parte_diario_revision_flow import turno
@@ -158,29 +169,257 @@ def test_sin_nomina_base_no_crea_tarja(escenario, db_session):
     )).all()
 
 
-# Un ID global o un nombre externo no habilitan el alta ni la opcion de registrar sin validar.
+# Un encargado no puede cargar empleados de otra nomina aunque el nombre sea unico.
 @pytest.mark.asyncio
-@pytest.mark.parametrize("por_id", [False, True])
-async def test_empleado_ajeno_no_se_puede_agregar(nomina, por_id):
-    operation = dict(type="agregar_novedad", nombre="Vera", estado_codigo="ENF")
-    if por_id:
-        operation["idnomina"] = nomina.empleados[1].id
-    process = proceso(FakeLLM(plan(operation)))
+async def test_empleado_ajeno_no_se_resuelve_fuera_de_la_nomina_local(nomina, db_session):
+    vera = nomina.empleados[1]
+    vera.idproyecto = nomina.destino.id
+    db_session.add(vera)
+    db_session.commit()
+    process = proceso(FakeLLM(plan(dict(type="agregar_novedad", nombre="Vera", estado_codigo="ENF"))))
     result = await process.handle(turno("Vera enfermo"), contexto(nomina.obra))
-    assert not estado(result).draft().novedades
-    if not por_id:
-        assert estado(result).etapa == "carga_validar_empleado"
-        result = await process.handle(turno("registrar sin validar"), result.context)
-        assert not estado(result).draft().novedades
-        result = await process.handle(turno("ninguno"), result.context)
-        assert estado(result).etapa == "carga"
-        assert not estado(result).draft().novedades
+    draft = estado(result).draft()
+    assert not draft.novedades
+    assert estado(result).etapa == "carga_validar_empleado"
+    assert draft.pendientes_ambiguos[0].nombre_no_encontrado is True
+    assert not draft.pendientes_ambiguos[0].candidatos_externos
 
 
-# Las similitudes nunca proponen una persona de otra nomina.
-def test_similares_solo_locales():
-    externo = NominaItem(idnomina=9, nombre="Jose", apellido="Perez")
-    assert empleados.NominaResolver.find_similar("Peres", [], [externo]) == []
+# Una coincidencia de la nomina actual prevalece sobre homonimos externos.
+def test_resolucion_prioriza_coincidencia_local():
+    local = NominaItem(idnomina=1, nombre="Jorge", apellido="Sosa")
+    externo = NominaItem(
+        idnomina=9, nombre="Jorge", apellido="Sosa",
+        idproyecto=2, nombre_proyecto="Buenos Aires 744", fuera_de_proyecto=True,
+    )
+    resolved = empleados.NominaResolver.resolve("Sosa", [local], [local, externo])
+    assert resolved.match == local
+    assert not resolved.ambiguo
+
+
+# Las coincidencias aproximadas tampoco salen de la nomina local.
+def test_similares_no_buscan_empleados_externos():
+    local = NominaItem(idnomina=1, nombre="Jorge", apellido="Sosa")
+    externo = NominaItem(idnomina=9, nombre="Jose", apellido="Perez", fuera_de_proyecto=True)
+    assert empleados.NominaResolver.find_similar("Sossa", [local], [local, externo]) == [local]
+    assert empleados.NominaResolver.find_similar("Peres", [local], [local, externo]) == []
+
+
+# Una novedad derivada ya visible queda bajo el alcance editable del parte destino.
+@pytest.mark.parametrize("action", ["modificar", "eliminar"])
+def test_novedad_derivada_es_editable_desde_parte_destino(action):
+    local = NominaItem(idnomina=1, nombre="Jorge", apellido="Sosa")
+    externo = NominaItem(idnomina=9, nombre="Jose", apellido="Perez", fuera_de_proyecto=True)
+    draft = ParteDiarioDraft(
+        oportunidad_id=1,
+        idproyecto=2,
+        fecha="2026-09-12",
+        novedades=[
+            NovedadPersonal(
+                nombre="Perez, Jose",
+                idnomina=externo.idnomina,
+                estado_codigo="P",
+                horas=4,
+                fuera_de_proyecto=True,
+                nombre_proyecto="Obra origen",
+            )
+        ],
+    )
+
+    operation = (
+        dict(type="modificar_novedad", nombre="Perez", horas=8)
+        if action == "modificar"
+        else dict(type="eliminar_novedad", nombre="Perez")
+    )
+    result = novedades.execute_plan(
+        draft,
+        plan(operation),
+        [local],
+        [local, externo],
+        [],
+    )
+
+    assert not result.errors
+    expected = [(9, 8)] if action == "modificar" else []
+    assert [(item.idnomina, item.horas) for item in result.next_state.novedades] == expected
+
+
+# El flujo conversacional aplica la misma regla al borrador recuperado.
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["modificar", "eliminar"])
+async def test_borrador_recuperado_edita_empleado_de_otra_nomina(nomina, db_session, action):
+    externo = nomina.empleados[1]
+    externo.idproyecto = nomina.destino.id
+    externo.encargado_contacto_id = nomina.encargados[0].id
+    db_session.add(externo)
+    db_session.commit()
+
+    context = contexto(nomina.obra)
+    current = ParteDiarioV3State.from_dict(context.process_state)
+    draft = current.draft()
+    draft.fecha = "2026-09-12"
+    draft.novedades = [
+        NovedadPersonal(
+            nombre=f"{externo.apellido}, {externo.nombre}",
+            idnomina=externo.id,
+            estado_codigo="P",
+            horas=6,
+            fuera_de_proyecto=True,
+            nombre_proyecto=nomina.obra.nombre,
+        )
+    ]
+    current.set_draft(draft)
+    context.process_state = current.to_dict()
+    operation = (
+        dict(type="modificar_novedad", nombre=externo.apellido, horas=8)
+        if action == "modificar"
+        else dict(type="eliminar_novedad", nombre=externo.apellido)
+    )
+
+    result = await proceso(FakeLLM(plan(operation))).handle(
+        turno("Vera trabajo 8hs" if action == "modificar" else "quitar a Vera"),
+        context,
+    )
+
+    expected = [(externo.id, 8)] if action == "modificar" else []
+    assert [(item.idnomina, item.horas) for item in estado(result).draft().novedades] == expected
+    assert "no pertenece" not in result.reply_text.lower()
+
+
+# Al guardar desde destino, horas y eliminacion se propagan a la contraparte de origen.
+@pytest.mark.parametrize("action", ["modificar", "eliminar"])
+def test_guardado_destino_sincroniza_novedad_derivada(nomina, db_session, action):
+    presente = db_session.exec(
+        select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "P")
+    ).one()
+    empleado = nomina.empleados[0]
+    origin = ParteDiario(
+        idproyecto=nomina.obra.proyecto_id,
+        contacto_id=nomina.obra.contacto_id,
+        fecha=date(2026, 9, 12),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    destination = ParteDiario(
+        idproyecto=nomina.destino.id,
+        contacto_id=nomina.encargados[0].id,
+        fecha=date(2026, 9, 12),
+        estado=EstadoParteDiario.BORRADOR,
+    )
+    db_session.add_all([origin, destination])
+    db_session.flush()
+    db_session.add_all([
+        ParteDiarioDetalle(
+            parte_diario_id=origin.id,
+            idnomina=empleado.id,
+            idestado=presente.id,
+            horas=Decimal("0"),
+            descripcion=f"Trabajo temporal [parte_diario_destino_id={destination.id}]",
+            origen=OrigenDetalle.AGENTE,
+        ),
+        ParteDiarioDetalle(
+            parte_diario_id=destination.id,
+            idnomina=empleado.id,
+            idestado=presente.id,
+            horas=Decimal("6"),
+            origen=OrigenDetalle.AGENTE,
+        ),
+    ])
+    db_session.commit()
+
+    novedades_destino = []
+    if action == "modificar":
+        novedades_destino.append({
+            "nombre": f"{empleado.apellido}, {empleado.nombre}",
+            "idnomina": empleado.id,
+            "idestado": presente.id,
+            "estado_codigo": "P",
+            "horas": 4,
+            "fuera_de_proyecto": True,
+            "nombre_proyecto": nomina.obra.nombre,
+        })
+    parte_diario_service._create_or_update_from_result(
+        db_session,
+        {
+            "parte_listo": True,
+            "idproyecto": destination.idproyecto,
+            "contacto_id": destination.contacto_id,
+            "fecha": destination.fecha.isoformat(),
+            "parte_id_existente": destination.id,
+            "novedades": novedades_destino,
+            "pendientes_ambiguos": [],
+            "conflictos_novedad": [],
+            "sin_novedades_informado": action == "eliminar",
+        },
+        mensaje_id=None,
+    )
+    db_session.commit()
+
+    origin_rows = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == origin.id)
+    ).all()
+    destination_rows = db_session.exec(
+        select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == destination.id)
+    ).all()
+    if action == "modificar":
+        assert [row.horas for row in origin_rows] == [Decimal("2.00")]
+        assert [row.horas for row in destination_rows] == [Decimal("4.00")]
+    else:
+        assert origin_rows == []
+        assert destination_rows == []
+
+
+# La TarjaNomina vigente define pertenencia local aunque Nomina ya apunte a otra obra.
+def test_tarja_actual_prevalece_sobre_asignacion_base_transferida(nomina, db_session):
+    medina = nomina.empleados[0]
+    medina.idproyecto = nomina.destino.id
+    db_session.add(medina)
+    db_session.commit()
+
+    locales, globales = empleados.cargar_referencias(
+        db_session,
+        nomina.obra.proyecto_id,
+        contacto_id=nomina.obra.contacto_id,
+        fecha=date(2026, 9, 11),
+    )
+
+    local = next(item for item in locales if item.idnomina == medina.id)
+    assert local.idproyecto == nomina.obra.proyecto_id
+    assert local.nombre_proyecto == nomina.obra.nombre
+    assert local.fuera_de_proyecto is False
+    assert empleados.NominaResolver.resolve("Medina", locales, globales).match == local
+
+
+# Corregir un lote usa al Sosa local aun si su asignacion base ya cambio de obra.
+@pytest.mark.asyncio
+async def test_sosa_local_no_se_confunde_con_otra_obra_al_quitar_otra_novedad(nomina, db_session):
+    sosa = nomina.empleados[0]
+    cajal = nomina.empleados[2]
+    sosa.nombre = "Jorge Jesus"
+    sosa.apellido = "Sosa"
+    sosa.idproyecto = nomina.destino.id
+    cajal.nombre = "Ismael"
+    cajal.apellido = "Cajal"
+    db_session.add_all([sosa, cajal])
+    db_session.commit()
+    llm = FakeLLM(
+        plan(dict(type="agregar_novedad", nombre="Cajal", estado_codigo="ENF")),
+        plan(
+            dict(type="agregar_novedad", nombre="Sosa", estado_codigo="P", horas=12),
+            dict(type="eliminar_novedad", nombre="Cajal"),
+        ),
+    )
+    process = proceso(llm)
+    loaded = await process.handle(turno("Cajal enfermo"), contexto(nomina.obra))
+
+    result = await process.handle(turno("Sosa trabajo 12hs, quitar Cajal"), loaded.context)
+
+    assert "no tiene un encargado definido" not in result.reply_text
+    assert len(estado(result).draft().novedades) == 1
+    novedad = estado(result).draft().novedades[0]
+    assert novedad.idnomina == sosa.id
+    assert novedad.horas == 12
+    assert novedad.fuera_de_proyecto is False
+    assert novedad.idproyecto_destino is None
 
 
 # Dos homonimos vigentes producen menu y la seleccion se aplica dentro de la misma nomina.
@@ -199,6 +438,10 @@ async def test_homonimos_locales_seleccion_validada(nomina, db_session):
     pending = estado(result).draft().pendientes_ambiguos[0]
     assert {p.idnomina for p in pending.candidatos} == {p.id for p in nomina.empleados[2:]}
     assert not pending.candidatos_externos
+    assert "A cual Perez te referis?" in result.reply_text
+    for index, candidate in enumerate(pending.candidatos, start=1):
+        assert f"{index}. {candidate.nombre_completo}" in result.reply_text
+    assert "NO para descartar la novedad." in result.reply_text
     assert "sin validar" not in result.reply_text
     result = await process.handle(turno("1"), result.context)
     assert estado(result).etapa == "carga"

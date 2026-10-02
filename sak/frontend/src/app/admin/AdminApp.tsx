@@ -69,6 +69,27 @@ import {
   ErpCuentaShow,
 } from "@/app/resources/erp/cuentas";
 import {
+  ErpCashCuentaList,
+  ErpCashCuentaCreate,
+  ErpCashCuentaEdit,
+} from "@/app/resources/cashflow/cuentas";
+import {
+  ErpCashSubctaList,
+  ErpCashSubctaCreate,
+  ErpCashSubctaEdit,
+} from "@/app/resources/cashflow/subctas";
+import {
+  ErpCashMapList,
+  ErpCashMapCreate,
+  ErpCashMapEdit,
+} from "@/app/resources/cashflow/maps";
+import {
+  ErpCashDiarioList,
+  ErpCashDiarioCreate,
+  ErpCashDiarioEdit,
+  ErpCashDiarioPanel,
+} from "@/app/resources/cashflow/diario";
+import {
   ErpPresupuestoList,
   ErpPresupuestoCreate,
   ErpPresupuestoEdit,
@@ -390,6 +411,7 @@ import { ConstructoraSetupPage } from "@/app/resources/constructora/constructora
 import { InmobiliariaSetupPage } from "@/app/resources/inmobiliaria/inmobiliaria-setup-page";
 import { PropiedadesConfigPage } from "@/app/resources/inmobiliaria/propiedades-config/PropiedadesConfigPage";
 import { PowerBiReportPage } from "@/app/resources/administracion/powerbi-report/page";
+import { CashFlowSetupPage } from "@/app/resources/cashflow";
 
 declare const window: Window | undefined;
 
@@ -691,6 +713,42 @@ const AdminApp = () => {
         recordRepresentation="descripcion"
         icon={FileText}
         options={{ label: "Cuentas ERP" }}
+      />
+      <Resource
+        name="erp/cash/cuentas"
+        list={ErpCashCuentaList}
+        create={ErpCashCuentaCreate}
+        edit={ErpCashCuentaEdit}
+        recordRepresentation="descripcion"
+        icon={Wallet}
+        options={{ label: "Cuentas Cash" }}
+      />
+      <Resource
+        name="erp/cash/subctas"
+        list={ErpCashSubctaList}
+        create={ErpCashSubctaCreate}
+        edit={ErpCashSubctaEdit}
+        recordRepresentation="descripcion"
+        icon={Wallet}
+        options={{ label: "Subcuentas Cash" }}
+      />
+      <Resource
+        name="erp/cash/maps"
+        list={ErpCashMapList}
+        create={ErpCashMapCreate}
+        edit={ErpCashMapEdit}
+        recordRepresentation="nro_cta"
+        icon={GitBranch}
+        options={{ label: "Mapeo Cash" }}
+      />
+      <Resource
+        name="erp/cash/diario"
+        list={ErpCashDiarioList}
+        create={ErpCashDiarioCreate}
+        edit={ErpCashDiarioEdit}
+        recordRepresentation="descripcion"
+        icon={FileText}
+        options={{ label: "Diario Cash" }}
       />
       <Resource
         name="erp/presupuestos"
@@ -1085,6 +1143,8 @@ const AdminApp = () => {
       <CustomRoutes>
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/constructora/setup/*" element={<ConstructoraSetupPage />} />
+        <Route path="/cashflow/setup/*" element={<CashFlowSetupPage />} />
+        <Route path="/erp/cash/diario/panel" element={<ErpCashDiarioPanel />} />
         <Route path="/erp/presupuestos/panel" element={<ErpPresupuestoPanel />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />

@@ -111,7 +111,7 @@ const NovedadesSection = () => {
                 <NumberField source="horas_justificadas" />
               </FieldBlock>
               <FieldBlock label="Presentismo">
-                {novedad.presentismo ? "SI" : "NO"}
+                {(novedad.presentismo_efectivo ?? novedad.presentismo) ? "SI" : "NO"}
               </FieldBlock>
               <FieldBlock label="Adicional">
                 <NumberField source="adicional" />

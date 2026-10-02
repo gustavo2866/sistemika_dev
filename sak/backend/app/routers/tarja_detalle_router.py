@@ -23,6 +23,7 @@ from app.services.parte_diario_service import (
     extract_destination_part_id,
     strip_destination_part_reference,
 )
+from app.services.parte_diario_tarja_service import parte_diario_tarja_service
 from app.utils.jornada import get_jornada_esperada
 
 
@@ -426,6 +427,8 @@ def list_tarja_detalle(
         rows[int(nomina_id)] = {
             "id": f"{tarja.id}:{int(nomina_id)}",
             "tarja_id": tarja.id,
+            "tarja_premio": bool(tarja.premio),
+            "tarja_viaticos": bool(tarja.viaticos),
             "proyecto_id": tarja.idproyecto,
             "encargado_id": tarja.contacto_id,
             "obra": obra,
@@ -440,7 +443,12 @@ def list_tarja_detalle(
                     "id": novedad.id,
                     "nomina_id": novedad.nomina_id,
                     "horas_justificadas": float(novedad.horas_justificadas),
+                    "horas_trabajadas": float(novedad.horas_trabajadas),
+                    "horas_liquidadas": float(novedad.horas_liquidadas),
                     "presentismo": novedad.presentismo,
+                    "presentismo_autorizado": novedad.presentismo_autorizado,
+                    "presentismo_efectivo": novedad.presentismo_efectivo,
+                    "presentismo_origen": novedad.presentismo_origen,
                     "presentismo_importe": float(novedad.presentismo_importe),
                     "adicional_importe": float(novedad.adicional_importe),
                     "premio": novedad.premio,
@@ -578,6 +586,15 @@ def update_tarja_detalle(
         setattr(detalle, field, value)
 
     session.add(detalle)
+    session.flush()
+    tarja = session.get(Tarja, detalle.tarja_id)
+    if tarja is not None and tarja.deleted_at is None and detalle.idnomina is not None:
+        parte_diario_tarja_service.recalcular_resumen_nomina(
+            session,
+            nomina_ids={int(detalle.idnomina)},
+            fechainicio=tarja.fechainicio,
+            fechafinal=tarja.fechafinal,
+        )
     session.commit()
     session.refresh(detalle)
     estado = session.get(ParteDiarioEstado, detalle.idestado) if detalle.idestado else None

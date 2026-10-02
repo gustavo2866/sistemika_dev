@@ -81,7 +81,9 @@ class NominaResolver:
             return ResolveResult(match=project_matches[0])
         if len(project_matches) > 1:
             return ResolveResult(candidatos=project_matches)
-        return ResolveResult(error=f"No encontre a {nombre} en la nomina vigente de esta obra y encargado.")
+        return ResolveResult(
+            error=f"No encontre a {nombre} en la nomina vigente de esta obra y encargado."
+        )
 
     @staticmethod
     def find_similar(
@@ -256,11 +258,11 @@ def cargar_referencias(
                 idnomina=int(item.id),
                 nombre=item.nombre,
                 apellido=item.apellido,
-                idproyecto=item.idproyecto,
-                nombre_proyecto=projects.get(item.idproyecto),
-                fuera_de_proyecto=item.idproyecto != idproyecto,
+                idproyecto=idproyecto,
+                nombre_proyecto=projects.get(idproyecto),
+                fuera_de_proyecto=False,
                 nro_legajo=item.nro_legajo,
-                encargado_contacto_id=item.encargado_contacto_id,
+                encargado_contacto_id=contacto_id,
                 encargado_nombre=None,
             )
             for item in scoped_rows
@@ -446,24 +448,21 @@ def preparar_candidatos(
 ) -> None:
     if not pending.nombre_no_encontrado or pending.candidatos:
         return
-    project_candidates, external_candidates = NominaResolver.find_similar_grouped(
+    project_candidates, _ = NominaResolver.find_similar_grouped(
         pending.nombre,
         nominas_proyecto,
         nominas_completas,
     )
-    candidates = project_candidates or external_candidates
-    if candidates:
-        pending.candidatos = candidates
-        pending.candidatos_externos = external_candidates
-        pending.mostrando_candidatos_externos = not bool(project_candidates)
+    if project_candidates:
+        pending.candidatos = project_candidates
+        pending.candidatos_externos = None
+        pending.mostrando_candidatos_externos = False
         pending.nombre_no_encontrado = False
 
 
 # Devuelve la lista de candidatos locales o externos que esta activa.
 def candidatos_activos(pending: PendienteAmbiguo) -> list[NominaItem]:
-    if pending.mostrando_candidatos_externos and pending.candidatos_externos:
-        return pending.candidatos_externos
-    return pending.candidatos or pending.candidatos_externos or []
+    return pending.candidatos or []
 
 
 # Busca personas por los tokens del nombre dentro de la nomina del contexto.

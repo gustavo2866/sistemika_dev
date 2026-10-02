@@ -165,8 +165,14 @@ const getWorkedHours = (cell?: TarjaNominaDayCell) => {
   return Number.isFinite(hours) ? hours : 0;
 };
 
-const getRowWorkedHours = (record?: TarjaNominaRecord) =>
-  allDayKeys.reduce((total, key) => total + getWorkedHours(record?.[key]), 0);
+const getRowWorkedHours = (record?: TarjaNominaRecord) => {
+  const calculated = Number(record?.horas_trabajadas);
+  if (Number.isFinite(calculated)) return calculated;
+  return allDayKeys.reduce(
+    (total, key) => total + getWorkedHours(record?.[key]),
+    0,
+  );
+};
 
 const shouldShowEstado = (estado?: string | null) => {
   const normalized = String(estado ?? "").trim().toUpperCase();
@@ -322,7 +328,7 @@ const downloadTarjaNominaPdf = (
       case "horas":
         return formatHours(workedHours + justifiedHours);
       case "presentismo":
-        return `${row.presentismo ? "SI" : "NO"} trab:${formatHours(workedHours)} just:${formatHours(justifiedHours)}`;
+        return `${(row.presentismo_efectivo ?? row.presentismo) ? "SI" : "NO"} trab:${formatHours(workedHours)} just:${formatHours(justifiedHours)}`;
       case "bonos":
         return formatAmount(totalBonus);
       case "comentario":
@@ -714,7 +720,7 @@ const PresentismoCell = () => {
   return (
     <div className="text-center text-slate-800">
       <span className="block text-[8px] font-semibold leading-3">
-        {record?.presentismo ? "SI" : "NO"}
+        {(record?.presentismo_efectivo ?? record?.presentismo) ? "SI" : "NO"}
       </span>
       <span className="block text-[6.5px] font-medium leading-[8px] text-slate-500 tabular-nums">
         trab: {formatHours(workedHours)}

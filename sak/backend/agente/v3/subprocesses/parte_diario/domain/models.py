@@ -213,6 +213,11 @@ class PendienteAmbiguo:
     def encargado_destino_pendiente(self) -> bool:
         return self.fuera_de_proyecto and self.destino_pendiente == "encargado"
 
+    # Indica que la obra elegida no permite registrar la novedad por falta de encargado.
+    @property
+    def destino_sin_encargado(self) -> bool:
+        return self.fuera_de_proyecto and self.destino_pendiente == "sin_encargado"
+
     # Serializa los datos para conservarlos en el borrador.
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)

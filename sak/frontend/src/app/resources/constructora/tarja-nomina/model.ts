@@ -42,7 +42,12 @@ export type TarjaNomina = {
   nomina_categoria_id?: number | null;
   nomina_tarea_id?: number | null;
   horas_justificadas: number;
+  horas_trabajadas: number;
+  horas_liquidadas: number;
   presentismo: boolean;
+  presentismo_autorizado?: boolean | null;
+  presentismo_efectivo?: boolean;
+  presentismo_origen?: "automatico" | "manual" | "ninguno";
   presentismo_importe: number;
   adicional_importe: number;
   premio: boolean;
@@ -160,8 +165,10 @@ export const normalizeTarjaNominaPayload = (data: unknown) => {
     payload.nomina_tarea_id == null || payload.nomina_tarea_id === ""
       ? null
       : Number(payload.nomina_tarea_id);
-  payload.horas_justificadas = Number(payload.horas_justificadas ?? 0);
-  payload.presentismo = Boolean(payload.presentismo);
+  delete payload.horas_justificadas;
+  delete payload.horas_trabajadas;
+  delete payload.horas_liquidadas;
+  delete payload.presentismo;
   payload.presentismo_importe = Number(payload.presentismo_importe ?? 0);
   payload.adicional_importe = Number(payload.adicional_importe ?? 0);
   payload.premio = Boolean(payload.premio);

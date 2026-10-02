@@ -146,6 +146,69 @@ class ParteDiarioService:
         if related is not None:
             session.delete(related)
 
+    def _sync_origin_details_for_destination_edit(
+        self,
+        session: Session,
+        parte: ParteDiario,
+        novedades: list[dict[str, Any]],
+    ) -> set[int]:
+        """Propaga al origen cambios hechos sobre personal derivado en destino."""
+        if parte.id is None:
+            return set()
+        marker = f"[parte_diario_destino_id={int(parte.id)}]"
+        origin_details = session.exec(
+            select(ParteDiarioDetalle)
+            .where(ParteDiarioDetalle.descripcion.contains(marker))
+            .where(ParteDiarioDetalle.deleted_at.is_(None))
+        ).all()
+        if not origin_details:
+            return set()
+
+        self.validar_tarja_destino_abierta(
+            session,
+            idproyecto=int(parte.idproyecto),
+            contacto_id=int(parte.contacto_id or 0),
+            fecha=parte.fecha,
+        )
+        incoming_by_nomina = {
+            int(item["idnomina"]): item
+            for item in novedades
+            if item.get("idnomina") is not None
+        }
+        touched_part_ids: set[int] = set()
+        for origin_detail in origin_details:
+            if origin_detail.idnomina is None or origin_detail.parte_diario_id is None:
+                continue
+            origin_part = session.get(ParteDiario, int(origin_detail.parte_diario_id))
+            if origin_part is None or origin_part.deleted_at is not None:
+                continue
+            if origin_part.estado == EstadoParteDiario.CERRADO:
+                raise ValueError("El parte diario de origen ya fue cerrado")
+            self.validar_tarja_destino_abierta(
+                session,
+                idproyecto=int(origin_part.idproyecto),
+                contacto_id=int(origin_part.contacto_id or 0),
+                fecha=origin_part.fecha,
+            )
+            touched_part_ids.add(int(origin_part.id))
+            incoming = incoming_by_nomina.get(int(origin_detail.idnomina))
+            if incoming is not None:
+                origin_hours, _ = _destination_work_hours(incoming, parte.fecha)
+                origin_detail.horas = Decimal(str(origin_hours))
+                session.add(origin_detail)
+                continue
+
+            if origin_detail.id is not None:
+                for tarja_detail in session.exec(
+                    select(TarjaDetalle).where(
+                        TarjaDetalle.parte_diario_detalle_id == int(origin_detail.id)
+                    )
+                ).all():
+                    tarja_detail.parte_diario_detalle_id = None
+                    session.add(tarja_detail)
+            session.delete(origin_detail)
+        return touched_part_ids
+
     def create_or_update_from_agent_message(self, session: Session, mensaje_id: int) -> ParteDiario:
         mensaje = session.get(CRMMensaje, mensaje_id)
         if mensaje is None:
@@ -333,6 +396,7 @@ class ParteDiarioService:
             fecha=fecha,
             contacto_id=contacto_id,
         )
+        linked_origin_part_ids: set[int] = set()
         if parte is None:
             parte = ParteDiario(
                 idproyecto=idproyecto,
@@ -352,6 +416,11 @@ class ParteDiarioService:
             parte.mensaje_origen_id = mensaje_id
             session.add(parte)
             session.flush()
+            linked_origin_part_ids = self._sync_origin_details_for_destination_edit(
+                session,
+                parte,
+                novedades,
+            )
             self._delete_agent_managed_details(session, int(parte.id))
 
         parte.estado = target_estado
@@ -442,6 +511,14 @@ class ParteDiarioService:
                 auto_commit=False,
             )
         session.flush()
+        for origin_part_id in linked_origin_part_ids:
+            origin_part = session.get(ParteDiario, origin_part_id)
+            if origin_part is not None and origin_part.estado == EstadoParteDiario.CONFIRMADO:
+                parte_diario_tarja_service.sincronizar_detalle_para_parte(
+                    session,
+                    origin_part,
+                    auto_commit=False,
+                )
         if target_estado == EstadoParteDiario.CONFIRMADO:
             parte_diario_tarja_service.sincronizar_detalle_para_parte(
                 session,

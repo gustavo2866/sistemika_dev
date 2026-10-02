@@ -114,14 +114,15 @@ def opcion_siguiente(state: ParteDiarioV3State) -> int | None:
     return state.asistencia_catalogo[end].opcion if end < len(state.asistencia_catalogo) else None
 
 
-# Finaliza LISTADO en revision; guardar sigue perteneciendo al flujo compartido.
+# Cierra LISTADO y vuelve a la carga libre conservando el borrador.
 def finalizar(state: ParteDiarioV3State, prefix: str = "") -> str:
-    if state.asistencia_catalogo:
-        last_offset = ((len(state.asistencia_catalogo) - 1) // PAGE_SIZE) * PAGE_SIZE
-        state.asistencia_offset = min(state.asistencia_offset, last_offset)
-    from agente.v3.subprocesses.parte_diario.flows import revision
-
-    reply = revision.iniciar(state, origen="listado")
+    state.etapa = "carga"
+    state.asistencia_offset = 0
+    state.asistencia_opciones = []
+    state.asistencia_catalogo = []
+    state.revision_origen = None
+    state.accion_cierre = None
+    reply = renderer.inicio_carga(state)
     return f"{prefix}\n{reply}".strip()
 
 
@@ -154,9 +155,14 @@ def _novedad_line(
 
 # Devuelve (texto con IDs, None) o (None, error) sin alterar el borrador ni la pagina.
 def normalizar(text: str, state: ParteDiarioV3State) -> tuple[str | None, str | None]:
-    text = re.sub(r"\s+y\s+(?=\d+\b)", "\n", text, flags=re.IGNORECASE)
-    parts = [part.strip() for part in re.split(r"[,;\n]+", text) if part.strip()]
     options = {item.opcion: item for item in state.asistencia_opciones}
+    text = re.sub(r"\s+y\s+(?=\d+\b)", "\n", text, flags=re.IGNORECASE)
+    parts = [
+        entry
+        for part in re.split(r"[,;\n]+", text)
+        if part.strip()
+        for entry in _separar_selecciones_compactas(part.strip(), set(options))
+    ]
     lines = []
     for part in parts:
         match = re.fullmatch(r"(\d+)(?:[).:\-\s]+(.+))?", part)
@@ -171,3 +177,38 @@ def normalizar(text: str, state: ParteDiarioV3State) -> tuple[str | None, str | 
     if not lines:
         return None, "Indica numero y motivo, por ejemplo: 2 enfermedad."
     return "\n".join(lines), None
+
+
+# Separa "2 accidente 6 enfermo" usando las opciones visibles como delimitadores.
+def _separar_selecciones_compactas(text: str, opciones: set[int]) -> list[str]:
+    markers = []
+    for match in re.finditer(r"(?<!\S)(\d+)(?=(?:[).:\-]|\s|$))", text):
+        number = int(match.group(1))
+        if match.start() == 0:
+            markers.append(match.start())
+            continue
+        if number not in opciones or _es_cantidad_o_horario(text, match):
+            continue
+        markers.append(match.start())
+    if len(markers) <= 1 or markers[0] != 0:
+        return [text]
+    markers.append(len(text))
+    return [
+        text[start:end].strip(" ,;")
+        for start, end in zip(markers, markers[1:])
+        if text[start:end].strip(" ,;")
+    ]
+
+
+# Evita interpretar cantidades y rangos horarios como numeros de empleado.
+def _es_cantidad_o_horario(text: str, match: re.Match[str]) -> bool:
+    before = text[:match.start()].rstrip()
+    previous = re.search(r"([a-zA-ZáéíóúÁÉÍÓÚñÑ]+)$", before)
+    if previous and normalize_text(previous.group(1)) in {"a", "de", "desde", "hasta", "entre"}:
+        return True
+    after = text[match.end():].lstrip()
+    if re.match(r"^:\s*\d", after):
+        return True
+    detail = re.sub(r"^[).:\-]\s*", "", after)
+    unit = normalize_text(detail).split(maxsplit=1)[0] if detail.strip() else ""
+    return unit in {"h", "hs", "hora", "horas", "dia", "dias"}

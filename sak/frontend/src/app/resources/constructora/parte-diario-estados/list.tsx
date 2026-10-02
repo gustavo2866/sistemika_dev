@@ -48,7 +48,7 @@ const ACTION_BUTTON_CLASS = "h-7 px-2 text-[10px] sm:h-8 sm:px-3 sm:text-xs";
 
 const LIST_MOBILE_CONFIG = {
   primaryField: "nombre",
-  secondaryFields: ["abreviatura", "activo"],
+  secondaryFields: ["abreviatura", "activo", "justifica"],
 };
 
 type ParteDiarioEstadoListProps = {
@@ -102,6 +102,7 @@ export const ParteDiarioEstadoList = ({
         <ListText source="nombre" className="whitespace-normal break-words" />
       </TextListColumn>
       <BooleanListColumn source="activo" label="Activo" className="w-[70px]" />
+      <BooleanListColumn source="justifica" label="Justifica" className="w-[76px]" />
       <TextListColumn label="Acciones" className="w-[56px]">
         <FormOrderListRowActions showShow={!embedded} />
       </TextListColumn>

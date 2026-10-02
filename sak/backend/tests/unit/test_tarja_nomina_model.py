@@ -16,20 +16,30 @@ from app.models import (
 from app.models.nomina_catalogos import NominaCategoria, NominaTarea
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.proyecto_encargado import ProyectoEncargado
-from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
+from app.models.tarja import (
+    Tarja,
+    TarjaDetalle,
+    TarjaNomina,
+    resolver_origen_presentismo,
+    resolver_presentismo,
+)
 from app.routers.nomina_router import nomina_crud
 from app.routers.tarja_nomina_router import (
     TarjaNominaTrasladoRequest,
     tarja_nomina_crud,
     tarja_nomina_router,
 )
+from app.services.parte_diario_tarja_service import parte_diario_tarja_service
 
 
 def test_tarja_nomina_model_and_router_are_defined():
     assert TarjaNomina.__tablename__ == "tarja_nomina"
     assert hasattr(TarjaNomina, "tarja_id")
     assert hasattr(TarjaNomina, "nomina_id")
+    assert hasattr(TarjaNomina, "horas_trabajadas")
+    assert hasattr(TarjaNomina, "horas_liquidadas")
     assert hasattr(TarjaNomina, "presentismo")
+    assert hasattr(TarjaNomina, "presentismo_autorizado")
     assert hasattr(TarjaNomina, "presentismo_importe")
     assert hasattr(TarjaNomina, "adicional_importe")
     assert hasattr(TarjaNomina, "premio_importe")
@@ -44,6 +54,112 @@ def test_tarja_nomina_model_and_router_are_defined():
     assert not hasattr(TarjaNomina, "activo")
     assert TarjaNomina.__auto_include_relations__ == []
     assert tarja_nomina_router.prefix == "/tarja-nomina"
+
+    registro = TarjaNomina(
+        tarja_id=1,
+        fecha_desde=date(2026, 9, 1),
+        fecha_hasta=date(2026, 9, 15),
+    )
+    assert registro.horas_trabajadas == Decimal("0")
+    assert registro.horas_liquidadas == Decimal("0")
+    assert registro.presentismo_autorizado is None
+    assert registro.presentismo_efectivo is False
+    assert registro.presentismo_origen == "ninguno"
+    assert resolver_presentismo(False, True) is True
+    assert resolver_origen_presentismo(False, True) == "manual"
+    assert resolver_origen_presentismo(True, True) == "automatico"
+
+
+def test_traspaso_en_primer_dia_da_de_baja_la_vigencia_origen():
+    registro = TarjaNomina(
+        tarja_id=1,
+        nomina_id=1,
+        fecha_desde=date(2026, 9, 1),
+        fecha_hasta=date(2026, 9, 15),
+    )
+
+    parte_diario_tarja_service.cerrar_vigencia_por_traspaso(
+        registro,
+        date(2026, 9, 1),
+    )
+
+    assert registro.deleted_at is not None
+    assert registro.fecha_hasta == date(2026, 9, 15)
+
+
+def test_presentismo_solo_se_autoriza_con_quincena_completa(db_session):
+    user = User(nombre="Tester", email="presentismo-autorizacion@example.com")
+    db_session.add(user)
+    db_session.flush()
+    contacto = CRMContacto(
+        nombre_completo="Encargado Presentismo",
+        telefonos=[],
+        responsable_id=user.id,
+    )
+    proyecto = Proyecto(
+        nombre="Obra Presentismo",
+        responsable_id=user.id,
+        fecha_inicio=date(2026, 9, 1),
+        fecha_final=date(2026, 9, 1),
+    )
+    empleado = Nomina(nombre="Ana", apellido="Presente", dni="30999999")
+    db_session.add_all([contacto, proyecto, empleado])
+    db_session.flush()
+    tarja = Tarja(
+        idproyecto=proyecto.id,
+        contacto_id=contacto.id,
+        fechainicio=date(2026, 9, 1),
+        fechafinal=date(2026, 9, 1),
+    )
+    db_session.add(tarja)
+    db_session.flush()
+    registro = TarjaNomina(
+        tarja_id=tarja.id,
+        nomina_id=empleado.id,
+        fecha_desde=tarja.fechainicio,
+        fecha_hasta=tarja.fechafinal,
+        presentismo=False,
+    )
+    db_session.add(registro)
+    db_session.commit()
+
+    status = tarja_nomina_crud.get_presentismo_autorizacion_status(
+        db_session,
+        registro,
+    )
+    assert status["quincena_completa"] is False
+    assert status["dias_faltantes"] == 1
+    assert status["puede_autorizar"] is False
+    with pytest.raises(ValueError, match="completar y confirmar"):
+        tarja_nomina_crud.autorizar_presentismo(db_session, registro)
+
+    db_session.add(
+        ParteDiario(
+            idproyecto=proyecto.id,
+            contacto_id=contacto.id,
+            fecha=date(2026, 9, 1),
+            estado=EstadoParteDiario.CONFIRMADO,
+        )
+    )
+    db_session.commit()
+
+    autorizado = tarja_nomina_crud.autorizar_presentismo(db_session, registro)
+    assert autorizado["quincena_completa"] is True
+    assert autorizado["presentismo"] is False
+    assert autorizado["presentismo_autorizado"] is True
+    assert autorizado["presentismo_efectivo"] is True
+    assert autorizado["presentismo_origen"] == "manual"
+    assert registro.presentismo_autorizado is True
+
+    desautorizado = tarja_nomina_crud.desautorizar_presentismo(db_session, registro)
+    assert desautorizado["presentismo_autorizado"] is False
+    assert registro.presentismo_autorizado is None
+
+    registro.presentismo = True
+    db_session.add(registro)
+    db_session.commit()
+    with pytest.raises(ValueError, match="cálculo automático"):
+        tarja_nomina_crud.autorizar_presentismo(db_session, registro)
 
 
 def test_tarja_nomina_list_resolves_simple_fks_in_one_query(db_session):
@@ -535,7 +651,7 @@ def test_tarja_nomina_create_transfers_employee_transactionally(db_session):
     db_session.refresh(registro_anterior)
     db_session.refresh(empleado)
 
-    assert registro_anterior.fecha_hasta == date(2026, 9, 10)
+    assert registro_anterior.fecha_hasta == date(2026, 9, 9)
     assert nuevo.fecha_desde == date(2026, 9, 10)
     assert nuevo.fecha_hasta == date(2026, 9, 24)
     assert empleado.idproyecto == proyecto_actual.id
@@ -628,7 +744,7 @@ def test_tarja_nomina_traslado_creates_destination_tarja_and_moves_employee(db_s
     )
     db_session.refresh(empleado)
 
-    assert origen.fecha_hasta == date(2026, 9, 8)
+    assert origen.fecha_hasta == date(2026, 9, 7)
     assert tarja_destino.idproyecto == proyecto_destino.id
     assert tarja_destino.contacto_id == encargado_destino.id
     assert tarja_destino.fechainicio == date(2026, 9, 1)

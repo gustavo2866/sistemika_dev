@@ -43,6 +43,9 @@ export type TarjaNovedad = {
   nomina_tarea_id?: number | null;
   horas_justificadas: number;
   presentismo: boolean;
+  presentismo_autorizado?: boolean | null;
+  presentismo_efectivo?: boolean;
+  presentismo_origen?: "automatico" | "manual" | "ninguno";
   presentismo_importe: number;
   adicional_importe: number;
   premio: boolean;
@@ -67,6 +70,7 @@ export const tarjaNovedadSchema = z.object({
   nomina_tarea_id: optionalId,
   horas_justificadas: amountFromInput,
   presentismo: booleanFromInput,
+  presentismo_efectivo: booleanFromInput.optional(),
   presentismo_importe: amountFromInput,
   adicional_importe: amountFromInput,
   premio: booleanFromInput,
@@ -93,6 +97,7 @@ export const TARJA_NOVEDAD_DEFAULT: TarjaNovedadFormValues = {
   nomina_tarea_id: undefined,
   horas_justificadas: 0,
   presentismo: false,
+  presentismo_efectivo: false,
   presentismo_importe: 0,
   adicional_importe: 0,
   premio: false,
@@ -131,6 +136,7 @@ export const normalizeTarjaNovedadPayload = (data: unknown) => {
       : Number(payload.nomina_tarea_id);
   payload.horas_justificadas = Number(payload.horas_justificadas ?? 0);
   payload.presentismo = Boolean(payload.presentismo);
+  delete payload.presentismo_efectivo;
   payload.presentismo_importe = Number(payload.presentismo_importe ?? 0);
   payload.adicional_importe = Number(payload.adicional_importe ?? 0);
   payload.premio = Boolean(payload.premio);

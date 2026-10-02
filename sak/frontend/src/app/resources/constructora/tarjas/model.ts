@@ -90,6 +90,9 @@ export type TarjaNovedad = {
   nomina_id?: number | null;
   horas_justificadas?: number | null;
   presentismo?: boolean | null;
+  presentismo_autorizado?: boolean | null;
+  presentismo_efectivo?: boolean | null;
+  presentismo_origen?: "automatico" | "manual" | "ninguno" | null;
   adicional?: number | null;
   premio?: number | null;
   observaciones?: string | null;
@@ -104,7 +107,7 @@ export type Tarja = {
   fechafinal?: string | null;
   estado?: string | null;
   descripcion?: string | null;
-  premio?: number | null;
+  premio?: boolean | null;
   viaticos?: boolean | null;
   detalles?: TarjaDetalle[];
   novedades?: TarjaNovedad[];
@@ -155,7 +158,7 @@ export const tarjaSchema = z.object({
     normalizeOptionalString,
     z.string().max(VALIDATION_RULES.DESCRIPCION.MAX_LENGTH).optional(),
   ),
-  premio: optionalNumberFromInputSchema,
+  premio: optionalBooleanFromInputSchema,
   viaticos: optionalBooleanFromInputSchema,
   detalles: z.array(tarjaDetalleSchema).default([]),
   novedades: z.array(tarjaNovedadSchema).default([]),
@@ -170,7 +173,7 @@ export const TARJA_DEFAULTS: TarjaFormValues = {
   fechafinal: "",
   estado: "borrador",
   descripcion: "",
-  premio: 0,
+  premio: false,
   viaticos: false,
   detalles: [],
   novedades: [
@@ -209,7 +212,7 @@ export const normalizeTarjaPayload = (data: Partial<TarjaFormValues>) => {
     fechafinal,
     estado: data.estado === "cerrado" ? "cerrado" : "borrador",
     descripcion: trimNullableText(data.descripcion),
-    premio: Number(data.premio ?? 0),
+    premio: Boolean(data.premio),
     viaticos: Boolean(data.viaticos),
     detalles: (data.detalles ?? []).map((detalle) => ({
       ...(detalle.id ? { id: Number(detalle.id) } : {}),

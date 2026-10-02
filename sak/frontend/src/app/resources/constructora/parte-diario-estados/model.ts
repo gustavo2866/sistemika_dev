@@ -23,6 +23,7 @@ export type ParteDiarioEstado = {
   abreviatura: string;
   nombre: string;
   activo: boolean;
+  justifica: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -32,6 +33,7 @@ export const parteDiarioEstadoSchema = z.object({
     .preprocess(emptyToUndefined, z.string().min(1).max(VALIDATION_RULES.ABREVIATURA.MAX_LENGTH)),
   nombre: z.string().min(1).max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),
   activo: booleanFromInput,
+  justifica: booleanFromInput,
 });
 
 export type ParteDiarioEstadoFormValues = z.infer<typeof parteDiarioEstadoSchema>;
@@ -40,6 +42,7 @@ export const PARTE_DIARIO_ESTADO_DEFAULT: ParteDiarioEstadoFormValues = {
   abreviatura: "",
   nombre: "",
   activo: true,
+  justifica: false,
 };
 
 export const normalizeParteDiarioEstadoPayload = (data: unknown) => {
@@ -53,6 +56,7 @@ export const normalizeParteDiarioEstadoPayload = (data: unknown) => {
     payload.nombre = payload.nombre.trim();
   }
   payload.activo = Boolean(payload.activo);
+  payload.justifica = Boolean(payload.justifica);
 
   return payload;
 };

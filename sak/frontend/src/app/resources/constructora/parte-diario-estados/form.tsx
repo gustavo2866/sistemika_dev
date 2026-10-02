@@ -32,8 +32,11 @@ const ParteDiarioEstadoFields = () => (
       widthClass="w-full"
       maxLength={VALIDATION_RULES.NOMBRE.MAX_LENGTH}
     />
-    <div className="md:col-span-2">
+    <div>
       <FormBoolean source="activo" label="Activo" defaultValue />
+    </div>
+    <div>
+      <FormBoolean source="justifica" label="Justifica" />
     </div>
   </div>
 );

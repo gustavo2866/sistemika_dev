@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessResult
+from agente.v3.contracts import V3ConversationContext, V3InboundMessage, V3ProcessMessage, V3ProcessResult
 from agente.v3.emisor import V3MessageEmitter
 from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.adapters.llm import ParteDiarioLLMClient
@@ -12,6 +12,7 @@ from agente.v3.subprocesses.parte_diario.flows import aclaracion, comandos, carg
 from agente.v3.subprocesses.parte_diario.domain import obras
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from agente.v3.subprocesses.parte_diario.domain.obras import project_match_score
+from agente.v3.subprocesses.parte_diario.models import ParteDiarioFlowResponse
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
 
 
@@ -26,7 +27,7 @@ class ParteDiarioSubprocess:
         self._query_agent = query_agent_client or ParteDiarioQueryAgentClient()
         self._carga_agent = carga_agent_client or ParteDiarioCargaAgentClient()
 
-    # Ejecuta la etapa correspondiente y devuelve una unica respuesta con contexto.
+    # Ejecuta la etapa y conserva como mensajes separados los seguimientos solicitados por el flow.
     async def handle(
         self,
         message: V3InboundMessage,
@@ -76,6 +77,8 @@ class ParteDiarioSubprocess:
                         respuesta = None
                 case "carga":
                     respuesta = await carga.procesar(texto, state, self._llm, self._query_agent)
+                case "carga_todos":
+                    respuesta = await carga.procesar_todos(texto, state, self._llm)
                 case "carga_aclaracion":
                     respuesta = await aclaracion.procesar(texto, state, self._llm)
                 case "listado":
@@ -101,7 +104,22 @@ class ParteDiarioSubprocess:
         # Respuesta y actualizacion de contexto.
         if respuesta_guardado:
             respuesta = f"{respuesta_guardado}\n\n{respuesta or ''}".strip()
-        return self._responder(context, state, respuesta, metadata, message.text or "")
+        additional_messages: list[V3ProcessMessage] = []
+        if isinstance(respuesta, ParteDiarioFlowResponse):
+            additional_messages = [
+                V3ProcessMessage(text=text)
+                for text in respuesta.follow_up_messages
+                if str(text or "").strip()
+            ]
+            respuesta = respuesta.reply
+        return self._responder(
+            context,
+            state,
+            respuesta,
+            metadata,
+            message.text or "",
+            additional_messages=additional_messages,
+        )
 
     # Resuelve una obra asociada al remitente o solicita elegir entre sus opciones.
     def _seleccionar_obra(
@@ -150,6 +168,7 @@ class ParteDiarioSubprocess:
     def _responder(
         self, context: V3ConversationContext, state: ParteDiarioV3State, respuesta: str | None,
         metadata: dict, mensaje: str,
+        *, additional_messages: list[V3ProcessMessage] | None = None,
     ) -> V3ProcessResult:
         updated = context.copy()
         finalizado = state.etapa == "finalizado"
@@ -159,7 +178,10 @@ class ParteDiarioSubprocess:
             if not metadata.get("parte_listo") and state.accion_cierre not in {"descartar", "salir"}:
                 reply = f"{reply}\n\n{GENERAL_MENU_TEXT}"
         else:
-            state.registrar_turno(mensaje, reply)
+            historial_respuesta = "\n\n".join(
+                [reply, *[item.text for item in additional_messages or []]]
+            )
+            state.registrar_turno(mensaje, historial_respuesta)
         updated.process_state = {} if finalizado else state.to_dict()
         return V3ProcessResult(
             context=updated,
@@ -170,4 +192,5 @@ class ParteDiarioSubprocess:
                       "idproyecto": state.proyecto_id, "contacto_id": state.contacto_id,
                       "nombre_obra": state.nombre_obra,
                       **metadata},
+            additional_messages=additional_messages or [],
         )

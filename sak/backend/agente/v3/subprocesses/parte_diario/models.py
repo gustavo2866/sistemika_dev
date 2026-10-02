@@ -86,4 +86,11 @@ class TurnResult:
     keep_active: bool = True
     process_state: dict[str, Any] = field(default_factory=dict)
 
+
+# Permite que un flow solicite una respuesta principal y seguimientos separados.
+@dataclass(slots=True)
+class ParteDiarioFlowResponse:
+    reply: str
+    follow_up_messages: list[str] = field(default_factory=list)
+
 # endregion

@@ -62,6 +62,12 @@ const CONSTRUCTORA_RESOURCES = [
   "constructora-admin",
 ] as const;
 const COMPRAS_RESOURCES = ["po-dashboard", "po-orders-approval", "po-orders", "po-invoices", "proveedores"] as const;
+const CASHFLOW_RESOURCES = [
+  "erp/cash/diario",
+  "erp/cash/cuentas",
+  "erp/cash/subctas",
+  "erp/cash/maps",
+] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
   "propiedades-dashboard",
@@ -205,6 +211,10 @@ export function AppSidebar() {
     () => COMPRAS_RESOURCES.filter((name) => resources[name]?.hasList),
     [resources],
   );
+  const cashFlowResources = useMemo(
+    () => CASHFLOW_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
 
   const operationsResources = useMemo(
     () => OPERATIONS_RESOURCES.filter((name) => resources[name]?.hasList),
@@ -235,6 +245,7 @@ export function AppSidebar() {
       new Set<ResourceName>([
         ...constructoraResources,
         ...comprasResources,
+        ...cashFlowResources,
         ...operationsResources,
         ...inmobiliariaResources,
         ...adminResources,
@@ -246,6 +257,7 @@ export function AppSidebar() {
     [
       constructoraResources,
       comprasResources,
+      cashFlowResources,
       operationsResources,
       inmobiliariaResources,
       adminResources,
@@ -264,6 +276,7 @@ export function AppSidebar() {
 
   const [constructoraOpen, setConstructoraOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
+  const [cashFlowOpen, setCashFlowOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [inmobiliariaOpen, setInmobiliariaOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
@@ -492,6 +505,36 @@ export function AppSidebar() {
                   <SidebarCustomMenuItem
                     label="Setup"
                     to="/po/setup"
+                    icon={Settings}
+                    onClick={handleItemClick}
+                  />
+                </GroupMenuItem>
+              ) : null}
+              {cashFlowResources.length > 0 ? (
+                <GroupMenuItem
+                  label="CashFlow"
+                  icon={Wallet}
+                  isOpen={cashFlowOpen}
+                  onToggle={() => setCashFlowOpen((open) => !open)}
+                >
+                  <SidebarCustomMenuItem
+                    label="Panel"
+                    to="/erp/cash/diario/panel"
+                    icon={LayoutGrid}
+                    onClick={handleItemClick}
+                  />
+                  {cashFlowResources
+                    .filter((name) => name === "erp/cash/diario")
+                    .map((name) => (
+                      <ResourceSubMenuItem
+                        key={name}
+                        name={name}
+                        onClick={handleItemClick}
+                      />
+                    ))}
+                  <SidebarCustomMenuItem
+                    label="Setup"
+                    to="/cashflow/setup"
                     icon={Settings}
                     onClick={handleItemClick}
                   />

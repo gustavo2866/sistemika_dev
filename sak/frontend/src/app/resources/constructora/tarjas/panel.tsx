@@ -12,7 +12,6 @@ import {
   Lock,
   LockOpen,
   MoreHorizontal,
-  Pencil,
   Download,
   RefreshCw,
   RotateCcw,
@@ -74,7 +73,8 @@ type PanelTarja = {
   horas: number;
   novedades: number;
   adicional: number;
-  premio_tarja: number;
+  premios: number;
+  premio_tarja: boolean;
   viaticos: boolean;
 };
 
@@ -133,7 +133,12 @@ type TarjaDetalleCell = {
 type TarjaNovedadSummary = {
   id?: number | null;
   horas_justificadas?: number | null;
+  horas_trabajadas?: number | null;
+  horas_liquidadas?: number | null;
   presentismo?: boolean | null;
+  presentismo_autorizado?: boolean | null;
+  presentismo_efectivo?: boolean | null;
+  presentismo_origen?: "automatico" | "manual" | "ninguno" | null;
   presentismo_importe?: number | null;
   adicional_importe?: number | null;
   premio_importe?: number | null;
@@ -171,7 +176,7 @@ type TarjaDetalleExportRow = {
   nro_legajo?: string | null;
   categoria_codigo?: string | null;
   actividad_codigo?: string | null;
-  tarja_premio?: number | null;
+  tarja_premio?: boolean | null;
   tarja_viaticos?: boolean | null;
   novedad?: TarjaNovedadSummary | null;
 } & Partial<Record<DayKey, TarjaDetalleCell>>;
@@ -308,7 +313,7 @@ const patchTarjaEstado = async (tarjaId: number, estado: "borrador" | "cerrado")
   return response.json();
 };
 
-const patchTarjaBonos = async (tarjaId: number, premio: number, viaticos: boolean) => {
+const patchTarjaBonos = async (tarjaId: number, premio: boolean, viaticos: boolean) => {
   const response = await fetch(`${apiUrl}/tarjas/${tarjaId}`, {
     method: "PATCH",
     headers: buildAuthHeaders(),
@@ -379,11 +384,14 @@ const shouldShowEstado = (estado?: string | null) => {
   return Boolean(value && value !== "P");
 };
 
-const getWorkedHours = (row: TarjaDetalleExportRow) =>
-  allDayKeys.reduce((total, key) => {
+const getWorkedHours = (row: TarjaDetalleExportRow) => {
+  const calculated = Number(row.novedad?.horas_trabajadas);
+  if (Number.isFinite(calculated)) return calculated;
+  return allDayKeys.reduce((total, key) => {
     const horas = Number(row[key]?.horas ?? 0);
     return total + (Number.isFinite(horas) ? horas : 0);
   }, 0);
+};
 
 const getTarjaDetalleExportCellText = (
   row: TarjaDetalleExportRow,
@@ -397,6 +405,7 @@ const getTarjaDetalleExportCellText = (
     | "actividad"
     | "horas_trabajadas"
     | "horas_justificadas"
+    | "horas_liquidadas"
     | "presentismo"
     | "adicional"
     | "premio"
@@ -419,6 +428,7 @@ const getTarjaDetalleExportCellText = (
 
   const workedHours = getWorkedHours(row);
   const justifiedHours = Number(row.novedad?.horas_justificadas ?? 0);
+  const settledHours = Number(row.novedad?.horas_liquidadas ?? 0);
   switch (columnKey) {
     case "proyecto":
       return row.proyecto_nombre;
@@ -434,12 +444,14 @@ const getTarjaDetalleExportCellText = (
       return formatHours(workedHours);
     case "horas_justificadas":
       return formatHours(Number.isFinite(justifiedHours) ? justifiedHours : 0);
+    case "horas_liquidadas":
+      return formatHours(Number.isFinite(settledHours) ? settledHours : 0);
     case "presentismo":
-      return row.novedad?.presentismo ? "S" : "N";
+      return (row.novedad?.presentismo_efectivo ?? row.novedad?.presentismo) ? "S" : "N";
     case "adicional":
       return formatNumber(Number(row.novedad?.adicional_importe ?? 0));
     case "premio":
-      return hasAmount(row.tarja_premio) ? "S" : "N";
+      return row.tarja_premio ? "S" : "N";
     case "viatico":
       return row.tarja_viaticos ? "S" : "N";
     case "im_presentismo":
@@ -479,6 +491,7 @@ const downloadTarjaPanelExcel = (
     "Act",
     "Hs Trab",
     "Hs Just",
+    "Hs Liq",
     "Coment",
     "Adicional",
     "Premio S/N",
@@ -502,6 +515,7 @@ const downloadTarjaPanelExcel = (
     "actividad",
     "horas_trabajadas",
     "horas_justificadas",
+    "horas_liquidadas",
     "comentario",
     "adicional",
     "premio",
@@ -523,7 +537,6 @@ const downloadTarjaPanelExcel = (
             isDayKey(columnKey) &&
             isNonWorkingDay(rows[0]?.[columnKey]?.fecha);
           const isDayColumn = isDayKey(columnKey);
-          const isImportAmountColumn = String(columnKey).startsWith("im_");
           const isIdColumn = columnKey === "id_tarja_nomina";
           const style = [
             "border:1px solid #cbd5e1",
@@ -534,7 +547,7 @@ const downloadTarjaPanelExcel = (
             isDayColumn ? "text-align:center" : "",
             isSunday
               ? "background:#e5e7eb"
-              : isImportAmountColumn || isIdColumn
+              : isIdColumn
                 ? "background:#e5e7eb"
                 : rowIndex % 2
                   ? "background:#fafafa"
@@ -587,6 +600,7 @@ const downloadTarjaPanelExcel = (
       <col class="small-col" />
       <col class="small-col" />
       <col class="small-col" />
+      <col class="small-col" />
       <col class="comment-col" />
       <col class="amount-col" />
       <col class="small-col" />
@@ -634,7 +648,7 @@ const fetchPanelRowExportRows = async (row: PanelRow): Promise<TarjaDetalleExpor
     ...detalleRow,
     proyecto_nombre: row.proyecto_nombre,
     encargado: row.encargado ?? "Sin encargado",
-    tarja_premio: tarja.premio_tarja ?? 0,
+    tarja_premio: tarja.premio_tarja ?? false,
     tarja_viaticos: tarja.viaticos ?? false,
   }));
 };
@@ -741,16 +755,16 @@ const KpiTile = ({
   }[tone];
 
   return (
-    <div className={cn("rounded-md border px-3 py-2", toneClass)}>
+    <div className={cn("rounded-md border px-2.5 py-1.5", toneClass)}>
       <div className="text-[10px] font-medium text-slate-500">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold leading-none">{value}</div>
+      <div className="mt-0.5 text-base font-semibold leading-none">{value}</div>
     </div>
   );
 };
 
 const DayStrip = ({ row, returnTo }: { row: PanelRow; returnTo: string }) => (
   <div
-    className="grid w-max grid-flow-col auto-cols-[18px] gap-0.5"
+    className="grid w-max grid-flow-col auto-cols-[16px] gap-0.5"
     aria-label={`Partes diarios de ${row.proyecto_nombre}`}
   >
     {row.dias.map((day) => {
@@ -760,7 +774,7 @@ const DayStrip = ({ row, returnTo }: { row: PanelRow; returnTo: string }) => (
           key={day.fecha}
           to={buildParteDiarioDayUrl(row, day, returnTo)}
           className={cn(
-            "flex h-7 w-[18px] flex-col items-center justify-center rounded border text-[7px] font-semibold leading-none",
+            "flex h-7 w-4 flex-col items-center justify-center rounded border text-[7px] font-semibold leading-none",
             config.className,
           )}
           title={`${day.fecha} - ${config.label}${day.partes ? ` (${day.partes})` : ""}`}
@@ -779,7 +793,7 @@ const ProgressCell = ({ row }: { row: PanelRow }) => {
   const percent = expected ? Math.round((completed / expected) * 100) : 0;
 
   return (
-    <div className="w-[96px]">
+    <div className="w-[84px]">
       <div className="flex items-center justify-between text-[10px]">
         <span className="font-semibold text-slate-700">{percent}%</span>
         <span className="text-slate-500">
@@ -807,7 +821,7 @@ const ProgressCell = ({ row }: { row: PanelRow }) => {
 const TarjaCell = ({ row }: { row: PanelRow }) => {
   const tarja = row.tarja;
   return (
-    <div className="w-[140px] space-y-1">
+    <div className="w-[118px] space-y-1">
       <Badge variant="secondary" className={cn("h-5 px-2 text-[10px]", getTarjaStatusClass(row))}>
         {getTarjaStatusLabel(row)}
       </Badge>
@@ -827,9 +841,9 @@ const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
   if (!tarja) {
     return <span className="text-[10px] text-slate-400">-</span>;
   }
-  const total = Number(tarja.adicional || 0) + Number(tarja.premio_tarja || 0);
+  const total = Number(tarja.adicional || 0);
   return (
-    <div className="w-[118px] text-[9px] leading-tight tabular-nums text-slate-600">
+    <div className="w-[82px] text-[9px] leading-tight tabular-nums text-slate-600">
       <div className="text-[12px] font-semibold leading-4 text-slate-900">
         {formatNumber(total, 2)}
       </div>
@@ -838,11 +852,9 @@ const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
           Adicional: {formatNumber(tarja.adicional, 2)}
         </div>
       ) : null}
-      {hasAmount(tarja.premio_tarja) ? (
-        <div className="text-[8px] font-medium text-slate-500">
-          Premio tarja: {formatNumber(tarja.premio_tarja, 2)}
-        </div>
-      ) : null}
+      <div className="text-[8px] font-medium text-slate-500">
+        Premio: {tarja.premio_tarja ? "Si" : "No"}
+      </div>
       <div className="text-[8px] font-medium text-slate-500">
         Viatico: {tarja.viaticos ? "Si" : "No"}
       </div>
@@ -895,7 +907,7 @@ const RowActions = ({
   const hasAgentPhone = Boolean(row.encargado_telefono?.trim());
 
   return (
-    <div className="flex w-[112px] items-center justify-end gap-1">
+    <div className="flex w-[56px] items-center justify-end gap-1">
       {primary}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -904,10 +916,6 @@ const RowActions = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-40">
-          <DropdownMenuItem onSelect={() => onOpenPremio(row)}>
-            <Trophy className="mr-2 size-3.5" />
-            Bonos
-          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={detalleLoading}
             onSelect={() => onOpenDetalle(row)}
@@ -917,7 +925,12 @@ const RowActions = ({
             ) : (
               <TableProperties className="mr-2 size-3.5" />
             )}
-            Tarja detalle
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => onOpenPremio(row)}>
+            <Trophy className="mr-2 size-3.5" />
+            Bonos
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!row.tarja?.id || exportLoading}
@@ -967,13 +980,6 @@ const RowActions = ({
               Reabrir
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link to={`/proyectos/${row.proyecto_id}?returnTo=${encodeURIComponent(returnTo)}`}>
-              <Pencil className="mr-2 size-3.5" />
-              Editar obra
-            </Link>
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -1015,7 +1021,7 @@ export const TarjaPanel = () => {
   const [openingTestChat, setOpeningTestChat] = useState(false);
   const [openingDetalleRowId, setOpeningDetalleRowId] = useState<string | null>(null);
   const [premioTarget, setPremioTarget] = useState<PremioTarget | null>(null);
-  const [premioValue, setPremioValue] = useState("0");
+  const [premioValue, setPremioValue] = useState(false);
   const [viaticosValue, setViaticosValue] = useState(false);
   const [premioLoading, setPremioLoading] = useState(false);
 
@@ -1395,7 +1401,7 @@ export const TarjaPanel = () => {
 
   const handleOpenPremio = async (row: PanelRow) => {
     setPremioTarget({ row, tarjaId: row.tarja?.id ?? null });
-    setPremioValue(String(row.tarja?.premio_tarja ?? 0));
+    setPremioValue(Boolean(row.tarja?.premio_tarja));
     setViaticosValue(Boolean(row.tarja?.viaticos));
     if (row.tarja?.id) return;
 
@@ -1428,15 +1434,9 @@ export const TarjaPanel = () => {
 
   const handleSavePremio = async () => {
     if (!premioTarget?.tarjaId) return;
-    const premio = Number(premioValue.replace(",", "."));
-    if (!Number.isFinite(premio) || premio < 0) {
-      notify("Ingresa un importe de premio valido.", { type: "warning" });
-      return;
-    }
-
     setPremioLoading(true);
     try {
-      await patchTarjaBonos(premioTarget.tarjaId, premio, viaticosValue);
+      await patchTarjaBonos(premioTarget.tarjaId, premioValue, viaticosValue);
       notify("Bonos actualizados", { type: "info" });
       setPremioTarget(null);
       setRefreshKey((key) => key + 1);
@@ -1478,7 +1478,7 @@ export const TarjaPanel = () => {
   })();
 
   return (
-    <div className="w-full max-w-none min-w-0 overflow-x-hidden pr-2">
+    <div className="w-full max-w-[1040px] min-w-0 overflow-x-hidden pr-2">
       <AppBreadcrumb items={[{ label: "Tarjas", current: true }]} />
 
       <div className="my-3 flex flex-wrap items-center justify-between gap-3">
@@ -1570,7 +1570,7 @@ export const TarjaPanel = () => {
         </div>
       </div>
 
-      <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="mb-3 grid max-w-[820px] gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
         <KpiTile label="Obra/enc." value={totals.obras} tone="slate" />
         <KpiTile label="Avance partes" value={`${completionPercent}%`} tone="emerald" />
         <KpiTile label="Faltantes" value={totals.partes_faltantes} tone="rose" />
@@ -1595,15 +1595,17 @@ export const TarjaPanel = () => {
           </div>
         ) : null}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1160px] table-fixed border-collapse text-[11px]">
+          <table className="w-full min-w-[960px] table-fixed border-collapse text-[11px]">
             <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
               <tr className="border-b border-slate-200">
-                <th className="w-[310px] px-3 py-2 text-left font-semibold">Obra</th>
-                <th className="w-[360px] px-2 py-2 text-left font-semibold">Partes diarios</th>
-                <th className="w-[105px] px-2 py-2 text-left font-semibold">Avance</th>
-                <th className="w-[145px] px-2 py-2 text-left font-semibold">Tarja</th>
-                <th className="w-[125px] px-2 py-2 text-left font-semibold">Bonos</th>
-                <th className="w-[120px] px-3 py-2 text-right font-semibold">Acciones</th>
+                <th className="w-[240px] px-3 py-2 text-left font-semibold">Obra</th>
+                <th className="w-[310px] px-2 py-2 text-left font-semibold">Partes diarios</th>
+                <th className="w-[100px] px-2 py-2 text-left font-semibold">Avance</th>
+                <th className="w-[135px] px-2 py-2 text-left font-semibold">Tarja</th>
+                <th className="w-[100px] px-2 py-2 text-left font-semibold">Bonos</th>
+                <th className="w-[75px] px-2 py-2 text-right font-semibold">
+                  <span className="sr-only">Acciones</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1618,7 +1620,7 @@ export const TarjaPanel = () => {
                         <span>{row.proyecto_estado ?? "sin estado"}</span>
                         {row.fecha_inicio ? <span>Inicio {row.fecha_inicio}</span> : null}
                       </div>
-                      <div className="mt-1 line-clamp-1 text-[10px] leading-tight text-slate-600">
+                      <div className="mt-1 line-clamp-1 text-[10px] font-semibold leading-tight text-blue-700">
                         {row.encargado ?? "-"}
                         {row.encargado_principal ? (
                           <span className="ml-1 text-[8px] font-medium text-blue-600">principal</span>
@@ -1637,7 +1639,7 @@ export const TarjaPanel = () => {
                     <td className="px-2 py-3">
                       <BonosCell tarja={row.tarja} />
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-2 py-3">
                       <RowActions
                         row={row}
                         returnTo={returnTo}
@@ -1682,10 +1684,10 @@ export const TarjaPanel = () => {
           if (!open && !premioLoading) setPremioTarget(null);
         }}
       >
-        <DialogContent className="gap-3 p-4 sm:max-w-sm">
-          <DialogHeader className="gap-1">
+        <DialogContent className="gap-5 p-6 sm:max-w-[460px]">
+          <DialogHeader className="gap-1.5 pr-7">
             <DialogTitle className="text-base">Bonos</DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-xs leading-relaxed">
               {premioTarget
                 ? [premioTarget.row.proyecto_nombre, premioTarget.row.encargado]
                     .filter(Boolean)
@@ -1693,45 +1695,41 @@ export const TarjaPanel = () => {
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid min-w-0 grid-cols-2 gap-2">
-            <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
-              Premio
-              <input
-                autoFocus
-                type="text"
-                inputMode="decimal"
-                value={premioValue}
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <div className="flex min-h-14 items-center justify-between gap-4 rounded-lg border border-input bg-slate-50/50 px-4 py-3">
+              <label htmlFor="tarja-premio" className="text-xs font-medium text-slate-700">
+                Premio
+              </label>
+              <Switch
+                id="tarja-premio"
+                checked={premioValue}
                 disabled={premioLoading}
-                onChange={(event) => setPremioValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !premioLoading && premioTarget?.tarjaId) {
-                    event.preventDefault();
-                    void handleSavePremio();
-                  }
-                }}
-                className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
+                onCheckedChange={setPremioValue}
               />
-            </label>
-            <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-700">
+            </div>
+            <div className="flex min-h-14 items-center justify-between gap-4 rounded-lg border border-input bg-slate-50/50 px-4 py-3">
+              <label htmlFor="tarja-viaticos" className="text-xs font-medium text-slate-700">
+                Viatico
+              </label>
+              <Switch
+                id="tarja-viaticos"
+                checked={viaticosValue}
+                disabled={premioLoading}
+                onCheckedChange={setViaticosValue}
+              />
+            </div>
+          </div>
+          <div className="min-w-0 border-t border-slate-100 pt-4">
+            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-slate-700">
               Adicional
               <input
                 type="text"
                 readOnly
+                aria-readonly="true"
                 value={formatNumber(premioTarget?.row.tarja?.adicional ?? 0, 2)}
-                className="h-9 w-full min-w-0 rounded-md border border-input bg-muted/40 px-3 text-sm tabular-nums text-muted-foreground outline-none"
+                className="h-10 w-full min-w-0 cursor-default rounded-md border border-slate-200 bg-slate-100 px-3 text-sm tabular-nums text-slate-500 outline-none"
               />
             </label>
-          </div>
-          <div className="flex items-center justify-between rounded-md border border-input px-3 py-2">
-            <label htmlFor="tarja-viaticos" className="text-xs font-medium text-slate-700">
-              Viatico
-            </label>
-            <Switch
-              id="tarja-viaticos"
-              checked={viaticosValue}
-              disabled={premioLoading}
-              onCheckedChange={setViaticosValue}
-            />
           </div>
           {premioLoading && !premioTarget?.tarjaId ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1739,7 +1737,7 @@ export const TarjaPanel = () => {
               Generando tarja
             </div>
           ) : null}
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter className="gap-2 border-t border-slate-100 pt-4 sm:gap-2">
             <Button
               type="button"
               variant="outline"
