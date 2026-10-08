@@ -12,9 +12,21 @@ import {
   buildListFilters,
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_SM } from "@/components/list";
+import { ERP_CASH_CUENTA_TIPO_CHOICES } from "./model";
 
 const filters = buildListFilters(
-  [{ type: "text", props: { source: "q", label: "Buscar", placeholder: "Buscar cuentas cash", alwaysOn: true } }],
+  [
+    { type: "text", props: { source: "q", label: "Buscar", placeholder: "Buscar cuentas cash", alwaysOn: true } },
+    {
+      type: "select",
+      props: {
+        source: "tipo",
+        label: "Tipo",
+        choices: ERP_CASH_CUENTA_TIPO_CHOICES,
+        emptyText: "Todos",
+      },
+    },
+  ],
   { keyPrefix: "erp-cash-cuentas" },
 );
 
@@ -36,7 +48,7 @@ const ListActions = ({ createTo }: { createTo?: string }) => (
 export const ErpCashCuentaList = ({
   embedded = false,
   rowClick = "edit",
-  perPage = 25,
+  perPage = 10,
   createTo,
 }: ErpCashCuentaListProps = {}) => (
   <List
@@ -52,9 +64,15 @@ export const ErpCashCuentaList = ({
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >
-    <ResponsiveDataTable rowClick={rowClick} mobileConfig={{ primaryField: "descripcion" }}>
+    <ResponsiveDataTable
+      rowClick={rowClick}
+      mobileConfig={{ primaryField: "descripcion", secondaryFields: ["tipo"] }}
+    >
       <TextListColumn source="descripcion" label="Descripción">
         <ListText source="descripcion" className="whitespace-normal break-words" />
+      </TextListColumn>
+      <TextListColumn source="tipo" label="Tipo" className="w-[110px]">
+        <ListText source="tipo" />
       </TextListColumn>
       <TextListColumn label="Acciones" className="w-[64px]">
         <FormOrderListRowActions showShow={false} />

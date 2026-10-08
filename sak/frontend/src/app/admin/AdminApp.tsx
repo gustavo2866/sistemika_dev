@@ -2,7 +2,7 @@
 import { Admin } from "@/components/admin";
 import type { DataProvider } from "ra-core";
 import { Resource, CustomRoutes } from "ra-core";
-import { Route } from "react-router-dom";
+import { Navigate, Route } from "react-router-dom";
 import {
   Users,
   FileText,
@@ -79,6 +79,16 @@ import {
   ErpCashSubctaEdit,
 } from "@/app/resources/cashflow/subctas";
 import {
+  ErpCashProyectadoList,
+  ErpCashProyectadoCreate,
+  ErpCashProyectadoEdit,
+} from "@/app/resources/cashflow/proyectado";
+import {
+  ErpCashPeriodoList,
+  ErpCashPeriodoCreate,
+  ErpCashPeriodoEdit,
+} from "@/app/resources/cashflow/periodos";
+import {
   ErpCashMapList,
   ErpCashMapCreate,
   ErpCashMapEdit,
@@ -87,7 +97,7 @@ import {
   ErpCashDiarioList,
   ErpCashDiarioCreate,
   ErpCashDiarioEdit,
-  ErpCashDiarioPanel,
+  ErpCashPanel,
 } from "@/app/resources/cashflow/diario";
 import {
   ErpPresupuestoList,
@@ -733,6 +743,24 @@ const AdminApp = () => {
         options={{ label: "Subcuentas Cash" }}
       />
       <Resource
+        name="erp/cash/proyectado"
+        list={ErpCashProyectadoList}
+        create={ErpCashProyectadoCreate}
+        edit={ErpCashProyectadoEdit}
+        recordRepresentation="id"
+        icon={Wallet}
+        options={{ label: "Proyectado Cash" }}
+      />
+      <Resource
+        name="erp/cash/periodos"
+        list={ErpCashPeriodoList}
+        create={ErpCashPeriodoCreate}
+        edit={ErpCashPeriodoEdit}
+        recordRepresentation="fecha_periodo"
+        icon={CalendarDays}
+        options={{ label: "Períodos Cash" }}
+      />
+      <Resource
         name="erp/cash/maps"
         list={ErpCashMapList}
         create={ErpCashMapCreate}
@@ -1144,7 +1172,8 @@ const AdminApp = () => {
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/constructora/setup/*" element={<ConstructoraSetupPage />} />
         <Route path="/cashflow/setup/*" element={<CashFlowSetupPage />} />
-        <Route path="/erp/cash/diario/panel" element={<ErpCashDiarioPanel />} />
+        <Route path="/erp/cash/panel" element={<ErpCashPanel />} />
+        <Route path="/erp/cash/diario/panel" element={<Navigate to="/erp/cash/panel" replace />} />
         <Route path="/erp/presupuestos/panel" element={<ErpPresupuestoPanel />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />

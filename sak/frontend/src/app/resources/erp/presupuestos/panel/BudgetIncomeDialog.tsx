@@ -89,7 +89,7 @@ export const BudgetIncomeDialog = ({
   const [displayMode, setDisplayMode] =
     useState<IncomeRowsDisplayMode>("withBudget");
   const hasBudgetedIncomeRows = rows.some(
-    (row) => Number(row.ingreso_presupuesto ?? 0) > 0,
+    (row) => Number(row.ingreso_presupuesto ?? 0) !== 0,
   );
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export const BudgetIncomeDialog = ({
             return (
               (Number.isFinite(parsedBudget)
                 ? parsedBudget
-                : Number(row.ingreso_presupuesto ?? 0)) > 0 ||
+                : Number(row.ingreso_presupuesto ?? 0)) !== 0 ||
               (Number.isFinite(parsedReal)
                 ? parsedReal
                 : Number(row.ingreso_real ?? 0)) > 0
@@ -195,7 +195,7 @@ export const BudgetIncomeDialog = ({
           value: parsed,
           valid:
             Number.isFinite(parsed) &&
-            parsed >= 0 &&
+            (field === "ingreso_presupuesto" || parsed >= 0) &&
             (!requiresRecord || row.presupuesto_id !== null),
           changed: parsed !== getEditableValue(row, field),
         };
@@ -275,7 +275,7 @@ export const BudgetIncomeDialog = ({
         <Input
           autoFocus
           type="number"
-          min={0}
+          min={field === "ingreso_presupuesto" ? undefined : 0}
           step="0.01"
           value={rawValue}
           disabled={isSaving}

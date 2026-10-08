@@ -30,6 +30,9 @@ from .crm import (
 from .emprendimiento_router import emprendimiento_router
 from .constructora_proyectos_conceptos_router import constructora_proyectos_conceptos_router
 from .erp_libro_diario_router import erp_libro_diario_router
+from .erp_cash_saldo_router import erp_cash_saldo_router
+from .erp_cash_proyectado_router import erp_cash_proyectado_router
+from .erp_cash_periodo_router import erp_cash_periodo_router
 
 __all__ = [
     "item_router",
@@ -61,4 +64,7 @@ __all__ = [
     "emprendimiento_router",
     "constructora_proyectos_conceptos_router",
     "erp_libro_diario_router",
+    "erp_cash_saldo_router",
+    "erp_cash_proyectado_router",
+    "erp_cash_periodo_router",
 ]

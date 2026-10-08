@@ -4,9 +4,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
 
 import { FormOrderToolbar } from "@/components/forms";
-import { FormText, HiddenInput, SectionBaseTemplate } from "@/components/forms/form_order";
+import { FormSelect, FormText, HiddenInput, SectionBaseTemplate } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/simple-form";
-import { ERP_CASH_CUENTA_DEFAULT, erpCashCuentaSchema, type ErpCashCuentaFormValues } from "./model";
+import {
+  ERP_CASH_CUENTA_DEFAULT,
+  ERP_CASH_CUENTA_TIPO_CHOICES,
+  erpCashCuentaSchema,
+  type ErpCashCuentaFormValues,
+} from "./model";
 
 export const ErpCashCuentaForm = () => (
   <SimpleForm<ErpCashCuentaFormValues>
@@ -20,6 +25,13 @@ export const ErpCashCuentaForm = () => (
       main={
         <>
           <FormText source="descripcion" label="Descripción" validate={required()} widthClass="w-full" maxLength={255} />
+          <FormSelect
+            source="tipo"
+            label="Tipo"
+            choices={ERP_CASH_CUENTA_TIPO_CHOICES}
+            emptyText="Sin definir"
+            widthClass="w-full"
+          />
           <HiddenInput source="version" />
         </>
       }

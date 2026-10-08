@@ -9,6 +9,7 @@ class ErpCashMap(Base, table=True):
     __tablename__ = "erp_cash_map"
 
     __searchable_fields__: ClassVar[List[str]] = ["nro_cta", "moneda", "categoria"]
+    __calculated_fields__: ClassVar[List[str]] = ["cuenta_nombre"]
 
     nro_cta: int = Field(
         index=True,

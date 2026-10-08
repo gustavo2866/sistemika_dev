@@ -33,7 +33,7 @@ const ListActions = ({ createTo }: { createTo?: string }) => (
   </div>
 );
 
-export const ErpCashSubctaList = ({ embedded = false, rowClick = "edit", perPage = 25, createTo }: ErpCashSubctaListProps = {}) => (
+export const ErpCashSubctaList = ({ embedded = false, rowClick = "edit", perPage = 10, createTo }: ErpCashSubctaListProps = {}) => (
   <List
     resource="erp/cash/subctas"
     title="Subcuentas Cash"
