@@ -75,7 +75,7 @@ const SyncListActions = () => {
       }
 
       notify(
-        `Período ${result.periodo}: ${result.rows_inserted} movimientos generados`,
+        `Período ${result.periodo}: ${result.rows_inserted} movimientos y ${result.saldos_inserted ?? 0} saldos generados`,
         { type: "success" },
       );
       refresh();

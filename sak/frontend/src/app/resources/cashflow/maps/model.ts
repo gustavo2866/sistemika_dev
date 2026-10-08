@@ -15,6 +15,7 @@ const optionalVersion = z.preprocess(
 export type ErpCashMap = {
   id: number | string;
   nro_cta: number;
+  cuenta_nombre?: string | null;
   moneda: string;
   categoria?: string | null;
   map_debe_id: number | string;

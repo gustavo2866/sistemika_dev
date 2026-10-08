@@ -6,21 +6,17 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-from app.models.erp.cash_diario_sync import normalize_rubro
 from app.models.erp.libro_diario_sync import get_source_connection_kwargs, parse_periodo
 
 
 SALDOS_QUERY = """
-    WITH cuentas_rubro AS (
+    WITH cuentas_fondo AS (
         SELECT DISTINCT ON (dc.nro_cta)
             dc.nro_cta,
             dc.nombre,
             dc.rubro
         FROM public.dim_cuenta dc
-        WHERE regexp_replace(
-                  regexp_replace(upper(btrim(COALESCE(dc.rubro, ''))), '[[:space:]]*-[[:space:]]*', '-', 'g'),
-                  '[[:space:]]+', ' ', 'g'
-              ) LIKE %s
+        WHERE dc.nro_cta = ANY(%s)
         ORDER BY dc.nro_cta
     )
     SELECT
@@ -32,7 +28,7 @@ SALDOS_QUERY = """
         SUM(lm.saldo_periodo) AS saldo_periodo,
         SUM(lm.saldo_acumulado) AS saldo_final
     FROM public.libro_mayor lm
-    JOIN cuentas_rubro cr ON cr.nro_cta = lm.cuenta_codigo
+    JOIN cuentas_fondo cr ON cr.nro_cta = lm.cuenta_codigo
     WHERE lm.periodo_anio = %s
       AND lm.periodo_mes = %s
       AND lm.nivel = 'cuenta'
@@ -45,7 +41,7 @@ def build_libro_mayor_saldos_response(
     rows: list[dict[str, Any]],
     *,
     periodo: str,
-    rubro: str,
+    account_codes: set[int],
 ) -> dict[str, Any]:
     cuentas = []
     saldo_inicial = Decimal("0")
@@ -76,7 +72,7 @@ def build_libro_mayor_saldos_response(
 
     return {
         "periodo": periodo,
-        "rubro": rubro,
+        "cuentas_fondo": sorted(account_codes),
         "rubros_encontrados": sorted(rubros_encontrados),
         "cuentas": cuentas,
         "totales": {
@@ -87,18 +83,23 @@ def build_libro_mayor_saldos_response(
     }
 
 
-def get_libro_mayor_saldos(periodo: str, rubro: str) -> dict[str, Any]:
+def get_libro_mayor_saldos(periodo: str, account_codes: set[int]) -> dict[str, Any]:
     anio, mes = parse_periodo(periodo)
-    rubro_normalizado = normalize_rubro(rubro)
-    if not rubro_normalizado:
-        raise ValueError("rubro es requerido")
+    normalized_codes = {int(code) for code in account_codes}
+
+    if not normalized_codes:
+        return build_libro_mayor_saldos_response(
+            [],
+            periodo=f"{anio:04d}-{mes:02d}",
+            account_codes=set(),
+        )
 
     try:
         with psycopg.connect(
             **get_source_connection_kwargs(),
             row_factory=dict_row,
         ) as source_conn, source_conn.cursor() as source_cur:
-            source_cur.execute(SALDOS_QUERY, (f"{rubro_normalizado}%", anio, mes))
+            source_cur.execute(SALDOS_QUERY, (sorted(normalized_codes), anio, mes))
             rows = list(source_cur.fetchall())
     except psycopg.Error as exc:
         raise RuntimeError("No se pudo consultar libro_mayor del ERP externo") from exc
@@ -106,5 +107,5 @@ def get_libro_mayor_saldos(periodo: str, rubro: str) -> dict[str, Any]:
     return build_libro_mayor_saldos_response(
         rows,
         periodo=f"{anio:04d}-{mes:02d}",
-        rubro=rubro,
+        account_codes=normalized_codes,
     )

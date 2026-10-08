@@ -69,10 +69,13 @@ from app.routers.erp_cuenta_router import erp_cuenta_router
 from app.routers.erp_presupuesto_router import erp_presupuesto_router
 from app.routers.erp_libro_diario_router import erp_libro_diario_router
 from app.routers.erp_libro_mayor_router import erp_libro_mayor_router
+from app.routers.erp_cash_saldo_router import erp_cash_saldo_router
+from app.routers.erp_cash_proyectado_router import erp_cash_proyectado_router
+from app.routers.erp_cash_periodo_router import erp_cash_periodo_router
 from app.routers.erp_cash_cuenta_router import erp_cash_cuenta_router
 from app.routers.erp_cash_subcta_router import erp_cash_subcta_router
 from app.routers.erp_cash_map_router import erp_cash_map_router
-from app.routers.erp_cash_diario_router import erp_cash_diario_router
+from app.routers.erp_cash_diario_router import erp_cash_diario_router, erp_cash_panel_router
 
 from app.routers.adm_concepto_router import adm_concepto_router
 from app.routers.crm_dashboard_router import router as crm_dashboard_router
@@ -269,10 +272,14 @@ app.include_router(erp_cuenta_router)
 app.include_router(erp_presupuesto_router)
 app.include_router(erp_libro_diario_router)
 app.include_router(erp_libro_mayor_router)
+app.include_router(erp_cash_saldo_router)
+app.include_router(erp_cash_proyectado_router)
+app.include_router(erp_cash_periodo_router)
 app.include_router(erp_cash_cuenta_router)
 app.include_router(erp_cash_subcta_router)
 app.include_router(erp_cash_map_router)
 app.include_router(erp_cash_diario_router)
+app.include_router(erp_cash_panel_router)
 
 # Servir archivos estáticos (uploads)
 uploads_dir = "uploads"

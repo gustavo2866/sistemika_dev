@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Link, Navigate, useLocation } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import { ResourceContextProvider } from "ra-core";
 
 import {
@@ -9,14 +9,13 @@ import {
   SetupContentPanel,
   SetupEmptyState,
   SetupLayout,
+  SetupSectionNav,
   type SetupCreateComponentProps,
   type SetupEditComponentProps,
   type SetupItem,
   type SetupListComponentProps,
   type SetupView,
 } from "@/components/forms/form_order";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { CASHFLOW_SETUP_ITEMS, getCashFlowSetupItem } from "./cashFlowSetupRegistry";
 
 const setupBasePath = "/cashflow/setup";
@@ -76,19 +75,12 @@ export const CashFlowSetupPage = () => {
             title={false}
             actionsPlacement="inline"
             actions={
-              <div className="flex flex-wrap gap-1.5">
-                {CASHFLOW_SETUP_ITEMS.map((item) => (
-                  <Button
-                    key={item.key}
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className={cn(item.key === selectedItem.key && "bg-background shadow-sm ring-1 ring-border")}
-                  >
-                    <Link to={itemPath(item)}>{item.label}</Link>
-                  </Button>
-                ))}
-              </div>
+              <SetupSectionNav
+                items={CASHFLOW_SETUP_ITEMS}
+                currentKey={selectedItem.key}
+                getItemHref={itemPath}
+                className="max-w-full"
+              />
             }
           />
         }

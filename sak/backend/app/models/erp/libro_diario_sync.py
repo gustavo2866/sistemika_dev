@@ -162,7 +162,7 @@ def get_source_connection_kwargs() -> dict[str, str]:
         raise RuntimeError(
             "Defini ERP_SOURCE_DB_HOST, ERP_SOURCE_DB_NAME, ERP_SOURCE_DB_USER y NEON_DB_PASSWORD, o ERP_SOURCE_DATABASE_URL/EXTERNAL_NEON_DATABASE_URL para la base origen."
         )
-    return {"dsn": normalize_url(url)}
+    return {"conninfo": normalize_url(url)}
 
 
 def get_allowed_centros_costo(dest_conn: psycopg.Connection) -> list[str]:

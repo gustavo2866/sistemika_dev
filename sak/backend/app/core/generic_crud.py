@@ -6,6 +6,7 @@ from typing import Any, Dict, Generic, Optional, Sequence, Type, TypeVar, Union,
 from datetime import UTC, datetime, date
 from decimal import Decimal
 from sqlmodel import SQLModel, Session, select, func, and_, or_
+from sqlalchemy import String, cast
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 from app.models.base import campos_editables
@@ -407,9 +408,15 @@ class GenericCRUD(Generic[M]):
             if hasattr(self.model, field_name):
                 column = getattr(self.model, field_name)
                 try:
-                    conditions.append(column.ilike(f"%{search_text}%"))
-                except:
-                    conditions.append(column.like(f"%{search_text}%"))
+                    is_text_column = issubclass(column.type._type_affinity, String)
+                except (AttributeError, TypeError):
+                    is_text_column = False
+                searchable_column = (
+                    column
+                    if is_text_column
+                    else cast(column, String)
+                )
+                conditions.append(searchable_column.ilike(f"%{search_text}%"))
         
         if conditions:
             stmt = stmt.where(or_(*conditions))

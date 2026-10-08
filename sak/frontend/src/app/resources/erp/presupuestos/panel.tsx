@@ -384,7 +384,7 @@ const PresupuestoPanelRow = ({
 
   const startEditing = (month: string, field: EditableField, value: number) => {
     setEditingCell({ month, field });
-    setDraftValue(String(Math.abs(value)));
+    setDraftValue(String(field === "ingres" ? value : Math.abs(value)));
   };
 
   const cancelEditing = () => {
@@ -395,14 +395,19 @@ const PresupuestoPanelRow = ({
   const saveEditing = async (values: MonthValues) => {
     if (!editingCell || !values.presupuesto_id || !onCellSave) return;
     const normalized = Number(String(draftValue).replace(",", "."));
-    if (!Number.isFinite(normalized) || normalized < 0) {
+    const allowsNegative = editingCell.field === "ingres";
+    if (!Number.isFinite(normalized) || (!allowsNegative && normalized < 0)) {
       cancelEditing();
       return;
     }
 
     setSavingCell(editingCell);
     try {
-      await onCellSave(values.presupuesto_id, editingCell.field, Math.abs(normalized));
+      await onCellSave(
+        values.presupuesto_id,
+        editingCell.field,
+        allowsNegative ? normalized : Math.abs(normalized),
+      );
     } finally {
       setSavingCell(null);
       cancelEditing();
@@ -595,7 +600,6 @@ const PresupuestoPanelRow = ({
                 <input
                   autoFocus
                   type="number"
-                  min={0}
                   step="0.01"
                   value={draftValue}
                   disabled={isSavingIngresos}

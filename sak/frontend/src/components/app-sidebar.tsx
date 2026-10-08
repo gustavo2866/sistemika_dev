@@ -66,6 +66,8 @@ const CASHFLOW_RESOURCES = [
   "erp/cash/diario",
   "erp/cash/cuentas",
   "erp/cash/subctas",
+  "erp/cash/proyectado",
+  "erp/cash/periodos",
   "erp/cash/maps",
 ] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
@@ -519,7 +521,7 @@ export function AppSidebar() {
                 >
                   <SidebarCustomMenuItem
                     label="Panel"
-                    to="/erp/cash/diario/panel"
+                    to="/erp/cash/panel"
                     icon={LayoutGrid}
                     onClick={handleItemClick}
                   />
