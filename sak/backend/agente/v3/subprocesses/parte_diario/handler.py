@@ -8,7 +8,7 @@ from agente.v3.subprocesses.general_agent import GENERAL_MENU_TEXT
 from agente.v3.subprocesses.parte_diario.adapters.llm import ParteDiarioLLMClient
 from agente.v3.subprocesses.parte_diario.adapters.carga_agent import ParteDiarioCargaAgentClient
 from agente.v3.subprocesses.parte_diario.adapters.query_agent import ParteDiarioQueryAgentClient
-from agente.v3.subprocesses.parte_diario.flows import aclaracion, comandos, carga, confirmar_salida, continuar, entrada, fecha, listado, revision, validacion_carga
+from agente.v3.subprocesses.parte_diario.flows import aclaracion, comandos, carga, confirmar_salida, continuar, entrada, fecha, listado, proyecto, revision, validacion_carga
 from agente.v3.subprocesses.parte_diario.domain import obras
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from agente.v3.subprocesses.parte_diario.domain.obras import project_match_score
@@ -77,8 +77,10 @@ class ParteDiarioSubprocess:
                         respuesta = None
                 case "carga":
                     respuesta = await carga.procesar(texto, state, self._llm, self._query_agent)
-                case "carga_todos":
-                    respuesta = await carga.procesar_todos(texto, state, self._llm)
+                case "carga_proyecto":
+                    respuesta = proyecto.procesar(texto, state)
+                case "carga_jornada":
+                    respuesta = carga.procesar_jornada(texto, state)
                 case "carga_aclaracion":
                     respuesta = await aclaracion.procesar(texto, state, self._llm)
                 case "listado":

@@ -57,7 +57,8 @@ correcta. Una recuperacion de datos inconsistentes, si se requiere, va al inicio
 | --- | --- |
 | `inicial`, `seleccionar_accion`, `seleccionar_obra` | `flows/entrada.py` presenta el menu y el handler resuelve la obra elegida. |
 | `cargar_fecha`, `seleccionar_fecha`, `pendientes` | `flows/fecha.py` |
-| `carga` / `carga_todos` / `listado` | `flows/carga.py` / `flows/listado.py` |
+| `carga` / `carga_jornada` / `listado` | `flows/carga.py` / `flows/listado.py` |
+| `carga_proyecto` | `flows/proyecto.py` lista y asigna el proyecto de una obra generica. |
 | `carga_aclaracion` | `flows/aclaracion.py` |
 | `carga_validar_empleado`, `carga_validar_obra`, `carga_validar_encargado`, `carga_validar_estado`, `carga_validar_conflicto`, `carga_cambiar_fecha` | `flows/validacion_carga.py` |
 | `revision` / `confirmar_salida` / `continuar` | Los modulos del mismo nombre en `flows/`. |
@@ -73,11 +74,14 @@ correcta. Una recuperacion de datos inconsistentes, si se requiere, va al inicio
   Si falta obra, se informa sin inferirla. Las consultas de lectura admitidas
   durante validaciones tambien se atienden aqui y vuelven a mostrar la pregunta.
 - Cada estado tiene comandos locales propios: `NO` en carga abre revision;
-  `TODOS` en carga solicita una unica novedad y la aplica a la nomina activa;
+  `JORNADA <horas>` actualiza la jornada del borrador sin LLM y `JORNADA` solicita
+  la cantidad; en esa pregunta `SALIR` vuelve a carga sin modificarla;
+  `PROYECTO` abre el menu de proyectos activos solo si la obra es generica y
+  `SALIR` vuelve a carga conservando la seleccion vigente;
   LISTADO admite `SIGUIENTE` o el numero correlativo de la pagina siguiente y
-  `FINALIZAR` o `99`; ambos cierran LISTADO y vuelven a carga. En
-  confirmar_salida, `NO` cancela el descarte. `SALIR`
-  abandona el parte desde cualquier circuito y confirma si hay cambios.
+  `SALIR` cierra LISTADO y vuelve a carga conservando el borrador. En
+  confirmar_salida, `NO` cancela el descarte. Fuera de LISTADO, `SALIR`
+  abandona el parte y confirma si hay cambios.
 - Una pregunta del interprete o un resultado que requiere corregir/reintentar
   activa `carga_aclaracion`; los pendientes de entidades conservan sus estados
   de validacion especificos. Se conservan
@@ -107,12 +111,11 @@ Los IDs de nomina emitidos por el LLM solo se aceptan cuando estan respaldados p
 la normalizacion controlada de LISTADO; en texto libre se descartan y la identidad
 se resuelve por nombre contra la nomina vigente.
 Las aclaraciones reutilizan ese camino y conservan las referencias numeradas.
-En `carga`, el comando exacto `TODOS` abre `carga_todos`; el siguiente mensaje se
-interpreta como una unica plantilla y backend la expande a los IDs de la
-`TarjaNomina` vigente, sin exponer nombres al LLM. `VOLVER` cancela el alcance
-masivo. Las consultas comunes no lo consumen. Cada operacion expandida reutiliza
-las reglas normales: una novedad previa distinta genera conflicto y un movimiento
-interno (`ALT`, `BAJ`, `TRA`) no se sobrescribe silenciosamente.
+En `carga`, `JORNADA 8hs` (tambien admite decimales) actualiza localmente
+`ParteDiarioDraft.jornada`. El comando exacto `JORNADA` abre `carga_jornada` y
+acepta una cantidad o `SALIR`; las consultas comunes no consumen la pregunta.
+El antiguo comando masivo `TODOS` no existe y, por lo tanto, el texto se procesa
+como cualquier mensaje libre.
 
 Los casos resueltos de un lote se aplican al borrador y los ambiguos quedan en
 cola. Se valida empleado, destino y motivo segun corresponda. Una transferencia
@@ -125,10 +128,28 @@ valida datos reales. No anunciar cambios que no se hayan ejecutado.
 La nomina identificada no se expone al interprete: este conserva el fragmento de
 nombre del usuario y domain resuelve las coincidencias. Si hay mas de una, la
 validacion de empleado presenta siempre un menu numerado y acepta el numero elegido.
-Los movimientos internos de nomina (`ALT`, `BAJ`, `TRA`) se recuperan separados
-del borrador editable: ocupan la unica novedad permitida para ese empleado y parte,
-pero no se reenvian al persistir. Si el usuario intenta agregar, modificar o eliminar
-otra novedad para esa persona, el agente la rechaza en carga e informa el motivo.
+Los movimientos internos de nomina (`ALT`, `BAJ`, `TRA`) y las novedades generadas
+por licencias se recuperan separados del borrador editable: ocupan la unica novedad
+permitida para ese empleado y parte, pero no se reenvian al persistir. Si el usuario
+intenta agregar, modificar o eliminar otra novedad para esa persona, el agente la
+rechaza en carga e informa el motivo. Las licencias se distinguen por
+`nomina_licencia_id`, se muestran en LISTADO junto al empleado en la pagina que le
+corresponde y tambien en los resumenes, y conservan el tipo y comentario
+materializados al crear el parte. Las licencias no se repiten en la cabecera ni en
+la seccion de novedades acumuladas de otras paginas.
+
+Al abrir una fecha sin parte, `domain/parte_diario.py` consulta las licencias vigentes
+de la nomina de esa obra y encargado para reservar esas personas en el borrador. La
+persistencia vuelve a resolverlas dentro de la misma transaccion y crea el detalle
+con `horas=0`, el estado correspondiente y el FK `nomina_licencia_id`; no confia en
+el estado conversacional como fuente de integridad. Si al crear el parte se informa
+manualmente una novedad cuyo estado esta marcado como licencia y todavia no existe
+una `nomina_licencias` vigente para el empleado, la persistencia compartida la crea
+con la fecha del parte como `fecha_desde`, `fecha_hasta=NULL`, conserva el comentario
+y vincula el detalle mediante `nomina_licencia_id`. La regla aplica por igual al
+formulario y al agente. Un parte existente no incorpora
+retroactivamente licencias nuevas, pero sus detalles de licencia persistidos nunca se
+eliminan durante una recarga del agente.
 
 Para resolver empleados se consulta exclusivamente `TarjaNomina` de la quincena,
 obra y encargado del parte, con `fecha_desde <= fecha_del_parte <= fecha_hasta`.
@@ -157,13 +178,13 @@ sigue siendo `P` y no se confunde con el traspaso permanente `TRA`.
 
 LISTADO congela al iniciarse el catalogo completo `numero -> idnomina`; ese orden
 se conserva entre paginas, aclaraciones, reanudaciones y cambios posteriores de
-la base. La opcion `99` queda reservada para finalizar. Cada pagina muestra ocho
+la base. Cada pagina muestra ocho
 empleados y las novedades acumuladas de paginas anteriores. Las novedades pueden
 separarse por coma, salto de linea o directamente por el siguiente numero visible;
 cantidades como `6 horas` no se interpretan como otra seleccion. Un lote valido avanza
 una sola pagina despues del ultimo pendiente; `SIGUIENTE` o el numero inicial de
-la pagina siguiente avanza sin novedades. `FINALIZAR` o `99`, y completar la ultima
-pagina, cierran LISTADO y vuelven a carga sin mostrar el menu de revision; el
+la pagina siguiente avanza sin novedades. `SALIR`, y completar la ultima pagina,
+cierran LISTADO y vuelven a carga sin mostrar el menu de revision; el
 borrador se conserva para permitir correcciones por nombre antes de revisar y guardar.
 Rechazar o abandonar una aclaracion conserva la pagina. Las novedades ya cargadas
 muestran estado, horas, motivo, obra y encargado
@@ -196,8 +217,22 @@ destino se guardan juntos, sin confirmar transacciones intermedias.
 La tarja quincenal destino CERRADA tambien bloquea el alta o la eliminacion del
 trabajo temporal. Al eliminarlo con la tarja abierta se quitan la novedad y el
 detalle de tarja destino, y el parte destino vuelve a BORRADOR sin afectar `Nomina`.
-La jornada usa `app.utils.jornada.get_jornada_esperada(fecha_del_parte)`:
-lunes a viernes 9h, sabado 6h, domingo 0h. No duplicar defaults.
+Al crear un parte, la jornada inicial usa
+`app.utils.jornada.get_jornada_esperada(fecha_del_parte)`: lunes a viernes 9h,
+sabado 6h, domingo 0h. En un parte persistido, `ParteDiario.jornada` es la fuente
+de verdad para completar la nomina sin novedades, distribuir trabajo temporal y
+calcular la tarja; las horas explicitas de cada novedad se conservan. No duplicar
+defaults ni recalcular una jornada persistida desde la fecha. El encabezado de
+carga muestra esa jornada debajo de la obra; para un parte aun no persistido usa
+el valor calculado para su fecha. Al guardar, la jornada elegida se persiste y es
+la referencia para normalizar nuevas novedades, validar jornadas parciales y
+distribuir horas de trabajo temporal; las horas particulares ya cargadas se conservan.
+Si la obra cabecera tiene `Proyecto.generico=true`, el encabezado agrega debajo de
+la jornada el proyecto asociado por `ParteDiario.generico_proyecto_id`; mientras no
+exista una asociacion muestra `Proyecto: Sin asignar`. Luego de resolver obra y fecha,
+el agente abre automaticamente `carga_proyecto`, lista proyectos activos distintos de
+la cabecera y acepta numero o nombre. La seleccion queda en el borrador y se valida y
+persiste al guardar el parte.
 `modo_apertura` conserva el recorrido elegido, sin reemplazar `etapa`:
 - `diario`: iniciado con `REPORTAR`, abre el habil anterior en borrador (vacio si no
   existe, sin declarar todos presentes). Si ya esta confirmado/cerrado, abre hoy.

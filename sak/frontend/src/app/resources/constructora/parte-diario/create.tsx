@@ -2,7 +2,8 @@
 
 import { Create, type CreateProps as BaseCreateProps } from "@/components/create";
 import { Badge } from "@/components/ui/badge";
-import { NotebookPen } from "lucide-react";
+import { Loader2, NotebookPen } from "lucide-react";
+import { useGetList } from "ra-core";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ParteDiarioForm } from "./form";
 import { ParteDiarioBackButton } from "./navigation-title";
@@ -10,7 +11,10 @@ import {
   PARTE_DIARIO_DEFAULTS,
   getEstadoParteBadgeClass,
   getEstadoParteLabel,
+  getParteDiarioJornadaEsperada,
+  getParteDiarioLicenciaDetalle,
   normalizeParteDiarioPayload,
+  type ParteDiarioLicenciaVigente,
 } from "./model";
 
 type ParteDiarioCreateProps = {
@@ -44,12 +48,43 @@ export const ParteDiarioCreate = ({
   const contactoIdParam = params.get("contacto_id");
   const idproyecto = idproyectoParam ? Number(idproyectoParam) : undefined;
   const contactoId = contactoIdParam ? Number(contactoIdParam) : undefined;
+  const fechaValida = Boolean(fechaParam?.match(/^\d{4}-\d{2}-\d{2}$/));
+  const preloadEnabled = Boolean(
+    Number.isFinite(idproyecto) && idproyecto && fechaValida,
+  );
+  const { data: licenciasVigentes = [], isPending: licenciasPending } =
+    useGetList<ParteDiarioLicenciaVigente>(
+      "parte-diario/licencias-vigentes",
+      {
+        pagination: { page: 1, perPage: 500 },
+        sort: { field: "id", order: "ASC" },
+        filter: {
+          idproyecto,
+          ...(contactoId ? { contacto_id: contactoId } : {}),
+          fecha: fechaParam,
+        },
+      },
+      { enabled: preloadEnabled },
+    );
   const defaultValues = {
     ...PARTE_DIARIO_DEFAULTS,
     ...(Number.isFinite(idproyecto) && idproyecto ? { idproyecto } : {}),
     ...(Number.isFinite(contactoId) && contactoId ? { contacto_id: contactoId } : {}),
     ...(fechaParam ? { fecha: fechaParam } : {}),
+    ...(fechaParam ? { jornada: getParteDiarioJornadaEsperada(fechaParam) } : {}),
+    ...(preloadEnabled && !licenciasPending
+      ? { detalles: licenciasVigentes.map(getParteDiarioLicenciaDetalle) }
+      : {}),
   };
+
+  if (preloadEnabled && licenciasPending) {
+    return (
+      <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Cargando novedades y licencias...
+      </div>
+    );
+  }
 
   return (
     <Create

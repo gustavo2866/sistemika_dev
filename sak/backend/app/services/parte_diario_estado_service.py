@@ -9,18 +9,19 @@ from app.models.parte_diario_estado import ParteDiarioEstado
 class ParteDiarioEstadoSeed:
     abreviatura: str
     nombre: str
+    licencia: bool = False
 
 
 DEFAULT_PARTE_DIARIO_ESTADOS = (
-    ParteDiarioEstadoSeed("P", "PRESENTE"),
-    ParteDiarioEstadoSeed("ENF", "ENFERMEDAD"),
-    ParteDiarioEstadoSeed("ACC", "ACCIDENTE"),
-    ParteDiarioEstadoSeed("FAL", "FALTA"),
-    ParteDiarioEstadoSeed("VAC", "VACACIONES"),
-    ParteDiarioEstadoSeed("FER", "FERIADO"),
-    ParteDiarioEstadoSeed("PER", "PERMISO"),
-    ParteDiarioEstadoSeed("LLV", "LLUVIA"),
-    ParteDiarioEstadoSeed("BAJ", "BAJA"),
+    ParteDiarioEstadoSeed("P", "PRESENTE", licencia=False),
+    ParteDiarioEstadoSeed("ENF", "ENFERMEDAD", licencia=True),
+    ParteDiarioEstadoSeed("ACC", "ACCIDENTE", licencia=True),
+    ParteDiarioEstadoSeed("FAL", "FALTA", licencia=False),
+    ParteDiarioEstadoSeed("VAC", "VACACIONES", licencia=True),
+    ParteDiarioEstadoSeed("FER", "FERIADO", licencia=False),
+    ParteDiarioEstadoSeed("PER", "PERMISO", licencia=False),
+    ParteDiarioEstadoSeed("LLV", "LLUVIA", licencia=False),
+    ParteDiarioEstadoSeed("BAJ", "BAJA", licencia=False),
 )
 
 
@@ -41,6 +42,7 @@ def seed_parte_diario_estados(session: Session) -> int:
                 nombre=item.nombre,
                 activo=True,
                 justifica=False,
+                licencia=item.licencia,
             )
         )
         inserted += 1

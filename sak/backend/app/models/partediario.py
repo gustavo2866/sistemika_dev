@@ -11,7 +11,9 @@ from .base import Base
 if TYPE_CHECKING:
     from .crm.contacto import CRMContacto
     from .nomina import Nomina
+    from .nomina_licencia import NominaLicencia
     from .parte_diario_estado import ParteDiarioEstado
+    from .proyecto import Proyecto
 
 
 class EstadoParteDiario(str, Enum):
@@ -48,6 +50,12 @@ class ParteDiario(Base, table=True):
         foreign_key="proyectos.id",
         description="Proyecto asociado al parte diario",
     )
+    generico_proyecto_id: Optional[int] = Field(
+        default=None,
+        foreign_key="proyectos.id",
+        index=True,
+        description="Proyecto genérico asociado al parte diario cuando corresponde",
+    )
     contacto_id: Optional[int] = Field(
         default=None,
         foreign_key="crm_contactos.id",
@@ -55,6 +63,11 @@ class ParteDiario(Base, table=True):
     )
     fecha: date = Field(
         description="Fecha del parte diario",
+    )
+    jornada: Decimal = Field(
+        default=Decimal("9.00"),
+        sa_column=Column(DECIMAL(5, 2), nullable=False, server_default="9"),
+        description="Cantidad de horas ordinarias esperadas para ese día del parte (9h en semana, 6h en sábado, 0h en domingo)",
     )
     estado: EstadoParteDiario = Field(
         default=EstadoParteDiario.BORRADOR,
@@ -77,6 +90,11 @@ class ParteDiario(Base, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     contacto: Optional["CRMContacto"] = Relationship()
+    generico_proyecto: Optional["Proyecto"] = Relationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[ParteDiario.generico_proyecto_id]",
+        }
+    )
 
     def __str__(self) -> str:  # pragma: no cover
         return f"ParteDiario(id={self.id}, proyecto={self.idproyecto}, fecha={self.fecha})"
@@ -119,6 +137,12 @@ class ParteDiarioDetalle(Base, table=True):
         foreign_key="parte_diario_estados.id",
         description="Estado del empleado en el parte (presente, enfermedad, etc.)",
     )
+    nomina_licencia_id: Optional[int] = Field(
+        default=None,
+        foreign_key="nomina_licencias.id",
+        index=True,
+        description="Referencia a la licencia asociada a esta novedad del parte diario",
+    )
     ingreso: Optional[datetime] = Field(
         default=None,
         description="Hora de ingreso del empleado",
@@ -141,6 +165,7 @@ class ParteDiarioDetalle(Base, table=True):
     parte_diario: "ParteDiario" = Relationship(back_populates="detalles")
     nomina: Optional["Nomina"] = Relationship()
     estado: Optional["ParteDiarioEstado"] = Relationship()
+    nomina_licencia: Optional["NominaLicencia"] = Relationship()
 
     def __str__(self) -> str:  # pragma: no cover
         return f"ParteDiarioDetalle(id={self.id}, parte_diario_id={self.parte_diario_id}, idnomina={self.idnomina})"

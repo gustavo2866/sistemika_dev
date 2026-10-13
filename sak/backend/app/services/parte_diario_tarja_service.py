@@ -6,14 +6,13 @@ import json
 
 from sqlmodel import Session, select
 
-from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable
 from app.models.nomina import Nomina
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDetalle
 from app.models.proyecto import Proyecto
 from app.models.tarja import EstadoTarja, Tarja, TarjaDetalle, TarjaNomina
 from app.utils.quincenas import get_quincena_range
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_esperada, get_jornada_parte
 
 
 ALTA_ESTADO_CODIGO = "ALT"
@@ -322,24 +321,38 @@ class ParteDiarioTarjaService:
 
         self._clear_tarja(session, int(tarja.id))
 
-        parte_detalles = session.exec(
-            select(ParteDiarioDetalle, ParteDiario.fecha)
-            .join(ParteDiario)
+        partes = session.exec(
+            select(ParteDiario)
             .where(ParteDiario.idproyecto == idproyecto)
             .where(ParteDiario.fecha >= fechainicio)
             .where(ParteDiario.fecha <= fechafinal)
             .where(ParteDiario.deleted_at.is_(None))
-            .where(ParteDiarioDetalle.deleted_at.is_(None))
             .where(
                 ParteDiario.contacto_id == contacto_id
                 if contacto_id is not None
                 else ParteDiario.contacto_id.is_(None)
             )
         ).all()
+        partes_by_id = {
+            int(parte.id): parte for parte in partes if parte.id is not None
+        }
+        parte_detalles = (
+            session.exec(
+                select(ParteDiarioDetalle)
+                .where(ParteDiarioDetalle.parte_diario_id.in_(partes_by_id))
+                .where(ParteDiarioDetalle.deleted_at.is_(None))
+            ).all()
+            if partes_by_id
+            else []
+        )
         detalles_by_fecha_nomina = {
-            (parte_fecha, detalle.idnomina): detalle
-            for detalle, parte_fecha in parte_detalles
+            (partes_by_id[int(detalle.parte_diario_id)].fecha, detalle.idnomina): detalle
+            for detalle in parte_detalles
             if detalle.idnomina is not None
+        }
+        jornadas_by_fecha = {
+            parte.fecha: get_jornada_parte(parte.fecha, parte.jornada)
+            for parte in partes
         }
 
         nominas_by_id: dict[int, Nomina] = {}
@@ -353,7 +366,11 @@ class ParteDiarioTarjaService:
                 if nomina.id is not None:
                     nominas_by_id[int(nomina.id)] = nomina
                 detalle = detalles_by_fecha_nomina.get((current_date, nomina.id))
-                if detalle is None and not es_dia_laborable(current_date):
+                jornada = jornadas_by_fecha.get(
+                    current_date,
+                    get_jornada_esperada(current_date),
+                )
+                if detalle is None and jornada <= 0:
                     continue
                 self.agregar_tarja_detalle(
                     session,
@@ -361,7 +378,7 @@ class ParteDiarioTarjaService:
                     nomina_id=int(nomina.id),
                     fecha=current_date,
                     estado_id=detalle.idestado if detalle else presente.id,
-                    horas=detalle.horas if detalle else get_jornada_esperada(current_date),
+                    horas=detalle.horas if detalle else jornada,
                     descripcion=detalle.descripcion if detalle else None,
                     parte_diario_detalle_id=(
                         int(detalle.id) if detalle and detalle.id is not None else None
@@ -477,7 +494,7 @@ class ParteDiarioTarjaService:
             es_traspaso = detalle.id is not None and int(detalle.id) in traspaso_detalle_ids
             detalle_estado_id = presente.id if es_alta else detalle.idestado
             detalle_horas = (
-                get_jornada_esperada(parte.fecha)
+                get_jornada_parte(parte.fecha, parte.jornada)
                 if es_alta
                 else Decimal("0")
                 if es_baja or es_traspaso
@@ -526,7 +543,8 @@ class ParteDiarioTarjaService:
                 presente_id=int(presente.id),
             )
 
-        if es_dia_laborable(parte.fecha):
+        jornada_parte = get_jornada_parte(parte.fecha, parte.jornada)
+        if jornada_parte > 0:
             for nomina in nominas:
                 if nomina.id in detalles_by_nomina:
                     continue
@@ -536,7 +554,7 @@ class ParteDiarioTarjaService:
                     nomina_id=int(nomina.id),
                     fecha=parte.fecha,
                     estado_id=presente.id,
-                    horas=get_jornada_esperada(parte.fecha),
+                    horas=jornada_parte,
                     descripcion=None,
                     parte_diario_detalle_id=None,
                 )
@@ -1139,6 +1157,13 @@ class ParteDiarioTarjaService:
         ).all()
         fechas = {parte.fecha}
         fechas.update(confirmed.fecha for confirmed in partes_confirmados)
+        jornadas_by_fecha = {
+            confirmed.fecha: get_jornada_parte(
+                confirmed.fecha,
+                confirmed.jornada,
+            )
+            for confirmed in partes_confirmados
+        }
         existing_dates = {
             detalle.fecha
             for detalle in session.exec(
@@ -1159,7 +1184,7 @@ class ParteDiarioTarjaService:
                 nomina_id=nomina_id,
                 fecha=fecha,
                 estado_id=presente_id,
-                horas=get_jornada_esperada(fecha),
+                horas=jornadas_by_fecha.get(fecha, get_jornada_esperada(fecha)),
                 descripcion=descripcion,
                 parte_diario_detalle_id=parte_diario_detalle_id,
             )
@@ -1304,7 +1329,11 @@ class ParteDiarioTarjaService:
                 if key in existing_keys:
                     continue
                 detalle = detalles_by_parte_nomina.get((int(confirmed_parte.id), nomina_id))
-                if detalle is None and not es_dia_laborable(confirmed_parte.fecha):
+                jornada_parte = get_jornada_parte(
+                    confirmed_parte.fecha,
+                    confirmed_parte.jornada,
+                )
+                if detalle is None and jornada_parte <= 0:
                     continue
                 es_inicio = (
                     detalle is not None
@@ -1312,7 +1341,7 @@ class ParteDiarioTarjaService:
                     and int(detalle.id) in inicio_detalle_ids
                 )
                 detalle_estado_id = presente_id
-                detalle_horas = get_jornada_esperada(confirmed_parte.fecha)
+                detalle_horas = jornada_parte
                 detalle_descripcion = None
                 if detalle is not None and not es_inicio:
                     detalle_estado_id = detalle.idestado
@@ -1699,6 +1728,19 @@ class ParteDiarioTarjaService:
             for registro, registro_tarja in registros
         )
 
+        jornadas_by_scope = {
+            (int(parte.idproyecto), parte.contacto_id, parte.fecha): get_jornada_parte(
+                parte.fecha,
+                parte.jornada,
+            )
+            for parte in session.exec(
+                select(ParteDiario)
+                .where(ParteDiario.fecha >= detalle_desde)
+                .where(ParteDiario.fecha <= detalle_hasta)
+                .where(ParteDiario.deleted_at.is_(None))
+            ).all()
+        }
+
         detalles = session.exec(
             select(TarjaDetalle, ParteDiarioEstado)
             .outerjoin(ParteDiarioEstado, ParteDiarioEstado.id == TarjaDetalle.idestado)
@@ -1728,7 +1770,14 @@ class ParteDiarioTarjaService:
             horas_justificadas = Decimal("0")
 
             for current_date in self._iter_dates(desde, hasta):
-                jornada = get_jornada_esperada(current_date)
+                jornada = jornadas_by_scope.get(
+                    (
+                        int(registro_tarja.idproyecto),
+                        registro_tarja.contacto_id,
+                        current_date,
+                    ),
+                    get_jornada_esperada(current_date),
+                )
                 if jornada <= 0:
                     continue
                 horas_laborales += jornada

@@ -24,6 +24,7 @@ export type ParteDiarioEstado = {
   nombre: string;
   activo: boolean;
   justifica: boolean;
+  licencia: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -34,6 +35,7 @@ export const parteDiarioEstadoSchema = z.object({
   nombre: z.string().min(1).max(VALIDATION_RULES.NOMBRE.MAX_LENGTH),
   activo: booleanFromInput,
   justifica: booleanFromInput,
+  licencia: booleanFromInput,
 });
 
 export type ParteDiarioEstadoFormValues = z.infer<typeof parteDiarioEstadoSchema>;
@@ -43,6 +45,7 @@ export const PARTE_DIARIO_ESTADO_DEFAULT: ParteDiarioEstadoFormValues = {
   nombre: "",
   activo: true,
   justifica: false,
+  licencia: false,
 };
 
 export const normalizeParteDiarioEstadoPayload = (data: unknown) => {
@@ -57,6 +60,7 @@ export const normalizeParteDiarioEstadoPayload = (data: unknown) => {
   }
   payload.activo = Boolean(payload.activo);
   payload.justifica = Boolean(payload.justifica);
+  payload.licencia = Boolean(payload.licencia);
 
   return payload;
 };

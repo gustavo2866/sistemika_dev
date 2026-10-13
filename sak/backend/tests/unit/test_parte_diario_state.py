@@ -36,6 +36,10 @@ def test_borrador_roundtrip_y_copia_independiente():
     )
     draft = ParteDiarioDraft(
         oportunidad_id=1, idproyecto=2, contacto_id=3, fecha="2026-09-11",
+        jornada=7.5,
+        proyecto_generico=True,
+        generico_proyecto_id=20,
+        generico_proyecto_nombre="Centro Industrial",
         novedades=[novedad], novedades_internas=[interna], pendientes_ambiguos=[pendiente],
         conflictos_novedad=[ConflictoNovedad(10, "Medina", [novedad])],
         fecha_propuesta="2026-09-10",
@@ -58,6 +62,7 @@ def test_conversacion_roundtrip_con_menus_y_retorno():
         nombre_obra="Francia", validacion_origen="listado", asistencia_offset=20,
         salida_origen="carga_validar_empleado", fecha_siguiente="2026-09-12",
         opciones_obra=[ParteDiarioOption(1, "Francia", 3, 1, 2)],
+        opciones_proyecto=[DestinoProyectoOption(1, 20, "Centro Industrial")],
         opciones_fecha=[ParteDiarioFechaOption(1, "2026-09-11", "BORRADOR", 4)],
         asistencia_opciones=[ParteDiarioAsistenciaOption(21, 10, "Juan", "Perez")],
         asistencia_catalogo=[
@@ -89,6 +94,10 @@ def test_aclaracion_roundtrip():
 @pytest.mark.parametrize("etapa", get_args(ParteDiarioStage))
 def test_etapa_es_preservada(etapa):
     assert ParteDiarioV3State.from_dict({"etapa": etapa}).etapa == etapa
+
+
+def test_estado_anterior_de_todos_vuelve_a_carga():
+    assert ParteDiarioV3State.from_dict({"etapa": "carga_todos"}).etapa == "carga"
 
 
 # Impide reintroducir los campos y controles retirados en los contratos activos.

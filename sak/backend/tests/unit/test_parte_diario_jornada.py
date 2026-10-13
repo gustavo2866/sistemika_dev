@@ -7,13 +7,14 @@ import pytest
 from sqlmodel import select
 
 from app.models import ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, ProyectoEncargado
+from app.routers.partediario_router import parte_diario_crud
 from app.services.parte_diario_service import (
     ParteDiarioService,
     _destination_hours,
     _destination_work_hours,
     _provisional_hours,
 )
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_esperada, get_jornada_parte
 from agente.v3.subprocesses.parte_diario.domain import novedades
 from agente.v3.subprocesses.parte_diario.domain.models import PendienteAmbiguo
 from agente.v3.subprocesses.parte_diario.domain.parte_diario import ParteDiarioQueryService
@@ -29,6 +30,99 @@ def test_jornada_semanal(dia, horas):
     fecha = date(2026, 9, 7) + timedelta(days=dia)
     assert get_jornada_esperada(fecha) == Decimal(horas)
     assert get_jornada_esperada(fecha.isoformat()) == Decimal(horas)
+
+
+@pytest.mark.parametrize(
+    "fecha,horas",
+    [("2026-09-11", 9), ("2026-09-12", 6), ("2026-09-13", 0)],
+)
+def test_crud_asigna_jornada_al_crear_parte(datos, db_session, fecha, horas):
+    parte = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": datos.obra.proyecto_id,
+            "contacto_id": datos.obra.contacto_id,
+            "fecha": fecha,
+            "estado": "borrador",
+            "detalles": [],
+        },
+    )
+
+    assert parte.jornada == Decimal(horas)
+
+
+def test_crud_conserva_jornada_informada_al_crear_parte(datos, db_session):
+    parte = parte_diario_crud.create(
+        db_session,
+        {
+            "idproyecto": datos.obra.proyecto_id,
+            "contacto_id": datos.obra.contacto_id,
+            "fecha": "2026-09-11",
+            "jornada": "7.5",
+            "estado": "borrador",
+            "detalles": [],
+        },
+    )
+
+    assert parte.jornada == Decimal("7.50")
+    assert get_jornada_parte(parte.fecha, parte.jornada) == Decimal("7.50")
+
+
+def test_distribucion_manual_usa_jornada_informada():
+    assert _destination_work_hours(
+        {"estado_codigo": "P", "fuera_de_proyecto": True, "horas": 3},
+        "2026-09-11",
+        jornada="7.5",
+    ) == (4.5, 3)
+
+
+def test_defaults_y_validaciones_usan_jornada_informada():
+    assert novedades.normalizar_horas(
+        fecha="2026-09-11",
+        jornada=8,
+        horas=None,
+        horas_extra=None,
+        estado_codigo="P",
+        fuera_de_proyecto=False,
+    ) == 8
+    assert novedades.normalizar_horas(
+        fecha="2026-09-11",
+        jornada=8,
+        horas=None,
+        horas_extra=2,
+        estado_codigo="P",
+        fuera_de_proyecto=False,
+    ) == 10
+    item = dict(idnomina=1, idestado=1, horas=8)
+    ParteDiarioService._validate_novedades(
+        [item],
+        fecha=date(2026, 9, 11),
+        jornada=8,
+        present_id=1,
+        require_close_rules=True,
+    )
+    item["horas"] = 7
+    with pytest.raises(ValueError, match="al menos 8 horas"):
+        ParteDiarioService._validate_novedades(
+            [item],
+            fecha=date(2026, 9, 11),
+            jornada=8,
+            present_id=1,
+            require_close_rules=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_comando_jornada_se_persiste_al_guardar(datos, db_session):
+    process = proceso(FakeLLM())
+
+    result = await process.handle(turno("jornada 8hs"), contexto(datos.obra))
+    result = await process.handle(turno("listo"), result.context)
+    result = await process.handle(turno("1"), result.context)
+
+    parte = db_session.exec(select(ParteDiario)).one()
+    assert parte.jornada == Decimal("8")
+    assert result.metadata["result"]["jornada"] == 8
 
 
 # Todos los defaults usan la misma base, sin alterar horas explicitas ni ausencias.
@@ -123,6 +217,7 @@ async def test_transferencia_default_hasta_guardado(datos, db_session, fecha, ba
     por_obra = {parte.idproyecto: detalle.horas for parte, detalle in rows}
     assert por_obra == {datos.obra.proyecto_id: 0, datos.destino.id: base}
     assert all(parte.fecha.isoformat() == fecha for parte, _ in rows)
+    assert all(parte.jornada == Decimal(base) for parte, _ in rows)
 
 
 # Las horas indicadas se conservan; solo el remanente en origen depende de la jornada.

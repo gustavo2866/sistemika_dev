@@ -51,11 +51,16 @@ class ProyectoCRUD(NestedCRUD):
         if not proyecto.oportunidad_id:
             raise ValueError("El proyecto no tiene oportunidad asociada para sincronizar encargado")
 
-        contacto = self._get_encargado_contacto(session, contacto_id)
         oportunidad = session.get(CRMOportunidad, proyecto.oportunidad_id)
         if oportunidad is None or getattr(oportunidad, "deleted_at", None) is not None:
             raise ValueError(f"Oportunidad {proyecto.oportunidad_id} no encontrada")
+        # Los proyectos historicos pueden conservar una oportunidad vinculada a un
+        # contacto dado de baja. Si el formulario reenvia el mismo valor, no se trata
+        # de una reasignacion y no debe bloquear la actualizacion de otros campos.
+        if oportunidad.contacto_id == contacto_id:
+            return
 
+        contacto = self._get_encargado_contacto(session, contacto_id)
         oportunidad.contacto_id = contacto.id
         session.add(oportunidad)
         proyecto.oportunidad = oportunidad

@@ -19,6 +19,7 @@ from app.models import (
     ParteDiario,
     ParteDiarioDetalle,
     ParteDiarioEstado,
+    Proyecto,
 )
 from app.services.parte_diario_service import parte_diario_service
 from tests.unit.test_parte_diario_carga_flow import FakeLLM, datos, estado, plan, proceso
@@ -69,6 +70,28 @@ async def test_revision_persiste_parte_detalle_y_mensaje(datos, db_session, fech
     )
     assert result.reply_text == f"{resultado}\nObra: Francia\nFecha: {fecha}"
     assert len(llm.calls) == 1
+
+
+# El proyecto elegido en el modo de obra generica llega hasta la persistencia.
+@pytest.mark.asyncio
+async def test_revision_persiste_proyecto_asociado_de_obra_generica(datos, db_session):
+    obra = db_session.get(Proyecto, datos.obra.proyecto_id)
+    obra.generico = True
+    db_session.add(obra)
+    db_session.commit()
+    process = proceso(FakeLLM())
+    menu = await process.handle(
+        turno("reportar"),
+        V3ConversationContext(conversation_id="conv"),
+    )
+    selected = await process.handle(turno("1"), menu.context)
+    review = await process.handle(turno("no"), selected.context)
+
+    result = await process.handle(turno("guardar"), review.context)
+
+    saved = db_session.exec(select(ParteDiario)).one()
+    assert saved.generico_proyecto_id == datos.destino.id
+    assert result.metadata["result"]["generico_proyecto_id"] == datos.destino.id
 
 
 # Volver a carga conserva las novedades y permite corregir antes de confirmar.

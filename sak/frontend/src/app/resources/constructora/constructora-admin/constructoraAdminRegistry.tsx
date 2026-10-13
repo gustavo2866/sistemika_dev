@@ -17,6 +17,11 @@ import {
   NominaList,
 } from "@/app/resources/administracion/nomina";
 import {
+  NominaLicenciaCreate,
+  NominaLicenciaEdit,
+  NominaLicenciaList,
+} from "@/app/resources/administracion/nomina-licencias";
+import {
   CRMContactoCreate,
   CRMContactoEdit,
   CRMContactoList,
@@ -81,6 +86,15 @@ export const CONSTRUCTORA_ADMIN_ITEMS: SetupItem[] = [
     listComponent: NominaList,
     createComponent: NominaCreate,
     editComponent: NominaEdit,
+  },
+  {
+    key: "nomina-licencias",
+    label: "Licencias de nómina",
+    description: "Administra licencias y novedades del personal.",
+    resource: "nomina-licencias",
+    listComponent: NominaLicenciaList,
+    createComponent: NominaLicenciaCreate,
+    editComponent: NominaLicenciaEdit,
   },
 ];
 

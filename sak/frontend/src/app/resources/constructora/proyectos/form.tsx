@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { SimpleForm } from "@/components/simple-form";
 import { NumberField } from "@/components/number-field";
 import {
+  FormBoolean,
   FormDate,
   FormErrorSummary,
   FormOrderToolbar,
@@ -636,6 +637,9 @@ const ProyectoCabeceraOptionalFields = () => (
           step="0.01"
           widthClass="w-full"
         />
+        <div className="flex items-center md:col-span-1">
+          <FormBoolean source="generico" label="Genérico" defaultValue={false} />
+        </div>
         <FormTextarea
           source="comentario"
           label="Comentario"

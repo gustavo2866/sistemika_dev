@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useDataProvider, useNotify } from "ra-core";
+import { useNotify } from "ra-core";
 import {
   ArrowLeft,
+  CalendarOff,
   CheckCircle2,
   FileClock,
   FileQuestion,
@@ -128,6 +129,7 @@ type TarjaDetalleCell = {
   estado?: string | null;
   estado_nombre?: string | null;
   descripcion?: string | null;
+  obra_exportacion?: string | null;
 };
 
 type TarjaNovedadSummary = {
@@ -192,7 +194,6 @@ type PremioTarget = {
 };
 
 const EXECUTION_PROJECT_ESTADO = "02-ejecucion";
-const TEST_CHAT_CONTACT_NAME = "Gustavo test";
 const allDayKeys = Array.from(
   { length: 16 },
   (_, index) => `D${String(index + 1).padStart(2, "0")}` as DayKey,
@@ -201,6 +202,60 @@ const isDayKey = (value: unknown): value is DayKey =>
   typeof value === "string" && allDayKeys.includes(value as DayKey);
 const getVisibleDayKeys = (rows: TarjaDetalleExportRow[]) =>
   allDayKeys.filter((key) => key !== "D16" || rows.some((row) => row.D16 !== undefined));
+
+const splitTarjaDetalleExportRowByProject = (
+  row: TarjaDetalleExportRow,
+): TarjaDetalleExportRow[] => {
+  const groups = new Map<string, DayKey[]>();
+  allDayKeys.forEach((key) => {
+    const cell = row[key];
+    if (cell?.horas == null && !cell?.estado && !cell?.descripcion) return;
+    const projectName = cell?.obra_exportacion?.trim() || row.proyecto_nombre;
+    const current = groups.get(projectName) ?? [];
+    current.push(key);
+    groups.set(projectName, current);
+  });
+  if (groups.size === 0) return [row];
+  return Array.from(groups.entries()).map(([projectName, keys], index) => {
+    const grouped = {
+      ...row,
+      id: `${row.id}:${projectName}`,
+      proyecto_nombre: projectName,
+      tarja_premio: index === 0 ? row.tarja_premio : false,
+      tarja_viaticos: index === 0 ? row.tarja_viaticos : false,
+      novedad: row.novedad
+        ? {
+            ...row.novedad,
+            horas_trabajadas: keys.reduce((total, key) => {
+              const hours = Number(row[key]?.horas ?? 0);
+              return total + (Number.isFinite(hours) ? hours : 0);
+            }, 0),
+            ...(index === 0
+              ? {}
+              : {
+                  horas_justificadas: 0,
+                  horas_liquidadas: 0,
+                  presentismo: false,
+                  presentismo_autorizado: false,
+                  presentismo_efectivo: false,
+                  presentismo_importe: 0,
+                  adicional_importe: 0,
+                  premio_importe: 0,
+                  viatico_importe: 0,
+                  sueldo_importe: 0,
+                  cargas_importe: 0,
+                  mejora_importe: 0,
+                  observaciones: null,
+                }),
+          }
+        : null,
+    } as TarjaDetalleExportRow;
+    allDayKeys.forEach((key) => {
+      if (!keys.includes(key)) delete grouped[key];
+    });
+    return grouped;
+  });
+};
 
 const buildAuthHeaders = () => {
   const headers = new Headers({
@@ -644,13 +699,15 @@ const fetchPanelRowExportRows = async (row: PanelRow): Promise<TarjaDetalleExpor
   const tarja = row.tarja;
   if (!tarja?.id) return [];
   const detalleRows = await fetchTarjaDetalleRows(Number(tarja.id));
-  return detalleRows.map((detalleRow) => ({
-    ...detalleRow,
-    proyecto_nombre: row.proyecto_nombre,
-    encargado: row.encargado ?? "Sin encargado",
-    tarja_premio: tarja.premio_tarja ?? false,
-    tarja_viaticos: tarja.viaticos ?? false,
-  }));
+  return detalleRows.flatMap((detalleRow) =>
+    splitTarjaDetalleExportRowByProject({
+      ...detalleRow,
+      proyecto_nombre: row.proyecto_nombre,
+      encargado: row.encargado ?? "Sin encargado",
+      tarja_premio: tarja.premio_tarja ?? false,
+      tarja_viaticos: tarja.viaticos ?? false,
+    }),
+  );
 };
 
 const buildSafeFilename = (value: string) =>
@@ -865,6 +922,8 @@ const BonosCell = ({ tarja }: { tarja?: PanelTarja | null }) => {
 const RowActions = ({
   row,
   returnTo,
+  licenciaDesde,
+  licenciaHasta,
   onAction,
   onOpenPremio,
   onOpenDetalle,
@@ -874,6 +933,8 @@ const RowActions = ({
 }: {
   row: PanelRow;
   returnTo: string;
+  licenciaDesde: string;
+  licenciaHasta: string;
   onAction: (target: ActionTarget) => void;
   onOpenPremio: (row: PanelRow) => void;
   onOpenDetalle: (row: PanelRow) => void;
@@ -905,6 +966,18 @@ const RowActions = ({
     return null;
   })();
   const hasAgentPhone = Boolean(row.encargado_telefono?.trim());
+  const licenciasFilter: Record<string, number | string> = {
+    "nomina.idproyecto": row.proyecto_id,
+    vigente_desde: licenciaDesde,
+    vigente_hasta: licenciaHasta,
+  };
+  if (row.contacto_id) {
+    licenciasFilter["nomina.encargado_contacto_id"] = row.contacto_id;
+  }
+  const licenciasParams = new URLSearchParams({
+    filter: JSON.stringify(licenciasFilter),
+    returnTo,
+  });
 
   return (
     <div className="flex w-[56px] items-center justify-end gap-1">
@@ -931,6 +1004,14 @@ const RowActions = ({
           <DropdownMenuItem onSelect={() => onOpenPremio(row)}>
             <Trophy className="mr-2 size-3.5" />
             Bonos
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link
+              to={`/constructora-admin/nomina-licencias?${licenciasParams.toString()}`}
+            >
+              <CalendarOff className="mr-2 size-3.5" />
+              Licencias
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!row.tarja?.id || exportLoading}
@@ -1006,7 +1087,6 @@ export const TarjaPanel = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const notify = useNotify();
-  const dataProvider = useDataProvider();
   const [searchParams, setSearchParams] = useSearchParams();
   const todayIso = useMemo(() => toISODate(new Date()), []);
   const [panel, setPanel] = useState<TarjaPanelResponse | null>(null);
@@ -1018,7 +1098,6 @@ export const TarjaPanel = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportingRowId, setExportingRowId] = useState<string | null>(null);
-  const [openingTestChat, setOpeningTestChat] = useState(false);
   const [openingDetalleRowId, setOpeningDetalleRowId] = useState<string | null>(null);
   const [premioTarget, setPremioTarget] = useState<PremioTarget | null>(null);
   const [premioValue, setPremioValue] = useState(false);
@@ -1034,43 +1113,6 @@ export const TarjaPanel = () => {
   const selectedEncargado = searchParams.get("contacto_id");
   const selectedProjectEstado = searchParams.get("estado") ?? EXECUTION_PROJECT_ESTADO;
   const returnTo = `${location.pathname}${location.search}`;
-
-  const handleOpenTestChat = async () => {
-    setOpeningTestChat(true);
-    try {
-      const { data } = await dataProvider.getList<{
-        id: number;
-        nombre_completo: string;
-        telefonos?: string[] | null;
-      }>("crm/contactos", {
-        filter: { q: TEST_CHAT_CONTACT_NAME },
-        pagination: { page: 1, perPage: 100 },
-        sort: { field: "id", order: "ASC" },
-      });
-      const contacts = data.filter(
-        (contact) => contact.nombre_completo.trim().toLowerCase() === TEST_CHAT_CONTACT_NAME.toLowerCase(),
-      );
-      if (contacts.length !== 1) {
-        throw new Error(`No se pudo identificar un unico contacto ${TEST_CHAT_CONTACT_NAME}.`);
-      }
-      const contact = contacts[0];
-      const phone = contact.telefonos?.find((value) => value?.trim())?.replace(/\D/g, "");
-      if (!phone) {
-        throw new Error(`El contacto ${TEST_CHAT_CONTACT_NAME} no tiene telefono.`);
-      }
-      const params = new URLSearchParams({
-        from_name: contact.nombre_completo,
-        from_phone: phone,
-      });
-      navigate(`/agente-chat?${params.toString()}`, { state: { returnTo } });
-    } catch (chatError) {
-      notify(chatError instanceof Error ? chatError.message : "No se pudo abrir el chat de prueba.", {
-        type: "warning",
-      });
-    } finally {
-      setOpeningTestChat(false);
-    }
-  };
 
   useEffect(() => {
     if (fechaParam === startIso) return;
@@ -1483,6 +1525,34 @@ export const TarjaPanel = () => {
 
       <div className="my-3 flex flex-wrap items-center justify-between gap-3">
         <TarjaPanelTitle onBack={handleBack} />
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-[11px]"
+            onClick={() => void handleExport()}
+            disabled={loading || exportLoading}
+          >
+            {exportLoading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Download className="size-3.5" />
+            )}
+            Exportar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-[11px]"
+            title="Licencias de nómina"
+            onClick={() => navigate("/constructora-admin/nomina-licencias")}
+          >
+            <CalendarOff className="size-3.5" />
+            Licencias
+          </Button>
+        </div>
       </div>
 
       <div className="mb-3 rounded-lg bg-muted/30 px-2 pb-2 pt-4">
@@ -1544,29 +1614,6 @@ export const TarjaPanel = () => {
               </select>
             </label>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto h-8 px-2 text-[11px]"
-            onClick={() => void handleExport()}
-            disabled={loading || exportLoading}
-          >
-            {exportLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-            Exportar
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 px-2 text-[11px]"
-            title="Chat con Gustavo test"
-            onClick={() => void handleOpenTestChat()}
-            disabled={openingTestChat}
-          >
-            {openingTestChat ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-            IA
-          </Button>
         </div>
       </div>
 
@@ -1643,6 +1690,8 @@ export const TarjaPanel = () => {
                       <RowActions
                         row={row}
                         returnTo={returnTo}
+                        licenciaDesde={startIso}
+                        licenciaHasta={endIso}
                         onAction={setActionTarget}
                         onOpenPremio={(targetRow) => void handleOpenPremio(targetRow)}
                         onOpenDetalle={handleOpenDetalle}

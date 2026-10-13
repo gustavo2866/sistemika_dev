@@ -426,7 +426,11 @@ async def _resolver_seleccion(
             "El empleado no pertenece a la nomina vigente de esta obra y encargado.",
         )
 
-    pending_error = novedades._validate_pending_business_rules(pending, draft.fecha)
+    pending_error = novedades._validate_pending_business_rules(
+        pending,
+        draft.fecha,
+        jornada=draft.jornada,
+    )
     if pending_error:
         pending.idestado = None
         pending.estado_codigo = None

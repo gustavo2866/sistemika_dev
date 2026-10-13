@@ -5,6 +5,10 @@ import { ReferenceField } from "@/components/reference-field";
 import { FilterButton, StyledFilterDiv } from "@/components/filter-form";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Users } from "lucide-react";
+import { useCreatePath, useRecordContext } from "ra-core";
+import { useNavigate } from "react-router-dom";
 import {
   BooleanListColumn,
   DateListColumn,
@@ -16,6 +20,7 @@ import {
   buildListFilters,
 } from "@/components/forms/form_order";
 import { PROYECTO_ESTADO_CHOICES } from "../proyectos/model";
+import type { ProyectoEncargado } from "./model";
 
 const LIST_FILTERS = buildListFilters(
   [
@@ -83,6 +88,45 @@ const ListActions = () => (
     <ExportButton className={ACTION_BUTTON_CLASS} label="Exportar" />
   </div>
 );
+
+const ProyectoEncargadoNominaMenuItem = () => {
+  const record = useRecordContext<ProyectoEncargado>();
+  const createPath = useCreatePath();
+  const navigate = useNavigate();
+
+  const proyectoId = Number(record?.proyecto_id);
+  const contactoId = Number(record?.contacto_id);
+  const disabled =
+    !Number.isInteger(proyectoId) ||
+    proyectoId <= 0 ||
+    !Number.isInteger(contactoId) ||
+    contactoId <= 0;
+
+  const handleClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (disabled) return;
+
+    navigate({
+      pathname: createPath({ resource: "nominas", type: "list" }),
+      search: `filter=${JSON.stringify({
+        idproyecto: proyectoId,
+        encargado_contacto_id: contactoId,
+      })}`,
+    });
+  };
+
+  return (
+    <DropdownMenuItem
+      onClick={handleClick}
+      disabled={disabled}
+      className="gap-1 px-1.5 py-1 text-[8px] sm:text-[10px]"
+    >
+      <Users className="mr-0.5 h-2 w-2 sm:h-2.5 sm:w-2.5" />
+      Nómina
+    </DropdownMenuItem>
+  );
+};
 
 type ProyectoEncargadoListProps = {
   embedded?: boolean;
@@ -173,7 +217,11 @@ export const ProyectoEncargadoList = ({
           </>
         ) : null}
         <TextListColumn label="Acciones" className="w-[56px]">
-          <FormOrderListRowActions showShow={false} />
+          <FormOrderListRowActions
+            showShow={false}
+            extraMenuItems={<ProyectoEncargadoNominaMenuItem />}
+            extraMenuItemsPosition="before"
+          />
         </TextListColumn>
       </ResponsiveDataTable>
     </List>

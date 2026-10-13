@@ -198,7 +198,14 @@ def test_presentismo_usa_estado_justifica_para_completar_la_jornada(db_session):
         idestado=justificado.id,
         horas=Decimal("5"),
     )
-    db_session.add_all([registro, detalle])
+    parte = ParteDiario(
+        idproyecto=data["proyecto"].id,
+        contacto_id=data["contacto"].id,
+        fecha=tarja.fechainicio,
+        jornada=Decimal("7"),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add_all([registro, detalle, parte])
     db_session.flush()
 
     parte_diario_tarja_service.recalcular_resumen_nomina(
@@ -220,8 +227,8 @@ def test_presentismo_usa_estado_justifica_para_completar_la_jornada(db_session):
     db_session.refresh(registro)
 
     assert registro.horas_trabajadas == Decimal("5")
-    assert registro.horas_justificadas == Decimal("4")
-    assert registro.horas_liquidadas == Decimal("9")
+    assert registro.horas_justificadas == Decimal("2")
+    assert registro.horas_liquidadas == Decimal("7")
     assert registro.presentismo is True
 
     tarja_nomina_crud.update(
@@ -236,7 +243,7 @@ def test_presentismo_usa_estado_justifica_para_completar_la_jornada(db_session):
     )
     db_session.refresh(registro)
 
-    assert registro.horas_justificadas == Decimal("4")
+    assert registro.horas_justificadas == Decimal("2")
     assert registro.presentismo is True
 
 
@@ -703,6 +710,7 @@ def test_actualizar_parte_a_confirmado_genera_tarja_detalle_del_dia(db_session):
             "idproyecto": data["proyecto"].id,
             "contacto_id": data["contacto"].id,
             "fecha": "2026-06-24",
+            "jornada": "7",
             "estado": EstadoParteDiario.CONFIRMADO,
             "detalles": [
                 {
@@ -717,6 +725,7 @@ def test_actualizar_parte_a_confirmado_genera_tarja_detalle_del_dia(db_session):
     )
 
     assert updated.estado == EstadoParteDiario.CONFIRMADO
+    assert updated.jornada == Decimal("7.00")
     detalles = db_session.exec(select(TarjaDetalle).order_by(TarjaDetalle.idnomina)).all()
     assert {detalle.idnomina for detalle in detalles} == {
         data["nomina_con_novedad"].id,
@@ -726,7 +735,7 @@ def test_actualizar_parte_a_confirmado_genera_tarja_detalle_del_dia(db_session):
     assert copied.idestado == falta_estado.id
     assert copied.horas == Decimal("0.00")
     default = next(detalle for detalle in detalles if detalle.idnomina == data["nomina_default"].id)
-    assert default.horas == Decimal("9.00")
+    assert default.horas == Decimal("7.00")
 
 
 def test_actualizar_parte_generico_no_valida_nomina_fuera_del_encargado(db_session):

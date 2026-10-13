@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_esperada, get_jornada_parte
 
 from app.models import Nomina, ParteDiarioDetalle
 from agente.v3.subprocesses.parte_diario.utils import calendario
@@ -22,7 +22,15 @@ _INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
 def menu_revision(state) -> str:
     draft = state.draft()
     summary = resumen(draft)
-    if not (draft.novedades or draft.pendientes_ambiguos or draft.conflictos_novedad):
+    tiene_licencias = any(
+        item.nomina_licencia_id is not None for item in draft.novedades_internas
+    )
+    if not (
+        draft.novedades
+        or draft.pendientes_ambiguos
+        or draft.conflictos_novedad
+        or tiene_licencias
+    ):
         summary = "Sin novedades. Todos presentes."
     volver = "Volver al listado" if state.revision_origen == "listado" else "Volver a carga"
     return (f"Resumen del parte\nObra: {state.nombre_obra}\nFecha: {draft.fecha}\n{summary}\n\n"
@@ -40,11 +48,16 @@ def propuesta_continuar(fecha: str) -> str:
 
 
 def resumen(state: ParteDiarioDraft) -> str:
-    if state.sin_novedades_informado and not state.novedades:
+    licencias = [item for item in state.novedades_internas if item.nomina_licencia_id is not None]
+    if state.sin_novedades_informado and not state.novedades and not licencias:
         return "Sin novedades. Todos presentes."
-    if not state.novedades and not state.pendientes_ambiguos:
+    if not state.novedades and not state.pendientes_ambiguos and not licencias:
         return "(sin novedades cargadas)"
     rows = []
+    for novedad in licencias:
+        estado = _state_label(novedad.estado_codigo) or "Licencia"
+        motivo = f", comentario: {novedad.descripcion}" if novedad.descripcion else ""
+        rows.append(f"- {novedad.nombre}: Licencia - {estado}{motivo}")
     for novedad in state.novedades:
         if _is_internal_nomina_state(novedad.estado_codigo):
             continue
@@ -66,12 +79,20 @@ def resumen(state: ParteDiarioDraft) -> str:
         if normalized_name in shown_pending_names:
             continue
         shown_pending_names.add(normalized_name)
-        rows.append(_resumen_pendiente(pending, state.fecha))
+        rows.append(_resumen_pendiente(pending, state.fecha, jornada=state.jornada))
     return "\n".join(rows) if rows else "(sin novedades cargadas)"
 
 
 def resumen_revision(state: ParteDiarioDraft) -> str:
-    if state.sin_novedades_informado and not state.novedades and not state.pendientes_ambiguos:
+    licencias_internas = [
+        item for item in state.novedades_internas if item.nomina_licencia_id is not None
+    ]
+    if (
+        state.sin_novedades_informado
+        and not state.novedades
+        and not state.pendientes_ambiguos
+        and not licencias_internas
+    ):
         return "Sin novedades. Todos presentes."
 
     ausencias: list[str] = []
@@ -80,6 +101,14 @@ def resumen_revision(state: ParteDiarioDraft) -> str:
     otras: list[str] = []
     pendientes: list[str] = []
 
+    for novedad in licencias_internas:
+        ausencias.append(
+            _review_row(
+                _short_person_name(novedad.nombre),
+                f"Licencia - {_state_label(novedad.estado_codigo)}",
+            )
+        )
+
     for novedad in state.novedades:
         if _is_internal_nomina_state(novedad.estado_codigo):
             continue
@@ -87,13 +116,16 @@ def resumen_revision(state: ParteDiarioDraft) -> str:
         code = str(novedad.estado_codigo or "").upper()
         hours = novedad.horas
         if novedad.fuera_de_proyecto:
-            otra_obra.append(_review_row(name, _review_hours_suffix(hours, state.fecha)))
+            otra_obra.append(
+                _review_row(name, _review_hours_suffix(hours, state.fecha, jornada=state.jornada))
+            )
             continue
         if code and code != "P":
             ausencias.append(_review_row(name, _state_label(novedad.estado_codigo)))
             continue
-        if hours is not None and hours > get_jornada_esperada(state.fecha):
-            horas_extra.append(_review_row(name, f"{hours - float(get_jornada_esperada(state.fecha)):g}"))
+        jornada = float(get_jornada_parte(state.fecha, state.jornada))
+        if hours is not None and hours > jornada:
+            horas_extra.append(_review_row(name, f"{hours - jornada:g}"))
             continue
         if code == "P" or hours is not None:
             otras.append(_review_row(name, _review_present_suffix(hours)))
@@ -151,8 +183,13 @@ def _review_row(name: str, suffix: str | None = None) -> str:
     return f"{name} ({clean_suffix})" if clean_suffix else name
 
 
-def _review_hours_suffix(hours: float | None, fecha: date | str) -> str | None:
-    if hours is None or hours == get_jornada_esperada(fecha):
+def _review_hours_suffix(
+    hours: float | None,
+    fecha: date | str,
+    *,
+    jornada: float | None = None,
+) -> str | None:
+    if hours is None or hours == get_jornada_parte(fecha, jornada):
         return None
     return f"{hours:g}h"
 
@@ -163,9 +200,14 @@ def _review_present_suffix(hours: float | None) -> str | None:
     return f"{hours:g}h"
 
 
-def _resumen_pendiente(pending: PendienteAmbiguo, fecha: date | str) -> str:
+def _resumen_pendiente(
+    pending: PendienteAmbiguo,
+    fecha: date | str,
+    *,
+    jornada: float | None = None,
+) -> str:
     estado = pending.estado_codigo or "estado pendiente"
-    horas = _pending_hours(pending, fecha)
+    horas = _pending_hours(pending, fecha, jornada=jornada)
     horas_text = _hours_text(pending.estado_codigo, horas)
     hours_part = f", {horas_text}" if horas_text else ""
     motivo = (
@@ -183,16 +225,22 @@ def _hours_text(estado_codigo: str | None, horas: float | None) -> str:
 
 
 # Muestra los defaults del pendiente usando la fecha del borrador.
-def _pending_hours(pending: PendienteAmbiguo, fecha: date | str) -> float | None:
+def _pending_hours(
+    pending: PendienteAmbiguo,
+    fecha: date | str,
+    *,
+    jornada: float | None = None,
+) -> float | None:
+    jornada_parte = float(get_jornada_parte(fecha, jornada))
     if pending.horas_extra is not None:
-        return float(get_jornada_esperada(fecha)) + pending.horas_extra
+        return jornada_parte + pending.horas_extra
     if pending.horas is not None:
         return pending.horas
     normalized_code = str(pending.estado_codigo or "").upper()
     if normalized_code and normalized_code != "P":
         return 0.0
     if pending.fuera_de_proyecto or normalized_code == "P":
-        return float(get_jornada_esperada(fecha))
+        return jornada_parte
     return None
 
 
@@ -233,10 +281,32 @@ def inicio_carga(state) -> str:
 
     draft = state.draft()
     title = "Parte diario recuperado" if draft.parte_id else "Parte diario en carga"
+    jornada = draft.jornada
+    if jornada is None and draft.fecha:
+        jornada = float(get_jornada_esperada(date.fromisoformat(draft.fecha)))
+    jornada_texto = _format_decimal(Decimal(str(jornada or 0)))
+    proyecto_linea = (
+        f"\nProyecto: {draft.generico_proyecto_nombre or 'Sin asignar'}"
+        if draft.proyecto_generico
+        else ""
+    )
     question = "Que novedades hubo hoy?" if draft.fecha == calendario.hoy().isoformat() else "Que novedades hubo ese dia?"
     if draft.novedades or draft.pendientes_ambiguos or draft.sin_novedades_informado:
         question = "Queres agregar o corregir alguna novedad?"
-    return f"{title}:\nFecha: {_fecha_humana(draft.fecha)}\nObra: {state.nombre_obra}\n\n{resumen(draft)}\n\n{question}"
+    return f"{title}:\nFecha: {_fecha_humana(draft.fecha)}\nObra: {state.nombre_obra}\nJornada: {jornada_texto}hs{proyecto_linea}\n\n{resumen(draft)}\n\n{question}"
+
+
+# Presenta las obras activas disponibles para asociar al parte generico.
+def seleccionar_proyecto(state, prefix: str = "") -> str:
+    draft = state.draft()
+    lines = [prefix, "Selecciona el proyecto para asignar al parte diario:"]
+    lines.extend(
+        f"{item.opcion}: {item.nombre}"
+        f"{' (actual)' if item.proyecto_id == draft.generico_proyecto_id else ''}"
+        for item in state.opciones_proyecto
+    )
+    lines.append("Responde con el numero, el nombre del proyecto o SALIR.")
+    return "\n".join(line for line in lines if line)
 
 
 # Conserva la respuesta de carga y reemplaza las instrucciones de cierre heredadas.
@@ -463,9 +533,10 @@ def bloquear_otro_proceso() -> str:
     return "Hay un parte diario abierto. Confirmalo o responde CANCELAR antes de iniciar otro proceso."
 
 
-# Solicita la plantilla que se aplicara a cada integrante de la nomina activa.
-def preguntar_novedad_todos() -> str:
-    return "Que novedad queres aplicar a toda la nomina activa?"
+# Solicita la cantidad de horas del parte sin abandonar el modo de carga.
+def preguntar_jornada(error: str | None = None) -> str:
+    question = "Cual es la cantidad de horas de la jornada? Responde con la cantidad o SALIR para volver a carga."
+    return f"{error}\n\n{question}" if error else question
 
 
 def _weekday_label(value: date) -> str:

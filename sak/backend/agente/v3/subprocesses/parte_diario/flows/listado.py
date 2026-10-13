@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from agente.v3.subprocesses.parte_diario.domain.empleados import listar_para_carga
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
-from agente.v3.subprocesses.parte_diario.flows import carga, confirmar_salida
+from agente.v3.subprocesses.parte_diario.flows import carga
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
 from agente.v3.subprocesses.parte_diario.utils import renderer
 
@@ -30,8 +30,6 @@ async def procesar(text: str | None, state: ParteDiarioV3State, llm_client: Part
         return mostrar(state)
     command = normalize_text(text)
     if command == "salir":
-        return confirmar_salida.iniciar(state)
-    if command in {"99", "finalizar"}:
         return finalizar(state)
     siguiente = opcion_siguiente(state)
     if command == "siguiente" or (siguiente is not None and command == str(siguiente)):
@@ -71,11 +69,17 @@ def mostrar(state: ParteDiarioV3State, prefix: str = "") -> str:
     novedades = {item.idnomina: item for item in draft.novedades_internas}
     novedades.update({item.idnomina: item for item in draft.novedades})
     current_ids = {item.idnomina for item in state.asistencia_opciones}
-    catalog_by_id = {item.idnomina: item for item in empleados}
+    licencia_ids = {
+        item.idnomina
+        for item in draft.novedades_internas
+        if item.nomina_licencia_id is not None
+    }
     acumuladas = [
         _novedad_line(option, novedades[option.idnomina])
         for option in empleados
-        if option.idnomina in novedades and option.idnomina not in current_ids
+        if option.idnomina in novedades
+        and option.idnomina not in current_ids
+        and option.idnomina not in licencia_ids
     ]
     lines = [
         prefix,
@@ -88,17 +92,20 @@ def mostrar(state: ParteDiarioV3State, prefix: str = "") -> str:
     lines.extend([
         "Informa todas las novedades de esta pagina en un mensaje.",
         "Formato: numero + novedad.",
-        "SALIR abandona el parte.",
+        "SALIR vuelve al modo carga.",
         "",
     ])
     for option in state.asistencia_opciones:
         existing = novedades.get(option.idnomina)
-        lines.append(_novedad_line(option, existing) if existing else f"{option.opcion} - {option.nombre_completo}")
+        lines.append(
+            _novedad_line(option, existing)
+            if existing
+            else f"{option.opcion} - {option.nombre_completo}"
+        )
     siguiente = opcion_siguiente(state)
     lines.append("")
     if siguiente is not None:
         lines.append(f"{siguiente} - SIGUIENTE")
-    lines.append("99 - FINALIZAR")
     return "\n".join(lines).strip()
 
 

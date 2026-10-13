@@ -23,6 +23,7 @@ export const Confirm = (props: ConfirmProps) => {
     cancel = "ra.action.cancel",
     confirm = "ra.action.confirm",
     confirmColor = "primary",
+    confirmDisabled = false,
     ConfirmIcon = CheckCircle,
     CancelIcon = AlertCircle,
     onClose,
@@ -85,7 +86,7 @@ export const Confirm = (props: ConfirmProps) => {
             {translate(cancel, { _: cancel })}
           </Button>
           <Button
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             onClick={handleConfirm}
             className="gap-1"
             variant={confirmColor === "warning" ? "destructive" : "default"}
@@ -104,6 +105,7 @@ export interface ConfirmProps {
   className?: string;
   confirm?: string;
   confirmColor?: "primary" | "warning";
+  confirmDisabled?: boolean;
   ConfirmIcon?: ComponentType;
   CancelIcon?: ComponentType;
   content: React.ReactNode;
