@@ -180,19 +180,19 @@ export const DetailRowActions = ({
             >
               <Pencil className="size-3.5" />
             </Button>
-            <DetailDeleteButton
-              onClick={handleRemove}
-              className="h-7 w-7 rounded-md"
-              iconClassName="size-3.5 text-red-500"
-              disabled={!canDelete}
-            />
+            {canDelete ? (
+              <DetailDeleteButton
+                onClick={handleRemove}
+                className="h-7 w-7 rounded-md"
+                iconClassName="size-3.5 text-red-500"
+              />
+            ) : null}
           </>
         ) : null}
-        {!isTableVariant && showInactiveDelete ? (
+        {!isTableVariant && showInactiveDelete && canDelete ? (
           <DetailDeleteButton
             onClick={handleRemove}
             className="sm:ml-auto sm:mr-6"
-            disabled={!canDelete}
           />
         ) : null}
       </>
@@ -346,7 +346,7 @@ export const DetailRowActions = ({
             className="text-muted-foreground"
             label="Cerrar edicion"
           />
-          <DetailDeleteButton onClick={handleRemove} disabled={!canDelete} />
+          {canDelete ? <DetailDeleteButton onClick={handleRemove} /> : null}
           {showInfo ? (
             <DetailInfoButton
               onClick={handleToggleOptional}
@@ -359,7 +359,7 @@ export const DetailRowActions = ({
       {mode !== "mobile" ? (
         <div className="hidden sm:flex items-center gap-0 shrink-0 sm:justify-self-start sm:justify-start">
           <DetailToggleButton show={showOptional} onToggle={handleCollapse} />
-          <DetailDeleteButton onClick={handleRemove} disabled={!canDelete} />
+          {canDelete ? <DetailDeleteButton onClick={handleRemove} /> : null}
           {showInfo ? (
             <DetailInfoButton
               onClick={handleToggleOptional}

@@ -128,6 +128,7 @@ class NovedadPersonal:
     nombre: str
     idnomina: int | None = None
     idestado: int | None = None
+    nomina_licencia_id: int | None = None
     estado_codigo: str | None = None
     horas: float | None = None
     ingreso: str | None = None
@@ -152,6 +153,7 @@ class NovedadPersonal:
             nombre=str(raw.get("nombre") or ""),
             idnomina=raw.get("idnomina"),
             idestado=raw.get("idestado"),
+            nomina_licencia_id=raw.get("nomina_licencia_id"),
             estado_codigo=str(raw.get("estado_codigo") or "").upper() or None,
             horas=_float_or_none(raw.get("horas")),
             ingreso=raw.get("ingreso"),
@@ -327,8 +329,12 @@ class ParteDiarioDraft:
     contacto_id: int | None = None
     fecha: str | None = None
     parte_id: int | None = None
+    jornada: float | None = None
+    proyecto_generico: bool = False
+    generico_proyecto_id: int | None = None
+    generico_proyecto_nombre: str | None = None
     novedades: list[NovedadPersonal] = field(default_factory=list)
-    # ALT, BAJ y TRA ocupan la novedad del empleado, pero no pertenecen al borrador editable.
+    # ALT, BAJ, TRA y licencias ocupan la novedad, pero no pertenecen al borrador editable.
     novedades_internas: list[NovedadPersonal] = field(default_factory=list)
     sin_novedades_informado: bool = False
     pendientes_ambiguos: list[PendienteAmbiguo] = field(default_factory=list)
@@ -344,6 +350,10 @@ class ParteDiarioDraft:
             "contacto_id": self.contacto_id,
             "fecha": self.fecha,
             "parte_id": self.parte_id,
+            "jornada": self.jornada,
+            "proyecto_generico": self.proyecto_generico,
+            "generico_proyecto_id": self.generico_proyecto_id,
+            "generico_proyecto_nombre": self.generico_proyecto_nombre,
             "novedades": [item.to_dict() for item in self.novedades],
             "novedades_internas": [item.to_dict() for item in self.novedades_internas],
             "sin_novedades_informado": self.sin_novedades_informado,
@@ -369,6 +379,16 @@ class ParteDiarioDraft:
             contacto_id=data.get("contacto_id"),
             fecha=data.get("fecha"),
             parte_id=data.get("parte_id"),
+            jornada=(float(data["jornada"]) if data.get("jornada") is not None else None),
+            proyecto_generico=bool(data.get("proyecto_generico")),
+            generico_proyecto_id=(
+                int(data["generico_proyecto_id"])
+                if data.get("generico_proyecto_id") is not None
+                else None
+            ),
+            generico_proyecto_nombre=(
+                str(data.get("generico_proyecto_nombre") or "").strip() or None
+            ),
             novedades=[NovedadPersonal.from_dict(item) for item in data.get("novedades") or []],
             novedades_internas=[
                 NovedadPersonal.from_dict(item) for item in data.get("novedades_internas") or []

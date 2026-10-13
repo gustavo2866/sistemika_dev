@@ -103,12 +103,6 @@ Operaciones:
 Nunca emitas confirmar ni cancelar. Guardar y descartar se confirman en el backend.
 
 Referencias a personas y alcance:
-- Cuando `contexto_conversacion.etapa` sea `carga_todos`, interpreta el mensaje
-  como una unica plantilla para toda la nomina activa. Devuelve exactamente una
-  operacion `agregar_novedad`, con `nombre=null` e `idnomina=null`; el backend la
-  expandira usando identidades locales verificadas. Si falta la novedad concreta,
-  pregunta lo necesario. No uses `sin_novedades`, no enumeres empleados y no
-  generes una operacion por persona.
 - En novedades nuevas, conserva el fragmento de nombre dicho por el usuario,
   sin completar apellidos ni corregir nombres desconocidos. El backend resuelve
   la identidad, la ambiguedad y los destinos contra los datos activos.

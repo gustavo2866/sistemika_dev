@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 import json
 import re
 from typing import Any
@@ -10,18 +11,19 @@ from app.db import get_session
 from app.models.nomina import Nomina
 from app.models.parte_diario_estado import ParteDiarioEstado
 from app.models.partediario import EstadoParteDiario, ParteDiario, ParteDiarioDetalle
+from app.models.proyecto import Proyecto
 from app.models.proyecto_encargado import ProyectoEncargado
 from app.models.tarja import Tarja, TarjaDetalle, TarjaNomina
 from app.services.parte_diario_service import (
     parte_diario_service,
     strip_destination_part_reference,
 )
+from app.services.nomina_licencia_service import nomina_licencia_service
 from app.services.parte_diario_tarja_service import (
     get_quincena_range,
     parte_diario_tarja_service,
 )
-from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_esperada, get_jornada_parte
 from fastapi import Depends, HTTPException, Query, Response
 from sqlmodel import Session, select
 
@@ -35,10 +37,70 @@ class ParteDiarioCRUD(NestedCRUD):
     TRASPASO_ESTADO_CODIGO = "TRA"
 
     @staticmethod
+    def _normalizar_jornada(
+        data: dict[str, Any],
+        *,
+        existing: ParteDiario | None = None,
+    ) -> None:
+        raw_value = data.get("jornada")
+        if raw_value in (None, ""):
+            if existing is not None:
+                return
+            fecha = ParteDiarioCRUD._parse_fecha_parte(data.get("fecha"))
+            if fecha is None:
+                return
+            raw_value = get_jornada_esperada(fecha)
+        try:
+            jornada = Decimal(str(raw_value))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("La jornada debe ser un numero valido") from exc
+        if not jornada.is_finite() or jornada < 0 or jornada > 24:
+            raise ValueError("La jornada debe estar entre 0 y 24 horas")
+        data["jornada"] = jornada
+
+    @staticmethod
+    def _validar_proyecto_generico(
+        session: Session,
+        data: dict[str, Any],
+        *,
+        existing: ParteDiario | None = None,
+    ) -> None:
+        proyecto_id = ParteDiarioCRUD._payload_int(
+            data.get("idproyecto", existing.idproyecto if existing is not None else None)
+        )
+        if proyecto_id is None:
+            return
+        proyecto = session.get(Proyecto, proyecto_id)
+        if proyecto is None or proyecto.deleted_at is not None:
+            return
+        asociado_id = ParteDiarioCRUD._payload_int(
+            data.get(
+                "generico_proyecto_id",
+                existing.generico_proyecto_id if existing is not None else None,
+            )
+        )
+        if proyecto.generico and asociado_id is None:
+            raise ValueError("El proyecto asociado es obligatorio para una obra generica")
+        if asociado_id is None:
+            return
+        if not proyecto.generico:
+            raise ValueError("Solo una obra generica admite un proyecto asociado")
+        asociado = session.get(Proyecto, asociado_id)
+        if (
+            asociado is None
+            or asociado.deleted_at is not None
+            or asociado.id == proyecto_id
+            or asociado.estado not in {"01-plan", "02-ejecucion", "03-conclusion"}
+        ):
+            raise ValueError("El proyecto asociado no existe o no esta activo")
+
+    @staticmethod
     def _delete_detalle(
         session: Session,
         detalle: ParteDiarioDetalle,
     ) -> None:
+        if detalle.nomina_licencia_id is not None:
+            raise ValueError("Las novedades generadas por una licencia no se pueden eliminar")
         related_details = ParteDiarioCRUD._find_related_destination_details(session, detalle)
         parte_diario_service.preparar_eliminacion_trabajo_destino(
             session,
@@ -312,7 +374,10 @@ class ParteDiarioCRUD(NestedCRUD):
             future_detalle = (
                 detalles_by_parte.get(int(future_parte.id))
             )
-            if future_detalle is None and not es_dia_laborable(current):
+            if (
+                future_detalle is None
+                and get_jornada_parte(current, future_parte.jornada) <= 0
+            ):
                 continue
             parte_diario_tarja_service.agregar_tarja_detalle(
                 session,
@@ -327,7 +392,7 @@ class ParteDiarioCRUD(NestedCRUD):
                 horas=(
                     future_detalle.horas
                     if future_detalle is not None
-                    else get_jornada_esperada(current)
+                    else get_jornada_parte(current, future_parte.jornada)
                 ),
                 descripcion=(
                     future_detalle.descripcion
@@ -665,16 +730,23 @@ class ParteDiarioCRUD(NestedCRUD):
         return result if result > 0 else None
 
     def create(self, session: Session, data: dict[str, Any]):
-        parte_diario_service.normalizar_trabajos_destino_manuales(session, data)
-        self._normalizar_detalles_baja(session, data)
-        self._validate_nomina_detalles(session, data)
-        parte_diario_service.materializar_trabajos_destino_manuales(session, data)
-        self._asegurar_tarja_borrador(session, data)
-        parte = super().create(session, data)
-        if parte.estado == EstadoParteDiario.CONFIRMADO:
-            parte_diario_tarja_service.sincronizar_detalle_para_parte(session, parte)
-            session.refresh(parte)
-        return parte
+        try:
+            self._normalizar_jornada(data)
+            self._validar_proyecto_generico(session, data)
+            self._agregar_licencias_creacion(session, data)
+            parte_diario_service.normalizar_trabajos_destino_manuales(session, data)
+            self._normalizar_detalles_baja(session, data)
+            self._validate_nomina_detalles(session, data)
+            parte_diario_service.materializar_trabajos_destino_manuales(session, data)
+            self._asegurar_tarja_borrador(session, data)
+            parte = super().create(session, data)
+            if parte.estado == EstadoParteDiario.CONFIRMADO:
+                parte_diario_tarja_service.sincronizar_detalle_para_parte(session, parte)
+                session.refresh(parte)
+            return parte
+        except Exception:
+            session.rollback()
+            raise
 
     def update(
         self,
@@ -684,6 +756,9 @@ class ParteDiarioCRUD(NestedCRUD):
         check_version: bool = True,
     ):
         existing = session.get(ParteDiario, obj_id)
+        self._normalizar_jornada(data, existing=existing)
+        self._validar_proyecto_generico(session, data, existing=existing)
+        self._validar_detalles_licencia_update(session, data, existing=existing)
         parte_diario_service.normalizar_trabajos_destino_manuales(
             session,
             data,
@@ -707,6 +782,79 @@ class ParteDiarioCRUD(NestedCRUD):
             parte_diario_tarja_service.sincronizar_detalle_para_parte(session, parte)
             session.refresh(parte)
         return parte
+
+    def _agregar_licencias_creacion(
+        self,
+        session: Session,
+        data: dict[str, Any],
+    ) -> None:
+        idproyecto = self._payload_int(data.get("idproyecto"))
+        contacto_id = self._payload_int(data.get("contacto_id"))
+        fecha = self._parse_fecha_parte(data.get("fecha"))
+        if idproyecto is None or fecha is None:
+            return
+        detalles_raw = data.get("detalles")
+        detalles = detalles_raw if isinstance(detalles_raw, list) else []
+        nomina_licencia_service.materializar_faltantes_desde_detalles(
+            session,
+            fecha=fecha,
+            detalles=detalles,
+        )
+        licencias = nomina_licencia_service.listar_vigentes_para_parte(
+            session,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id,
+            fecha=fecha,
+        )
+        nomina_licencia_service.integrar_detalles_creacion(data, licencias)
+
+    def _validar_detalles_licencia_update(
+        self,
+        session: Session,
+        data: dict[str, Any],
+        *,
+        existing: ParteDiario | None,
+    ) -> None:
+        detalles = data.get("detalles")
+        if existing is None or not isinstance(detalles, list):
+            return
+        protegidos = session.exec(
+            select(ParteDiarioDetalle)
+            .where(ParteDiarioDetalle.parte_diario_id == int(existing.id))
+            .where(ParteDiarioDetalle.nomina_licencia_id.is_not(None))
+            .where(ParteDiarioDetalle.deleted_at.is_(None))
+        ).all()
+        protegidos_por_id = {
+            int(item.id): item for item in protegidos if item.id is not None
+        }
+        protegidos_por_nomina = {
+            int(item.idnomina): item for item in protegidos if item.idnomina is not None
+        }
+        incoming_por_id = {
+            int(item["id"]): item
+            for item in detalles
+            if isinstance(item, dict) and self._payload_int(item.get("id")) is not None
+        }
+        for detalle_id, original in protegidos_por_id.items():
+            incoming = incoming_por_id.get(detalle_id)
+            if incoming is None:
+                raise ValueError("Las novedades generadas por una licencia no se pueden eliminar")
+            if not nomina_licencia_service.detalle_sin_cambios(original, incoming):
+                raise ValueError("Las novedades generadas por una licencia no se pueden modificar")
+
+        for detalle in detalles:
+            if not isinstance(detalle, dict):
+                continue
+            detalle_id = self._payload_int(detalle.get("id"))
+            nomina_id = self._payload_int(detalle.get("idnomina"))
+            licencia_id = self._payload_int(detalle.get("nomina_licencia_id"))
+            if licencia_id is not None and detalle_id not in protegidos_por_id:
+                raise ValueError("No se puede asociar manualmente una licencia a una novedad")
+            protegido = protegidos_por_nomina.get(nomina_id or 0)
+            if protegido is not None and detalle_id != protegido.id:
+                raise ValueError(
+                    "El empleado tiene una licencia registrada y no admite otra novedad en este parte"
+                )
 
 
 parte_diario_crud = ParteDiarioCRUD(
@@ -760,6 +908,58 @@ def _parse_nomina_disponible_filter(value: str | None) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
+
+
+@parte_diario_router.get("/licencias-vigentes")
+def get_licencias_vigentes_para_parte(
+    response: Response,
+    filter: str | None = Query(default=None),
+    range_value: str | None = Query(default=None, alias="range"),
+    idproyecto: int | None = Query(default=None, gt=0),
+    contacto_id: int | None = Query(default=None, gt=0),
+    fecha: date | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    filters = _parse_nomina_disponible_filter(filter)
+    proyecto_value = idproyecto or ParteDiarioCRUD._payload_int(filters.get("idproyecto"))
+    contacto_value = contacto_id or ParteDiarioCRUD._payload_int(filters.get("contacto_id"))
+    fecha_value = fecha or ParteDiarioCRUD._parse_fecha_parte(filters.get("fecha"))
+    if proyecto_value is None or fecha_value is None:
+        response.headers["Content-Range"] = "items 0-0/0"
+        return []
+    try:
+        licencias = nomina_licencia_service.listar_vigentes_para_parte(
+            session,
+            idproyecto=proyecto_value,
+            contacto_id=contacto_value,
+            fecha=fecha_value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    start, end = _parse_nomina_disponible_range(range_value)
+    rows = licencias[start : end + 1]
+    last = start + len(rows) - 1 if rows else start
+    response.headers["Content-Range"] = f"items {start}-{last}/{len(licencias)}"
+    return [
+        {
+            "id": item.licencia_id,
+            "nomina_licencia_id": item.licencia_id,
+            "idnomina": item.nomina_id,
+            "empleado": item.empleado,
+            "fecha_desde": item.fecha_desde.isoformat(),
+            "fecha_hasta": (
+                item.fecha_hasta.isoformat() if item.fecha_hasta is not None else None
+            ),
+            "idestado": item.estado_id,
+            "estado_codigo": item.estado_codigo,
+            "estado_nombre": item.estado_nombre,
+            "horas": 0,
+            "ingreso": None,
+            "egreso": None,
+            "descripcion": item.descripcion,
+        }
+        for item in rows
+    ]
 
 
 def _nomina_ids_filter(value: Any) -> set[int] | None:
@@ -943,6 +1143,9 @@ def confirmar_parte_diario(
     session: Session = Depends(get_session),
 ):
     try:
+        parte = session.get(ParteDiario, parte_id)
+        if parte is not None:
+            parte_diario_crud._validar_proyecto_generico(session, {}, existing=parte)
         parte = parte_diario_tarja_service.confirmar_parte(session, parte_id)
         return filtrar_respuesta(parte)
     except ValueError as exc:

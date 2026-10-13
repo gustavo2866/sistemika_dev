@@ -88,6 +88,14 @@ const optionalDateSchema = z.preprocess(
   z.string().optional(),
 );
 
+const booleanFromInputSchema = z.preprocess((value) => {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1" || value === 1) return true;
+  if (value === "false" || value === "0" || value === 0) return false;
+  if (value == null || value === "") return false;
+  return Boolean(value);
+}, z.boolean());
+
 export type ProyectoAvance = {
   id?: number | string;
   proyecto_id?: number | null;
@@ -123,6 +131,7 @@ export type Proyecto = {
   superficie?: number | null;
   ingresos?: number | null;
   comentario?: string | null;
+  generico?: boolean | null;
   avances?: ProyectoAvance[];
   created_at?: string;
   updated_at?: string;
@@ -171,6 +180,7 @@ export const proyectoSchema = z.object({
   comentario: optionalStringSchema.pipe(
     z.string().max(PROYECTO_VALIDATIONS.COMENTARIO_MAX).optional(),
   ),
+  generico: booleanFromInputSchema,
   avances: z.array(proyectoAvanceSchema).default([]),
 });
 
@@ -193,6 +203,7 @@ export const PROYECTO_DEFAULTS: ProyectoFormValues = {
   superficie: undefined,
   ingresos: 0,
   comentario: "",
+  generico: false,
   avances: [],
 };
 
@@ -290,6 +301,7 @@ export const normalizeProyectoPayload = (
       : Number(data.superficie),
   ingresos: Number(data.ingresos ?? 0),
   comentario: trimOptionalText(data.comentario),
+  generico: Boolean(data.generico ?? false),
   avances: (data.avances ?? []).map((avance) => ({
     id: resolveNumericId(avance.id),
     proyecto_id: resolveNumericId(avance.proyecto_id),

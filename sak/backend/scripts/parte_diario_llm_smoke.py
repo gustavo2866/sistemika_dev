@@ -256,110 +256,6 @@ async def _verificar_seleccion_homonimos() -> int:
     return int(not ok)
 
 
-# Verifica que el modelo produzca una sola plantilla y que backend la expanda localmente.
-async def _verificar_comando_todos() -> int:
-    from agente.v3.subprocesses.parte_diario.domain.novedades import execute_plan
-    from agente.v3.subprocesses.parte_diario.flows.carga import _expandir_novedad_todos
-
-    client = ParteDiarioLLMClient().for_stage("carga_todos")
-    estados = [EstadoItem(1, "P", "PRESENTE"), EstadoItem(2, "ENF", "ENFERMEDAD")]
-    nominas = [
-        NominaItem(101, "Julia", "Alvarez"),
-        NominaItem(102, "Martin", "Benitez"),
-        NominaItem(103, "Sofia", "Correa"),
-    ]
-    draft = ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-09-28")
-    plan = await asyncio.wait_for(
-        client.interpret_turn(
-            "trabajaron 12 horas",
-            draft,
-            nominas,
-            estados,
-            contexto_conversacion={
-                "etapa": "carga_todos",
-                "obra": "Obra de prueba",
-                "fecha_parte": draft.fecha,
-                "historial": [
-                    {"usuario": "TODOS", "asistente": "Que novedad queres aplicar a toda la nomina activa?"},
-                ],
-            },
-        ),
-        timeout=45,
-    )
-    template_ok = (
-        len(plan.operations) == 1
-        and plan.operations[0].type == "agregar_novedad"
-        and plan.operations[0].nombre is None
-        and plan.operations[0].idnomina is None
-        and plan.operations[0].estado_codigo == "P"
-        and plan.operations[0].horas == 12
-        and plan.reply is None
-    )
-    expansion_error = _expandir_novedad_todos(plan, nominas) if template_ok else "plantilla invalida"
-    result = execute_plan(draft, plan, nominas, nominas, estados)
-    correction = await asyncio.wait_for(
-        ParteDiarioLLMClient().for_stage("carga").interpret_turn(
-            "Alvarez estuvo enferma",
-            result.next_state,
-            nominas,
-            estados,
-            contexto_conversacion={
-                "etapa": "carga",
-                "obra": "Obra de prueba",
-                "fecha_parte": draft.fecha,
-                "historial": [
-                    {"usuario": "TODOS", "asistente": "Que novedad queres aplicar a toda la nomina activa?"},
-                    {"usuario": "trabajaron 12 horas", "asistente": "Parte diario actualizado."},
-                ],
-            },
-        ),
-        timeout=45,
-    )
-    corrected = execute_plan(result.next_state, correction, nominas, nominas, estados)
-    correction_ok = (
-        len(correction.operations) == 1
-        and correction.operations[0].type == "modificar_novedad"
-        and correction.operations[0].estado_codigo == "ENF"
-        and correction.operations[0].horas is None
-        and correction.operations[0].horas_extra is None
-        and not corrected.errors
-        and next(item for item in corrected.next_state.novedades if item.idnomina == 101).horas == 0
-        and all(item.horas == 12 for item in corrected.next_state.novedades if item.idnomina != 101)
-    )
-    ok = (
-        template_ok
-        and expansion_error is None
-        and not result.errors
-        and {item.idnomina for item in result.next_state.novedades}
-        == {item.idnomina for item in nominas}
-        and correction_ok
-    )
-    print(json.dumps({
-        "mensaje": "trabajaron 12 horas",
-        "plantilla_valida": template_ok,
-        "operaciones_expandidas": len(plan.operations),
-        "novedades": [
-            {"idnomina": item.idnomina, "estado": item.estado_codigo, "horas": item.horas}
-            for item in result.next_state.novedades
-        ],
-        "correccion": [
-            {
-                "type": item.type,
-                "nombre": item.nombre,
-                "estado": item.estado_codigo,
-                "horas": item.horas,
-            }
-            for item in correction.operations
-        ],
-        "horas_corregidas": {
-            str(item.idnomina): item.horas for item in corrected.next_state.novedades
-        },
-        "errores": result.errors,
-        "ok": ok,
-    }, ensure_ascii=False))
-    return int(not ok)
-
-
 # Selecciona la prueba explicita para evitar llamadas adicionales no solicitadas.
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -372,11 +268,7 @@ def main() -> int:
                         help="Verifica solicitudes nuevas de cambio y preguntas sin accion de retorno.")
     parser.add_argument("--seleccion-homonimos", action="store_true",
                         help="Verifica que multiples matches produzcan un menu numerado del backend.")
-    parser.add_argument("--todos", action="store_true",
-                        help="Verifica la plantilla LLM y expansion local del comando TODOS.")
     args = parser.parse_args()
-    if args.todos:
-        return asyncio.run(_verificar_comando_todos())
     if args.seleccion_homonimos:
         return asyncio.run(_verificar_seleccion_homonimos())
     if args.solicitudes_carga:

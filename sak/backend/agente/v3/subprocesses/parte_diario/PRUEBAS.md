@@ -13,6 +13,7 @@ Las instrucciones generales estan en el `AGENTS.md` de la raiz.
 | Prompt o adapter LLM | `test_parte_diario_llm_client.py`, flujo relacionado y prueba real si cambia la interpretacion semantica. |
 | Estado o handler | `test_parte_diario_state.py`, `test_parte_diario_handler_inicial.py` y rutas afectadas de carga/revision. |
 | Revision o guardado | `test_parte_diario_revision_flow.py`; agregar persistencia/jornada si se tocan esas reglas. |
+| Licencias de nomina | `test_parte_diario_licencias.py`: materializacion, FK, inmutabilidad, colisiones y bloqueo del agente. |
 | Consultas de negocio | `test_parte_diario_domain_consultas.py` y casos de consulta del flow afectado. |
 | Encapsulamiento | `test_parte_diario_separacion.py` y pruebas funcionales de lo movido. |
 | Solo documentacion | Referencias y concordancia con el codigo; no necesita suite funcional. |
@@ -64,9 +65,14 @@ solo para obtener un resultado verde.
   el descarte. LISTADO navega con `SIGUIENTE`/numero correlativo y sale a carga
   con `FINALIZAR`/`99` o al completar la ultima pagina, siempre sin LLM.
 - `nomina` funciona sin LLM y conserva etapa, borrador, pagina y pendientes.
-- `TODOS` solo en carga pide la novedad siguiente sin llamar al LLM; luego expande
-  una unica plantilla sobre la TarjaNomina activa. `VOLVER` cancela el alcance y
-  una consulta de nomina conserva la pregunta masiva.
+- `JORNADA 8hs` actualiza el borrador sin LLM. `JORNADA` pide la cantidad y acepta
+  horas o `SALIR`; valores invalidos conservan la pregunta y no cambian el valor.
+  `TODOS` ya no tiene tratamiento especial.
+- El encabezado muestra `Proyecto` debajo de `Jornada` solo para una obra generica;
+  recupera el nombre asociado del parte o informa `Sin asignar`.
+- Una obra generica abre `carga_proyecto` al resolver su fecha. El menu solo incluye
+  proyectos activos, acepta numero o nombre, `SALIR` conserva la seleccion, el comando
+  `PROYECTO` lo reabre desde carga y el guardado persiste `generico_proyecto_id`.
 - Una consulta entre pregunta y respuesta no reemplaza la pregunta pendiente.
 - La aclaracion incompleta sigue preguntando; la completada aplica operaciones
   comunes; el rechazo vuelve al origen sin cambios ni cierre.
@@ -92,7 +98,13 @@ solo para obtener un resultado verde.
   el LLM no debe copiar las 12h existentes del borrador o del historial.
   Una jornada menor a la esperada no puede quedar como PRESENTE sin motivo: debe
   preguntar y conservar las horas en texto libre, LISTADO, correcciones y destinos.
-- Guardar respeta fecha y jornada; fallar conserva datos; descartar no elimina DB.
+- Guardar respeta fecha y jornada; la jornada persistida completa presentes
+  implicitos y las novedades conservan sus horas. Fallar conserva datos;
+  descartar no elimina DB.
+- Una licencia vigente se materializa con `nomina_licencia_id`, ocupa la unica
+  novedad del empleado y no puede editarse ni eliminarse desde formulario o agente.
+  `test_parte_diario_licencias.py` tambien conserva el control de periodos
+  superpuestos y el comentario visible de origen.
 - El cierre guardado informa resultado, obra y fecha, libera el proceso y no anexa
   el menu general en el mismo mensaje.
 - `GUARDAR` en carga persiste en un turno sin LLM; `NO` presenta revision y `1`
@@ -122,7 +134,6 @@ python backend/scripts/parte_diario_llm_smoke.py --clasificacion-novedades
 python backend/scripts/parte_diario_llm_smoke.py --confirmacion-contextual
 python backend/scripts/parte_diario_llm_smoke.py --solicitudes-carga
 python backend/scripts/parte_diario_llm_smoke.py --seleccion-homonimos
-python backend/scripts/parte_diario_llm_smoke.py --todos
 ```
 
 Requiere `OPENAI_API_KEY` configurada en el entorno. El script no carga `.env`

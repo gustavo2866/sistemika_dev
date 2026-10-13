@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from agente.v3.contracts import V3InboundMessage
 from agente.v3.subprocesses.parte_diario.domain import parte_diario
+from agente.v3.subprocesses.parte_diario.flows import proyecto
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
 from agente.v3.subprocesses.parte_diario.utils import renderer
@@ -78,9 +79,12 @@ async def procesar(
         return mostrar_menu(state, error)
     state.opciones_fecha = []
     state.fecha_referida_explicita = False
-    state.etapa = "finalizado" if cerrado else "carga"
     if cerrado:
+        state.etapa = "finalizado"
         return renderer.consulta(state.draft())
+    if state.draft().proyecto_generico:
+        return proyecto.iniciar(state)
+    state.etapa = "carga"
     return f"Obra: {state.nombre_obra}\nFecha: {fecha}\nBorrador preparado."
 
 
@@ -90,6 +94,7 @@ def iniciar_hoy(state: ParteDiarioV3State) -> None:
     state.texto_fecha_inicial = ""
     state.parte_state = {"fecha": calendario.hoy().isoformat()}
     state.opciones_fecha = []
+    state.opciones_proyecto = []
     state.fecha_referida_explicita = False
     state.modo_pendientes = False
     state.asistencia_opciones = []

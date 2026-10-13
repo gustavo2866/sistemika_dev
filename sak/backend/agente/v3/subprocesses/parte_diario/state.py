@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
-from agente.v3.subprocesses.parte_diario.domain.models import ParteDiarioDraft
+from agente.v3.subprocesses.parte_diario.domain.models import DestinoProyectoOption, ParteDiarioDraft
 
 
 ParteDiarioStage = Literal[
@@ -19,7 +19,8 @@ ParteDiarioStage = Literal[
     "cargar_fecha",
     "seleccionar_fecha",
     "carga",
-    "carga_todos",
+    "carga_proyecto",
+    "carga_jornada",
     "carga_aclaracion",
     "revision",
     "carga_validar_empleado",
@@ -170,6 +171,7 @@ class ParteDiarioV3State:
     proyecto_id: int | None = None
     nombre_obra: str | None = None
     opciones_obra: list[ParteDiarioOption] = field(default_factory=list)
+    opciones_proyecto: list[DestinoProyectoOption] = field(default_factory=list)
     opciones_fecha: list[ParteDiarioFechaOption] = field(default_factory=list)
     fecha_referida_explicita: bool = False
     texto_fecha_inicial: str | None = None
@@ -193,6 +195,9 @@ class ParteDiarioV3State:
     def from_dict(cls, raw: dict[str, Any] | None) -> "ParteDiarioV3State":
         data = raw or {}
         etapa = str(data.get("etapa") or "inicial")
+        # Una conversacion iniciada antes de retirar TODOS vuelve a la carga normal.
+        if etapa == "carga_todos":
+            etapa = "carga"
         validacion_origen = str(data.get("validacion_origen") or "").strip() or None
         parte_state = dict(data.get("parte_state") or {})
         if etapa not in get_args(ParteDiarioStage):
@@ -203,6 +208,12 @@ class ParteDiarioV3State:
                 parsed = ParteDiarioOption.from_dict(option)
                 if parsed is not None:
                     options.append(parsed)
+        project_options: list[DestinoProyectoOption] = []
+        for option in data.get("opciones_proyecto", []):
+            if isinstance(option, dict):
+                parsed = DestinoProyectoOption.from_dict(option)
+                if parsed is not None:
+                    project_options.append(parsed)
         date_options: list[ParteDiarioFechaOption] = []
         for option in data.get("opciones_fecha", []):
             if isinstance(option, dict):
@@ -228,6 +239,7 @@ class ParteDiarioV3State:
             proyecto_id=_parse_int(data.get("proyecto_id")),
             nombre_obra=str(data.get("nombre_obra") or "").strip() or None,
             opciones_obra=options,
+            opciones_proyecto=project_options,
             opciones_fecha=date_options,
             fecha_referida_explicita=bool(data.get("fecha_referida_explicita")),
             texto_fecha_inicial=str(data.get("texto_fecha_inicial") or "").strip() or None,
@@ -256,6 +268,7 @@ class ParteDiarioV3State:
             "proyecto_id": self.proyecto_id,
             "nombre_obra": self.nombre_obra,
             "opciones_obra": [option.to_dict() for option in self.opciones_obra],
+            "opciones_proyecto": [option.to_dict() for option in self.opciones_proyecto],
             "opciones_fecha": [option.to_dict() for option in self.opciones_fecha],
             "fecha_referida_explicita": self.fecha_referida_explicita,
             "texto_fecha_inicial": self.texto_fecha_inicial,

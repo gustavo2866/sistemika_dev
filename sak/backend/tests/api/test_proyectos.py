@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -132,3 +134,40 @@ def test_proyecto_syncs_encargado_with_oportunidad(
     assert updated_detail_response.status_code == 200, updated_detail_response.text
     updated_detail = updated_detail_response.json()
     assert updated_detail["oportunidad"]["contacto_id"] == nuevo_contacto.id
+
+
+def test_update_proyecto_permite_encargado_historico_sin_cambios(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user, contacto = _seed_user_and_contacto(db_session, "historico")
+    create_response = client.post(
+        "/proyectos",
+        json={
+            "nombre": "Proyecto con encargado historico",
+            "estado": "planeado",
+            "responsable_id": user.id,
+            "encargado_contacto_id": contacto.id,
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    proyecto_id = create_response.json()["id"]
+    contacto.deleted_at = datetime.now(UTC)
+    db_session.add(contacto)
+    db_session.commit()
+
+    update_response = client.put(
+        f"/proyectos/{proyecto_id}",
+        json={
+            "id": proyecto_id,
+            "nombre": "Proyecto historico actualizado",
+            "estado": "en_ejecucion",
+            "responsable_id": user.id,
+            "encargado_contacto_id": contacto.id,
+        },
+    )
+
+    assert update_response.status_code == 200, update_response.text
+    assert update_response.json()["nombre"] == "Proyecto historico actualizado"
+    detail = client.get(f"/proyectos/{proyecto_id}").json()
+    assert detail["oportunidad"]["contacto_id"] == contacto.id

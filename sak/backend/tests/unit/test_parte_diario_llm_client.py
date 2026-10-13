@@ -103,28 +103,6 @@ async def test_carga_prompt_delega_matches_de_persona_al_backend():
     assert "Ricardo Sebastian" not in chat.calls[0]["user_content"]
 
 
-# En el estado TODOS el modelo produce una plantilla, sin conocer ni enumerar la nomina.
-@pytest.mark.asyncio
-async def test_carga_todos_prompt_delega_expansion_al_backend():
-    chat = FakeChatClient()
-
-    await ParteDiarioLLMClient(chat_client=chat).for_stage("carga_todos").interpret_turn(
-        "trabajaron 9 horas",
-        ParteDiarioDraft(oportunidad_id=1, idproyecto=10, fecha="2026-09-28"),
-        [NominaItem(101, "Ricardo", "Medina")],
-        [EstadoItem(1, "P", "PRESENTE")],
-        contexto_conversacion={"etapa": "carga_todos"},
-    )
-
-    prompt = chat.calls[0]["system_prompt"]
-    payload = json.loads(chat.calls[0]["user_content"])
-    assert "una unica plantilla para toda la nomina activa" in prompt
-    assert "exactamente una\n  operacion `agregar_novedad`" in prompt
-    assert "nombre=null" in prompt
-    assert payload["contexto_conversacion"]["etapa"] == "carga_todos"
-    assert "nomina_proyecto" not in payload
-
-
 # Comprueba el contrato comun y que ejecutar sus operaciones conserva motivo y horas.
 @pytest.mark.asyncio
 @pytest.mark.parametrize("modo", ["carga", "listado"])

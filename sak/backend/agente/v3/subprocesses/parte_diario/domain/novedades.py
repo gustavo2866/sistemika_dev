@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_parte
 
 _RESERVED_OPERATIONS = {"confirmar", "cancelar"}
 _MUTATING_OPERATIONS = {"agregar_novedad", "modificar_novedad", "eliminar_novedad", "sin_novedades"}
@@ -100,7 +100,16 @@ def execute_plan(
             )
 
         if op_type == "sin_novedades":
-            if current.novedades or current.pendientes_ambiguos or current.conflictos_novedad:
+            tiene_licencias = any(
+                item.nomina_licencia_id is not None
+                for item in current.novedades_internas
+            )
+            if (
+                current.novedades
+                or current.pendientes_ambiguos
+                or current.conflictos_novedad
+                or tiene_licencias
+            ):
                 return ExecutionResult(
                     "confirmation_required",
                     current,
@@ -221,6 +230,7 @@ def _agregar_novedad(
     nominas_completas: list[NominaItem],
     estados: list[EstadoItem],
 ) -> str | None:
+    jornada = float(get_jornada_parte(state.fecha, state.jornada))
     nombre = str(operation.nombre or "").strip()
     resolved_by_id = _resolve_nomina_by_id(operation.idnomina, nominas_proyecto, nominas_completas)
     if resolved_by_id is not None and not nombre:
@@ -240,13 +250,14 @@ def _agregar_novedad(
         estado = resolve_estado_codigo("P", estados)
     if estado is None and (
         operation.horas_extra is not None
-        or (operation.horas is not None and operation.horas >= get_jornada_esperada(state.fecha))
+        or (operation.horas is not None and operation.horas >= jornada)
     ):
         estado = resolve_estado_codigo("P", estados)
     if operation.horas_extra is not None and estado and estado.abreviatura.upper() != "P":
         return f"Para {nombre}, las horas extra solo pueden registrarse como PRESENTE."
     if requiere_motivo_jornada_parcial(
         fecha=state.fecha,
+        jornada=state.jornada,
         horas=operation.horas,
         estado_codigo=estado.abreviatura if estado else None,
     ):
@@ -371,6 +382,7 @@ def _agregar_novedad(
         operation.horas_extra,
         operation.descripcion,
         fecha=state.fecha,
+        jornada=state.jornada,
         fuera_de_proyecto=operation.fuera_de_proyecto,
         nombre_proyecto=operation.nombre_proyecto,
         idproyecto_destino=operation.idproyecto_destino,
@@ -410,6 +422,7 @@ def _build_novedad(
     descripcion: str | None,
     *,
     fecha: date | str,
+    jornada: float | None = None,
     fuera_de_proyecto: bool = False,
     nombre_proyecto: str | None = None,
     idproyecto_destino: int | None = None,
@@ -427,6 +440,7 @@ def _build_novedad(
         estado_codigo=estado.abreviatura if estado else None,
         horas=normalizar_horas(
             fecha=fecha,
+            jornada=jornada,
             horas=horas,
             horas_extra=horas_extra,
             estado_codigo=estado.abreviatura if estado else None,
@@ -447,20 +461,22 @@ def _build_novedad(
 def normalizar_horas(
     *,
     fecha: date | str,
+    jornada: float | None = None,
     horas: float | None,
     horas_extra: float | None,
     estado_codigo: str | None,
     fuera_de_proyecto: bool,
 ) -> float:
+    jornada_parte = float(get_jornada_parte(fecha, jornada))
     if horas_extra is not None:
-        return float(get_jornada_esperada(fecha)) + horas_extra
+        return jornada_parte + horas_extra
     if horas is not None:
         return horas
     normalized_code = str(estado_codigo or "").upper()
     if normalized_code and normalized_code != "P":
         return 0.0
     if fuera_de_proyecto or normalized_code == "P":
-        return float(get_jornada_esperada(fecha))
+        return jornada_parte
     return 0.0
 
 
@@ -495,6 +511,7 @@ def registrar_pendiente_resuelto(
         pending.horas_extra,
         pending.descripcion,
         fecha=state.fecha,
+        jornada=state.jornada,
         fuera_de_proyecto=pending.fuera_de_proyecto,
         nombre_proyecto=pending.nombre_proyecto,
         idproyecto_destino=pending.idproyecto_destino,
@@ -607,6 +624,12 @@ def _find_internal_novedad_by_name(
 
 def _internal_novedad_error(novedad: NovedadPersonal) -> str:
     code = str(novedad.estado_codigo or "novedad").strip().upper()
+    if novedad.nomina_licencia_id is not None:
+        return (
+            f"No se modifico la novedad de {novedad.nombre}: tiene una licencia {code} "
+            "registrada para este parte. La licencia no se puede modificar ni eliminar, "
+            "y no admite otra novedad para el mismo empleado."
+        )
     return (
         f"No se cargo la novedad de {novedad.nombre}: ya tiene {code} registrado "
         "en este parte. Solo se admite una novedad por empleado."
@@ -666,6 +689,7 @@ def _modificar_novedad(
     proposed_hours = (
         normalizar_horas(
             fecha=state.fecha,
+            jornada=state.jornada,
             horas=operation.horas,
             horas_extra=operation.horas_extra,
             estado_codigo=proposed_code,
@@ -678,6 +702,7 @@ def _modificar_novedad(
         return f"Para {novedad.nombre}, las horas extra solo pueden registrarse como PRESENTE."
     if requiere_motivo_jornada_parcial(
         fecha=state.fecha,
+        jornada=state.jornada,
         horas=proposed_hours,
         estado_codigo=proposed_code,
     ):
@@ -797,14 +822,15 @@ def _eliminar_novedad(
 def requiere_motivo_jornada_parcial(
     *,
     fecha: date | str,
+    jornada: float | None = None,
     horas: float | None,
     estado_codigo: str | None,
 ) -> bool:
     if horas is None:
         return False
-    jornada = float(get_jornada_esperada(fecha))
+    jornada_value = float(get_jornada_parte(fecha, jornada))
     codigo = str(estado_codigo or "").strip().upper()
-    return jornada > 0 and horas < jornada and codigo in {"", "P"}
+    return jornada_value > 0 and horas < jornada_value and codigo in {"", "P"}
 
 # Resuelve el codigo de un motivo dentro del catalogo disponible.
 def resolve_estado_codigo(codigo: str | None, estados: list[EstadoItem]) -> EstadoItem | None:
@@ -859,7 +885,12 @@ def parse_estado_local(text: str, estados: list[EstadoItem]) -> EstadoItem | Non
 
 
 # Rechaza operaciones reservadas, comandos incompatibles y horas fuera de los limites.
-def _validate_plan(plan: TurnPlan, fecha: date | str) -> str | None:
+def _validate_plan(
+    plan: TurnPlan,
+    fecha: date | str,
+    *,
+    jornada: float | None = None,
+) -> str | None:
     operation_types = {item.type for item in plan.operations}
     if operation_types & _RESERVED_OPERATIONS:
         return "No pude validar la accion solicitada. Proba nuevamente."
@@ -873,7 +904,7 @@ def _validate_plan(plan: TurnPlan, fecha: date | str) -> str | None:
         for value in (operation.horas, operation.horas_extra):
             if value is not None and not 0 <= value <= 24:
                 return "Las horas informadas deben estar entre 0 y 24."
-        if operation.horas_extra is not None and operation.horas_extra + float(get_jornada_esperada(fecha)) > 24:
+        if operation.horas_extra is not None and operation.horas_extra + float(get_jornada_parte(fecha, jornada)) > 24:
             return "La jornada total no puede superar 24 horas."
     return None
 
@@ -890,16 +921,23 @@ def _has_conversational_draft(state: ParteDiarioDraft) -> bool:
 
 
 # Comprueba motivo de jornada parcial, horas extra y destino antes de registrar un pendiente.
-def _validate_pending_business_rules(pending: PendienteAmbiguo, fecha: date | str) -> str | None:
+def _validate_pending_business_rules(
+    pending: PendienteAmbiguo,
+    fecha: date | str,
+    *,
+    jornada: float | None = None,
+) -> str | None:
     code = str(pending.estado_codigo or "").upper()
     if pending.horas_extra is not None and code != "P":
         return f"Para {pending.nombre}, las horas extra solo pueden registrarse como PRESENTE."
     if requiere_motivo_jornada_parcial(
         fecha=fecha,
+        jornada=jornada,
         horas=pending.horas,
         estado_codigo=code,
     ):
-        return f"Para {pending.nombre}, una jornada menor a {get_jornada_esperada(fecha):g} horas requiere indicar el motivo."
+        jornada_value = get_jornada_parte(fecha, jornada)
+        return f"Para {pending.nombre}, una jornada menor a {jornada_value:g} horas requiere indicar el motivo."
     if pending.validar_destino_trabajo and (
         pending.idproyecto_destino is None or pending.contacto_id_destino is None
     ):

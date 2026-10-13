@@ -232,6 +232,32 @@ def resolver_nombre_destino(
     return int(best_project.id), str(best_project.nombre or "").strip(), []
 
 
+# Lista los proyectos activos que pueden asociarse a una obra generica.
+def listar_proyectos_activos(
+    session: Session,
+    *,
+    current_project_id: int,
+) -> list[DestinoProyectoOption]:
+    projects = list(
+        session.exec(
+            select(Proyecto)
+            .where(Proyecto.deleted_at.is_(None))
+            .where(Proyecto.id != current_project_id)
+            .where(Proyecto.estado.in_(_ACTIVE_DESTINATION_PROJECT_STATES))
+            .order_by(Proyecto.nombre.asc())
+        ).all()
+    )
+    return _project_options(projects, limit=None)
+
+
+# Resuelve por numero o nombre una opcion previamente mostrada al usuario.
+def resolver_proyecto_activo(
+    text: str,
+    projects: list[DestinoProyectoOption],
+) -> DestinoProyectoOption | None:
+    return _match_destination_project(text, projects)
+
+
 # Puntua coincidencias exactas, parciales y aproximadas entre nombres de obra.
 def project_match_score(query: str | None, project_name: str | None) -> float:
     normalized_query = normalize_text(query)
@@ -274,15 +300,20 @@ def _is_destination_work_operation(operation: ParteDiarioOperation) -> bool:
     )
 
 
-# Construye hasta diez opciones numeradas con las obras que tienen ID y nombre.
-def _project_options(projects: list[Proyecto]) -> list[DestinoProyectoOption]:
+# Construye opciones numeradas con las obras que tienen ID y nombre.
+def _project_options(
+    projects: list[Proyecto],
+    *,
+    limit: int | None = 10,
+) -> list[DestinoProyectoOption]:
+    selected_projects = projects if limit is None else projects[:limit]
     return [
         DestinoProyectoOption(
             opcion=index,
             proyecto_id=int(project.id),
             nombre=str(project.nombre or "").strip(),
         )
-        for index, project in enumerate(projects[:10], start=1)
+        for index, project in enumerate(selected_projects, start=1)
         if project.id is not None and str(project.nombre or "").strip()
     ]
 

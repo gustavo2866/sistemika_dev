@@ -32,7 +32,7 @@ def listar_para_carga(state: ParteDiarioV3State) -> list[ParteDiarioAsistenciaOp
         )
         return [
             ParteDiarioAsistenciaOption(
-                opcion=index if index < 99 else index + 1,
+                opcion=index,
                 idnomina=int(row.id), nombre=row.nombre,
                 apellido=row.apellido, nro_legajo=row.nro_legajo,
             )

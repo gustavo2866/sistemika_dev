@@ -145,6 +145,7 @@ const HIDDEN_RESOURCES = [
   "proyectos",
   "constructora/proyectos-conceptos",
   "nominas",
+  "nomina-licencias",
   "nomina-categorias",
   "nomina-tareas",
   "parte-diario",

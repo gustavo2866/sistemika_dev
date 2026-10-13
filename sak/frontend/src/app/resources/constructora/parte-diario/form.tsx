@@ -17,7 +17,7 @@ import {
   setSubmissionErrors,
   type SaveHandlerCallbacks,
 } from "ra-core";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useFormContext,
   useFormState,
@@ -25,7 +25,7 @@ import {
   type FieldValues,
   type UseFormSetError,
 } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -40,6 +40,7 @@ import {
   NominaQuickCreateDialog,
   type CreatedNomina,
 } from "@/app/resources/constructora/tarja-nomina/nomina-quick-create-dialog";
+import type { NominaLicencia } from "@/app/resources/administracion/nomina-licencias/model";
 import {
   TARJA_NOMINA_DEFAULT,
   normalizeTarjaNominaPayload,
@@ -61,10 +62,12 @@ import {
   FORM_FIELD_READONLY_CLASS,
   FormDate,
   FormErrorSummary,
+  HiddenInput,
   FormReferenceAutocomplete,
   FormNumber,
   FormSelectFijo,
   FormText,
+  FormTextarea,
   FormOrderHeaderMenuActions,
   resolveNumericId,
   SectionDetailColumn,
@@ -79,13 +82,16 @@ import { dataProvider as directDataProvider, extractErrorMessage } from "@/lib/d
 import { cn } from "@/lib/utils";
 import {
   PARTE_DIARIO_DEFAULTS,
+  PARTE_DIARIO_PROYECTO_ESTADOS_ACTIVOS,
   getParteDiarioJornadaEsperada,
   getParteDiarioDetalleDefaults,
+  getParteDiarioLicenciaDetalle,
   normalizeParteDiarioPayload,
   parteDiarioSchema,
   VALIDATION_RULES,
   type ParteDiarioRecord,
   type ParteDiarioFormValues,
+  type ParteDiarioLicenciaVigente,
 } from "./model";
 import { ParteDiarioAgentChatButton } from "./navigation-title";
 
@@ -109,12 +115,25 @@ const firstContactPhone = (value: unknown) => {
 
 type ReferenceRecord = { id: number | string } & Record<string, unknown>;
 
+type ProyectoReferenceRecord = ReferenceRecord & {
+  nombre?: string | null;
+  generico?: boolean | null;
+};
+
 type ParteDiarioEstadoRecord = {
   id: number | string;
   abreviatura?: string | null;
   nombre?: string | null;
   activo?: boolean | null;
 };
+
+const formatLicenciaPeriodoFecha = (value: string) => {
+  const match = value.match(/^\d{4}-(\d{2})-(\d{2})/);
+  return match ? `${match[2]}/${match[1]}` : value;
+};
+
+const LICENCIA_PERIODO_PATTERN =
+  /per[ií]odo\s+\d{2}\/\d{2}\s+a\s+(?:\d{2}\/\d{2}|fecha sin definir)/i;
 
 type BajaNominaFormValues = {
   idnomina?: number | string | null;
@@ -563,44 +582,135 @@ const DestinoNominaDialog = ({
   );
 };
 
-const ParteDiarioMainFields = () => (
-  <div className="grid gap-2 md:grid-cols-[190px_210px_120px] md:items-start">
-    <ReferenceInput source="idproyecto" reference="proyectos" label="Proyecto">
-      <FormSelectFijo
-        optionText="nombre"
-        fixedWidth="190px"
-        widthClass="w-full md:w-[190px]"
-        emptyText="Seleccionar"
-        validate={required()}
-      />
-    </ReferenceInput>
-    <ReferenceInput source="contacto_id" reference="crm/contactos" label="Contacto">
-      <FormSelectFijo
-        optionText="nombre_completo"
-        fixedWidth="210px"
-        widthClass="w-full md:w-[210px]"
-        emptyText="Sin contacto"
-      />
-    </ReferenceInput>
-    <FormDate
-      source="fecha"
-      label="Fecha"
-      validate={required()}
-      widthClass="w-full md:w-[120px]"
-    />
-  </div>
-);
+const ParteDiarioMainFields = () => {
+  const record = useRecordContext<ParteDiarioRecord>();
+  const form = useFormContext<ParteDiarioFormValues>();
+  const fecha = useWatch({ control: form.control, name: "fecha" });
+  const proyectoId = resolveNumericId(
+    useWatch({ control: form.control, name: "idproyecto" }),
+  );
+  const { dirtyFields } = useFormState({ control: form.control });
+  const { data: proyectoSeleccionado } = useGetOne<ProyectoReferenceRecord>(
+    "proyectos",
+    { id: proyectoId || undefined },
+    { enabled: Boolean(proyectoId) },
+  );
+  const proyectoSeleccionadoResuelto =
+    proyectoId != null && resolveNumericId(proyectoSeleccionado?.id) === proyectoId;
+  const esProyectoGenerico =
+    proyectoSeleccionadoResuelto && proyectoSeleccionado?.generico === true;
 
-const ParteDiarioOptionalFields = () => (
-  <div className="mt-1 rounded-md border border-muted/60 bg-muted/30 p-2">
-    <FormText
-      source="descripcion"
-      label="Descripcion"
-      widthClass="w-full md:w-[260px]"
-      maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
-    />
-  </div>
-);
+  useEffect(() => {
+    if (!proyectoSeleccionadoResuelto) return;
+    if (form.getValues("proyecto_generico") === esProyectoGenerico) return;
+    form.resetField("proyecto_generico", {
+      defaultValue: esProyectoGenerico,
+      keepDirty: false,
+      keepError: false,
+      keepTouched: false,
+    });
+  }, [esProyectoGenerico, form, proyectoSeleccionadoResuelto]);
+
+  useEffect(() => {
+    if (dirtyFields.jornada || (record?.id && !dirtyFields.fecha)) return;
+    const jornada = getParteDiarioJornadaEsperada(fecha);
+    if (form.getValues("jornada") !== jornada) {
+      form.setValue("jornada", jornada, {
+        shouldDirty: Boolean(dirtyFields.fecha),
+        shouldValidate: true,
+      });
+    }
+  }, [dirtyFields.fecha, dirtyFields.jornada, fecha, form, record?.id]);
+
+  useEffect(() => {
+    const genericoProyectoId = resolveNumericId(
+      form.getValues("generico_proyecto_id"),
+    );
+    if (genericoProyectoId == null) return;
+    const debeLimpiar =
+      proyectoId == null ||
+      Boolean(dirtyFields.idproyecto) ||
+      (proyectoSeleccionadoResuelto && !esProyectoGenerico);
+    if (!debeLimpiar) return;
+    form.setValue("generico_proyecto_id", undefined, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [
+    dirtyFields.idproyecto,
+    esProyectoGenerico,
+    form,
+    proyectoId,
+    proyectoSeleccionadoResuelto,
+  ]);
+
+  return (
+    <div className="grid gap-2 md:grid-cols-[190px_210px_120px_90px] md:items-start">
+      <HiddenInput source="proyecto_generico" />
+      <ReferenceInput source="idproyecto" reference="proyectos" label="Proyecto">
+        <FormSelectFijo
+          optionText="nombre"
+          fixedWidth="190px"
+          widthClass="w-full md:w-[190px]"
+          emptyText="Seleccionar"
+          validate={required()}
+        />
+      </ReferenceInput>
+      <ReferenceInput source="contacto_id" reference="crm/contactos" label="Contacto">
+        <FormSelectFijo
+          optionText="nombre_completo"
+          fixedWidth="210px"
+          widthClass="w-full md:w-[210px]"
+          emptyText="Sin contacto"
+        />
+      </ReferenceInput>
+      <FormDate
+        source="fecha"
+        label="Fecha"
+        validate={required()}
+        widthClass="w-full md:w-[120px]"
+      />
+      <FormNumber
+        source="jornada"
+        label="Jornada"
+        inputMode="decimal"
+        step={0.25}
+        min={VALIDATION_RULES.JORNADA.MIN}
+        max={VALIDATION_RULES.JORNADA.MAX}
+        validate={required()}
+        widthClass="w-full md:w-[90px]"
+      />
+      {esProyectoGenerico ? (
+        <div className="min-w-0 md:col-span-4">
+          <ReferenceInput
+            source="generico_proyecto_id"
+            reference="proyectos"
+            label="Proyecto asociado"
+            filter={{ estado: [...PARTE_DIARIO_PROYECTO_ESTADOS_ACTIVOS] }}
+            sort={{ field: "nombre", order: "ASC" }}
+          >
+            <FormSelectFijo
+              optionText="nombre"
+              fixedWidth="320px"
+              widthClass="w-full md:w-[320px]"
+              emptyText="Seleccionar proyecto"
+              validate={required()}
+              choicesFilter={(choice) => resolveNumericId(choice.id) !== proyectoId}
+            />
+          </ReferenceInput>
+        </div>
+      ) : null}
+      <div className="min-w-0 md:col-span-4">
+        <FormText
+          source="descripcion"
+          label="Descripcion"
+          widthClass="w-full"
+          maxLength={VALIDATION_RULES.DESCRIPCION.MAX_LENGTH}
+        />
+      </div>
+    </div>
+  );
+};
 
 const ParteDiarioHeaderSection = ({ returnTo }: { returnTo?: string | null }) => {
   const record = useRecordContext<ParteDiarioRecord>();
@@ -627,7 +737,6 @@ const ParteDiarioHeaderSection = ({ returnTo }: { returnTo?: string | null }) =>
       <SectionBaseTemplate
         title="Informacion general"
         main={<ParteDiarioMainFields />}
-        optional={<ParteDiarioOptionalFields />}
         actions={
           canDelete ? (
             <FormOrderHeaderMenuActions
@@ -682,9 +791,52 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
   const idproyectoValue = useWatch({ name: "idproyecto" });
   const contactoValue = useWatch({ name: "contacto_id" });
   const fechaValue = useWatch({ name: "fecha" });
+  const jornadaValue = useWatch({ name: "jornada" });
   const detallesValue = useWatch({ name: "detalles" });
   const proyectoId = resolveNumericId(idproyectoValue);
   const contactoId = resolveNumericId(contactoValue);
+  const fechaParte = getParteDateValue(fechaValue);
+  const jornadaParte = Number.isFinite(Number(jornadaValue))
+    ? Number(jornadaValue)
+    : getParteDiarioJornadaEsperada(fechaValue);
+  const licenciasEnabled = Boolean(!record?.id && proyectoId && fechaParte);
+  const {
+    data: licenciasVigentes = [],
+    isPending: licenciasPending,
+  } = useGetList<ParteDiarioLicenciaVigente>(
+    "parte-diario/licencias-vigentes",
+    {
+      pagination: { page: 1, perPage: 500 },
+      sort: { field: "id", order: "ASC" },
+      filter: {
+        idproyecto: proyectoId,
+        ...(contactoId ? { contacto_id: contactoId } : {}),
+        fecha: fechaParte,
+      },
+    },
+    { enabled: licenciasEnabled },
+  );
+  useEffect(() => {
+    if (!licenciasEnabled || licenciasPending) return;
+    const actuales = form.getValues("detalles") ?? [];
+    const licenciasNominaIds = new Set(
+      licenciasVigentes
+        .map((item) => resolveNumericId(item.idnomina))
+        .filter((id): id is number => id != null),
+    );
+    const manuales = actuales.filter((detalle) => {
+      if (resolveNumericId(detalle.nomina_licencia_id) != null) return false;
+      const nominaId = resolveNumericId(detalle.idnomina);
+      return nominaId == null || !licenciasNominaIds.has(nominaId);
+    });
+    const automaticas = licenciasVigentes.map(getParteDiarioLicenciaDetalle);
+    const siguientes = [...manuales, ...automaticas];
+    if (JSON.stringify(actuales) === JSON.stringify(siguientes)) return;
+    form.setValue("detalles", siguientes, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [form, licenciasEnabled, licenciasPending, licenciasVigentes]);
   const detalleNominaIds = useMemo(() => {
     const detalles = Array.isArray(detallesValue) ? detallesValue : [];
     return new Set(
@@ -745,6 +897,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
   );
   const canEditDetalleRow = useCallback(
     (rowValue: Record<string, unknown>) => {
+      if (resolveNumericId(rowValue.nomina_licencia_id) != null) return false;
       if (isTrabajoDestinoDescripcion(rowValue.descripcion)) return false;
       const estadoId = resolveNumericId(rowValue.idestado);
       if (estadoId == null) return true;
@@ -757,6 +910,12 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
   );
   const handleRequestDeleteDetalle = useCallback(
     (rowValue: Record<string, unknown>, _index: number, remove: () => void) => {
+      if (resolveNumericId(rowValue.nomina_licencia_id) != null) {
+        notify("Las novedades generadas por una licencia no se pueden eliminar.", {
+          type: "warning",
+        });
+        return;
+      }
       const estadoId = resolveNumericId(rowValue.idestado);
       if (estadoId != null && altaEstadoIds.has(estadoId)) {
         setAltaDeletePending({ remove });
@@ -768,7 +927,12 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
       }
       remove();
     },
-    [altaEstadoIds, traspasoEstadoIds],
+    [altaEstadoIds, notify, traspasoEstadoIds],
+  );
+  const canDeleteDetalleRow = useCallback(
+    (rowValue: Record<string, unknown>) =>
+      resolveNumericId(rowValue.nomina_licencia_id) == null,
+    [],
   );
   const agentInitialMessage = useMemo(() => {
     const nombreObra = typeof proyecto?.nombre === "string" ? proyecto.nombre.trim() : "";
@@ -785,7 +949,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
     { label: "Empleado", width: "180px", mobileSpan: "full" },
     { label: "Horas", width: "54px" },
     { label: "Estado", width: "122px" },
-    { label: "Descripcion", width: "minmax(150px,1fr)", mobileSpan: "full" },
+    { label: "Descripcion", width: "260px", mobileSpan: "full" },
     { label: "", width: "minmax(54px,auto)" },
   ];
 
@@ -1065,7 +1229,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         return;
       }
       const horasOrigen = Math.max(
-        getParteDiarioJornadaEsperada(fechaValue) - horasDestino,
+        jornadaParte - horasDestino,
         0,
       );
       const payload = {
@@ -1159,7 +1323,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
           ...detalles,
           {
             idnomina: nominaId,
-            horas: getParteDiarioJornadaEsperada(fechaValue),
+            horas: jornadaParte,
             idestado: Number(altaEstadoId),
             ingreso: "",
             egreso: "",
@@ -1189,6 +1353,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         showExpandAction={false}
         showInfoAction={false}
         canEditRow={canEditDetalleRow}
+        canDeleteRow={canDeleteDetalleRow}
         onRequestDeleteRow={handleRequestDeleteDetalle}
         addButtonLabel="Agregar novedad"
         hideClearAction
@@ -1387,7 +1552,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         }
         fecha={getParteDateValue(fechaValue)}
         fechaLabel={formatAgentChatDate(fechaValue)}
-        jornadaHoras={getParteDiarioJornadaEsperada(fechaValue)}
+        jornadaHoras={jornadaParte}
         loading={traspasoLoading}
         excludedNominaIds={detalleNominaIds}
       />
@@ -1406,7 +1571,7 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
         }
         fecha={getParteDateValue(fechaValue)}
         fechaLabel={formatAgentChatDate(fechaValue)}
-        jornadaHoras={getParteDiarioJornadaEsperada(fechaValue)}
+        jornadaHoras={jornadaParte}
         loading={trabajoDestinoLoading}
         excludedNominaIds={detalleNominaIds}
       />
@@ -1415,10 +1580,34 @@ const ParteDiarioDetalleFields = ({ returnTo }: { returnTo?: string | null }) =>
 };
 
 const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) => {
+  const location = useLocation();
   const descripcionSource = useWrappedSource("descripcion");
+  const licenciaIdSource = useWrappedSource("nomina_licencia_id");
   const descripcion = useWatch({ name: descripcionSource }) as string | undefined;
+  const licenciaId = resolveNumericId(useWatch({ name: licenciaIdSource }));
+  const { data: licencia } = useGetOne<NominaLicencia>(
+    "nomina-licencias",
+    { id: licenciaId ?? 0 },
+    { enabled: licenciaId != null, refetchOnMount: "always" },
+  );
   const destinoDescripcionLabel = getDestinoDescripcion(descripcion);
-  const descripcionVisible = destinoDescripcionLabel || descripcion;
+  const fechaDesdeLicencia = String(licencia?.fecha_desde ?? "").trim();
+  const fechaHastaLicencia = String(licencia?.fecha_hasta ?? "").trim();
+  const periodoLicencia = fechaDesdeLicencia
+    ? `Periodo ${formatLicenciaPeriodoFecha(fechaDesdeLicencia)} a ${
+        fechaHastaLicencia
+          ? formatLicenciaPeriodoFecha(fechaHastaLicencia)
+          : "fecha sin definir"
+      }`
+    : "";
+  const descripcionLicencia = licenciaId && periodoLicencia
+    ? LICENCIA_PERIODO_PATTERN.test(descripcion ?? "")
+      ? (descripcion ?? "").replace(LICENCIA_PERIODO_PATTERN, periodoLicencia)
+      : [descripcion, periodoLicencia].filter(Boolean).join(" - ")
+    : descripcion;
+  const descripcionVisible = destinoDescripcionLabel || descripcionLicencia;
+  const licenciaSinFechaHasta = Boolean(licenciaId && licencia && !fechaHastaLicencia);
+  const parteDiarioReturnTo = `${location.pathname}${location.search}`;
   const proyectoValue = useWatch({ name: "idproyecto" });
   const contactoValue = useWatch({ name: "contacto_id" });
   const fechaValue = useWatch({ name: "fecha" });
@@ -1434,6 +1623,7 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
 
   return (
     <>
+      <HiddenInput source="nomina_licencia_id" />
       <DetailFieldCell label="Empleado" data-focus-field="true">
         <div className="flex w-[180px] items-center">
           <FormReferenceAutocomplete
@@ -1511,12 +1701,26 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
       </DetailFieldCell>
       <DetailFieldCell
         label="Descripcion"
-        className={cn(!hasDescripcion && "hidden sm:flex")}
+        className={cn("min-w-0 w-full", !hasDescripcion && "hidden sm:flex")}
       >
-        {destinoDescripcionLabel ? (
+        {licenciaId ? (
+          <Link
+            to={`/constructora-admin/nomina-licencias/edit/${licenciaId}?returnTo=${encodeURIComponent(parteDiarioReturnTo)}`}
+            className={cn(
+              "block w-full whitespace-normal break-words [overflow-wrap:anywhere] px-0.5 py-0.5 text-[8px] leading-3 underline underline-offset-2 sm:px-1 sm:text-[9px] sm:leading-3.5",
+              licenciaSinFechaHasta
+                ? "font-semibold text-destructive hover:text-destructive/80"
+                : "text-primary hover:text-primary/80",
+            )}
+            title={descripcionVisible || "Abrir licencia"}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {descripcionVisible || "Licencia"}
+          </Link>
+        ) : destinoDescripcionLabel ? (
           <div
             className={cn(
-              "h-3.5 w-full truncate px-0.5 text-[8px] leading-3.5 text-muted-foreground sm:h-4 sm:px-1 sm:text-[9px] sm:leading-4",
+              "w-full whitespace-normal break-words [overflow-wrap:anywhere] px-0.5 py-0.5 text-[8px] leading-3 text-muted-foreground sm:px-1 sm:text-[9px] sm:leading-3.5",
               readOnlyClassName,
             )}
             title={destinoDescripcionLabel}
@@ -1524,15 +1728,16 @@ const ParteDiarioDetalleMainFields = ({ isActive }: SectionDetailFieldsProps) =>
             {destinoDescripcionLabel}
           </div>
         ) : (
-          <FormText
+          <FormTextarea
             source="descripcion"
             label={false}
             placeholder="Tareas realizadas o nota"
             widthClass="w-full"
             readOnly={!isActive}
+            rows={2}
             maxLength={VALIDATION_RULES.DETALLE_DESCRIPCION.MAX_LENGTH}
             className={cn(
-              "[&_input]:h-3.5 [&_input]:px-0.5 [&_input]:text-[8px] sm:[&_input]:h-4 sm:[&_input]:px-1 sm:[&_input]:text-[9px]",
+              "[&_textarea]:min-h-8 [&_textarea]:resize-none [&_textarea]:whitespace-pre-wrap [&_textarea]:break-words [&_textarea]:px-1 [&_textarea]:py-0.5 [&_textarea]:text-[8px] [&_textarea]:leading-3 sm:[&_textarea]:text-[9px] sm:[&_textarea]:leading-3.5",
               readOnlyClassName,
             )}
           />

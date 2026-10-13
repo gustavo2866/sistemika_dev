@@ -38,6 +38,9 @@ const ParteDiarioEstadoFields = () => (
     <div>
       <FormBoolean source="justifica" label="Justifica" />
     </div>
+    <div>
+      <FormBoolean source="licencia" label="Licencia" />
+    </div>
   </div>
 );
 

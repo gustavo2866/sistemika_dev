@@ -23,12 +23,13 @@ from agente.v3.subprocesses.parte_diario.state import ParteDiarioFechaOption, Pa
 from agente.v3.subprocesses.parte_diario.utils import calendario, interpretacion, renderer
 from agente.v3.subprocesses.parte_diario.utils.calendario import es_dia_laborable, fecha_es_feriado
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
-from app.models import CRMContacto, EstadoParteDiario, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado
+from app.models import CRMContacto, EstadoParteDiario, OrigenDetalle, ParteDiario, ParteDiarioDetalle, ParteDiarioEstado, Proyecto
 from app.services.parte_diario_service import (
     extract_destination_part_id,
     parte_diario_service,
     strip_destination_part_reference,
 )
+from app.services.nomina_licencia_service import nomina_licencia_service
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,8 @@ def persistir_borrador(state: ParteDiarioV3State, message: V3InboundMessage) -> 
         "close_after_materialization": True, "cancelado": False,
         "contacto_id": state.contacto_id, "oportunidad_id": state.oportunidad_id,
         "idproyecto": state.proyecto_id, "fecha": draft.fecha,
+        "jornada": draft.jornada,
+        "generico_proyecto_id": draft.generico_proyecto_id,
         "parte_id_existente": draft.parte_id, "sin_novedades_informado": sin_novedades,
         "novedades": [item.to_dict() for item in draft.novedades],
         "pendientes_ambiguos": [], "conflictos_novedad": [], "errores": [],
@@ -320,6 +323,7 @@ def cargar_detalles(
             nombre=f"{nomina.apellido}, {nomina.nombre}",
             idnomina=nomina.id,
             idestado=row.idestado,
+            nomina_licencia_id=row.nomina_licencia_id,
             estado_codigo=estado_codigo,
             horas=float(row.horas),
             ingreso=row.ingreso.isoformat() if row.ingreso else None,
@@ -347,7 +351,8 @@ def cargar_detalles(
         )
         target = (
             novedades_internas
-            if str(estado_codigo or "").upper() in novedades.INTERNAL_NOMINA_STATE_CODES
+            if row.nomina_licencia_id is not None
+            or str(estado_codigo or "").upper() in novedades.INTERNAL_NOMINA_STATE_CODES
             else editable_novedades
         )
         target.append(loaded)
@@ -364,16 +369,57 @@ def aplicar_fecha(
     allow_closed: bool = False,
 ) -> str | None:
     existing = buscar_parte(session, int(state.idproyecto or 0), target_date, contacto_id=state.contacto_id)
+    proyecto = session.get(Proyecto, int(state.idproyecto or 0))
+    state.proyecto_generico = bool(proyecto and proyecto.generico)
+    state.generico_proyecto_id = (
+        int(existing.generico_proyecto_id)
+        if existing is not None and existing.generico_proyecto_id is not None
+        else None
+    )
+    proyecto_asociado = (
+        session.get(Proyecto, state.generico_proyecto_id)
+        if state.generico_proyecto_id is not None
+        else None
+    )
+    state.generico_proyecto_nombre = (
+        str(proyecto_asociado.nombre or "").strip()
+        if proyecto_asociado is not None
+        else None
+    ) or None
     if existing and existing.estado in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO} and not allow_closed:
         return renderer.parte_cerrado(target_date)
+    jornada = (
+        float(existing.jornada)
+        if existing is not None and existing.jornada is not None
+        else float(get_jornada_esperada(date.fromisoformat(target_date)))
+    )
     if existing and state.parte_id == existing.id and state.fecha == target_date:
+        state.jornada = jornada
         return None
     state.fecha = target_date
+    state.jornada = jornada
     state.sin_novedades_informado = False
     if existing is None:
         state.parte_id = None
         state.retomado = False
-        state.novedades_internas = []
+        target = date.fromisoformat(target_date)
+        state.novedades_internas = [
+            NovedadPersonal(
+                nombre=item.empleado,
+                idnomina=item.nomina_id,
+                idestado=item.estado_id,
+                nomina_licencia_id=item.licencia_id,
+                estado_codigo=item.estado_codigo,
+                horas=0,
+                descripcion=item.descripcion,
+            )
+            for item in nomina_licencia_service.listar_vigentes_para_parte(
+                session,
+                idproyecto=int(state.idproyecto or 0),
+                contacto_id=state.contacto_id,
+                fecha=target,
+            )
+        ]
         return None
     loaded, loaded_internal, loaded_pending = cargar_detalles(
         session,

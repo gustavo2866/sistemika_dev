@@ -8,8 +8,8 @@ GUARDAR devuelve None para ejecutar revision en el mismo turno, sin preguntar.
 
 from __future__ import annotations
 
-from dataclasses import replace
 import logging
+import re
 from sqlmodel import Session
 from app import db
 
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from agente.v3.subprocesses.parte_diario.domain import parte_diario
 from agente.v3.subprocesses.parte_diario.utils.texto import normalize_text
-from agente.v3.subprocesses.parte_diario.flows import aclaracion, confirmar_salida, listado, revision, validacion_carga
+from agente.v3.subprocesses.parte_diario.flows import aclaracion, confirmar_salida, listado, proyecto, revision, validacion_carga
 from agente.v3.subprocesses.parte_diario.state import ParteDiarioV3State
 from agente.v3.subprocesses.parte_diario.utils import renderer
 
@@ -46,9 +46,10 @@ async def procesar(
     command = normalize_text(text)
     if command == "listado":
         return listado.iniciar(state)
-    if command == "todos":
-        state.etapa = "carga_todos"
-        return renderer.preguntar_novedad_todos()
+    if command == "proyecto":
+        return proyecto.iniciar(state)
+    if command == "jornada" or command.startswith("jornada "):
+        return _procesar_comando_jornada(text, state)
     if command in FIN_CARGA:
         draft = state.draft()
         if not (draft.novedades or draft.pendientes_ambiguos or draft.conflictos_novedad):
@@ -75,30 +76,48 @@ async def procesar(
     return await interpretar_novedades(text, state, llm_client)
 
 
-# Recibe la novedad posterior a TODOS y permite abandonar el alcance masivo.
-async def procesar_todos(
-    text: str | None,
-    state: ParteDiarioV3State,
-    llm_client: ParteDiarioLLMClient,
-) -> str:
+# Recibe la cantidad solicitada por JORNADA o vuelve a carga con SALIR.
+def procesar_jornada(text: str | None, state: ParteDiarioV3State) -> str:
     if text is None:
-        return renderer.preguntar_novedad_todos()
+        return renderer.preguntar_jornada()
     command = normalize_text(text)
-    if command in {"salir", "cancelar"}:
-        return confirmar_salida.iniciar(state)
-    if command == "volver":
+    if command == "salir":
         state.etapa = "carga"
         return renderer.inicio_carga(state)
-    if command == "todos":
-        return renderer.preguntar_novedad_todos()
-    return await interpretar_novedades(text, state, llm_client)
+    return _procesar_comando_jornada(text, state, permitir_sin_prefijo=True)
+
+
+# Valida y aplica una jornada entre 0 y 24 horas sin usar el LLM.
+def _procesar_comando_jornada(
+    text: str,
+    state: ParteDiarioV3State,
+    *,
+    permitir_sin_prefijo: bool = False,
+) -> str:
+    normalized = str(text or "").strip().lower().replace(",", ".")
+    pattern = (
+        r"(?:jornada\s+)?(\d+(?:\.\d+)?)\s*(?:h|hs|hora|horas)?"
+        if permitir_sin_prefijo
+        else r"jornada\s+(\d+(?:\.\d+)?)\s*(?:h|hs|hora|horas)?"
+    )
+    match = re.fullmatch(pattern, normalized)
+    if match is None:
+        state.etapa = "carga_jornada"
+        return renderer.preguntar_jornada("Indica una cantidad de horas valida entre 0 y 24.")
+    jornada = float(match.group(1))
+    if not 0 <= jornada <= 24:
+        state.etapa = "carga_jornada"
+        return renderer.preguntar_jornada("La jornada debe estar entre 0 y 24 horas.")
+    draft = state.draft()
+    draft.jornada = jornada
+    state.set_draft(draft)
+    state.etapa = "carga"
+    return f"Jornada actualizada: {jornada:g}hs.\n\n{renderer.inicio_carga(state)}"
 
 
 # Interpreta ambas entradas, aplica al draft y presenta el resultado o la aclaracion.
 async def interpretar_novedades(text: str, state: ParteDiarioV3State, llm_client: ParteDiarioLLMClient) -> str:
-    aplicando_todos = state.etapa == "carga_todos"
-    llm_stage = "carga_todos" if aplicando_todos else "carga"
-    llm = llm_client.for_stage(llm_stage) if hasattr(llm_client, "for_stage") else llm_client
+    llm = llm_client.for_stage("carga") if hasattr(llm_client, "for_stage") else llm_client
     aclarando = state.etapa == "carga_aclaracion"
     origen = state.aclaracion_origen if aclarando else state.etapa
     en_listado = origen == "listado"
@@ -114,14 +133,6 @@ async def interpretar_novedades(text: str, state: ParteDiarioV3State, llm_client
         question = validacion_carga.preparar(state)
         errors = "\n".join(payload.get("errores") or [])
         return f"{errors}\n\n{question}" if errors else question
-    if aplicando_todos:
-        attempted = "agregar_novedad" in ((payload.get("parte_diario") or {}).get("operations") or [])
-        if status == "updated" or (attempted and payload.get("errores")):
-            state.etapa = "carga"
-            return renderer.seguimiento_carga(state, reply)
-        detail = "\n".join(payload.get("errores") or []) or reply
-        question = renderer.preguntar_novedad_todos()
-        return f"{detail}\n\n{question}" if detail and detail != question else question
     if status == "waiting" or payload.get("errores"):
         detalle = "\n".join(payload.get("errores") or []) or reply
         return aclaracion.iniciar(state, f"{detalle}\n\nQue novedad o cambio queres registrar?")
@@ -222,7 +233,7 @@ async def _interpretar_operaciones(
     if identity_error:
         return renderer.respuesta_borrador(draft, identity_error)
 
-    validation_error = novedades._validate_plan(plan, draft.fecha)
+    validation_error = novedades._validate_plan(plan, draft.fecha, jornada=draft.jornada)
     if validation_error:
         return renderer.respuesta_borrador(draft, validation_error)
 
@@ -258,11 +269,6 @@ async def _interpretar_operaciones(
     if project_error:
         return renderer.respuesta_borrador(draft, project_error)
 
-    if state.etapa == "carga_todos":
-        expansion_error = _expandir_novedad_todos(plan, nominas_proyecto)
-        if expansion_error:
-            return renderer.respuesta_borrador(draft, expansion_error)
-
     nominas_visibles = (
         empleados.listar_para_consulta(session,
             project.id,
@@ -288,46 +294,6 @@ async def _interpretar_operaciones(
             result.reply = renderer.consulta(result.next_state)
         result.keep_active = False
     return renderer.resultado_ejecucion(result, plan=plan)
-
-
-# Convierte una unica plantilla validada por el LLM en operaciones con IDs locales confiables.
-def _expandir_novedad_todos(
-    plan: TurnPlan,
-    nominas_proyecto: list[NominaItem],
-) -> str | None:
-    attendance = [
-        operation
-        for operation in plan.operations
-        if operation.type in {"agregar_novedad", "modificar_novedad"}
-    ]
-    if not attendance:
-        incompatible = {
-            operation.type
-            for operation in plan.operations
-            if operation.type in {"eliminar_novedad", "sin_novedades"}
-        }
-        return (
-            "Despues de TODOS indica una novedad concreta para aplicar a la nomina activa."
-            if incompatible
-            else None
-        )
-    if len(attendance) != 1:
-        return "Despues de TODOS indica una sola novedad comun para toda la nomina activa."
-    if not nominas_proyecto:
-        return "La nomina activa de este parte no tiene empleados."
-    template = attendance[0]
-    if not novedades._has_concrete_attendance_update(template):
-        return "Indica la novedad, las horas o el motivo que queres aplicar a toda la nomina activa."
-    plan.operations = [
-        replace(
-            template,
-            type="agregar_novedad",
-            nombre=item.nombre_completo,
-            idnomina=item.idnomina,
-        )
-        for item in nominas_proyecto
-    ]
-    return None
 
 
 # Responde consultas de partes usando el adaptador, sin modificar el borrador.

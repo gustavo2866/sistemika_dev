@@ -100,6 +100,102 @@ def test_tarja_detalle_list_muestra_nomina_sin_detalles(db_session):
     }
 
 
+def test_tarja_detalle_exporta_proyecto_asociado_para_obra_generica(db_session):
+    user = User(nombre="Tester", email="tarja-generica-export@example.com")
+    db_session.add(user)
+    db_session.flush()
+    obra_generica = Proyecto(
+        nombre="Obra generica",
+        generico=True,
+        responsable_id=user.id,
+    )
+    proyecto_asociado = Proyecto(
+        nombre="Hospital Central",
+        estado="02-ejecucion",
+        responsable_id=user.id,
+    )
+    segundo_proyecto = Proyecto(
+        nombre="Escuela Norte",
+        estado="02-ejecucion",
+        responsable_id=user.id,
+    )
+    presente = ParteDiarioEstado(abreviatura="P", nombre="PRESENTE")
+    db_session.add_all([
+        obra_generica,
+        proyecto_asociado,
+        segundo_proyecto,
+        presente,
+    ])
+    db_session.flush()
+    empleado = Nomina(
+        nombre="Juan",
+        apellido="Perez",
+        dni="generica-export-1",
+        idproyecto=obra_generica.id,
+    )
+    tarja = Tarja(
+        idproyecto=obra_generica.id,
+        fechainicio=date(2026, 9, 1),
+        fechafinal=date(2026, 9, 15),
+    )
+    db_session.add_all([empleado, tarja])
+    db_session.flush()
+    parte_hospital = ParteDiario(
+        idproyecto=obra_generica.id,
+        generico_proyecto_id=proyecto_asociado.id,
+        fecha=date(2026, 9, 2),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    parte_escuela = ParteDiario(
+        idproyecto=obra_generica.id,
+        generico_proyecto_id=segundo_proyecto.id,
+        fecha=date(2026, 9, 3),
+        estado=EstadoParteDiario.CONFIRMADO,
+    )
+    db_session.add_all([
+        TarjaNomina(
+            tarja_id=tarja.id,
+            nomina_id=empleado.id,
+            fecha_desde=tarja.fechainicio,
+            fecha_hasta=tarja.fechafinal,
+        ),
+        parte_hospital,
+        parte_escuela,
+    ])
+    db_session.flush()
+    db_session.add_all([
+        TarjaDetalle(
+            tarja_id=tarja.id,
+            idnomina=empleado.id,
+            fecha=parte_hospital.fecha,
+            idestado=presente.id,
+            horas=Decimal("9"),
+        ),
+        TarjaDetalle(
+            tarja_id=tarja.id,
+            idnomina=empleado.id,
+            fecha=parte_escuela.fecha,
+            idestado=presente.id,
+            horas=Decimal("9"),
+        ),
+    ])
+    db_session.commit()
+
+    rows = list_tarja_detalle(
+        Request({"type": "http", "query_string": b""}),
+        Response(),
+        db_session,
+        sort=None,
+        range=None,
+        filter=json.dumps({"tarja_id": tarja.id}),
+        q=None,
+    )
+
+    assert rows[0]["obra"] == "Obra generica"
+    assert rows[0]["D02"]["obra_exportacion"] == "Hospital Central"
+    assert rows[0]["D03"]["obra_exportacion"] == "Escuela Norte"
+
+
 def test_tarja_detalle_muestra_alta_y_la_incluye_en_filtro_novedades(db_session):
     user = User(nombre="Tester", email="tarja-detalle-alta@example.com")
     db_session.add(user)
@@ -325,6 +421,7 @@ def test_horas_superiores_a_la_jornada_se_muestran_como_ext(db_session):
     parte = ParteDiario(
         idproyecto=proyecto.id,
         fecha=date(2026, 9, 1),
+        jornada=Decimal("7"),
         estado=EstadoParteDiario.CONFIRMADO,
     )
     db_session.add(parte)
@@ -363,5 +460,5 @@ def test_horas_superiores_a_la_jornada_se_muestran_como_ext(db_session):
     assert [row["idnomina"] for row in rows] == [empleado.id]
     assert result["novedad"]["codigo"] == "EXT"
     assert result["novedad"]["estado"] == "HORAS EXTRAS"
-    assert result["novedad"]["jornada_esperada"] == 9.0
-    assert result["novedad"]["horas_extra"] == 3.0
+    assert result["novedad"]["jornada_esperada"] == 7.0
+    assert result["novedad"]["horas_extra"] == 5.0

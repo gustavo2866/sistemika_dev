@@ -40,6 +40,7 @@ export const FormOrderListRowActions = ({
   contextSearch,
   className,
   extraMenuItems,
+  extraMenuItemsPosition = "after",
   showShow = true,
   showEdit = false,
   showDelete = true,
@@ -50,6 +51,7 @@ export const FormOrderListRowActions = ({
   contextSearch?: string;
   className?: string;
   extraMenuItems?: ReactNode;
+  extraMenuItemsPosition?: "before" | "after";
   showShow?: boolean;
   showEdit?: boolean;
   showDelete?: boolean;
@@ -66,6 +68,7 @@ export const FormOrderListRowActions = ({
         contextSearch={contextSearch}
         className={className}
         extraMenuItems={extraMenuItems}
+        extraMenuItemsPosition={extraMenuItemsPosition}
         showShow={showShow}
         showEdit={showEdit}
         showDelete={showDelete}
@@ -81,6 +84,7 @@ const FormOrderListRowActionsContent = ({
   contextSearch,
   className,
   extraMenuItems,
+  extraMenuItemsPosition = "after",
   showShow = true,
   showEdit = false,
   showDelete = true,
@@ -91,6 +95,7 @@ const FormOrderListRowActionsContent = ({
   contextSearch?: string;
   className?: string;
   extraMenuItems?: ReactNode;
+  extraMenuItemsPosition?: "before" | "after";
   showShow?: boolean;
   showEdit?: boolean;
   showDelete?: boolean;
@@ -219,6 +224,10 @@ const FormOrderListRowActionsContent = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-32 sm:w-40" forceMount>
+        {extraMenuItemsPosition === "before" ? extraMenuItems : null}
+        {extraMenuItemsPosition === "before" && extraMenuItems ? (
+          <DropdownMenuSeparator />
+        ) : null}
         {showEdit ? (
           <DropdownMenuItem
             onClick={handleEdit}
@@ -250,8 +259,10 @@ const FormOrderListRowActionsContent = ({
             Eliminar
           </DropdownMenuItem>
         ) : null}
-        {extraMenuItems ? <DropdownMenuSeparator /> : null}
-        {extraMenuItems}
+        {extraMenuItemsPosition === "after" && extraMenuItems ? (
+          <DropdownMenuSeparator />
+        ) : null}
+        {extraMenuItemsPosition === "after" ? extraMenuItems : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

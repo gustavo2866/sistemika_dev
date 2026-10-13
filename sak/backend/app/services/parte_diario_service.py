@@ -8,9 +8,9 @@ from decimal import Decimal
 import json
 import re
 from typing import Any
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_esperada, get_jornada_parte
 
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, select
 
@@ -30,6 +30,7 @@ from app.models.tarja import EstadoTarja, Tarja, TarjaDetalle
 from app.modules.channels.persistence import channel_event_store
 from app.modules.channels.types import ChannelEventData
 from app.utils.quincenas import get_quincena_range
+from app.services.nomina_licencia_service import nomina_licencia_service
 
 
 INTERNAL_NOMINA_STATE_CODES = {"ALT", "BAJ", "TRA"}
@@ -83,6 +84,8 @@ class ParteDiarioService:
             select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte_id)
         ).all()
         for detalle in detalles:
+            if detalle.nomina_licencia_id is not None:
+                continue
             if internal_state_ids and detalle.idestado in internal_state_ids:
                 continue
             self._delete_destination_detail_for_origin(session, detalle)
@@ -93,6 +96,7 @@ class ParteDiarioService:
                 ParteDiarioDetalle.idestado.not_in(internal_state_ids)
                 | ParteDiarioDetalle.idestado.is_(None)
             )
+        stmt = stmt.where(ParteDiarioDetalle.nomina_licencia_id.is_(None))
         session.exec(stmt)
 
     def _validate_internal_detail_collisions(
@@ -115,14 +119,19 @@ class ParteDiarioService:
             .where(ParteDiarioDetalle.parte_diario_id == int(parte.id))
             .where(ParteDiarioDetalle.idnomina.in_(incoming_nomina_ids))
             .where(ParteDiarioDetalle.deleted_at.is_(None))
-            .where(ParteDiarioEstado.abreviatura.in_(INTERNAL_NOMINA_STATE_CODES))
+            .where(
+                or_(
+                    ParteDiarioEstado.abreviatura.in_(INTERNAL_NOMINA_STATE_CODES),
+                    ParteDiarioDetalle.nomina_licencia_id.is_not(None),
+                )
+            )
             .where(ParteDiarioEstado.deleted_at.is_(None))
         ).all()
         if not rows:
             return
         labels = ", ".join(
-            f"{nomina.apellido}, {nomina.nombre} ({estado.abreviatura})"
-            for _, estado, nomina in rows
+            f"{nomina.apellido}, {nomina.nombre} ({'licencia ' if detalle.nomina_licencia_id is not None else ''}{estado.abreviatura})"
+            for detalle, estado, nomina in rows
         )
         raise ValueError(
             f"No se puede registrar otra novedad para {labels}. "
@@ -193,7 +202,11 @@ class ParteDiarioService:
             touched_part_ids.add(int(origin_part.id))
             incoming = incoming_by_nomina.get(int(origin_detail.idnomina))
             if incoming is not None:
-                origin_hours, _ = _destination_work_hours(incoming, parte.fecha)
+                origin_hours, _ = _destination_work_hours(
+                    incoming,
+                    parte.fecha,
+                    jornada=origin_part.jornada,
+                )
                 origin_detail.horas = Decimal(str(origin_hours))
                 session.add(origin_detail)
                 continue
@@ -353,6 +366,35 @@ class ParteDiarioService:
             mensaje = session.get(CRMMensaje, mensaje_id)
             contacto_id = int(mensaje.contacto_id or 0) if mensaje is not None else 0
         fecha = date.fromisoformat(str(result.get("fecha") or ""))
+        parte = self._resolve_parte(
+            session,
+            result,
+            idproyecto=idproyecto,
+            fecha=fecha,
+            contacto_id=contacto_id,
+        )
+        raw_jornada = result.get("jornada")
+        if raw_jornada is None:
+            raw_jornada = parte.jornada if parte is not None else get_jornada_esperada(fecha)
+        try:
+            jornada = Decimal(str(raw_jornada))
+        except Exception as exc:
+            raise ValueError("La jornada debe ser una cantidad de horas valida") from exc
+        if not jornada.is_finite() or jornada < 0 or jornada > 24:
+            raise ValueError("La jornada debe estar entre 0 y 24 horas")
+        generico_proyecto_id = _parse_optional_int(result.get("generico_proyecto_id"))
+        proyecto_cabecera = session.get(Proyecto, idproyecto)
+        if generico_proyecto_id is not None:
+            if proyecto_cabecera is None or not proyecto_cabecera.generico:
+                raise ValueError("Solo una obra generica admite un proyecto asociado")
+            proyecto_asociado = session.get(Proyecto, generico_proyecto_id)
+            if (
+                proyecto_asociado is None
+                or proyecto_asociado.deleted_at is not None
+                or proyecto_asociado.id == idproyecto
+                or proyecto_asociado.estado not in {"01-plan", "02-ejecucion", "03-conclusion"}
+            ):
+                raise ValueError("El proyecto asociado no existe o no esta activo")
         raw_novedades = list(result.get("novedades") or [])
         novedades = [item for item in raw_novedades if item.get("idnomina") is not None]
         novedades, novedades_destino = self._split_destination_novedades(
@@ -360,6 +402,7 @@ class ParteDiarioService:
             novedades,
             idproyecto=idproyecto,
             fecha=fecha,
+            jornada=jornada,
         )
         pendientes_provisorios = list(result.get("pendientes_ambiguos") or [])
         novedades_provisorias = [item for item in raw_novedades if item.get("idnomina") is None]
@@ -385,23 +428,58 @@ class ParteDiarioService:
         self._validate_novedades(
             novedades,
             fecha=fecha,
+            jornada=jornada,
             present_id=present_id,
             require_close_rules=target_estado == EstadoParteDiario.CONFIRMADO,
         )
 
-        parte = self._resolve_parte(
-            session,
-            result,
-            idproyecto=idproyecto,
-            fecha=fecha,
-            contacto_id=contacto_id,
-        )
+        es_nuevo = parte is None
+        licencias = []
+        if es_nuevo:
+            with session.begin_nested():
+                nomina_licencia_service.materializar_faltantes_desde_detalles(
+                    session,
+                    fecha=fecha,
+                    detalles=novedades,
+                )
+                licencias = nomina_licencia_service.listar_vigentes_para_parte(
+                    session,
+                    idproyecto=idproyecto,
+                    contacto_id=contacto_id or None,
+                    fecha=fecha,
+                )
+                empleados_con_licencia = {
+                    item.nomina_id: item for item in licencias
+                }
+                for novedad in novedades:
+                    licencia = empleados_con_licencia.get(int(novedad["idnomina"]))
+                    licencia_informada_id = _parse_optional_int(
+                        novedad.get("nomina_licencia_id")
+                    )
+                    if licencia_informada_id is not None and licencia is None:
+                        raise ValueError(
+                            "La licencia informada no corresponde a la nomina del parte diario"
+                        )
+                    if (
+                        licencia is not None
+                        and licencia_informada_id != licencia.licencia_id
+                    ):
+                        raise ValueError(
+                            f"{licencia.empleado} tiene una licencia vigente y no admite otra novedad en este parte"
+                        )
+        novedades = [
+            item
+            for item in novedades
+            if _parse_optional_int(item.get("nomina_licencia_id")) is None
+        ]
         linked_origin_part_ids: set[int] = set()
         if parte is None:
             parte = ParteDiario(
                 idproyecto=idproyecto,
+                generico_proyecto_id=generico_proyecto_id,
                 contacto_id=contacto_id or None,
                 fecha=fecha,
+                jornada=jornada,
                 estado=target_estado,
                 mensaje_origen_id=mensaje_id,
             )
@@ -413,6 +491,8 @@ class ParteDiarioService:
             self._validate_internal_detail_collisions(session, parte, novedades)
             if contacto_id > 0:
                 parte.contacto_id = contacto_id
+            parte.generico_proyecto_id = generico_proyecto_id
+            parte.jornada = jornada
             parte.mensaje_origen_id = mensaje_id
             session.add(parte)
             session.flush()
@@ -425,6 +505,19 @@ class ParteDiarioService:
 
         parte.estado = target_estado
         session.add(parte)
+
+        for licencia in licencias:
+            session.add(
+                ParteDiarioDetalle(
+                    parte_diario_id=int(parte.id),
+                    idnomina=licencia.nomina_id,
+                    idestado=licencia.estado_id,
+                    nomina_licencia_id=licencia.licencia_id,
+                    horas=Decimal("0"),
+                    descripcion=licencia.descripcion,
+                    origen=OrigenDetalle.AGENTE,
+                )
+            )
 
         origin_details_by_destination: dict[tuple[int, int, int], ParteDiarioDetalle] = {}
         for novedad in novedades:
@@ -551,6 +644,7 @@ class ParteDiarioService:
         fecha = _parse_date_value(data.get("fecha", existing.fecha if existing is not None else None))
         if fecha is None:
             raise ValueError("El trabajo en otra obra requiere la fecha del parte diario")
+        jornada = data.get("jornada", existing.jornada if existing is not None else None)
         presente = session.exec(
             select(ParteDiarioEstado)
             .where(ParteDiarioEstado.abreviatura == "P")
@@ -568,6 +662,7 @@ class ParteDiarioService:
                     "fuera_de_proyecto": True,
                 },
                 fecha,
+                jornada=jornada,
             )
             detalle["idestado"] = int(presente.id)
             detalle["horas"] = horas_origen
@@ -585,6 +680,7 @@ class ParteDiarioService:
             return
 
         fecha = _parse_date_value(data.get("fecha", existing.fecha if existing is not None else None))
+        jornada = data.get("jornada", existing.jornada if existing is not None else None)
         source_project_id = _parse_optional_int(
             data.get("idproyecto", existing.idproyecto if existing is not None else None)
         )
@@ -629,6 +725,7 @@ class ParteDiarioService:
                     "fuera_de_proyecto": True,
                 },
                 fecha,
+                jornada=jornada,
             )
             persisted_payload = {
                 "tipo": TEMPORARY_DESTINATION_WORK_TYPE,
@@ -778,6 +875,7 @@ class ParteDiarioService:
         *,
         idproyecto: int,
         fecha: date,
+        jornada: Decimal | float | int | str | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         current_items: list[dict[str, Any]] = []
         destination_items: list[dict[str, Any]] = []
@@ -806,7 +904,11 @@ class ParteDiarioService:
                 idproyecto=destination_id,
                 contacto_id=destination_contact_id,
             )
-            origin_hours, destination_hours = _destination_work_hours(normalized, fecha)
+            origin_hours, destination_hours = _destination_work_hours(
+                normalized,
+                fecha,
+                jornada=jornada,
+            )
             destination = dict(normalized)
             destination["idproyecto"] = destination_id
             destination["contacto_id_destino"] = destination_contact_id
@@ -885,11 +987,13 @@ class ParteDiarioService:
                 fecha=fecha,
                 contacto_id=destination_contact_id,
             )
+            destination_is_new = parte is None
             if parte is None:
                 parte = ParteDiario(
                     idproyecto=destination_id,
                     contacto_id=destination_contact_id,
                     fecha=fecha,
+                    jornada=get_jornada_esperada(fecha),
                     estado=destination_estado,
                     mensaje_origen_id=mensaje_id,
                     descripcion="Generado por personal derivado desde otra obra",
@@ -908,12 +1012,47 @@ class ParteDiarioService:
                 session.add(parte)
                 session.flush()
 
+            destination_licenses = (
+                nomina_licencia_service.listar_vigentes_para_parte(
+                    session,
+                    idproyecto=destination_id,
+                    contacto_id=destination_contact_id,
+                    fecha=fecha,
+                )
+                if destination_is_new
+                else []
+            )
+            for licencia in destination_licenses:
+                session.add(
+                    ParteDiarioDetalle(
+                        parte_diario_id=int(parte.id),
+                        idnomina=licencia.nomina_id,
+                        idestado=licencia.estado_id,
+                        nomina_licencia_id=licencia.licencia_id,
+                        horas=Decimal("0"),
+                        descripcion=licencia.descripcion,
+                        origen=OrigenDetalle.AGENTE,
+                    )
+                )
+
             ids = [int(item["idnomina"]) for item in items if item.get("idnomina") is not None]
             if ids:
+                protected = session.exec(
+                    select(ParteDiarioDetalle)
+                    .where(ParteDiarioDetalle.parte_diario_id == int(parte.id))
+                    .where(ParteDiarioDetalle.idnomina.in_(ids))
+                    .where(ParteDiarioDetalle.nomina_licencia_id.is_not(None))
+                    .where(ParteDiarioDetalle.deleted_at.is_(None))
+                ).first()
+                if protected is not None:
+                    raise ValueError(
+                        "No se puede registrar trabajo en destino para un empleado con licencia en ese parte"
+                    )
                 session.exec(
                     delete(ParteDiarioDetalle)
                     .where(ParteDiarioDetalle.parte_diario_id == parte.id)
                     .where(ParteDiarioDetalle.idnomina.in_(ids))
+                    .where(ParteDiarioDetalle.nomina_licencia_id.is_(None))
                 )
             for item in items:
                 session.add(
@@ -1053,6 +1192,7 @@ class ParteDiarioService:
         novedades: list[dict[str, Any]],
         *,
         fecha: date,
+        jornada: Decimal | float | int | str | None = None,
         present_id: int | None,
         require_close_rules: bool,
     ) -> None:
@@ -1077,9 +1217,12 @@ class ParteDiarioService:
                 and not item.get("fuera_de_proyecto")
                 and present_id is not None
                 and item.get("idestado") == present_id
-                and hours < get_jornada_esperada(fecha)
+                and hours < get_jornada_parte(fecha, jornada)
             ):
-                raise ValueError(f"PRESENTE requiere al menos {get_jornada_esperada(fecha):g} horas para personal interno")
+                raise ValueError(
+                    f"PRESENTE requiere al menos {get_jornada_parte(fecha, jornada):g} horas "
+                    "para personal interno"
+                )
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -1151,15 +1294,21 @@ def _parse_optional_int(value: Any) -> int | None:
 
 
 # Completa la jornada en destino solo cuando no se informaron horas explicitas.
-def _destination_hours(item: dict[str, Any], fecha: date | str) -> float:
+def _destination_hours(
+    item: dict[str, Any],
+    fecha: date | str,
+    *,
+    jornada: Decimal | float | int | str | None = None,
+) -> float:
     value = item.get("horas")
     normalized_code = str(item.get("estado_codigo") or "").upper()
+    jornada_value = float(jornada) if jornada is not None else float(get_jornada_esperada(fecha))
     if value is None:
-        return float(get_jornada_esperada(fecha)) if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
+        return jornada_value if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
     try:
         hours = float(value)
     except (TypeError, ValueError):
-        return float(get_jornada_esperada(fecha)) if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
+        return jornada_value if normalized_code == "P" or item.get("fuera_de_proyecto") else 0.0
     return hours
 
 
@@ -1167,11 +1316,13 @@ def _destination_hours(item: dict[str, Any], fecha: date | str) -> float:
 def _destination_work_hours(
     item: dict[str, Any],
     fecha: date | str,
+    *,
+    jornada: Decimal | float | int | str | None = None,
 ) -> tuple[float, float]:
-    destination_hours = _destination_hours(item, fecha)
+    destination_hours = _destination_hours(item, fecha, jornada=jornada)
     if destination_hours < 0 or destination_hours > 24:
         raise ValueError("Las horas en la obra destino deben estar entre 0 y 24")
-    normal_hours = float(get_jornada_esperada(fecha))
+    normal_hours = float(jornada) if jornada is not None else float(get_jornada_esperada(fecha))
     return max(normal_hours - destination_hours, 0.0), destination_hours
 
 

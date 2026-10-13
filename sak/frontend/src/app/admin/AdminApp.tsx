@@ -282,6 +282,12 @@ import {
   NominaShow,
 } from "@/app/resources/administracion/nomina";
 import {
+  NominaLicenciaList,
+  NominaLicenciaCreate,
+  NominaLicenciaEdit,
+  NominaLicenciaShow,
+} from "@/app/resources/administracion/nomina-licencias";
+import {
   NominaCategoriaList,
   NominaCategoriaCreate,
   NominaCategoriaEdit,
@@ -988,6 +994,16 @@ const AdminApp = () => {
         recordRepresentation="nombre"
         icon={Wallet}
         options={{ label: "Nómina" }}
+      />
+      <Resource
+        name="nomina-licencias"
+        list={NominaLicenciaList}
+        create={NominaLicenciaCreate}
+        edit={NominaLicenciaEdit}
+        show={NominaLicenciaShow}
+        recordRepresentation="id"
+        icon={CalendarDays}
+        options={{ label: "Licencias de nómina" }}
       />
       <Resource
         name="nomina-categorias"

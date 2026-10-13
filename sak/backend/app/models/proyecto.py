@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import ClassVar, List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, DECIMAL
+from sqlalchemy import Boolean, Column, DECIMAL
 from sqlmodel import Field, Relationship
 
 from .base import Base
@@ -78,6 +78,11 @@ class Proyecto(Base, table=True):
         default=None,
         max_length=1000,
         description="Comentarios adicionales sobre el proyecto",
+    )
+    generico: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="false"),
+        description="Indica si el proyecto es genérico o de uso general",
     )
     oportunidad_id: Optional[int] = Field(
         default=None,

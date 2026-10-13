@@ -38,8 +38,10 @@ def procesar(text: str, state: ParteDiarioV3State) -> str | None:
         reply = renderer.mostrar_nomina(items)
     if state.etapa == "carga_aclaracion":
         return f"{reply}\n\n{state.aclaracion_pregunta}"
-    if state.etapa == "carga_todos":
-        return f"{reply}\n\n{renderer.preguntar_novedad_todos()}"
+    if state.etapa == "carga_jornada":
+        return f"{reply}\n\n{renderer.preguntar_jornada()}"
+    if state.etapa == "carga_proyecto":
+        return f"{reply}\n\n{renderer.seleccionar_proyecto(state)}"
     if state.etapa in validacion_carga.ETAPAS:
         # Preparar la pregunta en una copia evita modificar la cola durante la consulta.
         pregunta = validacion_carga.preparar(ParteDiarioV3State.from_dict(state.to_dict()))

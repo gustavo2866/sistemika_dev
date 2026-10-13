@@ -24,7 +24,7 @@ from app.services.parte_diario_service import (
     strip_destination_part_reference,
 )
 from app.services.parte_diario_tarja_service import parte_diario_tarja_service
-from app.utils.jornada import get_jornada_esperada
+from app.utils.jornada import get_jornada_esperada, get_jornada_parte
 
 
 router = APIRouter(prefix="/tarja-detalle", tags=["tarja-detalle"])
@@ -101,6 +101,54 @@ def _build_empty_days(start: date, end: date) -> dict[str, dict[str, Any]]:
     }
 
 
+def _resolve_export_obras_por_fecha(
+    session: Session,
+    tarja: Tarja,
+    proyecto: Proyecto | None,
+) -> dict[date, str]:
+    if proyecto is None or not proyecto.generico:
+        return {}
+    partes_stmt = (
+        select(ParteDiario)
+        .where(ParteDiario.idproyecto == tarja.idproyecto)
+        .where(ParteDiario.fecha >= tarja.fechainicio)
+        .where(ParteDiario.fecha <= tarja.fechafinal)
+        .where(ParteDiario.generico_proyecto_id.is_not(None))
+        .where(ParteDiario.deleted_at.is_(None))
+        .distinct()
+    )
+    partes_stmt = partes_stmt.where(
+        ParteDiario.contacto_id == tarja.contacto_id
+        if tarja.contacto_id is not None
+        else ParteDiario.contacto_id.is_(None)
+    )
+    partes = list(session.exec(partes_stmt).all())
+    proyecto_ids = sorted({
+        int(parte.generico_proyecto_id)
+        for parte in partes
+        if parte.generico_proyecto_id is not None
+    })
+    if not proyecto_ids:
+        return {}
+    proyectos = session.exec(
+        select(Proyecto)
+        .where(Proyecto.id.in_(proyecto_ids))
+        .where(Proyecto.deleted_at.is_(None))
+    ).all()
+    nombres_por_id = {
+        int(item.id): str(item.nombre or "").strip()
+        for item in proyectos
+        if item.id is not None and str(item.nombre or "").strip()
+    }
+    obras_por_fecha = {
+        parte.fecha: nombres_por_id[int(parte.generico_proyecto_id)]
+        for parte in partes
+        if parte.generico_proyecto_id is not None
+        and int(parte.generico_proyecto_id) in nombres_por_id
+    }
+    return obras_por_fecha
+
+
 def _temporary_work_code(description: str | None) -> str | None:
     clean = strip_destination_part_reference(description)
     normalized = str(clean or "").strip().lower()
@@ -119,8 +167,9 @@ def _overtime_values(
     horas: Decimal | float,
     estado_codigo: str | None,
     descripcion: str | None,
+    jornada_parte: Decimal | float | int | str | None = None,
 ) -> tuple[float, float, bool]:
-    jornada = float(get_jornada_esperada(fecha))
+    jornada = float(get_jornada_parte(fecha, jornada_parte))
     extras = max(float(horas) - jornada, 0.0)
     codigo = str(estado_codigo or "").strip().upper()
     is_overtime = extras > 0 and codigo in {"", "P"} and _temporary_work_code(descripcion) is None
@@ -156,6 +205,7 @@ def _serialize_parte_detalle(
         horas=detalle.horas,
         estado_codigo=estado_codigo,
         descripcion=detalle.descripcion,
+        jornada_parte=parte.jornada if parte is not None else None,
     )
     return {
         "id": detalle.id,
@@ -264,6 +314,11 @@ def list_tarja_detalle(
         raise HTTPException(status_code=404, detail="Tarja no encontrada")
     proyecto = session.get(Proyecto, tarja.idproyecto)
     obra = proyecto.nombre if proyecto is not None else None
+    obras_exportacion_por_fecha = _resolve_export_obras_por_fecha(
+        session,
+        tarja,
+        proyecto,
+    )
 
     search = str(filters.get("q") or q or "").strip()
     only_bonos = _is_truthy_filter(filters.get("bonos"))
@@ -306,6 +361,21 @@ def list_tarja_detalle(
     if only_parte_novedades:
         origin_detail = aliased(ParteDiarioDetalle)
         origin_state = aliased(ParteDiarioEstado)
+        jornadas_by_fecha = {
+            parte.fecha: get_jornada_parte(parte.fecha, parte.jornada)
+            for parte in session.exec(
+                select(ParteDiario)
+                .where(ParteDiario.idproyecto == tarja.idproyecto)
+                .where(ParteDiario.fecha >= tarja.fechainicio)
+                .where(ParteDiario.fecha <= tarja.fechafinal)
+                .where(ParteDiario.deleted_at.is_(None))
+                .where(
+                    ParteDiario.contacto_id == tarja.contacto_id
+                    if tarja.contacto_id is not None
+                    else ParteDiario.contacto_id.is_(None)
+                )
+            ).all()
+        }
         overtime_nomina_ids = {
             int(nomina_id)
             for nomina_id, detalle_fecha, horas in session.exec(
@@ -315,7 +385,13 @@ def list_tarja_detalle(
                 .where(TarjaDetalle.idnomina.is_not(None))
             ).all()
             if nomina_id is not None
-            and float(horas) > float(get_jornada_esperada(detalle_fecha))
+            and float(horas)
+            > float(
+                jornadas_by_fecha.get(
+                    detalle_fecha,
+                    get_jornada_esperada(detalle_fecha),
+                )
+            )
         }
         novelty_conditions = [
             and_(
@@ -488,6 +564,8 @@ def list_tarja_detalle(
                 "estado": estado_visible.abreviatura if estado_visible else None,
                 "estado_nombre": estado_visible.nombre if estado_visible else None,
                 "descripcion": detalle.descripcion,
+                "obra_exportacion": obras_exportacion_por_fecha.get(detalle.fecha)
+                or obra,
             }
 
     ordered_rows = [rows[int(nomina_id)] for nomina_id in nomina_ids if int(nomina_id) in rows]
@@ -531,11 +609,23 @@ def get_tarja_detalle_novedad(
             else None
         )
         estado_codigo = estado.abreviatura if estado is not None else None
+        parte = session.exec(
+            select(ParteDiario)
+            .where(ParteDiario.idproyecto == tarja.idproyecto)
+            .where(ParteDiario.fecha == detalle_tarja.fecha)
+            .where(ParteDiario.deleted_at.is_(None))
+            .where(
+                ParteDiario.contacto_id == tarja.contacto_id
+                if tarja.contacto_id is not None
+                else ParteDiario.contacto_id.is_(None)
+            )
+        ).first()
         jornada, horas_extra, is_overtime = _overtime_values(
             fecha=detalle_tarja.fecha,
             horas=detalle_tarja.horas,
             estado_codigo=estado_codigo,
             descripcion=detalle_tarja.descripcion,
+            jornada_parte=parte.jornada if parte is not None else None,
         )
         novedad = {
             "id": None,

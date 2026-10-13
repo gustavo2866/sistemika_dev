@@ -12,3 +12,13 @@ def get_jornada_esperada(fecha: date | str) -> Decimal:
     if fecha_parte.weekday() == 5:
         return Decimal("6")
     return Decimal("9")
+
+
+def get_jornada_parte(
+    fecha: date | str,
+    jornada: Decimal | float | int | str | None,
+) -> Decimal:
+    """Usa la jornada persistida del parte y conserva el calculo como fallback."""
+    if jornada is None:
+        return get_jornada_esperada(fecha)
+    return Decimal(str(jornada))

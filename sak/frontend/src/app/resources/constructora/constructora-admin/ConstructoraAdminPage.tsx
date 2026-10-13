@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ComponentType } from "react";
+import { type ComponentType } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { ResourceContextProvider } from "ra-core";
 
@@ -35,12 +35,24 @@ import {
 
 const adminBasePath = "/constructora-admin";
 const encargadoItemKeys = new Set(["encargados", "proyecto-encargados"]);
+const nominaItemKeys = new Set(["nominas", "nomina-licencias"]);
 
 const getEncargadoItems = () =>
   CONSTRUCTORA_ADMIN_ITEMS.filter((item) => encargadoItemKeys.has(item.key));
 
+const getNominaItems = () =>
+  CONSTRUCTORA_ADMIN_ITEMS.filter((item) => nominaItemKeys.has(item.key));
+
 const getTopLevelItems = () =>
-  CONSTRUCTORA_ADMIN_ITEMS.filter((item) => !encargadoItemKeys.has(item.key));
+  CONSTRUCTORA_ADMIN_ITEMS.filter(
+    (item) =>
+      !encargadoItemKeys.has(item.key) && !nominaItemKeys.has(item.key),
+  );
+
+const getAdminItemGroups = () => [
+  { label: "Encargados", items: getEncargadoItems() },
+  { label: "Nomina", items: getNominaItems() },
+];
 
 const getAdminItemPath = (item: SetupItem) => `${adminBasePath}/${item.key}`;
 
@@ -68,6 +80,13 @@ const getAdminRouteState = (pathname: string) => {
   return { selectedKey, currentView, recordId };
 };
 
+const getSafeReturnTo = (search: string) => {
+  const returnTo = new URLSearchParams(search).get("returnTo");
+  return returnTo?.startsWith("/") && !returnTo.startsWith("//")
+    ? returnTo
+    : null;
+};
+
 const AdminOptionsMenu = ({
   currentKey,
 }: {
@@ -83,49 +102,51 @@ const AdminOptionsMenu = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        {getTopLevelItems().map((item, index) => {
+        {getTopLevelItems().map((item) => {
           const isActive = item.key === currentKey;
 
           return (
-            <Fragment key={item.key}>
-              {index === 1 ? (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger
-                    className={cn(
-                      "py-2 text-sm",
-                      encargadoItemKeys.has(currentKey ?? "") &&
-                        "bg-accent font-medium text-accent-foreground",
-                    )}
-                  >
-                    Encargados
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-64">
-                    {getEncargadoItems().map((encargadoItem) => (
-                      <DropdownMenuItem
-                        key={encargadoItem.key}
-                        className={cn(
-                          "py-2 text-sm",
-                          encargadoItem.key === currentKey &&
-                            "bg-accent font-medium text-accent-foreground",
-                        )}
-                        onSelect={() => navigate(getAdminItemPath(encargadoItem))}
-                      >
-                        {encargadoItem.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              ) : null}
-              <DropdownMenuItem
+            <DropdownMenuItem
+              key={item.key}
+              className={cn(
+                "py-2 text-sm",
+                isActive && "bg-accent font-medium text-accent-foreground",
+              )}
+              onSelect={() => navigate(getAdminItemPath(item))}
+            >
+              {item.label}
+            </DropdownMenuItem>
+          );
+        })}
+        {getAdminItemGroups().map((group) => {
+          const isActive = group.items.some((item) => item.key === currentKey);
+
+          return (
+            <DropdownMenuSub key={group.label}>
+              <DropdownMenuSubTrigger
                 className={cn(
                   "py-2 text-sm",
                   isActive && "bg-accent font-medium text-accent-foreground",
                 )}
-                onSelect={() => navigate(getAdminItemPath(item))}
               >
-                {item.label}
-              </DropdownMenuItem>
-            </Fragment>
+                {group.label}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-64">
+                {group.items.map((item) => (
+                  <DropdownMenuItem
+                    key={item.key}
+                    className={cn(
+                      "py-2 text-sm",
+                      item.key === currentKey &&
+                        "bg-accent font-medium text-accent-foreground",
+                    )}
+                    onSelect={() => navigate(getAdminItemPath(item))}
+                  >
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           );
         })}
       </DropdownMenuContent>
@@ -134,7 +155,6 @@ const AdminOptionsMenu = ({
 };
 
 const AdminSectionNav = ({ currentKey }: { currentKey?: string | null }) => {
-  const encargadoActive = encargadoItemKeys.has(currentKey ?? "");
   const topLevelItems = getTopLevelItems();
   const navItemClass = (active: boolean) =>
     cn(
@@ -147,46 +167,47 @@ const AdminSectionNav = ({ currentKey }: { currentKey?: string | null }) => {
   return (
     <nav aria-label="Secciones de admin" className="hidden overflow-x-auto md:block">
       <div className="inline-flex min-w-0 items-center gap-1 rounded-xl border border-border/70 bg-muted/20 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
-        {topLevelItems.map((item, index) => (
-          <div key={item.key} className="contents">
-            {index === 1 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className={navItemClass(encargadoActive)}>
-                    {encargadoActive ? (
-                      <span className="absolute inset-y-1.5 left-1.5 w-[3px] rounded-full bg-foreground/80" />
-                    ) : null}
-                    <span className={cn("truncate", encargadoActive && "pl-2.5")}>
-                      Encargados
-                    </span>
-                    <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  {getEncargadoItems().map((encargadoItem) => (
-                    <DropdownMenuItem key={encargadoItem.key} asChild>
-                      <Link to={getAdminItemPath(encargadoItem)}>
-                        {encargadoItem.label}
-                      </Link>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+        {topLevelItems.map((item) => (
+          <Link
+            key={item.key}
+            to={getAdminItemPath(item)}
+            aria-current={item.key === currentKey ? "page" : undefined}
+            className={navItemClass(item.key === currentKey)}
+          >
+            {item.key === currentKey ? (
+              <span className="absolute inset-y-1.5 left-1.5 w-[3px] rounded-full bg-foreground/80" />
             ) : null}
-            <Link
-              to={getAdminItemPath(item)}
-              aria-current={item.key === currentKey ? "page" : undefined}
-              className={navItemClass(item.key === currentKey)}
-            >
-              {item.key === currentKey ? (
-                <span className="absolute inset-y-1.5 left-1.5 w-[3px] rounded-full bg-foreground/80" />
-              ) : null}
-              <span className={cn("truncate", item.key === currentKey && "pl-2.5")}>
-                {item.label}
-              </span>
-            </Link>
-          </div>
+            <span className={cn("truncate", item.key === currentKey && "pl-2.5")}>
+              {item.label}
+            </span>
+          </Link>
         ))}
+        {getAdminItemGroups().map((group) => {
+          const isActive = group.items.some((item) => item.key === currentKey);
+
+          return (
+            <DropdownMenu key={group.label}>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className={navItemClass(isActive)}>
+                  {isActive ? (
+                    <span className="absolute inset-y-1.5 left-1.5 w-[3px] rounded-full bg-foreground/80" />
+                  ) : null}
+                  <span className={cn("truncate", isActive && "pl-2.5")}>
+                    {group.label}
+                  </span>
+                  <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                {group.items.map((item) => (
+                  <DropdownMenuItem key={item.key} asChild>
+                    <Link to={getAdminItemPath(item)}>{item.label}</Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        })}
       </div>
     </nav>
   );
@@ -196,10 +217,12 @@ const ConstructoraAdminContent = ({
   item,
   view,
   recordId,
+  returnTo,
 }: {
   item: SetupItem;
   view: SetupView;
   recordId?: string | null;
+  returnTo?: string | null;
 }) => {
   if (!item.resource) return null;
 
@@ -224,7 +247,7 @@ const ConstructoraAdminContent = ({
 
     return (
       <ResourceContextProvider value={item.resource}>
-        <EditComponent id={recordId} redirect={listPath} />
+        <EditComponent id={recordId} redirect={returnTo ?? listPath} />
       </ResourceContextProvider>
     );
   }
@@ -244,6 +267,7 @@ const ConstructoraAdminContent = ({
 export const ConstructoraAdminPage = () => {
   const location = useLocation();
   const { selectedKey, currentView, recordId } = getAdminRouteState(location.pathname);
+  const returnTo = getSafeReturnTo(location.search);
   const selectedItem = getConstructoraAdminItem(selectedKey);
   const defaultItem = CONSTRUCTORA_ADMIN_ITEMS[0] ?? null;
 
@@ -289,6 +313,7 @@ export const ConstructoraAdminPage = () => {
               item={selectedItem}
               view={currentView}
               recordId={recordId}
+              returnTo={returnTo}
             />
           </SetupContentPanel>
         }
