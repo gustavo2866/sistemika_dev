@@ -130,9 +130,11 @@ nombre del usuario y domain resuelve las coincidencias. Si hay mas de una, la
 validacion de empleado presenta siempre un menu numerado y acepta el numero elegido.
 Los movimientos internos de nomina (`ALT`, `BAJ`, `TRA`) y las novedades generadas
 por licencias se recuperan separados del borrador editable: ocupan la unica novedad
-permitida para ese empleado y parte, pero no se reenvian al persistir. Si el usuario
-intenta agregar, modificar o eliminar otra novedad para esa persona, el agente la
-rechaza en carga e informa el motivo. Las licencias se distinguen por
+permitida para ese empleado y parte, pero no se reenvian al persistir. Mientras la
+licencia siga activa, el agente rechaza modificarla o agregar otra novedad para esa
+persona. A diferencia de los movimientos internos, una licencia puede quitarse: el
+borrador la conserva en `licencias_a_cerrar`, informa que se cerrara al confirmar y
+permite cargar luego la novedad real de ese empleado. Las licencias se distinguen por
 `nomina_licencia_id`, se muestran en LISTADO junto al empleado en la pagina que le
 corresponde y tambien en los resumenes, y conservan el tipo y comentario
 materializados al crear el parte. Las licencias no se repiten en la cabecera ni en
@@ -147,9 +149,13 @@ manualmente una novedad cuyo estado esta marcado como licencia y todavia no exis
 una `nomina_licencias` vigente para el empleado, la persistencia compartida la crea
 con la fecha del parte como `fecha_desde`, `fecha_hasta=NULL`, conserva el comentario
 y vincula el detalle mediante `nomina_licencia_id`. La regla aplica por igual al
-formulario y al agente. Un parte existente no incorpora
-retroactivamente licencias nuevas, pero sus detalles de licencia persistidos nunca se
-eliminan durante una recarga del agente.
+formulario y al agente. Un parte existente no incorpora retroactivamente licencias
+nuevas. Sus detalles de licencia persistidos no se eliminan durante una recarga comun
+del agente; la excepcion es una licencia quitada explicitamente. Al guardar, el backend
+valida que siga vigente y corresponda a la nomina del parte, asigna
+`fecha_hasta=fecha_del_parte`, elimina el detalle actual y los detalles posteriores de
+esa licencia y resincroniza las tarjas abiertas. Toda la operacion es transaccional y
+se bloquea si afecta una tarja cerrada.
 
 Para resolver empleados se consulta exclusivamente `TarjaNomina` de la quincena,
 obra y encargado del parte, con `fecha_desde <= fecha_del_parte <= fecha_hasta`.

@@ -452,6 +452,97 @@ class NominaLicenciaService:
         session.flush()
         self._sincronizar_tarjas_abiertas(session, partes_afectados.values())
 
+    def cerrar_desde_parte_diario(
+        self,
+        session: Session,
+        *,
+        licencia_ids: list[int],
+        idproyecto: int,
+        contacto_id: int | None,
+        fecha: date,
+        parte_id: int | None,
+    ) -> set[int]:
+        """Cierra licencias quitadas por el agente y elimina su detalle del parte actual."""
+        solicitadas = {int(item) for item in licencia_ids if int(item) > 0}
+        if not solicitadas:
+            return set()
+
+        vigentes = self.listar_vigentes_para_parte(
+            session,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id,
+            fecha=fecha,
+        )
+        vigentes_por_id = {item.licencia_id: item for item in vigentes}
+        invalidas = solicitadas - set(vigentes_por_id)
+        if invalidas:
+            raise ValueError(
+                "Una licencia seleccionada para cerrar ya no esta vigente o no "
+                "corresponde a la nomina del parte diario"
+            )
+
+        cerradas: set[int] = set()
+        for licencia_id in sorted(solicitadas):
+            licencia = session.get(NominaLicencia, licencia_id)
+            if licencia is None or licencia.deleted_at is not None:
+                raise ValueError("La licencia seleccionada para cerrar no existe")
+            cobertura_anterior = (licencia.fecha_desde, licencia.fecha_hasta)
+            validacion = self.validar_cobertura(
+                session,
+                nomina_id=int(licencia.nomina_id),
+                fecha_desde=licencia.fecha_desde,
+                fecha_hasta=fecha,
+                tipo_novedad=licencia.tipo_novedad,
+                comentario=licencia.comentario,
+                licencia_id=licencia_id,
+                cobertura_anterior=cobertura_anterior,
+            )
+            if validacion.bloqueada:
+                raise ValueError(
+                    "No se puede cerrar la licencia porque el periodo afectado "
+                    "incluye una tarja cerrada"
+                )
+
+            licencia.fecha_hasta = fecha
+            session.add(licencia)
+            session.flush()
+
+            partes_futuros: dict[int, ParteDiario] = {}
+            detalles_futuros = session.exec(
+                select(ParteDiarioDetalle, ParteDiario)
+                .join(ParteDiario, ParteDiario.id == ParteDiarioDetalle.parte_diario_id)
+                .where(ParteDiarioDetalle.nomina_licencia_id == licencia_id)
+                .where(ParteDiario.fecha > fecha)
+                .where(ParteDiarioDetalle.deleted_at.is_(None))
+                .where(ParteDiario.deleted_at.is_(None))
+            ).all()
+            for detalle, parte_futuro in detalles_futuros:
+                if parte_futuro.estado == EstadoParteDiario.CERRADO:
+                    raise ValueError(
+                        "No se puede cerrar la licencia porque afecta un parte cerrado"
+                    )
+                self._desvincular_tarja_detalles(session, detalle)
+                session.delete(detalle)
+                partes_futuros[int(parte_futuro.id)] = parte_futuro
+
+            if parte_id is not None:
+                detalles = session.exec(
+                    select(ParteDiarioDetalle)
+                    .where(ParteDiarioDetalle.parte_diario_id == parte_id)
+                    .where(ParteDiarioDetalle.nomina_licencia_id == licencia_id)
+                    .where(ParteDiarioDetalle.deleted_at.is_(None))
+                ).all()
+                for detalle in detalles:
+                    self._desvincular_tarja_detalles(session, detalle)
+                    session.delete(detalle)
+            cerradas.add(licencia_id)
+
+            session.flush()
+            self._sincronizar_tarjas_abiertas(session, partes_futuros.values())
+
+        session.flush()
+        return cerradas
+
     @staticmethod
     def _detalle_requiere_actualizacion(
         detalle: ParteDiarioDetalle,

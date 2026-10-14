@@ -1,5 +1,12 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import UploadFile
+from openpyxl import Workbook
 
 from app.models.erp.presupuesto import ErpPresupuesto
 from app.routers.erp_presupuesto_router import (
@@ -7,6 +14,7 @@ from app.routers.erp_presupuesto_router import (
     distribute_presupuesto_conceptos_to_erp_rows,
     distribute_presupuesto_ingresos_to_erp_rows,
     erp_presupuesto_router,
+    import_erp_presupuesto_panel_project,
 )
 
 
@@ -46,6 +54,82 @@ def test_erp_presupuesto_export_import_headers_include_real_values():
         "ingresos",
         "real_ingresos",
         "real_egresos",
+    ]
+
+
+def _presupuesto_import_file(
+    *,
+    empleados=0,
+    egresos=0,
+    ingresos=0,
+    real_ingresos=0,
+    real_egresos=0,
+):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(EXPECTED_PRESUPUESTO_IMPORT_HEADERS)
+    sheet.append(
+        [
+            "123 - Proyecto de prueba",
+            "2026-09",
+            "1 - Rubro",
+            "5.01 - Cuenta de prueba",
+            empleados,
+            egresos,
+            ingresos,
+            real_ingresos,
+            real_egresos,
+        ]
+    )
+    content = BytesIO()
+    workbook.save(content)
+    content.seek(0)
+    return UploadFile(filename="presupuesto.xlsx", file=content)
+
+
+def _presupuesto_import_session():
+    session = MagicMock()
+    session.get.return_value = SimpleNamespace(
+        id=1,
+        nombre="Proyecto de prueba",
+        centro_costo=123,
+        deleted_at=None,
+    )
+    session.exec.return_value.all.return_value = [
+        SimpleNamespace(id=10, cod_cuenta="5.01")
+    ]
+    return session
+
+
+@pytest.mark.asyncio
+async def test_erp_presupuesto_import_validation_allows_negative_real_values():
+    result = await import_erp_presupuesto_panel_project(
+        periodo="2026-09",
+        proyecto_id=1,
+        process=False,
+        file=_presupuesto_import_file(real_ingresos=-1250.50, real_egresos=-375.25),
+        session=_presupuesto_import_session(),
+    )
+
+    assert result["valid"] is True
+    assert result["errors"] == []
+    assert result["rows_budgeted"] == 1
+    assert result["processed"] is False
+
+
+@pytest.mark.asyncio
+async def test_erp_presupuesto_import_validation_still_rejects_negative_budget_values():
+    result = await import_erp_presupuesto_panel_project(
+        periodo="2026-09",
+        proyecto_id=1,
+        process=False,
+        file=_presupuesto_import_file(egresos=-1),
+        session=_presupuesto_import_session(),
+    )
+
+    assert result["valid"] is False
+    assert result["errors"] == [
+        "Fila 2: empleados, egresos e ingresos no pueden ser negativos."
     ]
 
 

@@ -1082,9 +1082,9 @@ async def import_erp_presupuesto_panel_project(
         real_egresos = _parse_excel_decimal(
             _real_egresos_raw, row_number, "real_egresos", errors
         )
-        if empleados < 0 or egresos < 0 or ingresos < 0 or real_ingresos < 0 or real_egresos < 0:
+        if empleados < 0 or egresos < 0 or ingresos < 0:
             errors.append(
-                f"Fila {row_number}: empleados, egresos, ingresos, real_ingresos y real_egresos no pueden ser negativos."
+                f"Fila {row_number}: empleados, egresos e ingresos no pueden ser negativos."
             )
 
         if empleados != 0 or egresos != 0 or ingresos != 0 or real_ingresos != 0 or real_egresos != 0:

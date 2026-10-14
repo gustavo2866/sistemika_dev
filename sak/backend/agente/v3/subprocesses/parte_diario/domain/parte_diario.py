@@ -174,6 +174,11 @@ def persistir_borrador(state: ParteDiarioV3State, message: V3InboundMessage) -> 
         "generico_proyecto_id": draft.generico_proyecto_id,
         "parte_id_existente": draft.parte_id, "sin_novedades_informado": sin_novedades,
         "novedades": [item.to_dict() for item in draft.novedades],
+        "licencias_a_cerrar": [
+            int(item.nomina_licencia_id)
+            for item in draft.licencias_a_cerrar
+            if item.nomina_licencia_id is not None
+        ],
         "pendientes_ambiguos": [], "conflictos_novedad": [], "errores": [],
         "parte_diario": {"status": "confirmed" if cerrar else "saved",
                          "operations": ["confirmar" if cerrar else "guardar"]},
@@ -399,6 +404,7 @@ def aplicar_fecha(
     state.fecha = target_date
     state.jornada = jornada
     state.sin_novedades_informado = False
+    state.licencias_a_cerrar = []
     if existing is None:
         state.parte_id = None
         state.retomado = False
