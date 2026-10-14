@@ -30,6 +30,7 @@ def menu_revision(state) -> str:
         or draft.pendientes_ambiguos
         or draft.conflictos_novedad
         or tiene_licencias
+        or draft.licencias_a_cerrar
     ):
         summary = "Sin novedades. Todos presentes."
     volver = "Volver al listado" if state.revision_origen == "listado" else "Volver a carga"
@@ -49,15 +50,31 @@ def propuesta_continuar(fecha: str) -> str:
 
 def resumen(state: ParteDiarioDraft) -> str:
     licencias = [item for item in state.novedades_internas if item.nomina_licencia_id is not None]
-    if state.sin_novedades_informado and not state.novedades and not licencias:
+    if (
+        state.sin_novedades_informado
+        and not state.novedades
+        and not licencias
+        and not state.licencias_a_cerrar
+    ):
         return "Sin novedades. Todos presentes."
-    if not state.novedades and not state.pendientes_ambiguos and not licencias:
+    if (
+        not state.novedades
+        and not state.pendientes_ambiguos
+        and not licencias
+        and not state.licencias_a_cerrar
+    ):
         return "(sin novedades cargadas)"
     rows = []
     for novedad in licencias:
         estado = _state_label(novedad.estado_codigo) or "Licencia"
         motivo = f", comentario: {novedad.descripcion}" if novedad.descripcion else ""
         rows.append(f"- {novedad.nombre}: Licencia - {estado}{motivo}")
+    for novedad in state.licencias_a_cerrar:
+        estado = _state_label(novedad.estado_codigo) or "Licencia"
+        rows.append(
+            f"- {novedad.nombre}: Licencia - {estado} quitada. "
+            "Al confirmar el parte, la licencia se cerrara con esta fecha."
+        )
     for novedad in state.novedades:
         if _is_internal_nomina_state(novedad.estado_codigo):
             continue
@@ -92,6 +109,7 @@ def resumen_revision(state: ParteDiarioDraft) -> str:
         and not state.novedades
         and not state.pendientes_ambiguos
         and not licencias_internas
+        and not state.licencias_a_cerrar
     ):
         return "Sin novedades. Todos presentes."
 
@@ -108,6 +126,14 @@ def resumen_revision(state: ParteDiarioDraft) -> str:
                 f"Licencia - {_state_label(novedad.estado_codigo)}",
             )
         )
+
+    licencias_a_cerrar = [
+        _review_row(
+            _short_person_name(novedad.nombre),
+            f"{_state_label(novedad.estado_codigo)}; cierre al confirmar",
+        )
+        for novedad in state.licencias_a_cerrar
+    ]
 
     for novedad in state.novedades:
         if _is_internal_nomina_state(novedad.estado_codigo):
@@ -139,6 +165,7 @@ def resumen_revision(state: ParteDiarioDraft) -> str:
 
     groups = [
         ("Ausencias", ausencias),
+        ("Licencias a cerrar", licencias_a_cerrar),
         ("Horas extra", horas_extra),
         ("Otra obra", otra_obra),
         ("Otras novedades", otras),
@@ -582,6 +609,11 @@ def payload_ejecucion(result: ExecutionResult, *, plan: TurnPlan | None = None) 
         "parte_id_existente": state.parte_id,
         "sin_novedades_informado": state.sin_novedades_informado,
         "novedades": [item.to_dict() for item in state.novedades],
+        "licencias_a_cerrar": [
+            int(item.nomina_licencia_id)
+            for item in state.licencias_a_cerrar
+            if item.nomina_licencia_id is not None
+        ],
         "pendientes_ambiguos": [item.to_dict() for item in state.pendientes_ambiguos],
         "conflictos_novedad": [item.to_dict() for item in state.conflictos_novedad],
         "errores": result.errors,

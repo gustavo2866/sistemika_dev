@@ -89,7 +89,10 @@ Salida:
 Operaciones:
 - agregar_novedad: persona y novedad concreta (estado, horas, motivo o destino).
 - modificar_novedad: ajustes solicitados a una novedad existente.
-- eliminar_novedad: una operacion por cada novedad o pendiente a quitar.
+- eliminar_novedad: una operacion por cada novedad, pendiente o licencia a quitar.
+  Si la persona figura en parte.novedades_internas con nomina_licencia_id, quitarla
+  significa solicitar el cierre de esa licencia al confirmar el parte; no uses
+  modificar_novedad para cambiar una licencia.
 - pedir_aclaracion: pregunta sin modificar el borrador.
 - retomar_carga: terminar una aclaracion sin cambios y regresar al modo de entrada.
 - set_fecha: fecha ISO referida en el turno.

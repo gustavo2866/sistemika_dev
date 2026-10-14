@@ -102,7 +102,11 @@ solo para obtener un resultado verde.
   implicitos y las novedades conservan sus horas. Fallar conserva datos;
   descartar no elimina DB.
 - Una licencia vigente se materializa con `nomina_licencia_id`, ocupa la unica
-  novedad del empleado y no puede editarse ni eliminarse desde formulario o agente.
+  novedad del empleado y no puede editarse ni reemplazarse mientras siga activa.
+  El formulario conserva su bloqueo de eliminacion; el agente permite quitarla,
+  avisa que se cerrara al confirmar y, al guardar, asigna `fecha_hasta` a la fecha
+  del parte, elimina sus detalles actual y futuros y resincroniza tarjas abiertas.
+  Debe rechazar IDs fuera de la nomina y periodos que afecten tarjas cerradas.
   `test_parte_diario_licencias.py` tambien conserva el control de periodos
   superpuestos y el comentario visible de origen.
 - El cierre guardado informa resultado, obra y fecha, libera el proceso y no anexa

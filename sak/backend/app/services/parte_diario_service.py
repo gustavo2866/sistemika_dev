@@ -433,6 +433,25 @@ class ParteDiarioService:
             require_close_rules=target_estado == EstadoParteDiario.CONFIRMADO,
         )
 
+        if parte is not None and parte.estado in {
+            EstadoParteDiario.CONFIRMADO,
+            EstadoParteDiario.CERRADO,
+        }:
+            raise ValueError("El parte diario ya fue confirmado")
+        licencia_ids_a_cerrar = [
+            licencia_id
+            for raw_id in result.get("licencias_a_cerrar") or []
+            if (licencia_id := _parse_optional_int(raw_id)) is not None
+        ]
+        licencias_cerradas = nomina_licencia_service.cerrar_desde_parte_diario(
+            session,
+            licencia_ids=licencia_ids_a_cerrar,
+            idproyecto=idproyecto,
+            contacto_id=contacto_id or None,
+            fecha=fecha,
+            parte_id=int(parte.id) if parte is not None and parte.id is not None else None,
+        )
+
         es_nuevo = parte is None
         licencias = []
         if es_nuevo:
@@ -448,6 +467,10 @@ class ParteDiarioService:
                     contacto_id=contacto_id or None,
                     fecha=fecha,
                 )
+                licencias = [
+                    item for item in licencias
+                    if item.licencia_id not in licencias_cerradas
+                ]
                 empleados_con_licencia = {
                     item.nomina_id: item for item in licencias
                 }
@@ -486,8 +509,6 @@ class ParteDiarioService:
             session.add(parte)
             session.flush()
         else:
-            if parte.estado in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO}:
-                raise ValueError("El parte diario ya fue confirmado")
             self._validate_internal_detail_collisions(session, parte, novedades)
             if contacto_id > 0:
                 parte.contacto_id = contacto_id
@@ -612,7 +633,19 @@ class ParteDiarioService:
                     origin_part,
                     auto_commit=False,
                 )
-        if target_estado == EstadoParteDiario.CONFIRMADO:
+        if licencias_cerradas:
+            tarja_actual = parte_diario_tarja_service.get_tarja_para_parte(
+                session,
+                int(parte.id),
+            )
+            if tarja_actual is not None and tarja_actual.estado == EstadoTarja.CERRADO:
+                raise ValueError("No se puede cerrar la licencia porque la tarja esta cerrada")
+            parte_diario_tarja_service.sincronizar_detalle_para_parte(
+                session,
+                parte,
+                auto_commit=False,
+            )
+        elif target_estado == EstadoParteDiario.CONFIRMADO:
             parte_diario_tarja_service.sincronizar_detalle_para_parte(
                 session,
                 parte,

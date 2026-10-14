@@ -103,7 +103,7 @@ def execute_plan(
             tiene_licencias = any(
                 item.nomina_licencia_id is not None
                 for item in current.novedades_internas
-            )
+            ) or bool(current.licencias_a_cerrar)
             if (
                 current.novedades
                 or current.pendientes_ambiguos
@@ -627,8 +627,8 @@ def _internal_novedad_error(novedad: NovedadPersonal) -> str:
     if novedad.nomina_licencia_id is not None:
         return (
             f"No se modifico la novedad de {novedad.nombre}: tiene una licencia {code} "
-            "registrada para este parte. La licencia no se puede modificar ni eliminar, "
-            "y no admite otra novedad para el mismo empleado."
+            "registrada para este parte. La licencia no se puede modificar y no admite "
+            "otra novedad para el mismo empleado mientras siga activa."
         )
     return (
         f"No se cargo la novedad de {novedad.nombre}: ya tiene {code} registrado "
@@ -796,6 +796,15 @@ def _eliminar_novedad(
             or _find_internal_novedad_by_name(state, operation.nombre)
         )
         if internal is not None:
+            if internal.nomina_licencia_id is not None:
+                state.novedades_internas.remove(internal)
+                if not any(
+                    item.nomina_licencia_id == internal.nomina_licencia_id
+                    for item in state.licencias_a_cerrar
+                ):
+                    state.licencias_a_cerrar.append(internal)
+                state.sin_novedades_informado = False
+                return None
             return _internal_novedad_error(internal)
         pending = _find_pending(state, operation.nombre)
         if pending is not None:

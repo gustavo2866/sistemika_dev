@@ -347,7 +347,7 @@ def test_crear_parte_rechaza_otra_novedad_para_empleado_con_licencia(db_session)
         )
 
 
-def test_agente_carga_licencia_como_interna_y_bloquea_operaciones(db_session):
+def test_agente_bloquea_reemplazo_y_permite_quitar_licencia(db_session):
     proyecto, contacto, empleado, licencia = _seed_licencia_context(db_session)
     draft = ParteDiarioDraft(
         oportunidad_id=1,
@@ -404,6 +404,233 @@ def test_agente_carga_licencia_como_interna_y_bloquea_operaciones(db_session):
     )
     assert sin_novedades.status == "confirmation_required"
     assert "licencia" in sin_novedades.reply.lower()
+
+    modificacion = execute_plan(
+        draft,
+        TurnPlan(
+            operations=[
+                ParteDiarioOperation(
+                    type="modificar_novedad",
+                    idnomina=empleado.id,
+                    nombre="Ana Perez",
+                    estado_codigo="ACC",
+                )
+            ]
+        ),
+        [persona],
+        [persona],
+        cargar_estados(db_session),
+    )
+    assert modificacion.next_state.novedades_internas
+    assert not modificacion.next_state.licencias_a_cerrar
+    assert "no se puede modificar" in modificacion.reply.lower()
+
+    eliminacion = execute_plan(
+        draft,
+        TurnPlan(
+            operations=[
+                ParteDiarioOperation(
+                    type="eliminar_novedad",
+                    idnomina=empleado.id,
+                    nombre="Ana Perez",
+                )
+            ]
+        ),
+        [persona],
+        [persona],
+        cargar_estados(db_session),
+    )
+    assert eliminacion.status == "updated"
+    assert not eliminacion.next_state.novedades_internas
+    assert [
+        item.nomina_licencia_id for item in eliminacion.next_state.licencias_a_cerrar
+    ] == [licencia.id]
+    assert "al confirmar el parte" in eliminacion.reply.lower()
+    assert "licencia se cerrara" in eliminacion.reply.lower()
+
+
+def test_agente_cierra_licencia_quitada_al_guardar_parte_nuevo(db_session):
+    proyecto, contacto, empleado, licencia = _seed_licencia_context(db_session)
+
+    parte = parte_diario_service._create_or_update_from_result(
+        db_session,
+        {
+            "type": "parte_diario_reply",
+            "parte_listo": True,
+            "confirmar_parte": False,
+            "cerrar_parte": False,
+            "idproyecto": proyecto.id,
+            "contacto_id": contacto.id,
+            "fecha": "2026-10-12",
+            "sin_novedades_informado": True,
+            "licencias_a_cerrar": [licencia.id],
+            "novedades": [],
+            "pendientes_ambiguos": [],
+            "conflictos_novedad": [],
+        },
+        mensaje_id=None,
+    )
+    db_session.flush()
+    db_session.refresh(licencia)
+
+    assert licencia.fecha_hasta == date(2026, 10, 12)
+    assert db_session.exec(
+        select(ParteDiarioDetalle).where(
+            ParteDiarioDetalle.parte_diario_id == parte.id
+        )
+    ).all() == []
+    tarja_detalle = db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.idnomina == empleado.id)
+        .where(TarjaDetalle.fecha == parte.fecha)
+    ).one()
+    assert float(tarja_detalle.horas) == 9
+    assert tarja_detalle.parte_diario_detalle_id is None
+
+
+def test_agente_cierra_licencia_y_elimina_detalle_referenciado_por_tarja(db_session):
+    proyecto, contacto, empleado, licencia = _seed_licencia_context(db_session)
+    estado = _estado_licencia(db_session)
+    parte = ParteDiario(
+        idproyecto=proyecto.id,
+        contacto_id=contacto.id,
+        fecha=date(2026, 10, 12),
+        estado="borrador",
+    )
+    parte_futuro = ParteDiario(
+        idproyecto=proyecto.id,
+        contacto_id=contacto.id,
+        fecha=date(2026, 10, 13),
+        estado="borrador",
+    )
+    tarja = Tarja(
+        idproyecto=proyecto.id,
+        contacto_id=contacto.id,
+        fechainicio=date(2026, 10, 11),
+        fechafinal=date(2026, 10, 25),
+        estado=EstadoTarja.BORRADOR,
+    )
+    db_session.add_all([parte, parte_futuro, tarja])
+    db_session.flush()
+    detalle = ParteDiarioDetalle(
+        parte_diario_id=parte.id,
+        idnomina=empleado.id,
+        idestado=estado.id,
+        nomina_licencia_id=licencia.id,
+        horas=0,
+        descripcion="Licencia vigente",
+    )
+    db_session.add(detalle)
+    db_session.flush()
+    detalle_futuro = ParteDiarioDetalle(
+        parte_diario_id=parte_futuro.id,
+        idnomina=empleado.id,
+        idestado=estado.id,
+        nomina_licencia_id=licencia.id,
+        horas=0,
+        descripcion="Licencia futura",
+    )
+    db_session.add(detalle_futuro)
+    db_session.flush()
+    db_session.add_all([
+        TarjaNomina(
+            tarja_id=tarja.id,
+            nomina_id=empleado.id,
+            fecha_desde=tarja.fechainicio,
+            fecha_hasta=tarja.fechafinal,
+        ),
+        TarjaDetalle(
+            tarja_id=tarja.id,
+            idnomina=empleado.id,
+            fecha=parte.fecha,
+            idestado=estado.id,
+            horas=0,
+            descripcion="Licencia vigente",
+            parte_diario_detalle_id=detalle.id,
+        ),
+    ])
+    db_session.commit()
+    detalle_id = int(detalle.id)
+    detalle_futuro_id = int(detalle_futuro.id)
+
+    actualizado = parte_diario_service._create_or_update_from_result(
+        db_session,
+        {
+            "type": "parte_diario_reply",
+            "parte_listo": True,
+            "confirmar_parte": False,
+            "cerrar_parte": False,
+            "idproyecto": proyecto.id,
+            "contacto_id": contacto.id,
+            "fecha": parte.fecha.isoformat(),
+            "parte_id_existente": parte.id,
+            "sin_novedades_informado": True,
+            "licencias_a_cerrar": [licencia.id],
+            "novedades": [],
+            "pendientes_ambiguos": [],
+            "conflictos_novedad": [],
+        },
+        mensaje_id=None,
+    )
+    db_session.flush()
+    db_session.refresh(licencia)
+
+    assert actualizado.id == parte.id
+    assert licencia.fecha_hasta == parte.fecha
+    assert db_session.get(ParteDiarioDetalle, detalle_id) is None
+    assert db_session.get(ParteDiarioDetalle, detalle_futuro_id) is None
+    tarja_detalle = db_session.exec(
+        select(TarjaDetalle)
+        .where(TarjaDetalle.tarja_id == tarja.id)
+        .where(TarjaDetalle.idnomina == empleado.id)
+        .where(TarjaDetalle.fecha == parte.fecha)
+    ).one()
+    assert float(tarja_detalle.horas) == 9
+    assert tarja_detalle.parte_diario_detalle_id is None
+
+
+def test_agente_no_cierra_licencia_si_afecta_tarja_cerrada(db_session):
+    proyecto, contacto, empleado, licencia = _seed_licencia_context(db_session)
+    tarja = Tarja(
+        idproyecto=proyecto.id,
+        contacto_id=contacto.id,
+        fechainicio=date(2026, 10, 11),
+        fechafinal=date(2026, 10, 25),
+        estado=EstadoTarja.CERRADO,
+    )
+    db_session.add(tarja)
+    db_session.flush()
+    db_session.add(
+        TarjaNomina(
+            tarja_id=tarja.id,
+            nomina_id=empleado.id,
+            fecha_desde=tarja.fechainicio,
+            fecha_hasta=tarja.fechafinal,
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(ValueError, match="tarja cerrada"):
+        parte_diario_service._create_or_update_from_result(
+            db_session,
+            {
+                "type": "parte_diario_reply",
+                "parte_listo": True,
+                "confirmar_parte": False,
+                "cerrar_parte": False,
+                "idproyecto": proyecto.id,
+                "contacto_id": contacto.id,
+                "fecha": "2026-10-12",
+                "sin_novedades_informado": True,
+                "licencias_a_cerrar": [licencia.id],
+                "novedades": [],
+                "pendientes_ambiguos": [],
+                "conflictos_novedad": [],
+            },
+            mensaje_id=None,
+        )
+
+    assert licencia.fecha_hasta is None
 
 
 def test_agente_recupera_jornada_personalizada_del_parte(db_session):
@@ -784,6 +1011,7 @@ def test_resincronizacion_desvincula_detalle_antes_de_eliminarlo(db_session):
         idproyecto=proyecto.id,
         contacto_id=contacto.id,
         fecha=date(2026, 10, 10),
+        jornada=Decimal("6"),
         estado="confirmado",
     )
     tarja = Tarja(

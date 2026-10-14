@@ -336,6 +336,8 @@ class ParteDiarioDraft:
     novedades: list[NovedadPersonal] = field(default_factory=list)
     # ALT, BAJ, TRA y licencias ocupan la novedad, pero no pertenecen al borrador editable.
     novedades_internas: list[NovedadPersonal] = field(default_factory=list)
+    # Licencias quitadas por el usuario que se cerraran al guardar el parte.
+    licencias_a_cerrar: list[NovedadPersonal] = field(default_factory=list)
     sin_novedades_informado: bool = False
     pendientes_ambiguos: list[PendienteAmbiguo] = field(default_factory=list)
     conflictos_novedad: list[ConflictoNovedad] = field(default_factory=list)
@@ -356,6 +358,7 @@ class ParteDiarioDraft:
             "generico_proyecto_nombre": self.generico_proyecto_nombre,
             "novedades": [item.to_dict() for item in self.novedades],
             "novedades_internas": [item.to_dict() for item in self.novedades_internas],
+            "licencias_a_cerrar": [item.to_dict() for item in self.licencias_a_cerrar],
             "sin_novedades_informado": self.sin_novedades_informado,
             "pendientes_ambiguos": [item.to_dict() for item in self.pendientes_ambiguos],
             "conflictos_novedad": [item.to_dict() for item in self.conflictos_novedad],
@@ -392,6 +395,9 @@ class ParteDiarioDraft:
             novedades=[NovedadPersonal.from_dict(item) for item in data.get("novedades") or []],
             novedades_internas=[
                 NovedadPersonal.from_dict(item) for item in data.get("novedades_internas") or []
+            ],
+            licencias_a_cerrar=[
+                NovedadPersonal.from_dict(item) for item in data.get("licencias_a_cerrar") or []
             ],
             sin_novedades_informado=bool(data.get("sin_novedades_informado")),
             pendientes_ambiguos=[
