@@ -14,6 +14,11 @@ import {
 } from "../periodos";
 import { ErpCashSubctaCreate, ErpCashSubctaEdit, ErpCashSubctaList } from "../subctas";
 import { ErpCashMapCreate, ErpCashMapEdit, ErpCashMapList } from "../maps";
+import {
+  MetodoProyeccionCreate,
+  MetodoProyeccionEdit,
+  MetodoProyeccionList,
+} from "../metodos-proyeccion";
 
 export const CASHFLOW_SETUP_ITEMS: SetupItem[] = [
   {
@@ -60,6 +65,15 @@ export const CASHFLOW_SETUP_ITEMS: SetupItem[] = [
     listComponent: ErpCashMapList,
     createComponent: ErpCashMapCreate,
     editComponent: ErpCashMapEdit,
+  },
+  {
+    key: "metodos-proyeccion",
+    label: "Métodos de proyección",
+    description: "Configurar reglas mensuales para calcular las proyecciones del CashFlow.",
+    resource: "metodos-proyeccion",
+    listComponent: MetodoProyeccionList,
+    createComponent: MetodoProyeccionCreate,
+    editComponent: MetodoProyeccionEdit,
   },
 ];
 

@@ -25,6 +25,9 @@ from app.models.erp.presupuesto import ErpPresupuesto
 from app.models.erp.rubro import ErpRubro
 from app.models.proyecto import Proyecto
 
+HONORARIOS_PROYECTO_CUENTA = "5.01.01.001"
+
+
 def _find_same_month_presupuesto(
     session: Session,
     *,
@@ -386,6 +389,10 @@ def get_erp_presupuesto_panel(
     fecha_hasta: date = Query(..., description="Ultimo dia del periodo"),
     estado: str | None = Query("02-ejecucion", description="Estado de proyecto a incluir"),
     proyecto_id: int | None = Query(None, description="Filtro opcional por proyecto"),
+    incluir_honorarios: bool = Query(
+        True,
+        description=f"Incluye la cuenta {HONORARIOS_PROYECTO_CUENTA} en el panel",
+    ),
     session: Session = Depends(get_session),
 ):
     """Devuelve una vista agregada para el panel de presupuestos ERP."""
@@ -444,7 +451,6 @@ def get_erp_presupuesto_panel(
         stmt = stmt.where(Proyecto.id == proyecto_id)
     if estado and estado != "all":
         stmt = stmt.where(Proyecto.estado == estado)
-
     rows = session.exec(stmt).all()
 
     months: list[str] = []
@@ -460,9 +466,19 @@ def get_erp_presupuesto_panel(
     projects: dict[int, dict] = {}
     rubros_by_project: dict[int, dict[int, dict]] = defaultdict(dict)
     cuentas_by_rubro: dict[tuple[int, int], dict[int, dict]] = defaultdict(dict)
+    gestion_real_ingresos_by_project: dict[int, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
 
     for row in rows:
         month = _month_key(row.year, row.month)
+        if row.cuenta_codigo == HONORARIOS_PROYECTO_CUENTA:
+            gestion_real_ingresos_by_project[row.proyecto_id][month] += (
+                _decimal_to_float(row.real_ingresos)
+            )
+            if not incluir_honorarios:
+                continue
+
         project = projects.get(row.proyecto_id)
         if project is None:
             project = {
@@ -536,10 +552,17 @@ def get_erp_presupuesto_panel(
             record_count,
         )
 
+    for project_id, project in projects.items():
+        gestion_values = gestion_real_ingresos_by_project.get(project_id, {})
+        project["gestion_real_ingresos"] = {
+            month: float(gestion_values.get(month, 0.0)) for month in months
+        }
+
     return {
         "fecha_desde": fecha_desde.isoformat(),
         "fecha_hasta": fecha_hasta.isoformat(),
         "estado": estado,
+        "incluir_honorarios": incluir_honorarios,
         "months": months,
         "rows": list(projects.values()),
     }

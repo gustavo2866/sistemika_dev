@@ -35,3 +35,16 @@ def test_erp_cash_proyectado_rechaza_fecha_que_no_inicia_el_mes() -> None:
                 "importe": Decimal("100"),
             }
         )
+
+
+def test_erp_cash_proyectado_acepta_tipo_pend() -> None:
+    pendiente = ErpCashProyectado.model_validate(
+        {
+            "cuenta_cash_id": 12,
+            "fecha_periodo": date(2026, 1, 1),
+            "tipo": "pend",
+            "importe": Decimal("100"),
+        }
+    )
+
+    assert pendiente.tipo == "pend"

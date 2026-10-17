@@ -15,7 +15,7 @@ class ErpCashProyectado(Base, table=True):
     __tablename__ = "erp_cash_proyectado"
     __table_args__ = (
         CheckConstraint(
-            "tipo IN ('PROYECCION', 'PRESUPUESTO', 'COMPROMETIDO', 'AJUSTE')",
+            "tipo IN ('PROYECCION', 'PRESUPUESTO', 'pend', 'COMPROMETIDO', 'AJUSTE')",
             name="ck_erp_cash_proyectado_tipo_valid",
         ),
         Index(

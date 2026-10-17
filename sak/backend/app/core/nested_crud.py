@@ -147,7 +147,8 @@ class NestedCRUD(GenericCRUD):
             delete_handler = relation_cfg.get("delete_handler")
             prepare_payload = relation_cfg.get("prepare_payload")
 
-            existing_items = list(getattr(obj, relation_name, []) or [])
+            relation_items = getattr(obj, relation_name, [])
+            existing_items = list(relation_items or [])
             existing_by_id = {item.id: item for item in existing_items if getattr(item, "id", None) is not None}
             seen_ids: set[int] = set()
 
@@ -178,14 +179,15 @@ class NestedCRUD(GenericCRUD):
                         setattr(detail_obj, "updated_at", datetime.now(UTC))
                     seen_ids.add(item_id)
                 else:
-                    # Crear nuevo registro - excluir id para que se auto-genere
                     filtered_payload = self._filter_payload(model_cls, payload, exclude=(fk_field, "id"))
                     filtered_payload[fk_field] = obj.id
                     for field, raw_value in list(filtered_payload.items()):
                         filtered_payload[field] = self._coerce_for_model(model_cls, field, raw_value)
-                    
+
                     new_detail = model_cls(**filtered_payload)
                     session.add(new_detail)
+                    relation_items.append(new_detail)
+                    seen_ids.add(new_detail.id) if getattr(new_detail, "id", None) is not None else None
 
             if not is_create and allow_delete:
                 for existing_id, existing_obj in existing_by_id.items():
@@ -194,6 +196,10 @@ class NestedCRUD(GenericCRUD):
                             delete_handler(session, existing_obj)
                         else:
                             session.delete(existing_obj)
+                        for index, relation_item in enumerate(relation_items):
+                            if relation_item is existing_obj:
+                                del relation_items[index]
+                                break
 
         # No hacer commit aquí - dejar que el método principal maneje la transacción
         # session.commit()

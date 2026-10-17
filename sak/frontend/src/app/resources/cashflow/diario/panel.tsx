@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNotify } from "ra-core";
 import { BarChart3, Calculator, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, DollarSign, FileDown, FileSpreadsheet, FileUp, Landmark, PencilLine, RefreshCw, RotateCcw, TrendingDown, TrendingUp, WalletCards } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useSearchParams } from "react-router";
 
 import { FinancialKpiCards } from "@/components/financial-kpi-cards";
 import { Button } from "@/components/ui/button";
@@ -107,6 +108,7 @@ type DetailTarget = {
 type ProjectionEditTarget = {
   cuentaCashId: number;
   cuentaCashNombre: string;
+  startYear?: number;
 };
 const DETAIL_SCOPE_LABELS: Record<DetailTarget["scope"], string> = {
   total: "Total del período",
@@ -461,6 +463,7 @@ const AmountWithProjection = ({
 
 export const ErpCashPanel = () => {
   const notify = useNotify();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [periodo, setPeriodo] = useState(DEFAULT_PERIOD);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [syncProgress, setSyncProgress] = useState<number | null>(null);
@@ -470,6 +473,27 @@ export const ErpCashPanel = () => {
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [balanceDetailTarget, setBalanceDetailTarget] = useState<BalanceDetailTarget | null>(null);
   const [projectionEditTarget, setProjectionEditTarget] = useState<ProjectionEditTarget | null>(null);
+  useEffect(() => {
+    const accountId = Number(searchParams.get("projection_account_id"));
+    const accountName = searchParams.get("projection_account_name");
+    const startYear = Number(searchParams.get("projection_start_year"));
+    if (!Number.isInteger(accountId) || accountId <= 0 || !accountName) return;
+    setProjectionEditTarget({
+      cuentaCashId: accountId,
+      cuentaCashNombre: accountName,
+      startYear: Number.isInteger(startYear) ? startYear : undefined,
+    });
+  }, [searchParams]);
+
+  const closeProjectionEditor = () => {
+    setProjectionEditTarget(null);
+    if (!searchParams.has("projection_account_id")) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("projection_account_id");
+    nextParams.delete("projection_account_name");
+    nextParams.delete("projection_start_year");
+    setSearchParams(nextParams, { replace: true });
+  };
   const query = useQuery({
     queryKey: ["erp-cash-panel", periodo],
     queryFn: () => fetchPanel(periodo),
@@ -1106,10 +1130,10 @@ export const ErpCashPanel = () => {
 
       <CashProjectionQuickEditDialog
         open={projectionEditTarget !== null}
-        onOpenChange={(open) => { if (!open) setProjectionEditTarget(null); }}
+        onOpenChange={(open) => { if (!open) closeProjectionEditor(); }}
         cuentaCashId={projectionEditTarget?.cuentaCashId ?? null}
         cuentaCashNombre={projectionEditTarget?.cuentaCashNombre ?? ""}
-        startYear={positionedYear}
+        startYear={projectionEditTarget?.startYear ?? positionedYear}
         onSaved={async () => { await query.refetch(); }}
       />
 

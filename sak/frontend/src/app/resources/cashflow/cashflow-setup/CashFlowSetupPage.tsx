@@ -1,7 +1,8 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Navigate, useLocation } from "react-router";
+import { ChevronDown } from "lucide-react";
+import { Link, Navigate, useLocation } from "react-router";
 import { ResourceContextProvider } from "ra-core";
 
 import {
@@ -9,13 +10,22 @@ import {
   SetupContentPanel,
   SetupEmptyState,
   SetupLayout,
-  SetupSectionNav,
   type SetupCreateComponentProps,
   type SetupEditComponentProps,
   type SetupItem,
   type SetupListComponentProps,
   type SetupView,
 } from "@/components/forms/form_order";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { CASHFLOW_SETUP_ITEMS, getCashFlowSetupItem } from "./cashFlowSetupRegistry";
 
 const setupBasePath = "/cashflow/setup";
@@ -34,7 +44,101 @@ const routeState = (pathname: string) => {
   return { key: segments[0] ?? null, view, recordId: view === "edit" ? segments[2] ?? null : null };
 };
 
-const SetupContent = ({ item, view, recordId }: { item: SetupItem; view: SetupView; recordId?: string | null }) => {
+const CASH_ACCOUNT_MENU_ITEMS = [
+  { key: "cuentas", label: "Cuentas" },
+  { key: "subctas", label: "Subcuentas" },
+  { key: "mapas", label: "Mapeo" },
+];
+
+const CASH_ACCOUNT_ITEM_KEYS = new Set(
+  CASH_ACCOUNT_MENU_ITEMS.map((item) => item.key),
+);
+
+const CashFlowSetupNav = ({ currentKey }: { currentKey?: string | null }) => {
+  const isCashAccountsActive = Boolean(
+    currentKey && CASH_ACCOUNT_ITEM_KEYS.has(currentKey),
+  );
+  const mainItems = CASHFLOW_SETUP_ITEMS.filter(
+    (item) => !CASH_ACCOUNT_ITEM_KEYS.has(item.key),
+  );
+  const itemClassName = (isActive: boolean) =>
+    cn(
+      "relative inline-flex h-8 shrink-0 items-center rounded-lg px-3.5 text-[13px] font-medium transition-all duration-150",
+      isActive
+        ? "bg-background text-foreground shadow-sm ring-1 ring-border/70"
+        : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
+    );
+
+  return (
+    <nav aria-label="Secciones de setup" className="max-w-full overflow-x-auto">
+      <div className="inline-flex min-w-0 items-center gap-1 rounded-xl border border-border/70 bg-muted/20 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-current={isCashAccountsActive ? "page" : undefined}
+              className={itemClassName(isCashAccountsActive)}
+            >
+              <span>Cuentas Cash</span>
+              <ChevronDown className="ml-1.5 size-3.5 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-48">
+            <DropdownMenuLabel className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Cuentas Cash
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {CASH_ACCOUNT_MENU_ITEMS.map((menuItem) => {
+              const item = getCashFlowSetupItem(menuItem.key);
+              if (!item) return null;
+              const isActive = item.key === currentKey;
+
+              return (
+                <DropdownMenuItem
+                  key={item.key}
+                  className={cn(
+                    "py-2 text-sm",
+                    isActive && "bg-accent font-medium text-accent-foreground",
+                  )}
+                  asChild
+                >
+                  <Link to={itemPath(item)}>{menuItem.label}</Link>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {mainItems.map((item) => {
+          const isActive = item.key === currentKey;
+
+          return (
+            <Link
+              key={item.key}
+              to={itemPath(item)}
+              aria-current={isActive ? "page" : undefined}
+              className={itemClassName(isActive)}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+};
+
+const SetupContent = ({
+  item,
+  view,
+  recordId,
+  returnTo,
+}: {
+  item: SetupItem;
+  view: SetupView;
+  recordId?: string | null;
+  returnTo?: string;
+}) => {
   if (!item.resource) return null;
   const listPath = viewPath(item, "list");
   const ListComponent = item.listComponent as ComponentType<SetupListComponentProps> | undefined;
@@ -43,8 +147,12 @@ const SetupContent = ({ item, view, recordId }: { item: SetupItem; view: SetupVi
 
   return (
     <ResourceContextProvider value={item.resource}>
-      {view === "create" && CreateComponent ? <CreateComponent redirect={listPath} /> : null}
-      {view === "edit" && EditComponent && recordId ? <EditComponent id={recordId} redirect={listPath} /> : null}
+      {view === "create" && CreateComponent ? (
+        <CreateComponent redirect={returnTo ?? listPath} />
+      ) : null}
+      {view === "edit" && EditComponent && recordId ? (
+        <EditComponent id={recordId} redirect={returnTo ?? listPath} />
+      ) : null}
       {view === "list" && ListComponent ? (
         <ListComponent
           rowClick={(id: string | number) => viewPath(item, "edit", id)}
@@ -58,6 +166,8 @@ const SetupContent = ({ item, view, recordId }: { item: SetupItem; view: SetupVi
 export const CashFlowSetupPage = () => {
   const location = useLocation();
   const { key, view, recordId } = routeState(location.pathname);
+  const routeReturnTo = (location.state as { returnTo?: unknown } | null)?.returnTo;
+  const returnTo = typeof routeReturnTo === "string" ? routeReturnTo : undefined;
   const selectedItem = getCashFlowSetupItem(key);
   const defaultItem = CASHFLOW_SETUP_ITEMS[0];
 
@@ -74,19 +184,17 @@ export const CashFlowSetupPage = () => {
             eyebrowLabel="CashFlow / Setup"
             title={false}
             actionsPlacement="inline"
-            actions={
-              <SetupSectionNav
-                items={CASHFLOW_SETUP_ITEMS}
-                currentKey={selectedItem.key}
-                getItemHref={itemPath}
-                className="max-w-full"
-              />
-            }
+            actions={<CashFlowSetupNav currentKey={selectedItem.key} />}
           />
         }
         content={
           <SetupContentPanel className="px-2.5 py-4 sm:px-4 sm:py-5">
-            <SetupContent item={selectedItem} view={view} recordId={recordId} />
+            <SetupContent
+              item={selectedItem}
+              view={view}
+              recordId={recordId}
+              returnTo={returnTo}
+            />
           </SetupContentPanel>
         }
       />

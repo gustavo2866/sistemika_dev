@@ -4,12 +4,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { required } from "ra-core";
 
 import { FormOrderToolbar } from "@/components/forms";
-import { FormSelect, FormText, HiddenInput, SectionBaseTemplate } from "@/components/forms/form_order";
+import {
+  FormReferenceAutocomplete,
+  FormSelect,
+  FormText,
+  HiddenInput,
+  SectionBaseTemplate,
+} from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/simple-form";
 import {
   ERP_CASH_CUENTA_DEFAULT,
   ERP_CASH_CUENTA_TIPO_CHOICES,
   erpCashCuentaSchema,
+  normalizeErpCashCuentaTipo,
   type ErpCashCuentaFormValues,
 } from "./model";
 
@@ -30,6 +37,20 @@ export const ErpCashCuentaForm = () => (
             label="Tipo"
             choices={ERP_CASH_CUENTA_TIPO_CHOICES}
             emptyText="Sin definir"
+            format={normalizeErpCashCuentaTipo}
+            widthClass="w-full"
+          />
+          <FormReferenceAutocomplete
+            referenceProps={{
+              source: "id_metodo_proyeccion",
+              reference: "metodos-proyeccion",
+              filter: { activo: true },
+            }}
+            inputProps={{
+              optionText: "nombre",
+              label: "Método de proyección",
+              helperText: "Método utilizado para proyectar esta cuenta Cash",
+            }}
             widthClass="w-full"
           />
           <HiddenInput source="version" />

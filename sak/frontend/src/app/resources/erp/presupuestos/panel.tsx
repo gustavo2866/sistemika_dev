@@ -8,6 +8,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FormProvider, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { FinancialKpiCards } from "@/components/financial-kpi-cards";
 import { CompactSelectInput } from "@/components/forms/form_order";
 import {
@@ -48,6 +49,7 @@ import type {
   MovimientoRequest,
   MovimientoResponse,
   PanelProjectsResponse,
+  PanelProject,
   PanelResponse,
   PresupuestoFilterContext,
   SyncRangeResponse,
@@ -80,10 +82,27 @@ import {
 const MONTHS_VISIBLE = 1;
 const MONTH_NAVIGATION_STEP = 1;
 const DEFAULT_PROJECT_ESTADO = "02-ejecucion";
+const HONORARIOS_PROYECTO_CUENTA = "5.01.01.001";
 const PROJECT_ESTADO_FILTER_CHOICES = [
   { id: "all", name: "Todos los estados" },
   ...PROYECTO_ESTADO_CHOICES,
 ];
+
+const getContableRealIngresos = (
+  project: PanelProject,
+  month: string,
+  includeGestion: boolean,
+) => {
+  const incomeRubro = project.rubros.find(isHiddenRubro);
+  const contableRealIngresos = Number(
+    incomeRubro?.months[month]?.real_ingresos ?? 0,
+  );
+  const gestionRealIngresos = Number(
+    project.gestion_real_ingresos?.[month] ?? 0,
+  );
+
+  return contableRealIngresos - (includeGestion ? 0 : gestionRealIngresos);
+};
 
 type HeaderFilterChoice = {
   id: string | number;
@@ -294,19 +313,33 @@ const MetricVariationCell = ({
 const ResultAmountWithMargin = ({
   amount,
   margin,
+  costMargin,
 }: {
   amount: number;
   margin: number | null;
+  costMargin: number | null;
 }) => (
-  <span className="grid w-full grid-cols-[minmax(0,1fr)_34px] items-baseline gap-1 leading-none">
+  <span className="grid w-full grid-cols-[minmax(0,1fr)_34px] items-center gap-1 leading-none">
     <span className="min-w-0 truncate text-right">{formatCurrency(amount)}</span>
-    <span
-      className={cn(
-        "min-w-0 truncate text-right text-[7px] tabular-nums",
-        getNegativeOnlyColorClass(margin),
-      )}
-    >
-      {formatPercent(margin)}
+    <span className="flex min-w-0 flex-col gap-0.5 text-right text-[7px] tabular-nums">
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          getNegativeOnlyColorClass(margin),
+        )}
+        title="Margen sobre ingreso"
+      >
+        {formatPercent(margin)}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          getNegativeOnlyColorClass(costMargin),
+        )}
+        title="Margen sobre costo"
+      >
+        {formatPercent(costMargin)}
+      </span>
     </span>
   </span>
 );
@@ -331,6 +364,7 @@ type PresupuestoPanelRowProps = {
   onClearBudget?: (request: BudgetClearRequest) => void;
   onBudgetIncome?: (request: BudgetIncomeRequest) => void;
   incomeRealMode?: IncomeRealMode;
+  isContableIncomeSource?: boolean;
   incomeReconciliation?: Record<
     string,
       {
@@ -369,6 +403,7 @@ const PresupuestoPanelRow = ({
   onClearBudget,
   onBudgetIncome,
   incomeRealMode = "manual",
+  isContableIncomeSource = false,
   incomeReconciliation,
   onCellSave,
   onAddRubro,
@@ -508,6 +543,8 @@ const PresupuestoPanelRow = ({
         const realIngresos =
           level === 0 && incomeRealMode === "contab"
             ? Number(incomeReconciliationItem?.rubroReal ?? 0)
+            : incomeRealMode === "contab" && !isContableIncomeSource
+              ? 0
             : manualRealIngresos;
         const empleados = Number(values.empleados ?? 0);
         const resultado = ingresos - egresos;
@@ -517,6 +554,8 @@ const PresupuestoPanelRow = ({
         const variacionResultado = getVariationPercent(realResultado, resultado);
         const rentabilidadReal = getProfitabilityPercent(realResultado, realIngresos);
         const rentabilidadPres = getProfitabilityPercent(resultado, ingresos);
+        const margenCostoReal = getProfitabilityPercent(realResultado, realEgresos);
+        const margenCostoPres = getProfitabilityPercent(resultado, egresos);
         const recordCount = Number(values.record_count ?? 0);
         const canEdit = editable && Boolean(values.presupuesto_id) && recordCount === 1;
         const listLink =
@@ -686,20 +725,28 @@ const PresupuestoPanelRow = ({
               compact={compact}
             />
             <MetricAmountCell
-              title={`Resultado real: ${formatCurrency(realResultado)} - Rentabilidad real: ${formatPercent(rentabilidadReal)}`}
+              title={`Resultado real: ${formatCurrency(realResultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadReal)} - Margen sobre costo: ${formatPercent(margenCostoReal)}`}
               compact={compact}
               className={compact ? undefined : "bg-slate-50/50"}
               valueClassName={getNegativeOnlyColorClass(realResultado)}
             >
-              <ResultAmountWithMargin amount={realResultado} margin={rentabilidadReal} />
+              <ResultAmountWithMargin
+                amount={realResultado}
+                margin={rentabilidadReal}
+                costMargin={margenCostoReal}
+              />
             </MetricAmountCell>
             <MetricAmountCell
-              title={`Resultado presupuesto: ${formatCurrency(resultado)} - Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
+              title={`Resultado presupuesto: ${formatCurrency(resultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadPres)} - Margen sobre costo: ${formatPercent(margenCostoPres)}`}
               compact={compact}
               className={compact ? "bg-muted/20" : "bg-slate-100/70"}
               valueClassName={getNegativeOnlyColorClass(resultado)}
             >
-              <ResultAmountWithMargin amount={resultado} margin={rentabilidadPres} />
+              <ResultAmountWithMargin
+                amount={resultado}
+                margin={rentabilidadPres}
+                costMargin={margenCostoPres}
+              />
             </MetricAmountCell>
             <MetricVariationCell
               value={variacionResultado}
@@ -864,6 +911,7 @@ export const ErpPresupuestoPanel = () => {
   );
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [incomeRealMode, setIncomeRealMode] = useState<IncomeRealMode>("manual");
+  const [includeHonorarios, setIncludeHonorarios] = useState(true);
 
   const fechaDesde = useMemo(() => formatDateParam(startMonth), [startMonth]);
   const fechaHasta = useMemo(
@@ -876,11 +924,12 @@ export const ErpPresupuestoPanel = () => {
     search.set("fecha_desde", fechaDesde);
     search.set("fecha_hasta", fechaHasta);
     search.set("estado", selectedEstado);
+    search.set("incluir_honorarios", String(includeHonorarios));
     if (selectedProjectId !== "all") {
       search.set("proyecto_id", selectedProjectId);
     }
     return search.toString();
-  }, [fechaDesde, fechaHasta, selectedEstado, selectedProjectId]);
+  }, [fechaDesde, fechaHasta, includeHonorarios, selectedEstado, selectedProjectId]);
   const openPeriodBudgetForm = (month: string) => {
     setBudgetFormRequest({
       mode: "create",
@@ -1067,10 +1116,9 @@ export const ErpPresupuestoPanel = () => {
         acc[month] = rows.reduce<MonthValues>(
           (total, project) => {
             const values = project.months[month] ?? getEmptyMonthValues();
-            const incomeRubro = project.rubros.find(isHiddenRubro);
             const realIngresos =
               incomeRealMode === "contab"
-                ? Number(incomeRubro?.months[month]?.real_ingresos ?? 0)
+                ? getContableRealIngresos(project, month, includeHonorarios)
                 : Number(values.real_ingresos ?? 0);
             return {
               ingresos: total.ingresos + Number(values.ingresos ?? 0),
@@ -1086,7 +1134,7 @@ export const ErpPresupuestoPanel = () => {
         );
         return acc;
       }, {}),
-    [incomeRealMode, months, rows],
+    [includeHonorarios, incomeRealMode, months, rows],
   );
   const panelKpis = useMemo(
     () =>
@@ -1125,6 +1173,8 @@ export const ErpPresupuestoPanel = () => {
       panelKpis.presupuestoResultado,
       panelKpis.presupuestoIngresos,
     ) ?? 0;
+  const panelCostMargin =
+    getProfitabilityPercent(panelKpis.resultado, panelKpis.egresos) ?? 0;
   const navigationMonth = useMemo(
     () => formatMonthLabel(fechaDesde.slice(0, 7)),
     [fechaDesde],
@@ -1291,6 +1341,19 @@ export const ErpPresupuestoPanel = () => {
                 })),
               ]}
             />
+            <label
+              htmlFor="incluir-honorarios-proyecto"
+              className="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium text-slate-700 shadow-xs"
+              title={`Incluir o excluir la cuenta ${HONORARIOS_PROYECTO_CUENTA} de todos los totales del panel`}
+            >
+              <Switch
+                id="incluir-honorarios-proyecto"
+                checked={includeHonorarios}
+                onCheckedChange={setIncludeHonorarios}
+                aria-label={`Incluir cuenta ${HONORARIOS_PROYECTO_CUENTA}`}
+              />
+              <span>Gestión</span>
+            </label>
           </div>
         </div>
         <FinancialKpiCards
@@ -1326,9 +1389,14 @@ export const ErpPresupuestoPanel = () => {
             },
             {
               key: "margen",
-              title: "Margen",
+              title: "Margen / ingreso",
               value: panelMargin,
               valueType: "percent",
+              secondaryMetric: {
+                title: "Margen / costo",
+                value: panelCostMargin,
+                valueType: "percent",
+              },
               budget: panelBudgetMargin,
               budgetValueType: "percent",
               deviation: panelMargin - panelBudgetMargin,
@@ -1498,7 +1566,6 @@ export const ErpPresupuestoPanel = () => {
                     (rubro) =>
                       incomeRealMode === "contab" || !isHiddenRubro(rubro),
                   );
-                  const incomeRubro = project.rubros.find(isHiddenRubro);
                   const incomeReconciliation = months.reduce<
                     Record<
                       string,
@@ -1509,8 +1576,10 @@ export const ErpPresupuestoPanel = () => {
                       }
                     >
                   >((acc, month) => {
-                    const rubroReal = Number(
-                      incomeRubro?.months[month]?.real_ingresos ?? 0,
+                    const rubroReal = getContableRealIngresos(
+                      project,
+                      month,
+                      includeHonorarios,
                     );
                     const projectReal = Number(
                       project.months[month]?.real_ingresos ?? 0,
@@ -1584,6 +1653,8 @@ export const ErpPresupuestoPanel = () => {
                                   onCopyBudget={setBudgetCopyRequest}
                                   onClearBudget={setBudgetClearRequest}
                                   onBudgetIncome={setBudgetIncomeRequest}
+                                  incomeRealMode={incomeRealMode}
+                                  isContableIncomeSource={isHiddenRubro(rubro)}
                                   expandable={rubro.cuentas.length > 0}
                                   expanded={rubroExpanded}
                                   onToggle={() => toggleRubro(rubroKey)}
@@ -1635,6 +1706,8 @@ export const ErpPresupuestoPanel = () => {
                                         onCopyBudget={setBudgetCopyRequest}
                                         onClearBudget={setBudgetClearRequest}
                                         onBudgetIncome={setBudgetIncomeRequest}
+                                        incomeRealMode={incomeRealMode}
+                                        isContableIncomeSource={isHiddenRubro(rubro)}
                                         editable
                                         filterContext={{
                                           proyecto_id: project.proyecto_id,
@@ -1678,6 +1751,14 @@ export const ErpPresupuestoPanel = () => {
                     const rentabilidadPres = getProfitabilityPercent(
                       resultado,
                       Number(values.ingresos ?? 0),
+                    );
+                    const margenCostoReal = getProfitabilityPercent(
+                      realResultado,
+                      realEgresos,
+                    );
+                    const margenCostoPres = getProfitabilityPercent(
+                      resultado,
+                      Number(values.egresos ?? 0),
                     );
                     return (
                       <Fragment key={`total-${month}`}>
@@ -1723,7 +1804,7 @@ export const ErpPresupuestoPanel = () => {
                           total
                         />
                         <MetricAmountCell
-                          title={`Resultado real: ${formatCurrency(realResultado)} - Rentabilidad real: ${formatPercent(rentabilidadReal)}`}
+                          title={`Resultado real: ${formatCurrency(realResultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadReal)} - Margen sobre costo: ${formatPercent(margenCostoReal)}`}
                           className="bg-slate-100 text-foreground"
                           valueClassName={getNegativeOnlyColorClass(realResultado)}
                           total
@@ -1731,10 +1812,11 @@ export const ErpPresupuestoPanel = () => {
                           <ResultAmountWithMargin
                             amount={realResultado}
                             margin={rentabilidadReal}
+                            costMargin={margenCostoReal}
                           />
                         </MetricAmountCell>
                         <MetricAmountCell
-                          title={`Resultado presupuesto: ${formatCurrency(resultado)} - Rentabilidad presupuesto: ${formatPercent(rentabilidadPres)}`}
+                          title={`Resultado presupuesto: ${formatCurrency(resultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadPres)} - Margen sobre costo: ${formatPercent(margenCostoPres)}`}
                           className="bg-slate-200/70 text-foreground"
                           valueClassName={getNegativeOnlyColorClass(resultado)}
                           total
@@ -1742,6 +1824,7 @@ export const ErpPresupuestoPanel = () => {
                           <ResultAmountWithMargin
                             amount={resultado}
                             margin={rentabilidadPres}
+                            costMargin={margenCostoPres}
                           />
                         </MetricAmountCell>
                         <MetricVariationCell
