@@ -30,6 +30,11 @@ export type FinancialKpiCardItem = {
   deviation?: number;
   deviationType?: "millions" | "points";
   showDeviationPercent?: boolean;
+  secondaryMetric?: {
+    title: string;
+    value: number;
+    valueType?: "millions" | "percent";
+  };
   sideSummary?: {
     title: string;
     items: Array<{
@@ -60,6 +65,7 @@ const FinancialKpiCard = ({
   deviation,
   deviationType = "millions",
   showDeviationPercent,
+  secondaryMetric,
   sideSummary,
   icon: Icon,
   iconClassName,
@@ -94,28 +100,50 @@ const FinancialKpiCard = ({
         <div className={cn("flex h-[30px] w-[30px] items-center justify-center rounded-md text-white", iconClassName)}>
           <Icon className="h-4 w-4" />
         </div>
-        <div className="flex min-h-0 min-w-0 flex-col justify-center">
-          <div className="truncate text-[9px] font-medium leading-none text-muted-foreground">{title}</div>
-          <div className="mt-0.5 truncate text-[15px] font-bold leading-none tracking-tight text-foreground">
-            {formatValue(value, valueType)}
-          </div>
-          {trendText ? (
-            <div
-              className={cn(
-                "mt-1 inline-flex max-w-full items-center gap-0.5 truncate text-[8px] font-medium leading-none",
-                trend === undefined || trend >= 0 ? "text-emerald-700" : "text-rose-700",
-              )}
-            >
-              {trend !== undefined ? <ArrowUpRight className="h-2.5 w-2.5 shrink-0" /> : null}
-              <span className="truncate">{trendText}</span>
+        <div
+          className={cn(
+            "min-h-0 min-w-0",
+            secondaryMetric
+              ? "grid grid-cols-2 items-center gap-1.5"
+              : "flex flex-col justify-center",
+          )}
+        >
+          <div className="flex min-h-0 min-w-0 flex-col justify-center">
+            <div className="truncate text-[9px] font-medium leading-none text-muted-foreground">{title}</div>
+            <div className="mt-0.5 truncate text-[15px] font-bold leading-none tracking-tight text-foreground">
+              {formatValue(value, valueType)}
             </div>
-          ) : null}
-          {!trendText && detail ? (
-            <div
-              className="mt-1 truncate text-[8px] font-medium leading-none text-muted-foreground"
-              title={detailTitle}
-            >
-              {detail}
+            {trendText ? (
+              <div
+                className={cn(
+                  "mt-1 inline-flex max-w-full items-center gap-0.5 truncate text-[8px] font-medium leading-none",
+                  trend === undefined || trend >= 0 ? "text-emerald-700" : "text-rose-700",
+                )}
+              >
+                {trend !== undefined ? <ArrowUpRight className="h-2.5 w-2.5 shrink-0" /> : null}
+                <span className="truncate">{trendText}</span>
+              </div>
+            ) : null}
+            {!trendText && detail ? (
+              <div
+                className="mt-1 truncate text-[8px] font-medium leading-none text-muted-foreground"
+                title={detailTitle}
+              >
+                {detail}
+              </div>
+            ) : null}
+          </div>
+          {secondaryMetric ? (
+            <div className="flex min-h-0 min-w-0 flex-col justify-center border-l border-slate-200/70 pl-1.5">
+              <div className="truncate text-[9px] font-medium leading-none text-muted-foreground">
+                {secondaryMetric.title}
+              </div>
+              <div className="mt-0.5 truncate text-[15px] font-bold leading-none tracking-tight text-foreground">
+                {formatValue(
+                  secondaryMetric.value,
+                  secondaryMetric.valueType ?? valueType,
+                )}
+              </div>
             </div>
           ) : null}
         </div>

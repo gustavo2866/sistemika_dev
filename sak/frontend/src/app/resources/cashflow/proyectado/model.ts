@@ -20,6 +20,7 @@ const firstDayOfCurrentMonth = () => {
 export type ErpCashProyectadoTipo =
   | "PROYECCION"
   | "PRESUPUESTO"
+  | "pend"
   | "COMPROMETIDO"
   | "AJUSTE";
 
@@ -39,6 +40,7 @@ export const ERP_CASH_PROYECTADO_TIPO_CHOICES: Array<{
 }> = [
   { id: "PROYECCION", name: "Proyección" },
   { id: "PRESUPUESTO", name: "Presupuesto" },
+  { id: "pend", name: "Pendiente" },
   { id: "COMPROMETIDO", name: "Comprometido" },
   { id: "AJUSTE", name: "Ajuste" },
 ];
@@ -51,7 +53,7 @@ export const erpCashProyectadoSchema = z.object({
     .refine((value) => /^\d{4}-\d{2}-01$/.test(value), {
       message: "El período debe corresponder al primer día del mes",
     }),
-  tipo: z.enum(["PROYECCION", "PRESUPUESTO", "COMPROMETIDO", "AJUSTE"]),
+  tipo: z.enum(["PROYECCION", "PRESUPUESTO", "pend", "COMPROMETIDO", "AJUSTE"]),
   importe: z.coerce.number().finite(),
   observacion: optionalText,
   version: optionalVersion,

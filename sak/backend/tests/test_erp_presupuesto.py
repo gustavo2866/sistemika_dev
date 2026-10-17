@@ -11,9 +11,11 @@ from openpyxl import Workbook
 from app.models.erp.presupuesto import ErpPresupuesto
 from app.routers.erp_presupuesto_router import (
     EXPECTED_PRESUPUESTO_IMPORT_HEADERS,
+    HONORARIOS_PROYECTO_CUENTA,
     distribute_presupuesto_conceptos_to_erp_rows,
     distribute_presupuesto_ingresos_to_erp_rows,
     erp_presupuesto_router,
+    get_erp_presupuesto_panel,
     import_erp_presupuesto_panel_project,
 )
 
@@ -55,6 +57,83 @@ def test_erp_presupuesto_export_import_headers_include_real_values():
         "real_ingresos",
         "real_egresos",
     ]
+
+
+@pytest.mark.parametrize(
+    "incluir_honorarios",
+    [True, False],
+)
+def test_erp_presupuesto_panel_can_toggle_honorarios_account(
+    incluir_honorarios,
+):
+    session = MagicMock()
+    session.exec.return_value.all.return_value = []
+
+    result = get_erp_presupuesto_panel(
+        fecha_desde=date(2026, 9, 1),
+        fecha_hasta=date(2026, 9, 30),
+        estado="all",
+        proyecto_id=None,
+        incluir_honorarios=incluir_honorarios,
+        session=session,
+    )
+
+    statement = session.exec.call_args.args[0]
+    assert "erp_cuentas.cod_cuenta !=" not in str(statement)
+    assert HONORARIOS_PROYECTO_CUENTA not in statement.compile().params.values()
+    assert result["incluir_honorarios"] is incluir_honorarios
+    assert result["rows"] == []
+
+
+def test_erp_presupuesto_panel_excludes_gestion_and_keeps_its_income_adjustment():
+    session = MagicMock()
+    common = {
+        "proyecto_id": 1,
+        "proyecto_nombre": "Proyecto de prueba",
+        "year": 2026,
+        "month": 9,
+        "ingresos": Decimal("0"),
+        "egresos": Decimal("0"),
+        "real_egresos": Decimal("0"),
+        "empleados": Decimal("0"),
+        "presupuesto_id": 1,
+        "record_count": 1,
+    }
+    session.exec.return_value.all.return_value = [
+        SimpleNamespace(
+            **common,
+            rubro_id=10,
+            rubro_nombre="Trab Prelim",
+            cuenta_id=100,
+            cuenta_codigo=HONORARIOS_PROYECTO_CUENTA,
+            cuenta_nombre="Gestion",
+            cuenta_orden=1,
+            real_ingresos=Decimal("20000000"),
+        ),
+        SimpleNamespace(
+            **common,
+            rubro_id=20,
+            rubro_nombre="Ingresos",
+            cuenta_id=200,
+            cuenta_codigo="4.01.01.001",
+            cuenta_nombre="Ingresos contables",
+            cuenta_orden=2,
+            real_ingresos=Decimal("272296531"),
+        ),
+    ]
+
+    result = get_erp_presupuesto_panel(
+        fecha_desde=date(2026, 9, 1),
+        fecha_hasta=date(2026, 9, 30),
+        estado="all",
+        proyecto_id=None,
+        incluir_honorarios=False,
+        session=session,
+    )
+
+    project = result["rows"][0]
+    assert project["gestion_real_ingresos"]["2026-09"] == 20000000.0
+    assert [rubro["rubro_nombre"] for rubro in project["rubros"]] == ["Ingresos"]
 
 
 def _presupuesto_import_file(

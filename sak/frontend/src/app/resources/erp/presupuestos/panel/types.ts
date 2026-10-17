@@ -38,6 +38,7 @@ export type PanelProject = {
   proyecto_id: number;
   proyecto_nombre: string;
   months: Record<string, MonthValues>;
+  gestion_real_ingresos: Record<string, number>;
   rubros: PanelRubro[];
 };
 
@@ -45,6 +46,7 @@ export type PanelResponse = {
   fecha_desde: string;
   fecha_hasta: string;
   estado: string;
+  incluir_honorarios: boolean;
   months: string[];
   rows: PanelProject[];
 };

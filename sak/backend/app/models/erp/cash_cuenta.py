@@ -1,9 +1,12 @@
-from typing import ClassVar, List, Optional
+from typing import TYPE_CHECKING, ClassVar, List, Optional
 
 from sqlalchemy import CHAR, Column
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.metodo_proyeccion import MetodoProyeccion
 
 
 def infer_cash_cuenta_tipo(descripcion: str | None) -> str | None:
@@ -34,6 +37,14 @@ class ErpCashCuenta(Base, table=True):
         index=True,
         description="Descripcion del concepto cash",
     )
+    id_metodo_proyeccion: Optional[int] = Field(
+        default=None,
+        foreign_key="metodo_proyeccion.id",
+        index=True,
+        description="Método de proyección asociado a la cuenta, si aplica",
+    )
+
+    metodo_proyeccion: Optional["MetodoProyeccion"] = Relationship(back_populates="cash_cuentas")
 
     def __init__(self, **data):
         super().__init__(**data)

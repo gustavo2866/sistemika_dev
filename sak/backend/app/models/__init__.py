@@ -12,6 +12,7 @@ from .tipo_actualizacion import TipoActualizacion
 from .servicio_tipo import ServicioTipo
 from .propiedad_servicio import PropiedadServicio
 from .metodo_pago import MetodoPago
+from .metodo_proyeccion import MetodoProyeccion, MetodoProyeccionCuenta, MetodoProyeccionDetalle
 from .propiedad import Propiedad
 from .setting import Setting
 from .crm import (
@@ -128,7 +129,9 @@ __all__ = [
     "TipoActualizacion",
     "ServicioTipo",
     "PropiedadServicio",
-    "MetodoPago", 
+    "MetodoPago",
+    "MetodoProyeccion",
+    "MetodoProyeccionDetalle",
     "Propiedad",
     "Setting",
     "AdmConcepto",

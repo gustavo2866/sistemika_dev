@@ -94,6 +94,11 @@ import {
   ErpCashMapEdit,
 } from "@/app/resources/cashflow/maps";
 import {
+  MetodoProyeccionList,
+  MetodoProyeccionCreate,
+  MetodoProyeccionEdit,
+} from "@/app/resources/cashflow/metodos-proyeccion";
+import {
   ErpCashDiarioList,
   ErpCashDiarioCreate,
   ErpCashDiarioEdit,
@@ -774,6 +779,15 @@ const AdminApp = () => {
         recordRepresentation="nro_cta"
         icon={GitBranch}
         options={{ label: "Mapeo Cash" }}
+      />
+      <Resource
+        name="metodos-proyeccion"
+        list={MetodoProyeccionList}
+        create={MetodoProyeccionCreate}
+        edit={MetodoProyeccionEdit}
+        recordRepresentation="nombre"
+        icon={TrendingUp}
+        options={{ label: "Métodos de proyección" }}
       />
       <Resource
         name="erp/cash/diario"

@@ -18,3 +18,10 @@ def test_erp_cash_cuenta_autocompleta_tipo() -> None:
     assert egreso.tipo == "Egreso"
     assert fondo.tipo == "Fondo"
     assert sin_tipo.tipo is None
+
+
+def test_erp_cash_cuenta_metodo_proyeccion_es_opcional() -> None:
+    cuenta = ErpCashCuenta(descripcion="INGR x COBRO OBRAS", id_metodo_proyeccion=None)
+
+    assert cuenta.id_metodo_proyeccion is None
+    assert cuenta.metodo_proyeccion is None

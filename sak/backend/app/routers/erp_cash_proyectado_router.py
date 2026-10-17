@@ -10,9 +10,11 @@ from app.core.router import create_generic_router
 from app.db import get_session
 from app.models.erp.cash_proyectado import ErpCashProyectado
 from app.models.erp.cash_proyectado_quick_edit import (
+    calculate_projection_quick_edit,
     get_projection_quick_edit,
     save_projection_quick_edit,
 )
+from app.services.cash_projection_service import ProjectionDataError
 
 
 erp_cash_proyectado_crud = GenericCRUD(ErpCashProyectado)
@@ -27,6 +29,9 @@ erp_cash_proyectado_router = create_generic_router(
 class ProjectionQuickEditValue(BaseModel):
     periodo: date
     importe: Decimal
+    importe_pendiente: Decimal = Decimal("0")
+    importe_comprometido: Decimal = Decimal("0")
+    descripcion: str | None = Field(default=None, max_length=255)
 
     @field_validator("periodo")
     @classmethod
@@ -38,6 +43,7 @@ class ProjectionQuickEditValue(BaseModel):
 
 class ProjectionQuickEditPayload(BaseModel):
     values: list[ProjectionQuickEditValue] = Field(min_length=24, max_length=24)
+    metodo_proyeccion_id: int | None = Field(default=None, gt=0)
 
 
 def _quick_edit_year(value: int) -> int:
@@ -70,6 +76,13 @@ def update_erp_cash_projection_quick_edit(
     session: Session = Depends(get_session),
 ):
     values = {item.periodo: item.importe for item in payload.values}
+    pending_values = {
+        item.periodo: item.importe_pendiente for item in payload.values
+    }
+    committed_values = {
+        item.periodo: (item.importe_comprometido, item.descripcion)
+        for item in payload.values
+    }
     if len(values) != len(payload.values):
         raise HTTPException(status_code=400, detail="Hay períodos duplicados")
     try:
@@ -78,6 +91,41 @@ def update_erp_cash_projection_quick_edit(
             cuenta_cash_id,
             _quick_edit_year(anio),
             values,
+            payload.metodo_proyeccion_id,
+            committed_values,
+            pending_values,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@erp_cash_proyectado_router.post("/quick-edit/calculate")
+def calculate_erp_cash_projection_quick_edit(
+    cuenta_cash_id: int = Query(..., gt=0),
+    anio: int = Query(...),
+    metodo_proyeccion_id: int | None = Query(default=None, gt=0),
+    periodo_desde: date | None = Query(default=None),
+    periodo_hasta: date | None = Query(default=None),
+    session: Session = Depends(get_session),
+):
+    try:
+        return calculate_projection_quick_edit(
+            session,
+            cuenta_cash_id,
+            _quick_edit_year(anio),
+            metodo_proyeccion_id,
+            periodo_desde,
+            periodo_hasta,
+        )
+    except ProjectionDataError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": str(exc),
+                "reason": exc.reason,
+                "cash_account_id": exc.cash_account_id,
+                "missing_month": exc.missing_month.isoformat(),
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
