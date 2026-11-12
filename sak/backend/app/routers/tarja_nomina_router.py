@@ -883,6 +883,16 @@ class TarjaNominaCRUD(GenericCRUD[TarjaNomina]):
         nomina.updated_at = now
         session.add(nomina)
         session.flush()
+        parte_diario_tarja_service.sincronizar_nomina_futura_por_traspaso(
+            session,
+            nomina=nomina,
+            origen_proyecto_id=source_tarja.idproyecto,
+            origen_contacto_id=source_tarja.contacto_id,
+            destino_proyecto_id=int(proyecto.id),
+            destino_contacto_id=asignacion_encargado.contacto_id,
+            fecha=data.fecha,
+            quincena_final=source_tarja.fechafinal,
+        )
         parte_diario_tarja_service.recalcular_resumen_nomina(
             session,
             nomina_ids={int(source.nomina_id)},

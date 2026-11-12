@@ -799,6 +799,20 @@ class ParteDiarioTarjaService:
         session.add(nomina)
         session.flush()
 
+        destino = payload.get("destino") if isinstance(payload.get("destino"), dict) else {}
+        destino_proyecto_id = self._payload_int(destino.get("idproyecto"))
+        if destino_proyecto_id is not None:
+            self.sincronizar_nomina_futura_por_traspaso(
+                session,
+                nomina=nomina,
+                origen_proyecto_id=destino_proyecto_id,
+                origen_contacto_id=self._payload_int(destino.get("contacto_id")),
+                destino_proyecto_id=origen_proyecto_id,
+                destino_contacto_id=origen_contacto_id,
+                fecha=parte.fecha,
+                quincena_final=get_quincena_range(parte.fecha)[1],
+            )
+
         partes_origen = list(
             session.exec(
                 select(ParteDiario)
@@ -1114,6 +1128,17 @@ class ParteDiarioTarjaService:
             session.add(nomina)
             session.flush()
 
+            self.sincronizar_nomina_futura_por_traspaso(
+                session,
+                nomina=nomina,
+                origen_proyecto_id=source_tarja.idproyecto,
+                origen_contacto_id=source_tarja.contacto_id,
+                destino_proyecto_id=destino_proyecto_id,
+                destino_contacto_id=destino_contacto_id,
+                fecha=parte.fecha,
+                quincena_final=source_tarja.fechafinal,
+            )
+
             traspaso_descripcion = self._build_traspaso_tarja_descripcion(payload)
             self._sync_destination_detalles_desde_traspaso(
                 session,
@@ -1127,6 +1152,103 @@ class ParteDiarioTarjaService:
                 ),
                 descripcion=traspaso_descripcion,
             )
+        session.flush()
+
+    def sincronizar_nomina_futura_por_traspaso(
+        self,
+        session: Session,
+        *,
+        nomina: Nomina,
+        origen_proyecto_id: int,
+        origen_contacto_id: int | None,
+        destino_proyecto_id: int,
+        destino_contacto_id: int | None,
+        fecha: date,
+        quincena_final: date,
+    ) -> None:
+        """Propaga el movimiento a tarjas existentes hasta el siguiente movimiento."""
+        futuros, _ = self._get_novedades_afectadas_desde(
+            session, fecha_baja=fecha, nomina_id=int(nomina.id),
+            preservar_proxima_alta=False,
+        )
+        siguiente_movimiento = next(
+            (
+                (parte.fecha, str(estado.abreviatura).strip().upper())
+                for _detalle, parte, estado in futuros
+                if parte.estado in {EstadoParteDiario.CONFIRMADO, EstadoParteDiario.CERRADO}
+                and estado is not None
+                and str(estado.abreviatura or "").strip().upper()
+                in {ALTA_ESTADO_CODIGO, BAJA_ESTADO_CODIGO, TRASPASO_ESTADO_CODIGO}
+            ),
+            None,
+        )
+        fecha_limite = (
+            siguiente_movimiento[0] - timedelta(
+                days=0 if siguiente_movimiento[1] == BAJA_ESTADO_CODIGO else 1,
+            )
+            if siguiente_movimiento is not None else None
+        )
+        tarjas = session.exec(
+            select(Tarja)
+            .where(Tarja.idproyecto.in_({origen_proyecto_id, destino_proyecto_id}))
+            .where(Tarja.fechainicio > quincena_final)
+            .where(Tarja.deleted_at.is_(None))
+        ).all()
+        for tarja in tarjas:
+            if fecha_limite is not None and tarja.fechainicio > fecha_limite:
+                continue
+            es_destino = (
+                tarja.idproyecto == destino_proyecto_id
+                and tarja.contacto_id == destino_contacto_id
+            )
+            es_origen = (
+                tarja.idproyecto == origen_proyecto_id
+                and tarja.contacto_id == origen_contacto_id
+            )
+            if not es_origen and not es_destino:
+                continue
+            registro = session.exec(
+                select(TarjaNomina)
+                .where(TarjaNomina.tarja_id == tarja.id)
+                .where(TarjaNomina.nomina_id == nomina.id)
+            ).first()
+            # No completar desde el maestro ni revivir bajas manuales del destino.
+            if es_destino and registro is not None:
+                continue
+            if es_origen and (registro is None or registro.deleted_at is not None):
+                continue
+            if es_origen and fecha_limite is not None and registro.fecha_desde > fecha_limite:
+                continue
+            if tarja.estado == EstadoTarja.CERRADO:
+                raise ValueError("El traspaso afecta una tarja futura cerrada; debe reabrirla")
+            if es_destino:
+                session.add(TarjaNomina(
+                    tarja_id=int(tarja.id),
+                    nomina_id=int(nomina.id),
+                    nomina_categoria_id=nomina.nomina_categoria_id,
+                    nomina_tarea_id=nomina.nomina_tarea_id,
+                    fecha_desde=tarja.fechainicio,
+                    fecha_hasta=min(
+                        tarja.fechafinal,
+                        fecha_limite or tarja.fechafinal,
+                    ),
+                    documentos=[],
+                ))
+            else:
+                if fecha_limite is not None and registro.fecha_hasta > fecha_limite:
+                    registro.fecha_desde = fecha_limite + timedelta(days=1)
+                    registro.updated_at = datetime.now(UTC)
+                    session.add(registro)
+                else:
+                    session.delete(registro)
+                for detalle in session.exec(
+                    select(TarjaDetalle)
+                    .where(TarjaDetalle.tarja_id == tarja.id)
+                    .where(TarjaDetalle.idnomina == nomina.id)
+                    .where(TarjaDetalle.deleted_at.is_(None))
+                ).all():
+                    if fecha_limite is None or detalle.fecha <= fecha_limite:
+                        session.delete(detalle)
         session.flush()
 
     def _sync_destination_detalles_desde_traspaso(

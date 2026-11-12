@@ -23,7 +23,7 @@ from app.routers.nomina_router import nomina_crud
 from app.routers.parte_diario_estado_router import parte_diario_estado_crud
 from app.routers.partediario_router import parte_diario_crud
 from app.routers.tarja_detalle_router import _build_empty_days
-from app.routers.tarja_nomina_router import tarja_nomina_crud
+from app.routers.tarja_nomina_router import TarjaNominaTrasladoRequest, tarja_nomina_crud
 from app.services.parte_diario_estado_service import seed_parte_diario_estados
 from app.services.parte_diario_service import parte_diario_service
 from app.services.parte_diario_tarja_service import get_quincena_range, parte_diario_tarja_service
@@ -98,6 +98,183 @@ def test_get_quincena_range_usa_esquema_26_10_y_11_25():
         date(2026, 9, 26),
         date(2026, 10, 10),
     )
+
+
+@pytest.mark.parametrize("via", ["parte", "manual"])
+@pytest.mark.parametrize("siguiente_movimiento", [None, "BAJ", "TRA", "ALT"])
+def test_traspaso_actualiza_nomina_de_quincena_futura_ya_creada(
+    db_session, via, siguiente_movimiento,
+):
+    data = _seed_base(db_session)
+    empleado = data["nomina_default"]
+    for codigo in ("TRA", "ALT"):
+        db_session.add(ParteDiarioEstado(abreviatura=codigo, nombre=codigo, activo=True))
+    destino = Proyecto(nombre="Boreal", responsable_id=data["contacto"].responsable_id)
+    db_session.add(destino)
+    db_session.flush()
+    asignacion = ProyectoEncargado(
+        proyecto_id=destino.id, contacto_id=data["otro_contacto"].id, activo=True,
+    )
+    residente = data["nomina_otro_encargado"]
+    residente.idproyecto = destino.id
+    db_session.add_all([asignacion, residente])
+    db_session.flush()
+    origen, _ = parte_diario_tarja_service.asegurar_nomina_quincena(
+        db_session, idproyecto=data["proyecto"].id, contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 10, 26), fechafinal=date(2026, 11, 10),
+    )
+    futuro_origen, _ = parte_diario_tarja_service.asegurar_nomina_quincena(
+        db_session, idproyecto=data["proyecto"].id, contacto_id=data["contacto"].id,
+        fechainicio=date(2026, 11, 11), fechafinal=date(2026, 11, 25),
+    )
+    futuro_destino, _ = parte_diario_tarja_service.asegurar_nomina_quincena(
+        db_session, idproyecto=destino.id, contacto_id=data["otro_contacto"].id,
+        fechainicio=date(2026, 11, 11), fechafinal=date(2026, 11, 25),
+    )
+    registro_residente = db_session.exec(
+        select(TarjaNomina).where(TarjaNomina.tarja_id == futuro_destino.id)
+    ).one()
+    registro_residente.adicional_importe = Decimal("123")
+    db_session.add(registro_residente)
+    if siguiente_movimiento:
+        estado = db_session.exec(
+            select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == siguiente_movimiento)
+        ).one()
+        parte_posterior = ParteDiario(
+            idproyecto=destino.id, contacto_id=data["otro_contacto"].id,
+            fecha=date(2026, 11, 20), estado=EstadoParteDiario.CONFIRMADO,
+        )
+        db_session.add(parte_posterior)
+        db_session.flush()
+        db_session.add(ParteDiarioDetalle(
+            parte_diario_id=parte_posterior.id, idnomina=empleado.id,
+            idestado=estado.id, horas=Decimal("0"),
+        ))
+    db_session.commit()
+
+    if via == "manual":
+        registro = db_session.exec(
+            select(TarjaNomina).where(TarjaNomina.tarja_id == origen.id)
+            .where(TarjaNomina.nomina_id == empleado.id)
+        ).one()
+        tarja_nomina_crud.trasladar(db_session, registro.id, TarjaNominaTrasladoRequest(
+            proyecto_id=destino.id, proyecto_encargado_id=asignacion.id,
+            fecha=date(2026, 11, 10),
+        ))
+    else:
+        parte = parte_diario_crud.create(db_session, {
+            "idproyecto": data["proyecto"].id, "contacto_id": data["contacto"].id,
+            "fecha": "2026-11-10", "estado": EstadoParteDiario.BORRADOR, "detalles": [],
+        })
+        estado = db_session.exec(
+            select(ParteDiarioEstado).where(ParteDiarioEstado.abreviatura == "TRA")
+        ).one()
+        parte_diario_crud.update(db_session, parte.id, {
+            "estado": EstadoParteDiario.CONFIRMADO,
+            "detalles": [{
+                "idnomina": empleado.id, "idestado": estado.id, "horas": "0",
+                "descripcion": json.dumps({"tipo": "traspaso", "destino": {
+                    "idproyecto": destino.id, "contacto_id": data["otro_contacto"].id,
+                }}),
+            }],
+        })
+        # Resincronizar el parte no debe duplicar ni alterar la nomina futura.
+        parte_diario_tarja_service.sincronizar_detalle_para_parte(db_session, parte)
+
+    registro = db_session.exec(
+        select(TarjaNomina).where(TarjaNomina.tarja_id == futuro_destino.id)
+        .where(TarjaNomina.nomina_id == empleado.id).where(TarjaNomina.deleted_at.is_(None))
+    ).one()
+    assert registro.fecha_desde == date(2026, 11, 11)
+    assert registro.fecha_hasta == (
+        date(2026, 11, 20) if siguiente_movimiento == "BAJ"
+        else date(2026, 11, 19) if siguiente_movimiento else date(2026, 11, 25)
+    )
+    restantes_origen = db_session.exec(
+        select(TarjaNomina).where(TarjaNomina.tarja_id == futuro_origen.id)
+        .where(TarjaNomina.nomina_id == empleado.id).where(TarjaNomina.deleted_at.is_(None))
+    ).all()
+    if siguiente_movimiento:
+        assert len(restantes_origen) == 1
+        assert restantes_origen[0].fecha_desde == (
+            date(2026, 11, 21) if siguiente_movimiento == "BAJ" else date(2026, 11, 20)
+        )
+    else:
+        assert restantes_origen == []
+    db_session.refresh(registro_residente)
+    assert registro_residente.adicional_importe == Decimal("123")
+    assert db_session.exec(
+        select(TarjaDetalle).where(TarjaDetalle.tarja_id == futuro_destino.id)
+        .where(TarjaDetalle.idnomina == empleado.id)
+    ).all() == []
+    if via == "parte" and siguiente_movimiento is None:
+        detalle = db_session.exec(
+            select(ParteDiarioDetalle).where(ParteDiarioDetalle.parte_diario_id == parte.id)
+            .where(ParteDiarioDetalle.idnomina == empleado.id)
+        ).one()
+        parte_diario_tarja_service.eliminar_traspaso_nomina(
+            db_session, detalle_traspaso=detalle,
+        )
+        restaurado = db_session.exec(
+            select(TarjaNomina).where(TarjaNomina.tarja_id == futuro_origen.id)
+            .where(TarjaNomina.nomina_id == empleado.id)
+        ).one()
+        assert restaurado.fecha_desde == date(2026, 11, 11)
+        assert restaurado.fecha_hasta == date(2026, 11, 25)
+        assert db_session.exec(
+            select(TarjaNomina).where(TarjaNomina.tarja_id == futuro_destino.id)
+            .where(TarjaNomina.nomina_id == empleado.id)
+        ).all() == []
+
+
+@pytest.mark.parametrize("caso", ["cerrada", "existente", "eliminado", "otro_encargado"])
+def test_nomina_futura_por_traspaso_respeta_cierre_y_ediciones(db_session, caso):
+    data = _seed_base(db_session)
+    empleado = data["nomina_default"]
+    destino = Proyecto(nombre="Destino futuro", responsable_id=data["contacto"].responsable_id)
+    db_session.add(destino)
+    db_session.flush()
+    tarja = Tarja(
+        idproyecto=destino.id,
+        contacto_id=data["contacto"].id if caso == "otro_encargado" else data["otro_contacto"].id,
+        fechainicio=date(2026, 11, 11), fechafinal=date(2026, 11, 25),
+        estado=EstadoTarja.CERRADO if caso == "cerrada" else EstadoTarja.BORRADOR,
+    )
+    db_session.add(tarja)
+    db_session.flush()
+    if caso in {"existente", "eliminado"}:
+        registro = TarjaNomina(
+            tarja_id=tarja.id, nomina_id=empleado.id,
+            fecha_desde=date(2026, 11, 13), fecha_hasta=date(2026, 11, 24),
+            adicional_importe=Decimal("456"),
+            deleted_at=datetime.now(UTC) if caso == "eliminado" else None,
+        )
+        db_session.add(registro)
+    db_session.commit()
+    args = dict(
+        nomina=empleado,
+        origen_proyecto_id=data["proyecto"].id, origen_contacto_id=data["contacto"].id,
+        destino_proyecto_id=destino.id, destino_contacto_id=data["otro_contacto"].id,
+        fecha=date(2026, 11, 10), quincena_final=date(2026, 11, 10),
+    )
+    if caso == "cerrada":
+        with pytest.raises(ValueError, match="tarja futura cerrada"):
+            parte_diario_tarja_service.sincronizar_nomina_futura_por_traspaso(db_session, **args)
+        db_session.rollback()
+    else:
+        parte_diario_tarja_service.sincronizar_nomina_futura_por_traspaso(db_session, **args)
+    registros = db_session.exec(
+        select(TarjaNomina).where(TarjaNomina.tarja_id == tarja.id)
+        .where(TarjaNomina.nomina_id == empleado.id)
+    ).all()
+    if caso in {"existente", "eliminado"}:
+        assert len(registros) == 1
+        assert registros[0].fecha_desde == date(2026, 11, 13)
+        assert registros[0].fecha_hasta == date(2026, 11, 24)
+        assert registros[0].adicional_importe == Decimal("456")
+        assert (registros[0].deleted_at is not None) == (caso == "eliminado")
+    else:
+        assert registros == []
 
 
 def test_presentismo_suma_obras_y_limita_horas_extras_por_dia(db_session):

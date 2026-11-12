@@ -168,6 +168,15 @@ de `Nomina` ya apunte a otra obra. Como reparacion defensiva, si falta la tarja
 canonica o existe sin ningun `TarjaNomina`, se materializa una unica vez desde la
 asignacion base vigente de esa obra y encargado. Una nomina parcial o con registros
 eliminados no se completa ni revive automaticamente.
+Un traspaso permanente (`TRA`), tambien desde el traslado manual de nomina,
+incorpora al empleado en las tarjas futuras ya creadas de la obra y encargado
+destino y retira su asignacion del origen. No crea quincenas adicionales ni horas
+diarias de destino. La propagacion termina ante el siguiente `ALT`, `BAJ` o `TRA`
+confirmado/cerrado; la baja incluye su fecha y los otros movimientos rigen desde
+su fecha. Se conservan las asignaciones destino ya editadas o eliminadas y las
+nominas de otros empleados y encargados. Si debe modificar una tarja futura
+cerrada, el traspaso se rechaza y debe reabrirse esa tarja. Al quitar el traspaso,
+se restaura tambien la asignacion de origen en las quincenas futuras existentes.
 Los menus de personas solo muestran candidatos locales. No existe alta sin validar.
 `NO` o `NINGUNO` descartan la novedad pendiente. Las consultas de nomina pueden
 mantener alcance de obra o global, pero no habilitan mutaciones fuera de la nomina
