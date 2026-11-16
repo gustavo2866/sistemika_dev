@@ -1,9 +1,12 @@
 from typing import Iterator
 
-from fastapi import Body, HTTPException, Response
+from fastapi import Body, Depends, HTTPException, Query, Response
+from sqlmodel import Session
 
 from app.core.generic_crud import GenericCRUD
 from app.core.router import create_generic_router
+from app.db import get_session
+from app.services.erp_sync_periods_service import get_available_sync_periods
 from app.models.erp.libro_diario import ErpLibroDiario
 from app.models.erp.libro_diario_sync import parse_periodo, run_sync
 
@@ -16,17 +19,33 @@ erp_libro_diario_router = create_generic_router(
 )
 
 
+@erp_libro_diario_router.get("/periodos-disponibles")
+def get_erp_sync_periods(periodo_desde: str = Query(...), session: Session = Depends(get_session)):
+    try:
+        return get_available_sync_periods(session, periodo_desde)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @erp_libro_diario_router.post("/sync", status_code=204)
 def sync_erp_libro_diario(payload: dict = Body(...)):
     periodo = payload.get("periodo")
     batch_size = int(payload.get("batch_size", 5000))
     dry_run = _parse_dry_run(payload.get("dry_run", False))
+    actualizar_presupuestos = _parse_dry_run(payload.get("actualizar_presupuestos", True))
 
     if not periodo:
         raise HTTPException(status_code=400, detail="periodo es requerido (YYYY-MM o YYYYMM)")
 
     try:
-        run_sync(periodo=str(periodo), batch_size=batch_size, dry_run=dry_run)
+        run_sync(
+            periodo=str(periodo),
+            batch_size=batch_size,
+            dry_run=dry_run,
+            sync_presupuestos=actualizar_presupuestos,
+        )
         return Response(status_code=204)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -63,6 +82,7 @@ def sync_erp_libro_diario_range(payload: dict = Body(...)):
     periodo_hasta = payload.get("periodo_hasta")
     batch_size = int(payload.get("batch_size", 5000))
     dry_run = _parse_dry_run(payload.get("dry_run", False))
+    actualizar_presupuestos = _parse_dry_run(payload.get("actualizar_presupuestos", True))
 
     if not periodo_desde or not periodo_hasta:
         raise HTTPException(
@@ -74,12 +94,20 @@ def sync_erp_libro_diario_range(payload: dict = Body(...)):
         periodos = list(_iter_periods(str(periodo_desde), str(periodo_hasta)))
         results = []
         for periodo in periodos:
-            results.append(run_sync(periodo=periodo, batch_size=batch_size, dry_run=dry_run))
+            results.append(
+                run_sync(
+                    periodo=periodo,
+                    batch_size=batch_size,
+                    dry_run=dry_run,
+                    sync_presupuestos=actualizar_presupuestos,
+                )
+            )
 
         return {
             "periodo_desde": str(periodo_desde),
             "periodo_hasta": str(periodo_hasta),
             "dry_run": dry_run,
+            "actualizar_presupuestos": actualizar_presupuestos,
             "periodos": periodos,
             "resultados": results,
         }

@@ -1,9 +1,9 @@
 ﻿"use client";
 
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNotify } from "ra-core";
-import { ArrowDownToLine, ArrowLeft, BarChart3, ChevronDown, ChevronLeft, ChevronRight, Copy, DollarSign, Download, Eye, MoreHorizontal, Pencil, Percent, Plus, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
+import { useGetList, useNotify } from "ra-core";
+import { ArrowDownToLine, ArrowLeft, BarChart3, CalendarDays, CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Copy, DollarSign, Download, Eye, MoreHorizontal, Pencil, Percent, Plus, Trash2, Upload } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FormProvider, useForm } from "react-hook-form";
 
@@ -26,6 +26,12 @@ import {
 import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
 import { PROYECTO_ESTADO_CHOICES } from "@/app/resources/constructora/proyectos/model";
+import type { ErpCashPeriodo } from "@/app/resources/cashflow/periodos/model";
+import type {
+  AnnualValues as AccumulatedValues,
+  RealProject,
+  RealesPanelResponse,
+} from "@/app/resources/erp/reales/model";
 
 import { BudgetClearDialog } from "./panel/BudgetClearDialog";
 import { BudgetCopyDialog } from "./panel/BudgetCopyDialog";
@@ -52,7 +58,6 @@ import type {
   PanelProject,
   PanelResponse,
   PresupuestoFilterContext,
-  SyncRangeResponse,
 } from "./panel/types";
 import {
   addMonths,
@@ -81,6 +86,7 @@ import {
 
 const MONTHS_VISIBLE = 1;
 const MONTH_NAVIGATION_STEP = 1;
+const ANNUAL_START_YEAR = 2024;
 const DEFAULT_PROJECT_ESTADO = "02-ejecucion";
 const HONORARIOS_PROYECTO_CUENTA = "5.01.01.001";
 const PROJECT_ESTADO_FILTER_CHOICES = [
@@ -110,6 +116,7 @@ type HeaderFilterChoice = {
 };
 
 type IncomeRealMode = "manual" | "contab";
+type PanelViewMode = "monthly" | "annual";
 
 type HeaderFiltersFormValues = {
   estado: string;
@@ -224,10 +231,10 @@ const IncomeRealModeSelector = ({
   value: IncomeRealMode;
   onChange: (value: IncomeRealMode) => void;
 }) => (
-  <span className="relative inline-flex h-4 items-center">
+  <span className="relative inline-flex h-9 items-center">
     <select
       value={value}
-      className="h-4 w-[92px] appearance-none rounded-sm border-0 bg-transparent py-0 pl-1 pr-3 text-[9px] font-semibold leading-none text-slate-700 outline-none transition-colors hover:text-slate-900 focus:text-slate-900"
+      className="h-9 w-[132px] appearance-none rounded-md border border-input bg-background py-0 pl-3 pr-7 text-[10px] font-medium leading-none text-slate-700 shadow-xs outline-none transition-colors hover:text-slate-900 focus:border-ring focus:text-slate-900"
       title="Origen ingreso real"
       aria-label="Origen ingreso real"
       onClick={(event) => event.stopPropagation()}
@@ -236,9 +243,411 @@ const IncomeRealModeSelector = ({
       <option value="contab">Ingreso Contable</option>
       <option value="manual">Ingreso Manual</option>
     </select>
-    <ChevronDown className="pointer-events-none absolute right-0 size-3 text-slate-700" />
+    <ChevronDown className="pointer-events-none absolute right-2 size-3 text-slate-700" />
   </span>
 );
+
+type AnnualComparison = {
+  real: number;
+  budget: number;
+};
+
+const annualMillions = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+const formatAnnualMillions = (value: number) =>
+  `$ ${annualMillions.format(Number(value || 0) / 1_000_000)} M`;
+
+const annualMonthFormatter = new Intl.DateTimeFormat("es-AR", { month: "short" });
+
+const formatAnnualMonth = (month: string) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return annualMonthFormatter
+    .format(new Date(year, monthNumber - 1, 1))
+    .replace(".", "");
+};
+
+const summarizeAnnualValues = (
+  monthValues: Record<string, MonthValues>,
+  months: string[],
+  getRealIncome?: (month: string, values: MonthValues) => number,
+): AnnualComparison =>
+  months.reduce(
+    (total, month) => {
+      const values = monthValues[month] ?? getEmptyMonthValues();
+      const realIncome = getRealIncome
+        ? getRealIncome(month, values)
+        : Number(values.real_ingresos ?? 0);
+      total.real += realIncome - Number(values.real_egresos ?? 0);
+      total.budget += Number(values.ingresos ?? 0) - Number(values.egresos ?? 0);
+      return total;
+    },
+    { real: 0, budget: 0 },
+  );
+
+const monthsForYear = (year: number) =>
+  Array.from({ length: 12 }, (_, month) => `${year}-${String(month + 1).padStart(2, "0")}`);
+
+const AnnualComparisonCell = ({
+  values,
+  total = false,
+  closed = false,
+  active = false,
+}: {
+  values: AnnualComparison;
+  total?: boolean;
+  closed?: boolean;
+  active?: boolean;
+}) => (
+  <td
+    className={cn(
+      "border-l border-border/50 px-1 py-1 text-right tabular-nums",
+      closed && !total && "bg-muted/15 opacity-60",
+      active && !total && "border-l-2 border-sky-300 bg-sky-50/80 dark:border-sky-800 dark:bg-sky-950/30",
+      total && "border-l-2 border-slate-300 bg-slate-100 dark:border-slate-700 dark:bg-slate-800",
+    )}
+    title={`Real: ${formatAnnualMillions(values.real)} · Presupuestado: ${formatAnnualMillions(values.budget)}`}
+  >
+    <span className={cn("block truncate text-[9px] font-semibold leading-none", getNegativeOnlyColorClass(values.real))}>
+      {formatAnnualMillions(values.real)}
+    </span>
+    <span className={cn("mt-0.5 block truncate text-[8px] font-medium leading-none text-muted-foreground", getNegativeOnlyColorClass(values.budget))}>
+      ({formatAnnualMillions(values.budget)})
+    </span>
+  </td>
+);
+
+const AccumulatedCell = ({ values }: { values: AccumulatedValues }) => (
+  <td
+    className="border-l-2 border-slate-300 bg-slate-200/70 px-1 py-1 text-right tabular-nums dark:border-slate-700 dark:bg-slate-800"
+    title={`Histórico: ${formatAnnualMillions(values.historico)} · ICC: ${formatAnnualMillions(values.actual)}`}
+  >
+    <span className={cn("block truncate text-[9px] font-semibold leading-none", getNegativeOnlyColorClass(values.historico))}>
+      {formatAnnualMillions(values.historico)}
+    </span>
+    <span className={cn("mt-0.5 block truncate text-[8px] font-medium leading-none text-muted-foreground", getNegativeOnlyColorClass(values.actual))}>
+      ({formatAnnualMillions(values.actual)})
+    </span>
+  </td>
+);
+
+const ProjectedCell = ({ value }: { value: number }) => (
+  <td
+    className="border-l-2 border-slate-300 bg-slate-100/80 px-1 py-1 text-right tabular-nums dark:border-slate-700 dark:bg-slate-900/70"
+    title={`Proyectado: ${formatAnnualMillions(value)}`}
+  >
+    <span className={cn("block truncate text-[9px] font-semibold leading-none", getNegativeOnlyColorClass(value))}>
+      {formatAnnualMillions(value)}
+    </span>
+  </td>
+);
+
+const AnnualPanelRow = ({
+  label,
+  level,
+  months,
+  monthValues,
+  expanded,
+  expandable,
+  onToggle,
+  getRealIncome,
+  closedMonths,
+  activeMonth,
+  accumulated,
+}: {
+  label: string;
+  level: 0 | 1 | 2;
+  months: string[];
+  monthValues: Record<string, MonthValues>;
+  expanded?: boolean;
+  expandable?: boolean;
+  onToggle?: () => void;
+  getRealIncome?: (month: string, values: MonthValues) => number;
+  closedMonths: ReadonlySet<string>;
+  activeMonth: string | null;
+  accumulated: AccumulatedValues;
+}) => {
+  const periodValues = months.map((month) =>
+    summarizeAnnualValues(monthValues, [month], getRealIncome),
+  );
+  const total = summarizeAnnualValues(
+    monthValues,
+    months,
+    getRealIncome,
+  );
+  const projected = periodValues.reduce((value, period, index) => {
+    const month = months[index];
+    const useReal = activeMonth
+      ? month <= activeMonth
+      : closedMonths.has(month);
+    return value + (useReal ? period.real : period.budget);
+  }, 0);
+  const rowClass = {
+    0: "bg-background font-semibold hover:bg-muted/30",
+    1: "bg-muted/20 font-medium hover:bg-muted/30",
+    2: "bg-background text-muted-foreground hover:bg-muted/20",
+  }[level];
+
+  return (
+    <tr className={cn("border-b border-border/60 transition-colors", rowClass)}>
+      <td className="sticky left-0 z-[1] border-r border-border/60 bg-inherit px-1.5 py-1.5 text-[8px]">
+        <div className="flex min-w-0 items-center" style={{ paddingLeft: level * 16 }}>
+          {expandable ? (
+            <button
+              type="button"
+              className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={onToggle}
+              aria-label={expanded ? "Contraer" : "Expandir"}
+            >
+              {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            </button>
+          ) : (
+            <span className="block size-5 shrink-0" />
+          )}
+          <span className="truncate" title={label}>{label}</span>
+        </div>
+      </td>
+      {periodValues.map((values, index) => (
+        <AnnualComparisonCell
+          key={months[index]}
+          values={values}
+          closed={closedMonths.has(months[index])}
+          active={activeMonth === months[index]}
+        />
+      ))}
+      <AnnualComparisonCell values={total} total />
+      <ProjectedCell value={projected} />
+      <AccumulatedCell values={accumulated} />
+    </tr>
+  );
+};
+
+const AnnualBudgetTable = ({
+  rows,
+  months,
+  isLoading,
+  isError,
+  incomeRealMode,
+  includeHonorarios,
+  expandedProjects,
+  expandedRubros,
+  closedMonths,
+  activeMonth,
+  accumulatedRows,
+  onToggleProject,
+  onToggleRubro,
+  onRetry,
+}: {
+  rows: PanelProject[];
+  months: string[];
+  isLoading: boolean;
+  isError: boolean;
+  incomeRealMode: IncomeRealMode;
+  includeHonorarios: boolean;
+  expandedProjects: Set<number>;
+  expandedRubros: Set<string>;
+  closedMonths: ReadonlySet<string>;
+  activeMonth: string | null;
+  accumulatedRows: RealProject[];
+  onToggleProject: (projectId: number) => void;
+  onToggleRubro: (key: string) => void;
+  onRetry: () => void;
+}) => {
+  const projectRealIncome = (project: PanelProject) =>
+    (month: string, values: MonthValues) =>
+      incomeRealMode === "contab"
+        ? getContableRealIngresos(project, month, includeHonorarios)
+        : Number(values.real_ingresos ?? 0);
+  const detailRealIncome = (isContableIncomeSource: boolean) =>
+    (_month: string, values: MonthValues) =>
+      incomeRealMode === "contab" && !isContableIncomeSource
+        ? 0
+        : Number(values.real_ingresos ?? 0);
+  const totalByMonth = months.map((month) =>
+    rows.reduce(
+      (total, project) => {
+        const values = summarizeAnnualValues(
+          project.months,
+          [month],
+          projectRealIncome(project),
+        );
+        total.real += values.real;
+        total.budget += values.budget;
+        return total;
+      },
+      { real: 0, budget: 0 },
+    ),
+  );
+  const grandTotal = totalByMonth.reduce(
+    (total, values) => ({
+      real: total.real + values.real,
+      budget: total.budget + values.budget,
+    }),
+    { real: 0, budget: 0 },
+  );
+  const accumulatedTotal = accumulatedRows.reduce(
+    (total, project) => ({
+      historico: total.historico + Number(project.total.historico ?? 0),
+      actual: total.actual + Number(project.total.actual ?? 0),
+    }),
+    { historico: 0, actual: 0 },
+  );
+  const projectedTotal = totalByMonth.reduce((value, period, index) => {
+    const month = months[index];
+    const useReal = activeMonth
+      ? month <= activeMonth
+      : closedMonths.has(month);
+    return value + (useReal ? period.real : period.budget);
+  }, 0);
+  const colSpan = months.length + 4;
+
+  return (
+    <table className="w-max table-fixed border-collapse">
+      <colgroup>
+        <col className="w-[220px]" />
+        {months.map((month) => <col key={month} className="w-[68px]" />)}
+        <col className="w-[76px]" />
+        <col className="w-[76px]" />
+        <col className="w-[76px]" />
+      </colgroup>
+      <thead>
+        <tr className="border-b border-border bg-muted/30">
+          <th className="sticky left-0 z-20 border-r border-border bg-muted/30 px-1.5 py-1.5 text-left text-[9px] font-semibold">
+            Proyecto / Rubro / Cuenta
+          </th>
+          {months.map((month) => (
+            <th
+              key={month}
+              className={cn(
+                "border-l border-border/50 px-1 py-1 text-center text-[9px] font-semibold capitalize text-slate-700",
+                closedMonths.has(month) && "bg-muted/15 text-muted-foreground opacity-60",
+                activeMonth === month && "border-l-2 border-sky-300 bg-sky-100 text-sky-950 opacity-100 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100",
+              )}
+            >
+              <span className="block">{formatAnnualMonth(month)}</span>
+              {activeMonth === month ? (
+                <span className="block text-[6px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">Actual</span>
+              ) : null}
+              <span className="block text-[7px] font-normal text-muted-foreground">Real · (Pres.)</span>
+            </th>
+          ))}
+          <th className="border-l-2 border-slate-300 bg-slate-100 px-1 py-1 text-center text-[9px] font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800">
+            <span className="block">Total Actual</span>
+            <span className="block text-[7px] font-normal text-muted-foreground">Real · (Pres.)</span>
+          </th>
+          <th className="border-l-2 border-slate-300 bg-slate-100/80 px-1 py-1 text-center text-[9px] font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900/70">
+            <span className="block">Total Proy</span>
+            <span className="block text-[7px] font-normal text-muted-foreground">Real+Proy</span>
+          </th>
+          <th className="border-l-2 border-slate-300 bg-slate-200/70 px-1 py-1 text-center text-[9px] font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800">
+            <span className="block">Total Acc</span>
+            <span className="block text-[7px] font-normal text-muted-foreground">Hist. · (ICC)</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {isLoading ? (
+          <tr><td colSpan={colSpan} className="px-3 py-8 text-center text-sm text-muted-foreground">Cargando panel...</td></tr>
+        ) : isError ? (
+          <tr>
+            <td colSpan={colSpan} className="px-3 py-8 text-center text-sm text-muted-foreground">
+              No se pudo cargar el panel.
+              <Button type="button" variant="ghost" size="sm" className="ml-2 h-7 text-xs" onClick={onRetry}>Reintentar</Button>
+            </td>
+          </tr>
+        ) : rows.length === 0 ? (
+          <tr><td colSpan={colSpan} className="px-3 py-8 text-center text-sm text-muted-foreground">Sin presupuestos ERP en el período.</td></tr>
+        ) : rows.map((project) => {
+          const projectExpanded = expandedProjects.has(project.proyecto_id);
+          const accumulatedProject = accumulatedRows.find(
+            (item) => item.proyecto_id === project.proyecto_id,
+          );
+          const visibleRubros = project.rubros.filter(
+            (rubro) => incomeRealMode === "contab" || !isHiddenRubro(rubro),
+          );
+          return (
+            <Fragment key={`annual-project-${project.proyecto_id}`}>
+              <AnnualPanelRow
+                label={project.proyecto_nombre}
+                level={0}
+                months={months}
+                monthValues={project.months}
+                getRealIncome={projectRealIncome(project)}
+                expandable={visibleRubros.length > 0}
+                expanded={projectExpanded}
+                onToggle={() => onToggleProject(project.proyecto_id)}
+                closedMonths={closedMonths}
+                activeMonth={activeMonth}
+                accumulated={accumulatedProject?.total ?? { historico: 0, actual: 0 }}
+              />
+              {projectExpanded ? visibleRubros.map((rubro) => {
+                const rubroKey = `${project.proyecto_id}-${rubro.rubro_id}`;
+                const rubroExpanded = expandedRubros.has(rubroKey);
+                const accumulatedRubro = accumulatedProject?.rubros.find(
+                  (item) => item.rubro_id === rubro.rubro_id,
+                );
+                return (
+                  <Fragment key={`annual-rubro-${rubroKey}`}>
+                    <AnnualPanelRow
+                      label={rubro.rubro_nombre}
+                      level={1}
+                      months={months}
+                      monthValues={rubro.months}
+                      getRealIncome={detailRealIncome(isHiddenRubro(rubro))}
+                      expandable={rubro.cuentas.length > 0}
+                      expanded={rubroExpanded}
+                      onToggle={() => onToggleRubro(rubroKey)}
+                      closedMonths={closedMonths}
+                      activeMonth={activeMonth}
+                      accumulated={accumulatedRubro?.total ?? { historico: 0, actual: 0 }}
+                    />
+                    {rubroExpanded ? rubro.cuentas.map((cuenta) => (
+                      <AnnualPanelRow
+                        key={`annual-account-${rubroKey}-${cuenta.cuenta_id}`}
+                        label={formatCuentaLabel(cuenta)}
+                        level={2}
+                        months={months}
+                        monthValues={cuenta.months}
+                        getRealIncome={detailRealIncome(isHiddenRubro(rubro))}
+                        closedMonths={closedMonths}
+                        activeMonth={activeMonth}
+                        accumulated={
+                          accumulatedRubro?.cuentas.find(
+                            (item) => item.cuenta_id === cuenta.cuenta_id,
+                          )?.total ?? { historico: 0, actual: 0 }
+                        }
+                      />
+                    )) : null}
+                  </Fragment>
+                );
+              }) : null}
+            </Fragment>
+          );
+        })}
+      </tbody>
+      {!isLoading && !isError && rows.length > 0 ? (
+        <tfoot>
+          <tr className="border-t-2 border-slate-300 bg-muted/30 dark:border-slate-700">
+            <th className="sticky left-0 z-10 border-r border-border bg-muted/30 px-1.5 py-2 text-left text-[10px] font-bold">Total</th>
+            {totalByMonth.map((values, index) => (
+              <AnnualComparisonCell
+                key={months[index]}
+                values={values}
+                closed={closedMonths.has(months[index])}
+                active={activeMonth === months[index]}
+              />
+            ))}
+            <AnnualComparisonCell values={grandTotal} total />
+            <ProjectedCell value={projectedTotal} />
+            <AccumulatedCell values={accumulatedTotal} />
+          </tr>
+        </tfoot>
+      ) : null}
+    </table>
+  );
+};
 
 const metricCellClassName =
   "w-[84px] min-w-[84px] max-w-[84px] overflow-hidden border-l border-border/40 px-1.5 text-right tabular-nums";
@@ -875,10 +1284,13 @@ export const ErpPresupuestoPanel = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const todayStart = useMemo(() => toStartOfMonth(new Date()), []);
+  const initialPanelMonth = useMemo(
+    () => parsePanelMonthParam(new URLSearchParams(location.search).get("panel_mes")),
+    [location.search],
+  );
+  const closedPeriodDefaultApplied = useRef(Boolean(initialPanelMonth));
   const [startMonth, setStartMonth] = useState(
-    () =>
-      parsePanelMonthParam(new URLSearchParams(location.search).get("panel_mes")) ??
-      todayStart,
+    () => initialPanelMonth ?? todayStart,
   );
   const [expandedProjects, setExpandedProjects] = useState<Set<number>>(() =>
     parseExpandedProjectParam(new URLSearchParams(location.search).get("open_projects")),
@@ -900,7 +1312,6 @@ export const ErpPresupuestoPanel = () => {
     useState<BudgetIncomeRequest | null>(null);
   const [budgetFormRequest, setBudgetFormRequest] =
     useState<BudgetFormDialogRequest | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(
     () => new URLSearchParams(location.search).get("panel_proyecto") ?? "all",
   );
@@ -910,13 +1321,56 @@ export const ErpPresupuestoPanel = () => {
       DEFAULT_PROJECT_ESTADO,
   );
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-  const [incomeRealMode, setIncomeRealMode] = useState<IncomeRealMode>("manual");
+  const [viewMode, setViewMode] = useState<PanelViewMode>("monthly");
+  const [incomeRealMode, setIncomeRealMode] = useState<IncomeRealMode>("contab");
   const [includeHonorarios, setIncludeHonorarios] = useState(true);
 
-  const fechaDesde = useMemo(() => formatDateParam(startMonth), [startMonth]);
+  const { data: cashPeriods = [], isPending: cashPeriodsPending } =
+    useGetList<ErpCashPeriodo>("erp/cash/periodos", {
+      pagination: { page: 1, perPage: 240 },
+      sort: { field: "fecha_periodo", order: "DESC" },
+      filter: {},
+    });
+  const defaultMonthlyPeriod = useMemo(
+    () => {
+      const latestClosedMonth = parsePanelMonthParam(
+        cashPeriods.find((period) => period.estado === "CERRADO")
+          ?.fecha_periodo?.slice(0, 7) ?? null,
+      );
+      return latestClosedMonth ? addMonths(latestClosedMonth, 1) : null;
+    },
+    [cashPeriods],
+  );
+  const closedMonthKeys = useMemo(
+    () =>
+      new Set(
+        cashPeriods
+          .filter((period) => period.estado === "CERRADO")
+          .map((period) => period.fecha_periodo.slice(0, 7)),
+      ),
+    [cashPeriods],
+  );
+
+  useEffect(() => {
+    if (closedPeriodDefaultApplied.current || cashPeriodsPending) return;
+    closedPeriodDefaultApplied.current = true;
+    if (defaultMonthlyPeriod) setStartMonth(defaultMonthlyPeriod);
+  }, [cashPeriodsPending, defaultMonthlyPeriod]);
+
+  const annualSelectedYear = Math.max(ANNUAL_START_YEAR, startMonth.getFullYear());
+  const fechaDesde = useMemo(
+    () =>
+      viewMode === "annual"
+        ? `${annualSelectedYear}-01-01`
+        : formatDateParam(startMonth),
+    [annualSelectedYear, startMonth, viewMode],
+  );
   const fechaHasta = useMemo(
-    () => formatDateParam(getMonthEnd(addMonths(startMonth, MONTHS_VISIBLE - 1))),
-    [startMonth],
+    () =>
+      viewMode === "annual"
+        ? `${annualSelectedYear}-12-31`
+        : formatDateParam(getMonthEnd(addMonths(startMonth, MONTHS_VISIBLE - 1))),
+    [annualSelectedYear, startMonth, viewMode],
   );
 
   const params = useMemo(() => {
@@ -993,6 +1447,30 @@ export const ErpPresupuestoPanel = () => {
       ),
   });
 
+  const accumulatedParams = useMemo(() => {
+    const search = new URLSearchParams();
+    search.set("anio_desde", String(ANNUAL_START_YEAR));
+    search.set("anio_hasta", String(annualSelectedYear));
+    search.set("estado", selectedEstado);
+    if (selectedProjectId !== "all") {
+      search.set("proyecto_id", selectedProjectId);
+    }
+    return search.toString();
+  }, [annualSelectedYear, selectedEstado, selectedProjectId]);
+  const {
+    data: accumulatedData,
+    isLoading: accumulatedLoading,
+    isError: accumulatedError,
+    refetch: refetchAccumulated,
+  } = useQuery({
+    queryKey: ["erp-libro-mayor-accumulated", accumulatedParams],
+    queryFn: () =>
+      fetchJsonWithAuth<RealesPanelResponse>(
+        `${apiUrl}/erp/libro-mayor/panel?${accumulatedParams}`,
+      ),
+    enabled: viewMode === "annual",
+  });
+
   const { data: projectsData } = useQuery({
     queryKey: ["erp-presupuestos-panel-proyectos", selectedEstado],
     queryFn: () =>
@@ -1067,35 +1545,6 @@ export const ErpPresupuestoPanel = () => {
     await deleteWithAuth(`${apiUrl}/erp/presupuestos/${presupuestoId}`);
     notify("Cuenta eliminada", { type: "success" });
     await refetch();
-  };
-
-  const handleSyncLastSixMonths = async () => {
-    const periodoDesde = addMonths(todayStart, -5);
-    const periodoHasta = todayStart;
-
-    setIsSyncing(true);
-    try {
-      const result = await postJsonWithAuth<SyncRangeResponse>(
-        `${apiUrl}/erp/libro-diario/sync-range`,
-        {
-          periodo_desde: formatDateParam(periodoDesde).slice(0, 7),
-          periodo_hasta: formatDateParam(periodoHasta).slice(0, 7),
-        },
-      );
-      const rowsInserted = result.resultados.reduce(
-        (total, item) => total + Number(item.rows_inserted ?? 0),
-        0,
-      );
-      notify(
-        `Sincronizados ${result.periodos.length} meses (${rowsInserted} movimientos)`,
-        { type: "success" },
-      );
-      await refetch();
-    } catch {
-      notify("No se pudo sincronizar libro diario", { type: "error" });
-    } finally {
-      setIsSyncing(false);
-    }
   };
 
   const months = useMemo(() => data?.months ?? [], [data?.months]);
@@ -1175,11 +1624,37 @@ export const ErpPresupuestoPanel = () => {
     ) ?? 0;
   const panelCostMargin =
     getProfitabilityPercent(panelKpis.resultado, panelKpis.egresos) ?? 0;
-  const navigationMonth = useMemo(
-    () => formatMonthLabel(fechaDesde.slice(0, 7)),
-    [fechaDesde],
+  const navigationLabel = useMemo(
+    () =>
+      viewMode === "annual"
+        ? String(annualSelectedYear)
+        : formatMonthLabel(fechaDesde.slice(0, 7)),
+    [annualSelectedYear, fechaDesde, viewMode],
   );
   const selectedMonthKey = fechaDesde.slice(0, 7);
+  const annualMonths = useMemo(
+    () => monthsForYear(annualSelectedYear),
+    [annualSelectedYear],
+  );
+  const firstOpenMonth = useMemo(
+    () =>
+      [...cashPeriods]
+        .filter(
+          (period) =>
+            period.estado === "ABIERTO" &&
+            period.fecha_periodo.startsWith(`${annualSelectedYear}-`),
+        )
+        .sort((left, right) => left.fecha_periodo.localeCompare(right.fecha_periodo))[0]
+        ?.fecha_periodo.slice(0, 7) ?? null,
+    [annualSelectedYear, cashPeriods],
+  );
+  const annualYearOptions = useMemo(() => {
+    const lastYear = Math.max(new Date().getFullYear(), annualSelectedYear);
+    return Array.from(
+      { length: lastYear - ANNUAL_START_YEAR + 1 },
+      (_, index) => ANNUAL_START_YEAR + index,
+    );
+  }, [annualSelectedYear]);
   const visibleYearMonths = useMemo(() => {
     const year = startMonth.getFullYear();
     return Array.from({ length: 12 }, (_, monthIndex) => {
@@ -1192,8 +1667,13 @@ export const ErpPresupuestoPanel = () => {
       };
     });
   }, [startMonth]);
-  const moveVisibleMonth = (direction: -1 | 1) => {
-    setStartMonth((current) => addMonths(current, direction * MONTH_NAVIGATION_STEP));
+  const moveVisiblePeriod = (direction: -1 | 1) => {
+    setStartMonth((current) =>
+      addMonths(
+        current,
+        direction * (viewMode === "annual" ? 12 : MONTH_NAVIGATION_STEP),
+      ),
+    );
   };
 
   const toggleProject = (projectId: number) => {
@@ -1243,88 +1723,6 @@ export const ErpPresupuestoPanel = () => {
             </Button>
             <h1 className="text-xl font-semibold tracking-tight">Presupuestos ERP</h1>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center rounded-md border border-slate-200 bg-white shadow-xs">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 rounded-r-none"
-                onClick={() => moveVisibleMonth(-1)}
-                aria-label="Mes anterior"
-                title="Mes anterior"
-              >
-                <ChevronLeft className="size-3" />
-              </Button>
-              <Popover open={isMonthPickerOpen} onOpenChange={setIsMonthPickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-6 min-w-[132px] rounded-none border-x border-slate-200 px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-50"
-                    aria-label="Seleccionar mes"
-                    title="Seleccionar mes"
-                  >
-                    {navigationMonth}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="center" className="w-[210px] p-2">
-                  <div className="grid grid-cols-3 gap-1">
-                    {visibleYearMonths.map((monthOption) => (
-                      <Button
-                        key={monthOption.key}
-                        type="button"
-                        variant={
-                          monthOption.key === selectedMonthKey
-                            ? "default"
-                            : "ghost"
-                        }
-                        className="h-7 justify-center px-2 text-[11px] capitalize"
-                        onClick={() => {
-                          setStartMonth(monthOption.date);
-                          setIsMonthPickerOpen(false);
-                        }}
-                      >
-                        {monthOption.label}
-                      </Button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 rounded-l-none"
-                onClick={() => moveVisibleMonth(1)}
-                aria-label="Mes siguiente"
-                title="Mes siguiente"
-              >
-                <ChevronRight className="size-3" />
-              </Button>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={() => setStartMonth(todayStart)}
-            >
-              <RotateCcw className="mr-1 size-3.5" />
-              Hoy
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={handleSyncLastSixMonths}
-              disabled={isSyncing}
-            >
-              <RefreshCw className={cn("mr-1 size-3.5", isSyncing && "animate-spin")} />
-              {isSyncing ? "Sincronizando" : "Sincronizar"}
-            </Button>
-          </div>
         </div>
         <div className="mb-1 w-full min-w-0 rounded-lg bg-muted/30 p-1 sm:mb-2 sm:p-2">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1341,19 +1739,128 @@ export const ErpPresupuestoPanel = () => {
                 })),
               ]}
             />
-            <label
-              htmlFor="incluir-honorarios-proyecto"
-              className="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium text-slate-700 shadow-xs"
-              title={`Incluir o excluir la cuenta ${HONORARIOS_PROYECTO_CUENTA} de todos los totales del panel`}
-            >
-              <Switch
-                id="incluir-honorarios-proyecto"
-                checked={includeHonorarios}
-                onCheckedChange={setIncludeHonorarios}
-                aria-label={`Incluir cuenta ${HONORARIOS_PROYECTO_CUENTA}`}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex h-9 items-center rounded-md border border-primary/30 bg-primary/5 p-0.5 shadow-sm">
+                <Button
+                  type="button"
+                  variant={viewMode === "monthly" ? "default" : "ghost"}
+                  className="h-7 rounded px-2.5 text-[10px]"
+                  onClick={() => {
+                    setViewMode("monthly");
+                    setIsMonthPickerOpen(false);
+                    if (defaultMonthlyPeriod) setStartMonth(defaultMonthlyPeriod);
+                  }}
+                >
+                  <CalendarDays className="size-3.5" />
+                  Mensual
+                </Button>
+                <Button
+                  type="button"
+                  variant={viewMode === "annual" ? "default" : "ghost"}
+                  className="h-7 rounded px-2.5 text-[10px]"
+                  onClick={() => {
+                    setViewMode("annual");
+                    setIsMonthPickerOpen(false);
+                    setStartMonth(todayStart);
+                  }}
+                >
+                  <CalendarRange className="size-3.5" />
+                  Anual
+                </Button>
+              </div>
+              <div className="flex h-9 items-center rounded-md border border-input bg-background shadow-xs">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-7 rounded-r-none"
+                  onClick={() => moveVisiblePeriod(-1)}
+                  disabled={viewMode === "annual" && annualSelectedYear <= ANNUAL_START_YEAR}
+                  aria-label={viewMode === "annual" ? "Año anterior" : "Mes anterior"}
+                  title={viewMode === "annual" ? "Año anterior" : "Mes anterior"}
+                >
+                  <ChevronLeft className="size-3" />
+                </Button>
+                <Popover open={isMonthPickerOpen} onOpenChange={setIsMonthPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-8 min-w-[132px] rounded-none border-x border-input px-2 text-[11px] font-semibold text-slate-800 hover:bg-muted/50"
+                      aria-label={viewMode === "annual" ? "Seleccionar año final" : "Seleccionar mes"}
+                      title={viewMode === "annual" ? "Seleccionar año final" : "Seleccionar mes"}
+                    >
+                      {navigationLabel}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="center" className="w-[210px] p-2">
+                    {viewMode === "annual" ? (
+                      <div className="grid grid-cols-3 gap-1">
+                        {annualYearOptions.map((year) => (
+                          <Button
+                            key={year}
+                            type="button"
+                            variant={year === annualSelectedYear ? "default" : "ghost"}
+                            className="h-7 justify-center px-2 text-[11px]"
+                            onClick={() => {
+                              setStartMonth((current) => new Date(year, current.getMonth(), 1));
+                              setIsMonthPickerOpen(false);
+                            }}
+                          >
+                            {year}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1">
+                        {visibleYearMonths.map((monthOption) => (
+                          <Button
+                            key={monthOption.key}
+                            type="button"
+                            variant={monthOption.key === selectedMonthKey ? "default" : "ghost"}
+                            className="h-7 justify-center px-2 text-[11px] capitalize"
+                            onClick={() => {
+                              setStartMonth(monthOption.date);
+                              setIsMonthPickerOpen(false);
+                            }}
+                          >
+                            {monthOption.label}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-7 rounded-l-none"
+                  onClick={() => moveVisiblePeriod(1)}
+                  aria-label={viewMode === "annual" ? "Año siguiente" : "Mes siguiente"}
+                  title={viewMode === "annual" ? "Año siguiente" : "Mes siguiente"}
+                >
+                  <ChevronRight className="size-3" />
+                </Button>
+              </div>
+              <label
+                htmlFor="incluir-honorarios-proyecto"
+                className="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium text-slate-700 shadow-xs"
+                title={`Incluir o excluir la cuenta ${HONORARIOS_PROYECTO_CUENTA} de todos los totales del panel`}
+              >
+                <Switch
+                  id="incluir-honorarios-proyecto"
+                  checked={includeHonorarios}
+                  onCheckedChange={setIncludeHonorarios}
+                  aria-label={`Incluir cuenta ${HONORARIOS_PROYECTO_CUENTA}`}
+                />
+                <span>Gestión</span>
+              </label>
+              <IncomeRealModeSelector
+                value={incomeRealMode}
+                onChange={setIncomeRealMode}
               />
-              <span>Gestión</span>
-            </label>
+            </div>
           </div>
         </div>
         <FinancialKpiCards
@@ -1411,6 +1918,27 @@ export const ErpPresupuestoPanel = () => {
 
       <div className="overflow-hidden rounded-md border border-border bg-background">
         <div className="overflow-auto">
+          {viewMode === "annual" ? (
+            <AnnualBudgetTable
+              rows={rows}
+              months={annualMonths}
+              isLoading={isLoading || accumulatedLoading}
+              isError={isError || accumulatedError}
+              incomeRealMode={incomeRealMode}
+              includeHonorarios={includeHonorarios}
+              expandedProjects={expandedProjects}
+              expandedRubros={expandedRubros}
+              closedMonths={closedMonthKeys}
+              activeMonth={firstOpenMonth}
+              accumulatedRows={accumulatedData?.rows ?? []}
+              onToggleProject={toggleProject}
+              onToggleRubro={toggleRubro}
+              onRetry={() => {
+                void refetch();
+                void refetchAccumulated();
+              }}
+            />
+          ) : (
           <table className="w-full min-w-[1124px] table-fixed border-collapse">
             <colgroup>
               <col className="w-[190px]" />
@@ -1457,12 +1985,7 @@ export const ErpPresupuestoPanel = () => {
                       className="border-l border-border/40 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-700"
                       title={`Ingresos - ${formatMonthLabel(month)}`}
                     >
-                      <div className="flex items-center justify-center">
-                        <IncomeRealModeSelector
-                          value={incomeRealMode}
-                          onChange={setIncomeRealMode}
-                        />
-                      </div>
+                      Ingresos
                     </th>
                     <th
                       scope="col"
@@ -1841,6 +2364,7 @@ export const ErpPresupuestoPanel = () => {
               </tfoot>
             ) : null}
           </table>
+          )}
         </div>
       </div>
 

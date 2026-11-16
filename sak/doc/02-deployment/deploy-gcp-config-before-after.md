@@ -1,5 +1,7 @@
 # Deploy GCP config - before vs after
 
+> Registro histórico del commit de 2026-06-13. Para la configuración vigente del agente v3 y los pasos replicables por ambiente, ver [Cloud Run: CPU y escalado del agente v3](cloud-run-agente-v3.md).
+
 ## Context
 This document compares the real automatic deploy configuration used in GitHub Actions:
 - production workflow (master)
@@ -29,7 +31,7 @@ gcloud run deploy ${{ env.SERVICE_NAME }} \
   --set-env-vars="ENV=prod,CORS_ORIGINS=https://wcl.vercel.app;http://localhost:3000,CORS_ORIGINS_REGEX=https://.*-gustavo2866s-projects\\.vercel\\.app,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
 ```
 
-### After (commit: `455ca1e` and current)
+### After (commit: `455ca1e`)
 ```bash
 gcloud run deploy ${{ env.SERVICE_NAME }} \
   --source ./sak/backend \
@@ -72,7 +74,7 @@ gcloud run deploy ${{ env.SERVICE_NAME }} \
   --set-env-vars="ENV=test,CORS_ORIGINS=https://wcl.vercel.app;http://localhost:3000,CORS_ORIGINS_REGEX=https://.*-gustavo2866s-projects\\.vercel\\.app,SQLALCHEMY_ECHO=0,GCS_PROJECT_ID=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=sak-wcl-bucket,GCS_INVOICE_FOLDER=facturas"
 ```
 
-### After (commit: `455ca1e` and current)
+### After (commit: `455ca1e`)
 ```bash
 gcloud run deploy ${{ env.SERVICE_NAME }} \
   --source ./sak/backend \

@@ -1,7 +1,7 @@
 "use client";
 
 import { Edit, type EditProps } from "@/components/edit";
-import { FormOrderDeleteButton } from "@/components/forms";
+import { CashCuentaDeleteButton } from "./delete-button";
 import { ErpCashCuentaForm } from "./form";
 import { normalizeErpCashCuentaPayload } from "./model";
 
@@ -10,10 +10,11 @@ export const ErpCashCuentaEdit = ({ embedded = false, id, redirect }: { embedded
     id={id}
     redirect={redirect ?? (embedded ? false : "list")}
     title="Editar cuenta Cash"
-    className="max-w-2xl w-full"
+    className="max-w-none w-full"
+    contentClassName="max-w-none"
     mutationMode="pessimistic"
     transform={normalizeErpCashCuentaPayload}
-    actions={<div className="flex justify-end"><FormOrderDeleteButton /></div>}
+    actions={<div className="flex justify-end"><CashCuentaDeleteButton redirect={redirect ?? "/cashflow/setup/cuentas"} /></div>}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >

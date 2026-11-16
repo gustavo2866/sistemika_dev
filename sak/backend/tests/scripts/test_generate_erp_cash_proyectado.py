@@ -1,74 +1,34 @@
 from datetime import date
-from decimal import Decimal
-from types import SimpleNamespace
+from unittest.mock import MagicMock
 
-from scripts.generate_erp_cash_proyectado import build_generation, project_account_values
-
-
-def test_project_account_values_repite_mes_homologo_y_promedia_faltantes():
-    baseline = (date(2026, 1, 1), date(2026, 2, 1))
-    targets = (
-        date(2026, 1, 1),
-        date(2026, 2, 1),
-        date(2026, 3, 1),
-        date(2027, 1, 1),
-    )
-
-    values = project_account_values(
-        {
-            date(2026, 1, 1): Decimal("100"),
-            date(2026, 2, 1): Decimal("300"),
-        },
-        baseline,
-        targets,
-    )
-
-    assert values == {
-        date(2026, 1, 1): Decimal("100.00"),
-        date(2026, 2, 1): Decimal("300.00"),
-        date(2026, 3, 1): Decimal("200.00"),
-        date(2027, 1, 1): Decimal("100.00"),
-    }
+import pytest
+from scripts import generate_erp_cash_proyectado as script
 
 
-def test_build_generation_crea_un_registro_por_cuenta_y_periodo():
-    rows = [
-        SimpleNamespace(
-            cuenta_cash_id=20,
-            cuenta_nombre="INGRESOS",
-            periodo_anio=2026,
-            periodo_mes=1,
-            importe=Decimal("100"),
-        ),
-        SimpleNamespace(
-            cuenta_cash_id=20,
-            cuenta_nombre="INGRESOS",
-            periodo_anio=2026,
-            periodo_mes=2,
-            importe=Decimal("300"),
-        ),
-        SimpleNamespace(
-            cuenta_cash_id=1,
-            cuenta_nombre="EGRESOS",
-            periodo_anio=2026,
-            periodo_mes=1,
-            importe=Decimal("-50"),
-        ),
-    ]
+@pytest.mark.parametrize("mode,committed", [("--dry-run", False), ("--apply", True)])
+def test_generador_usa_motor_compartido_y_confirma_solo_al_aplicar(monkeypatch, mode, committed):
+    session = MagicMock()
+    session.__enter__.return_value = session
+    monkeypatch.setattr(script, "Session", lambda _: session)
+    pending = MagicMock()
+    calculate = MagicMock(return_value={"proyecciones_calculadas": 1})
+    monkeypatch.setattr(script, "rebuild_pending_cash_projection", pending)
+    monkeypatch.setattr(script, "recalculate_cash_projections", calculate)
+    monkeypatch.setattr("sys.argv", ["generate", "--start", "2026-03", "--months", "1", mode])
+    script.main()
+    calculate.assert_called_once_with(session, date(2026, 3, 1), date(2026, 3, 1))
+    assert session.commit.called is committed
+    assert session.rollback.called is not committed
 
-    generation = build_generation(rows, start=date(2026, 1, 1), months=3)
 
-    assert generation.baseline_months == (date(2026, 1, 1), date(2026, 2, 1))
-    assert len(generation.seeds) == 6
-    ingresos = [seed for seed in generation.seeds if seed.cuenta_cash_id == 20]
-    egresos = [seed for seed in generation.seeds if seed.cuenta_cash_id == 1]
-    assert [seed.importe for seed in ingresos] == [
-        Decimal("100.00"),
-        Decimal("300.00"),
-        Decimal("200.00"),
-    ]
-    assert [seed.importe for seed in egresos] == [
-        Decimal("-50.00"),
-        Decimal("0.00"),
-        Decimal("-25.00"),
-    ]
+def test_generador_revierte_si_falla_una_dependencia(monkeypatch):
+    session = MagicMock()
+    session.__enter__.return_value = session
+    monkeypatch.setattr(script, "Session", lambda _: session)
+    monkeypatch.setattr(script, "rebuild_pending_cash_projection", MagicMock())
+    monkeypatch.setattr(script, "recalculate_cash_projections", MagicMock(side_effect=ValueError("Dependencia circular")))
+    monkeypatch.setattr("sys.argv", ["generate", "--apply"])
+    with pytest.raises(ValueError, match="circular"):
+        script.main()
+    session.rollback.assert_called_once()
+    session.commit.assert_not_called()

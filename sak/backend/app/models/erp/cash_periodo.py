@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import ClassVar, List, Optional
 
 from pydantic import field_validator
-from sqlalchemy import CheckConstraint, Column, DateTime, Index, Integer, String, text
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Index, Integer, String, text
 from sqlmodel import Field
 
 from app.models.base import Base
@@ -16,7 +16,7 @@ class ErpCashPeriodo(Base, table=True):
     __tablename__ = "erp_cash_periodos"
     __table_args__ = (
         CheckConstraint(
-            "estado IN ('ABIERTO', 'CERRADO')",
+            "estado IN ('ABIERTO', 'EN_CIERRE', 'CERRADO')",
             name="ck_erp_cash_periodos_estado_valid",
         ),
         CheckConstraint(
@@ -42,6 +42,8 @@ class ErpCashPeriodo(Base, table=True):
         index=True,
         description="Primer dia del mes controlado",
     )
+    diario_cash_importado: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default="false"))
+    mayor_cash_importado: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default="false"))
     estado: str = Field(
         default="ABIERTO",
         sa_column=Column(
@@ -50,7 +52,7 @@ class ErpCashPeriodo(Base, table=True):
             index=True,
             server_default=text("'ABIERTO'"),
         ),
-        description="Estado operativo del periodo: ABIERTO o CERRADO",
+        description="Estado operativo del periodo: ABIERTO, EN_CIERRE o CERRADO",
     )
     ultima_sincronizacion: Optional[datetime] = Field(
         default=None,
@@ -90,8 +92,8 @@ class ErpCashPeriodo(Base, table=True):
     @classmethod
     def normalizar_estado(cls, value: object) -> str:
         estado = str(value or "").strip().upper()
-        if estado not in {"ABIERTO", "CERRADO"}:
-            raise ValueError("estado debe ser ABIERTO o CERRADO")
+        if estado not in {"ABIERTO", "EN_CIERRE", "CERRADO"}:
+            raise ValueError("estado debe ser ABIERTO, EN_CIERRE o CERRADO")
         return estado
 
     def __repr__(self) -> str:

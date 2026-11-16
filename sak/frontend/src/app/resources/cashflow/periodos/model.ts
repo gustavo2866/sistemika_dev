@@ -12,7 +12,7 @@ const firstDayOfCurrentMonth = () => {
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
 };
 
-export type ErpCashPeriodoEstado = "ABIERTO" | "CERRADO";
+export type ErpCashPeriodoEstado = "ABIERTO" | "EN_CIERRE" | "CERRADO";
 
 export type ErpCashPeriodo = {
   id: number | string;
@@ -31,6 +31,7 @@ export const ERP_CASH_PERIODO_ESTADO_CHOICES: Array<{
   name: string;
 }> = [
   { id: "ABIERTO", name: "Abierto" },
+  { id: "EN_CIERRE", name: "En cierre" },
   { id: "CERRADO", name: "Cerrado" },
 ];
 
@@ -41,7 +42,7 @@ export const erpCashPeriodoSchema = z.object({
     .refine((value) => /^\d{4}-\d{2}-01$/.test(value), {
       message: "El período debe corresponder al primer día del mes",
     }),
-  estado: z.enum(["ABIERTO", "CERRADO"]),
+  estado: z.enum(["ABIERTO", "EN_CIERRE", "CERRADO"]),
   version: optionalVersion,
 });
 

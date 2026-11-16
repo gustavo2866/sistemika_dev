@@ -471,7 +471,8 @@ class GenericCRUD(Generic[M]):
         elif operator == FilterOperator.IN:
             return stmt.where(column.in_(value))
         elif operator == FilterOperator.IS:
-            if value is None:
+            normalized_value = value.strip().lower() if isinstance(value, str) else value
+            if normalized_value is None or normalized_value in ("null", "none"):
                 return stmt.where(column.is_(None))
             else:
                 return stmt.where(column.is_not(None))

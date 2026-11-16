@@ -105,6 +105,9 @@ export const MetodoProyeccionList = ({
       <TextListColumn source="descripcion" label="Descripción">
         <ListText source="descripcion" className="whitespace-normal break-words" empty="-" />
       </TextListColumn>
+      <TextListColumn source="tipo_calculo" label="Tipo de cálculo" className="w-[120px]">
+        <ListText source="tipo_calculo" />
+      </TextListColumn>
       <NumberListColumn source="detalles" label="Reglas" className="w-[80px]">
         <DetallesCountField />
       </NumberListColumn>

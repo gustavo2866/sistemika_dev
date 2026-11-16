@@ -37,20 +37,26 @@ SELECT
         ld.nro_subcuenta,
         ld.centro_costo,
         ld.cargado_en,
-        ld.archivo_origen
-FROM public.libro_diario ld
-JOIN public.dim_cuenta dc
-    ON dc.nro_cta = ld.cuenta_codigo
-WHERE ld.periodo_anio = %s
-    AND ld.periodo_mes = %s
-    AND ld.empresa_id NOT IN (3, 4)
+        ld.archivo_origen,
+        COALESCE((ld.empresa_id NOT IN (3, 4)
     AND btrim(ld.centro_costo) = ANY(%s)
     AND ld.centro_costo IS NOT NULL
     AND btrim(ld.centro_costo) <> ''
     AND btrim(ld.centro_costo) <> '0'
     AND dc.extendido IS NOT NULL
     AND upper(btrim(COALESCE(dc.sub_rubro, ''))) = '01 - OBRAS'
-    AND left(btrim(dc.extendido), 1) IN ('4', '5')
+    AND left(btrim(dc.extendido), 1) IN ('4', '5')), false) AS es_obra
+FROM public.libro_diario ld
+LEFT JOIN public.dim_cuenta dc ON dc.nro_cta = ld.cuenta_codigo
+WHERE ld.periodo_anio = %s AND ld.periodo_mes = %s
+    AND (ld.empresa_id IN (1, 2, 5) OR (ld.empresa_id NOT IN (3, 4)
+    AND btrim(ld.centro_costo) = ANY(%s)
+    AND ld.centro_costo IS NOT NULL
+    AND btrim(ld.centro_costo) <> ''
+    AND btrim(ld.centro_costo) <> '0'
+    AND dc.extendido IS NOT NULL
+    AND upper(btrim(COALESCE(dc.sub_rubro, ''))) = '01 - OBRAS'
+    AND left(btrim(dc.extendido), 1) IN ('4', '5')))
 ORDER BY ld.id
 """
 
@@ -77,9 +83,10 @@ INSERT INTO public.erp_libro_diario (
     nro_subcuenta,
     centro_costo,
     cargado_en,
-    archivo_origen
+    archivo_origen,
+    es_obra
 ) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 """
 
@@ -93,16 +100,15 @@ SELECT DISTINCT
 FROM public.libro_diario ld
 JOIN public.dim_cuenta dc
         ON dc.nro_cta = ld.cuenta_codigo
-WHERE ld.periodo_anio = %s
-    AND ld.periodo_mes = %s
-    AND ld.empresa_id NOT IN (3, 4)
+WHERE ld.periodo_anio = %s AND ld.periodo_mes = %s
+    AND (ld.empresa_id IN (1, 2, 5) OR (ld.empresa_id NOT IN (3, 4)
     AND ld.centro_costo IS NOT NULL
     AND btrim(ld.centro_costo) <> ''
     AND btrim(ld.centro_costo) <> '0'
     AND btrim(ld.centro_costo) = ANY(%s)
     AND upper(btrim(COALESCE(dc.sub_rubro, ''))) = '01 - OBRAS'
     AND dc.extendido IS NOT NULL
-    AND left(btrim(dc.extendido), 1) IN ('4', '5')
+    AND left(btrim(dc.extendido), 1) IN ('4', '5')))
 ORDER BY ld.cuenta_codigo
 """
 
@@ -180,54 +186,8 @@ def get_allowed_centros_costo(dest_conn: psycopg.Connection) -> list[str]:
 
 def build_insert_rows(source_rows: Iterable[tuple]) -> list[tuple]:
     now = datetime.now(UTC)
-    rows: list[tuple] = []
-    for src in source_rows:
-        (
-            source_id,
-            empresa_id,
-            fecha,
-            periodo_anio,
-            periodo_mes,
-            tipo_asiento,
-            nro_asiento,
-            nro_renglon,
-            cuenta_codigo,
-            debe,
-            haber,
-            descripcion,
-            tipo_subcuenta,
-            nro_subcuenta,
-            centro_costo,
-            cargado_en,
-            archivo_origen,
-        ) = src
+    return [(now, now, None, 1, *row) for row in source_rows]
 
-        rows.append(
-            (
-                now,
-                now,
-                None,
-                1,
-                source_id,
-                empresa_id,
-                fecha,
-                periodo_anio,
-                periodo_mes,
-                tipo_asiento,
-                nro_asiento,
-                nro_renglon,
-                cuenta_codigo,
-                debe,
-                haber,
-                descripcion,
-                tipo_subcuenta,
-                nro_subcuenta,
-                centro_costo,
-                cargado_en,
-                archivo_origen,
-            )
-        )
-    return rows
 
 
 def ensure_missing_accounts(
@@ -264,23 +224,17 @@ def ensure_missing_accounts(
         source_cur.execute(MISSING_ACCOUNTS_QUERY, (anio, mes, allowed_centros))
         source_accounts = source_cur.fetchall()
 
-    missing_in_dim: list[int] = []
     accounts_to_create: list[tuple[int, str, str, bool, int]] = []
     for cuenta_codigo, extendido, nombre, activa in source_accounts:
         if cuenta_codigo in existing_by_nro:
             continue
-        if extendido is None or nombre is None:
-            missing_in_dim.append(cuenta_codigo)
-            continue
 
-        cod_base = str(extendido).strip() or str(cuenta_codigo)
+        cod_base = str(extendido or "").strip() or str(cuenta_codigo)
         prefix = cod_base[:1]
         if prefix == "4":
             rubro_id = rubro_ingresos_id
-        elif prefix == "5":
-            rubro_id = rubro_no_identificada_id
         else:
-            continue
+            rubro_id = rubro_no_identificada_id
 
         cod_candidate = cod_base
         suffix = 1
@@ -289,7 +243,7 @@ def ensure_missing_accounts(
             suffix += 1
         used_codes.add(cod_candidate.lower())
 
-        descripcion = str(nombre).strip() or f"Cuenta {cuenta_codigo}"
+        descripcion = str(nombre or "").strip() or f"Cuenta {cuenta_codigo}"
         accounts_to_create.append(
             (
                 cuenta_codigo,
@@ -298,14 +252,6 @@ def ensure_missing_accounts(
                 True if activa is None else bool(activa),
                 rubro_id,
             )
-        )
-
-    if missing_in_dim:
-        missing_text = ", ".join(str(x) for x in missing_in_dim[:20])
-        extra = "" if len(missing_in_dim) <= 20 else f" ... (+{len(missing_in_dim) - 20} mas)"
-        raise RuntimeError(
-            "No se pudieron crear cuentas faltantes porque no existen en dim_cuenta: "
-            f"{missing_text}{extra}"
         )
 
     if dry_run:
@@ -344,7 +290,7 @@ def ensure_missing_accounts(
     with dest_conn.cursor() as dest_cur:
         dest_cur.executemany(insert_query, rows)
 
-    print(f"Cuentas creadas en erp_cuentas por regla de prefijo 4/5: {len(rows)}")
+    print(f"Cuentas ERP creadas para obras y Cash: {len(rows)}")
     return len(rows)
 
 
@@ -383,6 +329,7 @@ WITH movimientos AS (
     LEFT JOIN public.erp_rubros r
         ON r.id = c.rubro_id
     WHERE ld.deleted_at IS NULL
+        AND ld.es_obra = true
         AND ld.periodo_anio = %s
         AND ld.periodo_mes = %s
     GROUP BY p.id, c.id
@@ -572,7 +519,13 @@ def sync_real_presupuestos(
     }
 
 
-def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bool | str]:
+def run_sync(
+    periodo: str,
+    batch_size: int,
+    dry_run: bool,
+    *,
+    sync_presupuestos: bool = True,
+) -> dict[str, int | bool | str]:
     if batch_size <= 0:
         raise ValueError("batch-size debe ser mayor a 0")
 
@@ -587,37 +540,6 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
 
     with psycopg.connect(**source_conn_kwargs) as source_conn, psycopg.connect(dest_url) as dest_conn:
         allowed_centros = get_allowed_centros_costo(dest_conn)
-        if not allowed_centros:
-            print("No hay centros de costo validos en proyectos. Se limpia el periodo objetivo y termina.")
-            if not dry_run:
-                with dest_conn.cursor() as dest_cur:
-                    dest_cur.execute(
-                        """
-                        DELETE FROM public.erp_libro_diario
-                        WHERE periodo_anio = %s AND periodo_mes = %s
-                        """,
-                        (anio, mes),
-                    )
-                dest_conn.commit()
-            result_empty = {
-                "periodo": periodo_normalizado,
-                "dry_run": dry_run,
-                "allowed_centros": 0,
-                "accounts_created": 0,
-                "rows_candidate": 0,
-                "rows_inserted": 0,
-            }
-            result_empty.update(
-                {
-                    "presupuestos_reset": 0,
-                    "presupuestos_created": 0,
-                    "presupuestos_updated": 0,
-                    "presupuestos_deleted_empty": 0,
-                    "presupuestos_reales_combos": 0,
-                }
-            )
-            return result_empty
-
         accounts_created = ensure_missing_accounts(
             source_conn=source_conn,
             dest_conn=dest_conn,
@@ -628,7 +550,7 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
         )
 
         with source_conn.cursor() as source_cur:
-            source_cur.execute(SELECT_QUERY, (anio, mes, allowed_centros))
+            source_cur.execute(SELECT_QUERY, (allowed_centros, anio, mes, allowed_centros))
 
             if dry_run:
                 total = 0
@@ -638,7 +560,17 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
                         break
                     total += len(chunk)
                 print(f"[dry-run] Registros que cumplen filtro: {total}")
-                real_stats = sync_real_presupuestos(dest_conn, anio, mes, dry_run=True)
+                real_stats = (
+                    sync_real_presupuestos(dest_conn, anio, mes, dry_run=True)
+                    if sync_presupuestos
+                    else {
+                        "presupuestos_reset": 0,
+                        "presupuestos_created": 0,
+                        "presupuestos_updated": 0,
+                        "presupuestos_deleted_empty": 0,
+                        "presupuestos_reales_combos": 0,
+                    }
+                )
                 result_dry = {
                     "periodo": periodo_normalizado,
                     "dry_run": True,
@@ -668,8 +600,26 @@ def run_sync(periodo: str, batch_size: int, dry_run: bool) -> dict[str, int | bo
                     dest_cur.executemany(INSERT_QUERY, rows)
                     total_insertados += len(rows)
 
-            real_stats = sync_real_presupuestos(dest_conn, anio, mes, dry_run=False)
+            real_stats = (
+                sync_real_presupuestos(dest_conn, anio, mes, dry_run=False)
+                if sync_presupuestos
+                else {
+                    "presupuestos_reset": 0,
+                    "presupuestos_created": 0,
+                    "presupuestos_updated": 0,
+                    "presupuestos_deleted_empty": 0,
+                    "presupuestos_reales_combos": 0,
+                }
+            )
 
+        with dest_conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO public.erp_cash_periodos
+                    (created_at,updated_at,version,fecha_periodo,estado,movimientos_count,saldos_count,diario_cash_importado,mayor_cash_importado)
+                VALUES (now(),now(),1,%s,'ABIERTO',0,0,true,false)
+                ON CONFLICT (fecha_periodo) WHERE deleted_at IS NULL
+                DO UPDATE SET diario_cash_importado=true,updated_at=now()
+            """, (date(anio, mes, 1),))
         dest_conn.commit()
         print(f"Sincronizacion finalizada. Registros insertados: {total_insertados}")
         result_ok = {

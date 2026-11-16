@@ -9,7 +9,9 @@ gcloud run deploy sak-backend-test `
     --region southamerica-east1 `
     --platform managed `
     --allow-unauthenticated `
-    --min-instances 1 `
+    --min 0 `
+    --min-instances 0 `
+    --no-cpu-throttling `
     --update-env-vars "CORS_ORIGINS=https://wcl.vercel.app" `
     --update-env-vars "CORS_ORIGINS_REGEX=https://.*-gustavo2866s-projects\.vercel\.app" `
     --update-env-vars "OPENAI_CHAT_REPLY_MODEL=gpt-4.1-mini"

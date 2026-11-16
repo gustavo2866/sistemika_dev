@@ -69,7 +69,8 @@ const FinancialKpiCard = ({
   sideSummary,
   icon: Icon,
   iconClassName,
-}: FinancialKpiCardItem) => {
+  compact = false,
+}: FinancialKpiCardItem & { compact?: boolean }) => {
   const resolvedBudgetValueType = budgetValueType ?? valueType;
   const shouldShowDeviationPercent =
     showDeviationPercent ?? resolvedBudgetValueType === "millions";
@@ -109,8 +110,8 @@ const FinancialKpiCard = ({
           )}
         >
           <div className="flex min-h-0 min-w-0 flex-col justify-center">
-            <div className="truncate text-[9px] font-medium leading-none text-muted-foreground">{title}</div>
-            <div className="mt-0.5 truncate text-[15px] font-bold leading-none tracking-tight text-foreground">
+            <div className={cn("truncate font-medium leading-none text-muted-foreground", compact ? "text-[8px]" : "text-[9px]")}>{title}</div>
+            <div className={cn("mt-0.5 truncate font-bold leading-none tracking-tight text-foreground", compact ? "text-[12px]" : "text-[15px]")}>
               {formatValue(value, valueType)}
             </div>
             {trendText ? (
@@ -135,10 +136,10 @@ const FinancialKpiCard = ({
           </div>
           {secondaryMetric ? (
             <div className="flex min-h-0 min-w-0 flex-col justify-center border-l border-slate-200/70 pl-1.5">
-              <div className="truncate text-[9px] font-medium leading-none text-muted-foreground">
+              <div className={cn("truncate font-medium leading-none text-muted-foreground", compact ? "text-[8px]" : "text-[9px]")}>
                 {secondaryMetric.title}
               </div>
-              <div className="mt-0.5 truncate text-[15px] font-bold leading-none tracking-tight text-foreground">
+              <div className={cn("mt-0.5 truncate font-bold leading-none tracking-tight text-foreground", compact ? "text-[12px]" : "text-[15px]")}>
                 {formatValue(
                   secondaryMetric.value,
                   secondaryMetric.valueType ?? valueType,
@@ -193,13 +194,15 @@ const FinancialKpiCard = ({
 export const FinancialKpiCards = ({
   items,
   className,
+  compact = false,
 }: {
   items: FinancialKpiCardItem[];
   className?: string;
+  compact?: boolean;
 }) => (
   <div className={cn("grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4", className)}>
     {items.map(({ key, ...item }) => (
-      <FinancialKpiCard key={key} {...item} />
+      <FinancialKpiCard key={key} {...item} compact={compact} />
     ))}
   </div>
 );

@@ -35,7 +35,7 @@ export const erpCashMapSchema = z.object({
 export type ErpCashMapFormValues = z.infer<typeof erpCashMapSchema>;
 
 export const ERP_CASH_MAP_DEFAULT: Partial<ErpCashMapFormValues> = {
-  nro_cta: 0,
+  nro_cta: undefined,
   moneda: "ARS",
   categoria: undefined,
   map_debe_id: undefined,

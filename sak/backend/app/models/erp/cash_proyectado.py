@@ -5,31 +5,52 @@ from decimal import Decimal
 from typing import ClassVar, List, Optional
 
 from pydantic import field_validator
-from sqlalchemy import CheckConstraint, Column, DECIMAL, Index, String, text
-from sqlmodel import Field
+from sqlalchemy import CheckConstraint, Column, Computed, DECIMAL, Index, String, text
+from sqlmodel import Field, Session
 
 from app.models.base import Base
+
+
+def projection_method_values(
+    session: Session, account_id: int, method_id: int | None = None,
+    *, require_active: bool = True,
+) -> dict[str, object]:
+    """Copia el criterio vigente al crear o cambiar el método de un período."""
+    from app.models.erp.cash_cuenta import ErpCashCuenta
+    from app.models.metodo_proyeccion import MetodoProyeccion
+
+    account = session.get(ErpCashCuenta, account_id)
+    if account is None or account.deleted_at is not None:
+        raise ValueError("La cuenta Cash no existe")
+    selected_id = method_id if method_id is not None else account.id_metodo_proyeccion
+    method = session.get(MetodoProyeccion, selected_id) if selected_id else None
+    if selected_id and (method is None or (require_active and (method.deleted_at is not None or not method.activo))):
+        raise ValueError("El método de proyección no existe o no está activo")
+    return {
+        "id_metodo_proyeccion": selected_id,
+        "tipo_calculo": method.tipo_calculo if method else "HISTORICO",
+    }
 
 
 class ErpCashProyectado(Base, table=True):
     __tablename__ = "erp_cash_proyectado"
     __table_args__ = (
+        CheckConstraint("origen_proyectado IN ('MANUAL', 'CALCULADO')", name="ck_cash_proyectado_origen"),
         CheckConstraint(
-            "tipo IN ('PROYECCION', 'PRESUPUESTO', 'pend', 'COMPROMETIDO', 'AJUSTE')",
-            name="ck_erp_cash_proyectado_tipo_valid",
+            "tipo_calculo IN ('HISTORICO', 'RELACIONAL', 'PENDIENTE')",
+            name="ck_erp_cash_proyectado_tipo_calculo",
         ),
         Index(
-            "uq_erp_cash_proyectado_activo_cuenta_periodo_tipo",
+            "uq_erp_cash_proyectado_activo_cuenta_periodo",
             "cuenta_cash_id",
             "fecha_periodo",
-            "tipo",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
     )
 
-    __searchable_fields__: ClassVar[List[str]] = ["tipo", "observacion"]
+    __searchable_fields__: ClassVar[List[str]] = ["observacion"]
 
     cuenta_cash_id: int = Field(
         foreign_key="erp_cash_cuentas.id",
@@ -40,14 +61,44 @@ class ErpCashProyectado(Base, table=True):
         index=True,
         description="Primer dia del mes proyectado",
     )
-    tipo: str = Field(
-        sa_column=Column(String(30), nullable=False, index=True),
-        description="Tipo de importe proyectado",
+    id_metodo_proyeccion: Optional[int] = Field(
+        default=None, foreign_key="metodo_proyeccion.id", index=True,
+        description="Método aplicado a este período",
     )
-    importe: Decimal = Field(
+    tipo_calculo: str = Field(
+        default="HISTORICO",
+        sa_column=Column(String(20), nullable=False, server_default="HISTORICO"),
+        description="Tipo aplicado: HISTORICO, RELACIONAL o PENDIENTE",
+    )
+    importe_proyectado: Decimal = Field(
         default=Decimal("0"),
         sa_column=Column(DECIMAL(18, 2), nullable=False, server_default=text("0")),
         description="Importe proyectado para la cuenta y periodo",
+    )
+    origen_proyectado: str = Field(
+        default="MANUAL", sa_column=Column(String(15), nullable=False, server_default="MANUAL"),
+        description="Los importes manuales no se reemplazan al reconstruir Cash",
+    )
+    importe_pendiente: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(18, 2), nullable=False, server_default=text("0")),
+    )
+    importe_comprometido: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(DECIMAL(18, 2), nullable=False, server_default=text("0")),
+    )
+    total_proyectado: Optional[Decimal] = Field(
+        default=None,
+        sa_column=Column(
+            DECIMAL(18, 2),
+            Computed(
+                "CASE WHEN tipo_calculo = 'PENDIENTE' THEN importe_pendiente "
+                "ELSE importe_proyectado END + importe_comprometido",
+                persisted=True,
+            ),
+            nullable=False,
+        ),
+        description="Total generado por la base de datos; no editable",
     )
     observacion: Optional[str] = Field(
         default=None,
@@ -65,5 +116,5 @@ class ErpCashProyectado(Base, table=True):
     def __repr__(self) -> str:
         return (
             f"ErpCashProyectado(id={self.id}, cuenta_cash_id={self.cuenta_cash_id}, "
-            f"fecha_periodo={self.fecha_periodo}, tipo='{self.tipo}', importe={self.importe})"
+            f"fecha_periodo={self.fecha_periodo}, total_proyectado={self.total_proyectado})"
         )

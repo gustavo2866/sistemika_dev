@@ -70,8 +70,8 @@ const CashFlowSetupNav = ({ currentKey }: { currentKey?: string | null }) => {
     );
 
   return (
-    <nav aria-label="Secciones de setup" className="max-w-full overflow-x-auto">
-      <div className="inline-flex min-w-0 items-center gap-1 rounded-xl border border-border/70 bg-muted/20 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
+    <nav aria-label="Secciones de setup" className="w-full max-w-full">
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-1 rounded-xl border border-border/70 bg-muted/20 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -166,7 +166,8 @@ const SetupContent = ({
 export const CashFlowSetupPage = () => {
   const location = useLocation();
   const { key, view, recordId } = routeState(location.pathname);
-  const routeReturnTo = (location.state as { returnTo?: unknown } | null)?.returnTo;
+  const routeReturnTo = (location.state as { returnTo?: unknown } | null)?.returnTo
+    ?? new URLSearchParams(location.search).get("returnTo");
   const returnTo = typeof routeReturnTo === "string" ? routeReturnTo : undefined;
   const selectedItem = getCashFlowSetupItem(key);
   const defaultItem = CASHFLOW_SETUP_ITEMS[0];
@@ -184,6 +185,7 @@ export const CashFlowSetupPage = () => {
             eyebrowLabel="CashFlow / Setup"
             title={false}
             actionsPlacement="inline"
+            actionsClassName="w-full"
             actions={<CashFlowSetupNav currentKey={selectedItem.key} />}
           />
         }

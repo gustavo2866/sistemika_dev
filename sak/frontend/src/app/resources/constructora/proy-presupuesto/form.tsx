@@ -19,19 +19,11 @@ import {
 import {
   PROY_PRESUPUESTO_DEFAULT,
   proyPresupuestoSchema,
+  computeProyPresupuestoCostos,
+  computeProyPresupuestoNeto,
+  parseProyPresupuestoProyectoId,
   type ProyPresupuestoFormValues,
 } from "./model";
-
-const parseNumericParam = (value: string | null) => {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-};
-
-const toNumber = (value: unknown) => {
-  const normalized = Number(value ?? 0);
-  return Number.isFinite(normalized) ? normalized : 0;
-};
 
 const PresupuestoCabeceraFields = () => (
   <div className="grid gap-2">
@@ -66,11 +58,12 @@ const PresupuestoCostoTotal = () => {
     name: ["mo_propia", "mo_terceros", "materiales", "herramientas"],
   }) as [unknown, unknown, unknown, unknown];
 
-  const costoTotal =
-    toNumber(moPropia) +
-    toNumber(moTerceros) +
-    toNumber(materiales) +
-    toNumber(herramientas);
+  const costoTotal = computeProyPresupuestoCostos({
+    mo_propia: moPropia,
+    mo_terceros: moTerceros,
+    materiales,
+    herramientas,
+  });
 
   return (
     <FormValue
@@ -93,12 +86,13 @@ const PresupuestoNeto = () => {
     name: ["mo_propia", "mo_terceros", "materiales", "herramientas", "importe"],
   }) as [unknown, unknown, unknown, unknown, unknown];
 
-  const costoTotal =
-    toNumber(moPropia) +
-    toNumber(moTerceros) +
-    toNumber(materiales) +
-    toNumber(herramientas);
-  const presupuestoNeto = toNumber(importe) - costoTotal;
+  const presupuestoNeto = computeProyPresupuestoNeto({
+    mo_propia: moPropia,
+    mo_terceros: moTerceros,
+    materiales,
+    herramientas,
+    importe,
+  });
 
   return (
     <FormValue
@@ -185,7 +179,7 @@ export const ProyPresupuestoForm = () => {
   const record = useRecordContext<ProyPresupuestoFormValues & { id?: number | string }>();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
-  const proyectoIdFromQuery = parseNumericParam(params.get("proyecto_id"));
+  const proyectoIdFromQuery = parseProyPresupuestoProyectoId(params.get("proyecto_id"));
 
   const defaultValues = useMemo(
     () =>

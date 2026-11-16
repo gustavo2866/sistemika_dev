@@ -158,6 +158,11 @@ class PresupuestoRealIncomeRequest(BaseModel):
     real_ingreso: Decimal = Field(ge=Decimal("0"))
 
 
+class PresupuestoSyncRealesRangeRequest(BaseModel):
+    periodo_desde: str
+    periodo_hasta: str
+
+
 def _decimal_to_float(value: Decimal | int | float | None) -> float:
     if value is None:
         return 0.0
@@ -182,6 +187,53 @@ def _parse_month_key(month_key: str) -> tuple[int, int]:
         raise ValueError("periodo debe tener un mes entre 01 y 12")
 
     return year, month
+
+
+def _iter_month_range(periodo_desde: str, periodo_hasta: str):
+    start_year, start_month = _parse_month_key(periodo_desde)
+    end_year, end_month = _parse_month_key(periodo_hasta)
+    start_index = start_year * 12 + start_month - 1
+    end_index = end_year * 12 + end_month - 1
+    if end_index < start_index:
+        raise ValueError("periodo_hasta debe ser mayor o igual a periodo_desde")
+    for month_index in range(start_index, end_index + 1):
+        yield month_index // 12, month_index % 12 + 1
+
+
+@erp_presupuesto_router.post("/sync-reales-range")
+def sync_erp_presupuesto_reales_range(payload: PresupuestoSyncRealesRangeRequest):
+    try:
+        periodos = list(_iter_month_range(payload.periodo_desde, payload.periodo_hasta))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    resultados = []
+    try:
+        with psycopg.connect(get_dest_url()) as conn:
+            for anio, mes in periodos:
+                result = sync_real_presupuestos(conn, anio, mes, dry_run=False)
+                conn.commit()
+                resultados.append({"periodo": f"{anio:04d}-{mes:02d}", **result})
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    total_keys = (
+        "presupuestos_reset",
+        "presupuestos_created",
+        "presupuestos_updated",
+        "presupuestos_deleted_empty",
+        "presupuestos_reales_combos",
+    )
+    return {
+        "periodo_desde": payload.periodo_desde,
+        "periodo_hasta": payload.periodo_hasta,
+        "periodos": len(resultados),
+        "resultados": resultados,
+        "totales": {
+            key: sum(int(result.get(key, 0)) for result in resultados)
+            for key in total_keys
+        },
+    }
 
 
 def _apply_percent_variation(value: Decimal | int | float | None, percent: Decimal) -> Decimal:

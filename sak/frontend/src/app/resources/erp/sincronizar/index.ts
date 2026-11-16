@@ -1,0 +1,2 @@
+export { ErpSincronizarPage } from "./list";
+

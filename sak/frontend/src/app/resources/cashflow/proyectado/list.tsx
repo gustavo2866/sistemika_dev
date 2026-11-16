@@ -17,7 +17,6 @@ import {
 } from "@/components/forms/form_order";
 import { List, LIST_CONTAINER_STANDARD_PLUS } from "@/components/list";
 import { ReferenceField } from "@/components/reference-field";
-import { ERP_CASH_PROYECTADO_TIPO_CHOICES } from "./model";
 
 const filters = buildListFilters(
   [
@@ -33,15 +32,6 @@ const filters = buildListFilters(
         label: "Cuenta financiera",
       },
       selectProps: { optionText: "descripcion", emptyText: "Todas", className: "w-full" },
-    },
-    {
-      type: "select",
-      props: {
-        source: "tipo",
-        label: "Tipo",
-        choices: ERP_CASH_PROYECTADO_TIPO_CHOICES,
-        emptyText: "Todos",
-      },
     },
     {
       type: "text",
@@ -87,7 +77,7 @@ export const ErpCashProyectadoList = ({
   >
     <ResponsiveDataTable
       rowClick={rowClick}
-      mobileConfig={{ primaryField: "cuenta_cash_id", secondaryFields: ["fecha_periodo", "tipo", "importe"] }}
+      mobileConfig={{ primaryField: "cuenta_cash_id", secondaryFields: ["fecha_periodo", "total_proyectado"] }}
     >
       <DateListColumn source="fecha_periodo" label="Período" className="w-[105px]">
         <ListDate source="fecha_periodo" />
@@ -97,11 +87,17 @@ export const ErpCashProyectadoList = ({
           <ListText source="descripcion" />
         </ReferenceField>
       </TextListColumn>
-      <TextListColumn source="tipo" label="Tipo" className="w-[125px]">
-        <ListText source="tipo" />
-      </TextListColumn>
-      <NumberListColumn source="importe" label="Importe" className="w-[130px]">
-        <ListMoney source="importe" />
+      <NumberListColumn source="importe_proyectado" label="Proyectado" className="w-[130px]">
+        <ListMoney source="importe_proyectado" />
+      </NumberListColumn>
+      <NumberListColumn source="importe_pendiente" label="Pendiente" className="w-[130px]">
+        <ListMoney source="importe_pendiente" />
+      </NumberListColumn>
+      <NumberListColumn source="importe_comprometido" label="Comprometido" className="w-[130px]">
+        <ListMoney source="importe_comprometido" />
+      </NumberListColumn>
+      <NumberListColumn source="total_proyectado" label="Total proyectado" className="w-[130px]">
+        <ListMoney source="total_proyectado" />
       </NumberListColumn>
       <TextListColumn source="observacion" label="Observación">
         <ListText source="observacion" className="whitespace-normal break-words" />

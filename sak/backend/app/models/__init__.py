@@ -12,7 +12,7 @@ from .tipo_actualizacion import TipoActualizacion
 from .servicio_tipo import ServicioTipo
 from .propiedad_servicio import PropiedadServicio
 from .metodo_pago import MetodoPago
-from .metodo_proyeccion import MetodoProyeccion, MetodoProyeccionCuenta, MetodoProyeccionDetalle
+from .metodo_proyeccion import MetodoProyeccion, MetodoProyeccionDetalle
 from .propiedad import Propiedad
 from .setting import Setting
 from .crm import (
@@ -105,8 +105,10 @@ from .constructora import (
 from .erp import (
     ErpRubro,
     ErpCuenta,
+    ErpCuentaTipo,
     ErpPresupuesto,
     ErpLibroDiario,
+    ErpLibroMayor,
     ErpCashSaldo,
     ErpCashProyectado,
     ErpCashPeriodo,
@@ -114,6 +116,9 @@ from .erp import (
     ErpCashSubcta,
     ErpCashMap,
     ErpCashDiario,
+    ErpCashPendientesInput,
+    ErpEmpresa,
+    ErpIndice,
 )
 
 __all__ = [
@@ -206,8 +211,10 @@ __all__ = [
     "PedidoObraOrigen",
     "ErpRubro",
     "ErpCuenta",
+    "ErpCuentaTipo",
     "ErpPresupuesto",
     "ErpLibroDiario",
+    "ErpLibroMayor",
     "ErpCashSaldo",
     "ErpCashProyectado",
     "ErpCashPeriodo",
@@ -215,6 +222,9 @@ __all__ = [
     "ErpCashSubcta",
     "ErpCashMap",
     "ErpCashDiario",
+    "ErpCashPendientesInput",
+    "ErpEmpresa",
+    "ErpIndice",
 ]
 
 

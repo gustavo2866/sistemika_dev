@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Deja en cero los importes proyectados de Cash.
 
-Por defecto procesa solamente registros activos de tipo ``PROYECCION``. El
+Por defecto pone en cero ``importe_proyectado`` en registros activos. El
 modo ``--dry-run`` informa el alcance sin modificar la base.
 
 Uso:
@@ -44,9 +44,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--tipo",
-        choices=("PROYECCION", "PRESUPUESTO", "COMPROMETIDO", "AJUSTE"),
+        choices=("PROYECCION", "pend", "COMPROMETIDO"),
         default="PROYECCION",
-        help="Tipo a procesar (default: PROYECCION).",
+        help="Componente a procesar (default: PROYECCION).",
     )
     parser.add_argument(
         "--desde",
@@ -84,11 +84,19 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def amount_column(args: argparse.Namespace):
+    fields = {
+        "PROYECCION": "importe_proyectado",
+        "pend": "importe_pendiente",
+        "COMPROMETIDO": "importe_comprometido",
+    }
+    return getattr(ErpCashProyectado, fields[args.tipo])
+
+
 def build_filters(args: argparse.Namespace):
     filters = [
         ErpCashProyectado.deleted_at.is_(None),
-        ErpCashProyectado.tipo == args.tipo,
-        ErpCashProyectado.importe != Decimal("0"),
+        amount_column(args) != Decimal("0"),
     ]
     if args.desde:
         filters.append(ErpCashProyectado.fecha_periodo >= args.desde)
@@ -105,7 +113,7 @@ def run(args: argparse.Namespace) -> int:
         summary = session.exec(
             select(
                 func.count(ErpCashProyectado.id),
-                func.coalesce(func.sum(ErpCashProyectado.importe), 0),
+                func.coalesce(func.sum(amount_column(args)), 0),
             ).where(*filters)
         ).one()
         total_rows = int(summary[0] or 0)
@@ -128,7 +136,7 @@ def run(args: argparse.Namespace) -> int:
                 ErpCashProyectado.fecha_periodo,
                 ErpCashProyectado.cuenta_cash_id,
                 ErpCashCuenta.descripcion,
-                ErpCashProyectado.importe,
+                amount_column(args),
             )
             .join(ErpCashCuenta, ErpCashCuenta.id == ErpCashProyectado.cuenta_cash_id)
             .where(*filters)
@@ -153,7 +161,8 @@ def run(args: argparse.Namespace) -> int:
             update(ErpCashProyectado)
             .where(*filters)
             .values(
-                importe=Decimal("0"),
+                **{amount_column(args).key: Decimal("0")},
+                **({"origen_proyectado": "MANUAL"} if args.tipo == "PROYECCION" else {}),
                 updated_at=datetime.now(UTC),
                 version=ErpCashProyectado.version + 1,
             )

@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, ClassVar, List, Optional
+from decimal import Decimal
 
-from sqlalchemy import CHAR, Column
+from sqlalchemy import CHAR, Column, Numeric
 from sqlmodel import Field, Relationship
 
 from app.models.base import Base
@@ -44,6 +45,14 @@ class ErpCashCuenta(Base, table=True):
         description="Método de proyección asociado a la cuenta, si aplica",
     )
 
+    cuenta_cash_referencia_id: Optional[int] = Field(
+        default=None, foreign_key="erp_cash_cuentas.id", index=True,
+        description="Cuenta cuyo proyectado del mismo mes sirve como base relacional",
+    )
+    porcentaje: Optional[Decimal] = Field(
+        default=None, sa_column=Column(Numeric(12, 6), nullable=True),
+        description="Porcentaje relacional: 5 significa 5 %",
+    )
     metodo_proyeccion: Optional["MetodoProyeccion"] = Relationship(back_populates="cash_cuentas")
 
     def __init__(self, **data):

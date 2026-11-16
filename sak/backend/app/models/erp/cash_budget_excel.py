@@ -13,10 +13,9 @@ from sqlalchemy import func
 
 from app.models.base import current_utc_time
 from app.models.erp.cash_cuenta import ErpCashCuenta
-from app.models.erp.cash_proyectado import ErpCashProyectado
+from app.models.erp.cash_proyectado import ErpCashProyectado, projection_method_values
 
 
-BUDGET_TYPE = "PROYECCION"
 BUDGET_MONTHS = 24
 BUDGET_SHEET_NAME = "Presupuesto Cash"
 BUDGET_TOTAL_LABELS = ("TOTAL INGRESOS", "TOTAL EGRESOS", "SALDO DEL PERIODO")
@@ -57,14 +56,13 @@ def build_cash_budget_workbook(session: Session, year: int) -> Workbook:
         projected_rows = session.exec(
             select(ErpCashProyectado).where(
                 ErpCashProyectado.deleted_at.is_(None),
-                ErpCashProyectado.tipo == BUDGET_TYPE,
                 ErpCashProyectado.cuenta_cash_id.in_(account_ids),
                 ErpCashProyectado.fecha_periodo >= months[0],
                 ErpCashProyectado.fecha_periodo <= months[-1],
             )
         ).all()
     values_by_key = {
-        (int(row.cuenta_cash_id), row.fecha_periodo): Decimal(row.importe or 0)
+        (int(row.cuenta_cash_id), row.fecha_periodo): Decimal(row.importe_proyectado or 0)
         for row in projected_rows
     }
 
@@ -295,7 +293,6 @@ def import_cash_budget_workbook(
     existing_rows = session.exec(
         select(ErpCashProyectado).where(
             ErpCashProyectado.deleted_at.is_(None),
-            ErpCashProyectado.tipo == BUDGET_TYPE,
             ErpCashProyectado.cuenta_cash_id.in_(list(accounts_by_id)),
             ErpCashProyectado.fecha_periodo >= months[0],
             ErpCashProyectado.fecha_periodo <= months[-1],
@@ -306,23 +303,26 @@ def import_cash_budget_workbook(
     }
     created = updated = unchanged = 0
     now = current_utc_time()
+    methods_by_account = {}
     try:
         for key, amount in imported.items():
             existing = existing_by_key.get(key)
             if existing is None:
+                if key[0] not in methods_by_account:
+                    methods_by_account[key[0]] = projection_method_values(session, key[0])
                 session.add(
                     ErpCashProyectado(
                         cuenta_cash_id=key[0],
                         fecha_periodo=key[1],
-                        tipo=BUDGET_TYPE,
-                        importe=amount,
+                        importe_proyectado=amount,
+                        **methods_by_account[key[0]],
                         observacion="IMPORTADO DESDE PRESUPUESTO XLSX",
                     )
                 )
                 created += 1
-            elif Decimal(existing.importe or 0) != amount:
-                existing.importe = amount
-                existing.observacion = "IMPORTADO DESDE PRESUPUESTO XLSX"
+            elif Decimal(existing.importe_proyectado or 0) != amount or existing.origen_proyectado != "MANUAL":
+                existing.importe_proyectado = amount
+                existing.origen_proyectado = "MANUAL"
                 existing.updated_at = now
                 existing.version = int(existing.version or 0) + 1
                 session.add(existing)

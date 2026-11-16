@@ -1,57 +1,42 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
-from types import SimpleNamespace
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
 from sqlalchemy import delete, func
 from sqlmodel import Session, select
 
-from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_diario import ErpCashDiario
 from app.models.erp.cash_map import ErpCashMap
+from app.models.erp.cash_periodo import ErpCashPeriodo
 from app.models.erp.cash_saldo import ErpCashSaldo
 from app.models.erp.cash_subcta import ErpCashSubcta
 from app.models.erp.cash_saldo_sync import (
     build_cash_saldo_payloads,
     fetch_cash_saldo_source_rows,
 )
-from app.models.erp.libro_diario_sync import get_source_connection_kwargs, parse_periodo
+from app.models.erp.libro_diario_sync import parse_periodo
+from app.models.erp.libro_diario import ErpLibroDiario
+from app.models.erp.libro_mayor import ErpLibroMayor
+from app.models.erp.cuenta import ErpCuenta
+from app.models.erp.rubro import ErpRubro
+from app.services.erp_cash_mapping_service import (
+    build_cash_mappings_by_key,
+    get_fondo_mappings_by_cuenta,
+    normalize_cash_category,
+    resolve_cash_account_id,
+)
 
 
 CASH_EMPRESA_IDS = frozenset({1, 2, 5})
 
 
-SOURCE_QUERY = """
-    SELECT
-        ld.id AS source_id,
-        ld.empresa_id,
-        ld.fecha,
-        ld.periodo_anio,
-        ld.periodo_mes,
-        ld.tipo_asiento,
-        ld.nro_asiento,
-        ld.nro_renglon,
-        ld.cuenta_codigo,
-        ld.debe,
-        ld.haber,
-        ld.descripcion,
-        ld.tipo_subcuenta,
-        ld.nro_subcuenta,
-        ld.centro_costo,
-        ld.cargado_en,
-        ld.archivo_origen,
-        dc.rubro
-    FROM public.libro_diario ld
-    LEFT JOIN public.dim_cuenta dc ON dc.nro_cta = ld.cuenta_codigo
-    WHERE ld.periodo_anio = %s
-      AND ld.periodo_mes = %s
-      AND ld.empresa_id IN (1, 2, 5)
-    ORDER BY ld.id
-"""
+class CashPeriodoCerradoError(ValueError):
+    """El periodo debe reabrirse antes de reemplazar sus datos reales."""
+
+
 
 
 def normalize_rubro(value: str | None) -> str:
@@ -78,8 +63,7 @@ def _asiento_key(row: Any) -> tuple[object, ...]:
     )
 
 
-def normalize_categoria(value: object) -> str:
-    return " ".join(str(value or "").strip().split()).casefold()
+normalize_categoria = normalize_cash_category
 
 
 def _subcuenta_key(row: Any) -> tuple[int, int] | None:
@@ -91,20 +75,6 @@ def _subcuenta_key(row: Any) -> tuple[int, int] | None:
         return int(tipo), int(numero)
     except ValueError:
         return None
-
-
-def _resolve_mapping(
-    cuenta_codigo: int,
-    subcuenta_key: tuple[int, int] | None,
-    mappings_by_key: dict[tuple[int, str], ErpCashMap],
-    categories_by_subcuenta: dict[tuple[int, int], str],
-) -> ErpCashMap | None:
-    if subcuenta_key is not None:
-        categoria = normalize_categoria(categories_by_subcuenta.get(subcuenta_key, "ERROR"))
-        specific_mapping = mappings_by_key.get((cuenta_codigo, categoria))
-        if specific_mapping is not None:
-            return specific_mapping
-    return mappings_by_key.get((cuenta_codigo, ""))
 
 
 def build_cash_diario_payloads(
@@ -128,26 +98,15 @@ def build_cash_diario_payloads(
             continue
 
         rubro = rubros_by_cuenta.get(row.cuenta_codigo)
-        cuenta_cash_id = None
-
-        mapping = (
-            fondo_mappings_by_cuenta.get(row.cuenta_codigo)
-            if row.cuenta_codigo in fondo_account_codes
-            else _resolve_mapping(
-                row.cuenta_codigo,
-                _subcuenta_key(row),
-                mappings_by_key,
-                categories_by_subcuenta,
-            )
+        side = "debe" if _has_value(row.debe) else "haber" if _has_value(row.haber) else None
+        cuenta_cash_id = resolve_cash_account_id(
+            cuenta_codigo=row.cuenta_codigo,
+            side=side,
+            subcuenta_key=_subcuenta_key(row),
+            mappings_by_key=mappings_by_key,
+            fondo_mappings_by_cuenta=fondo_mappings_by_cuenta,
+            categories_by_subcuenta=categories_by_subcuenta,
         )
-        if mapping is not None:
-            if row.cuenta_codigo in fondo_account_codes:
-                cuenta_cash_id = mapping.map_debe_id
-            else:
-                if _has_value(row.debe):
-                    cuenta_cash_id = mapping.map_debe_id
-                elif _has_value(row.haber):
-                    cuenta_cash_id = mapping.map_haber_id
 
         payloads.append(
             {
@@ -177,42 +136,15 @@ def build_cash_diario_payloads(
     return payloads
 
 
-def fetch_source_rows(anio: int, mes: int) -> tuple[list[Any], dict[int, str]]:
-    rubros_by_cuenta: dict[int, str] = {}
-    with psycopg.connect(
-        **get_source_connection_kwargs(),
-        row_factory=dict_row,
-    ) as source_conn, source_conn.cursor() as source_cur:
-        source_cur.execute(SOURCE_QUERY, (anio, mes))
-        raw_rows = source_cur.fetchall()
-
-    source_rows = []
-    for raw_row in raw_rows:
-        rubro = raw_row.pop("rubro", None)
-        cuenta_codigo = int(raw_row["cuenta_codigo"])
-        if rubro is not None:
-            rubros_by_cuenta.setdefault(cuenta_codigo, str(rubro))
-        source_rows.append(SimpleNamespace(**raw_row))
-
-    return source_rows, rubros_by_cuenta
-
-
-def get_fondo_mappings_by_cuenta(session: Session) -> dict[int, ErpCashMap]:
-    mappings = session.exec(
-        select(ErpCashMap)
-        .join(ErpCashCuenta, ErpCashCuenta.id == ErpCashMap.map_debe_id)
-        .where(
-            ErpCashMap.deleted_at.is_(None),
-            ErpCashCuenta.deleted_at.is_(None),
-            func.upper(func.trim(ErpCashCuenta.tipo)) == "FONDO",
-        )
-        .order_by(ErpCashMap.id)
-    ).all()
-
-    mappings_by_cuenta: dict[int, ErpCashMap] = {}
-    for mapping in mappings:
-        mappings_by_cuenta.setdefault(mapping.nro_cta, mapping)
-    return mappings_by_cuenta
+def fetch_source_rows(session: Session, anio: int, mes: int) -> tuple[list[Any], dict[int, str]]:
+    rows = session.exec(select(ErpLibroDiario).where(
+        ErpLibroDiario.periodo_anio == anio, ErpLibroDiario.periodo_mes == mes,
+        ErpLibroDiario.empresa_id.in_(CASH_EMPRESA_IDS), ErpLibroDiario.deleted_at.is_(None),
+    ).order_by(ErpLibroDiario.source_id)).all()
+    rubros = session.exec(select(ErpCuenta.nro_cuenta, ErpRubro.nombre)
+        .join(ErpRubro, ErpRubro.id == ErpCuenta.rubro_id)
+        .where(ErpCuenta.deleted_at.is_(None), ErpRubro.deleted_at.is_(None))).all()
+    return list(rows), dict(rubros)
 
 
 def sync_cash_diario_periodo(
@@ -221,24 +153,38 @@ def sync_cash_diario_periodo(
     *,
     source_data: tuple[Iterable[Any], dict[int, str]] | None = None,
     saldo_source_rows: Iterable[Any] | None = None,
+    auto_commit: bool = True,
+    include_closed: bool = False,
+    require_complete_sources: bool = True,
 ) -> dict[str, int | str]:
     anio, mes = parse_periodo(periodo)
+    cash_period = session.exec(
+        select(ErpCashPeriodo).where(
+            ErpCashPeriodo.fecha_periodo == date(anio, mes, 1),
+            ErpCashPeriodo.deleted_at.is_(None),
+        ).with_for_update()
+    ).first()
+    if cash_period is not None and cash_period.estado == "CERRADO" and not include_closed:
+        raise CashPeriodoCerradoError(
+            f"El periodo {anio:04d}-{mes:02d} esta cerrado; debe reabrirse para sincronizarlo"
+        )
     if source_data is None:
-        source_rows, rubros_by_cuenta = fetch_source_rows(anio, mes)
+        if require_complete_sources and (cash_period is None or not cash_period.diario_cash_importado or not cash_period.mayor_cash_importado):
+            raise ValueError(f"Faltan libros locales completos de {anio:04d}-{mes:02d}. Ejecutar Sincronizar ERP para ese período antes de reconstruir Cash")
+        source_rows, rubros_by_cuenta = fetch_source_rows(session, anio, mes)
     else:
         provided_rows, rubros_by_cuenta = source_data
         source_rows = list(provided_rows)
 
-    mappings_by_key: dict[tuple[int, str], ErpCashMap] = {}
-    mappings = session.exec(
-        select(ErpCashMap)
-        .where(ErpCashMap.deleted_at.is_(None))
-        .order_by(ErpCashMap.id)
-    ).all()
-    for mapping in mappings:
-        # Los duplicados se resuelven de forma deterministica con el menor ID.
-        mapping_key = (mapping.nro_cta, normalize_categoria(mapping.categoria))
-        mappings_by_key.setdefault(mapping_key, mapping)
+    diary_available = source_data is not None or bool(source_rows) or bool(cash_period and cash_period.diario_cash_importado)
+    mayor_available = saldo_source_rows is not None or bool(cash_period and cash_period.mayor_cash_importado)
+    if not mayor_available:
+        mayor_available = session.exec(select(ErpLibroMayor.id).where(
+            ErpLibroMayor.periodo_anio == anio, ErpLibroMayor.periodo_mes == mes,
+            ErpLibroMayor.deleted_at.is_(None),
+        ).limit(1)).first() is not None
+
+    mappings_by_key = build_cash_mappings_by_key(session)
 
     fondo_mappings_by_cuenta = get_fondo_mappings_by_cuenta(session)
     if not fondo_mappings_by_cuenta:
@@ -302,7 +248,7 @@ def sync_cash_diario_periodo(
     )
     if saldo_source_rows is None:
         provided_saldo_rows = fetch_cash_saldo_source_rows(
-            anio,
+            session, anio,
             mes,
             fondo_account_codes,
         )
@@ -338,30 +284,44 @@ def sync_cash_diario_periodo(
             subcuenta.version += 1
             session.add(subcuenta)
         session.add_all(new_subcuentas)
-        session.exec(
-            delete(ErpCashDiario).where(
-                ErpCashDiario.periodo_anio == anio,
-                ErpCashDiario.periodo_mes == mes,
+        if diary_available:
+            session.exec(
+                delete(ErpCashDiario).where(
+                    ErpCashDiario.periodo_anio == anio,
+                    ErpCashDiario.periodo_mes == mes,
+                )
             )
-        )
-        session.add_all(ErpCashDiario(**payload) for payload in payloads)
-        session.exec(
-            delete(ErpCashSaldo).where(
-                ErpCashSaldo.periodo_anio == anio,
-                ErpCashSaldo.periodo_mes == mes,
+            session.add_all(ErpCashDiario(**payload) for payload in payloads)
+        if mayor_available:
+            session.exec(
+                delete(ErpCashSaldo).where(
+                    ErpCashSaldo.periodo_anio == anio,
+                    ErpCashSaldo.periodo_mes == mes,
+                )
             )
-        )
-        session.add_all(ErpCashSaldo(**payload) for payload in saldo_payloads)
-        session.commit()
+            session.add_all(ErpCashSaldo(**payload) for payload in saldo_payloads)
+        if cash_period is None:
+            cash_period = ErpCashPeriodo(fecha_periodo=date(anio, mes, 1))
+        else:
+            cash_period.version += 1
+        cash_period.ultima_sincronizacion = datetime.now(timezone.utc)
+        cash_period.updated_at = cash_period.ultima_sincronizacion
+        cash_period.movimientos_count = len(payloads) if diary_available else int(deleted_count)
+        cash_period.saldos_count = len(saldo_payloads) if mayor_available else int(saldos_deleted_count)
+        session.add(cash_period)
+        if auto_commit:
+            session.commit()
+        else:
+            session.flush()
     except Exception:
         session.rollback()
         raise
 
     return {
         "periodo": f"{anio:04d}-{mes:02d}",
-        "rows_deleted": int(deleted_count),
+        "rows_deleted": int(deleted_count) if diary_available else 0,
         "rows_inserted": len(payloads),
-        "saldos_deleted": int(saldos_deleted_count),
+        "saldos_deleted": int(saldos_deleted_count) if mayor_available else 0,
         "saldos_inserted": len(saldo_payloads),
         "cuentas_fondo": len(fondo_account_codes),
     }

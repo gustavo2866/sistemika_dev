@@ -1,6 +1,7 @@
 "use client";
 
 import type { SetupItem } from "@/components/forms/form_order";
+import { ErpEmpresaCreate, ErpEmpresaEdit, ErpEmpresaList } from "../empresas";
 import { ErpCashCuentaCreate, ErpCashCuentaEdit, ErpCashCuentaList } from "../cuentas";
 import {
   ErpCashProyectadoCreate,
@@ -31,9 +32,18 @@ export const CASHFLOW_SETUP_ITEMS: SetupItem[] = [
     editComponent: ErpCashCuentaEdit,
   },
   {
+    key: "empresas",
+    label: "Empresas ERP",
+    description: "Administrar el catálogo de empresas utilizado por el módulo CashFlow.",
+    resource: "erp/empresas",
+    listComponent: ErpEmpresaList,
+    createComponent: ErpEmpresaCreate,
+    editComponent: ErpEmpresaEdit,
+  },
+  {
     key: "proyectado",
     label: "Proyectado Cash",
-    description: "Administrar importes mensuales proyectados por cuenta financiera y tipo.",
+    description: "Administrar Proyectado, Pendiente, Comprometido y su total por cuenta y período.",
     resource: "erp/cash/proyectado",
     listComponent: ErpCashProyectadoList,
     createComponent: ErpCashProyectadoCreate,

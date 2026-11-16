@@ -3,41 +3,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-import psycopg
-from psycopg.rows import dict_row
+from sqlmodel import Session, select
+from app.models.erp.libro_mayor import ErpLibroMayor
 
-from app.models.erp.libro_diario_sync import get_source_connection_kwargs
 
 
 CASH_EMPRESA_IDS = frozenset({1, 2, 5})
-
-
-SOURCE_SALDOS_QUERY = """
-    SELECT
-        lm.id AS source_id,
-        lm.empresa_id,
-        lm.periodo_anio,
-        lm.periodo_mes,
-        lm.nivel,
-        lm.cuenta_codigo,
-        lm.tipo_subcuenta,
-        lm.nro_subcuenta,
-        lm.centro_costo,
-        lm.total_debe,
-        lm.total_haber,
-        lm.saldo_periodo,
-        lm.saldo_acumulado,
-        lm.recalculado_en,
-        lm.saldo_anterior,
-        lm.fecha_periodo
-    FROM public.libro_mayor lm
-    WHERE lm.periodo_anio = %s
-      AND lm.periodo_mes = %s
-      AND lm.nivel = 'subcuenta'
-      AND lm.cuenta_codigo = ANY(%s)
-      AND lm.empresa_id IN (1, 2, 5)
-    ORDER BY lm.id
-"""
 
 
 SALDO_FIELDS = (
@@ -91,19 +62,12 @@ def build_cash_saldo_payloads(
 
 
 def fetch_cash_saldo_source_rows(
-    anio: int,
-    mes: int,
-    fondo_account_codes: set[int],
-) -> list[dict[str, Any]]:
+    session: Session, anio: int, mes: int, fondo_account_codes: set[int],
+) -> list[ErpLibroMayor]:
     if not fondo_account_codes:
         return []
-
-    with psycopg.connect(
-        **get_source_connection_kwargs(),
-        row_factory=dict_row,
-    ) as source_conn, source_conn.cursor() as source_cur:
-        source_cur.execute(
-            SOURCE_SALDOS_QUERY,
-            (anio, mes, sorted(fondo_account_codes)),
-        )
-        return list(source_cur.fetchall())
+    return list(session.exec(select(ErpLibroMayor).where(
+        ErpLibroMayor.periodo_anio == anio, ErpLibroMayor.periodo_mes == mes,
+        ErpLibroMayor.nivel == "subcuenta", ErpLibroMayor.cuenta_codigo.in_(fondo_account_codes),
+        ErpLibroMayor.empresa_id.in_(CASH_EMPRESA_IDS), ErpLibroMayor.deleted_at.is_(None),
+    ).order_by(ErpLibroMayor.source_id)).all())

@@ -8,7 +8,8 @@ export const ErpCashCuentaCreate = ({ embedded = false, redirect }: { embedded?:
   <Create
     redirect={redirect ?? (embedded ? false : "list")}
     title="Crear cuenta Cash"
-    className="max-w-2xl w-full"
+    className="max-w-none w-full"
+    contentClassName="max-w-none"
     transform={normalizeErpCashCuentaPayload}
     showBreadcrumb={!embedded}
     showHeader={!embedded}

@@ -33,14 +33,12 @@ def test_export_cash_budget_builds_protected_24_month_template(db_session):
             ErpCashProyectado(
                 cuenta_cash_id=income.id,
                 fecha_periodo=date(2026, 1, 1),
-                tipo="PROYECCION",
-                importe=Decimal("150000000"),
+                importe_proyectado=Decimal("150000000"),
             ),
             ErpCashProyectado(
                 cuenta_cash_id=expense.id,
                 fecha_periodo=date(2026, 1, 1),
-                tipo="PROYECCION",
-                importe=Decimal("-40000000"),
+                importe_proyectado=Decimal("-40000000"),
             ),
         ]
     )
@@ -72,6 +70,12 @@ def test_export_cash_budget_builds_protected_24_month_template(db_session):
 
 def test_import_cash_budget_updates_projection_values(db_session):
     income, expense = _seed_accounts(db_session)
+    db_session.add(ErpCashProyectado(
+        cuenta_cash_id=income.id, fecha_periodo=date(2026, 1, 1),
+        importe_pendiente=Decimal("10"), importe_comprometido=Decimal("20"),
+        observacion="Orden comprometida",
+    ))
+    db_session.commit()
     content = cash_budget_workbook_bytes(db_session, 2026)
     workbook = load_workbook(BytesIO(content))
     worksheet = workbook[BUDGET_SHEET_NAME]
@@ -82,16 +86,21 @@ def test_import_cash_budget_updates_projection_values(db_session):
 
     result = import_cash_budget_workbook(db_session, output.getvalue(), 2026)
 
-    assert result["created"] == 48
+    assert result["created"] == 47
     rows = db_session.exec(
         select(ErpCashProyectado).where(
             ErpCashProyectado.fecha_periodo == date(2026, 1, 1),
-            ErpCashProyectado.tipo == "PROYECCION",
+            ErpCashProyectado.importe_proyectado != 0,
         )
     ).all()
-    values = {row.cuenta_cash_id: row.importe for row in rows}
+    values = {row.cuenta_cash_id: row.importe_proyectado for row in rows}
     assert values[income.id] == Decimal("1250750000.00")
     assert values[expense.id] == Decimal("-475250000.00")
+    income_row = next(row for row in rows if row.cuenta_cash_id == income.id)
+    assert income_row.importe_pendiente == Decimal("10")
+    assert income_row.importe_comprometido == Decimal("20")
+    assert income_row.observacion == "Orden comprometida"
+    assert income_row.total_proyectado == Decimal("1250750020")
 
 
 def test_import_cash_budget_rejects_modified_account_name(db_session):

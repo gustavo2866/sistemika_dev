@@ -2,15 +2,18 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
 from sqlmodel import select
 
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_diario import ErpCashDiario
 from app.models.erp.cash_diario_sync import (
+    CashPeriodoCerradoError,
     build_cash_diario_payloads,
     sync_cash_diario_periodo,
 )
 from app.models.erp.cash_map import ErpCashMap
+from app.models.erp.cash_periodo import ErpCashPeriodo
 from app.models.erp.cash_saldo import ErpCashSaldo
 from app.models.erp.cash_subcta import ErpCashSubcta
 from app.models.erp.cash_saldo_sync import build_cash_saldo_payloads
@@ -162,7 +165,10 @@ def test_build_cash_saldo_payloads_solo_incluye_subcuentas_fondo():
     assert payloads[0]["nivel"] == "subcuenta"
 
 
-def test_sync_cash_diario_periodo_reemplaza_el_periodo(db_session):
+@pytest.mark.parametrize("estado", [None, "ABIERTO", "EN_CIERRE"])
+def test_sync_cash_diario_periodo_reemplaza_el_periodo(db_session, estado):
+    if estado:
+        db_session.add(ErpCashPeriodo(fecha_periodo=date(2026, 8, 1), estado=estado))
     rubro = ErpRubro(nombre="03-INGRESOS", activo=True)
     cuenta_cash_debe = ErpCashCuenta(descripcion="EGRESOS")
     cuenta_cash_haber = ErpCashCuenta(descripcion="INGRESOS")
@@ -294,3 +300,48 @@ def test_sync_cash_diario_periodo_reemplaza_el_periodo(db_session):
     assert len(generated_subcuentas) == 1
     assert generated_subcuentas[0].categoria == "ERROR"
     assert generated_subcuentas[0].descripcion == "Cobro"
+
+    period = db_session.exec(select(ErpCashPeriodo)).one()
+    assert period.estado == (estado or "ABIERTO")
+    assert period.ultima_sincronizacion is not None
+    assert period.movimientos_count == 2
+    assert period.saldos_count == 1
+    previous_version = period.version
+    source_saldo["saldo_acumulado"] = Decimal("1200")
+    sync_cash_diario_periodo(
+        db_session, "2026-08",
+        source_data=([source, source_disponibilidad], {4100: "03-INGRESOS"}),
+        saldo_source_rows=[source_saldo],
+    )
+    db_session.refresh(period)
+    assert period.estado == (estado or "ABIERTO")
+    assert period.version == previous_version + 1
+    assert db_session.exec(select(ErpCashSaldo)).one().saldo_acumulado == Decimal("1200")
+
+
+def test_sync_cash_diario_periodo_cerrado_no_consulta_origen_ni_modifica_datos(db_session, monkeypatch):
+    period = ErpCashPeriodo(fecha_periodo=date(2026, 10, 1), estado="CERRADO", saldos_count=5)
+    saldo = ErpCashSaldo(
+        source_id=800, empresa_id=1, periodo_anio=2026, periodo_mes=10,
+        nivel="subcuenta", cuenta_codigo=100, saldo_acumulado=Decimal("500"),
+    )
+    db_session.add_all([period, saldo])
+    db_session.commit()
+
+    def unexpected_fetch(*args):
+        pytest.fail("No debe consultar el ERP para un periodo cerrado")
+
+    monkeypatch.setattr("app.models.erp.cash_diario_sync.fetch_source_rows", unexpected_fetch)
+    with pytest.raises(CashPeriodoCerradoError, match="debe reabrirse"):
+        sync_cash_diario_periodo(db_session, "2026-10")
+    db_session.refresh(period)
+    assert period.saldos_count == 5
+    assert period.ultima_sincronizacion is None
+    assert db_session.exec(select(ErpCashSaldo)).one().saldo_acumulado == Decimal("500")
+
+    from fastapi import HTTPException
+    from app.routers.erp_cash_diario_router import sync_erp_cash_diario
+
+    with pytest.raises(HTTPException) as error:
+        sync_erp_cash_diario({"periodo": "2026-10"}, db_session)
+    assert error.value.status_code == 409

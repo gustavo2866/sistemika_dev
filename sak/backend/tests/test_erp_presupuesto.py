@@ -10,6 +10,7 @@ from openpyxl import Workbook
 
 from app.models.erp.presupuesto import ErpPresupuesto
 from app.routers.erp_presupuesto_router import (
+    _iter_month_range,
     EXPECTED_PRESUPUESTO_IMPORT_HEADERS,
     HONORARIOS_PROYECTO_CUENTA,
     distribute_presupuesto_conceptos_to_erp_rows,
@@ -43,6 +44,16 @@ def test_erp_presupuesto_model_and_router_registration():
     assert "/erp/presupuestos/panel/copy" in routes
     assert "/erp/presupuestos/panel/clear" in routes
     assert "/erp/presupuestos/panel/real-income" in routes
+    assert "/erp/presupuestos/sync-reales-range" in routes
+
+
+def test_iter_month_range_includes_year_boundary():
+    assert list(_iter_month_range("2025-11", "2026-02")) == [
+        (2025, 11),
+        (2025, 12),
+        (2026, 1),
+        (2026, 2),
+    ]
 
 
 def test_erp_presupuesto_export_import_headers_include_real_values():

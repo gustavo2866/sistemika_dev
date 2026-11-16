@@ -38,6 +38,7 @@ import {
   Settings,
   ClipboardList,
   Bot,
+  RefreshCw,
 } from "lucide-react";
 import { dataProvider } from "@/lib/dataProvider";
 import { authProvider } from "@/lib/authProvider";
@@ -69,10 +70,34 @@ import {
   ErpCuentaShow,
 } from "@/app/resources/erp/cuentas";
 import {
+  ErpIndiceList,
+  ErpIndiceCreate,
+  ErpIndiceEdit,
+} from "@/app/resources/erp/indices";
+import {
+  ErpLibroMayorList,
+  ErpLibroMayorCreate,
+  ErpLibroMayorEdit,
+} from "@/app/resources/erp/libro-mayor";
+import { ErpLibroDiarioList } from "@/app/resources/erp/libro-diario";
+import { ErpSincronizarPage } from "@/app/resources/erp/sincronizar";
+import { ErpRealesPanel } from "@/app/resources/erp/reales";
+import {
+  ErpCuentaTipoList,
+  ErpCuentaTipoCreate,
+  ErpCuentaTipoEdit,
+} from "@/app/resources/erp/cuenta-tipos";
+import { ErpSetupPage } from "@/app/resources/erp/erp-setup/ErpSetupPage";
+import {
   ErpCashCuentaList,
   ErpCashCuentaCreate,
   ErpCashCuentaEdit,
 } from "@/app/resources/cashflow/cuentas";
+import {
+  ErpEmpresaList,
+  ErpEmpresaCreate,
+  ErpEmpresaEdit,
+} from "@/app/resources/cashflow/empresas";
 import {
   ErpCashSubctaList,
   ErpCashSubctaCreate,
@@ -104,6 +129,11 @@ import {
   ErpCashDiarioEdit,
   ErpCashPanel,
 } from "@/app/resources/cashflow/diario";
+import {
+  ErpCashPendientesInputList,
+  ErpCashPendientesInputCreate,
+  ErpCashPendientesInputEdit,
+} from "@/app/resources/cashflow/pendientes-input";
 import {
   ErpPresupuestoList,
   ErpPresupuestoCreate,
@@ -736,6 +766,46 @@ const AdminApp = () => {
         options={{ label: "Cuentas ERP" }}
       />
       <Resource
+        name="erp/cuenta-tipos"
+        list={ErpCuentaTipoList}
+        create={ErpCuentaTipoCreate}
+        edit={ErpCuentaTipoEdit}
+        recordRepresentation="nombre"
+        icon={ListChecks}
+        options={{ label: "Tipos de cuenta ERP" }}
+      />
+      <Resource
+        name="erp/indices"
+        list={ErpIndiceList}
+        create={ErpIndiceCreate}
+        edit={ErpIndiceEdit}
+        recordRepresentation="codigo"
+        icon={TrendingUp}
+        options={{ label: "Índices ERP" }}
+      />
+      <Resource
+        name="erp/libro-mayor"
+        list={ErpLibroMayorList}
+        create={ErpLibroMayorCreate}
+        edit={ErpLibroMayorEdit}
+        recordRepresentation="source_id"
+        icon={FileText}
+        options={{ label: "Libro Mayor" }}
+      />
+      <Resource
+        name="erp/libro-diario"
+        list={ErpLibroDiarioList}
+        recordRepresentation="source_id"
+        icon={FileText}
+        options={{ label: "Libro Diario" }}
+      />
+      <Resource
+        name="erp-sincronizar"
+        list={ErpSincronizarPage}
+        icon={RefreshCw}
+        options={{ label: "ERP Sincro" }}
+      />
+      <Resource
         name="erp/cash/cuentas"
         list={ErpCashCuentaList}
         create={ErpCashCuentaCreate}
@@ -743,6 +813,15 @@ const AdminApp = () => {
         recordRepresentation="descripcion"
         icon={Wallet}
         options={{ label: "Cuentas Cash" }}
+      />
+      <Resource
+        name="erp/empresas"
+        list={ErpEmpresaList}
+        create={ErpEmpresaCreate}
+        edit={ErpEmpresaEdit}
+        recordRepresentation="empresa_nombre"
+        icon={Factory}
+        options={{ label: "Empresas ERP" }}
       />
       <Resource
         name="erp/cash/subctas"
@@ -769,7 +848,7 @@ const AdminApp = () => {
         edit={ErpCashPeriodoEdit}
         recordRepresentation="fecha_periodo"
         icon={CalendarDays}
-        options={{ label: "Períodos Cash" }}
+        options={{ label: "Períodos" }}
       />
       <Resource
         name="erp/cash/maps"
@@ -799,13 +878,22 @@ const AdminApp = () => {
         options={{ label: "Diario Cash" }}
       />
       <Resource
+        name="erp/cash/pendientes-input"
+        list={ErpCashPendientesInputList}
+        create={ErpCashPendientesInputCreate}
+        edit={ErpCashPendientesInputEdit}
+        recordRepresentation="file_name"
+        icon={Mail}
+        options={{ label: "Pendientes Cash" }}
+      />
+      <Resource
         name="erp/presupuestos"
         list={ErpPresupuestoList}
         create={ErpPresupuestoCreate}
         edit={ErpPresupuestoEdit}
         recordRepresentation="fecha"
         icon={Wallet}
-        options={{ label: "Presupuestos ERP" }}
+        options={{ label: "Presupuesto" }}
       />
       <Resource
         name="tipos-solicitud"
@@ -1202,9 +1290,11 @@ const AdminApp = () => {
         <Route path="/po/setup/*" element={<PoSetupPage />} />
         <Route path="/constructora/setup/*" element={<ConstructoraSetupPage />} />
         <Route path="/cashflow/setup/*" element={<CashFlowSetupPage />} />
+        <Route path="/erp/setup/*" element={<ErpSetupPage />} />
         <Route path="/erp/cash/panel" element={<ErpCashPanel />} />
         <Route path="/erp/cash/diario/panel" element={<Navigate to="/erp/cash/panel" replace />} />
         <Route path="/erp/presupuestos/panel" element={<ErpPresupuestoPanel />} />
+        <Route path="/erp/reales/panel" element={<ErpRealesPanel />} />
         <Route path="/crm/setup/*" element={<CRMSetupPage />} />
         <Route path="/propiedades-config/*" element={<PropiedadesConfigPage />} />
         <Route path="/crm/admin/*" element={<CRMAdminPage />} />

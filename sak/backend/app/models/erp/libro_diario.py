@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import ClassVar, List, Optional
 
-from sqlalchemy import Column
+from sqlalchemy import Boolean, Column
 from sqlalchemy import BigInteger
 from sqlalchemy import DateTime
 from sqlalchemy import func
@@ -31,6 +31,7 @@ class ErpLibroDiario(Base, table=True):
         description="ID original del asiento en la tabla externa libro_diario",
     )
     empresa_id: int = Field(index=True)
+    es_obra: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="true"))
     fecha: date = Field(index=True)
     periodo_anio: int = Field(sa_column=Column(SmallInteger, nullable=False, index=True))
     periodo_mes: int = Field(sa_column=Column(SmallInteger, nullable=False, index=True))

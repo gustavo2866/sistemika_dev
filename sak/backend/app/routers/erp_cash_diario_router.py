@@ -11,11 +11,14 @@ from app.core.router import create_generic_router
 from app.db import get_session
 from app.models.erp.cash_diario import ErpCashDiario
 from app.models.erp.cash_diario_panel import get_cash_panel, get_cash_panel_detail
-from app.models.erp.cash_diario_sync import sync_cash_diario_periodo
+from app.models.erp.cash_diario_sync import CashPeriodoCerradoError, sync_cash_diario_periodo
 from app.models.erp.cash_budget_excel import (
     cash_budget_workbook_bytes,
     import_cash_budget_workbook,
 )
+from app.services.erp_cash_rebuild_service import rebuild_cash
+from app.services.cash_projection_horizon import get_projection_horizon
+from app.services.erp_cash_sync_period_service import begin_cash_sync
 
 
 erp_cash_diario_crud = GenericCRUD(ErpCashDiario)
@@ -26,6 +29,43 @@ erp_cash_diario_router = create_generic_router(
     tags=["erp-cash-diario"],
 )
 erp_cash_panel_router = APIRouter(prefix="/erp/cash", tags=["erp-cash-panel"])
+
+
+@erp_cash_panel_router.post("/rebuild")
+def rebuild_erp_cash(payload: dict = Body(...), session: Session = Depends(get_session)):
+    start = payload.get("periodo_desde")
+    end = payload.get("periodo_hasta")
+    if not start:
+        raise HTTPException(status_code=400, detail="Indicar periodo_desde (YYYY-MM)")
+    include_closed = payload.get("incluir_cerrados", False)
+    if not isinstance(include_closed, bool):
+        raise HTTPException(status_code=400, detail="incluir_cerrados debe ser un booleano")
+    close_period = payload.get("cerrar_periodo", False)
+    if not isinstance(close_period, bool):
+        raise HTTPException(status_code=400, detail="cerrar_periodo debe ser un booleano")
+    if close_period and include_closed:
+        raise HTTPException(status_code=400, detail="El cierre se realiza desde Sincronizar ERP, sin incluir períodos cerrados")
+    try:
+        return rebuild_cash(session, str(start), str(end) if end else None, include_closed=include_closed,
+            actuals_to=payload.get("periodo_reales_hasta"), close_period=close_period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@erp_cash_panel_router.post("/sync/start")
+def start_erp_cash_sync(payload: dict = Body(...), session: Session = Depends(get_session)):
+    period = payload.get("periodo")
+    if not isinstance(period, str):
+        raise HTTPException(status_code=400, detail="Indicar periodo (YYYY-MM)")
+    try:
+        return begin_cash_sync(session, period)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@erp_cash_panel_router.get("/projection-horizon")
+def get_erp_cash_projection_horizon(session: Session = Depends(get_session)):
+    return get_projection_horizon(session).as_dict()
 
 
 @erp_cash_diario_router.post("/sync")
@@ -39,6 +79,8 @@ def sync_erp_cash_diario(
 
     try:
         return sync_cash_diario_periodo(session, str(periodo))
+    except CashPeriodoCerradoError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

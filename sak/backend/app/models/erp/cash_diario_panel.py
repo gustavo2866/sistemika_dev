@@ -199,6 +199,7 @@ def _get_source_ledger_accounts(
 def get_ledger_accounts(
     session: Session,
     account_codes: set[int],
+    *, allow_external: bool = True,
 ) -> dict[int, tuple[str, str]]:
     if not account_codes:
         return {}
@@ -216,7 +217,8 @@ def get_ledger_accounts(
         accounts.setdefault(nro_cuenta, (cod_cuenta, descripcion))
 
     missing_codes = account_codes - accounts.keys()
-    for nro_cuenta, account_data in _get_source_ledger_accounts(frozenset(missing_codes)).items():
+    source_accounts = _get_source_ledger_accounts(frozenset(missing_codes)) if allow_external else {}
+    for nro_cuenta, account_data in source_accounts.items():
         accounts.setdefault(nro_cuenta, account_data)
 
     return accounts
@@ -414,13 +416,12 @@ def get_cash_panel(session: Session, periodo: str) -> dict[str, Any]:
             ErpCashProyectado.fecha_periodo,
             ErpCashCuenta.descripcion.label("cuenta_cash_nombre"),
             ErpCashCuenta.tipo.label("cuenta_cash_tipo"),
-            func.sum(ErpCashProyectado.importe).label("importe"),
+            func.sum(ErpCashProyectado.total_proyectado).label("importe"),
         )
         .join(ErpCashCuenta, ErpCashCuenta.id == ErpCashProyectado.cuenta_cash_id)
         .where(
             ErpCashProyectado.fecha_periodo >= start_date,
             ErpCashProyectado.fecha_periodo <= end_date,
-            ErpCashProyectado.tipo == "PROYECCION",
             ErpCashProyectado.deleted_at.is_(None),
             ErpCashCuenta.deleted_at.is_(None),
         )
@@ -468,7 +469,7 @@ def get_cash_panel(session: Session, periodo: str) -> dict[str, Any]:
         ).all()
     account_codes = {int(row.cuenta_codigo) for row in cash_rows}
     account_codes.update(int(row.cuenta_codigo) for row in balance_rows)
-    ledger_accounts_by_number = get_ledger_accounts(session, account_codes)
+    ledger_accounts_by_number = get_ledger_accounts(session, account_codes, allow_external=False)
 
     rows = [
         (
@@ -497,7 +498,11 @@ def get_cash_panel(session: Session, periodo: str) -> dict[str, Any]:
         ledger_accounts_by_number,
     )
     period_rows = session.exec(
-        select(ErpCashPeriodo.fecha_periodo, ErpCashPeriodo.estado).where(
+        select(
+            ErpCashPeriodo.fecha_periodo,
+            ErpCashPeriodo.estado,
+            ErpCashPeriodo.ultima_sincronizacion,
+        ).where(
             ErpCashPeriodo.fecha_periodo >= start_date,
             ErpCashPeriodo.fecha_periodo <= end_date,
             ErpCashPeriodo.deleted_at.is_(None),
@@ -505,22 +510,29 @@ def get_cash_panel(session: Session, periodo: str) -> dict[str, Any]:
     ).all()
     period_states = {
         f"{fecha_periodo.year:04d}-{fecha_periodo.month:02d}": str(estado).upper()
-        for fecha_periodo, estado in period_rows
+        for fecha_periodo, estado, _ in period_rows
+    }
+    panel["periods"] = {
+        f"{fecha.year:04d}-{fecha.month:02d}": {
+            "estado": str(estado).upper(),
+            "ultima_sincronizacion": ultima.isoformat() if ultima else None,
+        }
+        for fecha, estado, ultima in period_rows
     }
 
     opening_balance = Decimal("0")
     if period_states.get(months[0]["key"]) == "ABIERTO":
-        last_closed_period = session.exec(
+        last_real_period = session.exec(
             select(ErpCashPeriodo.fecha_periodo)
             .where(
                 ErpCashPeriodo.fecha_periodo < start_date,
-                ErpCashPeriodo.estado == "CERRADO",
+                ErpCashPeriodo.estado.in_(["EN_CIERRE", "CERRADO"]),
                 ErpCashPeriodo.deleted_at.is_(None),
             )
             .order_by(ErpCashPeriodo.fecha_periodo.desc())
         ).first()
-        if last_closed_period is not None:
-            closed_period = last_closed_period.year * 100 + last_closed_period.month
+        if last_real_period is not None:
+            closed_period = last_real_period.year * 100 + last_real_period.month
             if fondo_account_codes:
                 saldo_period = (
                     cast(ErpCashSaldo.periodo_anio, Integer) * 100
@@ -541,12 +553,11 @@ def get_cash_panel(session: Session, periodo: str) -> dict[str, Any]:
                 )
 
             previous_projection = session.exec(
-                select(func.coalesce(func.sum(ErpCashProyectado.importe), 0))
+                select(func.coalesce(func.sum(ErpCashProyectado.total_proyectado), 0))
                 .join(ErpCashCuenta, ErpCashCuenta.id == ErpCashProyectado.cuenta_cash_id)
                 .where(
-                    ErpCashProyectado.fecha_periodo > last_closed_period,
+                    ErpCashProyectado.fecha_periodo > last_real_period,
                     ErpCashProyectado.fecha_periodo < start_date,
-                    ErpCashProyectado.tipo == "PROYECCION",
                     ErpCashProyectado.deleted_at.is_(None),
                     ErpCashCuenta.deleted_at.is_(None),
                     func.upper(ErpCashCuenta.tipo).in_(["INGRESO", "EGRESO"]),

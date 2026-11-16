@@ -48,7 +48,7 @@ export const proyPresupuestoSchema = z.object({
   horas: decimalField,
   metros: decimalField,
   importe: decimalField,
-  descripcion: z.string().max(500).optional(),
+  descripcion: z.string().max(500).nullish(),
 });
 
 export type ProyPresupuestoFormValues = z.infer<typeof proyPresupuestoSchema>;
@@ -85,4 +85,33 @@ export const computeProyPresupuestoTotal = (values: {
   const materiales = Number(values.materiales ?? 0);
   const herramientas = Number(values.herramientas ?? 0);
   return Number((moPropia + moTerceros + materiales + herramientas).toFixed(2));
+};
+
+const toFiniteNumber = (value: unknown) => {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+};
+
+export const computeProyPresupuestoCostos = (values: {
+  mo_propia?: unknown;
+  mo_terceros?: unknown;
+  materiales?: unknown;
+  herramientas?: unknown;
+}) =>
+  Number(
+    (
+      toFiniteNumber(values.mo_propia) +
+      toFiniteNumber(values.mo_terceros) +
+      toFiniteNumber(values.materiales) +
+      toFiniteNumber(values.herramientas)
+    ).toFixed(2),
+  );
+
+export const computeProyPresupuestoNeto = (
+  values: Parameters<typeof computeProyPresupuestoCostos>[0] & { importe?: unknown },
+) => Number((toFiniteNumber(values.importe) - computeProyPresupuestoCostos(values)).toFixed(2));
+
+export const parseProyPresupuestoProyectoId = (value: string | null) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 };

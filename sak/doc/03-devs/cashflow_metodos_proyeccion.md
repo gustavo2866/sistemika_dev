@@ -73,21 +73,22 @@ proyectados y, cuando existen movimientos, el importe real mensual de la
 misma cuenta Cash.
 
 `POST /erp/cash/proyectado/quick-edit/calculate` calcula el rango solicitado
-dentro de los 24 meses visibles y devuelve cada importe con los parametros y
+dentro del horizonte móvil de 24 meses y devuelve cada importe con los parametros y
 valores base utilizados. Este endpoint no persiste resultados. La pantalla
 reemplaza temporalmente los valores editables y solo los guarda cuando el
-usuario confirma mediante `Guardar 24 meses`.
+usuario confirma mediante `Guardar proyección`. El histórico visible se acumula
+desde enero de 2026 y no limita los 24 meses proyectados.
 
 El popup permite seleccionar cualquiera de los metodos activos. `Calcular`
 utiliza la seleccion como override temporal, sin modificar la cuenta. Al
-confirmar `Guardar 24 meses`, la FK `ErpCashCuenta.id_metodo_proyeccion` y los
+confirmar `Guardar proyección`, la FK `ErpCashCuenta.id_metodo_proyeccion` y los
 importes se actualizan dentro de la misma transaccion.
 
 Cada mes visible informa `estado_periodo`. Un periodo sin registro de control
 se considera `ABIERTO`, de acuerdo con la regla del calculador. La interfaz
-muestra un candado cerrado o abierto y envia a `Calcular` el rango comprendido
-entre el primer y el ultimo periodo abierto. La respuesta se combina con los
-valores visibles sin reemplazar los periodos cerrados anteriores al rango.
+conserva los meses históricos como solo lectura y envía a `Calcular` el rango
+del horizonte vigente. La respuesta se combina con los valores visibles sin
+reemplazar el histórico. Los límites provienen del servidor, no del año del panel.
 
 La edicion rapida tambien muestra `Comprometido`, almacenado como un registro
 de `ErpCashProyectado` con tipo `COMPROMETIDO`, y `Descripcion`, almacenada en

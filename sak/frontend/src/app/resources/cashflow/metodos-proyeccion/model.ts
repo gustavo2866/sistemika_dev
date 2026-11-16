@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-export type FuncionProyeccion = "PROMEDIO" | "SUMA" | "MAX" | "MIN" | "ULTIMO";
+export type FuncionProyeccion = "PROMEDIO" | "SUMA" | "MAX" | "MIN" | "ULTIMO" | "AJUSTE_PONDERADO";
 
 export type MetodoProyeccionDetalle = {
   id?: number | string;
@@ -14,24 +14,23 @@ export type MetodoProyeccionDetalle = {
   factor: number | string;
 };
 
-export type MetodoProyeccionCuenta = {
-  id?: number | string;
-  version?: number | string | null;
-  nro_cuenta: number | string;
-  activo: boolean;
-};
-
 export type MetodoProyeccion = {
   id: number | string;
   nombre: string;
+  tipo_calculo: "HISTORICO" | "RELACIONAL" | "PENDIENTE";
   descripcion?: string | null;
   activo: boolean;
   detalles?: MetodoProyeccionDetalle[];
-  cuentas?: MetodoProyeccionCuenta[];
   created_at?: string | null;
   updated_at?: string | null;
   version?: number | string | null;
 };
+
+export const TIPO_CALCULO_CHOICES = [
+  { id: "HISTORICO", name: "Histórico" },
+  { id: "RELACIONAL", name: "Relacional" },
+  { id: "PENDIENTE", name: "Pendiente" },
+];
 
 export const FUNCION_PROYECCION_CHOICES: Array<{
   id: FuncionProyeccion;
@@ -42,12 +41,53 @@ export const FUNCION_PROYECCION_CHOICES: Array<{
   { id: "MAX", name: "Máximo" },
   { id: "MIN", name: "Mínimo" },
   { id: "ULTIMO", name: "Último valor" },
+  { id: "AJUSTE_PONDERADO", name: "Ajuste ponderado" },
 ];
 
 export const METODO_PROYECCION_ACTIVO_CHOICES = [
   { id: "true", name: "Sí" },
   { id: "false", name: "No" },
 ];
+
+export const getMesBaseLabel = (offset: number) => {
+  if (offset === -1) return "Mes anterior";
+  if (offset === -12) return "Mismo mes del año anterior";
+  return `${Math.abs(offset)} meses antes`;
+};
+
+export const getMesBaseChoices = (...currentValues: number[]) => {
+  const offsets = new Set(Array.from({ length: 120 }, (_, index) => -index - 1));
+  currentValues.forEach((value) => {
+    if (Number.isInteger(value) && value < 0) offsets.add(value);
+  });
+  return [...offsets].sort((a, b) => b - a).map((id) => ({
+    id,
+    name: getMesBaseLabel(id),
+  }));
+};
+
+export const getMesBaseRangeDescription = (month: number, from: number, to: number) => {
+  if (
+    !Number.isInteger(month) || month < 1 || month > 12 ||
+    !Number.isInteger(from) || !Number.isInteger(to) || from > to || to >= 0
+  ) return "";
+
+  const describeMonth = (offset: number) => {
+    const absoluteMonth = month - 1 + offset;
+    const yearOffset = Math.floor(absoluteMonth / 12);
+    const monthIndex = ((absoluteMonth % 12) + 12) % 12;
+    const name = new Intl.DateTimeFormat("es-AR", { month: "long", timeZone: "UTC" })
+      .format(new Date(Date.UTC(2000, monthIndex, 1)));
+    const year = yearOffset === 0 ? "del mismo año"
+      : yearOffset === -1 ? "del año anterior"
+      : `de ${Math.abs(yearOffset)} años antes`;
+    return `${name} ${year}`;
+  };
+
+  return from === to
+    ? `Período base: ${describeMonth(from)}.`
+    : `Período base: desde ${describeMonth(from)} hasta ${describeMonth(to)} (inclusive).`;
+};
 
 const optionalId = z.preprocess(
   (value) => (value === "" || value === null || value === undefined ? undefined : value),
@@ -71,42 +111,35 @@ export const metodoProyeccionDetalleSchema = z
     id: optionalId,
     version: optionalVersion,
     mes_destino: z.coerce.number().int().min(1).max(12),
-    mes_base_desde: z.coerce.number().int(),
-    mes_base_hasta: z.coerce.number().int(),
-    funcion: z.enum(["PROMEDIO", "SUMA", "MAX", "MIN", "ULTIMO"]).nullable(),
+    mes_base_desde: z.coerce.number().int().max(-1, "Seleccioná un mes anterior al mes destino"),
+    mes_base_hasta: z.coerce.number().int().max(-1, "Seleccioná un mes anterior al mes destino"),
+    funcion: z.enum(["PROMEDIO", "SUMA", "MAX", "MIN", "ULTIMO", "AJUSTE_PONDERADO"]).nullable(),
     factor: z.coerce.number().finite(),
   })
   .refine((detalle) => detalle.mes_base_desde <= detalle.mes_base_hasta, {
-    message: "El mes base hasta debe ser mayor o igual al mes base desde",
+    message: "La base hasta debe ser igual o posterior a la base desde",
     path: ["mes_base_hasta"],
+  })
+  .refine((detalle) => detalle.funcion !== "AJUSTE_PONDERADO" || (detalle.factor >= 0 && detalle.factor <= 1), {
+    message: "El factor de Ajuste ponderado debe estar entre 0 y 1",
+    path: ["factor"],
   });
-
-export const metodoProyeccionCuentaSchema = z.object({
-  id: optionalId,
-  version: optionalVersion,
-  nro_cuenta: z.coerce.number().int().min(0, "El número de cuenta es obligatorio"),
-  activo: booleanFromInput.default(true),
-});
 
 export const metodoProyeccionSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio").max(200),
+  tipo_calculo: z.enum(["HISTORICO", "RELACIONAL", "PENDIENTE"]).default("HISTORICO"),
   descripcion: z.string().trim().max(1000).optional().nullable(),
   activo: booleanFromInput.default(true),
   version: optionalVersion,
-  detalles: z.array(metodoProyeccionDetalleSchema).min(1, "Debe ingresar al menos una regla"),
-  cuentas: z.array(metodoProyeccionCuentaSchema).default([]),
+  detalles: z.array(metodoProyeccionDetalleSchema).default([]),
 }).superRefine((values, ctx) => {
-  const cuentasVistas = new Set<number>();
-  values.cuentas.forEach((cuenta, index) => {
-    const nroCuenta = Number(cuenta.nro_cuenta);
-    if (cuentasVistas.has(nroCuenta)) {
-      ctx.addIssue({
-        code: "custom",
-        message: "La cuenta ya fue agregada",
-        path: ["cuentas", index, "nro_cuenta"],
-      });
-    }
-    cuentasVistas.add(nroCuenta);
+  if (values.tipo_calculo === "HISTORICO" && !values.detalles.length) {
+    ctx.addIssue({ code: "custom", message: "Debe ingresar al menos una regla", path: ["detalles"] });
+  }
+  const seen = new Set<number>();
+  values.detalles.forEach((rule, index) => {
+    if (seen.has(rule.mes_destino)) ctx.addIssue({ code: "custom", message: "Mes destino repetido", path: ["detalles", index, "mes_destino"] });
+    seen.add(rule.mes_destino);
   });
 });
 
@@ -120,17 +153,12 @@ export const getMetodoProyeccionDetalleDefaults = () => ({
   factor: 1,
 });
 
-export const getMetodoProyeccionCuentaDefaults = () => ({
-  nro_cuenta: undefined,
-  activo: true,
-});
-
 export const METODO_PROYECCION_DEFAULTS: MetodoProyeccionFormValues = {
   nombre: "",
+  tipo_calculo: "HISTORICO",
   descripcion: null,
   activo: true,
   detalles: [getMetodoProyeccionDetalleDefaults()],
-  cuentas: [],
 };
 
 const toOptionalNumber = (value: unknown) => {
@@ -152,9 +180,10 @@ export const normalizeMetodoProyeccionPayload = (
   const descripcion = String(data.descripcion ?? "").trim();
   const payload: Record<string, unknown> = {
     nombre: String(data.nombre ?? "").trim(),
+    tipo_calculo: data.tipo_calculo ?? "HISTORICO",
     descripcion: descripcion || null,
     activo: toBoolean(data.activo),
-    detalles: (data.detalles ?? []).map((detalle) => {
+    detalles: (data.tipo_calculo && data.tipo_calculo !== "HISTORICO" ? [] : data.detalles ?? []).map((detalle) => {
       const normalized: Record<string, unknown> = {
         mes_destino: Number(detalle.mes_destino),
         mes_base_desde: Number(detalle.mes_base_desde),
@@ -168,17 +197,7 @@ export const normalizeMetodoProyeccionPayload = (
       if (version != null) normalized.version = version;
       return normalized;
     }),
-    cuentas: (data.cuentas ?? []).map((cuenta) => {
-      const normalized: Record<string, unknown> = {
-        nro_cuenta: Number(cuenta.nro_cuenta),
-        activo: toBoolean(cuenta.activo),
-      };
-      const id = toOptionalNumber(cuenta.id);
-      const version = toOptionalNumber(cuenta.version);
-      if (id != null) normalized.id = id;
-      if (version != null) normalized.version = version;
-      return normalized;
-    }),
+
   };
   const version = toOptionalNumber(data.version);
   if (version != null) payload.version = version;

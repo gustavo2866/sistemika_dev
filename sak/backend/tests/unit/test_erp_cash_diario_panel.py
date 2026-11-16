@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_diario import ErpCashDiario
 from app.models.erp.cash_diario_panel import (
@@ -14,6 +15,35 @@ from app.models.erp.cash_diario_panel import (
 )
 from app.models.erp.cash_saldo import ErpCashSaldo
 from app.models.erp.cash_map import ErpCashMap
+from app.models.erp.cash_periodo import ErpCashPeriodo
+from app.models.erp.cash_proyectado import ErpCashProyectado
+
+
+def test_panel_usa_total_generado_y_lo_arrastra_al_saldo_inicial(db_session):
+    account = ErpCashCuenta(descripcion="Total por método", tipo="Ingreso")
+    db_session.add(account)
+    db_session.flush()
+    db_session.add(ErpCashPeriodo(fecha_periodo=date(2026, 9, 1), estado="CERRADO"))
+    for month, base, projected, pending, committed in (
+        (10, "PENDIENTE", "999", "100", "20"),
+        (11, "HISTORICO", "200", "999", "30"),
+    ):
+        db_session.add(ErpCashPeriodo(fecha_periodo=date(2026, month, 1), estado="ABIERTO"))
+        db_session.add(ErpCashProyectado(
+            cuenta_cash_id=account.id, fecha_periodo=date(2026, month, 1), tipo_calculo=base,
+            importe_proyectado=Decimal(projected), importe_pendiente=Decimal(pending),
+            importe_comprometido=Decimal(committed),
+        ))
+    db_session.commit()
+    panel = get_cash_panel(db_session, "2026-10")
+    income = next(group for group in panel["groups"] if group["key"] == "INGRESOS")
+    assert income["projected_months"]["2026-10"] == 120
+    assert income["projected_months"]["2026-11"] == 230
+    assert income["projected_total"] == 350
+    assert panel["balances"]["saldo_final"]["2026-11"] == 350
+    shifted = get_cash_panel(db_session, "2026-11")
+    assert shifted["balances"]["saldo_anterior"]["2026-11"] == 120
+    assert shifted["balances"]["saldo_final"]["2026-11"] == 350
 
 
 def _row(
@@ -254,10 +284,12 @@ def test_get_cash_panel_incluye_saldos_sincronizados_de_cuentas_fondo(
     db_session,
     monkeypatch,
 ):
-    monkeypatch.setattr(
-        "app.models.erp.cash_diario_panel._get_source_ledger_accounts",
-        lambda account_codes: {100: ("1.1.0.0", "Banco")},
-    )
+    from app.models.erp.cuenta import ErpCuenta
+    from app.models.erp.rubro import ErpRubro
+    rubro = ErpRubro(nombre="Fondos", activo=True)
+    db_session.add(rubro)
+    db_session.flush()
+    db_session.add(ErpCuenta(rubro_id=rubro.id,nro_cuenta=100,cod_cuenta="1.1.0.0",descripcion="Banco"))
     fondo = ErpCashCuenta(descripcion="FONDO BANCOS")
     db_session.add(fondo)
     db_session.flush()
@@ -308,14 +340,82 @@ def test_get_cash_panel_incluye_saldos_sincronizados_de_cuentas_fondo(
     assert panel["balances"]["accounts"][0]["saldo_final"]["2026-02"] == 950.0
 
 
-def test_get_cash_panel_consulta_rango_y_completa_nombre_desde_maestro_externo(db_session, monkeypatch):
+@pytest.mark.parametrize("inicio", ["2026-10", "2026-11", "2026-12"])
+def test_panel_en_cierre_conserva_reales_y_alimenta_proyecciones(db_session, monkeypatch, inicio):
+    monkeypatch.setattr(
+        "app.models.erp.cash_diario_panel._get_source_ledger_accounts", lambda codes: {},
+    )
+    fondo = ErpCashCuenta(descripcion="FONDO BANCOS", tipo="Fondo")
+    ingreso = ErpCashCuenta(descripcion="Cobros", tipo="Ingreso")
+    db_session.add_all([fondo, ingreso])
+    db_session.flush()
+    db_session.add(ErpCashMap(nro_cta=100, moneda="ARS", map_debe_id=fondo.id, map_haber_id=fondo.id))
+    db_session.add_all([
+        ErpCashPeriodo(fecha_periodo=date(2026, 9, 1), estado="CERRADO"),
+        ErpCashPeriodo(fecha_periodo=date(2026, 10, 1), estado="EN_CIERRE"),
+        ErpCashPeriodo(fecha_periodo=date(2026, 11, 1), estado="ABIERTO"),
+        ErpCashPeriodo(fecha_periodo=date(2026, 12, 1), estado="ABIERTO"),
+    ])
+    for mes, inicial, final in [(9, "800", "1000"), (10, "1000", "900")]:
+        db_session.add(ErpCashSaldo(
+            source_id=mes, empresa_id=1, periodo_anio=2026, periodo_mes=mes,
+            nivel="subcuenta", cuenta_codigo=100, saldo_anterior=Decimal(inicial),
+            saldo_periodo=Decimal(final) - Decimal(inicial), saldo_acumulado=Decimal(final),
+        ))
+    for mes, importe in [(10, "9999"), (11, "50"), (12, "25")]:
+        db_session.add(ErpCashProyectado(
+            cuenta_cash_id=ingreso.id, fecha_periodo=date(2026, mes, 1),
+             importe_proyectado=Decimal(importe),
+        ))
+    db_session.commit()
+
+    panel = get_cash_panel(db_session, inicio)
+    b = panel["balances"]
+    if inicio == "2026-10":
+        assert b["saldo_anterior"]["2026-10"] == 1000
+        assert b["saldo_final"]["2026-10"] == 900
+        assert b["record_counts"]["2026-10"] == 1
+        assert b["accounts"][0]["saldo_final"]["2026-10"] == 900
+        assert "2026-10" not in b["projected_months"]
+        assert panel["periods"]["2026-10"]["estado"] == "EN_CIERRE"
+    if inicio != "2026-12":
+        assert b["saldo_anterior"]["2026-11"] == 900
+        assert b["saldo_final"]["2026-11"] == 950
+    assert b["saldo_anterior"]["2026-12"] == 950
+    assert b["saldo_final"]["2026-12"] == 975
+
+
+def test_panel_en_cierre_sin_saldos_no_reemplaza_por_proyeccion(db_session):
+    ingreso = ErpCashCuenta(descripcion="Cobros", tipo="Ingreso")
+    db_session.add(ingreso)
+    db_session.flush()
+    db_session.add(ErpCashPeriodo(fecha_periodo=date(2026, 10, 1), estado="EN_CIERRE"))
+    db_session.add(ErpCashProyectado(
+        cuenta_cash_id=ingreso.id, fecha_periodo=date(2026, 10, 1),
+         importe_proyectado=Decimal("9999"),
+    ))
+    db_session.commit()
+    panel = get_cash_panel(db_session, "2026-10")
+    assert panel["periods"]["2026-10"]["estado"] == "EN_CIERRE"
+    assert panel["balances"]["record_counts"]["2026-10"] == 0
+    assert "2026-10" not in panel["balances"]["projected_months"]
+    assert panel["balances"]["saldo_final"]["2026-10"] == 0
+
+
+def test_get_cash_panel_consulta_rango_y_completa_nombre_desde_maestro_local(db_session, monkeypatch):
     account = ErpCashCuenta(descripcion="Ingresos")
     db_session.add(account)
     db_session.flush()
-    monkeypatch.setattr(
-        "app.models.erp.cash_diario_panel._get_source_ledger_accounts",
-        lambda account_codes: {4100: ("4.1.0.0", "Ventas")},
-    )
+    def forbidden_external(*args):
+        raise AssertionError("El panel debe usar el catálogo local")
+    monkeypatch.setattr("app.models.erp.cash_diario_panel._get_source_ledger_accounts", forbidden_external)
+    from app.models.erp.cuenta import ErpCuenta
+    from app.models.erp.rubro import ErpRubro
+    rubro = ErpRubro(nombre="Ingresos", activo=True)
+    db_session.add(rubro)
+    db_session.flush()
+    db_session.add(ErpCuenta(rubro_id=rubro.id,nro_cuenta=4100,cod_cuenta="4.1.0.0",descripcion="Ventas"))
+
 
     movements = []
     for source_id, movement_date, amount in (

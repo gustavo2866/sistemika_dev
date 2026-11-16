@@ -50,12 +50,14 @@ import {
   LayoutGrid,
   MessageCircle,
   Calculator,
+  Database,
   GitBranch,
   TrendingUp,
 } from "lucide-react";
 
 const CONSTRUCTORA_RESOURCES = [
   "proy-financial-dashboard",
+  "proy-presupuestos",
   "solicitudes",
   "tarjas",
   "constructora/pedidos",
@@ -64,11 +66,24 @@ const CONSTRUCTORA_RESOURCES = [
 const COMPRAS_RESOURCES = ["po-dashboard", "po-orders-approval", "po-orders", "po-invoices", "proveedores"] as const;
 const CASHFLOW_RESOURCES = [
   "erp/cash/diario",
+  "erp/cash/pendientes-input",
+  "erp/empresas",
   "erp/cash/cuentas",
   "erp/cash/subctas",
   "erp/cash/proyectado",
-  "erp/cash/periodos",
   "erp/cash/maps",
+] as const;
+const ERP_RESOURCES = [
+  "erp-sincronizar",
+  "erp/libro-diario",
+  "erp/libro-mayor",
+  "erp/cash/periodos",
+  "erp/indices",
+] as const;
+const ERP_SETUP_RESOURCES = [
+  "erp/rubros",
+  "erp/cuentas",
+  "erp/cuenta-tipos",
 ] as const;
 const OPERATIONS_RESOURCES = ["solicitudes"] as const;
 const INMOBILIARIA_RESOURCES = [
@@ -82,8 +97,6 @@ const ADMIN_RESOURCES = [
   "facturas",
   "orden-compra",
   "centros-costo",
-  "erp/rubros",
-  "erp/cuentas",
 ] as const;
 const CONFIG_RESOURCES = [
   "users",
@@ -152,7 +165,6 @@ const HIDDEN_RESOURCES = [
   "tarja-detalle",
   "tarja-nomina",
   "parte-diario-estados",
-  "proy-presupuestos",
   "proyecto-encargados",
   "proyecto-avance",
   "proy-dashboard",
@@ -162,6 +174,7 @@ const HIDDEN_RESOURCES = [
   "propiedades-status",
   "propietarios",
   "tipos-actualizacion",
+  "metodos-proyeccion",
 ];
 
 type ResourceName = string;
@@ -218,6 +231,10 @@ export function AppSidebar() {
     () => CASHFLOW_RESOURCES.filter((name) => resources[name]?.hasList),
     [resources],
   );
+  const erpResources = useMemo(
+    () => ERP_RESOURCES.filter((name) => resources[name]?.hasList),
+    [resources],
+  );
 
   const operationsResources = useMemo(
     () => OPERATIONS_RESOURCES.filter((name) => resources[name]?.hasList),
@@ -249,6 +266,8 @@ export function AppSidebar() {
         ...constructoraResources,
         ...comprasResources,
         ...cashFlowResources,
+        ...erpResources,
+        ...ERP_SETUP_RESOURCES,
         ...operationsResources,
         ...inmobiliariaResources,
         ...adminResources,
@@ -261,6 +280,7 @@ export function AppSidebar() {
       constructoraResources,
       comprasResources,
       cashFlowResources,
+      erpResources,
       operationsResources,
       inmobiliariaResources,
       adminResources,
@@ -280,6 +300,7 @@ export function AppSidebar() {
   const [constructoraOpen, setConstructoraOpen] = useState(false);
   const [comprasOpen, setComprasOpen] = useState(false);
   const [cashFlowOpen, setCashFlowOpen] = useState(false);
+  const [erpOpen, setErpOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [inmobiliariaOpen, setInmobiliariaOpen] = useState(false);
   const [crmOpen, setCrmOpen] = useState(false);
@@ -332,9 +353,15 @@ export function AppSidebar() {
                     />
                     ))}
                   <SidebarCustomMenuItem
-                    label="Presupuestos ERP"
+                    label="Presupuesto"
                     to="/erp/presupuestos/panel"
                     icon={Wallet}
+                    onClick={handleItemClick}
+                  />
+                  <SidebarCustomMenuItem
+                    label="ERP Histórico"
+                    to="/erp/reales/panel"
+                    icon={TrendingUp}
                     onClick={handleItemClick}
                   />
                   {constructoraResources.includes("tarjas") ? (
@@ -527,7 +554,11 @@ export function AppSidebar() {
                     onClick={handleItemClick}
                   />
                   {cashFlowResources
-                    .filter((name) => name === "erp/cash/diario")
+                    .filter(
+                      (name) =>
+                        name === "erp/cash/diario" ||
+                        name === "erp/cash/pendientes-input",
+                    )
                     .map((name) => (
                       <ResourceSubMenuItem
                         key={name}
@@ -538,6 +569,28 @@ export function AppSidebar() {
                   <SidebarCustomMenuItem
                     label="Setup"
                     to="/cashflow/setup"
+                    icon={Settings}
+                    onClick={handleItemClick}
+                  />
+                </GroupMenuItem>
+              ) : null}
+              {erpResources.length > 0 ? (
+                <GroupMenuItem
+                  label="ERP"
+                  icon={Database}
+                  isOpen={erpOpen}
+                  onToggle={() => setErpOpen((open) => !open)}
+                >
+                  {erpResources.map((name) => (
+                    <ResourceSubMenuItem
+                      key={name}
+                      name={name}
+                      onClick={handleItemClick}
+                    />
+                  ))}
+                  <SidebarCustomMenuItem
+                    label="Setup"
+                    to="/erp/setup"
                     icon={Settings}
                     onClick={handleItemClick}
                   />
@@ -627,6 +680,7 @@ const GROUP_ICONS: Record<string, React.ComponentType> = {
   "tipos-operacion": Workflow,
   "proy-dashboard": LayoutGrid,
   "proy-financial-dashboard": TrendingUp,
+  "proy-presupuestos": Wallet,
   "metodos-pago": FileText,
   proyectos: Kanban,
   articulos: Package,

@@ -1,21 +1,24 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNotify } from "ra-core";
 import { BarChart3, Calculator, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, DollarSign, FileDown, FileSpreadsheet, FileUp, Landmark, PencilLine, RefreshCw, RotateCcw, TrendingDown, TrendingUp, WalletCards } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import { FinancialKpiCards } from "@/components/financial-kpi-cards";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
 import { CashProjectionQuickEditDialog } from "../proyectado";
+import type { ErpCashPeriodoEstado } from "../periodos/model";
+import { fetchCashProjectionHorizon } from "../proyectado/horizon";
 
 type Month = { key: string; label: string; start: string; end: string };
 type LedgerAccountRow = {
@@ -62,6 +65,10 @@ type BalanceDetailTarget = {
 };
 type PanelResponse = {
   periodo: string;
+  periods: Record<string, {
+    estado: ErpCashPeriodoEstado;
+    ultima_sincronizacion: string | null;
+  }>;
   months: Month[];
   groups: GroupRow[];
   totals: Record<string, number>;
@@ -136,8 +143,10 @@ const movePeriod = (period: string, offset: number) => {
   return dateToPeriod(value);
 };
 
-const formatPeriodLabel = (period: string) =>
-  new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(periodToDate(period));
+const formatPeriodLabel = (period: string) => {
+  if (!/^\d{4}-(0[1-9]|1[0-2])(?:-\d{2})?$/.test(period)) return "—";
+  return new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(periodToDate(period));
+};
 
 const formatMonthColumn = (period: string) =>
   new Intl.DateTimeFormat("es-AR", { month: "short", year: "2-digit" })
@@ -380,7 +389,10 @@ const fetchPanel = async (periodo: string): Promise<PanelResponse> => {
   const token = localStorage.getItem("auth_token");
   const response = await fetch(
     `${apiUrl}/erp/cash/panel?periodo=${encodeURIComponent(periodo)}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      signal: AbortSignal.timeout(30_000),
+    },
   );
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.detail || "No se pudo cargar el panel Cash");
@@ -462,11 +474,15 @@ const AmountWithProjection = ({
 );
 
 export const ErpCashPanel = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const notify = useNotify();
   const [searchParams, setSearchParams] = useSearchParams();
   const [periodo, setPeriodo] = useState(DEFAULT_PERIOD);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<number | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildOpen, setRebuildOpen] = useState(false);
+  const [rebuildFrom, setRebuildFrom] = useState("");
   const [budgetAction, setBudgetAction] = useState<"export" | "import" | null>(null);
   const budgetFileInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(DEFAULT_EXPANDED_GROUPS));
@@ -492,6 +508,7 @@ export const ErpCashPanel = () => {
     nextParams.delete("projection_account_id");
     nextParams.delete("projection_account_name");
     nextParams.delete("projection_start_year");
+    nextParams.delete("projection_draft");
     setSearchParams(nextParams, { replace: true });
   };
   const query = useQuery({
@@ -499,6 +516,9 @@ export const ErpCashPanel = () => {
     queryFn: () => fetchPanel(periodo),
     enabled: Boolean(periodo),
   });
+  const horizonQuery = useQuery({ queryKey: ["cash-projection-horizon"], queryFn: fetchCashProjectionHorizon });
+  const rebuildPeriodsPending = horizonQuery.isPending;
+  const defaultRebuildPeriod = horizonQuery.data?.proyeccion_desde.slice(0, 7);
   const detailQuery = useQuery({
     queryKey: ["erp-cash-panel-detail", detailTarget],
     queryFn: () => fetchPanelDetail(detailTarget!),
@@ -506,6 +526,9 @@ export const ErpCashPanel = () => {
   });
   const data = query.data;
   const positionedYear = periodToDate(periodo).getFullYear();
+  const rebuildEndPeriod = horizonQuery.data?.proyeccion_hasta.slice(0, 7) ?? "";
+  const validRebuildFrom = /^\d{4}-(0[1-9]|1[0-2])$/.test(rebuildFrom)
+    && rebuildFrom >= "2025-12" && rebuildFrom <= rebuildEndPeriod;
   const columnCount = (data?.months.length ?? 0) + 2;
   const flowGroups = data?.groups.filter((group) => group.key !== "FONDOS") ?? [];
   const hasFlowMovements = flowGroups.some((group) => group.accounts.length > 0);
@@ -555,45 +578,35 @@ export const ErpCashPanel = () => {
     setProjectionEditTarget(null);
   };
 
-  const handleSync = async () => {
-    const currentYear = new Date().getFullYear();
-    const firstPeriod = `${currentYear}-01`;
-    const lastPeriod = `${currentYear + 1}-12`;
-    if (!window.confirm(
-      `Se sincronizarán y reemplazarán los movimientos y saldos desde ${firstPeriod} hasta ${lastPeriod}. ¿Continuar?`,
-    )) {
+  const openRebuildDialog = () => {
+    if (horizonQuery.error) {
+      notify("No se pudieron cargar los períodos para actualizar Cash", { type: "error" });
       return;
     }
+    setRebuildFrom(defaultRebuildPeriod && defaultRebuildPeriod >= "2025-12" ? defaultRebuildPeriod : "2025-12");
+    setRebuildOpen(true);
+  };
 
-    setSyncProgress(0);
-    let syncingPeriod = firstPeriod;
+  const handleRebuild = async () => {
+    if (!validRebuildFrom || rebuilding) return;
+
+    setRebuilding(true);
     try {
       const token = localStorage.getItem("auth_token");
-      for (let monthOffset = 0; monthOffset < 24; monthOffset += 1) {
-        syncingPeriod = movePeriod(firstPeriod, monthOffset);
-        const response = await fetch(`${apiUrl}/erp/cash/diario/sync`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ periodo: syncingPeriod }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(result.detail || `No se pudo sincronizar ${syncingPeriod}`);
-        }
-        setSyncProgress(monthOffset + 1);
-      }
-
-      await query.refetch();
-      notify(`Sincronización completada: ${firstPeriod} a ${lastPeriod}`, { type: "success" });
+      const response = await fetch(`${apiUrl}/erp/cash/rebuild`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ periodo_desde: rebuildFrom, incluir_cerrados: true }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || "No se pudo actualizar Cash");
+      setRebuildOpen(false);
+      notify(`Cash actualizado: ${result.periodos_reales_reconstruidos} períodos con movimientos y saldos (${result.periodos_cerrados_reconstruidos} cerrados), ${result.proyecciones_calculadas} proyecciones recalculadas.`, { type: "success" });
+      void query.refetch();
     } catch (error) {
-      await query.refetch();
-      const message = error instanceof Error ? error.message : "Error de sincronización";
-      notify(`La sincronización se detuvo en ${syncingPeriod}: ${message}`, { type: "error" });
+      notify(error instanceof Error ? error.message : "No se pudo actualizar Cash", { type: "error" });
     } finally {
-      setSyncProgress(null);
+      setRebuilding(false);
     }
   };
 
@@ -675,6 +688,28 @@ export const ErpCashPanel = () => {
     });
   };
 
+  const renderSublevel = (rows: ReactNode, label: string) => (
+    <tr>
+      <td colSpan={columnCount} className="p-0">
+        <div
+          className="max-h-[min(32vh,18rem)] overflow-y-auto overscroll-y-contain [scrollbar-width:thin]"
+          role="region"
+          aria-label={`Detalle de ${label}`}
+          tabIndex={0}
+        >
+          <table className="w-full table-fixed border-collapse text-[10px]" aria-label={`Cuentas de ${label}`}>
+            <colgroup>
+              <col className="w-[360px]" />
+              {data?.months.map((month) => <col key={month.key} className="w-[72px]" />)}
+              <col />
+            </colgroup>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
+  );
+
   const renderBalanceRow = (
     field: BalanceField,
     label: string,
@@ -748,7 +783,9 @@ export const ErpCashPanel = () => {
                   : "border-slate-200/70 dark:border-slate-800",
                 !isFinalBalance && value < 0 && "text-rose-700 dark:text-rose-400",
               )}>
-                {isProjected ? (
+                {data.periods?.[month.key]?.estado === "EN_CIERRE" && !data.balances.record_counts[month.key] ? (
+                  <span title="En cierre: faltan saldos sincronizados">Sin datos</span>
+                ) : isProjected ? (
                   <span>{formatAmount(value)}</span>
                 ) : (
                   <MonthAmountButton
@@ -765,7 +802,7 @@ export const ErpCashPanel = () => {
             {formatAmount(total)}
           </td>
         </tr>
-        {isExpanded ? fondoBalanceAccounts.map((account) => {
+        {isExpanded ? renderSublevel(fondoBalanceAccounts.map((account) => {
           const valueTotal = accountTotal(account);
           const ledgerLabel = `${account.cuenta_codigo} — ${account.cuenta_nombre}`;
           const ledgerTitle = account.cuenta_contable_codigo
@@ -811,7 +848,7 @@ export const ErpCashPanel = () => {
               </td>
             </tr>
           );
-        }) : null}
+        }), label) : null}
       </Fragment>
     );
   };
@@ -868,11 +905,11 @@ export const ErpCashPanel = () => {
             variant="outline"
             size="sm"
             className="h-8 text-xs"
-            onClick={handleSync}
-            disabled={syncProgress !== null || query.isFetching}
+            onClick={openRebuildDialog}
+            disabled={rebuilding || query.isFetching || rebuildPeriodsPending}
           >
-            <RefreshCw className={cn("mr-1 size-3.5", (syncProgress !== null || query.isFetching) && "animate-spin")} />
-            {syncProgress !== null ? `Actualizando ${syncProgress}/24` : "Actualizar"}
+            <RefreshCw className={cn("mr-1 size-3.5", (rebuilding || query.isFetching) && "animate-spin")} />
+            {rebuilding ? "Actualizando…" : query.isFetching ? "Cargando panel…" : "Actualizar Cash"}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -943,11 +980,25 @@ export const ErpCashPanel = () => {
           <thead className="bg-slate-600 text-[9px] uppercase tracking-[0.08em] text-white dark:bg-slate-700">
             <tr>
               <th className="border-r border-slate-500 px-3 py-2.5 text-left font-semibold dark:border-slate-600">Cuenta Cash</th>
-              {data?.months.map((month) => (
-                <th key={month.key} className="border-r border-slate-500 px-0.5 py-2.5 text-center text-[8px] font-semibold dark:border-slate-600" title={`${month.start} a ${month.end}`}>
-                  {formatMonthColumn(month.key)}
-                </th>
-              ))}
+              {data?.months.map((month) => {
+                const period = data.periods?.[month.key];
+                const isClosing = period?.estado === "EN_CIERRE";
+                const lastSync = period?.ultima_sincronizacion
+                  ? new Date(period.ultima_sincronizacion).toLocaleString("es-AR")
+                  : "sin registro";
+                return (
+                  <th
+                    key={month.key}
+                    className={cn(
+                      "border-r border-slate-500 px-0.5 py-2.5 text-center text-[8px] font-semibold dark:border-slate-600",
+                      isClosing && "bg-amber-700 text-amber-50 ring-1 ring-inset ring-amber-300/60 dark:bg-amber-800",
+                    )}
+                    title={`${month.start} a ${month.end}${isClosing ? " · En cierre" : ""}${period ? ` · Última sincronización: ${lastSync}` : ""}`}
+                  >
+                    {formatMonthColumn(month.key)}
+                  </th>
+                );
+              })}
               <th className="sticky right-0 z-20 border-l border-slate-500 bg-slate-600 px-2 py-2.5 text-center font-bold text-white dark:border-slate-600 dark:bg-slate-700">TOTAL (M)</th>
             </tr>
           </thead>
@@ -1008,7 +1059,7 @@ export const ErpCashPanel = () => {
                         />
                       </td>
                     </tr>
-                    {isGroupExpanded ? group.accounts.map((account) => {
+                    {isGroupExpanded ? renderSublevel(group.accounts.map((account) => {
                       const accountRowKey = `account:${group.key}:${account.cuenta_cash_id ?? "unmapped"}`;
                       const isAccountExpanded = expanded.has(accountRowKey);
                       const AccountToggleIcon = isAccountExpanded ? ChevronDown : ChevronRight;
@@ -1032,6 +1083,21 @@ export const ErpCashPanel = () => {
                                     onClick={() => setProjectionEditTarget({
                                       cuentaCashId: account.cuenta_cash_id!,
                                       cuentaCashNombre: account.cuenta_cash_nombre,
+                                    })}
+                                  >
+                                    <Calculator className="size-3.5" />
+                                  </Button>
+                                ) : null}
+                                {account.cuenta_cash_id != null ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-6 shrink-0 text-sky-700 hover:bg-sky-100 hover:text-sky-800 dark:text-sky-300 dark:hover:bg-sky-950"
+                                    title="Editar cuenta Cash"
+                                    aria-label={`Editar cuenta Cash ${account.cuenta_cash_nombre}`}
+                                    onClick={() => navigate(`/cashflow/setup/cuentas/edit/${account.cuenta_cash_id}?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`, {
+                                      state: { returnTo: `${location.pathname}${location.search}` },
                                     })}
                                   >
                                     <PencilLine className="size-3.5" />
@@ -1100,7 +1166,7 @@ export const ErpCashPanel = () => {
                           }) : null}
                         </Fragment>
                       );
-                    }) : null}
+                    }), group.label) : null}
                   </Fragment>
                 );
               })}
@@ -1128,6 +1194,36 @@ export const ErpCashPanel = () => {
         Importes expresados en millones. Saldo anterior, saldo del mes y saldo final provienen de erp_cash_saldos para las cuentas Fondo. Al expandir estas filas se muestra la apertura por cuenta contable.
       </p>
 
+      <Dialog open={rebuildOpen} onOpenChange={(open) => { if (!rebuilding) setRebuildOpen(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Actualizar Cash</DialogTitle>
+            <DialogDescription>
+              Aplicar los mapeos y métodos vigentes con los datos ya importados, hasta {formatPeriodLabel(rebuildEndPeriod)}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <label htmlFor="cash-rebuild-from" className="text-sm font-medium">Desde qué mes</label>
+            <Input id="cash-rebuild-from" type="month" min="2025-12" max={rebuildEndPeriod}
+              value={rebuildFrom} onChange={(event) => setRebuildFrom(event.target.value)} disabled={rebuilding} />
+            <p className="text-xs text-muted-foreground">
+              Por defecto, el primer mes en cierre o abierto. Diciembre de 2025 se conserva como saldo base; si lo elegís, se actualiza desde enero de 2026.
+            </p>
+            {!validRebuildFrom && <p role="alert" className="text-xs text-destructive">Seleccioná un mes entre diciembre de 2025 y {formatPeriodLabel(rebuildEndPeriod)}.</p>}
+          </div>
+          <p className="text-sm">
+            Se actualizarán también los meses cerrados del rango, sin reabrirlos. Se conservan los importes manuales y comprometidos.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRebuildOpen(false)} disabled={rebuilding}>Cancelar</Button>
+            <Button onClick={handleRebuild} disabled={!validRebuildFrom || rebuilding}>
+              <RefreshCw className={cn("size-4", rebuilding && "animate-spin")} />
+              {rebuilding ? "Actualizando…" : "Actualizar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <CashProjectionQuickEditDialog
         open={projectionEditTarget !== null}
         onOpenChange={(open) => { if (!open) closeProjectionEditor(); }}
@@ -1143,6 +1239,8 @@ export const ErpCashPanel = () => {
             <DialogTitle className="text-base">{balanceDetailTarget?.label ?? "Detalle de saldo"}</DialogTitle>
             <DialogDescription className="capitalize">
               {balanceDetailTarget ? formatPeriodLabel(balanceDetailTarget.month) : ""}
+              {balanceDetailTarget && data?.periods?.[balanceDetailTarget.month]?.estado === "EN_CIERRE"
+                ? " · Real provisional · En cierre" : ""}
               {balanceDetailTarget ? ` · ${balanceDetailAccounts.length} cuentas Fondo · importes en unidades` : ""}
             </DialogDescription>
           </DialogHeader>

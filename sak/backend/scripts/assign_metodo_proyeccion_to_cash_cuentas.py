@@ -74,7 +74,9 @@ def get_metodo(session: Session, nombre: str) -> MetodoProyeccion:
 
 
 def run(args: argparse.Namespace) -> int:
+    from app.services.cash_projection_configuration import lock_projection_configuration, validate_cash_dependencies
     with Session(engine) as session:
+        lock_projection_configuration(session)
         metodo = get_metodo(session, args.nombre)
         filters = [ErpCashCuenta.id_metodo_proyeccion.is_distinct_from(metodo.id)]
         if not args.include_deleted:
@@ -124,8 +126,11 @@ def run(args: argparse.Namespace) -> int:
                 id_metodo_proyeccion=metodo.id,
                 updated_at=datetime.now(UTC),
                 version=ErpCashCuenta.version + 1,
+                **({"cuenta_cash_referencia_id": None, "porcentaje": None} if metodo.tipo_calculo != "RELACIONAL" else {}),
             )
         )
+        session.flush()
+        validate_cash_dependencies(session)
         session.commit()
         updated = result.rowcount if result.rowcount is not None else rows_to_update
         print(f"Cuentas Cash actualizadas: {updated}")

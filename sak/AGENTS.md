@@ -17,6 +17,11 @@ Instrucciones para agentes automatizados que trabajen en este repo.
 - CRUD frontend: ver doc/patrones/crud_frontend.md
 - Migraciones: ver doc/patrones/migraciones.md
 
+## Despliegue Cloud Run
+- Configuración de CPU, facturación y mínimos del agente v3 por ambiente: ver `doc/02-deployment/cloud-run-agente-v3.md`.
+- El agente procesa mensajes después de responder al webhook; conservar CPU disponible fuera de solicitudes (`--no-cpu-throttling`) en los servicios que ejecutan este flujo.
+- Verificar los mínimos del servicio y de la revisión y mantenerlos coherentes en los scripts y workflows de despliegue.
+
 ## Tests
 - Por defecto, ejecutar tests focalizados segun los archivos modificados, no suites completas.
 - Si el cambio afecta un flujo del agente, correr los tests especificos del subproceso y del componente tocado con `pytest ruta -k "caso1 or caso2"`.

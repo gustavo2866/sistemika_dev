@@ -1,0 +1,1 @@
+export { ErpRealesPanel } from "./panel";

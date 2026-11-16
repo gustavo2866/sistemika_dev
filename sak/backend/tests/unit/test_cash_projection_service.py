@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import event
 from sqlmodel import Session, select
 
 from app.models.erp.cash_cuenta import ErpCashCuenta
@@ -11,7 +12,6 @@ from app.models.erp.cash_proyectado import ErpCashProyectado
 from app.models.metodo_proyeccion import (
     FuncionProyeccion,
     MetodoProyeccion,
-    MetodoProyeccionCuenta,
     MetodoProyeccionDetalle,
 )
 from app.services.cash_projection_service import (
@@ -77,7 +77,34 @@ def _add_real(
     )
 
 
-def test_calcula_mes_combinando_real_erp_cerrado_y_proyectado_abierto(db_session: Session):
+def test_calculo_de_24_meses_reutiliza_fuentes_sin_consultas_por_mes(db_session):
+    method, account = _create_method(db_session, target_month=1,
+        from_offset=-1, to_offset=-1, factor=Decimal("2"))
+    for month in range(2, 13):
+        db_session.add(MetodoProyeccionDetalle(id_metodo_proyeccion=method.id,
+            mes_destino=month, mes_base_desde=-1, mes_base_hasta=-1,
+            funcion=FuncionProyeccion.ULTIMO, factor=2))
+    db_session.add(ErpCashProyectado(cuenta_cash_id=account.id,
+        fecha_periodo=date(2025, 12, 1), importe_proyectado=100))
+    db_session.commit()
+    account_id = account.id
+    queries = []
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            queries.append(statement)
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        results = project_cash_account_range(db_session, cash_account_id=account_id,
+            period_from=date(2026, 1, 1), period_to=date(2027, 12, 1))
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert len(results) == 24
+    assert [row.projected_value for row in results] == [Decimal(100 * 2 ** n) for n in range(1, 25)]
+    assert len(queries) <= 10
+
+
+def test_calcula_mes_combinando_real_cash_cerrado_y_proyectado_abierto(db_session: Session):
     method, account = _create_method(
         db_session,
         target_month=4,
@@ -88,23 +115,12 @@ def test_calcula_mes_combinando_real_erp_cerrado_y_proyectado_abierto(db_session
     )
     db_session.add_all(
         [
-            MetodoProyeccionCuenta(
-                id_metodo_proyeccion=method.id,
-                nro_cuenta=410101,
-                activo=True,
-            ),
-            MetodoProyeccionCuenta(
-                id_metodo_proyeccion=method.id,
-                nro_cuenta=410102,
-                activo=True,
-            ),
             ErpCashPeriodo(fecha_periodo=date(2026, 2, 1), estado="CERRADO"),
             ErpCashPeriodo(fecha_periodo=date(2026, 3, 1), estado="ABIERTO"),
             ErpCashProyectado(
                 cuenta_cash_id=account.id,
                 fecha_periodo=date(2026, 3, 1),
-                tipo="PROYECCION",
-                importe=Decimal("50"),
+                importe_proyectado=Decimal("50"),
             ),
         ]
     )
@@ -140,10 +156,10 @@ def test_calcula_mes_combinando_real_erp_cerrado_y_proyectado_abierto(db_session
         target_month=date(2026, 4, 20),
     )
 
-    assert result.base_value == Decimal("350")
-    assert result.projected_value == Decimal("525.00")
+    assert result.base_value == Decimal("1050")
+    assert result.projected_value == Decimal("1575.00")
     assert [(item.month, item.source, item.value) for item in result.base_values] == [
-        (date(2026, 2, 1), "REAL_CUENTAS_ERP", Decimal("300")),
+        (date(2026, 2, 1), "REAL_CUENTA_CASH", Decimal("1000")),
         (date(2026, 3, 1), "PROYECTADO_EXISTENTE", Decimal("50")),
     ]
 
@@ -306,8 +322,8 @@ def test_proyecta_rango_en_orden_y_reutiliza_resultados_sin_persistir(db_session
             ErpCashProyectado(
                 cuenta_cash_id=account.id,
                 fecha_periodo=date(2026, 9, 1),
-                tipo="PROYECCION",
-                importe=Decimal("999"),
+                importe_proyectado=Decimal("999"),
+                origen_proyectado="CALCULADO",
             ),
         ]
     )
@@ -343,7 +359,6 @@ def test_proyecta_rango_en_orden_y_reutiliza_resultados_sin_persistir(db_session
     assert results[0].projection_method_name == method.nombre
     assert results[0].base_month_from == -1
     assert results[0].base_month_to == -1
-    assert results[0].erp_account_numbers == ()
 
     stored_rows = db_session.exec(
         select(ErpCashProyectado).where(
@@ -352,7 +367,7 @@ def test_proyecta_rango_en_orden_y_reutiliza_resultados_sin_persistir(db_session
         )
     ).all()
     assert len(stored_rows) == 1
-    assert stored_rows[0].importe == Decimal("999")
+    assert stored_rows[0].importe_proyectado == Decimal("999")
 
 
 def test_proyectar_rango_rechaza_periodos_invertidos(db_session: Session):
