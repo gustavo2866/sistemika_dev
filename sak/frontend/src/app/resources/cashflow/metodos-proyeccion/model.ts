@@ -106,6 +106,19 @@ const booleanFromInput = z.preprocess((value) => {
   return Boolean(value);
 }, z.boolean());
 
+const toFactorNumber = (value: unknown) => {
+  if (value == null || (typeof value === "string" && !value.trim())) return NaN;
+  return Number(typeof value === "string" ? value.trim().replace(",", ".") : value);
+};
+
+const hasValidWeightedFactor = (detalle: { funcion?: FuncionProyeccion | null; factor: number }) =>
+  detalle.funcion !== "AJUSTE_PONDERADO" || (detalle.factor >= 0 && detalle.factor <= 1);
+
+const weightedFactorValidation = {
+  message: "El factor de Ajuste ponderado debe estar entre 0 y 1",
+  path: ["factor"],
+};
+
 export const metodoProyeccionDetalleSchema = z
   .object({
     id: optionalId,
@@ -114,16 +127,25 @@ export const metodoProyeccionDetalleSchema = z
     mes_base_desde: z.coerce.number().int().max(-1, "Seleccioná un mes anterior al mes destino"),
     mes_base_hasta: z.coerce.number().int().max(-1, "Seleccioná un mes anterior al mes destino"),
     funcion: z.enum(["PROMEDIO", "SUMA", "MAX", "MIN", "ULTIMO", "AJUSTE_PONDERADO"]).nullable(),
-    factor: z.coerce.number().finite(),
+    factor: z.preprocess(toFactorNumber, z.number().finite()),
   })
   .refine((detalle) => detalle.mes_base_desde <= detalle.mes_base_hasta, {
     message: "La base hasta debe ser igual o posterior a la base desde",
     path: ["mes_base_hasta"],
   })
-  .refine((detalle) => detalle.funcion !== "AJUSTE_PONDERADO" || (detalle.factor >= 0 && detalle.factor <= 1), {
-    message: "El factor de Ajuste ponderado debe estar entre 0 y 1",
-    path: ["factor"],
-  });
+  .refine(hasValidWeightedFactor, weightedFactorValidation);
+
+export const metodoProyeccionDefaultSchema = z.object({
+  funcion: metodoProyeccionDetalleSchema.shape.funcion.unwrap(),
+  factor: metodoProyeccionDetalleSchema.shape.factor,
+}).refine(hasValidWeightedFactor, weightedFactorValidation);
+
+export const applyMetodoProyeccionDefaults = <T extends MetodoProyeccionDetalle>(
+  detalles: T[], values: z.input<typeof metodoProyeccionDefaultSchema>,
+) => {
+  const defaults = metodoProyeccionDefaultSchema.parse(values);
+  return detalles.map((detalle) => ({ ...detalle, ...defaults }));
+};
 
 export const metodoProyeccionSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio").max(200),
@@ -189,7 +211,7 @@ export const normalizeMetodoProyeccionPayload = (
         mes_base_desde: Number(detalle.mes_base_desde),
         mes_base_hasta: Number(detalle.mes_base_hasta),
         funcion: detalle.funcion || null,
-        factor: Number(detalle.factor),
+        factor: toFactorNumber(detalle.factor),
       };
       const id = toOptionalNumber(detalle.id);
       const version = toOptionalNumber(detalle.version);

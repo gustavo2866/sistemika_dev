@@ -5,13 +5,31 @@ import { useMemo } from "react";
 import { required, useGetList, useRecordContext } from "ra-core";
 
 import { FormOrderToolbar } from "@/components/forms";
-import { FormReferenceAutocomplete, FormSelect, FormText, HiddenInput, SectionBaseTemplate } from "@/components/forms/form_order";
+import { FormReferenceAutocomplete, FormSelect, HiddenInput, SectionBaseTemplate } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/simple-form";
 import type { ErpCuenta } from "../../erp/cuentas/model";
 import { ERP_CASH_MAP_DEFAULT, erpCashMapSchema, type ErpCashMap, type ErpCashMapFormValues } from "./model";
 
 export const ErpCashMapForm = () => {
   const record = useRecordContext<ErpCashMap>();
+  const currencies = useGetList<{ id: number; codigo: string; nombre: string }>("monedas", {
+    pagination: { page: 1, perPage: 1000 },
+    sort: { field: "codigo", order: "ASC" },
+    filter: {},
+  });
+  const currencyChoices = useMemo(() => {
+    const choices = new Map(
+      (currencies.data ?? []).map((currency) => [
+        currency.codigo,
+        { id: currency.codigo, name: `${currency.codigo} — ${currency.nombre}` },
+      ]),
+    );
+    const currentCurrency = record?.moneda ?? ERP_CASH_MAP_DEFAULT.moneda;
+    if (currentCurrency && !choices.has(currentCurrency)) {
+      choices.set(currentCurrency, { id: currentCurrency, name: currentCurrency });
+    }
+    return [...choices.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }, [currencies.data, record?.moneda]);
   const accounts = useGetList<ErpCuenta>("erp/cuentas", {
     pagination: { page: 1, perPage: 1000 },
     sort: { field: "nro_cuenta", order: "ASC" },
@@ -70,7 +88,18 @@ export const ErpCashMapForm = () => {
               parse={(value) => value === "" ? undefined : Number(value)}
               widthClass="w-full"
             />
-            <FormText source="moneda" label="Moneda" validate={required()} widthClass="w-full" maxLength={10} />
+            <FormSelect
+              source="moneda"
+              label="Moneda"
+              choices={currencyChoices}
+              validate={required()}
+              isPending={currencies.isPending}
+              disabled={Boolean(currencies.error)}
+              helperText={currencies.error ? "No se pudieron cargar las monedas" : undefined}
+              emptyText="Seleccionar moneda"
+              disableClear
+              widthClass="w-full"
+            />
             <FormSelect
               source="categoria"
               label="Categoría"

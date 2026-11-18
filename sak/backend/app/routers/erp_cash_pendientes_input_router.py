@@ -51,8 +51,8 @@ def assign_erp_cash_pendientes_accounts(
 @erp_cash_pendientes_input_router.get("/pending-projection/detail")
 def get_erp_cash_pendientes_projection_detail(
     cuenta_cash_id: int = Query(..., gt=0),
-    fecha_desde: date = Query(...),
-    fecha_hasta: date = Query(...),
+    fecha_desde: date | None = Query(default=None),
+    fecha_hasta: date | None = Query(default=None),
     session: Session = Depends(get_session),
 ):
     try:

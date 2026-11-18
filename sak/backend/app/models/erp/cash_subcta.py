@@ -1,6 +1,6 @@
 from typing import ClassVar, List
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlmodel import Field
 
 from app.models.base import Base
@@ -10,9 +10,11 @@ class ErpCashSubcta(Base, table=True):
     __tablename__ = "erp_cash_subctas"
     __table_args__ = (
         UniqueConstraint("tpo_subcta", "nro_subcta", name="uq_erp_cash_subctas_tipo_numero"),
+        CheckConstraint("estado IN ('activa', 'error', 'bloqueada')", name="ck_cash_subcta_estado"),
+        CheckConstraint("estado <> 'activa' OR (categoria IS NOT NULL AND trim(categoria) <> '' AND lower(trim(categoria)) <> 'error')", name="ck_cash_subcta_activa_categoria"),
     )
 
-    __searchable_fields__: ClassVar[List[str]] = ["descripcion", "categoria"]
+    __searchable_fields__: ClassVar[List[str]] = ["nro_subcta", "descripcion", "categoria"]
 
     tpo_subcta: int = Field(
         index=True,
@@ -27,7 +29,9 @@ class ErpCashSubcta(Base, table=True):
         index=True,
         description="Numero de subcuenta cash",
     )
-    categoria: str = Field(
+    estado: str = Field(default="activa", max_length=10, index=True)
+    categoria: str | None = Field(
+        default=None,
         max_length=50,
         index=True,
         description="Categoria asociada a la subcuenta",

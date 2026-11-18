@@ -115,3 +115,31 @@ def test_plan_aplica_altas_cambios_restauraciones_y_bajas(db_session):
     assert rows[1].descripcion == "Nombre nuevo"
     assert rows[1].categoria == "Administracion"
     assert rows[2].deleted_at is None
+
+
+@pytest.mark.parametrize("deleted", [False, True])
+def test_importador_no_modifica_restaura_ni_elimina_bloqueadas(db_session, deleted):
+    rows = [ErpCashSubcta(tpo_subcta=1, nro_subcta=number, descripcion="Original", categoria="Obras",
+                         estado="bloqueada", deleted_at=datetime.now(UTC) if deleted else None)
+            for number in (10, 20)]
+    db_session.add_all(rows)
+    db_session.commit()
+    seeds = [CashSubctaSeed(1, 10, "Nombre cambiado", "Otra")]
+    plan = build_sync_plan(db_session, seeds)
+    assert not plan.to_update and not plan.to_delete and not plan.to_restore
+    apply_sync_plan(db_session, plan)
+    verify_active_rows(db_session, seeds)
+    for row in rows:
+        assert row.estado == "bloqueada"
+        assert row.categoria == "Obras"
+        assert row.descripcion == "Original"
+        assert (row.deleted_at is not None) == deleted
+
+
+def test_importador_traduce_error_a_estado_y_es_idempotente(db_session):
+    seeds = [CashSubctaSeed(1, 10, "Sin clasificar", "ERROR")]
+    apply_sync_plan(db_session, build_sync_plan(db_session, seeds))
+    verify_active_rows(db_session, seeds)
+    row = db_session.exec(select(ErpCashSubcta)).one()
+    assert row.estado == "error" and row.categoria is None
+    assert build_sync_plan(db_session, seeds).unchanged == 1

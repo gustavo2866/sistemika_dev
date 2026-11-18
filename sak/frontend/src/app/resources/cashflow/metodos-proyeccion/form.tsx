@@ -24,7 +24,11 @@ import {
   type SectionDetailFieldsProps,
 } from "@/components/forms/form_order";
 import { SimpleForm } from "@/components/simple-form";
-import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   TIPO_CALCULO_CHOICES,
@@ -34,6 +38,9 @@ import {
   getMesBaseChoices,
   getMesBaseRangeDescription,
   metodoProyeccionSchema,
+  metodoProyeccionDefaultSchema,
+  applyMetodoProyeccionDefaults,
+  type FuncionProyeccion,
   type MetodoProyeccionFormValues,
 } from "./model";
 
@@ -69,15 +76,16 @@ const GenerateDefaultDetailsButton = ({ disabled }: { disabled: boolean }) => {
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
+      <DropdownMenuItem
+        className="gap-2 text-[9px] sm:text-[10px]"
         disabled={disabled}
-        onClick={() => setConfirmOpen(true)}
+        onSelect={(event) => {
+          event.preventDefault();
+          setConfirmOpen(true);
+        }}
       >
         Generar default
-      </Button>
+      </DropdownMenuItem>
       <Confirm
         isOpen={confirmOpen}
         title="Generar configuración por defecto"
@@ -85,6 +93,76 @@ const GenerateDefaultDetailsButton = ({ disabled }: { disabled: boolean }) => {
         confirmColor="warning"
         onConfirm={handleConfirm}
         onClose={() => setConfirmOpen(false)}
+      />
+    </>
+  );
+};
+
+const ApplyDefaultDetailsMenuItem = ({ disabled }: { disabled: boolean }) => {
+  const [open, setOpen] = useState(false);
+  const [funcion, setFuncion] = useState<FuncionProyeccion>("ULTIMO");
+  const [factor, setFactor] = useState("1");
+  const { getValues, setValue } = useFormContext<MetodoProyeccionFormValues>();
+  const detalles = useWatch<MetodoProyeccionFormValues, "detalles">({ name: "detalles" }) ?? [];
+  const validation = metodoProyeccionDefaultSchema.safeParse({ funcion, factor });
+  const factorError = validation.success ? undefined
+    : validation.error.issues.find((issue) => issue.path[0] === "factor")?.message;
+
+  const handleConfirm = () => {
+    if (disabled || !validation.success) return;
+    setValue("detalles", applyMetodoProyeccionDefaults(getValues("detalles") ?? [], validation.data), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <DropdownMenuItem
+        className="gap-2 text-[9px] sm:text-[10px]"
+        disabled={disabled || !detalles.length}
+        onSelect={(event) => {
+          event.preventDefault();
+          const first = getValues("detalles")?.[0];
+          setFuncion(first?.funcion ?? "ULTIMO");
+          setFactor(String(first?.factor ?? 1));
+          setOpen(true);
+        }}
+      >
+        Aplicar default
+      </DropdownMenuItem>
+      <Confirm
+        isOpen={open}
+        title="Aplicar default"
+        content={
+          <div className="space-y-4">
+            <DialogDescription>
+              La función y el factor se aplicarán a las {detalles.length} reglas existentes.
+            </DialogDescription>
+            <div className="space-y-1">
+              <Label htmlFor="reglas-default-funcion">Función</Label>
+              <Select value={funcion} onValueChange={(value) => setFuncion(value as FuncionProyeccion)}>
+                <SelectTrigger id="reglas-default-funcion" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FUNCION_PROYECCION_CHOICES.map((choice) => <SelectItem key={choice.id} value={choice.id}>{choice.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="reglas-default-factor">Factor</Label>
+              <Input id="reglas-default-factor" inputMode="decimal" value={factor}
+                onChange={(event) => setFactor(event.target.value)} aria-invalid={Boolean(factorError)}
+                aria-describedby={factorError ? "reglas-default-factor-error" : undefined} />
+              {factorError && <p id="reglas-default-factor-error" className="text-sm text-destructive">{factorError}</p>}
+            </div>
+          </div>
+        }
+        confirm="Aplicar"
+        cancel="Cancelar"
+        confirmDisabled={disabled || !detalles.length || !validation.success}
+        onConfirm={handleConfirm}
+        onClose={() => setOpen(false)}
       />
     </>
   );
@@ -154,12 +232,11 @@ const MetodoProyeccionDetalleFields = ({ isActive }: SectionDetailFieldsProps) =
         />
       </DetailFieldCell>
       <DetailFieldCell label="Factor">
-        <FormNumber
+        <FormText
           source="factor"
           label={false}
-          min={weighted ? 0 : undefined}
-          max={weighted ? 1 : undefined}
-          step={0.0001}
+          inputMode="decimal"
+          format={(value) => value == null ? "" : String(value)}
           validate={required()}
           widthClass="w-full"
           readOnly={!isActive}
@@ -200,7 +277,10 @@ const HistoricalRules = ({ disabled, onActiveRowChange }: { disabled: boolean; o
     title="Reglas de cálculo" detailsSource="detalles" mainColumns={detalleColumns}
     mainFields={MetodoProyeccionDetalleFields} defaults={getMetodoProyeccionDetalleDefaults}
     addButtonLabel="Agregar regla" onActiveRowChange={onActiveRowChange}
-    actions={<GenerateDefaultDetailsButton disabled={disabled} />} />;
+    actions={<>
+      <GenerateDefaultDetailsButton disabled={disabled} />
+      <ApplyDefaultDetailsMenuItem disabled={disabled} />
+    </>} />;
 };
 
 export const MetodoProyeccionForm = () => {
@@ -215,7 +295,7 @@ export const MetodoProyeccionForm = () => {
   );
   return (
       <SimpleForm<MetodoProyeccionFormValues>
-        className="w-full max-w-4xl"
+        className="w-full max-w-5xl"
         resolver={zodResolver(metodoProyeccionSchema) as any}
         toolbar={
           <FormOrderToolbar

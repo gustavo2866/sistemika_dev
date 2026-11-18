@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -67,8 +67,9 @@ normalize_categoria = normalize_cash_category
 
 
 def _subcuenta_key(row: Any) -> tuple[int, int] | None:
-    tipo = str(getattr(row, "tipo_subcuenta", "") or "").strip()
-    numero = str(getattr(row, "nro_subcuenta", "") or "").strip()
+    get_value = row.get if isinstance(row, Mapping) else lambda field: getattr(row, field, None)
+    tipo = str(get_value("tipo_subcuenta") or "").strip()
+    numero = str(get_value("nro_subcuenta") or "").strip()
     if not tipo or not numero:
         return None
     try:
@@ -77,12 +78,21 @@ def _subcuenta_key(row: Any) -> tuple[int, int] | None:
         return None
 
 
+def _preserved_rows(session: Session, model, anio: int, mes: int, blocked_keys: set[tuple[int, int]]) -> dict[int, int]:
+    if not blocked_keys:
+        return {}
+    rows = session.exec(select(model.id, model.source_id, model.tipo_subcuenta, model.nro_subcuenta)
+                        .where(model.periodo_anio == anio, model.periodo_mes == mes)).all()
+    return {row.id: row.source_id for row in rows if _subcuenta_key(row) in blocked_keys}
+
+
 def build_cash_diario_payloads(
     source_rows: Iterable[Any],
     rubros_by_cuenta: dict[int, str],
     mappings_by_key: dict[tuple[int, str], ErpCashMap],
     fondo_mappings_by_cuenta: dict[int, ErpCashMap],
     categories_by_subcuenta: dict[tuple[int, int], str],
+    states_by_subcuenta: dict[tuple[int, int], str] | None = None,
 ) -> list[dict[str, Any]]:
     rows = [row for row in source_rows if row.empresa_id in CASH_EMPRESA_IDS]
     fondo_account_codes = set(fondo_mappings_by_cuenta)
@@ -96,6 +106,8 @@ def build_cash_diario_payloads(
     for row in rows:
         if _asiento_key(row) not in cash_asientos:
             continue
+        if states_by_subcuenta and states_by_subcuenta.get(_subcuenta_key(row)) == "bloqueada":
+            continue
 
         rubro = rubros_by_cuenta.get(row.cuenta_codigo)
         side = "debe" if _has_value(row.debe) else "haber" if _has_value(row.haber) else None
@@ -106,6 +118,7 @@ def build_cash_diario_payloads(
             mappings_by_key=mappings_by_key,
             fondo_mappings_by_cuenta=fondo_mappings_by_cuenta,
             categories_by_subcuenta=categories_by_subcuenta,
+            states_by_subcuenta=states_by_subcuenta,
         )
 
         payloads.append(
@@ -213,13 +226,18 @@ def sync_cash_diario_periodo(
             deleted_subcuentas.setdefault(key, subcuenta)
 
     categories_by_subcuenta = {
-        key: subcuenta.categoria for key, subcuenta in active_subcuentas.items()
+        key: subcuenta.categoria for key, subcuenta in active_subcuentas.items() if subcuenta.estado == "activa"
+    }
+    states_by_subcuenta = {
+        (subcuenta.tpo_subcta, subcuenta.nro_subcta): subcuenta.estado
+        for subcuenta in stored_subcuentas
+        if subcuenta.deleted_at is None or subcuenta.estado == "bloqueada"
     }
     new_subcuentas: list[ErpCashSubcta] = []
     revived_subcuentas: list[tuple[ErpCashSubcta, str]] = []
     for row in cash_rows:
         subcuenta_key = _subcuenta_key(row)
-        if subcuenta_key is None or subcuenta_key in categories_by_subcuenta:
+        if subcuenta_key is None or subcuenta_key in states_by_subcuenta:
             continue
         description = str(getattr(row, "descripcion", "") or "").strip()
         if not description:
@@ -234,10 +252,11 @@ def sync_cash_diario_periodo(
                     tpo_subcta=subcuenta_key[0],
                     nro_subcta=subcuenta_key[1],
                     descripcion=description,
-                    categoria="ERROR",
+                    categoria=None,
+                    estado="error",
                 )
             )
-        categories_by_subcuenta[subcuenta_key] = "ERROR"
+        states_by_subcuenta[subcuenta_key] = "error"
 
     payloads = build_cash_diario_payloads(
         source_rows,
@@ -245,6 +264,7 @@ def sync_cash_diario_periodo(
         mappings_by_key,
         fondo_mappings_by_cuenta,
         categories_by_subcuenta,
+        states_by_subcuenta,
     )
     if saldo_source_rows is None:
         provided_saldo_rows = fetch_cash_saldo_source_rows(
@@ -258,6 +278,17 @@ def sync_cash_diario_periodo(
         provided_saldo_rows,
         fondo_account_codes,
     )
+    blocked_keys = {key for key, state in states_by_subcuenta.items() if state == "bloqueada"}
+    saldo_payloads = [payload for payload in saldo_payloads
+                      if _subcuenta_key(payload) not in blocked_keys]
+    # La reconstrucción conserva los movimientos y saldos que ya estaban importados
+    # al bloquear: no los actualiza ni incorpora nuevas filas de esas subcuentas.
+    preserved_diario = _preserved_rows(session, ErpCashDiario, anio, mes, blocked_keys)
+    preserved_saldos = _preserved_rows(session, ErpCashSaldo, anio, mes, blocked_keys)
+    preserved_diario_sources = set(preserved_diario.values())
+    preserved_saldo_sources = set(preserved_saldos.values())
+    payloads = [payload for payload in payloads if payload["source_id"] not in preserved_diario_sources]
+    saldo_payloads = [payload for payload in saldo_payloads if payload["source_id"] not in preserved_saldo_sources]
 
     deleted_count = session.scalar(
         select(func.count())
@@ -280,7 +311,8 @@ def sync_cash_diario_periodo(
         for subcuenta, description in revived_subcuentas:
             subcuenta.deleted_at = None
             subcuenta.descripcion = description
-            subcuenta.categoria = "ERROR"
+            subcuenta.categoria = None
+            subcuenta.estado = "error"
             subcuenta.version += 1
             session.add(subcuenta)
         session.add_all(new_subcuentas)
@@ -289,6 +321,7 @@ def sync_cash_diario_periodo(
                 delete(ErpCashDiario).where(
                     ErpCashDiario.periodo_anio == anio,
                     ErpCashDiario.periodo_mes == mes,
+                    ErpCashDiario.id.notin_(list(preserved_diario)),
                 )
             )
             session.add_all(ErpCashDiario(**payload) for payload in payloads)
@@ -297,6 +330,7 @@ def sync_cash_diario_periodo(
                 delete(ErpCashSaldo).where(
                     ErpCashSaldo.periodo_anio == anio,
                     ErpCashSaldo.periodo_mes == mes,
+                    ErpCashSaldo.id.notin_(list(preserved_saldos)),
                 )
             )
             session.add_all(ErpCashSaldo(**payload) for payload in saldo_payloads)
@@ -306,8 +340,8 @@ def sync_cash_diario_periodo(
             cash_period.version += 1
         cash_period.ultima_sincronizacion = datetime.now(timezone.utc)
         cash_period.updated_at = cash_period.ultima_sincronizacion
-        cash_period.movimientos_count = len(payloads) if diary_available else int(deleted_count)
-        cash_period.saldos_count = len(saldo_payloads) if mayor_available else int(saldos_deleted_count)
+        cash_period.movimientos_count = len(payloads) + len(preserved_diario) if diary_available else int(deleted_count)
+        cash_period.saldos_count = len(saldo_payloads) + len(preserved_saldos) if mayor_available else int(saldos_deleted_count)
         session.add(cash_period)
         if auto_commit:
             session.commit()
@@ -319,9 +353,9 @@ def sync_cash_diario_periodo(
 
     return {
         "periodo": f"{anio:04d}-{mes:02d}",
-        "rows_deleted": int(deleted_count) if diary_available else 0,
+        "rows_deleted": int(deleted_count) - len(preserved_diario) if diary_available else 0,
         "rows_inserted": len(payloads),
-        "saldos_deleted": int(saldos_deleted_count) if mayor_available else 0,
+        "saldos_deleted": int(saldos_deleted_count) - len(preserved_saldos) if mayor_available else 0,
         "saldos_inserted": len(saldo_payloads),
         "cuentas_fondo": len(fondo_account_codes),
     }

@@ -9,7 +9,7 @@ from sqlmodel import Session
 from app.core.generic_crud import GenericCRUD
 from app.core.router import create_generic_router
 from app.db import get_session
-from app.models.erp.cash_proyectado import ErpCashProyectado, projection_method_values
+from app.models.erp.cash_proyectado import ErpCashProyectado, clean_projection_observation, projection_method_values
 from app.models.erp.cash_proyectado_quick_edit import (
     calculate_projection_quick_edit,
     get_projection_quick_edit,
@@ -25,7 +25,8 @@ class CashProyectadoCRUD(GenericCRUD[ErpCashProyectado]):
     def create(self, session, data, auto_commit=True):
         data = dict(data)
         data.pop("total_proyectado", None)
-        data["origen_proyectado"] = "MANUAL"
+        data.setdefault("origen_proyectado", "CALCULADO")
+        data["observacion"] = clean_projection_observation(data.get("observacion"))
         data.update(projection_method_values(session, int(data["cuenta_cash_id"]), data.get("id_metodo_proyeccion")))
         return super().create(session, data, auto_commit=auto_commit)
 
@@ -36,6 +37,8 @@ class CashProyectadoCRUD(GenericCRUD[ErpCashProyectado]):
         data = dict(data)
         data.pop("total_proyectado", None)
         data.pop("tipo_calculo", None)
+        if "observacion" in data:
+            data["observacion"] = clean_projection_observation(data["observacion"])
         data.pop("origen_proyectado", None)
         if "importe_proyectado" in data and Decimal(str(data["importe_proyectado"])) != existing.importe_proyectado:
             data["origen_proyectado"] = "MANUAL"
@@ -115,6 +118,7 @@ def update_erp_cash_projection_quick_edit(
     payload: ProjectionQuickEditPayload,
     cuenta_cash_id: int = Query(..., gt=0),
     anio: int | None = Query(default=None),
+    calcular: bool = Query(default=False),
     session: Session = Depends(get_session),
 ):
     values = {item.periodo: item.importe_proyectado for item in payload.values}
@@ -141,7 +145,10 @@ def update_erp_cash_projection_quick_edit(
             if {"cuenta_cash_referencia_id", "porcentaje"} & payload.model_fields_set else None,
             reference_from=payload.periodo_referencia,
             historical_confirmed=payload.confirmar_historico,
+            calculate=calcular,
         )
+    except ProjectionDataError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -96,4 +96,35 @@ def test_assign_cash_accounts_reutiliza_categoria_fallback_y_lado_del_mapeo(db_s
         "rows_unchanged": 0,
         "rows_unmapped": 1,
         "rows_invalid": 1,
+        "rows_blocked": 0,
     }
+
+
+def test_assignment_respeta_bloqueo_incluso_con_overwrite_y_mapeo_fondo(db_session):
+    from datetime import datetime, timezone
+
+    empresa = ErpEmpresa(empresa_id=1, empresa_nombre="BATIA", grupo="wcl")
+    fondo = ErpCashCuenta(tipo="Fondo", descripcion="Banco")
+    blocked = ErpCashSubcta(tpo_subcta=1, nro_subcta=4566, descripcion="Bloqueada", categoria="Obras",
+                           estado="bloqueada", deleted_at=datetime.now(timezone.utc))
+    db_session.add_all([empresa, fondo, blocked])
+    db_session.flush()
+    db_session.add(ErpCashMap(nro_cta=1392, moneda="ARS", map_debe_id=fondo.id, map_haber_id=fondo.id))
+    assigned = _pending(empresa.id, 1, tipsub_raw="01", nrosub_raw="04566", saldo_raw="10")
+    assigned.cuenta_cash_id = fondo.id
+    unassigned = _pending(empresa.id, 2, tipsub_raw="1", nrosub_raw="4566", saldo_raw="20")
+    db_session.add_all([assigned, unassigned])
+    db_session.commit()
+    version = assigned.version
+    result = assign_cash_accounts_to_pendientes(db_session, overwrite=True)
+    assert result["rows_blocked"] == 2
+    assert assigned.cuenta_cash_id == fondo.id
+    assert assigned.version == version
+    assert unassigned.cuenta_cash_id is None
+    blocked.estado = "activa"
+    blocked.deleted_at = None
+    db_session.add(blocked)
+    db_session.commit()
+    result = assign_cash_accounts_to_pendientes(db_session)
+    assert result["rows_assigned"] == 1
+    assert unassigned.cuenta_cash_id == fondo.id

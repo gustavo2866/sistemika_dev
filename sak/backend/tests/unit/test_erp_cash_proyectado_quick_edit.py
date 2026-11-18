@@ -261,6 +261,92 @@ def test_api_previsualizacion_y_confirmacion_historica(db_session):
         assert saved.status_code == 200, saved.text
 
 
+def test_guardar_y_calcular_usa_manual_guardado_y_persiste_resultados(db_session):
+    account, manual, _ = _manual_calculation_case(db_session)
+    months = projection_months(db_session)
+    result = save_projection_quick_edit(
+        db_session, account.id, 2026,
+        {month: Decimal("345") if month == manual.fecha_periodo else Decimal("0") for month in months},
+        projection_origins={month: "MANUAL" if month == manual.fecha_periodo else "CALCULADO" for month in months},
+        committed_values={month: (Decimal("7"), "Conservar") for month in months},
+        calculate=True,
+    )
+    db_session.expire_all()
+    rows = db_session.exec(select(ErpCashProyectado).where(
+        ErpCashProyectado.cuenta_cash_id == account.id).order_by(ErpCashProyectado.fecha_periodo)).all()
+    assert [row.importe_proyectado for row in rows] == [Decimal("345")] * 24
+    assert rows[0].origen_proyectado == "MANUAL"
+    assert all(row.origen_proyectado == "CALCULADO" for row in rows[1:])
+    assert all(row.importe_comprometido == 7 and row.observacion == "Conservar" for row in rows)
+    assert result["calculated"] == 23
+    assert result["created"] + result["updated"] + result["unchanged"] == 24
+
+
+def test_guardar_y_calcular_usa_metodo_referencia_y_factor_guardados(db_session):
+    account, _, _ = _manual_calculation_case(db_session)
+    reference = ErpCashCuenta(descripcion="Referencia manual", tipo="Egreso")
+    method = MetodoProyeccion(nombre="Relacional guardado", tipo_calculo="RELACIONAL", activo=True)
+    db_session.add_all([reference, method])
+    db_session.flush()
+    months = projection_months(db_session)
+    db_session.add_all([ErpCashProyectado(cuenta_cash_id=reference.id, fecha_periodo=month,
+        importe_proyectado=Decimal("200"), origen_proyectado="MANUAL") for month in months])
+    db_session.commit()
+    result = save_projection_quick_edit(
+        db_session, account.id, 2026, {month: Decimal("0") for month in months},
+        projection_method_id=method.id,
+        projection_origins={month: "CALCULADO" for month in months},
+        relational_values={"cuenta_cash_referencia_id": reference.id, "porcentaje": Decimal("15")},
+        calculate=True,
+    )
+    db_session.expire_all()
+    assert (account.id_metodo_proyeccion, account.cuenta_cash_referencia_id, account.porcentaje) == (method.id, reference.id, 15)
+    rows = db_session.exec(select(ErpCashProyectado).where(ErpCashProyectado.cuenta_cash_id == account.id)).all()
+    assert len(rows) == result["calculated"] == 24
+    assert all(row.importe_proyectado == 30 and row.id_metodo_proyeccion == method.id and row.tipo_calculo == "RELACIONAL" for row in rows)
+
+
+def test_guardar_y_calcular_revierte_guardado_si_falla_calculo(db_session):
+    account, manual, _ = _manual_calculation_case(db_session)
+    original_method_id = account.id_metodo_proyeccion
+    method = MetodoProyeccion(nombre="Sin reglas", activo=True)
+    db_session.add(method)
+    db_session.commit()
+    months = projection_months(db_session)
+    with pytest.raises(ValueError):
+        save_projection_quick_edit(
+            db_session, account.id, 2026, {month: Decimal("0") for month in months},
+            projection_method_id=method.id,
+            projection_origins={month: "CALCULADO" for month in months}, calculate=True,
+        )
+    db_session.expire_all()
+    assert account.id_metodo_proyeccion == original_method_id
+    assert (manual.importe_proyectado, manual.origen_proyectado) == (999, "MANUAL")
+    assert len(db_session.exec(select(ErpCashProyectado).where(ErpCashProyectado.cuenta_cash_id == account.id)).all()) == 2
+
+
+@pytest.mark.parametrize("origin,calculated,amount", [("CALCULADO", 24, 100), ("MANUAL", 0, 0)])
+def test_api_guardar_y_calcular_persiste_resultados(db_session, origin, calculated, amount):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.db import get_session
+    from app.routers.erp_cash_proyectado_router import erp_cash_proyectado_router
+    account, _, _ = _manual_calculation_case(db_session)
+    app = FastAPI()
+    app.include_router(erp_cash_proyectado_router)
+    app.dependency_overrides[get_session] = lambda: db_session
+    with TestClient(app) as client:
+        response = client.put("/erp/cash/proyectado/quick-edit/values", params={
+            "cuenta_cash_id": account.id, "calcular": True,
+        }, json={"values": [{"periodo": month.isoformat(), "importe_proyectado": "0",
+            "origen_proyectado": origin} for month in projection_months(db_session)]})
+        assert response.status_code == 200, response.text
+        assert response.json()["calculated"] == calculated
+        fresh = client.get("/erp/cash/proyectado/quick-edit/values", params={"cuenta_cash_id": account.id})
+        assert fresh.status_code == 200
+        assert all(row["importe_proyectado"] == amount for row in fresh.json()["values"])
+
+
 def test_calcular_conserva_manual_y_coincide_con_actualizar(db_session):
     from app.services.cash_projection_generation_service import recalculate_cash_projections
     account, manual, automatic = _manual_calculation_case(db_session)
@@ -508,3 +594,57 @@ def test_edicion_rapida_conserva_y_actualiza_el_origen_del_importe(db_session):
     result=get_projection_quick_edit(db_session,account.id,2026)
     assert result["values"][0]["origen_proyectado"] == "MANUAL"
     assert result["values"][1]["origen_proyectado"] == "CALCULADO"
+
+
+def test_nuevos_periodos_del_editor_tienen_manual_apagado_sin_origen_explicito(db_session):
+    account = _create_projection_account(db_session)
+    db_session.commit()
+    initial = get_projection_quick_edit(db_session, account.id, 2026)
+    assert all(row["origen_proyectado"] == "CALCULADO" for row in initial["values"])
+    months = projection_months(db_session)
+    save_projection_quick_edit(db_session, account.id, 2026, {month: Decimal("100") for month in months})
+    rows = db_session.exec(select(ErpCashProyectado)).all()
+    assert len(rows) == len(months)
+    assert all(row.origen_proyectado == "CALCULADO" for row in rows)
+
+
+def test_recalcular_limpia_detalle_auto_y_conserva_notas_del_usuario(db_session):
+    from app.services.cash_projection_generation_service import recalculate_cash_projections
+
+    account, manual, automatic = _manual_calculation_case(db_session)
+    automatic.observacion = "AUTO: base real anterior"
+    db_session.add(automatic)
+    db_session.commit()
+    for _ in range(2):
+        recalculate_cash_projections(db_session, date(2026, 1, 1), date(2026, 3, 1))
+        db_session.commit()
+        db_session.refresh(manual)
+        db_session.refresh(automatic)
+        assert manual.observacion == "Conservar"
+        assert manual.importe_comprometido == 7
+        assert automatic.observacion is None
+        created = db_session.exec(select(ErpCashProyectado).where(
+            ErpCashProyectado.cuenta_cash_id == account.id,
+            ErpCashProyectado.fecha_periodo == date(2026, 3, 1),
+        )).one()
+        assert created.observacion is None
+
+
+def test_guardar_descarta_detalle_auto_de_editor_antiguo(db_session):
+    account = _create_projection_account(db_session)
+    db_session.commit()
+    months = projection_months(db_session)
+    values = {month: Decimal("100") for month in months}
+    committed = {month: (Decimal("7"), "AUTO: ERP Cash Pendientes Input" if i == 0 else "Nota del usuario")
+                 for i, month in enumerate(months)}
+    save_projection_quick_edit(db_session, account.id, 2026, values, committed_values=committed)
+    rows = db_session.exec(select(ErpCashProyectado).order_by(ErpCashProyectado.fecha_periodo)).all()
+    assert rows[0].observacion is None
+    assert rows[1].observacion == "Nota del usuario"
+    assert all(row.importe_comprometido == 7 for row in rows)
+    rows[0].observacion = "AUTO: texto anterior"
+    db_session.add(rows[0])
+    db_session.commit()
+    save_projection_quick_edit(db_session, account.id, 2026, values)
+    db_session.refresh(rows[0])
+    assert rows[0].observacion is None

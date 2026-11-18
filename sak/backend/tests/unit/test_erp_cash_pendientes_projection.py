@@ -3,11 +3,13 @@ from decimal import Decimal
 
 from sqlmodel import select
 
+from app.models.base import current_utc_time
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_pendientes_input import ErpCashPendientesInput
 from app.models.erp.cash_periodo import ErpCashPeriodo
 from app.models.erp.cash_proyectado import ErpCashProyectado
 from app.models.erp.empresa import ErpEmpresa
+from app.models.erp.cash_subcta import ErpCashSubcta
 from app.services.erp_cash_pendientes_projection_service import (
     get_pending_projection_detail,
     rebuild_pending_cash_projection,
@@ -33,6 +35,76 @@ def _pending(
         saldo_raw=saldo,
         is_valid=is_valid,
     )
+
+
+def test_projection_y_detalle_excluyen_bloqueadas_previamente_asignadas(db_session):
+    empresa = ErpEmpresa(empresa_id=1, empresa_nombre="BATIA", grupo="wcl")
+    account = ErpCashCuenta(tipo="Egreso", descripcion="Obras")
+    blocked = ErpCashSubcta(tpo_subcta=1, nro_subcta=4566, descripcion="Bloqueada", estado="bloqueada", categoria="Obras")
+    db_session.add_all([empresa, account, blocked])
+    db_session.flush()
+    item = _pending(empresa.id, account.id, 1, "15/04/2026", "50")
+    item.tipsub_raw, item.nrosub_raw = "01", "04566"
+    existing = ErpCashProyectado(cuenta_cash_id=account.id, fecha_periodo=date(2026, 4, 1),
+                               importe_pendiente=Decimal("50"), importe_proyectado=Decimal("100"))
+    db_session.add_all([item, existing, ErpCashPeriodo(fecha_periodo=date(2026, 3, 1), estado="CERRADO")])
+    db_session.commit()
+    result = rebuild_pending_cash_projection(db_session)
+    assert result["inputs_blocked"] == 1
+    assert existing.importe_pendiente == 0
+    assert existing.importe_proyectado == Decimal("100")
+    assert item.cuenta_cash_id == account.id
+    detail = get_pending_projection_detail(db_session, cuenta_cash_id=account.id,
+                                          fecha_desde=date(2026, 4, 1), fecha_hasta=date(2026, 4, 30))
+    assert detail["count"] == 0
+    blocked.estado = "activa"
+    db_session.add(blocked)
+    db_session.commit()
+    rebuild_pending_cash_projection(db_session)
+    assert existing.importe_pendiente == Decimal("50")
+    detail = get_pending_projection_detail(db_session, cuenta_cash_id=account.id,
+                                          fecha_desde=date(2026, 4, 1), fecha_hasta=date(2026, 4, 30))
+    assert detail["count"] == 1
+
+
+def test_detalle_sin_fechas_incluye_todos_los_pendientes_de_la_cuenta(db_session):
+    empresa = ErpEmpresa(empresa_id=1, empresa_nombre="BATIA", grupo="wcl")
+    account = ErpCashCuenta(tipo="Egreso", descripcion="Cuenta A")
+    other = ErpCashCuenta(tipo="Egreso", descripcion="Cuenta B")
+    blocked = ErpCashSubcta(tpo_subcta=1, nro_subcta=4566, descripcion="Bloqueada", estado="bloqueada")
+    db_session.add_all([empresa, account, other, blocked])
+    db_session.flush()
+    historical = _pending(empresa.id, account.id, 1, "15/01/2025", "10")
+    current = _pending(empresa.id, account.id, 2, "20/04/2026", "20")
+    future = _pending(empresa.id, account.id, 3, "15/01/2030", "30")
+    blocked_item = _pending(empresa.id, account.id, 4, "20/04/2026", "100")
+    blocked_item.tipsub_raw, blocked_item.nrosub_raw = "1", "4566"
+    deleted = _pending(empresa.id, account.id, 5, "20/04/2026", "200")
+    deleted.deleted_at = current_utc_time()
+    db_session.add_all([
+        historical, current, future, blocked_item, deleted,
+        _pending(empresa.id, other.id, 6, "20/04/2026", "300"),
+        _pending(empresa.id, account.id, 7, "20/04/2026", "400", is_valid=False),
+    ])
+    db_session.commit()
+
+    detail = get_pending_projection_detail(db_session, cuenta_cash_id=account.id)
+    assert detail["fecha_desde"] is None
+    assert detail["fecha_hasta"] is None
+    assert [item["id"] for item in detail["data"]] == [historical.id, current.id, future.id]
+    assert detail["importe_total"] == "60.00"
+
+    monthly = get_pending_projection_detail(
+        db_session, cuenta_cash_id=account.id,
+        fecha_desde=date(2026, 4, 1), fecha_hasta=date(2026, 4, 30),
+    )
+    assert monthly["count"] == 1
+    assert monthly["importe_total"] == "20.00"
+    overdue = get_pending_projection_detail(
+        db_session, cuenta_cash_id=account.id, fecha_hasta=date(2026, 4, 30),
+    )
+    assert overdue["count"] == 2
+    assert overdue["importe_total"] == "30.00"
 
 
 def test_rebuild_pending_projection_limpia_acumula_y_traslada_periodos_cerrados(
@@ -104,6 +176,7 @@ def test_rebuild_pending_projection_limpia_acumula_y_traslada_periodos_cerrados(
         "inputs_processed": 7,
         "inputs_unmapped": 1,
         "inputs_invalid": 1,
+        "inputs_blocked": 0,
         "inputs_rolled_to_first_open": 2,
         "rows_reset": 1,
         "rows_updated": 2,

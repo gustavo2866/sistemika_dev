@@ -11,6 +11,11 @@ from sqlmodel import Field, Session
 from app.models.base import Base
 
 
+def clean_projection_observation(value: str | None) -> str | None:
+    """Descarta el detalle automático histórico y conserva las notas del usuario."""
+    return None if value and value.lstrip().upper().startswith("AUTO:") else value
+
+
 def projection_method_values(
     session: Session, account_id: int, method_id: int | None = None,
     *, require_active: bool = True,
@@ -76,7 +81,7 @@ class ErpCashProyectado(Base, table=True):
         description="Importe proyectado para la cuenta y periodo",
     )
     origen_proyectado: str = Field(
-        default="MANUAL", sa_column=Column(String(15), nullable=False, server_default="MANUAL"),
+        default="CALCULADO", sa_column=Column(String(15), nullable=False, server_default="CALCULADO"),
         description="Los importes manuales no se reemplazan al reconstruir Cash",
     )
     importe_pendiente: Decimal = Field(

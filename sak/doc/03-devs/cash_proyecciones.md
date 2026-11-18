@@ -72,6 +72,20 @@ automáticamente. No escribir `total_proyectado`.
 
 ## Consumidores
 
+Los importes de la columna Real del editor abren el mismo detalle contable que
+el panel, filtrado por cuenta Cash y mes. `CashMovementDetailDialog`, en
+`cashflow/diario/movement-detail-dialog.tsx`, encapsula la consulta, la tabla,
+el total y la exportación XLS. El detalle se abre sobre el editor y al cerrar
+devuelve el foco al importe seleccionado, conservando los cambios sin guardar.
+
+`CashPendingProjectionDetailDialog` ofrece el detalle de comprobantes pendientes
+por cuenta Cash, con límites de vencimiento opcionales. Los importes Pendiente
+del editor abren el mes correspondiente; el primer mes proyectado incluye los
+vencidos anteriores. El botón Pendientes de la fila de cálculo abre todos los
+pendientes válidos de la cuenta, sin limitar las fechas ni el horizonte. Ambos
+accesos conservan el editor abierto y devuelven el foco al control de origen.
+Se excluyen registros eliminados, inválidos y de subcuentas bloqueadas.
+
 El panel de Cashflow, sus totales de cuenta/grupo y sus saldos acumulados leen
 `total_proyectado`. Los reportes externos pueden usar directamente:
 
@@ -125,6 +139,19 @@ columna de texto de 20 caracteres.
 `20261114_cash_local` conserva el histórico como MANUAL porque el esquema
 anterior no registra ese origen. Para volver al cálculo automático de un mes
 editable, se desactiva **Manual**, se usa **Calcular** y se guarda el resultado.
+La migración `20261118_cash_manual_off` desactiva Manual en todos los registros
+activos desde octubre de 2026, conservando importes, métodos y observaciones.
+Los nuevos registros se crean como `CALCULADO` (Manual apagado) por defecto,
+tanto por SQL como por el modelo, el CRUD y el editor. Manual sigue disponible
+como elección explícita del usuario. El downgrade restablece el default anterior
+sin revertir los cambios de origen realizados sobre registros existentes.
+El editor también permite **Desactivar Manual en todo el rango**, respetando
+Período desde y los meses editables, para aplicar el método sin cambiar cada
+mes por separado. **Calcular y guardar** guarda la configuración y los valores
+del editor antes de ejecutar el motor y persiste los resultados en la misma
+transacción. Si el cálculo falla, revierte también el guardado. El editor
+permanece abierto y recarga los valores persistidos. Si todos los meses son
+manuales, guarda los cambios e informa que no recalculó ningún período.
 
 La edición de un importe, la importación desde la plantilla Excel y el reset
 explícito de Proyectado lo marcan MANUAL. El toggle Manual controla el origen
@@ -141,6 +168,11 @@ para los meses siguientes. Un método de tipo PENDIENTE usa el saldo pendiente
 reconstruido, sin sobrescribir Proyectado ni ejecutar reglas innecesarias.
 Comprometido y las observaciones se conservan. Los totales siguen siendo
 generados por la base de datos.
+Las descripciones automáticas históricas que comienzan con `AUTO:` se eliminan:
+la migración `20261118_cash_clear_auto` limpia los datos existentes y el
+recálculo, el CRUD y el guardado del editor descartan esos textos si reaparecen
+desde un editor abierto con datos antiguos. Los nuevos cálculos no generan
+descripciones automáticas. Las notas escritas por el usuario se conservan.
 
 En la ejecución habitual, los períodos cerrados conservan también su método
 aplicado; en una reconstrucción histórica explícita se actualiza. Los pendientes
@@ -199,8 +231,8 @@ Un faltante histórico produce un error, sin inventar ceros para meses abiertos.
 La generación compartida procesa primero todas las cuentas de un mes y luego
 avanza al siguiente; el orden de IDs no define el orden de cálculo. Conserva
 manuales y comprometidos. Reconstruir Cash y Sincronizar ERP usan esta misma
-generación; Calcular en edición rápida usa el mismo motor sin persistir y
-respeta los importes manuales de la cuenta editada y sus dependencias. Los
+generación; Calcular y guardar en edición rápida usa el mismo motor y persiste
+los resultados, respetando los importes manuales de la cuenta editada y sus dependencias. Los
 automáticos posteriores usan esos valores manuales como base cuando corresponda.
 
 La cabecera de edición rápida muestra **Cuenta Cash** y **Factor (%)** a la

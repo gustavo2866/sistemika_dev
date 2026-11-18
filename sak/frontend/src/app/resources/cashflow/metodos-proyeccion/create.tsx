@@ -15,6 +15,7 @@ export const MetodoProyeccionCreate = ({
     redirect={redirect ?? (embedded ? false : "list")}
     title="Crear método de proyección"
     className="max-w-5xl w-full"
+    contentClassName="max-w-5xl"
     transform={normalizeMetodoProyeccionPayload}
     showBreadcrumb={!embedded}
     showHeader={!embedded}

@@ -14,6 +14,7 @@ from app.models.erp.cuenta import ErpCuenta
 from app.models.erp.empresa import ErpEmpresa
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.services.cash_projection_horizon import get_projection_horizon
+from app.services.erp_cash_mapping_service import get_blocked_subcuenta_keys
 
 
 def _month_start(value: date) -> date:
@@ -83,8 +84,12 @@ def rebuild_pending_cash_projection(
         return period not in closed_periods and (period_from is None or period >= period_from) and (period_to is None or period <= period_to)
 
     totals: dict[tuple[int, date], Decimal] = defaultdict(Decimal)
-    unmapped = invalid = rolled_to_first_open = 0
+    blocked_keys = get_blocked_subcuenta_keys(session)
+    unmapped = invalid = rolled_to_first_open = blocked = 0
     for item in inputs:
+        if (_parse_int(item.tipsub_raw), _parse_int(item.nrosub_raw)) in blocked_keys:
+            blocked += 1
+            continue
         if item.cuenta_cash_id is None:
             unmapped += 1
             continue
@@ -161,6 +166,7 @@ def rebuild_pending_cash_projection(
         "inputs_processed": len(inputs),
         "inputs_unmapped": unmapped,
         "inputs_invalid": invalid,
+        "inputs_blocked": blocked,
         "inputs_rolled_to_first_open": rolled_to_first_open,
         "rows_reset": reset_count,
         "rows_updated": updated,
@@ -173,10 +179,10 @@ def get_pending_projection_detail(
     session: Session,
     *,
     cuenta_cash_id: int,
-    fecha_desde: date,
-    fecha_hasta: date,
+    fecha_desde: date | None = None,
+    fecha_hasta: date | None = None,
 ) -> dict[str, object]:
-    if fecha_desde > fecha_hasta:
+    if fecha_desde is not None and fecha_hasta is not None and fecha_desde > fecha_hasta:
         raise ValueError("fecha_desde no puede ser posterior a fecha_hasta")
 
     cash_account = session.get(ErpCashCuenta, cuenta_cash_id)
@@ -192,15 +198,18 @@ def get_pending_projection_detail(
         .order_by(ErpCashPendientesInput.id)
     ).all()
     matched: list[tuple[date, Decimal, ErpCashPendientesInput]] = []
+    blocked_keys = get_blocked_subcuenta_keys(session)
     for item in candidates:
+        if (_parse_int(item.tipsub_raw), _parse_int(item.nrosub_raw)) in blocked_keys:
+            continue
         due_date = _parse_date(item.fecvenc_raw)
         amount = _parse_decimal(item.saldo_raw)
         if (
             not item.is_valid
             or due_date is None
             or amount is None
-            or due_date < fecha_desde
-            or due_date > fecha_hasta
+            or (fecha_desde is not None and due_date < fecha_desde)
+            or (fecha_hasta is not None and due_date > fecha_hasta)
         ):
             continue
         matched.append((due_date, amount, item))
@@ -272,8 +281,8 @@ def get_pending_projection_detail(
     return {
         "cuenta_cash_id": cuenta_cash_id,
         "cuenta_cash_nombre": cash_account.descripcion,
-        "fecha_desde": fecha_desde.isoformat(),
-        "fecha_hasta": fecha_hasta.isoformat(),
+        "fecha_desde": fecha_desde.isoformat() if fecha_desde else None,
+        "fecha_hasta": fecha_hasta.isoformat() if fecha_hasta else None,
         "count": len(values),
         "importe_total": str(total.quantize(Decimal("0.01"))),
         "data": values,

@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { getTotalProyectado, type ProjectionBase } from "./model";
 import type { MetodoProyeccion } from "../metodos-proyeccion/model";
 import type { ErpCashCuenta } from "../cuentas/model";
+import { CashMovementDetailDialog, type CashMovementDetailTarget } from "../diario/movement-detail-dialog";
 import { CashPendingProjectionDetailDialog } from "../pendientes-input";
 import type { CashProjectionHorizon } from "./horizon";
 
@@ -116,7 +117,7 @@ const MILLION = 1_000_000;
 
 const projectionFormState = (data: ProjectionQuickEditResponse): ProjectionFormState => ({
   values: Object.fromEntries(data.values.map((item) => [item.periodo, (Number(item.importe_proyectado || 0) / MILLION).toFixed(2)])),
-  projectionOrigins: Object.fromEntries(data.values.map((item) => [item.periodo, item.origen_proyectado ?? "MANUAL"])),
+  projectionOrigins: Object.fromEntries(data.values.map((item) => [item.periodo, item.origen_proyectado ?? "CALCULADO"])),
   pendingValues: Object.fromEntries(data.values.map((item) => [item.periodo, (Number(item.importe_pendiente || 0) / MILLION).toFixed(2)])),
   committedValues: Object.fromEntries(data.values.map((item) => [item.periodo, (Number(item.importe_comprometido || 0) / MILLION).toFixed(2)])),
   descriptions: Object.fromEntries(data.values.map((item) => [item.periodo, item.descripcion ?? ""])),
@@ -178,6 +179,7 @@ export const CashProjectionQuickEditDialog = ({
   const [pendingValues, setPendingValues] = useState<Record<string, string>>({});
   const [committedValues, setCommittedValues] = useState<Record<string, string>>({});
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+  const [realDetailTarget, setRealDetailTarget] = useState<CashMovementDetailTarget | null>(null);
   const [saving, setSaving] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [selectedMethodId, setSelectedMethodId] = useState("");
@@ -185,6 +187,7 @@ export const CashProjectionQuickEditDialog = ({
   const [relationalFactor, setRelationalFactor] = useState("");
   const [periodFrom, setPeriodFrom] = useState("");
   const [historicalSaveConfirmOpen, setHistoricalSaveConfirmOpen] = useState(false);
+  const historicalCalculateRef = useRef(false);
   const [initialForm, setInitialForm] = useState<ProjectionFormState | null>(null);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const pendingExitRef = useRef<(() => void) | null>(null);
@@ -206,8 +209,8 @@ export const CashProjectionQuickEditDialog = ({
     }
   };
   const [pendingDetailTarget, setPendingDetailTarget] = useState<{
-    dueDateFrom: string;
-    dueDateTo: string;
+    dueDateFrom?: string;
+    dueDateTo?: string;
   } | null>(null);
   const monthsScrollRef = useRef<HTMLDivElement>(null);
   const columnsHeaderRef = useRef<HTMLDivElement>(null);
@@ -325,7 +328,7 @@ export const CashProjectionQuickEditDialog = ({
   const openPendingDetail = (period: string) => {
     setPendingDetailTarget({
       dueDateFrom: query.data?.primer_periodo_abierto === period
-        ? "0001-01-01"
+        ? undefined
         : period,
       dueDateTo: endOfMonth(period),
     });
@@ -340,69 +343,7 @@ export const CashProjectionQuickEditDialog = ({
       notify("No hay períodos disponibles para calcular.", { type: "info" });
       return;
     }
-    setCalculating(true);
-    try {
-      const token = localStorage.getItem("auth_token");
-      const params = new URLSearchParams({
-        cuenta_cash_id: String(cuentaCashId),
-        anio: String(startYear),
-        metodo_proyeccion_id: selectedMethodId,
-        periodo_desde: openMonths[0],
-        periodo_hasta: openMonths[openMonths.length - 1],
-      });
-      if (isRelational) {
-        params.set("cuenta_cash_referencia_id", referenceAccountId);
-        params.set("porcentaje", relationalFactor.trim().replace(",", "."));
-      }
-      const previewValues = openMonths.map((periodo) => {
-        const value = Number(String(values[periodo] ?? "0").trim().replace(",", "."));
-        if (!Number.isFinite(value)) throw new Error(`El importe de ${periodo.slice(0, 7)} no es válido`);
-        const stored = query.data?.values.find((item) => item.periodo === periodo);
-        return {
-          periodo,
-          importe_proyectado: stored && values[periodo] === (Number(stored.importe_proyectado) / MILLION).toFixed(2)
-            ? String(stored.importe_proyectado) : (value * MILLION).toFixed(2),
-          origen_proyectado: projectionOrigins[periodo] ?? "MANUAL",
-        };
-      });
-      const response = await fetch(
-        `${apiUrl}/erp/cash/proyectado/quick-edit/calculate?${params}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ values: previewValues, periodo_referencia: `${periodFrom}-01` }),
-        },
-      );
-      const result = await response.json().catch(() => ({}));
-      const errorDetail = typeof result.detail === "string"
-        ? result.detail
-        : result.detail?.message;
-      if (!response.ok) {
-        throw new Error(errorDetail || "No se pudo calcular la proyección");
-      }
-      const calculated = result as ProjectionQuickEditResponse;
-      setValues((current) => ({
-        ...current,
-        ...Object.fromEntries(
-          calculated.values
-            .filter((item) => isEditablePeriod(item.periodo)
-              && projectionOrigins[item.periodo] === "CALCULADO")
-            .map((item) => [
-              item.periodo,
-              (Number(item.importe_proyectado || 0) / MILLION).toFixed(2),
-            ]),
-        ),
-      }));
-      notify("Proyección calculada. Revisá los valores antes de guardar.", {
-        type: "success",
-      });
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudo calcular la proyección", {
-        type: "error",
-      });
-    } finally {
-      setCalculating(false);
-    }
+    await handleSave(false, true);
   };
 
   const buildReturnTo = () => {
@@ -448,7 +389,7 @@ export const CashProjectionQuickEditDialog = ({
     });
   };
 
-  const handleSave = async (historicalConfirmed = false) => {
+  const handleSave = async (historicalConfirmed = false, calculate = false) => {
     if (!validPeriodFrom) return;
     const changesBeforeFrom = months.some((period) => period < `${periodFrom}-01` && initialForm
       && (values[period] !== initialForm.values[period]
@@ -460,11 +401,13 @@ export const CashProjectionQuickEditDialog = ({
       return;
     }
     if (historicalEditing && !historicalConfirmed) {
+      historicalCalculateRef.current = calculate;
       setHistoricalSaveConfirmOpen(true);
       return;
     }
     if (cuentaCashId === null || !validRelational) return;
     setSaving(true);
+    setCalculating(calculate);
     try {
       const parsedValues = months.map((periodo) => {
         const rawValue = String(values[periodo] ?? "0").trim().replace(",", ".");
@@ -495,7 +438,7 @@ export const CashProjectionQuickEditDialog = ({
           importe_proyectado: initialForm && values[periodo] === initialForm.values[periodo]
             ? String(query.data?.values.find((item) => item.periodo === periodo)?.importe_proyectado ?? 0)
             : (numericValue * MILLION).toFixed(2),
-          origen_proyectado: projectionOrigins[periodo] ?? "MANUAL",
+          origen_proyectado: projectionOrigins[periodo] ?? "CALCULADO",
           importe_pendiente: initialForm && pendingValues[periodo] === initialForm.pendingValues[periodo]
             ? String(query.data?.values.find((item) => item.periodo === periodo)?.importe_pendiente ?? 0)
             : (numericPending * MILLION).toFixed(2),
@@ -510,6 +453,7 @@ export const CashProjectionQuickEditDialog = ({
         cuenta_cash_id: String(cuentaCashId),
         anio: String(startYear),
       });
+      if (calculate) params.set("calcular", "true");
       const response = await fetch(`${apiUrl}/erp/cash/proyectado/quick-edit/values?${params}`, {
         method: "PUT",
         headers: {
@@ -528,6 +472,28 @@ export const CashProjectionQuickEditDialog = ({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.detail || "No se pudieron guardar las proyecciones");
+      if (calculate) {
+        const fresh = await fetchProjectionValues(cuentaCashId, startYear);
+        const form = projectionFormState(fresh);
+        queryClient.setQueryData(["erp-cash-proyectado-quick-edit", cuentaCashId, startYear], fresh);
+        setValues(form.values);
+        setProjectionOrigins(form.projectionOrigins);
+        setPendingValues(form.pendingValues);
+        setCommittedValues(form.committedValues);
+        setDescriptions(form.descriptions);
+        setSelectedMethodId(form.selectedMethodId);
+        setReferenceAccountId(form.referenceAccountId);
+        setRelationalFactor(form.relationalFactor);
+        setPeriodFrom(form.periodFrom);
+        setInitialForm(form);
+        dirtyRef.current = false;
+        await onSaved?.();
+        notify(result.calculated > 0
+          ? `Proyección calculada y guardada: ${result.calculated} períodos calculados. Los períodos manuales conservaron sus importes.`
+          : "Cambios guardados. No se recalculó ningún período porque todos tienen Manual activado. Desactivá Manual para aplicar el método.",
+        { type: result.calculated > 0 ? "success" : "info" });
+        return;
+      }
       await onSaved?.();
       notify(
         `Proyección actualizada: ${result.created} períodos creados, ${result.updated} modificados.`,
@@ -540,6 +506,7 @@ export const CashProjectionQuickEditDialog = ({
       });
     } finally {
       setSaving(false);
+      setCalculating(false);
     }
   };
 
@@ -642,11 +609,11 @@ export const CashProjectionQuickEditDialog = ({
               <span className="truncate">{formatPeriod(period)}</span>
             </span>
             <Switch
-              checked={projectionOrigins[period] !== "CALCULADO"}
+              checked={projectionOrigins[period] === "MANUAL"}
               aria-label={`Manual para ${period}`}
-              title={projectionOrigins[period] === "CALCULADO"
+              title={projectionOrigins[period] !== "MANUAL"
                 ? "Calculado: activar Manual para editar el importe"
-                : "Manual: desactivar para aplicar el método al actualizar Cash"}
+                : "Manual: desactivar para aplicar el método al calcular o actualizar Cash"}
               className="justify-self-center"
               disabled={saving || calculating || query.isLoading || !isEditablePeriod(period)}
               onCheckedChange={(checked) => setProjectionOrigins((current) => ({
@@ -654,8 +621,17 @@ export const CashProjectionQuickEditDialog = ({
                 [period]: checked ? "MANUAL" : "CALCULADO",
               }))}
             />
-            <span
-              className={`flex h-7 items-center justify-end rounded-md border border-slate-200/80
+            <button
+              type="button"
+              disabled={cuentaCashId === null || realValues[period] == null}
+              title="Ver movimientos del importe real"
+              onClick={() => setRealDetailTarget({
+                month: period.slice(0, 7),
+                title: cuentaCashNombre,
+                scope: "account",
+                cuentaCashId,
+              })}
+              className={`flex h-7 cursor-pointer items-center hover:underline focus-visible:outline focus-visible:outline-2 disabled:cursor-default disabled:no-underline justify-end rounded-md border border-slate-200/80
                 bg-slate-100/70 px-2 text-[10px] font-medium tabular-nums dark:border-slate-800
                 dark:bg-slate-900/70 ${Number(realValues[period] ?? 0) < 0
                   ? "text-rose-700 dark:text-rose-400"
@@ -666,59 +642,41 @@ export const CashProjectionQuickEditDialog = ({
               {realValues[period] == null
                 ? "—"
                 : (Number(realValues[period]) / MILLION).toFixed(2)}
-            </span>
+            </button>
             <Input
               type="text"
               inputMode="decimal"
               value={values[period] ?? "0.00"}
-              readOnly={projectionOrigins[period] === "CALCULADO"}
+              readOnly={projectionOrigins[period] !== "MANUAL"}
               onChange={(event) => {
                 setValues((current) => ({ ...current, [period]: event.target.value }));
                 setProjectionOrigins((current) => ({ ...current, [period]: "MANUAL" }));
               }}
-              className={cn("h-7 rounded-md px-2 text-right text-[10px] font-semibold tabular-nums shadow-none",
+              className={cn("h-7 rounded-md px-2 text-right text-[9px] md:text-[9px] font-semibold tabular-nums shadow-none",
                 pendingActive ? inactiveColumnClass
-                  : projectionOrigins[period] === "CALCULADO"
+                  : projectionOrigins[period] !== "MANUAL"
                     ? "border-sky-200 bg-sky-50/70 text-sky-950 disabled:opacity-50 read-only:opacity-50 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100"
                     : "border-sky-200 bg-sky-50/70 text-sky-950 focus-visible:border-sky-400 focus-visible:ring-2 focus-visible:ring-sky-200 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100")}
               aria-label={`${formatMonth(period)} ${period.slice(0, 4)}, importe en millones`}
-              title={pendingActive ? "No participa en el total con este método" : projectionOrigins[period] === "CALCULADO"
+              title={pendingActive ? "No participa en el total con este método" : projectionOrigins[period] !== "MANUAL"
                 ? "Valor calculado: se recalcula al reconstruir Cash"
                 : "Valor manual: se conserva al reconstruir Cash"}
               disabled={saving || calculating || query.isLoading || !isEditablePeriod(period)}
             />
             <div className="relative min-w-0">
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={pendingValues[period] ?? "0.00"}
-                onChange={(event) => setPendingValues((current) => ({
-                  ...current,
-                  [period]: event.target.value,
-                }))}
-                className={cn("h-7 rounded-md px-2 pr-6 text-right text-[10px] font-semibold tabular-nums shadow-none",
+              <button
+                type="button"
+                onClick={() => openPendingDetail(period)}
+                disabled={cuentaCashId === null || query.isLoading}
+                className={cn("flex h-7 w-full cursor-pointer items-center justify-end rounded-md border px-2 text-right text-[9px] md:text-[9px] font-semibold tabular-nums shadow-none hover:underline focus-visible:outline focus-visible:outline-2 disabled:cursor-default",
                   pendingActive
-                    ? "border-amber-200 bg-amber-50/70 text-amber-950 focus-visible:border-amber-400 focus-visible:ring-2 focus-visible:ring-amber-200 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"
+                    ? "border-amber-200 bg-amber-50/70 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"
                     : inactiveColumnClass)}
-                title={pendingActive ? "Participa en el total" : "No participa en el total con este método"}
-                aria-label={`${formatMonth(period)} ${period.slice(0, 4)}, pendiente en millones`}
-                disabled={saving || calculating || query.isLoading || !isEditablePeriod(period)
-                  || periodStatuses[period] === "CERRADO" || period < (query.data?.proyeccion_desde ?? "")}
-              />
-              {cuentaCashId !== null && parseDisplayedAmount(pendingValues[period]) !== 0 ? (
-                <button
-                  type="button"
-                  onClick={() => openPendingDetail(period)}
-                  className={cn("absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1",
-                    pendingActive
-                      ? "text-amber-700 hover:bg-amber-200/70 hover:text-amber-950 focus-visible:ring-amber-500 dark:text-amber-300 dark:hover:bg-amber-900/70"
-                      : "text-slate-400 hover:bg-slate-200/70 focus-visible:ring-slate-400 dark:text-slate-500 dark:hover:bg-slate-800")}
-                  aria-label={`Ver comprobantes pendientes de ${formatMonth(period)} ${period.slice(0, 4)}`}
-                  title="Ver comprobantes pendientes"
-                >
-                  <ReceiptText className="size-3" />
-                </button>
-              ) : null}
+                title="Ver comprobantes pendientes"
+                aria-label={`Ver comprobantes pendientes de ${formatMonth(period)} ${period.slice(0, 4)}, importe en millones`}
+              >
+                {pendingValues[period] ?? "0.00"}
+              </button>
             </div>
             <Input
               type="text"
@@ -729,7 +687,7 @@ export const CashProjectionQuickEditDialog = ({
                 [period]: event.target.value,
               }))}
               className="h-7 rounded-md border-violet-200 bg-violet-50/70 px-2 text-right
-                text-[10px] font-semibold tabular-nums text-violet-950 shadow-none
+                text-[9px] md:text-[9px] font-semibold tabular-nums text-violet-950 shadow-none
                 focus-visible:border-violet-400 focus-visible:ring-2 focus-visible:ring-violet-200
                 disabled:border-slate-200 disabled:bg-slate-100/70 disabled:text-slate-400
                 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100"
@@ -750,7 +708,7 @@ export const CashProjectionQuickEditDialog = ({
               }))}
               maxLength={255}
               placeholder={!isEditablePeriod(period) ? "" : "Detalle"}
-              className="h-7 min-w-0 rounded-md border-slate-200 bg-white px-2 text-[10px]
+              className="h-7 min-w-0 rounded-md border-slate-200 bg-white px-2 text-[9px] md:text-[9px]
                 shadow-none placeholder:text-slate-400 focus-visible:border-slate-400
                 focus-visible:ring-2 focus-visible:ring-slate-200 disabled:bg-slate-100/70
                 disabled:text-slate-400 dark:border-slate-800 dark:bg-slate-950"
@@ -924,7 +882,7 @@ export const CashProjectionQuickEditDialog = ({
             variant="outline"
             size="sm"
             className="h-8 shrink-0 gap-1.5 border-sky-700 bg-sky-700 px-3 text-[11px] font-semibold text-white shadow-sm hover:border-sky-800 hover:bg-sky-800 hover:text-white dark:border-sky-600 dark:bg-sky-600 dark:hover:border-sky-500 dark:hover:bg-sky-500"
-            title={selectedBase === "PENDIENTE" ? "El método usa directamente el importe pendiente" : undefined}
+            title={selectedBase === "PENDIENTE" ? "El método usa directamente el importe pendiente" : "Guarda los cambios, calcula con el método seleccionado y guarda el resultado"}
             onClick={() => void handleCalculate()}
             disabled={
               saving
@@ -964,12 +922,42 @@ export const CashProjectionQuickEditDialog = ({
               </SelectContent>
             </Select>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto h-8 shrink-0 gap-1.5 px-2.5 text-[11px]"
+            onClick={() => setPendingDetailTarget({})}
+            disabled={cuentaCashId === null}
+            title="Ver todos los pendientes de esta cuenta Cash"
+          >
+            <ReceiptText className="size-3.5" />
+            Pendientes
+          </Button>
           {isRelational && (!validRelational || accountsQuery.error) && <p className="w-full text-xs text-destructive" role="alert">
             {accountsQuery.error ? "No se pudieron cargar las cuentas Cash." : "La cuenta Cash y el factor (%) son obligatorios."}
           </p>}
           {query.data && !validPeriodFrom && <p className="w-full text-xs text-destructive" role="alert">
             Elegí un período entre enero de 2026 y {query.data.proyeccion_desde.slice(0, 7)}.
           </p>}
+          {query.data && validPeriodFrom && !pendingActive && months.some((period) => isEditablePeriod(period) && projectionOrigins[period] === "MANUAL") && (
+            <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-amber-700 dark:text-amber-400">
+              <p>Los períodos con Manual activado conservan su importe al calcular, aunque cambies el método.</p>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-[10px]"
+                disabled={saving || calculating || query.isFetching}
+                onClick={() => setProjectionOrigins((current) => ({
+                  ...current,
+                  ...Object.fromEntries(months.filter(isEditablePeriod).map((period) => [period, "CALCULADO" as const])),
+                }))}
+              >
+                Desactivar Manual en todo el rango
+              </Button>
+            </div>
+          )}
           {historicalEditing && <p className="w-full text-[10px] text-amber-700 dark:text-amber-400">
             Desde {periodFrom}, el cálculo utiliza proyectados incluso en meses cerrados. Al guardar se confirmarán los cambios históricos.
           </p>}
@@ -1011,6 +999,17 @@ export const CashProjectionQuickEditDialog = ({
             Guardar
           </Button>
         </DialogFooter>
+        <CashPendingProjectionDetailDialog
+          open={pendingDetailTarget !== null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setPendingDetailTarget(null);
+          }}
+          cuentaCashId={cuentaCashId}
+          cuentaCashNombre={cuentaCashNombre}
+          dueDateFrom={pendingDetailTarget?.dueDateFrom}
+          dueDateTo={pendingDetailTarget?.dueDateTo}
+        />
+        <CashMovementDetailDialog target={realDetailTarget} onClose={() => setRealDetailTarget(null)} />
       </DialogContent>
       </Dialog>
       <Confirm
@@ -1042,19 +1041,10 @@ export const CashProjectionQuickEditDialog = ({
         onClose={() => setHistoricalSaveConfirmOpen(false)}
         onConfirm={() => {
           setHistoricalSaveConfirmOpen(false);
-          void handleSave(true);
+          void handleSave(true, historicalCalculateRef.current);
         }}
       />
-      <CashPendingProjectionDetailDialog
-        open={pendingDetailTarget !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setPendingDetailTarget(null);
-        }}
-        cuentaCashId={cuentaCashId}
-        cuentaCashNombre={cuentaCashNombre}
-        dueDateFrom={pendingDetailTarget?.dueDateFrom ?? ""}
-        dueDateTo={pendingDetailTarget?.dueDateTo ?? ""}
-      />
+
     </>
   );
 };

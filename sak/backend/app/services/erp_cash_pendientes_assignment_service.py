@@ -9,6 +9,7 @@ from app.models.erp.cash_subcta import ErpCashSubcta
 from app.services.erp_cash_mapping_service import (
     build_cash_mappings_by_key,
     get_fondo_mappings_by_cuenta,
+    get_blocked_subcuenta_keys,
     resolve_cash_account_id,
 )
 
@@ -71,14 +72,22 @@ def assign_cash_accounts_to_pendientes(
         .order_by(ErpCashSubcta.id)
     ).all()
     categories_by_subcuenta: dict[tuple[int, int], str] = {}
+    states_by_subcuenta = {(subcuenta.tpo_subcta, subcuenta.nro_subcta): subcuenta.estado for subcuenta in subcuentas}
+    blocked_keys = get_blocked_subcuenta_keys(session)
+    states_by_subcuenta.update({key: "bloqueada" for key in blocked_keys})
     for subcuenta in subcuentas:
+        if subcuenta.estado != "activa":
+            continue
         categories_by_subcuenta.setdefault(
             (subcuenta.tpo_subcta, subcuenta.nro_subcta),
             subcuenta.categoria,
         )
 
-    assigned = unchanged = unmapped = invalid = 0
+    assigned = unchanged = unmapped = invalid = blocked = 0
     for row in rows:
+        if _subcuenta_key(row) in blocked_keys:
+            blocked += 1
+            continue
         cuenta_codigo = _parse_int(row.nrocta_raw)
         saldo = _parse_decimal(row.saldo_raw)
         if cuenta_codigo is None or saldo is None:
@@ -93,6 +102,7 @@ def assign_cash_accounts_to_pendientes(
             mappings_by_key=mappings_by_key,
             fondo_mappings_by_cuenta=fondo_mappings_by_cuenta,
             categories_by_subcuenta=categories_by_subcuenta,
+            states_by_subcuenta=states_by_subcuenta,
         )
         if cuenta_cash_id is None:
             unmapped += 1
@@ -127,4 +137,5 @@ def assign_cash_accounts_to_pendientes(
         "rows_unchanged": unchanged,
         "rows_unmapped": unmapped,
         "rows_invalid": invalid,
+        "rows_blocked": blocked,
     }

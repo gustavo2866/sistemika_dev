@@ -290,7 +290,7 @@ def test_sync_cash_diario_periodo_reemplaza_el_periodo(db_session, estado):
     }
     assert len(generated) == 2
     assert generated[0].source_id == 100
-    assert generated[0].cuenta_cash_id == cuenta_cash_haber.id
+    assert generated[0].cuenta_cash_id is None
     assert generated[1].source_id == 101
     assert generated[1].cuenta_cash_id == cuenta_cash_fondo.id
     assert len(generated_saldos) == 1
@@ -298,7 +298,8 @@ def test_sync_cash_diario_periodo_reemplaza_el_periodo(db_session, estado):
     assert generated_saldos[0].nivel == "subcuenta"
     assert generated_saldos[0].cuenta_codigo == 1
     assert len(generated_subcuentas) == 1
-    assert generated_subcuentas[0].categoria == "ERROR"
+    assert generated_subcuentas[0].categoria is None
+    assert generated_subcuentas[0].estado == "error"
     assert generated_subcuentas[0].descripcion == "Cobro"
 
     period = db_session.exec(select(ErpCashPeriodo)).one()

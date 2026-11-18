@@ -61,7 +61,7 @@ def test_categorias_sin_duplicados_blancos_ni_mapeos_eliminados(db_session):
     from fastapi import Response
     from app.routers.erp_cash_map_router import list_cash_map_categories
 
-    for index, category in enumerate(["Fondo", "Obras", "Fondo", "  Obras  ", "", "  ", None, "Eliminada"]):
+    for index, category in enumerate(["Fondo", "Obras", "Fondo", "  Obras  ", "", "  ", None, "Eliminada", "ERROR"]):
         db_session.add(ErpCashMap(
             nro_cta=index + 1, moneda="ARS", categoria=category,
             map_debe_id=1, map_haber_id=2,

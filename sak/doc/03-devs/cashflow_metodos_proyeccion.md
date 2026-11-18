@@ -74,21 +74,24 @@ misma cuenta Cash.
 
 `POST /erp/cash/proyectado/quick-edit/calculate` calcula el rango solicitado
 dentro del horizonte móvil de 24 meses y devuelve cada importe con los parametros y
-valores base utilizados. Este endpoint no persiste resultados. La pantalla
-reemplaza temporalmente los valores editables y solo los guarda cuando el
-usuario confirma mediante `Guardar proyección`. El histórico visible se acumula
+valores base utilizados. Este endpoint conserva su contrato de previsualización
+sin persistir. El editor usa `PUT /erp/cash/proyectado/quick-edit/values?calcular=true`
+para **Calcular y guardar**: guarda los cambios del formulario, ejecuta el motor
+con esos datos y persiste los resultados en una única transacción. Si falla el
+cálculo, revierte toda la operación. El histórico visible se acumula
 desde enero de 2026 y no limita los 24 meses proyectados.
 
-El popup permite seleccionar cualquiera de los metodos activos. `Calcular`
-utiliza la seleccion como override temporal, sin modificar la cuenta. Al
-confirmar `Guardar proyección`, la FK `ErpCashCuenta.id_metodo_proyeccion` y los
-importes se actualizan dentro de la misma transaccion.
+El popup permite seleccionar cualquiera de los metodos activos. **Calcular y
+guardar** persiste la selección en `ErpCashCuenta.id_metodo_proyeccion`, la
+referencia, el factor y los importes antes de calcular. Respeta los meses
+manuales y recarga los valores guardados sin cerrar el editor. **Guardar**
+persiste los cambios sin recalcular y cierra el editor.
 
 Cada mes visible informa `estado_periodo`. Un periodo sin registro de control
 se considera `ABIERTO`, de acuerdo con la regla del calculador. La interfaz
-conserva los meses históricos como solo lectura y envía a `Calcular` el rango
-del horizonte vigente. La respuesta se combina con los valores visibles sin
-reemplazar el histórico. Los límites provienen del servidor, no del año del panel.
+conserva los meses históricos como solo lectura salvo que se amplíe **Período
+desde**, con confirmación para guardar cambios históricos. El cálculo aplica al
+rango editable. Los límites provienen del servidor, no del año del panel.
 
 La edicion rapida tambien muestra `Comprometido`, almacenado como un registro
 de `ErpCashProyectado` con tipo `COMPROMETIDO`, y `Descripcion`, almacenada en

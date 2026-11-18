@@ -52,6 +52,6 @@ def list_cash_map_categories(response: Response, session: Session = Depends(get_
         .where(ErpCashMap.categoria.is_not(None))
         .distinct()
     ).all()
-    categories = sorted({value.strip() for value in values if value and value.strip()}, key=str.casefold)
+    categories = sorted({value.strip() for value in values if value and value.strip() and value.strip().casefold() != "error"}, key=str.casefold)
     response.headers["Content-Range"] = f"items 0-{max(len(categories) - 1, 0)}/{len(categories)}"
     return [{"id": category, "name": category} for category in categories]

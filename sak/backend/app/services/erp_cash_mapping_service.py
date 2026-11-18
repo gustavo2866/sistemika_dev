@@ -7,6 +7,13 @@ from sqlmodel import Session, select
 
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_map import ErpCashMap
+from app.models.erp.cash_subcta import ErpCashSubcta
+
+
+def get_blocked_subcuenta_keys(session: Session) -> set[tuple[int, int]]:
+    # El bloqueo también se respeta si el registro fue eliminado lógicamente.
+    return set(session.exec(select(ErpCashSubcta.tpo_subcta, ErpCashSubcta.nro_subcta)
+                            .where(ErpCashSubcta.estado == "bloqueada")).all())
 
 
 def normalize_cash_category(value: object) -> str:
@@ -50,10 +57,13 @@ def resolve_cash_mapping(
     subcuenta_key: tuple[int, int] | None,
     mappings_by_key: dict[tuple[int, str], ErpCashMap],
     categories_by_subcuenta: dict[tuple[int, int], str],
+    states_by_subcuenta: dict[tuple[int, int], str] | None = None,
 ) -> ErpCashMap | None:
     if subcuenta_key is not None:
+        if states_by_subcuenta and states_by_subcuenta.get(subcuenta_key) in {"error", "bloqueada"}:
+            return None
         categoria = normalize_cash_category(
-            categories_by_subcuenta.get(subcuenta_key, "ERROR")
+            categories_by_subcuenta.get(subcuenta_key)
         )
         specific_mapping = mappings_by_key.get((cuenta_codigo, categoria))
         if specific_mapping is not None:
@@ -69,7 +79,10 @@ def resolve_cash_account_id(
     mappings_by_key: dict[tuple[int, str], ErpCashMap],
     fondo_mappings_by_cuenta: dict[int, ErpCashMap],
     categories_by_subcuenta: dict[tuple[int, int], str],
+    states_by_subcuenta: dict[tuple[int, int], str] | None = None,
 ) -> int | None:
+    if states_by_subcuenta and states_by_subcuenta.get(subcuenta_key) == "bloqueada":
+        return None
     is_fondo = cuenta_codigo in fondo_mappings_by_cuenta
     mapping = (
         fondo_mappings_by_cuenta.get(cuenta_codigo)
@@ -79,6 +92,7 @@ def resolve_cash_account_id(
             subcuenta_key,
             mappings_by_key,
             categories_by_subcuenta,
+            states_by_subcuenta,
         )
     )
     if mapping is None:

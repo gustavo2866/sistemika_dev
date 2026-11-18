@@ -52,6 +52,15 @@ class CashSubctaSeed:
     def key(self) -> tuple[int, int]:
         return self.tpo_subcta, self.nro_subcta
 
+    @property
+    def categoria_cash(self) -> str | None:
+        value = self.categoria.strip()
+        return value if value and value.casefold() != "error" else None
+
+    @property
+    def estado(self) -> str:
+        return "activa" if self.categoria_cash else "error"
+
 
 @dataclass(frozen=True)
 class FieldChange:
@@ -235,14 +244,19 @@ def build_sync_plan(session: Session, seeds: Iterable[CashSubctaSeed]) -> SyncPl
         if existing is None:
             plan.to_create.append(seed)
             continue
+        if existing.estado == "bloqueada":
+            plan.unchanged += 1
+            continue
 
         changes: list[FieldChange] = []
         if existing.descripcion != seed.descripcion:
             changes.append(
                 FieldChange("descripcion", existing.descripcion, seed.descripcion)
             )
-        if existing.categoria != seed.categoria:
-            changes.append(FieldChange("categoria", existing.categoria, seed.categoria))
+        if existing.categoria != seed.categoria_cash:
+            changes.append(FieldChange("categoria", existing.categoria, seed.categoria_cash))
+        if existing.estado != seed.estado:
+            changes.append(FieldChange("estado", existing.estado, seed.estado))
         if changes:
             plan.to_update.append((existing, seed, tuple(changes)))
         if existing.deleted_at is not None:
@@ -254,6 +268,7 @@ def build_sync_plan(session: Session, seeds: Iterable[CashSubctaSeed]) -> SyncPl
         row
         for row in database_rows
         if (row.tpo_subcta, row.nro_subcta) not in source_by_key
+        and row.estado != "bloqueada"
     )
     return plan
 
@@ -311,13 +326,15 @@ def apply_sync_plan(session: Session, plan: SyncPlan) -> None:
                 tpo_subcta=seed.tpo_subcta,
                 nro_subcta=seed.nro_subcta,
                 descripcion=seed.descripcion,
-                categoria=seed.categoria,
+                categoria=seed.categoria_cash,
+                estado=seed.estado,
             )
         )
 
     for existing, seed, _changes in plan.to_update:
         existing.descripcion = seed.descripcion
-        existing.categoria = seed.categoria
+        existing.categoria = seed.categoria_cash
+        existing.estado = seed.estado
         if existing.id is not None:
             touched[int(existing.id)] = existing
 
@@ -337,13 +354,15 @@ def apply_sync_plan(session: Session, plan: SyncPlan) -> None:
 
 
 def verify_active_rows(session: Session, seeds: Iterable[CashSubctaSeed]) -> None:
-    expected = {seed.key: seed for seed in seeds}
+    blocked = set(session.exec(select(ErpCashSubcta.tpo_subcta, ErpCashSubcta.nro_subcta)
+                              .where(ErpCashSubcta.estado == "bloqueada")).all())
+    expected = {seed.key: seed for seed in seeds if seed.key not in blocked}
     active_rows = session.exec(
         select(ErpCashSubcta)
         .where(ErpCashSubcta.deleted_at.is_(None))
         .order_by(ErpCashSubcta.tpo_subcta, ErpCashSubcta.nro_subcta)
     ).all()
-    actual = {(row.tpo_subcta, row.nro_subcta): row for row in active_rows}
+    actual = {(row.tpo_subcta, row.nro_subcta): row for row in active_rows if row.estado != "bloqueada"}
     if set(actual) != set(expected):
         missing = sorted(set(expected) - set(actual))
         extra = sorted(set(actual) - set(expected))
@@ -354,7 +373,8 @@ def verify_active_rows(session: Session, seeds: Iterable[CashSubctaSeed]) -> Non
         key
         for key, seed in expected.items()
         if actual[key].descripcion != seed.descripcion
-        or actual[key].categoria != seed.categoria
+        or actual[key].categoria != seed.categoria_cash
+        or actual[key].estado != seed.estado
     ]
     if mismatches:
         raise RuntimeError(

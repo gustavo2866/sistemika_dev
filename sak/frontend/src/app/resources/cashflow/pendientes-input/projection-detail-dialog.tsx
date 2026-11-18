@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
@@ -32,8 +33,8 @@ type PendingProjectionDetailRow = {
 type PendingProjectionDetailResponse = {
   cuenta_cash_id: number;
   cuenta_cash_nombre: string;
-  fecha_desde: string;
-  fecha_hasta: string;
+  fecha_desde: string | null;
+  fecha_hasta: string | null;
   count: number;
   importe_total: string;
   data: PendingProjectionDetailRow[];
@@ -44,8 +45,8 @@ export type CashPendingProjectionDetailDialogProps = {
   onOpenChange: (open: boolean) => void;
   cuentaCashId: number | null;
   cuentaCashNombre: string;
-  dueDateFrom: string;
-  dueDateTo: string;
+  dueDateFrom?: string;
+  dueDateTo?: string;
 };
 
 const joinValues = (...values: Array<string | null | undefined>) => {
@@ -73,15 +74,15 @@ const formatAmount = (value: string) => {
 
 const fetchPendingProjectionDetail = async (
   cuentaCashId: number,
-  dueDateFrom: string,
-  dueDateTo: string,
+  dueDateFrom?: string,
+  dueDateTo?: string,
 ): Promise<PendingProjectionDetailResponse> => {
   const token = localStorage.getItem("auth_token");
   const params = new URLSearchParams({
     cuenta_cash_id: String(cuentaCashId),
-    fecha_desde: dueDateFrom,
-    fecha_hasta: dueDateTo,
   });
+  if (dueDateFrom) params.set("fecha_desde", dueDateFrom);
+  if (dueDateTo) params.set("fecha_hasta", dueDateTo);
   const response = await fetch(
     `${apiUrl}/erp/cash/pendientes-input/pending-projection/detail?${params}`,
     { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
@@ -105,6 +106,7 @@ export const CashPendingProjectionDetailDialog = ({
   dueDateFrom,
   dueDateTo,
 }: CashPendingProjectionDetailDialogProps) => {
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const query = useQuery({
     queryKey: [
       "erp-cash-pending-projection-detail",
@@ -114,19 +116,31 @@ export const CashPendingProjectionDetailDialog = ({
     ],
     queryFn: () =>
       fetchPendingProjectionDetail(cuentaCashId!, dueDateFrom, dueDateTo),
-    enabled: open && cuentaCashId !== null && Boolean(dueDateFrom && dueDateTo),
+    enabled: open && cuentaCashId !== null,
   });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[84vh] !w-[96vw] !max-w-[1080px] grid-rows-[auto_minmax(0,1fr)] gap-2 p-3">
+      <DialogContent
+        onOpenAutoFocus={() => { returnFocusRef.current = document.activeElement as HTMLElement | null; }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+        className="grid max-h-[84vh] !w-[96vw] !max-w-[1080px] grid-rows-[auto_minmax(0,1fr)] gap-2 p-3">
         <DialogHeader className="gap-0.5">
           <DialogTitle className="text-sm font-semibold">
             Comprobantes pendientes · {cuentaCashNombre}
           </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-x-2 text-[9px]">
             <span>
-              Vencimiento: {formatDate(dueDateFrom)} al {formatDate(dueDateTo)}
+              {dueDateFrom && dueDateTo
+                ? `Vencimiento: ${formatDate(dueDateFrom)} al ${formatDate(dueDateTo)}`
+                : dueDateFrom
+                  ? `Vencimiento desde ${formatDate(dueDateFrom)}`
+                  : dueDateTo
+                    ? `Vencimiento hasta ${formatDate(dueDateTo)}`
+                    : "Todos los pendientes de la cuenta"}
             </span>
             {query.data ? (
               <>

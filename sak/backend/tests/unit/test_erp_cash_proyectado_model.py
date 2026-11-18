@@ -14,6 +14,52 @@ def test_erp_cash_proyectado_rechaza_fecha_que_no_inicia_el_mes():
         ErpCashProyectado.model_validate({"cuenta_cash_id": 12, "fecha_periodo": date(2026, 1, 15)})
 
 
+def test_nuevos_periodos_tienen_manual_apagado_por_modelo_sql_y_crud(db_session):
+    from app.routers.erp_cash_proyectado_router import erp_cash_proyectado_crud
+
+    account = ErpCashCuenta(descripcion="Automatico por defecto")
+    db_session.add(account)
+    db_session.flush()
+    row = ErpCashProyectado(cuenta_cash_id=account.id, fecha_periodo=date(2026, 10, 1))
+    assert row.origen_proyectado == "CALCULADO"
+    db_session.add(row)
+    db_session.flush()
+    db_session.connection().exec_driver_sql(
+        "INSERT INTO erp_cash_proyectado (cuenta_cash_id, fecha_periodo, created_at, updated_at, version) "
+        "VALUES (?, '2026-11-01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)", (account.id,),
+    )
+    origin = db_session.connection().exec_driver_sql(
+        "SELECT origen_proyectado FROM erp_cash_proyectado WHERE fecha_periodo = '2026-11-01'",
+    ).scalar_one()
+    assert origin == "CALCULADO"
+    created = erp_cash_proyectado_crud.create(db_session, {
+        "cuenta_cash_id": account.id, "fecha_periodo": "2026-12-01", "importe_proyectado": 100,
+    })
+    assert created.origen_proyectado == "CALCULADO"
+    manual = erp_cash_proyectado_crud.create(db_session, {
+        "cuenta_cash_id": account.id, "fecha_periodo": "2027-01-01", "origen_proyectado": "MANUAL",
+    })
+    assert manual.origen_proyectado == "MANUAL"
+
+
+def test_crud_descarta_detalle_auto_y_conserva_descripcion_manual(db_session):
+    from app.routers.erp_cash_proyectado_router import erp_cash_proyectado_crud as crud
+
+    account = ErpCashCuenta(descripcion="Sin detalles automaticos")
+    db_session.add(account)
+    db_session.commit()
+    row = crud.create(db_session, {
+        "cuenta_cash_id": account.id, "fecha_periodo": "2026-10-01",
+        "observacion": "AUTO: base real", "importe_comprometido": 10,
+    })
+    assert row.observacion is None
+    row = crud.update(db_session, row.id, {"observacion": "Nota del usuario"})
+    assert row.observacion == "Nota del usuario"
+    row = crud.update(db_session, row.id, {"observacion": "  auto: texto anterior"})
+    assert row.observacion is None
+    assert row.importe_comprometido == 10
+
+
 @pytest.mark.parametrize("base,total", [("HISTORICO", "120.50"), ("PENDIENTE", "50.75")])
 def test_total_generado_por_la_base_y_actualizado_por_sql(db_session, base, total):
     account = ErpCashCuenta(descripcion="Total generado")

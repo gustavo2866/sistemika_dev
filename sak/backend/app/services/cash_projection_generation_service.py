@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 from app.models.base import current_utc_time
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_periodo import ErpCashPeriodo
-from app.models.erp.cash_proyectado import ErpCashProyectado
+from app.models.erp.cash_proyectado import ErpCashProyectado, clean_projection_observation
 from app.models.metodo_proyeccion import MetodoProyeccion
 from app.services.cash_projection_configuration import lock_projection_configuration
 from app.services.cash_projection_service import CashProjectionEngine, _iter_months
@@ -42,6 +42,10 @@ def recalculate_cash_projections(session: Session, start: date, end: date, *, in
             if row is None:
                 row = ErpCashProyectado(cuenta_cash_id=account.id, fecha_periodo=month, origen_proyectado="CALCULADO")
                 stored[(account.id, month)] = row
+            observation = clean_projection_observation(row.observacion)
+            if observation != row.observacion:
+                row.observacion = observation
+                changed = True
             if row.id_metodo_proyeccion != account.id_metodo_proyeccion or row.tipo_calculo != kind:
                 row.id_metodo_proyeccion = account.id_metodo_proyeccion
                 row.tipo_calculo = kind

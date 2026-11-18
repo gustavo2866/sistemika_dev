@@ -10,7 +10,7 @@ from app.models.base import current_utc_time
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.erp.cash_diario import ErpCashDiario
 from app.models.erp.cash_periodo import ErpCashPeriodo
-from app.models.erp.cash_proyectado import ErpCashProyectado, projection_method_values
+from app.models.erp.cash_proyectado import ErpCashProyectado, clean_projection_observation, projection_method_values
 from app.services.cash_projection_service import project_cash_account_range
 from app.services.cash_projection_horizon import HISTORY_START, get_projection_horizon, month_range, shift_month
 
@@ -204,6 +204,7 @@ def save_projection_quick_edit(
     relational_values: dict | None = None,
     reference_from: date | None = None,
     historical_confirmed: bool = False,
+    calculate: bool = False,
 ) -> dict[str, int | str | None]:
     account = _editable_account(session, account_id)
     from app.services.cash_projection_configuration import lock_projection_configuration, validate_cash_dependencies
@@ -243,6 +244,8 @@ def save_projection_quick_edit(
         )
     ).all())
     created = updated = unchanged = skipped_closed = 0
+    changed_months: set[date] = set()
+    calculated_count = 0
     now = current_utc_time()
     try:
         session.refresh(account)
@@ -269,6 +272,8 @@ def save_projection_quick_edit(
                 continue
             existing = existing_by_month.get(month)
             changes = {}
+            if existing and clean_projection_observation(existing.observacion) != existing.observacion:
+                changes["observacion"] = None
             for field, source in (
                 ("importe_proyectado", values),
                 ("importe_pendiente", pending_values),
@@ -285,7 +290,7 @@ def save_projection_quick_edit(
                 if not amount.is_finite():
                     raise ValueError(f"El importe comprometido de {month:%Y-%m} debe ser finito")
                 changes["importe_comprometido"] = amount.quantize(Decimal("0.01"))
-                changes["observacion"] = str(description or "").strip() or None
+                changes["observacion"] = clean_projection_observation(str(description or "").strip() or None)
             if existing is None or projection_method_id is not None:
                 changes.update(method_values)
             if projection_origins is not None:
@@ -293,10 +298,14 @@ def save_projection_quick_edit(
                 if origin not in {"MANUAL", "CALCULADO"}:
                     raise ValueError("El origen de la proyección no es válido")
                 changes["origen_proyectado"] = origin
-            elif existing is None or existing.importe_proyectado != changes["importe_proyectado"]:
+            elif existing is None:
+                changes["origen_proyectado"] = "CALCULADO"
+            elif existing.importe_proyectado != changes["importe_proyectado"]:
                 changes["origen_proyectado"] = "MANUAL"
             if existing is None:
-                session.add(ErpCashProyectado(cuenta_cash_id=account_id, fecha_periodo=month, **changes))
+                existing_by_month[month] = ErpCashProyectado(cuenta_cash_id=account_id, fecha_periodo=month, **changes)
+                session.add(existing_by_month[month])
+                changed_months.add(month)
                 created += 1
             elif any(getattr(existing, field) != value for field, value in changes.items()):
                 for field, value in changes.items():
@@ -304,9 +313,38 @@ def save_projection_quick_edit(
                 existing.updated_at = now
                 existing.version = int(existing.version or 0) + 1
                 session.add(existing)
+                changed_months.add(month)
                 updated += 1
             else:
                 unchanged += 1
+        if calculate:
+            # El motor debe leer la configuración y los valores recién guardados.
+            # El guardado y el cálculo se confirman juntos, o se revierten juntos.
+            session.flush()
+            calculations = project_cash_account_range(
+                session,
+                cash_account_id=account_id,
+                period_from=start,
+                period_to=horizon.end,
+                reference_from=start if historical_edit else None,
+            )
+            for calculation in calculations:
+                month = calculation.target_month
+                if period_statuses.get(month) == "CERRADO" and not historical_edit:
+                    continue
+                row = existing_by_month[month]
+                if row.origen_proyectado != "CALCULADO":
+                    continue
+                calculated_count += 1
+                amount = calculation.projected_value.quantize(Decimal("0.01"))
+                if row.importe_proyectado != amount:
+                    row.importe_proyectado = amount
+                    if month not in changed_months:
+                        row.updated_at = now
+                        row.version = int(row.version or 0) + 1
+                        updated += 1
+                        unchanged -= 1
+                    session.add(row)
         session.commit()
     except Exception:
         session.rollback()
@@ -322,4 +360,5 @@ def save_projection_quick_edit(
         "updated": updated,
         "unchanged": unchanged,
         "skipped_closed": skipped_closed,
+        "calculated": calculated_count,
     }

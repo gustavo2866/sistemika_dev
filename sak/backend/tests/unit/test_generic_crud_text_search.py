@@ -4,6 +4,31 @@ from sqlmodel import select
 from app.core.generic_crud import GenericCRUD
 from app.models.erp.cash_map import ErpCashMap
 from app.models.erp.cash_pendientes_input import ErpCashPendientesInput
+from app.models.erp.cash_subcta import ErpCashSubcta
+
+
+def test_cash_subcta_search_finds_number_without_matching_description() -> None:
+    from sqlmodel import Session, create_engine
+
+    engine = create_engine("sqlite://")
+    ErpCashSubcta.__table__.create(engine)
+    try:
+        with Session(engine) as session:
+            session.add_all([
+                ErpCashSubcta(tpo_subcta=1, nro_subcta=4566, descripcion="Alquiler", estado="error"),
+                ErpCashSubcta(tpo_subcta=1, nro_subcta=7890, descripcion="Proveedor", categoria="Obras"),
+            ])
+            session.commit()
+            crud = GenericCRUD(ErpCashSubcta)
+
+            for query, expected_number in [("4566", 4566), ("alquiler", 4566), ("obras", 7890)]:
+                statement = crud._apply_text_search(select(ErpCashSubcta), query)
+                assert [row.nro_subcta for row in session.exec(statement).all()] == [expected_number]
+
+            sql = str(crud._apply_text_search(select(ErpCashSubcta), "4566").compile(dialect=postgresql.dialect()))
+            assert "CAST(erp_cash_subctas.nro_subcta AS VARCHAR) ILIKE" in sql
+    finally:
+        engine.dispose()
 
 
 def test_text_search_casts_numeric_searchable_fields_for_postgresql() -> None:
