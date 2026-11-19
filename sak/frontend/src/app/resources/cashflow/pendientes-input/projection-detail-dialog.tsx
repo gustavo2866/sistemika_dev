@@ -2,8 +2,9 @@
 
 import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { FileSpreadsheet, Loader2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +73,52 @@ const formatAmount = (value: string) => {
     : value;
 };
 
+const escapeXml = (value: unknown) => String(value ?? "")
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+  .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+
+const exportPendingDetailToXls = (detail: PendingProjectionDetailResponse) => {
+  const cell = (value: unknown, type = "String", style = "") =>
+    `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="${type}">${escapeXml(value)}</Data></Cell>`;
+  const headers = ["Empresa", "Comprobante", "Cuenta", "Descripción", "Subcuenta", "Vencimiento", "Saldo", "Cuenta Cash"];
+  const rows = detail.data.map((row) => `<Row>${[
+    cell(row.empresa || "-"),
+    cell(joinValues(row.tipcomp, row.nrocomp, row.nombre)),
+    cell(joinValues(row.nrocta, row.cuenta_codigo, row.cuenta_nombre)),
+    cell(row.descripcion || "-"),
+    cell(joinValues(row.tipsub, row.nrosub, row.subcuenta_nombre)),
+    cell(`${row.fecha_vencimiento}T00:00:00.000`, "DateTime", "Date"),
+    cell(row.saldo, "Number", "Amount"),
+    cell(detail.cuenta_cash_nombre),
+  ].join("")}</Row>`).join("");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="Date"><NumberFormat ss:Format="dd/mm/yyyy"/></Style>
+    <Style ss:ID="Amount"><NumberFormat ss:Format="#,##0.00;[Red]-#,##0.00"/></Style>
+  </Styles>
+  <Worksheet ss:Name="Pendientes"><Table>
+    ${[80, 180, 200, 300, 220, 90, 110, 200].map((width) => `<Column ss:Width="${width}"/>`).join("")}
+    <Row><Cell ss:MergeAcross="7"><Data ss:Type="String">${escapeXml(`Comprobantes pendientes · ${detail.cuenta_cash_nombre}`)}</Data></Cell></Row>
+    <Row><Cell ss:MergeAcross="7"><Data ss:Type="String">${escapeXml(`Vencimiento: ${detail.fecha_desde ? formatDate(detail.fecha_desde) : "sin límite inicial"} al ${detail.fecha_hasta ? formatDate(detail.fecha_hasta) : "sin límite final"} · ${detail.count} comprobantes`)}</Data></Cell></Row>
+    <Row>${headers.map((header) => cell(header, "String", "Header")).join("")}</Row>
+    ${rows}
+    <Row><Cell ss:MergeAcross="5"><Data ss:Type="String">Total</Data></Cell>${cell(detail.importe_total, "Number", "Amount")}<Cell/></Row>
+  </Table></Worksheet>
+</Workbook>`;
+  const url = URL.createObjectURL(new Blob(["\uFEFF", xml], { type: "application/vnd.ms-excel;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cash_pendientes_${detail.cuenta_cash_id}_${detail.fecha_desde || "todos"}_${detail.fecha_hasta || "todos"}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
 const fetchPendingProjectionDetail = async (
   cuentaCashId: number,
   dueDateFrom?: string,
@@ -128,7 +175,7 @@ export const CashPendingProjectionDetailDialog = ({
           returnFocusRef.current?.focus();
         }}
         className="grid max-h-[84vh] !w-[96vw] !max-w-[1080px] grid-rows-[auto_minmax(0,1fr)] gap-2 p-3">
-        <DialogHeader className="gap-0.5">
+        <DialogHeader className="gap-0.5 pr-36">
           <DialogTitle className="text-sm font-semibold">
             Comprobantes pendientes · {cuentaCashNombre}
           </DialogTitle>
@@ -152,6 +199,16 @@ export const CashPendingProjectionDetailDialog = ({
             ) : null}
           </DialogDescription>
         </DialogHeader>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="absolute right-12 top-3 h-7 gap-1 px-2 text-[10px]"
+          disabled={!query.data?.data.length || query.isFetching || Boolean(query.error)}
+          onClick={() => { if (query.data) exportPendingDetailToXls(query.data); }}
+        >
+          <FileSpreadsheet className="size-3" /> Exportar XLS
+        </Button>
 
         <div className="min-h-0 overflow-auto rounded-md border">
           {query.isLoading ? (
@@ -166,7 +223,7 @@ export const CashPendingProjectionDetailDialog = ({
                 : "No se pudo cargar el detalle"}
             </div>
           ) : query.data?.data.length ? (
-            <table className="w-full table-fixed border-collapse text-[9px] leading-tight">
+            <table className="w-full min-w-[1120px] table-fixed border-collapse text-[9px] leading-tight">
               <thead className="sticky top-0 z-10 bg-slate-100 text-[8px] uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 <tr className="[&>th]:border-b [&>th]:px-1.5 [&>th]:py-1 [&>th]:text-left">
                   <th className="w-[70px]">Empresa</th>
@@ -176,6 +233,7 @@ export const CashPendingProjectionDetailDialog = ({
                   <th>Subcuenta</th>
                   <th className="w-[76px]">Venc.</th>
                   <th className="w-[92px] !text-right">Saldo</th>
+                  <th className="w-[150px]">Cuenta Cash</th>
                 </tr>
               </thead>
               <tbody className="[&_tr:last-child_td]:border-b-0">
@@ -217,6 +275,9 @@ export const CashPendingProjectionDetailDialog = ({
                     </td>
                     <td className="text-right font-semibold tabular-nums">
                       {formatAmount(row.saldo)}
+                    </td>
+                    <td className="break-words" title={query.data.cuenta_cash_nombre}>
+                      {query.data.cuenta_cash_nombre}
                     </td>
                   </tr>
                 ))}

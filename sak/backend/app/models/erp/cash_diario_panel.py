@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import psycopg
-from sqlalchemy import Integer, cast, func
+from sqlalchemy import Integer, cast, func, or_
 from sqlmodel import Session, select
 
 from app.models.erp.cash_cuenta import ErpCashCuenta
@@ -394,6 +394,7 @@ def get_cash_panel(session: Session, periodo: str) -> dict[str, Any]:
             ErpCashDiario.fecha >= start_date,
             ErpCashDiario.fecha <= end_date,
             ErpCashDiario.deleted_at.is_(None),
+            or_(ErpCashDiario.debe != 0, ErpCashDiario.haber != 0),
         )
         .group_by(
             ErpCashDiario.periodo_anio,
@@ -594,12 +595,13 @@ def get_cash_panel_detail(
     start_date = date(anio, mes, 1)
     end_date = date(anio, mes, monthrange(anio, mes)[1])
     statement = (
-        select(ErpCashDiario, ErpCashCuenta.tipo)
+        select(ErpCashDiario, ErpCashCuenta.tipo, ErpCashCuenta.descripcion)
         .join(ErpCashCuenta, ErpCashCuenta.id == ErpCashDiario.cuenta_cash_id, isouter=True)
         .where(
             ErpCashDiario.fecha >= start_date,
             ErpCashDiario.fecha <= end_date,
             ErpCashDiario.deleted_at.is_(None),
+            or_(ErpCashDiario.debe != 0, ErpCashDiario.haber != 0),
         )
         .order_by(
             ErpCashDiario.fecha,
@@ -621,7 +623,7 @@ def get_cash_panel_detail(
     fondo_account_codes = set(get_fondo_mappings_by_cuenta(session))
     movements: list[dict[str, Any]] = []
     total = Decimal("0")
-    for row, cuenta_cash_tipo in session.exec(statement).all():
+    for row, cuenta_cash_tipo, cuenta_cash_nombre in session.exec(statement).all():
         effective_cash_tipo = (
             "Fondo" if row.cuenta_codigo in fondo_account_codes else cuenta_cash_tipo
         )
@@ -642,6 +644,8 @@ def get_cash_panel_detail(
                 "nro_asiento": row.nro_asiento,
                 "nro_renglon": row.nro_renglon,
                 "cuenta_codigo": row.cuenta_codigo,
+                "cuenta_cash_id": row.cuenta_cash_id,
+                "cuenta_cash_nombre": cuenta_cash_nombre,
                 "tipo_subcuenta": row.tipo_subcuenta,
                 "nro_subcuenta": row.nro_subcuenta,
                 "descripcion": row.descripcion,

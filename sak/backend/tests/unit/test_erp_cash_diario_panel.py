@@ -464,6 +464,44 @@ def test_get_cash_panel_consulta_rango_y_completa_nombre_desde_maestro_local(db_
     assert detail["movements"][0]["importe"] == 10.0
 
 
+def test_cash_panel_y_detalle_excluyen_renglones_sin_importe(db_session, monkeypatch):
+    monkeypatch.setattr(
+        "app.models.erp.cash_diario_panel._get_source_ledger_accounts", lambda codes: {},
+    )
+    # Una cuenta sin importe no debe aparecer; otra con movimientos compensados si.
+    for source_id, codigo, debe, haber in (
+        (901, 24, "0", "0"),
+        (902, 25, "10", "0"),
+        (903, 25, "0", "-10"),
+        (904, 25, "0", "0"),
+        (905, 26, "0.01", "0"),
+    ):
+        db_session.add(ErpCashDiario(
+            source_id=source_id, empresa_id=1, fecha=date(2026, 6, 23),
+            periodo_anio=2026, periodo_mes=6, cuenta_codigo=codigo,
+            debe=Decimal(debe), haber=Decimal(haber), cuenta_cash_id=None,
+        ))
+    db_session.commit()
+
+    panel = get_cash_panel(db_session, "2026-06")
+    sin_cuenta = next(group for group in panel["groups"] if group["key"] == "SIN_CUENTA")
+    account = sin_cuenta["accounts"][0]
+    assert account["movement_count"] == 3
+    assert [row["cuenta_codigo"] for row in account["ledger_accounts"]] == [25, 26]
+    assert account["ledger_accounts"][0]["total"] == 0
+    assert account["ledger_accounts"][0]["movement_count"] == 2
+    assert account["ledger_accounts"][1]["total"] == -0.01
+
+    detail = get_cash_panel_detail(db_session, "2026-06", group_key="SIN_CUENTA")
+    assert detail["movement_count"] == 3
+    assert detail["total"] == -0.01
+    assert all(row["cuenta_cash_id"] is None for row in detail["movements"])
+    assert all(row["cuenta_cash_nombre"] is None for row in detail["movements"])
+    empty_detail = get_cash_panel_detail(db_session, "2026-06", cuenta_codigo=24)
+    assert empty_detail["movement_count"] == 0
+    assert empty_detail["movements"] == []
+
+
 def test_cash_panel_detail_filtra_por_cuenta_financiera_y_contable(db_session):
     financial_a = ErpCashCuenta(descripcion="INGR A")
     financial_b = ErpCashCuenta(descripcion="INGR B")
@@ -551,6 +589,11 @@ def test_cash_panel_detail_filtra_por_cuenta_financiera_y_contable(db_session):
     )
 
     assert (group_detail["movement_count"], group_detail["total"]) == (3, 45.0)
+    assert [(row["cuenta_cash_id"], row["cuenta_cash_nombre"]) for row in group_detail["movements"]] == [
+        (financial_a.id, "INGR A"),
+        (financial_a.id, "INGR A"),
+        (financial_b.id, "INGR B"),
+    ]
     assert (financial_detail["movement_count"], financial_detail["total"]) == (2, 15.0)
     assert (ledger_detail["movement_count"], ledger_detail["total"]) == (1, 10.0)
     assert (total_detail["movement_count"], total_detail["total"]) == (4, 0.0)

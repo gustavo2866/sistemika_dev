@@ -17,6 +17,8 @@ type DetailMovement = {
   nro_asiento?: string | null;
   nro_renglon?: string | null;
   cuenta_codigo: number;
+  cuenta_cash_id: number | null;
+  cuenta_cash_nombre: string | null;
   tipo_subcuenta?: string | null;
   nro_subcuenta?: string | null;
   descripcion?: string | null;
@@ -113,6 +115,7 @@ const exportDetailToXls = (target: CashMovementDetailTarget, detail: PanelDetail
         <Cell ss:StyleID="Amount"><Data ss:Type="Number">${movement.debe}</Data></Cell>
         <Cell ss:StyleID="Amount"><Data ss:Type="Number">${movement.haber}</Data></Cell>
         <Cell ss:StyleID="Amount"><Data ss:Type="Number">${movement.importe}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(movement.cuenta_cash_nombre || "Sin cuenta Cash")}</Data></Cell>
       </Row>`;
   }).join("");
 
@@ -135,8 +138,9 @@ const exportDetailToXls = (target: CashMovementDetailTarget, detail: PanelDetail
  <Worksheet ss:Name="Movimientos">
   <Table>
    <Column ss:Width="75"/><Column ss:Width="45"/><Column ss:Width="120"/><Column ss:Width="65"/><Column ss:Width="100"/><Column ss:Width="280"/><Column ss:Width="90"/><Column ss:Width="90"/><Column ss:Width="90"/>
-   <Row ss:Height="24"><Cell ss:StyleID="Title" ss:MergeAcross="8"><Data ss:Type="String">${escapeXml(target.title)}</Data></Cell></Row>
-   <Row><Cell ss:StyleID="Meta" ss:MergeAcross="8"><Data ss:Type="String">Período: ${escapeXml(target.month)} · Nivel: ${escapeXml(scopeLabel)} · Movimientos: ${detail.movement_count}</Data></Cell></Row>
+   <Column ss:Width="180"/>
+   <Row ss:Height="24"><Cell ss:StyleID="Title" ss:MergeAcross="9"><Data ss:Type="String">${escapeXml(target.title)}</Data></Cell></Row>
+   <Row><Cell ss:StyleID="Meta" ss:MergeAcross="9"><Data ss:Type="String">Período: ${escapeXml(target.month)} · Nivel: ${escapeXml(scopeLabel)} · Movimientos: ${detail.movement_count}</Data></Cell></Row>
    <Row ss:Height="8"/>
    <Row ss:Height="22">
     <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
@@ -148,10 +152,12 @@ const exportDetailToXls = (target: CashMovementDetailTarget, detail: PanelDetail
     <Cell ss:StyleID="Header"><Data ss:Type="String">Debe</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Haber</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Importe</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Cuenta Cash</Data></Cell>
    </Row>${rows}
    <Row>
     <Cell ss:StyleID="TotalLabel" ss:MergeAcross="7"><Data ss:Type="String">Total</Data></Cell>
     <Cell ss:StyleID="TotalAmount"><Data ss:Type="Number">${detail.total}</Data></Cell>
+    <Cell ss:StyleID="TotalLabel"/>
    </Row>
   </Table>
   <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane><ActivePane>2</ActivePane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions>
@@ -244,7 +250,7 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                 No hay movimientos para este importe.
               </div>
             ) : (
-              <table className="min-w-[1050px] border-collapse text-[10px]">
+              <table className="w-full min-w-[1200px] border-collapse text-[10px]">
                 <thead className="sticky top-0 z-10 bg-background text-[9px] uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="border-b px-2 py-2 text-left">Fecha</th>
@@ -256,6 +262,7 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                     <th className="border-b px-2 py-2 text-right">Debe</th>
                     <th className="border-b px-2 py-2 text-right">Haber</th>
                     <th className="border-b px-2 py-2 text-right">Importe</th>
+                    <th className="border-b px-2 py-2 text-left">Cuenta Cash</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,6 +298,9 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                       <td className={cn("px-2 py-1.5 text-right font-medium tabular-nums", movement.importe < 0 && "text-rose-700")}>
                         {formatExactAmount(movement.importe)}
                       </td>
+                      <td className="max-w-[200px] truncate px-2 py-1.5" title={movement.cuenta_cash_nombre || "Sin cuenta Cash"}>
+                        {movement.cuenta_cash_nombre || "Sin cuenta Cash"}
+                      </td>
                     </tr>
                     );
                   })}
@@ -301,6 +311,7 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                     <td className={cn("px-2 py-2 text-right tabular-nums", detailQuery.data.total < 0 && "text-rose-700")}>
                       {formatExactAmount(detailQuery.data.total)}
                     </td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>
