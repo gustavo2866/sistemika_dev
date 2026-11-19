@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { Lock, Unlock } from "lucide-react";
-import { useListContext, useNotify, useRefresh, useUpdateMany, type Identifier } from "ra-core";
+import { useGetList, useListContext, useNotify, useRefresh, useUpdateMany, type Identifier } from "ra-core";
 import { Confirm } from "@/components/confirm";
 import { Button } from "@/components/ui/button";
 import { CreateButton } from "@/components/create-button";
 import { ExportButton } from "@/components/export-button";
 import { FilterButton } from "@/components/filter-form";
+import type { SelectInputProps } from "@/components/select-input";
+import { CompactSelectInput } from "@/components/forms/form_order/filter";
 import {
   FormOrderListRowActions,
   ListPaginator,
@@ -20,10 +22,29 @@ import {
 import { List, LIST_CONTAINER_STANDARD_PLUS } from "@/components/list";
 import { ERP_CASH_SUBCTA_ESTADO_CHOICES, ERP_CASH_SUBCTA_ESTADO_CLASSES } from "./model";
 
+const CategoryFilter = (props: SelectInputProps) => {
+  const categories = useGetList<{ id: string; name: string }>("erp/cash/maps/categorias", {
+    pagination: { page: 1, perPage: 1000 },
+    sort: { field: "name", order: "ASC" },
+    filter: {},
+  });
+  return (
+    <CompactSelectInput
+      {...props}
+      choices={(categories.data ?? []).filter((category) => category.id.trim().toLowerCase() !== "error")}
+      isPending={categories.isPending}
+      disabled={Boolean(categories.error)}
+      helperText={categories.error ? "No se pudieron cargar las categorías" : undefined}
+      emptyText="Todas"
+    />
+  );
+};
+
 const filters = buildListFilters(
   [
     { type: "text", props: { source: "q", label: "Buscar", placeholder: "Buscar subcuentas", alwaysOn: true } },
-    { type: "text", props: { source: "categoria", label: "Categoría", alwaysOn: true } },
+    { type: "custom", element: <CategoryFilter key="erp-cash-subctas-categoria" source="categoria" label="Categoría" alwaysOn /> },
+    { type: "text", props: { source: "tpo_subcta", label: "Tipo de subcuenta", type: "number", min: 0, step: 1, alwaysOn: true } },
     { type: "select", props: { source: "estado", label: "Estado", choices: ERP_CASH_SUBCTA_ESTADO_CHOICES, emptyText: "Todos", alwaysOn: true } },
   ],
   { keyPrefix: "erp-cash-subctas" },
