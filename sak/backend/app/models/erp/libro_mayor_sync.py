@@ -130,6 +130,12 @@ def sync_libro_mayor_periodo(
     complete_import: bool = False,
 ) -> dict[str, int | str]:
     anio, mes = parse_periodo(periodo)
+    period = session.exec(select(ErpCashPeriodo).where(
+        ErpCashPeriodo.fecha_periodo == date(anio, mes, 1),
+        ErpCashPeriodo.deleted_at.is_(None),
+    ).with_for_update()).first()
+    if period is not None and period.estado == "CERRADO":
+        raise ValueError(f"El per?odo {anio:04d}-{mes:02d} est? cerrado; debe reabrirse para sincronizarlo")
     selected_centros = (
         get_allowed_centros_costo(session)
         if allowed_centros is None

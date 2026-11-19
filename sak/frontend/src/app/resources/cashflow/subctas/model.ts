@@ -39,8 +39,6 @@ export const erpCashSubctaSchema = z.object({
 }).superRefine((data, context) => {
   if (data.categoria?.toLowerCase() === "error") {
     context.addIssue({ code: "custom", path: ["categoria"], message: "ERROR es un estado, no una categoría" });
-  } else if (data.estado === "activa" && !data.categoria) {
-    context.addIssue({ code: "custom", path: ["categoria"], message: "Una subcuenta activa requiere categoría" });
   }
 });
 

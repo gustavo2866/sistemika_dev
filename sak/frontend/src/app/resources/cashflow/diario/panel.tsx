@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNotify } from "ra-core";
-import { BarChart3, Calculator, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, DollarSign, FileDown, FileSpreadsheet, FileUp, Landmark, PencilLine, RefreshCw, RotateCcw, TrendingDown, TrendingUp, WalletCards } from "lucide-react";
+import { BarChart3, Calculator, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, DollarSign, FileDown, FileSpreadsheet, FileUp, Landmark, PencilLine, RefreshCw, RotateCcw, TrendingDown, TrendingUp, WalletCards, Waypoints } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 
@@ -18,6 +18,7 @@ import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
 import { CashMovementDetailDialog, type CashMovementDetailTarget } from "./movement-detail-dialog";
 import { CashProjectionQuickEditDialog } from "../proyectado";
+import { CashAccountMappingsDialog } from "../maps/account-mappings-dialog";
 import type { ErpCashPeriodoEstado } from "../periodos/model";
 import { fetchCashProjectionHorizon } from "../proyectado/horizon";
 
@@ -360,6 +361,23 @@ export const ErpCashPanel = () => {
   const [detailTarget, setDetailTarget] = useState<CashMovementDetailTarget | null>(null);
   const [balanceDetailTarget, setBalanceDetailTarget] = useState<BalanceDetailTarget | null>(null);
   const [projectionEditTarget, setProjectionEditTarget] = useState<ProjectionEditTarget | null>(null);
+  const [mappingTarget, setMappingTarget] = useState<{ accountNumber: number; accountName: string } | null>(null);
+  const renderMappingButton = (accountNumber: number, accountName: string) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="size-5 shrink-0 text-slate-400 hover:text-sky-700 dark:hover:text-sky-300"
+      title="Ver mapeos de la cuenta ERP"
+      aria-label={`Ver mapeos de ${accountNumber} — ${accountName}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        setMappingTarget({ accountNumber, accountName });
+      }}
+    >
+      <Waypoints className="size-3.5" />
+    </Button>
+  );
   useEffect(() => {
     const accountId = Number(searchParams.get("projection_account_id"));
     const accountName = searchParams.get("projection_account_name");
@@ -676,9 +694,10 @@ export const ErpCashPanel = () => {
           return (
             <tr key={`${rowKey}:${account.cuenta_codigo}`} className="border-t border-slate-100 bg-white/70 transition-colors hover:bg-slate-50 dark:border-slate-900 dark:bg-slate-950/30 dark:hover:bg-slate-900/50">
               <td className="border-r px-2 py-1.5 pl-10 text-[9px]">
-                <span className="flex items-center gap-2 truncate" title={ledgerTitle}>
+                <span className="flex items-center gap-1.5">
                   <span className="size-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
-                  {ledgerLabel}
+                  <span className="min-w-0 flex-1 truncate" title={ledgerTitle}>{ledgerLabel}</span>
+                  {renderMappingButton(account.cuenta_codigo, account.cuenta_nombre)}
                 </span>
               </td>
               {data.months.map((month) => {
@@ -1004,8 +1023,9 @@ export const ErpCashPanel = () => {
                               <tr key={`${accountRowKey}:ledger:${ledgerAccount.cuenta_codigo}:${ledgerAccount.cuenta_contable_codigo ?? ""}`} className="border-t border-slate-100 bg-slate-50/40 transition-colors hover:bg-slate-100/60 dark:border-slate-900 dark:bg-slate-950/20 dark:hover:bg-slate-900/40">
                                 <td className="border-r px-2 py-1.5 pl-14 text-[9px]">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="truncate" title={ledgerTitle}>{ledgerLabel}</span>
-                                    <span className="ml-auto text-[8px] text-muted-foreground">{ledgerAccount.movement_count} mov.</span>
+                                    <span className="min-w-0 flex-1 truncate" title={ledgerTitle}>{ledgerLabel}</span>
+                                    {renderMappingButton(ledgerAccount.cuenta_codigo, ledgerAccount.cuenta_nombre)}
+                                    <span className="shrink-0 text-[8px] text-muted-foreground">{ledgerAccount.movement_count} mov.</span>
                                   </div>
                                 </td>
                                 {data.months.map((month) => (
@@ -1173,6 +1193,14 @@ export const ErpCashPanel = () => {
       </Dialog>
 
       <CashMovementDetailDialog target={detailTarget} onClose={() => setDetailTarget(null)} />
+      {mappingTarget && <CashAccountMappingsDialog
+        key={mappingTarget.accountNumber}
+        open
+        accountNumber={mappingTarget.accountNumber}
+        accountName={mappingTarget.accountName}
+        onOpenChange={(open) => { if (!open) setMappingTarget(null); }}
+        onSaved={() => { void query.refetch(); }}
+      />}
 
     </div>
   );

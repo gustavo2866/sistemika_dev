@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Lock } from "lucide-react";
+import { Lock, Unlock } from "lucide-react";
 import { useListContext, useNotify, useRefresh, useUpdateMany, type Identifier } from "ra-core";
 import { Confirm } from "@/components/confirm";
 import { Button } from "@/components/ui/button";
@@ -31,26 +31,30 @@ const filters = buildListFilters(
 
 type ErpCashSubctaListProps = { embedded?: boolean; rowClick?: any; perPage?: number; createTo?: string };
 
-const BloquearButton = () => {
+const SubcuentaStateButtons = () => {
   const { selectedIds, onUnselectItems } = useListContext();
   const notify = useNotify();
   const refresh = useRefresh();
-  const [idsToBlock, setIdsToBlock] = useState<Identifier[]>([]);
+  const [selection, setSelection] = useState<{ ids: Identifier[]; estado: "activa" | "bloqueada" } | null>(null);
   const [updateMany, { isPending }] = useUpdateMany();
+  const activating = selection?.estado === "activa";
+  const action = activating ? "Activar" : "Bloquear";
+  const count = selection?.ids.length ?? 0;
 
   const handleConfirm = () => {
-    if (!idsToBlock.length || isPending) return;
-    updateMany("erp/cash/subctas", { ids: idsToBlock, data: { estado: "bloqueada" } }, {
+    if (!selection?.ids.length || isPending) return;
+    updateMany("erp/cash/subctas", { ids: selection.ids, data: { estado: selection.estado } }, {
       mutationMode: "pessimistic",
       onSuccess: () => {
-        notify(idsToBlock.length === 1 ? "Subcuenta bloqueada" : `${idsToBlock.length} subcuentas bloqueadas`, { type: "success" });
-        setIdsToBlock([]);
+        const status = activating ? "activada" : "bloqueada";
+        notify(count === 1 ? `Subcuenta ${status}` : `${count} subcuentas ${status}s`, { type: "success" });
+        setSelection(null);
         onUnselectItems();
         refresh();
       },
       onError: () => {
-        notify("No se pudo completar el bloqueo. Revisá el listado antes de reintentar.", { type: "error" });
-        setIdsToBlock([]);
+        notify(`No se pudo completar ${activating ? "la activación" : "el bloqueo"}. Revisá el listado antes de reintentar.`, { type: "error" });
+        setSelection(null);
         refresh();
       },
     });
@@ -58,19 +62,23 @@ const BloquearButton = () => {
 
   return (
     <>
-      <Button type="button" variant="outline" size="sm" disabled={!selectedIds.length || isPending} onClick={() => setIdsToBlock([...selectedIds])}>
+      <Button type="button" variant="outline" size="sm" disabled={!selectedIds.length || isPending} onClick={() => setSelection({ ids: [...selectedIds], estado: "activa" })}>
+        <Unlock className="h-4 w-4" />
+        Activar
+      </Button>
+      <Button type="button" variant="outline" size="sm" disabled={!selectedIds.length || isPending} onClick={() => setSelection({ ids: [...selectedIds], estado: "bloqueada" })}>
         <Lock className="h-4 w-4" />
         Bloquear
       </Button>
       <Confirm
-        isOpen={idsToBlock.length > 0}
-        title="Bloquear subcuentas"
-        content={`${idsToBlock.length === 1 ? "¿Bloquear la subcuenta seleccionada?" : `¿Bloquear las ${idsToBlock.length} subcuentas seleccionadas?`} Conservarán su categoría y quedarán excluidas del procesamiento automático futuro.`}
-        confirm="Bloquear"
+        isOpen={selection !== null}
+        title={`${action} subcuentas`}
+        content={`${count === 1 ? `¿${action} la subcuenta seleccionada?` : `¿${action} las ${count} subcuentas seleccionadas?`} ${activating ? "Se activarán aunque no tengan categoría asignada. Se conservarán las categorías existentes y se considerarán en la próxima actualización Cash." : "Conservarán su categoría y quedarán excluidas del procesamiento automático futuro."}`}
+        confirm={action}
         cancel="Cancelar"
-        ConfirmIcon={Lock}
+        ConfirmIcon={activating ? Unlock : Lock}
         loading={isPending}
-        onClose={() => { if (!isPending) setIdsToBlock([]); }}
+        onClose={() => { if (!isPending) setSelection(null); }}
         onConfirm={handleConfirm}
       />
     </>
@@ -80,7 +88,7 @@ const BloquearButton = () => {
 const ListActions = ({ createTo }: { createTo?: string }) => (
   <div className="flex items-center gap-2">
     <FilterButton filters={filters} size="sm" />
-    <BloquearButton />
+    <SubcuentaStateButtons />
     <CreateButton label="Crear" to={createTo} />
     <ExportButton label="Exportar" />
   </div>

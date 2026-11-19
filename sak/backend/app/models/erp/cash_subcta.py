@@ -11,7 +11,6 @@ class ErpCashSubcta(Base, table=True):
     __table_args__ = (
         UniqueConstraint("tpo_subcta", "nro_subcta", name="uq_erp_cash_subctas_tipo_numero"),
         CheckConstraint("estado IN ('activa', 'error', 'bloqueada')", name="ck_cash_subcta_estado"),
-        CheckConstraint("estado <> 'activa' OR (categoria IS NOT NULL AND trim(categoria) <> '' AND lower(trim(categoria)) <> 'error')", name="ck_cash_subcta_activa_categoria"),
     )
 
     __searchable_fields__: ClassVar[List[str]] = ["nro_subcta", "descripcion", "categoria"]

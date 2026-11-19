@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { required, useGetList, useRecordContext } from "ra-core";
 import { useFormContext, useWatch } from "react-hook-form";
 
@@ -15,22 +15,17 @@ const CategorySelect = ({ choices, isPending, error }: {
   isPending: boolean;
   error: boolean;
 }) => {
-  const { setValue, trigger } = useFormContext<ErpCashSubctaFormValues>();
+  const { setValue } = useFormContext<ErpCashSubctaFormValues>();
   const estado = useWatch<ErpCashSubctaFormValues>({ name: "estado" });
-  const categoria = useWatch<ErpCashSubctaFormValues>({ name: "categoria" });
-  useEffect(() => {
-    void trigger("categoria");
-  }, [estado, categoria, trigger]);
   return (
     <FormSelect
       source="categoria"
       label="Categoría"
       choices={choices}
-      validate={estado === "activa" ? required() : undefined}
       isPending={isPending}
       disabled={error}
-      helperText={error ? "No se pudieron cargar las categorías" : estado === "activa" ? "Obligatoria para subcuentas activas" : undefined}
-      emptyText={estado === "activa" ? "Seleccionar categoría" : "Sin categoría"}
+      helperText={error ? "No se pudieron cargar las categorías" : undefined}
+      emptyText="Sin categoría"
       onSelectionChange={(value) => {
         if (value && estado === "error") setValue("estado", "activa", { shouldDirty: true, shouldValidate: true });
       }}
@@ -39,7 +34,7 @@ const CategorySelect = ({ choices, isPending, error }: {
   );
 };
 
-export const ErpCashSubctaForm = () => {
+export const ErpCashSubctaForm = ({ onCancel }: { onCancel?: () => void } = {}) => {
   const record = useRecordContext<ErpCashSubcta>();
   const categories = useGetList<{ id: string; name: string }>("erp/cash/maps/categorias", {
     pagination: { page: 1, perPage: 1000 },
@@ -60,7 +55,7 @@ export const ErpCashSubctaForm = () => {
     <SimpleForm<ErpCashSubctaFormValues>
       className="w-full max-w-2xl"
       resolver={zodResolver(erpCashSubctaSchema) as any}
-      toolbar={<FormOrderToolbar />}
+      toolbar={<FormOrderToolbar cancelProps={onCancel ? { onClick: onCancel } : undefined} />}
       defaultValues={ERP_CASH_SUBCTA_DEFAULT}
     >
       <SectionBaseTemplate

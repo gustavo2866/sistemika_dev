@@ -80,19 +80,21 @@ se usa el mes posterior al último cerrado o enero de 2026 si no existen
 períodos. El rango termina al completar 24 meses desde el primer período en
 cierre o abierto, independientemente del año posicionado en el panel.
 
-La reconstrucción solicitada desde el panel incluye los CERRADO del rango,
+La reconstrucción solicitada desde el panel incluye las proyecciones de los
+CERRADO del rango, conservando siempre sus movimientos y saldos sincronizados,
 sin reabrirlos ni cambiar sus datos de cierre. Conserva importes manuales y
 comprometidos. Diciembre de 2025 es el saldo base fijo: si se elige como inicio,
 el rango efectivo comienza en enero de 2026 y no modifica los registros base.
 
 `POST /erp/cash/rebuild` recibe `periodo_desde` en formato YYYY-MM;
 `periodo_hasta` es opcional y usa por defecto el fin del horizonte móvil.
-`incluir_cerrados` es un booleano opcional (predeterminado `false`). Permite
+`incluir_cerrados` es un booleano opcional (predeterminado `false`) que solo
+habilita recalcular proyecciones históricas; no reemplaza reales cerrados. Permite
 rangos históricos de más de 24 meses, rechaza inicios anteriores a diciembre
 de 2025 y excluye siempre el mes base. Realiza todos los cambios en una
 transacción: un error revierte también los períodos ya procesados. Devuelve
 el rango efectivo y los conteos `periodos_cerrados_omitidos` y
-`periodos_cerrados_reconstruidos`.
+`periodos_cerrados_reconstruidos` (siempre cero para los reales cerrados).
 `POST /erp/cash/diario/sync` queda como entrada de reconstrucción local de un
 solo período; ya no importa del origen. Un CERRADO devuelve HTTP 409.
 
@@ -105,11 +107,13 @@ de importación completa. Octubre EN_CIERRE no impide procesar las transacciones
 ya importadas de noviembre ABIERTO. Cada libro se trata por separado: si no tiene
 filas ni una importación vacía confirmada, conserva sus datos Cash existentes.
 Una importación completa con cero filas sí permite vaciar el Cash derivado de
-ese libro. No consulta el ERP. Las marcas indican disponibilidad de la última
+ese libro en meses ABIERTO o EN_CIERRE. No consulta el ERP. Las marcas indican disponibilidad de la última
 importación, no que el mes haya terminado o esté cerrado.
 
-La limpieza de libros futuros invalida ambas marcas de importación de esos
-períodos. Sincronizar ERP termina llamando a `POST /erp/cash/rebuild`, el mismo
+La limpieza de libros futuros omite los meses CERRADO incluso con una fecha de
+corte anterior: conserva libros, reales de presupuestos y marcas de importación.
+Invalida ambas marcas únicamente en los meses no cerrados que limpia.
+Sincronizar ERP termina llamando a `POST /erp/cash/rebuild`, el mismo
 proceso usado por el botón Reconstruir Cash. Lo hace después de importar todos
 los CSV de pendientes, desde el mes sincronizado hasta diciembre del año
 siguiente, con `incluir_cerrados=false` y sin diálogo. La asignación Cash y la reconstrucción de pendientes forman parte
@@ -130,3 +134,20 @@ Verificacion focalizada, desde backend:
 ```powershell
 python -m pytest tests/unit/test_erp_cash_periodo_model.py tests/unit/test_erp_cash_diario_panel.py tests/unit/test_erp_cash_diario_sync.py -q
 ```
+
+## Protecci?n de datos sincronizados cerrados
+
+Los importadores de Libro Diario y Libro Mayor rechazan un mes CERRADO antes
+de consultar el origen o borrar registros, incluso si reciben un origen vac?o.
+La reconstrucci?n Cash conserva los movimientos, saldos y sus asignaciones
+originales aunque se hayan cambiado los mapeos o falten libros locales.
+Para reemplazar un hist?rico es necesario reabrir expl?citamente su per?odo.
+
+La migraci?n `4a9ed248e4b0` agrega protecci?n PostgreSQL a `erp_libro_diario`,
+`erp_libro_mayor`, `erp_cash_diarios`, `erp_cash_saldos`, `erp_presupuestos` y
+`erp_cash_periodos`. Rechaza DELETE, baja l?gica y traslado de datos desde meses
+CERRADO; tambi?n TRUNCATE mientras existan meses cerrados. Se aplica a SQL,
+CRUD y scripts; no depende de que cada llamador recuerde validar el estado.
+Un bloqueo del per?odo serializa la protecci?n con cierres y reaperturas.
+No afecta las revalorizaciones ICC ni la edici?n expl?cita de proyecciones.
+El downgrade elimina los triggers y funciones, sin cambiar registros.

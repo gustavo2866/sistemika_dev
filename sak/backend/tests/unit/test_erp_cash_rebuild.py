@@ -263,7 +263,7 @@ def test_rango_invalido(db_session,start,end):
         rebuild_cash(db_session,start,end)
 
 
-def test_reconstruccion_historica_reaplica_mapeos_sin_reabrir_periodos(db_session):
+def test_reconstruccion_historica_conserva_reales_y_mapeos_de_periodos_cerrados(db_session):
     _, income = _real_sources(db_session)
     rebuild_cash(db_session, "2026-10", "2026-10")
     period = db_session.exec(select(ErpCashPeriodo)).one()
@@ -288,20 +288,21 @@ def test_reconstruccion_historica_reaplica_mapeos_sin_reabrir_periodos(db_sessio
         result = rebuild_erp_cash({"periodo_desde": "2026-10", "periodo_hasta": "2026-10",
             "incluir_cerrados": True}, db_session)
         rows = db_session.exec(select(ErpCashDiario).where(ErpCashDiario.cuenta_codigo == 4100)).all()
-        assert len(rows) == 1 and rows[0].cuenta_cash_id == other.id
+        assert len(rows) == 1 and rows[0].cuenta_cash_id == income.id
         db_session.refresh(period)
         db_session.refresh(manual)
         assert period.estado == "CERRADO"
         assert period.cerrado_en.replace(tzinfo=timezone.utc) == closed_at
-        assert period.version > previous_version
+        assert period.version == previous_version
         assert (manual.importe_proyectado, manual.importe_pendiente, manual.importe_comprometido) == (321, 45, 7)
         assert manual.observacion == "Conservar"
-        assert result["periodos_cerrados_reconstruidos"] == 1
-        assert result["periodos_cerrados_omitidos"] == 0
+        assert result["periodos_cerrados_reconstruidos"] == 0
+        assert result["periodos_cerrados_omitidos"] == 1
 
 
 def test_reconstruccion_historica_recalcula_automaticos_y_bases_reales(db_session):
     _, income = _real_sources(db_session)
+    rebuild_cash(db_session, "2026-10", "2026-10")
     period = db_session.exec(select(ErpCashPeriodo)).one()
     period.estado = "CERRADO"
     method = MetodoProyeccion(nombre="Duplicar anterior")

@@ -109,3 +109,25 @@ def test_cleanup_dry_run_does_not_change_rows(db_session):
 
     assert result["libro_diario_deleted"] == 1
     assert db_session.exec(select(ErpLibroDiario)).one().source_id == 1
+
+
+def test_cleanup_con_corte_anterior_conserva_meses_cerrados_y_sus_indicadores(db_session):
+    period = ErpCashPeriodo(fecha_periodo=date(2026, 10, 1), estado="CERRADO",
+                           diario_cash_importado=True, mayor_cash_importado=True)
+    presupuesto = ErpPresupuesto(fecha=date(2026, 10, 15), proyecto_id=1,
+                                erp_cuenta_id=1, real_egreso=Decimal("75"))
+    db_session.add_all([period, presupuesto, _diario(1, 2026, 10), _mayor(1, 2026, 10),
+                       _diario(2, 2026, 11), _mayor(2, 2026, 11)])
+    db_session.commit()
+    for apply in (False, True):
+        result = cleanup_future_erp_actuals(db_session, cutoff=date(2026, 8, 1), apply_changes=apply)
+        assert result["libro_diario_deleted"] == 1
+        assert result["libro_mayor_deleted"] == 1
+        assert result["presupuestos_actualizados"] == 0
+        assert result["presupuestos_vacios_deleted"] == 0
+    assert db_session.exec(select(ErpLibroDiario)).one().source_id == 1
+    assert db_session.exec(select(ErpLibroMayor)).one().source_id == 1
+    db_session.refresh(presupuesto)
+    assert presupuesto.real_egreso == Decimal("75")
+    db_session.refresh(period)
+    assert period.diario_cash_importado and period.mayor_cash_importado

@@ -72,6 +72,15 @@ automáticamente. No escribir `total_proyectado`.
 
 ## Consumidores
 
+El icono de mapeo de cada cuenta ERP del panel, tanto en el detalle de cuentas
+Cash como en los saldos Fondo, abre `CashAccountMappingsDialog` del recurso
+`cashflow/maps`. Consulta los mapeos con filtro fijo `nro_cta` y muestra Cuenta
+ERP, Categoría, Debe y Haber, con paginación. No consulta mapeos mientras el
+popup está cerrado. Al seleccionar una fila reutiliza el formulario de edición;
+Agregar reutiliza el formulario de creación con la cuenta ERP preseleccionada.
+Guardar o cancelar vuelve a la lista y cerrar la lista vuelve al panel. Los
+guardados refrescan la lista y el panel; no ejecutan una reconstrucción Cash.
+
 Los importes de la columna Real del editor abren el mismo detalle contable que
 el panel, filtrado por cuenta Cash y mes. `CashMovementDetailDialog`, en
 `cashflow/diario/movement-detail-dialog.tsx`, encapsula la consulta, la tabla,
@@ -147,7 +156,7 @@ como elección explícita del usuario. El downgrade restablece el default anteri
 sin revertir los cambios de origen realizados sobre registros existentes.
 El editor también permite **Desactivar Manual en todo el rango**, respetando
 Período desde y los meses editables, para aplicar el método sin cambiar cada
-mes por separado. **Calcular y guardar** guarda la configuración y los valores
+mes por separado. **Calcular** guarda la configuración y los valores
 del editor antes de ejecutar el motor y persiste los resultados en la misma
 transacción. Si el cálculo falla, revierte también el guardado. El editor
 permanece abierto y recarga los valores persistidos. Si todos los meses son
@@ -190,6 +199,10 @@ Actualizar Cash usa los libros importados hasta ese momento, sin exigir marcas
 de importación completa. Si un libro todavía no tiene datos ni una importación
 vacía confirmada, conserva sus movimientos o saldos Cash existentes; el otro
 libro disponible se procesa igualmente. No consulta el ERP.
+Los movimientos y saldos reales de un mes CERRADO se conservan siempre, incluso
+con `incluir_cerrados=true`: ese indicador permite recalcular proyecciones
+históricas, pero no reemplazar los reales sincronizados. Para volver a importar
+o reconstruir los reales hay que reabrir explícitamente el período.
 Sincronizar ERP invoca esta misma operación al finalizar la carga de pendientes,
 desde el mes inicial sincronizado hasta el final del horizonte móvil.
 Ver detalles de importación y disponibilidad de libros en `cash_periodos.md`.

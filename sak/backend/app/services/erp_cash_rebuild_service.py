@@ -52,8 +52,9 @@ def rebuild_cash(
             ErpCashPeriodo.fecha_periodo <= end,
         ).order_by(ErpCashPeriodo.fecha_periodo).with_for_update()).all()}
         closed_periods = {month for month, row in periods.items() if row.estado == "CERRADO"}
-        closed = set() if include_closed else closed_periods
-        if len(closed) == len(months):
+        # incluir_cerrados permite recalcular proyecciones, nunca reemplazar reales.
+        closed = closed_periods
+        if len(closed) == len(months) and not include_closed:
             if close_period:
                 raise ValueError("El período ya está cerrado. Actualizá la pantalla.")
             session.commit()

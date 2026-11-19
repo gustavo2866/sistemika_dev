@@ -10,7 +10,10 @@ import { SimpleForm } from "@/components/simple-form";
 import type { ErpCuenta } from "../../erp/cuentas/model";
 import { ERP_CASH_MAP_DEFAULT, erpCashMapSchema, type ErpCashMap, type ErpCashMapFormValues } from "./model";
 
-export const ErpCashMapForm = () => {
+export const ErpCashMapForm = ({ initialValues, onCancel }: {
+  initialValues?: Partial<ErpCashMapFormValues>;
+  onCancel?: () => void;
+} = {}) => {
   const record = useRecordContext<ErpCashMap>();
   const currencies = useGetList<{ id: number; codigo: string; nombre: string }>("monedas", {
     pagination: { page: 1, perPage: 1000 },
@@ -24,12 +27,12 @@ export const ErpCashMapForm = () => {
         { id: currency.codigo, name: `${currency.codigo} — ${currency.nombre}` },
       ]),
     );
-    const currentCurrency = record?.moneda ?? ERP_CASH_MAP_DEFAULT.moneda;
+    const currentCurrency = record?.moneda ?? initialValues?.moneda ?? ERP_CASH_MAP_DEFAULT.moneda;
     if (currentCurrency && !choices.has(currentCurrency)) {
       choices.set(currentCurrency, { id: currentCurrency, name: currentCurrency });
     }
     return [...choices.values()].sort((a, b) => a.id.localeCompare(b.id));
-  }, [currencies.data, record?.moneda]);
+  }, [currencies.data, record?.moneda, initialValues?.moneda]);
   const accounts = useGetList<ErpCuenta>("erp/cuentas", {
     pagination: { page: 1, perPage: 1000 },
     sort: { field: "nro_cuenta", order: "ASC" },
@@ -48,14 +51,15 @@ export const ErpCashMapForm = () => {
       if (!Number.isInteger(id) || id < 0 || choices.has(id)) continue;
       choices.set(id, { id, name: `${id} — ${account.descripcion || account.cod_cuenta || "Sin descripción"}` });
     }
-    if (record?.nro_cta != null && !choices.has(record.nro_cta)) {
-      choices.set(record.nro_cta, {
-        id: record.nro_cta,
-        name: record.cuenta_nombre ? `${record.nro_cta} — ${record.cuenta_nombre}` : String(record.nro_cta),
+    const selectedAccount = record?.nro_cta ?? initialValues?.nro_cta;
+    if (selectedAccount != null && !choices.has(selectedAccount)) {
+      choices.set(selectedAccount, {
+        id: selectedAccount,
+        name: record?.cuenta_nombre ? `${selectedAccount} — ${record.cuenta_nombre}` : String(selectedAccount),
       });
     }
     return [...choices.values()].sort((a, b) => a.id - b.id);
-  }, [accounts.data, record?.nro_cta, record?.cuenta_nombre]);
+  }, [accounts.data, record?.nro_cta, record?.cuenta_nombre, initialValues?.nro_cta]);
   const categoryChoices = useMemo(() => {
     const choices = new Map((categories.data ?? []).map((category) => [category.id, category]));
     if (record?.categoria && !choices.has(record.categoria)) {
@@ -68,8 +72,8 @@ export const ErpCashMapForm = () => {
     <SimpleForm<ErpCashMapFormValues>
       className="w-full max-w-2xl"
       resolver={zodResolver(erpCashMapSchema) as any}
-      toolbar={<FormOrderToolbar />}
-      defaultValues={ERP_CASH_MAP_DEFAULT}
+      toolbar={<FormOrderToolbar cancelProps={onCancel ? { onClick: onCancel } : undefined} />}
+      defaultValues={{ ...ERP_CASH_MAP_DEFAULT, ...initialValues }}
     >
       <SectionBaseTemplate
         title="Datos del mapeo Cash"

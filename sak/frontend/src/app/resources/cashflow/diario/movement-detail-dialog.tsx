@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FileSpreadsheet, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiUrl } from "@/lib/dataProvider";
 import { cn } from "@/lib/utils";
+import { CashSubcuentaEditDialog, type CashSubcuentaTarget } from "../subctas/edit-dialog";
 
 type DetailMovement = {
   id: number;
@@ -188,6 +189,7 @@ export type CashMovementDetailDialogProps = {
 
 export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: CashMovementDetailDialogProps) => {
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const [subcuentaTarget, setSubcuentaTarget] = useState<CashSubcuentaTarget | null>(null);
   const detailQuery = useQuery({
     queryKey: ["erp-cash-panel-detail", detailTarget],
     queryFn: () => fetchPanelDetail(detailTarget!),
@@ -196,7 +198,10 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
   const detailScopeLabel = detailTarget ? DETAIL_SCOPE_LABELS[detailTarget.scope] : "";
 
   return (
-      <Dialog open={detailTarget !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <>
+      <Dialog open={detailTarget !== null} onOpenChange={(open) => {
+        if (!open) { setSubcuentaTarget(null); onClose(); }
+      }}>
         <DialogContent
           onOpenAutoFocus={() => { returnFocusRef.current = document.activeElement as HTMLElement | null; }}
           onCloseAutoFocus={(event) => {
@@ -254,7 +259,13 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                   </tr>
                 </thead>
                 <tbody>
-                  {detailQuery.data.movements.map((movement) => (
+                  {detailQuery.data.movements.map((movement) => {
+                    const tipo = String(movement.tipo_subcuenta ?? "").trim();
+                    const numero = String(movement.nro_subcuenta ?? "").trim();
+                    const editable = /^\d+$/.test(tipo) && /^\d+$/.test(numero)
+                      && Number.isSafeInteger(Number(tipo)) && Number.isSafeInteger(Number(numero));
+                    const subcuentaLabel = [tipo, numero].filter(Boolean).join(" / ") || "-";
+                    return (
                     <tr key={movement.id} className="border-t hover:bg-muted/25">
                       <td className="whitespace-nowrap px-2 py-1.5">{formatDate(movement.fecha)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{movement.empresa_id}</td>
@@ -262,8 +273,17 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                         {[movement.tipo_asiento, movement.nro_asiento, movement.nro_renglon].filter(Boolean).join(" / ") || "-"}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{movement.cuenta_codigo}</td>
-                      <td className="max-w-[120px] truncate px-2 py-1.5" title={[movement.tipo_subcuenta, movement.nro_subcuenta].filter(Boolean).join(" / ")}>
-                        {[movement.tipo_subcuenta, movement.nro_subcuenta].filter(Boolean).join(" / ") || "-"}
+                      <td className="max-w-[120px] truncate px-2 py-1.5" title={subcuentaLabel}>
+                        {editable ? (
+                          <button
+                            type="button"
+                            className="rounded text-primary underline underline-offset-2 hover:text-primary/80 focus-visible:outline focus-visible:outline-2"
+                            aria-label={`Editar subcuenta ${subcuentaLabel}`}
+                            onClick={() => setSubcuentaTarget({ tipo: Number(tipo), numero: Number(numero) })}
+                          >
+                            {subcuentaLabel}
+                          </button>
+                        ) : subcuentaLabel}
                       </td>
                       <td className="max-w-[280px] truncate px-2 py-1.5" title={movement.descripcion ?? ""}>{movement.descripcion || "-"}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{formatExactAmount(movement.debe)}</td>
@@ -272,7 +292,8 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
                         {formatExactAmount(movement.importe)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot className="sticky bottom-0 border-t-2 bg-background font-semibold">
                   <tr>
@@ -287,5 +308,11 @@ export const CashMovementDetailDialog = ({ target: detailTarget, onClose }: Cash
           </div>
         </DialogContent>
       </Dialog>
+      {detailTarget && subcuentaTarget && <CashSubcuentaEditDialog
+        key={`${subcuentaTarget.tipo}-${subcuentaTarget.numero}`}
+        target={subcuentaTarget}
+        onClose={() => setSubcuentaTarget(null)}
+      />}
+    </>
   );
 };

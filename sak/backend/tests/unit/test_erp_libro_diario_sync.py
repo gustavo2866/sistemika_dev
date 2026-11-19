@@ -58,3 +58,29 @@ def test_sync_range_can_defer_presupuesto_update(monkeypatch):
         ("202602", 5000, False, False),
     ]
     assert result["actualizar_presupuestos"] is False
+
+
+def test_sync_diario_cerrado_no_abre_origen_ni_reemplaza_datos(monkeypatch):
+    from unittest.mock import MagicMock
+    import pytest
+    from app.models.erp import libro_diario_sync as sync
+
+    dest = MagicMock()
+    dest.__enter__.return_value = dest
+    dest.cursor.return_value.__enter__.return_value.fetchone.return_value = ("CERRADO",)
+    calls = []
+    def connect(*args, **kwargs):
+        calls.append((args, kwargs))
+        assert len(calls) == 1, "No debe conectar al ERP para un mes cerrado"
+        return dest
+    monkeypatch.setattr(sync, "get_dest_url", lambda: "destino")
+    monkeypatch.setattr(sync, "get_source_connection_kwargs", lambda: {})
+    monkeypatch.setattr(sync.psycopg, "connect", connect)
+    with pytest.raises(ValueError, match="debe reabrirse"):
+        sync.run_sync("2026-08", 5000, False)
+    cursor = dest.cursor.return_value.__enter__.return_value
+    assert len(cursor.execute.call_args_list) == 1
+    assert "FOR UPDATE" in cursor.execute.call_args.args[0]
+    dest.commit.assert_not_called()
+    with pytest.raises(ValueError, match="debe reabrirse"):
+        sync.sync_real_presupuestos(dest, 2026, 8, False)

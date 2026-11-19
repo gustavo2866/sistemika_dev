@@ -320,7 +320,8 @@ def test_sync_cash_diario_periodo_reemplaza_el_periodo(db_session, estado):
     assert db_session.exec(select(ErpCashSaldo)).one().saldo_acumulado == Decimal("1200")
 
 
-def test_sync_cash_diario_periodo_cerrado_no_consulta_origen_ni_modifica_datos(db_session, monkeypatch):
+@pytest.mark.parametrize("include_closed", [False, True])
+def test_sync_cash_diario_periodo_cerrado_no_consulta_origen_ni_modifica_datos(db_session, monkeypatch, include_closed):
     period = ErpCashPeriodo(fecha_periodo=date(2026, 10, 1), estado="CERRADO", saldos_count=5)
     saldo = ErpCashSaldo(
         source_id=800, empresa_id=1, periodo_anio=2026, periodo_mes=10,
@@ -334,7 +335,7 @@ def test_sync_cash_diario_periodo_cerrado_no_consulta_origen_ni_modifica_datos(d
 
     monkeypatch.setattr("app.models.erp.cash_diario_sync.fetch_source_rows", unexpected_fetch)
     with pytest.raises(CashPeriodoCerradoError, match="debe reabrirse"):
-        sync_cash_diario_periodo(db_session, "2026-10")
+        sync_cash_diario_periodo(db_session, "2026-10", include_closed=include_closed)
     db_session.refresh(period)
     assert period.saldos_count == 5
     assert period.ultima_sincronizacion is None

@@ -177,7 +177,7 @@ def sync_cash_diario_periodo(
             ErpCashPeriodo.deleted_at.is_(None),
         ).with_for_update()
     ).first()
-    if cash_period is not None and cash_period.estado == "CERRADO" and not include_closed:
+    if cash_period is not None and cash_period.estado == "CERRADO":
         raise CashPeriodoCerradoError(
             f"El periodo {anio:04d}-{mes:02d} esta cerrado; debe reabrirse para sincronizarlo"
         )

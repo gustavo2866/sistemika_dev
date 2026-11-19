@@ -150,3 +150,22 @@ def test_endpoint_sync_libro_mayor_usa_periodo_y_devuelve_resultado(
 
     assert result == expected
     assert captured == {"session": db_session, "periodo": "2026-08"}
+
+
+def test_sync_libro_mayor_cerrado_conserva_datos_antes_de_consultar_erp(db_session, monkeypatch):
+    row = ErpLibroMayor(**_libro_mayor_row(10, 2026, 8))
+    period = ErpCashPeriodo(fecha_periodo=date(2026, 8, 1), estado="CERRADO", mayor_cash_importado=True)
+    db_session.add_all([row, period])
+    db_session.commit()
+    monkeypatch.setattr(libro_mayor_sync, "fetch_libro_mayor_source_rows", lambda *args: pytest.fail("No debe consultar ERP"))
+    for source_rows in (None, []):
+        with pytest.raises(ValueError, match="debe reabrirse"):
+            sync_libro_mayor_periodo(db_session, "2026-08", source_rows=source_rows)
+        assert db_session.exec(select(ErpLibroMayor)).one().source_id == 10
+    db_session.refresh(period)
+    assert period.mayor_cash_importado is True
+    period.estado = "EN_CIERRE"
+    db_session.add(period)
+    db_session.commit()
+    result = sync_libro_mayor_periodo(db_session, "2026-08", source_rows=[])
+    assert result["rows_deleted"] == 1

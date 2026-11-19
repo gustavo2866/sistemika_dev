@@ -27,8 +27,7 @@ def test_subcta_clasificar_bloquear_y_desbloquear(db_session):
 
 
 @pytest.mark.parametrize("payload", [
-    {"estado": "invalido"}, {"estado": "activa"},
-    {"estado": "activa", "categoria": "  "}, {"categoria": "ERROR"},
+    {"estado": "invalido"}, {"categoria": "ERROR"},
 ])
 def test_subcta_rechaza_estado_o_categoria_invalidos(db_session, payload):
     with pytest.raises(ValueError):
@@ -37,15 +36,23 @@ def test_subcta_rechaza_estado_o_categoria_invalidos(db_session, payload):
 
 
 @pytest.mark.parametrize("estado", ["error", "bloqueada"])
-def test_subcta_activar_requiere_categoria_sin_modificar_registro(db_session, estado):
+def test_subcta_activar_sin_categoria(db_session, estado):
     item = crud.create(db_session, dict(tpo_subcta=1, nro_subcta=4566, descripcion="Subcuenta", estado=estado))
-    version = item.version
-    with pytest.raises(ValueError, match="activa requiere categoría"):
-        crud.update_partial(db_session, item.id, {"estado": "activa"})
+    item = crud.update_partial(db_session, item.id, {"estado": "activa"})
     db_session.refresh(item)
-    assert (item.estado, item.categoria, item.version) == (estado, None, version)
+    assert (item.estado, item.categoria) == ("activa", None)
     item = crud.update_partial(db_session, item.id, {"estado": "activa", "categoria": "Obras"})
     assert (item.estado, item.categoria) == ("activa", "Obras")
+
+
+@pytest.mark.parametrize("categoria", [None, "", "  "])
+def test_subcta_crear_activa_y_quitar_categoria(db_session, categoria):
+    item = crud.create(db_session, dict(tpo_subcta=1, nro_subcta=4566,
+                                      descripcion="Subcuenta", estado="activa", categoria=categoria))
+    assert (item.estado, item.categoria) == ("activa", None)
+    item = crud.update(db_session, item.id, {"categoria": "Obras"})
+    item = crud.update(db_session, item.id, {"categoria": categoria})
+    assert (item.estado, item.categoria) == ("activa", None)
 
 
 @pytest.mark.parametrize("deleted", [False, True])

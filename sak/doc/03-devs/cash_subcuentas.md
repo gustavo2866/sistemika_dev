@@ -4,13 +4,13 @@ La clave de una subcuenta es `(tpo_subcta, nro_subcta)`. La búsqueda del listad
 incluye el número, la descripción y la categoría.
 
 `categoria` contiene la clasificación de negocio y puede ser nula. `estado`
-admite `activa`, `error` y `bloqueada`. La API y la base rechazan otros estados
-y una subcuenta activa sin categoría. `ERROR` deja de ser una categoría válida
+admite `activa`, `error` y `bloqueada`. La API y la base rechazan otros estados.
+Una subcuenta activa puede no tener categoría. `ERROR` deja de ser una categoría válida
 para las subcuentas y no se ofrece en los selects de categorías.
 
 | Estado | Clasificación y procesamiento |
 | --- | --- |
-| activa | Requiere categoría. Usa el mapeo de cuenta ERP y categoría, con respaldo en el mapeo general. |
+| activa | Categoría opcional. Usa el mapeo de cuenta ERP y categoría, con respaldo en el mapeo general. Sin categoría usa el mapeo general. |
 | error | Pendiente de clasificación. Sus movimientos se importan al diario para revisión sin asignación automática de cuenta Cash. Las cuentas Fondo conservan su regla independiente por cuenta contable. |
 | bloqueada | Conserva su categoría. No incorpora nuevos movimientos ni saldos Cash y no actualiza los ya importados. No asigna pendientes, incluso con `overwrite`, ni aporta a proyecciones de pendientes. |
 
@@ -21,16 +21,25 @@ respeta tanto el bloqueo como la eliminación y no la restaura.
 
 Al seleccionar una categoría en el formulario de una subcuenta en error, pasa
 a activa. El usuario puede bloquearla conservando su categoría y desbloquearla
-como activa si tiene categoría, o como error si requiere clasificación. La API
+como activa con o sin categoría, o como error si requiere clasificación. La API
 también activa al asignar categoría a una subcuenta en error si el payload no
 especifica un estado. PUT y PATCH validan el estado combinado con los datos
 existentes y conservan el control de versión.
-Cambiar el estado o la categoría revalida inmediatamente el campo categoría:
-al elegir activa se marca como obligatorio y muestra el error si está vacío.
+La categoría es opcional en todos los estados, tanto en el formulario como en la API.
 
-El listado ofrece **Bloquear**, habilitado cuando hay filas seleccionadas.
-La confirmación muestra la cantidad de subcuentas y captura esa selección;
-cancelar no modifica datos. Confirmar actualiza únicamente `estado` a
+En el popup compartido de movimientos contables Cash, la columna Subcuenta
+permite abrir el formulario de edición mediante tipo y número. El componente
+reutilizable `subctas/edit-dialog.tsx` busca la subcuenta en el catálogo y permite
+editar estado y categoría. Guardar, cancelar o cerrar devuelve al popup de
+movimientos, conserva el detalle abierto y restaura el foco al enlace. No ejecuta
+una reconstrucción Cash al guardar; los cambios se aplican en la próxima actualización.
+
+El listado ofrece **Activar** y **Bloquear**, habilitados cuando hay filas seleccionadas.
+Activar pide confirmación y cambia únicamente `estado` a `activa`, incluso sin
+categoría asignada. Conserva las categorías existentes y se aplica al procesamiento
+en la próxima actualización Cash. Ambas acciones comparten el bloqueo durante el envío.
+La confirmación de cada acción muestra la cantidad de subcuentas y captura esa selección;
+cancelar no modifica datos. Confirmar Bloquear actualiza únicamente `estado` a
 `bloqueada`, conserva la categoría y refresca el listado. Durante el envío
 deshabilita la acción y el cierre del diálogo. Al terminar correctamente limpia
 la selección. El proveedor REST realiza una actualización por ID; si alguna
@@ -53,6 +62,10 @@ estado error y categoría nula. Respeta las bloqueadas, incluso si no aparecen
 en el CSV, sin modificar ni restaurar esos registros.
 
 ## Migración
+
+`699f251847ed` elimina la restricción que exigía categoría para el estado activa.
+No modifica datos ni cambia estados existentes. Para revertirla, las subcuentas
+activas deben cumplir nuevamente la restricción anterior.
 
 `20261118_cash_subcta_estado` agrega el estado y las restricciones. Conserva
 IDs, claves, fechas y eliminaciones lógicas. Convierte categorías ERROR (sin

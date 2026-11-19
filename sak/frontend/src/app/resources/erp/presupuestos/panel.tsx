@@ -43,6 +43,7 @@ import {
 import { BudgetImportDialog } from "./panel/BudgetImportDialog";
 import { BudgetIncomeDialog } from "./panel/BudgetIncomeDialog";
 import { MovimientosDialog } from "./panel/MovimientosDialog";
+import { getHistoricalTotals, sumHistoricalTotals, type HistoricalTotals } from "./panel/history";
 import type {
   BudgetClearRequest,
   BudgetCopyRequest,
@@ -252,13 +253,18 @@ type AnnualComparison = {
   budget: number;
 };
 
+type AnnualMonthComparison = AnnualComparison & {
+  realCost: number;
+  budgetCost: number;
+};
+
 const annualMillions = new Intl.NumberFormat("es-AR", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
 
-const formatAnnualMillions = (value: number) =>
-  `$ ${annualMillions.format(Number(value || 0) / 1_000_000)} M`;
+const formatAnnualMillions = (value: number, showCurrency = true) =>
+  `${showCurrency ? "$ " : ""}${annualMillions.format(Number(value || 0) / 1_000_000)} M`;
 
 const annualMonthFormatter = new Intl.DateTimeFormat("es-AR", { month: "short" });
 
@@ -273,7 +279,7 @@ const summarizeAnnualValues = (
   monthValues: Record<string, MonthValues>,
   months: string[],
   getRealIncome?: (month: string, values: MonthValues) => number,
-): AnnualComparison =>
+): AnnualMonthComparison =>
   months.reduce(
     (total, month) => {
       const values = monthValues[month] ?? getEmptyMonthValues();
@@ -282,9 +288,11 @@ const summarizeAnnualValues = (
         : Number(values.real_ingresos ?? 0);
       total.real += realIncome - Number(values.real_egresos ?? 0);
       total.budget += Number(values.ingresos ?? 0) - Number(values.egresos ?? 0);
+      total.realCost += Number(values.real_egresos ?? 0);
+      total.budgetCost += Number(values.egresos ?? 0);
       return total;
     },
-    { real: 0, budget: 0 },
+    { real: 0, budget: 0, realCost: 0, budgetCost: 0 },
   );
 
 const monthsForYear = (year: number) =>
@@ -295,11 +303,15 @@ const AnnualComparisonCell = ({
   total = false,
   closed = false,
   active = false,
+  useRealMargin,
+  showMargin = false,
 }: {
-  values: AnnualComparison;
+  values: AnnualMonthComparison;
   total?: boolean;
   closed?: boolean;
   active?: boolean;
+  useRealMargin: boolean;
+  showMargin?: boolean;
 }) => (
   <td
     className={cn(
@@ -310,37 +322,65 @@ const AnnualComparisonCell = ({
     )}
     title={`Real: ${formatAnnualMillions(values.real)} · Presupuestado: ${formatAnnualMillions(values.budget)}`}
   >
-    <span className={cn("block truncate text-[9px] font-semibold leading-none", getNegativeOnlyColorClass(values.real))}>
-      {formatAnnualMillions(values.real)}
+    <span className={cn("flex items-center justify-between gap-1 text-[9px] font-semibold leading-tight", getNegativeOnlyColorClass(values.real))}>
+      <span className="text-[7px] font-medium text-muted-foreground">RE</span>
+      <span>{formatAnnualMillions(values.real, false)}</span>
     </span>
-    <span className={cn("mt-0.5 block truncate text-[8px] font-medium leading-none text-muted-foreground", getNegativeOnlyColorClass(values.budget))}>
-      ({formatAnnualMillions(values.budget)})
+    <span className={cn("mt-0.5 flex items-center justify-between gap-1 text-[9px] font-semibold leading-tight", getNegativeOnlyColorClass(values.budget))}>
+      <span className="text-[7px] font-medium text-muted-foreground">PR</span>
+      <span>{formatAnnualMillions(values.budget, false)}</span>
     </span>
+    {showMargin && <span
+      className="mt-0.5 flex items-center justify-between gap-1 text-[8px] font-medium leading-tight text-muted-foreground"
+      title={`Margen sobre costo ${useRealMargin ? "real" : "presupuestado"}: resultado / egresos × 100`}
+    >
+      <span className="text-[7px]">MR</span>
+      <span>{formatPercent(getProfitabilityPercent(
+        useRealMargin ? values.real : values.budget,
+        useRealMargin ? values.realCost : values.budgetCost,
+      ))}</span>
+    </span>}
   </td>
 );
 
 const AccumulatedCell = ({ values }: { values: AccumulatedValues }) => (
   <td
     className="border-l-2 border-slate-300 bg-slate-200/70 px-1 py-1 text-right tabular-nums dark:border-slate-700 dark:bg-slate-800"
-    title={`Histórico: ${formatAnnualMillions(values.historico)} · ICC: ${formatAnnualMillions(values.actual)}`}
+    title={`Real: ${formatAnnualMillions(values.historico)} · Actualizado: ${formatAnnualMillions(values.actual)}`}
   >
-    <span className={cn("block truncate text-[9px] font-semibold leading-none", getNegativeOnlyColorClass(values.historico))}>
-      {formatAnnualMillions(values.historico)}
+    <span className={cn("flex items-center justify-between gap-1 text-[9px] font-semibold leading-tight", getNegativeOnlyColorClass(values.historico))}>
+      <span className="text-[7px] font-medium text-muted-foreground">RE</span>
+      <span>{formatAnnualMillions(values.historico)}</span>
     </span>
-    <span className={cn("mt-0.5 block truncate text-[8px] font-medium leading-none text-muted-foreground", getNegativeOnlyColorClass(values.actual))}>
-      ({formatAnnualMillions(values.actual)})
+    <span className={cn("mt-0.5 flex items-center justify-between gap-1 text-[9px] font-semibold leading-tight", getNegativeOnlyColorClass(values.actual))}>
+      <span className="text-[7px] font-medium text-muted-foreground">Ac</span>
+      <span>{formatAnnualMillions(values.actual)}</span>
     </span>
   </td>
 );
 
-const ProjectedCell = ({ value }: { value: number }) => (
-  <td
-    className="border-l-2 border-slate-300 bg-slate-100/80 px-1 py-1 text-right tabular-nums dark:border-slate-700 dark:bg-slate-900/70"
-    title={`Proyectado: ${formatAnnualMillions(value)}`}
-  >
-    <span className={cn("block truncate text-[9px] font-semibold leading-none", getNegativeOnlyColorClass(value))}>
-      {formatAnnualMillions(value)}
-    </span>
+const AnnualTotalCell = ({
+  values,
+  projected,
+}: {
+  values: AnnualComparison;
+  projected: number;
+}) => (
+  <td className="border-l-2 border-slate-300 bg-slate-100 px-1 py-1 text-right tabular-nums dark:border-slate-700 dark:bg-slate-800">
+    {([
+      ["RE", "Real", values.real],
+      ["PR", "Presupuesto", values.budget],
+      ["PY", "Proyectado", projected],
+    ] as const).map(([label, description, value]) => (
+      <span
+        key={label}
+        className={cn("flex items-center justify-between gap-1 text-[9px] font-semibold leading-tight", getNegativeOnlyColorClass(value))}
+        title={`${description}: ${formatAnnualMillions(value)}`}
+      >
+        <span className="text-[7px] font-medium text-muted-foreground">{label}</span>
+        <span>{formatAnnualMillions(value)}</span>
+      </span>
+    ))}
   </td>
 );
 
@@ -355,6 +395,7 @@ const AnnualPanelRow = ({
   getRealIncome,
   closedMonths,
   activeMonth,
+  realMarginMonths,
   accumulated,
 }: {
   label: string;
@@ -367,6 +408,7 @@ const AnnualPanelRow = ({
   getRealIncome?: (month: string, values: MonthValues) => number;
   closedMonths: ReadonlySet<string>;
   activeMonth: string | null;
+  realMarginMonths: ReadonlySet<string>;
   accumulated: AccumulatedValues;
 }) => {
   const periodValues = months.map((month) =>
@@ -415,10 +457,11 @@ const AnnualPanelRow = ({
           values={values}
           closed={closedMonths.has(months[index])}
           active={activeMonth === months[index]}
+          useRealMargin={realMarginMonths.has(months[index])}
+          showMargin={level === 0}
         />
       ))}
-      <AnnualComparisonCell values={total} total />
-      <ProjectedCell value={projected} />
+      <AnnualTotalCell values={total} projected={projected} />
       <AccumulatedCell values={accumulated} />
     </tr>
   );
@@ -435,6 +478,7 @@ const AnnualBudgetTable = ({
   expandedRubros,
   closedMonths,
   activeMonth,
+  realMarginMonths,
   accumulatedRows,
   onToggleProject,
   onToggleRubro,
@@ -450,6 +494,7 @@ const AnnualBudgetTable = ({
   expandedRubros: Set<string>;
   closedMonths: ReadonlySet<string>;
   activeMonth: string | null;
+  realMarginMonths: ReadonlySet<string>;
   accumulatedRows: RealProject[];
   onToggleProject: (projectId: number) => void;
   onToggleRubro: (key: string) => void;
@@ -475,9 +520,11 @@ const AnnualBudgetTable = ({
         );
         total.real += values.real;
         total.budget += values.budget;
+        total.realCost += values.realCost;
+        total.budgetCost += values.budgetCost;
         return total;
       },
-      { real: 0, budget: 0 },
+      { real: 0, budget: 0, realCost: 0, budgetCost: 0 },
     ),
   );
   const grandTotal = totalByMonth.reduce(
@@ -501,16 +548,15 @@ const AnnualBudgetTable = ({
       : closedMonths.has(month);
     return value + (useReal ? period.real : period.budget);
   }, 0);
-  const colSpan = months.length + 4;
+  const colSpan = months.length + 3;
 
   return (
     <table className="w-max table-fixed border-collapse">
       <colgroup>
         <col className="w-[220px]" />
         {months.map((month) => <col key={month} className="w-[68px]" />)}
-        <col className="w-[76px]" />
-        <col className="w-[76px]" />
-        <col className="w-[76px]" />
+        <col className="w-[100px]" />
+        <col className="w-[100px]" />
       </colgroup>
       <thead>
         <tr className="border-b border-border bg-muted/30">
@@ -527,23 +573,13 @@ const AnnualBudgetTable = ({
               )}
             >
               <span className="block">{formatAnnualMonth(month)}</span>
-              {activeMonth === month ? (
-                <span className="block text-[6px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">Actual</span>
-              ) : null}
-              <span className="block text-[7px] font-normal text-muted-foreground">Real · (Pres.)</span>
             </th>
           ))}
           <th className="border-l-2 border-slate-300 bg-slate-100 px-1 py-1 text-center text-[9px] font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800">
-            <span className="block">Total Actual</span>
-            <span className="block text-[7px] font-normal text-muted-foreground">Real · (Pres.)</span>
-          </th>
-          <th className="border-l-2 border-slate-300 bg-slate-100/80 px-1 py-1 text-center text-[9px] font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900/70">
-            <span className="block">Total Proy</span>
-            <span className="block text-[7px] font-normal text-muted-foreground">Real+Proy</span>
+            <span className="block">Total Anual</span>
           </th>
           <th className="border-l-2 border-slate-300 bg-slate-200/70 px-1 py-1 text-center text-[9px] font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800">
-            <span className="block">Total Acc</span>
-            <span className="block text-[7px] font-normal text-muted-foreground">Hist. · (ICC)</span>
+            <span className="block">Total histórico</span>
           </th>
         </tr>
       </thead>
@@ -578,6 +614,7 @@ const AnnualBudgetTable = ({
                 expandable={visibleRubros.length > 0}
                 expanded={projectExpanded}
                 onToggle={() => onToggleProject(project.proyecto_id)}
+                realMarginMonths={realMarginMonths}
                 closedMonths={closedMonths}
                 activeMonth={activeMonth}
                 accumulated={accumulatedProject?.total ?? { historico: 0, actual: 0 }}
@@ -599,6 +636,7 @@ const AnnualBudgetTable = ({
                       expandable={rubro.cuentas.length > 0}
                       expanded={rubroExpanded}
                       onToggle={() => onToggleRubro(rubroKey)}
+                      realMarginMonths={realMarginMonths}
                       closedMonths={closedMonths}
                       activeMonth={activeMonth}
                       accumulated={accumulatedRubro?.total ?? { historico: 0, actual: 0 }}
@@ -611,6 +649,7 @@ const AnnualBudgetTable = ({
                         months={months}
                         monthValues={cuenta.months}
                         getRealIncome={detailRealIncome(isHiddenRubro(rubro))}
+                        realMarginMonths={realMarginMonths}
                         closedMonths={closedMonths}
                         activeMonth={activeMonth}
                         accumulated={
@@ -637,10 +676,11 @@ const AnnualBudgetTable = ({
                 values={values}
                 closed={closedMonths.has(months[index])}
                 active={activeMonth === months[index]}
+                useRealMargin={realMarginMonths.has(months[index])}
+                showMargin
               />
             ))}
-            <AnnualComparisonCell values={grandTotal} total />
-            <ProjectedCell value={projectedTotal} />
+            <AnnualTotalCell values={grandTotal} projected={projectedTotal} />
             <AccumulatedCell values={accumulatedTotal} />
           </tr>
         </tfoot>
@@ -672,7 +712,7 @@ const MetricAmountCell = ({
   <td
     className={cn(
       metricCellClassName,
-      compact ? "py-0.5 text-[8px]" : "py-1.5 text-[9px]",
+      compact ? "py-0 text-[8px]" : "py-0.5 text-[9px]",
       total && "font-semibold",
       className,
     )}
@@ -686,72 +726,130 @@ const MetricAmountCell = ({
           valueClassName,
         )}
       >
-        {formatCurrency(value ?? 0)}
+        {formatAnnualMillions(value ?? 0, false)}
       </span>
     )}
   </td>
 );
 
-const MetricVariationCell = ({
-  value,
-  title,
-  className,
-  compact = false,
-  total = false,
-}: {
+const MarginPercentValue = ({ label, value, title, subdued = false }: {
+  label: "V" | "C";
   value: number | null;
   title: string;
-  className?: string;
-  compact?: boolean;
-  total?: boolean;
+  subdued?: boolean;
 }) => (
-  <td
-    className={cn(
-      "w-[48px] min-w-[48px] max-w-[48px] overflow-hidden border-l border-border/40 px-1 text-right tabular-nums",
-      compact ? "py-0.5 text-[8px]" : "py-1.5 text-[9px]",
-      total && "font-semibold",
-      getNegativeOnlyColorClass(value),
-      className,
-    )}
-    title={title}
+  <span
+    className="grid min-w-0 grid-cols-[7px_minmax(0,1fr)] items-center gap-x-px border-l border-slate-200/70 pl-0.5 leading-3 dark:border-slate-700/60"
+    title={`${title}: ${formatPercent(value)}`}
   >
-    <span className="block truncate leading-none">{formatPercent(value)}</span>
-  </td>
-);
-
-const ResultAmountWithMargin = ({
-  amount,
-  margin,
-  costMargin,
-}: {
-  amount: number;
-  margin: number | null;
-  costMargin: number | null;
-}) => (
-  <span className="grid w-full grid-cols-[minmax(0,1fr)_34px] items-center gap-1 leading-none">
-    <span className="min-w-0 truncate text-right">{formatCurrency(amount)}</span>
-    <span className="flex min-w-0 flex-col gap-0.5 text-right text-[7px] tabular-nums">
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          getNegativeOnlyColorClass(margin),
-        )}
-        title="Margen sobre ingreso"
-      >
-        {formatPercent(margin)}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          getNegativeOnlyColorClass(costMargin),
-        )}
-        title="Margen sobre costo"
-      >
-        {formatPercent(costMargin)}
-      </span>
+    <span className="text-left text-[6px] font-semibold text-slate-400 dark:text-slate-500">{label}</span>
+    <span className={cn("min-w-0 truncate text-right text-[7px] font-medium tabular-nums",
+      getNegativeOnlyColorClass(value), subdued && (value === null || value >= 0) && "text-muted-foreground")}>
+      {formatPercent(value)}
     </span>
   </span>
 );
+
+const MonthlyComparisonCell = ({
+  real,
+  budget,
+  variation,
+  title,
+  compact = false,
+  total = false,
+  children,
+  margins,
+  budgetLabel = "Presu",
+  showVariation = true,
+  emphasized = true,
+}: {
+  real: number;
+  budget: number;
+  variation: number | null;
+  title: string;
+  compact?: boolean;
+  total?: boolean;
+  children?: ReactNode;
+  budgetLabel?: string;
+  showVariation?: boolean;
+  emphasized?: boolean;
+  margins?: {
+    realIncome: number | null;
+    realCost: number | null;
+    budgetIncome: number | null;
+    budgetCost: number | null;
+  };
+}) => (
+  <MetricAmountCell
+    title={`${title}: real ${formatCurrency(real)} · ${budgetLabel} ${formatCurrency(budget)}${showVariation ? ` · variación ${formatPercent(variation)}` : ""}`}
+    compact={compact}
+    total={total}
+    className={cn(margins
+      ? "w-[188px] min-w-[188px] max-w-[188px] align-top"
+      : "w-[160px] min-w-[160px] max-w-[160px] align-top",
+      emphasized
+        ? margins
+          ? "bg-sky-100/50 dark:bg-sky-950/25"
+          : "bg-sky-50/50 dark:bg-sky-950/10"
+        : "border-l-2 border-l-slate-200 bg-slate-50/70 dark:border-l-slate-700 dark:bg-slate-900/40")}
+  >
+    <span className={cn("grid items-center gap-x-1 gap-y-0 leading-[1.1]",
+      compact ? "auto-rows-[minmax(11px,auto)]" : "auto-rows-[minmax(12px,auto)]",
+      margins ? "grid-cols-[26px_minmax(0,1fr)_36px_36px]" : "grid-cols-[26px_minmax(0,1fr)]")}>
+      <span className={cn("text-left font-medium text-muted-foreground", emphasized ? "text-[8px]" : "text-[7px]")}>Real</span>
+      <span className={cn("min-w-0 truncate", getNegativeOnlyColorClass(real),
+        emphasized ? "text-[10px] font-semibold tabular-nums" : "text-[8px] font-medium",
+        !emphasized && real >= 0 && "text-muted-foreground")}>{formatAnnualMillions(real, false)}</span>
+      {margins && <>
+        <MarginPercentValue label="V" value={margins.realIncome} title="Margen real sobre ventas" subdued={!emphasized} />
+        <MarginPercentValue label="C" value={margins.realCost} title="Margen real sobre costo" subdued={!emphasized} />
+      </>}
+      <span className={cn("text-left font-medium text-muted-foreground", emphasized ? "text-[8px]" : "text-[7px]")}>{budgetLabel}</span>
+      <span className={cn("min-w-0 truncate", getNegativeOnlyColorClass(budget),
+        emphasized ? "text-[10px] font-semibold tabular-nums" : "text-[8px] font-medium",
+        !emphasized && budget >= 0 && "text-muted-foreground")}>
+        {children ?? formatAnnualMillions(budget, false)}
+      </span>
+      {margins && <>
+        <MarginPercentValue label="V" value={margins.budgetIncome} title={`Margen ${budgetLabel === "Ajust" ? "ajustado" : "presupuestado"} sobre ventas`} subdued={!emphasized} />
+        <MarginPercentValue label="C" value={margins.budgetCost} title={`Margen ${budgetLabel === "Ajust" ? "ajustado" : "presupuestado"} sobre costo`} subdued={!emphasized} />
+      </>}
+      {showVariation && <>
+        <span className="text-left text-[7px] font-medium text-muted-foreground">Var</span>
+        <span className={cn("text-[8px] font-medium", getNegativeOnlyColorClass(variation))}>{formatPercent(variation)}</span>
+        {margins && <span className="col-span-2" />}
+      </>}
+    </span>
+  </MetricAmountCell>
+);
+
+const HistoricalComparisonCell = ({ values, compact = false, total = false }: {
+  values: HistoricalTotals;
+  compact?: boolean;
+  total?: boolean;
+}) => {
+  const realResult = values.real.income - values.real.cost;
+  const adjustedResult = values.adjusted.income - values.adjusted.cost;
+  return (
+    <MonthlyComparisonCell
+      real={realResult}
+      budget={adjustedResult}
+      budgetLabel="Ajust"
+      variation={null}
+      showVariation={false}
+      emphasized={false}
+      title="Total histórico"
+      compact={compact}
+      total={total}
+      margins={{
+        realIncome: getProfitabilityPercent(realResult, values.real.income),
+        realCost: getProfitabilityPercent(realResult, values.real.cost),
+        budgetIncome: getProfitabilityPercent(adjustedResult, values.adjusted.income),
+        budgetCost: getProfitabilityPercent(adjustedResult, values.adjusted.cost),
+      }}
+    />
+  );
+};
 
 type PresupuestoPanelRowProps = {
   id: string;
@@ -790,6 +888,7 @@ type PresupuestoPanelRowProps = {
   onAddRubro?: () => void;
   onAddCuenta?: () => void;
   compact?: boolean;
+  historical: HistoricalTotals;
 };
 
 const PresupuestoPanelRow = ({
@@ -818,6 +917,7 @@ const PresupuestoPanelRow = ({
   onAddRubro,
   onAddCuenta,
   compact = false,
+  historical,
 }: PresupuestoPanelRowProps) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -867,13 +967,14 @@ const PresupuestoPanelRow = ({
           expanded &&
           "border-y border-sky-200 bg-sky-50 hover:bg-sky-50",
         level === 1 && "bg-muted/20",
-        level === 2 && "bg-white text-muted-foreground",
+        level === 2 && "bg-white text-muted-foreground dark:bg-slate-950",
       )}
     >
       <th
         scope="row"
         className={cn(
-          "sticky left-0 z-10 min-w-[190px] max-w-[190px] border-l-4 border-l-transparent border-r border-border/60 bg-inherit px-1.5 py-2 text-left text-[10px] font-medium",
+          "sticky left-0 z-10 min-w-[190px] max-w-[190px] border-l-4 border-l-transparent border-r border-border/60 bg-inherit px-1.5 py-1 text-left text-[10px] font-medium",
+          level === 0 && "text-[10px] font-semibold",
           level === 0 &&
             expanded &&
             "border-l-sky-500 bg-sky-50 font-semibold text-foreground",
@@ -1034,15 +1135,12 @@ const PresupuestoPanelRow = ({
                 formatEmployees(empleados)
               )}
             </td>
-            <MetricAmountCell
-              value={realIngresos}
-              title={`Ingreso real: ${formatCurrency(realIngresos)}`}
+            <MonthlyComparisonCell
+              real={realIngresos}
+              budget={ingresos}
+              variation={variacionIngresos}
+              title="Ingresos"
               compact={compact}
-            />
-            <MetricAmountCell
-              title={`Ingreso presupuesto: ${formatCurrency(ingresos)}`}
-              compact={compact}
-              className="bg-muted/20"
             >
               {isEditingIngresos ? (
                 <input
@@ -1065,33 +1163,25 @@ const PresupuestoPanelRow = ({
                   className="w-full truncate text-right hover:underline"
                   onClick={() => startEditing(month, "ingres", ingresos)}
                 >
-                  {formatCurrency(ingresos)}
+                  {formatAnnualMillions(ingresos, false)}
                 </button>
               ) : listLink ? (
                 <Link
                   to={listLink}
                   className="block w-full truncate text-right hover:underline"
                 >
-                  {formatCurrency(ingresos)}
+                  {formatAnnualMillions(ingresos, false)}
                 </Link>
               ) : (
-                <span className="block truncate leading-none">{formatCurrency(ingresos)}</span>
+                <span className="block truncate leading-none">{formatAnnualMillions(ingresos, false)}</span>
               )}
-            </MetricAmountCell>
-            <MetricVariationCell
-              value={variacionIngresos}
-              title={`Variacion ingreso: ${formatPercent(variacionIngresos)}`}
+            </MonthlyComparisonCell>
+            <MonthlyComparisonCell
+              real={realEgresos}
+              budget={egresos}
+              variation={variacionEgresos}
+              title="Egresos"
               compact={compact}
-            />
-            <MetricAmountCell
-              value={realEgresos}
-              title={`Egreso real: ${formatCurrency(realEgresos)}`}
-              compact={compact}
-            />
-            <MetricAmountCell
-              title={`Egreso presupuesto: ${formatCurrency(egresos)}`}
-              compact={compact}
-              className="bg-muted/20"
             >
               {isEditingEgresos ? (
                 <input
@@ -1115,53 +1205,31 @@ const PresupuestoPanelRow = ({
                   className="w-full truncate text-right hover:underline"
                   onClick={() => startEditing(month, "egreso", egresos)}
                 >
-                  {formatCurrency(egresos)}
+                  {formatAnnualMillions(egresos, false)}
                 </button>
               ) : listLink ? (
                 <Link
                   to={listLink}
                   className="block w-full truncate text-right hover:underline"
                 >
-                  {formatCurrency(egresos)}
+                  {formatAnnualMillions(egresos, false)}
                 </Link>
               ) : (
-                <span className="block truncate leading-none">{formatCurrency(egresos)}</span>
+                <span className="block truncate leading-none">{formatAnnualMillions(egresos, false)}</span>
               )}
-            </MetricAmountCell>
-            <MetricVariationCell
-              value={variacionEgresos}
-              title={`Variacion egreso: ${formatPercent(variacionEgresos)}`}
+            </MonthlyComparisonCell>
+            <MonthlyComparisonCell
+              real={realResultado}
+              budget={resultado}
+              variation={variacionResultado}
+              title="Resultado"
+              margins={{
+                realIncome: rentabilidadReal,
+                realCost: margenCostoReal,
+                budgetIncome: rentabilidadPres,
+                budgetCost: margenCostoPres,
+              }}
               compact={compact}
-            />
-            <MetricAmountCell
-              title={`Resultado real: ${formatCurrency(realResultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadReal)} - Margen sobre costo: ${formatPercent(margenCostoReal)}`}
-              compact={compact}
-              className={compact ? undefined : "bg-slate-50/50"}
-              valueClassName={getNegativeOnlyColorClass(realResultado)}
-            >
-              <ResultAmountWithMargin
-                amount={realResultado}
-                margin={rentabilidadReal}
-                costMargin={margenCostoReal}
-              />
-            </MetricAmountCell>
-            <MetricAmountCell
-              title={`Resultado presupuesto: ${formatCurrency(resultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadPres)} - Margen sobre costo: ${formatPercent(margenCostoPres)}`}
-              compact={compact}
-              className={compact ? "bg-muted/20" : "bg-slate-100/70"}
-              valueClassName={getNegativeOnlyColorClass(resultado)}
-            >
-              <ResultAmountWithMargin
-                amount={resultado}
-                margin={rentabilidadPres}
-                costMargin={margenCostoPres}
-              />
-            </MetricAmountCell>
-            <MetricVariationCell
-              value={variacionResultado}
-              title={`Variacion resultado: ${formatPercent(variacionResultado)}`}
-              compact={compact}
-              className={compact ? undefined : "bg-slate-50/50"}
             />
             <td
               className={cn(
@@ -1275,6 +1343,7 @@ const PresupuestoPanelRow = ({
           </Fragment>
         );
       })}
+      <HistoricalComparisonCell values={historical} compact={compact} />
     </tr>
   );
 };
@@ -1348,6 +1417,13 @@ export const ErpPresupuestoPanel = () => {
           .filter((period) => period.estado === "CERRADO")
           .map((period) => period.fecha_periodo.slice(0, 7)),
       ),
+    [cashPeriods],
+  );
+
+  const realMarginMonthKeys = useMemo(
+    () => new Set(cashPeriods
+      .filter((period) => period.estado === "CERRADO" || period.estado === "EN_CIERRE")
+      .map((period) => period.fecha_periodo.slice(0, 7))),
     [cashPeriods],
   );
 
@@ -1468,7 +1544,6 @@ export const ErpPresupuestoPanel = () => {
       fetchJsonWithAuth<RealesPanelResponse>(
         `${apiUrl}/erp/libro-mayor/panel?${accumulatedParams}`,
       ),
-    enabled: viewMode === "annual",
   });
 
   const { data: projectsData } = useQuery({
@@ -1557,7 +1632,15 @@ export const ErpPresupuestoPanel = () => {
     () => buildBudgetIncomeRubroTotal(rows, budgetIncomeRequest),
     [rows, budgetIncomeRequest],
   );
-  const tableColSpan = 1 + months.length * 11;
+  const monthlyHistoricalByProject = useMemo(() => new Map(rows.map((project) => [
+    project.proyecto_id,
+    getHistoricalTotals(accumulatedData?.rows.find((item) => item.proyecto_id === project.proyecto_id)),
+  ])), [rows, accumulatedData]);
+  const monthlyHistoricalTotal = useMemo(
+    () => sumHistoricalTotals([...monthlyHistoricalByProject.values()]),
+    [monthlyHistoricalByProject],
+  );
+  const tableColSpan = 2 + months.length * 5;
   const hasExpandedProject = expandedProjects.size > 0;
   const totalsByMonth = useMemo(
     () =>
@@ -1636,18 +1719,14 @@ export const ErpPresupuestoPanel = () => {
     () => monthsForYear(annualSelectedYear),
     [annualSelectedYear],
   );
-  const firstOpenMonth = useMemo(
-    () =>
-      [...cashPeriods]
-        .filter(
-          (period) =>
-            period.estado === "ABIERTO" &&
-            period.fecha_periodo.startsWith(`${annualSelectedYear}-`),
-        )
-        .sort((left, right) => left.fecha_periodo.localeCompare(right.fecha_periodo))[0]
-        ?.fecha_periodo.slice(0, 7) ?? null,
-    [annualSelectedYear, cashPeriods],
-  );
+  const activeCashMonth = useMemo(() => {
+    const periods = [...cashPeriods].sort((left, right) =>
+      left.fecha_periodo.localeCompare(right.fecha_periodo),
+    );
+    const activePeriod = periods.find((period) => period.estado === "EN_CIERRE")
+      ?? periods.find((period) => period.estado === "ABIERTO");
+    return activePeriod?.fecha_periodo.slice(0, 7) ?? null;
+  }, [cashPeriods]);
   const annualYearOptions = useMemo(() => {
     const lastYear = Math.max(new Date().getFullYear(), annualSelectedYear);
     return Array.from(
@@ -1870,6 +1949,7 @@ export const ErpPresupuestoPanel = () => {
               title: "Ingresos",
               value: panelKpis.ingresos,
               budget: panelKpis.presupuestoIngresos,
+              emphasizeBudget: true,
               deviation: panelKpis.ingresos - panelKpis.presupuestoIngresos,
               icon: DollarSign,
               iconClassName: "bg-emerald-600",
@@ -1881,6 +1961,7 @@ export const ErpPresupuestoPanel = () => {
               detail: `${formatEmployees(panelKpis.empleados)} personas`,
               detailTitle: `Total personas: ${formatEmployees(panelKpis.empleados)}`,
               budget: panelKpis.presupuestoEgresos,
+              emphasizeBudget: true,
               deviation: panelKpis.egresos - panelKpis.presupuestoEgresos,
               icon: ArrowDownToLine,
               iconClassName: "bg-rose-600",
@@ -1890,6 +1971,7 @@ export const ErpPresupuestoPanel = () => {
               title: "Resultado",
               value: panelKpis.resultado,
               budget: panelKpis.presupuestoResultado,
+              emphasizeBudget: true,
               deviation: panelKpis.resultado - panelKpis.presupuestoResultado,
               icon: BarChart3,
               iconClassName: "bg-indigo-700",
@@ -1929,7 +2011,8 @@ export const ErpPresupuestoPanel = () => {
               expandedProjects={expandedProjects}
               expandedRubros={expandedRubros}
               closedMonths={closedMonthKeys}
-              activeMonth={firstOpenMonth}
+              realMarginMonths={realMarginMonthKeys}
+              activeMonth={activeCashMonth}
               accumulatedRows={accumulatedData?.rows ?? []}
               onToggleProject={toggleProject}
               onToggleRubro={toggleRubro}
@@ -1939,24 +2022,19 @@ export const ErpPresupuestoPanel = () => {
               }}
             />
           ) : (
-          <table className="w-full min-w-[1124px] table-fixed border-collapse">
+          <table className="w-[952px] table-fixed border-collapse">
             <colgroup>
               <col className="w-[190px]" />
               {months.map((month) => (
                 <Fragment key={`${month}-cols`}>
                   <col className="w-[34px]" />
-                  <col className="w-[84px]" />
-                  <col className="w-[84px]" />
-                  <col className="w-[48px]" />
-                  <col className="w-[84px]" />
-                  <col className="w-[84px]" />
-                  <col className="w-[48px]" />
-                  <col className="w-[84px]" />
-                  <col className="w-[84px]" />
-                  <col className="w-[48px]" />
+                  <col className="w-[160px]" />
+                  <col className="w-[160px]" />
+                  <col className="w-[188px]" />
                   <col className="w-[32px]" />
                 </Fragment>
               ))}
+              <col className="w-[188px]" />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-muted/30">
@@ -1964,13 +2042,25 @@ export const ErpPresupuestoPanel = () => {
                   scope="col"
                   className="sticky left-0 z-20 w-[190px] min-w-[190px] max-w-[190px] border-r border-border bg-muted/30 px-1.5 py-1.5 text-left text-[10px] font-semibold"
                 >
-                  Proyecto
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span>Proyecto</span>
+                    {months[0] ? (
+                      <button
+                        type="button"
+                        onClick={() => openPeriodBudgetForm(months[0])}
+                        className="inline-flex h-5 shrink-0 items-center gap-0.5 rounded-sm border border-transparent px-1 text-[9px] font-medium text-slate-500 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-900"
+                        title="Agregar presupuesto en otro proyecto"
+                      >
+                        <span>Agregar</span>
+                        <Plus className="size-2.5" />
+                      </button>
+                    ) : null}
+                  </div>
                 </th>
                 {months.map((month, monthIndex) => (
                   <Fragment key={`${month}-group-headers`}>
                     <th
                       scope="col"
-                      rowSpan={2}
                       className={cn(
                         "w-[34px] min-w-[34px] max-w-[34px] border-l border-border/40 px-1 py-1.5 text-center text-[9px] font-semibold text-slate-700",
                         monthIndex > 0 && "border-l-2 border-l-slate-300",
@@ -1981,71 +2071,44 @@ export const ErpPresupuestoPanel = () => {
                     </th>
                     <th
                       scope="col"
-                      colSpan={3}
-                      className="border-l border-border/40 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-700"
+                      className="border-b-2 border-l border-border/40 border-b-sky-200 bg-sky-50/70 px-1.5 py-2 text-center text-[11px] font-bold text-slate-900 dark:border-b-sky-800 dark:bg-sky-950/20 dark:text-slate-100"
                       title={`Ingresos - ${formatMonthLabel(month)}`}
                     >
                       Ingresos
                     </th>
                     <th
                       scope="col"
-                      colSpan={3}
-                      className="border-l border-border/40 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-700"
+                      className="border-b-2 border-l border-border/40 border-b-sky-200 bg-sky-50/70 px-1.5 py-2 text-center text-[11px] font-bold text-slate-900 dark:border-b-sky-800 dark:bg-sky-950/20 dark:text-slate-100"
                       title={`Egresos - ${formatMonthLabel(month)}`}
                     >
                       Egresos
                     </th>
                     <th
                       scope="col"
-                      colSpan={3}
-                      className="border-l border-border/40 bg-slate-100 px-1.5 py-1.5 text-center text-[10px] font-semibold text-slate-900"
+                      className="border-b-2 border-l border-border/40 border-b-sky-300 bg-sky-100/70 px-1.5 py-2 text-center text-[11px] font-bold text-slate-900 dark:border-b-sky-700 dark:bg-sky-950/40 dark:text-slate-100"
                       title={`Resultado - ${formatMonthLabel(month)}`}
                     >
-                      Resultado
+                      <span className="block leading-none">Resultado</span>
+                      <span className="mt-px block text-[8px] font-medium leading-none text-slate-500 dark:text-slate-400">
+                        <span className="capitalize">{formatAnnualMonth(month)}</span> {month.slice(2, 4)}
+                      </span>
                     </th>
+
                     <th
                       scope="col"
-                      rowSpan={2}
                       className="w-[32px] min-w-[32px] max-w-[32px] border-l border-r border-border/40 px-1 py-1"
                       aria-label="Acciones"
                     />
                   </Fragment>
                 ))}
-              </tr>
-              <tr className="border-b border-border bg-muted/20">
-                <th className="sticky left-0 z-20 border-r border-border bg-muted/20 px-1.5 py-1 text-left text-[9px] font-medium text-muted-foreground">
-                  <div className="flex items-center justify-between gap-1.5">
-                    <span className="min-w-0 truncate">Apertura</span>
-                    {months[0] ? (
-                      <button
-                        type="button"
-                        onClick={() => openPeriodBudgetForm(months[0])}
-                        className="inline-flex h-5 shrink-0 items-center gap-0.5 rounded-sm border border-transparent px-1 text-[9px] font-medium text-slate-500 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-900"
-                        title="Agregar presupuesto en otro proyecto"
-                      >
-                        <span>Proyecto</span>
-                        <Plus className="size-2.5" />
-                      </button>
-                    ) : null}
-                  </div>
+                <th scope="col" className="border-l-2 border-slate-200 bg-slate-50 px-1.5 py-1.5 text-center text-[9px] font-medium text-muted-foreground dark:border-slate-700 dark:bg-slate-900/40">
+                  Total histórico
                 </th>
-                {months.map((month, monthIndex) => (
-                  <Fragment key={`${month}-headers`}>
-                    <th className={cn("border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600", monthIndex > 0 && "border-l-2 border-l-slate-300")}>Real</th>
-                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Presup</th>
-                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Var.</th>
-                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Real</th>
-                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Presup</th>
-                    <th className="border-l border-border/40 px-1 py-1 text-right text-[9px] font-semibold text-slate-600">Var.</th>
-                    <th className="border-l border-border/40 bg-slate-100 px-1 py-1 text-right text-[9px] font-semibold text-slate-700">Real</th>
-                    <th className="border-l border-border/40 bg-slate-100 px-1 py-1 text-right text-[9px] font-semibold text-slate-700">Presup</th>
-                    <th className="border-l border-border/40 bg-slate-100 px-1 py-1 text-right text-[9px] font-semibold text-slate-700">Var.</th>
-                  </Fragment>
-                ))}
               </tr>
+
             </thead>
             <tbody>
-              {isLoading ? (
+              {isLoading || accumulatedLoading ? (
                 <tr>
                   <td
                     colSpan={tableColSpan}
@@ -2054,7 +2117,7 @@ export const ErpPresupuestoPanel = () => {
                     Cargando panel...
                   </td>
                 </tr>
-              ) : isError ? (
+              ) : isError || accumulatedError ? (
                 <tr>
                   <td
                     colSpan={tableColSpan}
@@ -2066,7 +2129,7 @@ export const ErpPresupuestoPanel = () => {
                       variant="ghost"
                       size="sm"
                       className="ml-2 h-7 text-xs"
-                      onClick={() => void refetch()}
+                      onClick={() => { void refetch(); void refetchAccumulated(); }}
                     >
                       Reintentar
                     </Button>
@@ -2085,6 +2148,9 @@ export const ErpPresupuestoPanel = () => {
                 rows.map((project) => {
                   const projectExpanded = expandedProjects.has(project.proyecto_id);
                   const compactProject = hasExpandedProject && !projectExpanded;
+                  const historicalProject = accumulatedData?.rows.find(
+                    (item) => item.proyecto_id === project.proyecto_id,
+                  );
                   const visibleRubros = project.rubros.filter(
                     (rubro) =>
                       incomeRealMode === "contab" || !isHiddenRubro(rubro),
@@ -2121,6 +2187,7 @@ export const ErpPresupuestoPanel = () => {
                         id={`project-${project.proyecto_id}`}
                         label={project.proyecto_nombre}
                         level={0}
+                        historical={monthlyHistoricalByProject.get(project.proyecto_id)!}
                         months={months}
                         monthValues={project.months}
                         movimientoContext={{
@@ -2162,6 +2229,7 @@ export const ErpPresupuestoPanel = () => {
                                   id={`rubro-${rubroKey}`}
                                   label={rubro.rubro_nombre}
                                   level={1}
+                                  historical={getHistoricalTotals(historicalProject, rubro.rubro_id)}
                                   months={months}
                                   monthValues={rubro.months}
                                   movimientoContext={{
@@ -2214,6 +2282,7 @@ export const ErpPresupuestoPanel = () => {
                                             : undefined
                                         }
                                         level={2}
+                                        historical={getHistoricalTotals(historicalProject, rubro.rubro_id, cuenta.cuenta_id)}
                                         months={months}
                                         monthValues={cuenta.months}
                                         movimientoContext={{
@@ -2249,9 +2318,9 @@ export const ErpPresupuestoPanel = () => {
                 })
               )}
             </tbody>
-            {!isLoading && !isError && rows.length > 0 ? (
+            {!isLoading && !accumulatedLoading && !isError && !accumulatedError && rows.length > 0 ? (
               <tfoot>
-                <tr className="border-t border-border bg-muted/30">
+                <tr className="border-t-2 border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60">
                   <th className="sticky left-0 z-10 w-[190px] min-w-[190px] max-w-[190px] border-r border-border bg-muted/30 px-1.5 py-1.5 text-left text-[10px] font-semibold">
                     Total
                   </th>
@@ -2294,72 +2363,38 @@ export const ErpPresupuestoPanel = () => {
                         >
                           {formatEmployees(values.empleados)}
                         </td>
-                        <MetricAmountCell
-                          value={realIngresos}
-                          title={`Ingreso real: ${formatCurrency(realIngresos)}`}
+                        <MonthlyComparisonCell
+                          real={realIngresos}
+                          budget={Number(values.ingresos ?? 0)}
+                          variation={variacionIngresos}
+                          title="Ingresos"
                           total
                         />
-                        <MetricAmountCell
-                          value={Number(values.ingresos ?? 0)}
-                          title={`Ingreso presupuesto: ${formatCurrency(values.ingresos)}`}
-                          className="bg-muted/20"
+                        <MonthlyComparisonCell
+                          real={realEgresos}
+                          budget={Number(values.egresos ?? 0)}
+                          variation={variacionEgresos}
+                          title="Egresos"
                           total
                         />
-                        <MetricVariationCell
-                          value={variacionIngresos}
-                          title={`Variacion ingreso: ${formatPercent(variacionIngresos)}`}
-                          total
-                        />
-                        <MetricAmountCell
-                          value={realEgresos}
-                          title={`Egreso real: ${formatCurrency(realEgresos)}`}
-                          total
-                        />
-                        <MetricAmountCell
-                          value={Number(values.egresos ?? 0)}
-                          title={`Egreso presupuesto: ${formatCurrency(values.egresos)}`}
-                          className="bg-muted/20"
-                          total
-                        />
-                        <MetricVariationCell
-                          value={variacionEgresos}
-                          title={`Variacion egreso: ${formatPercent(variacionEgresos)}`}
-                          total
-                        />
-                        <MetricAmountCell
-                          title={`Resultado real: ${formatCurrency(realResultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadReal)} - Margen sobre costo: ${formatPercent(margenCostoReal)}`}
-                          className="bg-slate-100 text-foreground"
-                          valueClassName={getNegativeOnlyColorClass(realResultado)}
-                          total
-                        >
-                          <ResultAmountWithMargin
-                            amount={realResultado}
-                            margin={rentabilidadReal}
-                            costMargin={margenCostoReal}
-                          />
-                        </MetricAmountCell>
-                        <MetricAmountCell
-                          title={`Resultado presupuesto: ${formatCurrency(resultado)} - Margen sobre ingreso: ${formatPercent(rentabilidadPres)} - Margen sobre costo: ${formatPercent(margenCostoPres)}`}
-                          className="bg-slate-200/70 text-foreground"
-                          valueClassName={getNegativeOnlyColorClass(resultado)}
-                          total
-                        >
-                          <ResultAmountWithMargin
-                            amount={resultado}
-                            margin={rentabilidadPres}
-                            costMargin={margenCostoPres}
-                          />
-                        </MetricAmountCell>
-                        <MetricVariationCell
-                          value={variacionResultado}
-                          title={`Variacion resultado: ${formatPercent(variacionResultado)}`}
-                          className="bg-slate-100"
+                        <MonthlyComparisonCell
+                          real={realResultado}
+                          budget={resultado}
+                          variation={variacionResultado}
+                          title="Resultado"
+                          margins={{
+                            realIncome: rentabilidadReal,
+                            realCost: margenCostoReal,
+                            budgetIncome: rentabilidadPres,
+                            budgetCost: margenCostoPres,
+                          }}
                           total
                         />
                         <td className="w-[32px] min-w-[32px] max-w-[32px] border-l border-r border-border/40 px-1 py-1.5" />
                       </Fragment>
                     );
                   })}
+                  <HistoricalComparisonCell values={monthlyHistoricalTotal} total />
                 </tr>
               </tfoot>
             ) : null}

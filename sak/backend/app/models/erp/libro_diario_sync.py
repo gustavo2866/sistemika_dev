@@ -337,6 +337,19 @@ WITH movimientos AS (
 """
 
 
+def _protect_closed_period(dest_conn: psycopg.Connection, anio: int, mes: int) -> None:
+    # El bloqueo se conserva hasta confirmar tambi?n los libros y sus indicadores.
+    with dest_conn.cursor() as cur:
+        cur.execute("""
+            SELECT estado FROM public.erp_cash_periodos
+            WHERE fecha_periodo = %s AND deleted_at IS NULL
+            FOR UPDATE
+        """, (date(anio, mes, 1),))
+        row = cur.fetchone()
+    if row and row[0] == "CERRADO":
+        raise ValueError(f"El per?odo {anio:04d}-{mes:02d} est? cerrado; debe reabrirse para sincronizarlo")
+
+
 def sync_real_presupuestos(
     dest_conn: psycopg.Connection,
     anio: int,
@@ -344,6 +357,8 @@ def sync_real_presupuestos(
     dry_run: bool,
 ) -> dict[str, int]:
     period_date = date(anio, mes, 1)
+    if not dry_run:
+        _protect_closed_period(dest_conn, anio, mes)
 
     if dry_run:
         with dest_conn.cursor() as cur:
@@ -538,30 +553,73 @@ def run_sync(
 
     source_conn_kwargs = get_source_connection_kwargs()
 
-    with psycopg.connect(**source_conn_kwargs) as source_conn, psycopg.connect(dest_url) as dest_conn:
-        allowed_centros = get_allowed_centros_costo(dest_conn)
-        accounts_created = ensure_missing_accounts(
-            source_conn=source_conn,
-            dest_conn=dest_conn,
-            anio=anio,
-            mes=mes,
-            allowed_centros=allowed_centros,
-            dry_run=dry_run,
-        )
+    with psycopg.connect(dest_url) as dest_conn:
+        if not dry_run:
+            _protect_closed_period(dest_conn, anio, mes)
+        with psycopg.connect(**source_conn_kwargs) as source_conn:
+            allowed_centros = get_allowed_centros_costo(dest_conn)
+            accounts_created = ensure_missing_accounts(
+                source_conn=source_conn,
+                dest_conn=dest_conn,
+                anio=anio,
+                mes=mes,
+                allowed_centros=allowed_centros,
+                dry_run=dry_run,
+            )
 
-        with source_conn.cursor() as source_cur:
-            source_cur.execute(SELECT_QUERY, (allowed_centros, anio, mes, allowed_centros))
+            with source_conn.cursor() as source_cur:
+                source_cur.execute(SELECT_QUERY, (allowed_centros, anio, mes, allowed_centros))
 
-            if dry_run:
-                total = 0
-                while True:
-                    chunk = source_cur.fetchmany(batch_size)
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                print(f"[dry-run] Registros que cumplen filtro: {total}")
+                if dry_run:
+                    total = 0
+                    while True:
+                        chunk = source_cur.fetchmany(batch_size)
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                    print(f"[dry-run] Registros que cumplen filtro: {total}")
+                    real_stats = (
+                        sync_real_presupuestos(dest_conn, anio, mes, dry_run=True)
+                        if sync_presupuestos
+                        else {
+                            "presupuestos_reset": 0,
+                            "presupuestos_created": 0,
+                            "presupuestos_updated": 0,
+                            "presupuestos_deleted_empty": 0,
+                            "presupuestos_reales_combos": 0,
+                        }
+                    )
+                    result_dry = {
+                        "periodo": periodo_normalizado,
+                        "dry_run": True,
+                        "allowed_centros": len(allowed_centros),
+                        "accounts_created": accounts_created,
+                        "rows_candidate": total,
+                        "rows_inserted": 0,
+                    }
+                    result_dry.update(real_stats)
+                    return result_dry
+
+                with dest_conn.cursor() as dest_cur:
+                    dest_cur.execute(
+                        """
+                        DELETE FROM public.erp_libro_diario
+                        WHERE periodo_anio = %s AND periodo_mes = %s
+                        """,
+                        (anio, mes),
+                    )
+
+                    total_insertados = 0
+                    while True:
+                        chunk = source_cur.fetchmany(batch_size)
+                        if not chunk:
+                            break
+                        rows = build_insert_rows(chunk)
+                        dest_cur.executemany(INSERT_QUERY, rows)
+                        total_insertados += len(rows)
+
                 real_stats = (
-                    sync_real_presupuestos(dest_conn, anio, mes, dry_run=True)
+                    sync_real_presupuestos(dest_conn, anio, mes, dry_run=False)
                     if sync_presupuestos
                     else {
                         "presupuestos_reset": 0,
@@ -571,64 +629,24 @@ def run_sync(
                         "presupuestos_reales_combos": 0,
                     }
                 )
-                result_dry = {
-                    "periodo": periodo_normalizado,
-                    "dry_run": True,
-                    "allowed_centros": len(allowed_centros),
-                    "accounts_created": accounts_created,
-                    "rows_candidate": total,
-                    "rows_inserted": 0,
-                }
-                result_dry.update(real_stats)
-                return result_dry
 
-            with dest_conn.cursor() as dest_cur:
-                dest_cur.execute(
-                    """
-                    DELETE FROM public.erp_libro_diario
-                    WHERE periodo_anio = %s AND periodo_mes = %s
-                    """,
-                    (anio, mes),
-                )
-
-                total_insertados = 0
-                while True:
-                    chunk = source_cur.fetchmany(batch_size)
-                    if not chunk:
-                        break
-                    rows = build_insert_rows(chunk)
-                    dest_cur.executemany(INSERT_QUERY, rows)
-                    total_insertados += len(rows)
-
-            real_stats = (
-                sync_real_presupuestos(dest_conn, anio, mes, dry_run=False)
-                if sync_presupuestos
-                else {
-                    "presupuestos_reset": 0,
-                    "presupuestos_created": 0,
-                    "presupuestos_updated": 0,
-                    "presupuestos_deleted_empty": 0,
-                    "presupuestos_reales_combos": 0,
-                }
-            )
-
-        with dest_conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO public.erp_cash_periodos
-                    (created_at,updated_at,version,fecha_periodo,estado,movimientos_count,saldos_count,diario_cash_importado,mayor_cash_importado)
-                VALUES (now(),now(),1,%s,'ABIERTO',0,0,true,false)
-                ON CONFLICT (fecha_periodo) WHERE deleted_at IS NULL
-                DO UPDATE SET diario_cash_importado=true,updated_at=now()
-            """, (date(anio, mes, 1),))
-        dest_conn.commit()
-        print(f"Sincronizacion finalizada. Registros insertados: {total_insertados}")
-        result_ok = {
-            "periodo": periodo_normalizado,
-            "dry_run": False,
-            "allowed_centros": len(allowed_centros),
-            "accounts_created": accounts_created,
-            "rows_candidate": total_insertados,
-            "rows_inserted": total_insertados,
-        }
-        result_ok.update(real_stats)
-        return result_ok
+            with dest_conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO public.erp_cash_periodos
+                        (created_at,updated_at,version,fecha_periodo,estado,movimientos_count,saldos_count,diario_cash_importado,mayor_cash_importado)
+                    VALUES (now(),now(),1,%s,'ABIERTO',0,0,true,false)
+                    ON CONFLICT (fecha_periodo) WHERE deleted_at IS NULL
+                    DO UPDATE SET diario_cash_importado=true,updated_at=now()
+                """, (date(anio, mes, 1),))
+            dest_conn.commit()
+            print(f"Sincronizacion finalizada. Registros insertados: {total_insertados}")
+            result_ok = {
+                "periodo": periodo_normalizado,
+                "dry_run": False,
+                "allowed_centros": len(allowed_centros),
+                "accounts_created": accounts_created,
+                "rows_candidate": total_insertados,
+                "rows_inserted": total_insertados,
+            }
+            result_ok.update(real_stats)
+            return result_ok

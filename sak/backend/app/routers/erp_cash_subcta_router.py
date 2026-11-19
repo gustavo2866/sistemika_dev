@@ -15,8 +15,6 @@ class CashSubctaCRUD(GenericCRUD):
             raise ValueError("Estado inválido: usar activa, error o bloqueada")
         if categoria and categoria.casefold() == "error":
             raise ValueError("ERROR es un estado, no una categoría")
-        if estado == "activa" and not categoria:
-            raise ValueError("Una subcuenta activa requiere categoría")
         payload.update(estado=estado, categoria=categoria)
         return payload
 

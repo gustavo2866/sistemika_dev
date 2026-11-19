@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from sqlalchemy import case, delete, func, or_, update
+from sqlalchemy import case, delete, extract, func, or_, update
 from sqlmodel import Session, select
 
 from app.models.erp.cash_periodo import ErpCashPeriodo
@@ -32,11 +32,19 @@ def get_first_open_period(session: Session) -> date:
     return date(period.year, period.month, 1)
 
 
+def _closed_month_filter(year, month):
+    return select(ErpCashPeriodo.id).where(
+        ErpCashPeriodo.deleted_at.is_(None), ErpCashPeriodo.estado == "CERRADO",
+        extract("year", ErpCashPeriodo.fecha_periodo) == year,
+        extract("month", ErpCashPeriodo.fecha_periodo) == month,
+    ).exists()
+
+
 def _future_book_filter(model: type[ErpLibroDiario] | type[ErpLibroMayor], cutoff: date):
     return or_(
         model.periodo_anio > cutoff.year,
         (model.periodo_anio == cutoff.year) & (model.periodo_mes > cutoff.month),
-    )
+    ) & ~_closed_month_filter(model.periodo_anio, model.periodo_mes)
 
 
 def _next_month(period: date) -> date:
@@ -70,6 +78,7 @@ def cleanup_future_erp_actuals(
     future_budgets = (
         ErpPresupuesto.deleted_at.is_(None),
         ErpPresupuesto.fecha >= future_start,
+        ~_closed_month_filter(extract("year", ErpPresupuesto.fecha), extract("month", ErpPresupuesto.fecha)),
     )
     affected_actuals = or_(
         func.coalesce(ErpPresupuesto.real_egreso, ZERO) != ZERO,
@@ -146,6 +155,7 @@ def cleanup_future_erp_actuals(
         )
         session.exec(update(ErpCashPeriodo).where(
             ErpCashPeriodo.fecha_periodo >= future_start,
+            ErpCashPeriodo.estado != "CERRADO",
             ErpCashPeriodo.deleted_at.is_(None),
         ).values(diario_cash_importado=False, mayor_cash_importado=False))
         session.exec(
