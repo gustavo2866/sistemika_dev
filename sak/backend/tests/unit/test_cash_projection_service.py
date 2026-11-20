@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import event
@@ -15,6 +16,7 @@ from app.models.metodo_proyeccion import (
     MetodoProyeccionDetalle,
 )
 from app.services.cash_projection_service import (
+    CashProjectionEngine,
     ProjectionConfigurationError,
     ProjectionDataError,
     calculate_cash_projection,
@@ -221,6 +223,71 @@ def test_periodo_no_cerrado_sin_proyeccion_informa_dato_faltante(db_session: Ses
     assert exc_info.value.reason == "MISSING_PROJECTION"
 
 
+@pytest.mark.parametrize("target_month,expected,months", [
+    (1, "0.00", []),
+    (2, "100.00", [1]),
+    (3, "50.00", [1, 2]),
+    (7, "16.67", [1, 2, 3, 4, 5, 6]),
+])
+def test_promedio_recorta_historia_y_cuenta_meses_faltantes_como_cero(
+    db_session, target_month, expected, months,
+):
+    _, account = _create_method(db_session, target_month=target_month,
+        from_offset=-6, to_offset=-1, function=FuncionProyeccion.PROMEDIO)
+    db_session.add_all([
+        ErpCashPeriodo(fecha_periodo=date(2025, 12, 1), estado="CERRADO"),
+        ErpCashPeriodo(fecha_periodo=date(2026, 1, 1), estado="CERRADO"),
+        ErpCashProyectado(cuenta_cash_id=account.id,
+            fecha_periodo=date(2025, 11, 1), importe_proyectado=9000),
+        ErpCashProyectado(cuenta_cash_id=account.id,
+            fecha_periodo=date(2026, 1, 1), importe_proyectado=999),
+    ])
+    _add_real(db_session, source_id=100, month=date(2025, 12, 1),
+        erp_account=1, cash_account_id=account.id, value=Decimal("8000"))
+    _add_real(db_session, source_id=101, month=date(2026, 1, 1),
+        erp_account=1, cash_account_id=account.id, value=Decimal("100"))
+    db_session.commit()
+
+    result = calculate_cash_projection(db_session, cash_account_id=account.id,
+        target_month=date(2026, target_month, 1))
+
+    assert result.projected_value == Decimal(expected)
+    assert [base.month.month for base in result.base_values] == months
+    if target_month > 1:
+        assert result.base_values[0].source == "REAL_CUENTA_CASH"
+        assert result.base_values[0].value == 100
+
+
+@pytest.mark.parametrize("state", ["ABIERTO", "EN_CIERRE", None])
+@pytest.mark.parametrize("projection", ["missing", "null", "zero", "value"])
+def test_promedio_combina_real_y_proyectado_nulo_o_faltante(db_session, state, projection):
+    _, account = _create_method(db_session, target_month=3,
+        from_offset=-2, to_offset=-1, function=FuncionProyeccion.PROMEDIO,
+        factor=Decimal("1.5"))
+    db_session.add(ErpCashPeriodo(fecha_periodo=date(2026, 1, 1), estado="CERRADO"))
+    if state:
+        db_session.add(ErpCashPeriodo(fecha_periodo=date(2026, 2, 1), estado=state))
+    _add_real(db_session, source_id=102, month=date(2026, 1, 1),
+        erp_account=1, cash_account_id=account.id, value=Decimal("100"))
+    # Un mes no cerrado debe usar Proyectado aunque tenga movimientos reales.
+    _add_real(db_session, source_id=103, month=date(2026, 2, 1),
+        erp_account=1, cash_account_id=account.id, value=Decimal("900"))
+    db_session.commit()
+    engine = CashProjectionEngine(db_session)
+    # El esquema no permite NULL persistido; se verifica también ese dato en memoria.
+    if projection != "missing":
+        engine.stored[(account.id, date(2026, 2, 1))] = SimpleNamespace(
+            importe_proyectado={"null": None, "zero": 0, "value": 200}[projection])
+
+    result = engine.calculate(account.id, date(2026, 3, 1))
+
+    assert result.projected_value == (Decimal("225.00") if projection == "value" else Decimal("75.00"))
+    assert len(result.base_values) == 2
+    assert result.base_values[1].value == (200 if projection == "value" else 0)
+    assert result.base_values[1].source == (
+        "PROYECTADO_FALTANTE_CERO" if projection == "missing" else "PROYECTADO_EXISTENTE")
+
+
 def test_rechaza_mes_base_actual_o_futuro_para_evitar_ciclos(db_session: Session):
     _, account = _create_method(
         db_session,
@@ -291,6 +358,42 @@ def test_aplica_funcion_configurada(
     )
 
     assert result.projected_value == expected
+
+
+@pytest.mark.parametrize("values,expected", [
+    ((100, 200, 300), "450.00"),
+    ((100, 200, 0), "300.00"),
+    ((100, 0, 0), "150.00"),
+    ((100, -40, 0), "-60.00"),
+    ((0, 0, 0), "0.00"),
+])
+def test_ultimo_busca_valor_no_cero_en_rango_mixto(db_session, values, expected):
+    _, account = _create_method(db_session, target_month=4,
+        from_offset=-3, to_offset=-1, function=FuncionProyeccion.ULTIMO,
+        factor=Decimal("1.5"))
+    db_session.add_all([
+        ErpCashPeriodo(fecha_periodo=date(2026, 1, 1), estado="CERRADO"),
+        ErpCashPeriodo(fecha_periodo=date(2026, 2, 1), estado="EN_CIERRE"),
+        ErpCashPeriodo(fecha_periodo=date(2026, 3, 1), estado="ABIERTO"),
+        ErpCashProyectado(cuenta_cash_id=account.id,
+            fecha_periodo=date(2026, 1, 1), importe_proyectado=999),
+        ErpCashProyectado(cuenta_cash_id=account.id,
+            fecha_periodo=date(2026, 2, 1), importe_proyectado=values[1]),
+        ErpCashProyectado(cuenta_cash_id=account.id,
+            fecha_periodo=date(2026, 3, 1), importe_proyectado=values[2]),
+    ])
+    _add_real(db_session, source_id=104, month=date(2026, 1, 1),
+        erp_account=1, cash_account_id=account.id, value=Decimal(values[0]))
+    # El valor fuera del rango no puede elegirse aunque todos los meses sean cero.
+    _add_real(db_session, source_id=105, month=date(2025, 12, 1),
+        erp_account=1, cash_account_id=account.id, value=Decimal("8000"))
+    db_session.commit()
+
+    result = calculate_cash_projection(db_session, cash_account_id=account.id,
+        target_month=date(2026, 4, 1))
+
+    assert result.projected_value == Decimal(expected)
+    assert [base.value for base in result.base_values] == list(map(Decimal, values))
 
 
 def test_proyecta_rango_en_orden_y_reutiliza_resultados_sin_persistir(db_session: Session):

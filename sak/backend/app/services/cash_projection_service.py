@@ -17,6 +17,7 @@ from app.models.metodo_proyeccion import (
     MetodoProyeccion,
     MetodoProyeccionDetalle,
 )
+from app.services.cash_projection_horizon import HISTORY_START
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -111,7 +112,7 @@ def _aggregate(function: FuncionProyeccion, values: tuple[Decimal, ...]) -> Deci
     if not values:
         raise ProjectionConfigurationError("La regla no contiene meses base")
     if function == FuncionProyeccion.ULTIMO:
-        return values[-1]
+        return next((value for value in reversed(values) if value != 0), Decimal("0"))
     if function == FuncionProyeccion.PROMEDIO:
         return sum(values, Decimal("0")) / Decimal(len(values))
     if function == FuncionProyeccion.SUMA:
@@ -192,7 +193,9 @@ def _calculate_historical(
 
     base_start = _shift_month(target_month, rule.mes_base_desde)
     base_end = _shift_month(target_month, rule.mes_base_hasta)
-    base_months = _iter_months(base_start, base_end)
+    if function == FuncionProyeccion.PROMEDIO:
+        base_start = max(base_start, HISTORY_START)
+    base_months = _iter_months(base_start, base_end) if base_start <= base_end else ()
 
     period_statuses = data.period_statuses
     real_source = "REAL_CUENTA_CASH"
@@ -201,7 +204,8 @@ def _calculate_historical(
         if base_start <= transaction_date < _shift_month(base_end, 1):
             real_values[month] = real_values.get(month, Decimal("0")) + value
     projected_values = {
-        month: Decimal(row.importe_proyectado)
+        month: Decimal(row.importe_proyectado or 0)
+        if function == FuncionProyeccion.PROMEDIO else Decimal(row.importe_proyectado)
         for (account_id, month), row in data.stored.items()
         if account_id == cash_account_id and base_start <= month <= base_end
     }
@@ -220,6 +224,9 @@ def _calculate_historical(
             elif month in projected_values:
                 value = projected_values[month]
                 source = "PROYECTADO_EXISTENTE"
+            elif function == FuncionProyeccion.PROMEDIO:
+                value = Decimal("0")
+                source = "PROYECTADO_FALTANTE_CERO"
             else:
                 raise ProjectionDataError(
                     f"No existe una proyeccion para la cuenta Cash {cash_account_id} "
@@ -245,7 +252,10 @@ def _calculate_historical(
             base_values.append(ProjectionBaseValue(base_end, "CERRADO", real_source, real))
         projected_value = amount.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
     else:
-        base_value = _aggregate(function, tuple(item.value for item in base_values))
+        base_value = (
+            Decimal("0") if function == FuncionProyeccion.PROMEDIO and not base_values
+            else _aggregate(function, tuple(item.value for item in base_values))
+        )
         projected_value = (base_value * factor).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
     return CashProjectionCalculation(
         cash_account_id=cash_account_id,

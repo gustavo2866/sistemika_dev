@@ -20,8 +20,11 @@ Para cada mes del rango se consulta `ErpCashPeriodo`:
 - Si esta `CERRADO`, se utiliza el valor real de `ErpCashDiario`.
 - Si esta abierto o no existe el periodo, se utiliza `ErpCashProyectado` de
   tipo `PROYECCION` para la cuenta Cash calculada.
-- Si un mes no cerrado no posee una proyeccion, el calculo informa un error;
-  no presupone un valor cero.
+- Para `PROMEDIO`, el rango se recorta desde enero de 2026. Cada mes del rango
+  efectivo cuenta en el divisor, incluyendo valores cero y proyecciones nulas o
+  faltantes, que aportan cero. Si no queda ningún mes, el resultado es cero.
+- En las demás funciones, si un mes no cerrado no posee una proyeccion, el
+  calculo informa un error; no presupone un valor cero.
 
 Si el metodo tiene registros activos en `MetodoProyeccionCuenta`, el valor
 real es la suma de esas cuentas ERP (`cuenta_codigo`). Si no tiene registros
@@ -38,6 +41,11 @@ SUM(-(debe + haber))
 Sobre los valores mensuales se aplica `ULTIMO`, `PROMEDIO`, `SUMA`, `MAX` o
 `MIN`. El resultado se multiplica por `factor` y se redondea a dos decimales.
 
+`ULTIMO` elige el valor distinto de cero del mes más reciente dentro del rango.
+Recorre los meses desde el final hacia atrás y acepta valores positivos y
+negativos. Si todos son cero, devuelve cero. No busca fuera del rango; conserva
+la selección de Real para cerrados y Proyectado para meses no cerrados.
+
 La funcion devuelve el valor calculado y la trazabilidad de cada mes base:
 estado del periodo, origen del dato y valor utilizado. Tambien conserva una
 fotografia del metodo, detalle, rango relativo, funcion, factor y cuentas ERP
@@ -47,6 +55,7 @@ Los origenes proyectados distinguen entre:
 
 - `PROYECTADO_EXISTENTE`: registro previamente disponible en la base.
 - `PROYECTADO_CALCULADO`: resultado anterior de la ejecucion en curso.
+- `PROYECTADO_FALTANTE_CERO`: mes sin proyección que aporta cero a `PROMEDIO`.
 
 Los errores por una proyeccion base faltante incluyen `cash_account_id`,
 `missing_month` y `reason`, para que un proceso superior pueda decidir si

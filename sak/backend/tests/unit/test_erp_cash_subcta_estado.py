@@ -56,7 +56,7 @@ def test_subcta_crear_activa_y_quitar_categoria(db_session, categoria):
 
 
 @pytest.mark.parametrize("deleted", [False, True])
-def test_sync_respeta_bloqueo_conserva_importados_y_no_reactiva(db_session, deleted):
+def test_sync_incluye_bloqueadas_sin_cuenta_y_concilia_saldos_sin_reactivar(db_session, deleted):
     fondo = ErpCashCuenta(descripcion="Banco", tipo="Fondo")
     egreso = ErpCashCuenta(descripcion="Obras", tipo="Egreso")
     subcta = ErpCashSubcta(tpo_subcta=1, nro_subcta=4566, descripcion="Original", categoria="Obras")
@@ -68,13 +68,14 @@ def test_sync_respeta_bloqueo_conserva_importados_y_no_reactiva(db_session, dele
     ])
     db_session.commit()
     bank = _row(source_id=1, asiento="1", cuenta_codigo=1, haber="100")
+    bank.tipo_subcuenta, bank.nro_subcuenta = "1", "4566"
     expense = _row(source_id=2, asiento="1", cuenta_codigo=4100, debe="100")
     expense.tipo_subcuenta, expense.nro_subcuenta = "01", "04566"
     saldo = dict(source_id=10, empresa_id=1, periodo_anio=2026, periodo_mes=8,
                  nivel="subcuenta", cuenta_codigo=1, tipo_subcuenta="1", nro_subcuenta="4566",
-                 saldo_acumulado=Decimal("100"), fecha_periodo=date(2026, 8, 1),
-                 total_debe=Decimal("100"), total_haber=Decimal("0"),
-                 saldo_periodo=Decimal("100"), saldo_anterior=Decimal("0"))
+                 saldo_acumulado=Decimal("200"), fecha_periodo=date(2026, 8, 1),
+                 total_debe=Decimal("0"), total_haber=Decimal("-100"),
+                 saldo_periodo=Decimal("-100"), saldo_anterior=Decimal("300"))
     sync_cash_diario_periodo(db_session, "2026-08", source_data=([bank, expense], {}), saldo_source_rows=[saldo])
     previous = db_session.exec(select(ErpCashDiario).where(ErpCashDiario.source_id == 2)).one()
     assert previous.cuenta_cash_id == egreso.id
@@ -87,21 +88,31 @@ def test_sync_respeta_bloqueo_conserva_importados_y_no_reactiva(db_session, dele
     expense.debe = Decimal("999")
     new_expense = _row(source_id=3, asiento="1", cuenta_codigo=4100, debe="30")
     new_expense.tipo_subcuenta, new_expense.nro_subcuenta = "1", "4566"
-    saldo["saldo_acumulado"] = Decimal("999")
+    bank.haber = Decimal("-1029")
+    saldo.update(total_haber=Decimal("-1029"), saldo_periodo=Decimal("-1029"),
+                 saldo_acumulado=Decimal("-729"))
     for _ in range(2):
         result = sync_cash_diario_periodo(db_session, "2026-08", source_data=([bank, expense, new_expense], {}), saldo_source_rows=[saldo])
         db_session.refresh(subcta)
-        db_session.refresh(previous)
-        assert previous.debe == Decimal("100")
+        previous = db_session.exec(select(ErpCashDiario).where(ErpCashDiario.source_id == 2)).one()
+        assert previous.debe == Decimal("999")
+        assert previous.cuenta_cash_id is None
         assert subcta.estado == "bloqueada"
         assert subcta.categoria == "Obras"
         assert subcta.descripcion == "Original"
         assert subcta.version == original_version
         assert (subcta.deleted_at is not None) == deleted
-        assert db_session.exec(select(ErpCashDiario).where(ErpCashDiario.source_id == 3)).first() is None
-        assert db_session.exec(select(ErpCashSaldo)).one().saldo_acumulado == Decimal("100")
-        assert db_session.exec(select(ErpCashPeriodo)).one().movimientos_count == 2
-        assert result["rows_deleted"] == 1
+        assert db_session.exec(select(ErpCashDiario).where(ErpCashDiario.source_id == 3)).one().cuenta_cash_id is None
+        rows = db_session.exec(select(ErpCashDiario)).all()
+        assert len(rows) == 3
+        assert all(row.cuenta_cash_id is None for row in rows)
+        assert sum(row.debe + row.haber for row in rows) == 0
+        stored_saldo = db_session.exec(select(ErpCashSaldo)).one()
+        fund_movement = sum(row.debe + row.haber for row in rows if row.cuenta_codigo == 1)
+        assert stored_saldo.saldo_anterior + fund_movement == stored_saldo.saldo_acumulado
+        assert stored_saldo.saldo_periodo == fund_movement
+        assert db_session.exec(select(ErpCashPeriodo)).one().movimientos_count == 3
+        assert result["rows_inserted"] == 3
 
     subcta.deleted_at = None
     subcta.estado = "activa"

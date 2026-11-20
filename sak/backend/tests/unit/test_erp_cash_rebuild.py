@@ -11,6 +11,7 @@ from app.models.erp.cash_periodo import ErpCashPeriodo
 from app.models.erp.cash_proyectado import ErpCashProyectado
 from app.models.erp.cash_pendientes_input import ErpCashPendientesInput
 from app.models.erp.cash_saldo import ErpCashSaldo
+from app.models.erp.cash_subcta import ErpCashSubcta
 from app.models.erp.empresa import ErpEmpresa
 from app.models.erp.libro_diario import ErpLibroDiario
 from app.models.erp.libro_mayor import ErpLibroMayor
@@ -232,8 +233,12 @@ def test_fallo_proyeccion_revierte_toda_la_reconstruccion(db_session, include_cl
         period.estado = "CERRADO"
         db_session.add(period)
     method=MetodoProyeccion(nombre="Sin reglas")
-    db_session.add(method)
+    other = ErpCashCuenta(descripcion="Destino cambiado", tipo="Ingreso")
+    db_session.add_all([method, other])
     db_session.flush()
+    mapping = db_session.exec(select(ErpCashMap).where(ErpCashMap.nro_cta == 4100)).one()
+    mapping.map_haber_id = other.id
+    db_session.add(mapping)
     income.id_metodo_proyeccion=method.id
     db_session.add(income)
     db_session.add(ErpCashProyectado(cuenta_cash_id=income.id,fecha_periodo=date(2026,10,1),
@@ -242,6 +247,7 @@ def test_fallo_proyeccion_revierte_toda_la_reconstruccion(db_session, include_cl
     with pytest.raises(ValueError,match="regla"):
         rebuild_cash(db_session,"2026-10","2026-10", include_closed=include_closed)
     assert [row.id for row in db_session.exec(select(ErpCashDiario)).all()] == old_ids
+    assert db_session.exec(select(ErpCashDiario).where(ErpCashDiario.source_id == 2)).one().cuenta_cash_id == income.id
     assert db_session.exec(select(ErpCashProyectado)).one().importe_proyectado == 123
 
 
@@ -263,7 +269,7 @@ def test_rango_invalido(db_session,start,end):
         rebuild_cash(db_session,start,end)
 
 
-def test_reconstruccion_historica_conserva_reales_y_mapeos_de_periodos_cerrados(db_session):
+def test_reconstruccion_historica_reaplica_mapeos_y_conserva_reales_y_cierre(db_session):
     _, income = _real_sources(db_session)
     rebuild_cash(db_session, "2026-10", "2026-10")
     period = db_session.exec(select(ErpCashPeriodo)).one()
@@ -288,7 +294,8 @@ def test_reconstruccion_historica_conserva_reales_y_mapeos_de_periodos_cerrados(
         result = rebuild_erp_cash({"periodo_desde": "2026-10", "periodo_hasta": "2026-10",
             "incluir_cerrados": True}, db_session)
         rows = db_session.exec(select(ErpCashDiario).where(ErpCashDiario.cuenta_codigo == 4100)).all()
-        assert len(rows) == 1 and rows[0].cuenta_cash_id == income.id
+        assert len(rows) == 1 and rows[0].cuenta_cash_id == other.id
+        assert rows[0].haber == Decimal("-100")
         db_session.refresh(period)
         db_session.refresh(manual)
         assert period.estado == "CERRADO"
@@ -296,8 +303,43 @@ def test_reconstruccion_historica_conserva_reales_y_mapeos_de_periodos_cerrados(
         assert period.version == previous_version
         assert (manual.importe_proyectado, manual.importe_pendiente, manual.importe_comprometido) == (321, 45, 7)
         assert manual.observacion == "Conservar"
-        assert result["periodos_cerrados_reconstruidos"] == 0
-        assert result["periodos_cerrados_omitidos"] == 1
+        assert result["periodos_cerrados_reconstruidos"] == 1
+        assert result["periodos_cerrados_omitidos"] == 0
+
+
+@pytest.mark.parametrize("include_closed", [False, True])
+@pytest.mark.parametrize("estado,deleted", [
+    ("activa", False), ("error", False), ("bloqueada", False), ("bloqueada", True),
+])
+def test_mapeo_general_3866_en_cerrado_sin_libros_locales(db_session, include_closed, estado, deleted):
+    _, income = _real_sources(db_session)
+    closed_at = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    period = ErpCashPeriodo(fecha_periodo=date(2026, 9, 1), estado="CERRADO", cerrado_en=closed_at)
+    sub = ErpCashSubcta(tpo_subcta=1, nro_subcta=3755, descripcion="Lote 24",
+        estado=estado, categoria=None, deleted_at=closed_at if deleted else None)
+    movement = ErpCashDiario(source_id=9351557, empresa_id=1, fecha=date(2026, 9, 1),
+        periodo_anio=2026, periodo_mes=9, cuenta_codigo=3866, tipo_subcuenta="1",
+        nro_subcuenta="3755", debe=0, haber=-173000, cuenta_cash_id=None)
+    db_session.add_all([period, sub, movement,
+        ErpCashMap(nro_cta=3866, moneda="ARS", categoria=None,
+            map_debe_id=income.id, map_haber_id=income.id)])
+    db_session.commit()
+    original_id, original_version = movement.id, movement.version
+
+    from app.routers.erp_cash_diario_router import rebuild_erp_cash
+
+    for _ in range(2):
+        result = rebuild_erp_cash({"periodo_desde": "2026-09", "periodo_hasta": "2026-09",
+            "incluir_cerrados": include_closed}, db_session)
+        db_session.refresh(movement)
+        db_session.refresh(period)
+        assigned = include_closed and estado == "activa"
+        assert movement.cuenta_cash_id == (income.id if assigned else None)
+        assert movement.id == original_id and movement.haber == -173000
+        assert movement.version == original_version + int(assigned)
+        assert period.estado == "CERRADO"
+        assert period.cerrado_en.replace(tzinfo=timezone.utc) == closed_at
+        assert result["periodos_cerrados_reconstruidos"] == int(include_closed)
 
 
 def test_reconstruccion_historica_recalcula_automaticos_y_bases_reales(db_session):
@@ -326,6 +368,35 @@ def test_reconstruccion_historica_recalcula_automaticos_y_bases_reales(db_sessio
     assert result["proyecciones_calculadas"] == 2
 
 
+@pytest.mark.parametrize("estado", ["activa", "error", "bloqueada"])
+def test_remapeo_cerrado_respeta_rango_y_bloqueos_y_limpia_mapeo_eliminado(db_session, estado):
+    _, income = _real_sources(db_session)
+    sub = ErpCashSubcta(tpo_subcta=1, nro_subcta=3755, descripcion="Lote", estado=estado)
+    db_session.add(sub)
+    for month in (8, 9, 10):
+        if month == 10:
+            period = db_session.exec(select(ErpCashPeriodo).where(
+                ErpCashPeriodo.fecha_periodo == date(2026, 10, 1))).one()
+            period.estado = "CERRADO"
+        else:
+            period = ErpCashPeriodo(fecha_periodo=date(2026, month, 1), estado="CERRADO")
+        db_session.add_all([period, ErpCashDiario(source_id=month, empresa_id=1,
+            fecha=date(2026, month, 1), periodo_anio=2026, periodo_mes=month,
+            cuenta_codigo=3866, tipo_subcuenta="1", nro_subcuenta="3755",
+            haber=-100, cuenta_cash_id=income.id)])
+    db_session.commit()
+
+    result = rebuild_cash(db_session, "2026-09", "2026-10", include_closed=True,
+        actuals_to="2026-09")
+
+    rows = db_session.exec(select(ErpCashDiario).order_by(ErpCashDiario.periodo_mes)).all()
+    assert [row.cuenta_cash_id for row in rows] == [
+        income.id, None, income.id,
+    ]
+    assert all(row.haber == -100 for row in rows)
+    assert result["periodos_cerrados_reconstruidos"] == 1
+
+
 def test_reconstruccion_historica_usa_libros_disponibles_sin_reabrir_cerrados(db_session):
     _real_sources(db_session)
     rebuild_cash(db_session, "2026-10", "2026-10")
@@ -339,6 +410,48 @@ def test_reconstruccion_historica_usa_libros_disponibles_sin_reabrir_cerrados(db
     assert db_session.exec(select(ErpCashSaldo)).one().saldo_acumulado == 400
     db_session.refresh(period)
     assert period.estado == "CERRADO"
+
+
+@pytest.mark.parametrize("estado,deleted", [("error", False), ("bloqueada", False), ("bloqueada", True)])
+def test_historica_recupera_renglones_y_saldos_omitidos_y_concilia(db_session, estado, deleted):
+    fund, income = _real_sources(db_session)
+    source = db_session.exec(select(ErpLibroDiario).where(ErpLibroDiario.source_id == 2)).one()
+    source.haber = Decimal("-70")
+    source.tipo_subcuenta, source.nro_subcuenta = "1", "3755"
+    db_session.add(source)
+    db_session.add(ErpLibroDiario(source_id=4, empresa_id=1, fecha=date(2026, 10, 1),
+        periodo_anio=2026, periodo_mes=10, tipo_asiento="A", nro_asiento="1",
+        nro_renglon="4", cuenta_codigo=4100, haber=-30, tipo_subcuenta="1",
+        nro_subcuenta="3755", es_obra=False))
+    db_session.add(ErpCashSubcta(tpo_subcta=1, nro_subcta=3755, descripcion="Lote", estado="activa"))
+    db_session.commit()
+    rebuild_cash(db_session, "2026-10", "2026-10")
+    bank_id = db_session.exec(select(ErpCashDiario).where(ErpCashDiario.source_id == 1)).one().id
+    db_session.exec(delete(ErpCashDiario).where(ErpCashDiario.source_id == 4))
+    db_session.exec(delete(ErpCashSaldo))
+    period = db_session.exec(select(ErpCashPeriodo)).one()
+    closed_at = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    period.estado, period.cerrado_en = "CERRADO", closed_at
+    sub = db_session.exec(select(ErpCashSubcta)).one()
+    sub.estado = estado
+    sub.deleted_at = closed_at if deleted else None
+    db_session.add_all([period, sub])
+    db_session.commit()
+
+    for _ in range(2):
+        result = rebuild_cash(db_session, "2026-10", "2026-10", include_closed=True)
+        rows = db_session.exec(select(ErpCashDiario).order_by(ErpCashDiario.source_id)).all()
+        assert [(r.source_id, r.cuenta_cash_id) for r in rows] == [(1, fund.id), (2, None), (4, None)]
+        assert rows[0].id == bank_id
+        assert sum(r.debe + r.haber for r in rows) == 0
+        saldo = db_session.exec(select(ErpCashSaldo)).one()
+        assert saldo.saldo_anterior + rows[0].debe + rows[0].haber == saldo.saldo_acumulado == 400
+        db_session.refresh(period)
+        assert (period.movimientos_count, period.saldos_count) == (3, 1)
+        assert period.estado == "CERRADO" and period.cerrado_en.replace(tzinfo=timezone.utc) == closed_at
+        assert result["conciliacion"]["consistente"] is True
+        db_session.refresh(sub)
+        assert sub.estado == estado and (sub.deleted_at is not None) == deleted
 
 
 @pytest.mark.parametrize("include_closed", [False, True])

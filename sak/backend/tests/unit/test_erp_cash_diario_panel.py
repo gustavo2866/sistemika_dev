@@ -502,6 +502,31 @@ def test_cash_panel_y_detalle_excluyen_renglones_sin_importe(db_session, monkeyp
     assert empty_detail["movements"] == []
 
 
+def test_panel_concilia_fondo_sin_mapeo_y_contrapartida_sin_cuenta(db_session):
+    fund = ErpCashCuenta(descripcion="Banco", tipo="Fondo")
+    db_session.add(fund)
+    db_session.flush()
+    db_session.add_all([
+        ErpCashMap(nro_cta=1, moneda="ARS", map_debe_id=fund.id, map_haber_id=fund.id),
+        ErpCashPeriodo(fecha_periodo=date(2026, 6, 1), estado="EN_CIERRE"),
+        ErpCashSaldo(source_id=900, empresa_id=1, periodo_anio=2026, periodo_mes=6,
+            nivel="subcuenta", cuenta_codigo=1, saldo_anterior=100, saldo_periodo=20,
+            saldo_acumulado=120, total_debe=20),
+    ])
+    for source_id, account, debit, credit in [(901, 1, 20, 0), (902, 4100, 0, -20)]:
+        db_session.add(ErpCashDiario(source_id=source_id, empresa_id=1, fecha=date(2026, 6, 1),
+            periodo_anio=2026, periodo_mes=6, cuenta_codigo=account,
+            debe=debit, haber=credit, cuenta_cash_id=None))
+    db_session.commit()
+    panel = get_cash_panel(db_session, "2026-06")
+    groups = {group["key"]: group for group in panel["groups"]}
+    assert groups["FONDOS"]["months"]["2026-06"] == -20
+    assert groups["SIN_CUENTA"]["months"]["2026-06"] == 20
+    assert panel["balances"]["saldo_anterior"]["2026-06"] + groups["SIN_CUENTA"]["months"]["2026-06"] == panel["balances"]["saldo_final"]["2026-06"]
+    assert get_cash_panel_detail(db_session, "2026-06", group_key="FONDOS")["movement_count"] == 1
+    assert get_cash_panel_detail(db_session, "2026-06", group_key="SIN_CUENTA")["movement_count"] == 1
+
+
 def test_cash_panel_detail_filtra_por_cuenta_financiera_y_contable(db_session):
     financial_a = ErpCashCuenta(descripcion="INGR A")
     financial_b = ErpCashCuenta(descripcion="INGR B")

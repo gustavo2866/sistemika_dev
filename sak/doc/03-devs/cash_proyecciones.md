@@ -199,10 +199,14 @@ Actualizar Cash usa los libros importados hasta ese momento, sin exigir marcas
 de importación completa. Si un libro todavía no tiene datos ni una importación
 vacía confirmada, conserva sus movimientos o saldos Cash existentes; el otro
 libro disponible se procesa igualmente. No consulta el ERP.
-Los movimientos y saldos reales de un mes CERRADO se conservan siempre, incluso
-con `incluir_cerrados=true`: ese indicador permite recalcular proyecciones
-históricas, pero no reemplazar los reales sincronizados. Para volver a importar
-o reconstruir los reales hay que reabrir explícitamente el período.
+En un mes CERRADO se conservan los movimientos, sus importes y los saldos reales.
+Con `incluir_cerrados=true` se reaplica la cuenta Cash de los movimientos
+existentes usando los mapeos y estados de subcuentas vigentes, antes de recalcular
+proyecciones históricas. El remapeo no requiere libros locales; si están
+disponibles, recupera renglones y saldos faltantes que antes se excluían por
+bloqueo. Las bloqueadas se asignan a Sin cuenta. Conserva el estado y la fecha
+de cierre. Para volver a importar
+o reemplazar los reales hay que reabrir explícitamente el período.
 Sincronizar ERP invoca esta misma operación al finalizar la carga de pendientes,
 desde el mes inicial sincronizado hasta el final del horizonte móvil.
 Ver detalles de importación y disponibilidad de libros en `cash_periodos.md`.
@@ -239,7 +243,14 @@ reutiliza resultados por `(cuenta, mes)` y mantiene una pila de cálculo como
 respaldo contra ciclos. Los importes manuales de referencias se usan tal como
 están, sin sumar Comprometido. Los calculados se resuelven con la configuración
 vigente. Las referencias sin método requieren un Proyectado ya disponible.
-Un faltante histórico produce un error, sin inventar ceros para meses abiertos.
+En `PROMEDIO`, el rango base se recorta desde enero de 2026. Los meses cerrados
+aportan Real; los abiertos o en cierre, Proyectado. Un Proyectado nulo o faltante
+aporta cero y el mes cuenta en el divisor. Los meses anteriores al histórico se
+excluyen; si no quedan meses base, el resultado es cero. Luego se aplica el factor.
+Las demás funciones conservan el error si falta una proyección base.
+`ULTIMO` toma el último valor distinto de cero dentro del rango base, positivo
+o negativo; si todos los valores son cero, devuelve cero. No busca fuera del
+rango. El valor elegido se multiplica por el factor configurado.
 
 La generación compartida procesa primero todas las cuentas de un mes y luego
 avanza al siguiente; el orden de IDs no define el orden de cálculo. Conserva

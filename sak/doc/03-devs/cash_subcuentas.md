@@ -12,7 +12,7 @@ para las subcuentas y no se ofrece en los selects de categorías.
 | --- | --- |
 | activa | Categoría opcional. Usa el mapeo de cuenta ERP y categoría, con respaldo en el mapeo general. Sin categoría usa el mapeo general. |
 | error | Pendiente de clasificación. Sus movimientos se importan al diario para revisión sin asignación automática de cuenta Cash. Las cuentas Fondo conservan su regla independiente por cuenta contable. |
-| bloqueada | Conserva su categoría. No incorpora nuevos movimientos ni saldos Cash y no actualiza los ya importados. No asigna pendientes, incluso con `overwrite`, ni aporta a proyecciones de pendientes. |
+| bloqueada | Conserva su categoría. Todos sus movimientos Cash se incorporan sin cuenta asignada y sus saldos de Fondo se importan completos. No asigna pendientes, incluso con `overwrite`, ni aporta a proyecciones de pendientes. |
 
 La sincronización crea las subcuentas desconocidas en estado `error`, con
 categoría nula. No cambia las subcuentas existentes. Si una eliminada
@@ -46,10 +46,18 @@ la selección. El proveedor REST realiza una actualización por ID; si alguna
 falla, informa que el bloqueo no se completó y refresca para revisar las filas
 que sí pudieron actualizarse antes de reintentar.
 
-El bloqueo se aplica a los datos derivados Cash; no borra los libros ERP ni
-los CSV de pendientes originales. La reconstrucción conserva las filas de
-diario y saldos Cash ya importadas para la subcuenta bloqueada, incluyendo su
-cuenta Cash e importes. Los conteos del período incluyen esas filas preservadas.
+El bloqueo impide la asignación de cuenta Cash, pero no excluye renglones ni
+congela importes: todos los renglones de un asiento que toca Fondo deben estar
+en el diario, asignados a una cuenta Cash o a Sin cuenta. En meses no cerrados
+se reconstruyen movimientos y saldos desde los libros locales completos
+disponibles, independientemente del estado de la subcuenta. En una actualización
+histórica se quita la asignación anterior de las bloqueadas y se recuperan los
+renglones y saldos que antes se omitían, sin borrar ni reemplazar los existentes.
+Se respeta el estado y la baja lógica del catálogo de subcuentas; no se reactiva
+una subcuenta bloqueada para importar sus movimientos. El período conserva
+estado y fecha de cierre, y sus contadores reflejan los registros recuperados.
+El panel reconoce Fondo por cuenta ERP aunque el renglón no tenga cuenta Cash:
+lo mantiene en Fondo para no mezclarlo con las contrapartidas de Sin cuenta.
 Los pendientes ya asignados conservan su asignación, pero se excluyen del
 recálculo y del detalle de proyecciones. Al recalcular, los importes pendientes
 agregados se ajustan; los importes proyectados manuales y comprometidos se

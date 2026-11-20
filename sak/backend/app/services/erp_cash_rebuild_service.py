@@ -4,7 +4,7 @@ from datetime import date
 
 from sqlmodel import Session, select
 
-from app.models.erp.cash_diario_sync import sync_cash_diario_periodo
+from app.models.erp.cash_diario_sync import remap_closed_cash_diario_periodo, sync_cash_diario_periodo
 from app.models.erp.cash_periodo import ErpCashPeriodo
 from app.models.erp.libro_diario import ErpLibroDiario
 from app.models.erp.libro_diario_sync import parse_periodo
@@ -14,6 +14,7 @@ from app.services.cash_projection_configuration import lock_projection_configura
 from app.services.cash_projection_horizon import get_projection_horizon
 from app.services.erp_cash_pendientes_assignment_service import assign_cash_accounts_to_pendientes
 from app.services.erp_cash_pendientes_projection_service import rebuild_pending_cash_projection
+from app.services.erp_cash_reconciliation_service import reconcile_cash
 
 
 def _months(start: date, end: date):
@@ -52,8 +53,7 @@ def rebuild_cash(
             ErpCashPeriodo.fecha_periodo <= end,
         ).order_by(ErpCashPeriodo.fecha_periodo).with_for_update()).all()}
         closed_periods = {month for month, row in periods.items() if row.estado == "CERRADO"}
-        # incluir_cerrados permite recalcular proyecciones, nunca reemplazar reales.
-        closed = closed_periods
+        closed = closed_periods if not include_closed else set()
         if len(closed) == len(months) and not include_closed:
             if close_period:
                 raise ValueError("El período ya está cerrado. Actualizá la pantalla.")
@@ -77,10 +77,21 @@ def rebuild_cash(
             ).distinct()).all()
             actual_months.update(date(int(year), int(month), 1) for year, month in values)
         movements = balances = real_periods = closed_rebuilt = 0
+        rebuilt_months: set[date] = set()
         for month in months:
+            if month > actuals_end or month in closed:
+                continue
+            if month in closed_periods:
+                historical = remap_closed_cash_diario_periodo(session, month)
+                movements += historical["movimientos"]
+                balances += historical["saldos_recuperados"]
+                rebuilt_months.add(month)
+                real_periods += 1
+                closed_rebuilt += 1
+                continue
             period = periods.get(month)
             has_import = period is not None and (period.diario_cash_importado or period.mayor_cash_importado)
-            if month > actuals_end or month in closed or (month not in actual_months and not has_import):
+            if month not in actual_months and not has_import:
                 continue
             result = sync_cash_diario_periodo(
                 session, month.strftime("%Y-%m"), auto_commit=False, include_closed=include_closed,
@@ -89,11 +100,14 @@ def rebuild_cash(
             movements += int(result["rows_inserted"])
             balances += int(result["saldos_inserted"])
             real_periods += 1
+            rebuilt_months.add(month)
             closed_rebuilt += month in closed_periods
 
         assignment = assign_cash_accounts_to_pendientes(session, overwrite=True, auto_commit=False)
         pending = rebuild_pending_cash_projection(session, period_from=start, period_to=end, auto_commit=False)
         projections = recalculate_cash_projections(session, start, end, include_closed=include_closed)
+        session.flush()
+        reconciliation = reconcile_cash(session, rebuilt_months)
         closure = {}
         if close_period:
             from app.services.erp_cash_sync_period_service import close_cash_sync_period
@@ -109,6 +123,7 @@ def rebuild_cash(
         "periodos_cerrados_omitidos": len(closed), "periodos_reales_reconstruidos": real_periods,
         "periodos_cerrados_reconstruidos": closed_rebuilt,
         "movimientos": movements, "saldos": balances,
+        "conciliacion": reconciliation,
         "pendientes_reasignados": assignment["rows_assigned"], "pendientes_sin_mapeo": assignment["rows_unmapped"],
         "pendientes_actualizados": pending["rows_updated"],
         **projections,

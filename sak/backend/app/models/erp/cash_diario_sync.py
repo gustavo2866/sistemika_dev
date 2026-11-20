@@ -78,14 +78,6 @@ def _subcuenta_key(row: Any) -> tuple[int, int] | None:
         return None
 
 
-def _preserved_rows(session: Session, model, anio: int, mes: int, blocked_keys: set[tuple[int, int]]) -> dict[int, int]:
-    if not blocked_keys:
-        return {}
-    rows = session.exec(select(model.id, model.source_id, model.tipo_subcuenta, model.nro_subcuenta)
-                        .where(model.periodo_anio == anio, model.periodo_mes == mes)).all()
-    return {row.id: row.source_id for row in rows if _subcuenta_key(row) in blocked_keys}
-
-
 def build_cash_diario_payloads(
     source_rows: Iterable[Any],
     rubros_by_cuenta: dict[int, str],
@@ -105,8 +97,6 @@ def build_cash_diario_payloads(
     payloads: list[dict[str, Any]] = []
     for row in rows:
         if _asiento_key(row) not in cash_asientos:
-            continue
-        if states_by_subcuenta and states_by_subcuenta.get(_subcuenta_key(row)) == "bloqueada":
             continue
 
         rubro = rubros_by_cuenta.get(row.cuenta_codigo)
@@ -158,6 +148,71 @@ def fetch_source_rows(session: Session, anio: int, mes: int) -> tuple[list[Any],
         .join(ErpRubro, ErpRubro.id == ErpCuenta.rubro_id)
         .where(ErpCuenta.deleted_at.is_(None), ErpRubro.deleted_at.is_(None))).all()
     return list(rows), dict(rubros)
+
+
+def remap_closed_cash_diario_periodo(session: Session, month: date) -> dict[str, int]:
+    """Reaplica destinos sobre Cash guardado sin reemplazar los reales cerrados.
+
+    El llamador bloquea el período y confirma la transacción con las proyecciones.
+    """
+    mappings = build_cash_mappings_by_key(session)
+    fondos = get_fondo_mappings_by_cuenta(session)
+    subcuentas = session.exec(select(ErpCashSubcta).order_by(ErpCashSubcta.id)).all()
+    categories = {
+        (sub.tpo_subcta, sub.nro_subcta): sub.categoria
+        for sub in subcuentas if sub.deleted_at is None and sub.estado == "activa"
+    }
+    states = {
+        (sub.tpo_subcta, sub.nro_subcta): sub.estado
+        for sub in subcuentas if sub.deleted_at is None or sub.estado == "bloqueada"
+    }
+    rows = session.exec(select(ErpCashDiario).where(
+        ErpCashDiario.periodo_anio == month.year,
+        ErpCashDiario.periodo_mes == month.month,
+        ErpCashDiario.deleted_at.is_(None),
+    )).all()
+    for row in rows:
+        key = _subcuenta_key(row)
+        account_id = resolve_cash_account_id(
+            cuenta_codigo=row.cuenta_codigo,
+            side="debe" if _has_value(row.debe) else "haber" if _has_value(row.haber) else None,
+            subcuenta_key=key,
+            mappings_by_key=mappings,
+            fondo_mappings_by_cuenta=fondos,
+            categories_by_subcuenta=categories,
+            states_by_subcuenta=states,
+        )
+        if row.cuenta_cash_id != account_id:
+            row.cuenta_cash_id = account_id
+            row.updated_at = datetime.now(timezone.utc)
+            row.version += 1
+            session.add(row)
+    # Recuperar renglones antes omitidos por estado, sin reemplazar el histórico.
+    source_rows, rubros = fetch_source_rows(session, month.year, month.month)
+    existing_sources = set(session.exec(select(ErpCashDiario.source_id)).all())
+    missing = [payload for payload in build_cash_diario_payloads(
+        source_rows, rubros, mappings, fondos, categories, states,
+    ) if payload["source_id"] not in existing_sources]
+    session.add_all(ErpCashDiario(**payload) for payload in missing)
+    saldo_sources = set(session.exec(select(ErpCashSaldo.source_id)).all())
+    missing_saldos = [payload for payload in build_cash_saldo_payloads(
+        fetch_cash_saldo_source_rows(session, month.year, month.month, set(fondos)), set(fondos),
+    ) if payload["source_id"] not in saldo_sources]
+    session.add_all(ErpCashSaldo(**payload) for payload in missing_saldos)
+    if missing or missing_saldos:
+        period = session.exec(select(ErpCashPeriodo).where(
+            ErpCashPeriodo.fecha_periodo == month, ErpCashPeriodo.deleted_at.is_(None),
+        )).one()
+        period.movimientos_count = len(rows) + len(missing)
+        session.flush()
+        period.saldos_count = session.scalar(select(func.count()).select_from(ErpCashSaldo).where(
+            ErpCashSaldo.periodo_anio == month.year, ErpCashSaldo.periodo_mes == month.month,
+            ErpCashSaldo.deleted_at.is_(None),
+        )) or 0
+        period.updated_at = datetime.now(timezone.utc)
+        period.version += 1
+        session.add(period)
+    return {"movimientos": len(rows) + len(missing), "saldos_recuperados": len(missing_saldos)}
 
 
 def sync_cash_diario_periodo(
@@ -278,17 +333,6 @@ def sync_cash_diario_periodo(
         provided_saldo_rows,
         fondo_account_codes,
     )
-    blocked_keys = {key for key, state in states_by_subcuenta.items() if state == "bloqueada"}
-    saldo_payloads = [payload for payload in saldo_payloads
-                      if _subcuenta_key(payload) not in blocked_keys]
-    # La reconstrucción conserva los movimientos y saldos que ya estaban importados
-    # al bloquear: no los actualiza ni incorpora nuevas filas de esas subcuentas.
-    preserved_diario = _preserved_rows(session, ErpCashDiario, anio, mes, blocked_keys)
-    preserved_saldos = _preserved_rows(session, ErpCashSaldo, anio, mes, blocked_keys)
-    preserved_diario_sources = set(preserved_diario.values())
-    preserved_saldo_sources = set(preserved_saldos.values())
-    payloads = [payload for payload in payloads if payload["source_id"] not in preserved_diario_sources]
-    saldo_payloads = [payload for payload in saldo_payloads if payload["source_id"] not in preserved_saldo_sources]
 
     deleted_count = session.scalar(
         select(func.count())
@@ -321,7 +365,6 @@ def sync_cash_diario_periodo(
                 delete(ErpCashDiario).where(
                     ErpCashDiario.periodo_anio == anio,
                     ErpCashDiario.periodo_mes == mes,
-                    ErpCashDiario.id.notin_(list(preserved_diario)),
                 )
             )
             session.add_all(ErpCashDiario(**payload) for payload in payloads)
@@ -330,7 +373,6 @@ def sync_cash_diario_periodo(
                 delete(ErpCashSaldo).where(
                     ErpCashSaldo.periodo_anio == anio,
                     ErpCashSaldo.periodo_mes == mes,
-                    ErpCashSaldo.id.notin_(list(preserved_saldos)),
                 )
             )
             session.add_all(ErpCashSaldo(**payload) for payload in saldo_payloads)
@@ -340,8 +382,8 @@ def sync_cash_diario_periodo(
             cash_period.version += 1
         cash_period.ultima_sincronizacion = datetime.now(timezone.utc)
         cash_period.updated_at = cash_period.ultima_sincronizacion
-        cash_period.movimientos_count = len(payloads) + len(preserved_diario) if diary_available else int(deleted_count)
-        cash_period.saldos_count = len(saldo_payloads) + len(preserved_saldos) if mayor_available else int(saldos_deleted_count)
+        cash_period.movimientos_count = len(payloads) if diary_available else int(deleted_count)
+        cash_period.saldos_count = len(saldo_payloads) if mayor_available else int(saldos_deleted_count)
         session.add(cash_period)
         if auto_commit:
             session.commit()
@@ -353,9 +395,9 @@ def sync_cash_diario_periodo(
 
     return {
         "periodo": f"{anio:04d}-{mes:02d}",
-        "rows_deleted": int(deleted_count) - len(preserved_diario) if diary_available else 0,
+        "rows_deleted": int(deleted_count) if diary_available else 0,
         "rows_inserted": len(payloads),
-        "saldos_deleted": int(saldos_deleted_count) - len(preserved_saldos) if mayor_available else 0,
+        "saldos_deleted": int(saldos_deleted_count) if mayor_available else 0,
         "saldos_inserted": len(saldo_payloads),
         "cuentas_fondo": len(fondo_account_codes),
     }

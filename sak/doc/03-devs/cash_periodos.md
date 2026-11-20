@@ -81,26 +81,46 @@ períodos. El rango termina al completar 24 meses desde el primer período en
 cierre o abierto, independientemente del año posicionado en el panel.
 
 La reconstrucción solicitada desde el panel incluye las proyecciones de los
-CERRADO del rango, conservando siempre sus movimientos y saldos sincronizados,
+CERRADO del rango y reaplica sus mapeos sobre los movimientos Cash guardados,
+conservando importes y saldos sincronizados,
 sin reabrirlos ni cambiar sus datos de cierre. Conserva importes manuales y
 comprometidos. Diciembre de 2025 es el saldo base fijo: si se elige como inicio,
 el rango efectivo comienza en enero de 2026 y no modifica los registros base.
 
 `POST /erp/cash/rebuild` recibe `periodo_desde` en formato YYYY-MM;
 `periodo_hasta` es opcional y usa por defecto el fin del horizonte móvil.
-`incluir_cerrados` es un booleano opcional (predeterminado `false`) que solo
-habilita recalcular proyecciones históricas; no reemplaza reales cerrados. Permite
+`incluir_cerrados` es un booleano opcional (predeterminado `false`) que habilita
+reaplicar mapeos de movimientos Cash y recalcular proyecciones históricas. No
+borra ni reemplaza reales cerrados: actualiza únicamente la cuenta Cash y la
+auditoría de los movimientos existentes, incluso sin libros locales. Respeta
+el estado y la baja lógica del catálogo de subcuentas, sin excluir movimientos
+ni saldos por bloqueo. Recupera renglones y saldos faltantes desde los libros
+locales, sin reemplazar los existentes. Permite
 rangos históricos de más de 24 meses, rechaza inicios anteriores a diciembre
 de 2025 y excluye siempre el mes base. Realiza todos los cambios en una
 transacción: un error revierte también los períodos ya procesados. Devuelve
 el rango efectivo y los conteos `periodos_cerrados_omitidos` y
-`periodos_cerrados_reconstruidos` (siempre cero para los reales cerrados).
+`periodos_cerrados_reconstruidos` (meses cerrados cuyos mapeos se reprocesaron).
+Los movimientos informados incluyen las filas cerradas examinadas; sus saldos
+no se reemplazan, pero se recuperan los faltantes. El período conserva estado
+y fecha de cierre; los contadores y la auditoría se actualizan si recupera filas.
 `POST /erp/cash/diario/sync` queda como entrada de reconstrucción local de un
 solo período; ya no importa del origen. Un CERRADO devuelve HTTP 409.
 
 La reconstrucción de movimientos y saldos actualiza `ultima_sincronizacion`,
 `movimientos_count` y `saldos_count`. Los meses futuros sin libros importados no
 se reemplazan por conjuntos vacíos; solo participan en la proyección.
+
+Al finalizar, `conciliacion` informa `consistente`, cantidad de `controles`,
+`diferencias` y hasta 100 registros de `detalle`. Verifica asientos balanceados,
+la presencia de todos los renglones elegibles de los libros locales,
+saldo anterior más movimiento igual a saldo actual, movimientos de Fondo del
+diario contra Mayor, y continuidad con el saldo final del mes anterior cuando
+está disponible. Agrupa por empresa, mes y cuenta ERP, sin excluir bloqueadas
+ni compensar diferencias entre empresas; admite hasta un centavo de diferencia.
+Si no puede evaluar controles, `consistente` es nulo. La actualización no inventa
+ajustes ni cambia datos de origen para forzar igualdad: devuelve las diferencias
+y el panel muestra una advertencia en lugar del mensaje de éxito normal.
 
 Actualizar Cash procesa los libros locales disponibles aunque falten las marcas
 de importación completa. Octubre EN_CIERRE no impide procesar las transacciones
@@ -139,9 +159,10 @@ python -m pytest tests/unit/test_erp_cash_periodo_model.py tests/unit/test_erp_c
 
 Los importadores de Libro Diario y Libro Mayor rechazan un mes CERRADO antes
 de consultar el origen o borrar registros, incluso si reciben un origen vac?o.
-La reconstrucci?n Cash conserva los movimientos, saldos y sus asignaciones
-originales aunque se hayan cambiado los mapeos o falten libros locales.
-Para reemplazar un hist?rico es necesario reabrir expl?citamente su per?odo.
+La reconstrucción Cash conserva los movimientos y saldos originales. Con
+`incluir_cerrados=true` reaplica los mapeos vigentes sobre movimientos guardados
+sin borrarlos ni reimportarlos, aunque falten libros locales. Para reemplazar
+los datos de origen de un histórico es necesario reabrir explícitamente su período.
 
 La migraci?n `4a9ed248e4b0` agrega protecci?n PostgreSQL a `erp_libro_diario`,
 `erp_libro_mayor`, `erp_cash_diarios`, `erp_cash_saldos`, `erp_presupuestos` y

@@ -153,16 +153,18 @@ def _month_key(fecha: date, month_keys: set[str]) -> str:
 
 
 def _group_key(cuenta_cash_id: int | None, cuenta_cash_tipo: str | None) -> str:
+    normalized_type = str(cuenta_cash_tipo or "").strip().upper()
+    # Fondo se reconoce por la cuenta ERP, incluso si la subcuenta bloqueada
+    # deja el renglón sin una cuenta Cash asignada.
+    if normalized_type == "FONDO":
+        return "FONDOS"
     if cuenta_cash_id is None:
         return "SIN_CUENTA"
 
-    normalized_type = str(cuenta_cash_tipo or "").strip().upper()
     if normalized_type == "INGRESO":
         return "INGRESOS"
     if normalized_type == "EGRESO":
         return "EGRESOS"
-    if normalized_type == "FONDO":
-        return "FONDOS"
     return "SIN_CUENTA"
 
 

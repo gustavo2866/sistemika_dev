@@ -484,7 +484,11 @@ export const ErpCashPanel = () => {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.detail || "No se pudo actualizar Cash");
       setRebuildOpen(false);
-      notify(`Cash actualizado: ${result.periodos_reales_reconstruidos} períodos con movimientos y saldos (${result.periodos_cerrados_reconstruidos} cerrados), ${result.proyecciones_calculadas} proyecciones recalculadas.`, { type: "success" });
+      const summary = `Cash actualizado: ${result.periodos_reales_reconstruidos} períodos con movimientos y saldos (${result.periodos_cerrados_reconstruidos} cerrados), ${result.proyecciones_calculadas} proyecciones recalculadas.`;
+      const differences = result.conciliacion?.diferencias ?? 0;
+      notify(differences > 0
+        ? `${summary} Atención: ${differences} diferencias de conciliación entre asientos, movimientos y saldos.`
+        : summary, { type: differences > 0 ? "warning" : "success" });
       void query.refetch();
     } catch (error) {
       notify(error instanceof Error ? error.message : "No se pudo actualizar Cash", { type: "error" });
