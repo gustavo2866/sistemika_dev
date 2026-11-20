@@ -1,5 +1,23 @@
 # Calculo particular de una proyeccion Cash
 
+## Duplicar un método
+
+La cabecera de edición ofrece **Duplicar**: solicita el nombre de la copia y
+confirmación en un diálogo. Copia la configuración guardada (descripción, estado
+activo y reglas no eliminadas), con nuevos identificadores, sin cambiar el
+original ni las cuentas Cash que lo usan. Los cambios sin guardar del formulario
+no forman parte de la copia. El editor original permanece abierto.
+
+`POST /metodos-proyeccion/{id}/duplicar` recibe `nombre`, recorta espacios y
+rechaza nombres vacíos, de más de 200 caracteres o ya utilizados. La copia y sus
+reglas se crean en una transacción usando el CRUD anidado vigente. Solo permite
+métodos HISTORICO: Relacional y Pendiente tienen el botón deshabilitado y el
+backend también rechaza su duplicación.
+
+Desde el editor de proyecciones del panel Cash, **Editar método de proyección**
+solo se habilita para métodos Históricos. Pendiente y Relacional tienen la
+acción deshabilitada y no permiten navegar a la edición desde ese botón.
+
 `calculate_cash_projection` calcula una cuenta Cash para un unico mes. No
 persiste el resultado ni genera otros periodos.
 

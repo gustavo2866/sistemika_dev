@@ -1,8 +1,14 @@
-from sqlmodel import select
+from fastapi import Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
 
 from app.core.generic_crud import GenericCRUD
 from app.core.nested_crud import NestedCRUD
 from app.core.router import create_generic_router
+from app.db import get_session
+from app.models.base import filtrar_respuesta
 from app.models.erp.cash_cuenta import ErpCashCuenta
 from app.models.metodo_proyeccion import MetodoProyeccion, MetodoProyeccionDetalle
 from app.services.cash_projection_configuration import (
@@ -63,3 +69,46 @@ metodo_proyeccion_router = create_generic_router(
     model=MetodoProyeccion, crud=metodo_proyeccion_crud,
     prefix="/metodos-proyeccion", tags=["metodos-proyeccion"],
 )
+
+
+class DuplicateMetodoProyeccionPayload(BaseModel):
+    nombre: str = Field(min_length=1, max_length=200)
+
+    @field_validator("nombre", mode="before")
+    @classmethod
+    def trim_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+@metodo_proyeccion_router.post("/{method_id}/duplicar", status_code=201)
+def duplicate_metodo_proyeccion(
+    method_id: int, payload: DuplicateMetodoProyeccionPayload,
+    session: Session = Depends(get_session),
+):
+    lock_projection_configuration(session)
+    source = session.exec(select(MetodoProyeccion).where(
+        MetodoProyeccion.id == method_id, MetodoProyeccion.deleted_at.is_(None),
+    ).with_for_update()).first()
+    if source is None:
+        raise HTTPException(status_code=404, detail="El método de proyección no existe")
+    if source.tipo_calculo != "HISTORICO":
+        raise HTTPException(status_code=400, detail="Los métodos Relacional y Pendiente no se pueden duplicar")
+    if session.exec(select(MetodoProyeccion.id).where(
+        func.lower(func.trim(MetodoProyeccion.nombre)) == payload.nombre.lower(),
+    )).first() is not None:
+        raise HTTPException(status_code=409, detail="Ya existe un método de proyección con ese nombre")
+    try:
+        copy = metodo_proyeccion_crud.create(session, {
+            "nombre": payload.nombre, "descripcion": source.descripcion,
+            "activo": source.activo, "tipo_calculo": "HISTORICO",
+            "detalles": [{field: getattr(rule, field) for field in (
+                "mes_destino", "mes_base_desde", "mes_base_hasta", "funcion", "factor",
+            )} for rule in source.detalles if rule.deleted_at is None],
+        })
+        return filtrar_respuesta(metodo_proyeccion_crud.get(session, copy.id))
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un método de proyección con ese nombre") from None
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

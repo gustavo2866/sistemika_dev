@@ -159,6 +159,12 @@ export const ErpSincronizarPage = () => {
   const periodo = !periodsPending && !periodsError
     ? selectedPeriod?.fecha_periodo?.slice(0, 7) ?? ""
     : "";
+  const argentinaDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit",
+  }).formatToParts(new Date());
+  const currentMonth = `${argentinaDate.find((part) => part.type === "year")?.value}-${argentinaDate.find((part) => part.type === "month")?.value}`;
+  const canClosePeriod = Boolean(periodo) && (selectedPeriod?.estado === "EN_CIERRE" || periodo < currentMonth);
+  const syncStateLabel = canClosePeriod ? "en cierre" : "abierto";
 
   useEffect(() => {
     setClosePeriod(false);
@@ -192,6 +198,7 @@ export const ErpSincronizarPage = () => {
   };
 
   const validateConfiguration = () => {
+    if (closePeriod && !canClosePeriod) throw new Error("El período abierto actual no puede cerrarse; debe finalizar el mes");
     if (!/^\d{4}-\d{2}$/.test(periodo)) {
       throw new Error("No existe un período en cierre o abierto para sincronizar");
     }
@@ -262,8 +269,12 @@ export const ErpSincronizarPage = () => {
 
       activeStep = "periodo";
       updateStep(activeStep, "processing", `Preparando ${periodLabel(syncPeriod)}`);
-      await postJson("/erp/cash/sync/start", { periodo: syncPeriod }, "No se pudo iniciar el cierre del período");
-      updateStep(activeStep, "completed", `${periodLabel(syncPeriod)} en cierre`);
+      const started = await postJson<{ estado: ErpCashPeriodo["estado"] }>(
+        "/erp/cash/sync/start", { periodo: syncPeriod }, "No se pudo iniciar la sincronización del período",
+      );
+      const resultingStateLabel = started.estado === "EN_CIERRE" ? "en cierre" : "abierto";
+      if (closePeriod && started.estado !== "EN_CIERRE") throw new Error("El período debe estar en cierre para cerrarlo");
+      updateStep(activeStep, "completed", `${periodLabel(syncPeriod)} ${resultingStateLabel}`);
 
       activeStep = "libro-diario";
       updateStep(activeStep, "processing", `Períodos ${rangeLabel}`);
@@ -346,7 +357,7 @@ export const ErpSincronizarPage = () => {
       );
       updateStep(activeStep, "completed", closePeriod
         ? `${periodLabel(syncPeriod)} cerrado. Proyección desde ${shiftPeriod(syncPeriod, 1)} hasta ${cashEndPeriod} (24 meses)`
-        : `Cash actualizado desde ${syncPeriod} hasta ${cashEndPeriod}. El período continúa en cierre`);
+        : `Cash actualizado desde ${syncPeriod} hasta ${cashEndPeriod}. El período continúa ${resultingStateLabel}`);
 
       updateStep("complete", "completed", "Sincronización terminada correctamente");
       notify("Sincronización ERP finalizada. Cash actualizado.", { type: "success" });
@@ -414,14 +425,16 @@ export const ErpSincronizarPage = () => {
                 <div className="grid gap-2 rounded-lg border bg-muted/20 p-3">
                   <label className="flex items-start gap-2 text-sm font-medium" htmlFor="close-sync-period">
                     <Checkbox id="close-sync-period" className="mt-0.5" checked={closePeriod}
-                      disabled={running || preparing || confirmOpen}
+                      disabled={running || preparing || confirmOpen || !canClosePeriod}
                       onCheckedChange={(checked) => { setClosePeriod(checked === true); setSyncRange(null); }} />
                     Cerrar {periodLabel(periodo)} al finalizar
                   </label>
                   <p className="text-xs text-muted-foreground">
                     {closePeriod
                       ? `Si todo finaliza correctamente, solo se cerrará ${periodLabel(periodo)}. La proyección abarcará ${periodLabel(shiftPeriod(periodo, 1))} a ${periodLabel(shiftPeriod(periodo, 24))} (24 meses). Los meses posteriores seguirán abiertos.`
-                      : "Al iniciar, este período quedará en cierre. Podés sincronizarlo varias veces y cerrarlo cuando esté completo. Los meses posteriores seguirán abiertos."}
+                      : canClosePeriod
+                        ? "Al iniciar, este período quedará en cierre. Podés sincronizarlo varias veces y cerrarlo cuando esté completo. Los meses posteriores seguirán abiertos."
+                        : "El período permanecerá abierto y los saldos del panel utilizarán el proyectado, aunque se actualicen sus reales. Pasará a en cierre al sincronizarlo después de finalizar el mes."}
                   </p>
                 </div>
               ) : null}
@@ -554,7 +567,7 @@ export const ErpSincronizarPage = () => {
       <Confirm
         isOpen={confirmOpen}
         title="Confirmar sincronización ERP"
-        content={`Se reemplazarán los libros y los valores reales desde ${periodo} hasta ${syncRange?.periodo_hasta ?? periodo}, y los pendientes de ${files.length} empresa(s). La actualización ICC continuará aplicándose a todos los períodos desde 2024-01. Al finalizar, se actualizará Cash hasta ${syncRange?.proyeccion_hasta ?? "el fin del horizonte móvil de 24 meses"}, conservando el histórico y los importes manuales y comprometidos. ${closePeriod ? `Solo se cerrará ${periodLabel(periodo)}, y se completará la nueva ventana de 24 meses. Si falla el proceso, el período seguirá en cierre.` : `${periodLabel(periodo)} quedará en cierre, sin cerrarse. Los meses posteriores seguirán abiertos.`}`}
+        content={`Se reemplazarán los libros y los valores reales desde ${periodo} hasta ${syncRange?.periodo_hasta ?? periodo}, y los pendientes de ${files.length} empresa(s). La actualización ICC continuará aplicándose a todos los períodos desde 2024-01. Al finalizar, se actualizará Cash hasta ${syncRange?.proyeccion_hasta ?? "el fin del horizonte móvil de 24 meses"}, conservando el histórico y los importes manuales y comprometidos. ${closePeriod ? `Solo se cerrará ${periodLabel(periodo)}, y se completará la nueva ventana de 24 meses. Si falla el proceso, el período seguirá en cierre.` : `${periodLabel(periodo)} quedará ${syncStateLabel}, sin cerrarse. Los meses posteriores seguirán abiertos.`}`}
         confirm="Sincronizar"
         cancel="Cancelar"
         confirmColor="warning"

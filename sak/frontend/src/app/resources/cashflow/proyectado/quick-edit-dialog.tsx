@@ -182,6 +182,7 @@ export const CashProjectionQuickEditDialog = ({
   const [realDetailTarget, setRealDetailTarget] = useState<CashMovementDetailTarget | null>(null);
   const [saving, setSaving] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedMethodId, setSelectedMethodId] = useState("");
   const [referenceAccountId, setReferenceAccountId] = useState("");
   const [relationalFactor, setRelationalFactor] = useState("");
@@ -244,6 +245,8 @@ export const CashProjectionQuickEditDialog = ({
   const pendingActive = selectedBase === "PENDIENTE";
   const inactiveColumnClass = "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-500";
   const isRelational = selectedBase === "RELACIONAL";
+  const canEditMethod = Boolean(selectedMethodId) && selectedBase === "HISTORICO"
+    && !methodsQuery.isLoading && !methodsQuery.error;
   const parsedFactor = Number(relationalFactor.trim().replace(",", "."));
   const validRelational = !isRelational || (Boolean(referenceAccountId) && relationalFactor.trim() !== "" && Number.isFinite(parsedFactor));
   const accountsQuery = useGetList<ErpCashCuenta>("erp/cash/cuentas", {
@@ -269,6 +272,8 @@ export const CashProjectionQuickEditDialog = ({
   useEffect(() => {
     initiallyPositionedRef.current = false;
   }, [open, cuentaCashId, startYear, periodFrom]);
+
+  useEffect(() => { setSaveError(null); }, [open, cuentaCashId]);
 
   useEffect(() => {
     if (!open || query.isFetching || query.error || !query.data || initiallyPositionedRef.current) return;
@@ -303,6 +308,11 @@ export const CashProjectionQuickEditDialog = ({
     const scope = `${cuentaCashId}:${startYear}`;
     if (initializedFormScopeRef.current === scope && dirtyRef.current) return;
     const initial = projectionFormState(query.data);
+    if (initializedFormScopeRef.current === scope
+      && /^\d{4}-(0[1-9]|1[0-2])$/.test(periodFrom)
+      && periodFrom >= "2026-01" && periodFrom <= query.data.proyeccion_desde.slice(0, 7)) {
+      initial.periodFrom = periodFrom;
+    }
     const validDraft = draft?.accountId === cuentaCashId && draft?.year === startYear ? draft : undefined;
     const form = validDraft ? restoreProjectionDraft(validDraft, initial) : initial;
     setValues(form.values);
@@ -323,7 +333,7 @@ export const CashProjectionQuickEditDialog = ({
         initiallyPositionedRef.current = true;
       });
     }
-  }, [open, query.data, query.isFetching, cuentaCashId, startYear, location.search, queryClient]);
+  }, [open, query.data, query.isFetching, cuentaCashId, startYear, location.search, queryClient, periodFrom]);
 
   const openPendingDetail = (period: string) => {
     setPendingDetailTarget({
@@ -363,7 +373,7 @@ export const CashProjectionQuickEditDialog = ({
   };
 
   const handleEditMethod = () => {
-    if (!selectedMethodId || saving || calculating) return;
+    if (!canEditMethod || saving || calculating) return;
     const returnTo = buildReturnTo();
     if (!returnTo) return;
     navigate(`/cashflow/setup/metodos-proyeccion/edit/${selectedMethodId}`, {
@@ -406,6 +416,7 @@ export const CashProjectionQuickEditDialog = ({
       return;
     }
     if (cuentaCashId === null || !validRelational) return;
+    setSaveError(null);
     setSaving(true);
     setCalculating(calculate);
     try {
@@ -474,7 +485,7 @@ export const CashProjectionQuickEditDialog = ({
       if (!response.ok) throw new Error(result.detail || "No se pudieron guardar las proyecciones");
       if (calculate) {
         const fresh = await fetchProjectionValues(cuentaCashId, startYear);
-        const form = projectionFormState(fresh);
+        const form = { ...projectionFormState(fresh), periodFrom };
         queryClient.setQueryData(["erp-cash-proyectado-quick-edit", cuentaCashId, startYear], fresh);
         setValues(form.values);
         setProjectionOrigins(form.projectionOrigins);
@@ -501,7 +512,9 @@ export const CashProjectionQuickEditDialog = ({
       );
       onOpenChange(false);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudieron guardar las proyecciones", {
+      const message = error instanceof Error ? error.message : "No se pudieron guardar las proyecciones";
+      setSaveError(message);
+      notify(message, {
         type: "error",
       });
     } finally {
@@ -861,9 +874,11 @@ export const CashProjectionQuickEditDialog = ({
               size="icon"
               className="size-7 shrink-0 [&_svg]:size-3"
               onClick={handleEditMethod}
-              disabled={saving || calculating || !selectedMethodId}
+              disabled={saving || calculating || !canEditMethod}
               aria-label="Editar método de proyección"
-              title="Editar método de proyección"
+              title={pendingActive || isRelational
+                ? "Los métodos Pendiente y Relacional no se editan desde el panel Cash"
+                : "Editar método de proyección"}
             >
               <Pencil className="size-3" />
             </Button>
@@ -970,6 +985,9 @@ export const CashProjectionQuickEditDialog = ({
           )}
           {historicalEditing && <p className="col-span-2 w-full text-[10px] text-amber-700 dark:text-amber-400">
             Desde {periodFrom}, el cálculo utiliza proyectados incluso en meses cerrados. Al guardar se confirmarán los cambios históricos.
+          </p>}
+          {saveError && <p className="col-span-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive" role="alert">
+            {saveError}
           </p>}
         </div>
 

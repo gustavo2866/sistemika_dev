@@ -1,5 +1,6 @@
 """Transiciones del período operativo durante la sincronización ERP."""
 from datetime import date
+from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, select
 
@@ -29,13 +30,14 @@ def begin_cash_sync(session: Session, period: str) -> dict:
     try:
         lock_projection_configuration(session)
         target = _target_period(session, month)
-        if target.estado == "ABIERTO":
+        current_month = current_utc_time().astimezone(ZoneInfo("America/Argentina/Buenos_Aires")).date().replace(day=1)
+        if target.estado == "ABIERTO" and month < current_month:
             target.estado = "EN_CIERRE"
             target.updated_at = current_utc_time()
             target.version += 1
             session.add(target)
         session.commit()
-        return {"periodo": month.strftime("%Y-%m"), "estado": "EN_CIERRE"}
+        return {"periodo": month.strftime("%Y-%m"), "estado": target.estado}
     except Exception:
         session.rollback()
         raise

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlmodel import select
@@ -11,6 +11,65 @@ from app.models.metodo_proyeccion import MetodoProyeccion
 from app.services.cash_projection_horizon import get_projection_horizon
 from app.services.erp_cash_rebuild_service import rebuild_cash
 from app.services.erp_cash_sync_period_service import begin_cash_sync
+
+
+@pytest.fixture(autouse=True)
+def fixed_sync_clock(monkeypatch):
+    monkeypatch.setattr("app.services.erp_cash_sync_period_service.current_utc_time",
+        lambda: datetime(2026, 11, 20, 15, tzinfo=UTC))
+
+
+@pytest.mark.parametrize("now,expected", [
+    (datetime(2026, 10, 1, 3, tzinfo=UTC), "ABIERTO"),
+    (datetime(2026, 10, 31, 23, tzinfo=UTC), "ABIERTO"),
+    (datetime(2026, 11, 1, 2, 59, tzinfo=UTC), "ABIERTO"),
+    (datetime(2026, 11, 1, 3, tzinfo=UTC), "EN_CIERRE"),
+    (datetime(2027, 1, 15, 15, tzinfo=UTC), "EN_CIERRE"),
+    (datetime(2026, 9, 20, 15, tzinfo=UTC), "ABIERTO"),
+])
+def test_inicio_segun_mes_en_argentina(db_session, monkeypatch, now, expected):
+    october, manual, history = setup_periods(db_session)
+    original_version = october.version
+    monkeypatch.setattr("app.services.erp_cash_sync_period_service.current_utc_time", lambda: now)
+    result = begin_cash_sync(db_session, "2026-10")
+    db_session.refresh(october)
+    assert result == {"periodo": "2026-10", "estado": expected}
+    assert october.estado == expected
+    assert october.version == original_version + (expected == "EN_CIERRE")
+    assert october.cerrado_en is None
+    assert get_projection_horizon(db_session).start == date(2026, 10, 1)
+    assert manual.importe_proyectado == 123
+    assert history.importe_proyectado == 321
+
+
+def test_actualizacion_mes_actual_sin_periodo_en_cierre(db_session, monkeypatch):
+    october, _, _ = setup_periods(db_session)
+    monkeypatch.setattr("app.services.erp_cash_sync_period_service.current_utc_time",
+        lambda: datetime(2026, 10, 20, 15, tzinfo=UTC))
+    begin_cash_sync(db_session, "2026-10")
+    result = rebuild_cash(db_session, "2026-10")
+    db_session.refresh(october)
+    assert october.estado == "ABIERTO"
+    assert "periodo_cerrado" not in result
+    horizon = get_projection_horizon(db_session)
+    assert (horizon.start, horizon.end) == (date(2026, 10, 1), date(2028, 9, 1))
+    with pytest.raises(ValueError, match="debe estar en cierre"):
+        rebuild_cash(db_session, "2026-10", close_period=True)
+    db_session.refresh(october)
+    assert october.estado == "ABIERTO" and october.cerrado_en is None
+
+
+def test_inicio_conserva_en_cierre_aunque_sea_mes_actual(db_session, monkeypatch):
+    october, _, _ = setup_periods(db_session)
+    october.estado = "EN_CIERRE"
+    db_session.add(october)
+    db_session.commit()
+    version = october.version
+    monkeypatch.setattr("app.services.erp_cash_sync_period_service.current_utc_time",
+        lambda: datetime(2026, 10, 20, 15, tzinfo=UTC))
+    assert begin_cash_sync(db_session, "2026-10")["estado"] == "EN_CIERRE"
+    db_session.refresh(october)
+    assert october.version == version
 
 
 def setup_periods(session):

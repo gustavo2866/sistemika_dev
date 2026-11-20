@@ -3,6 +3,7 @@
 import { Edit, type EditProps } from "@/components/edit";
 import { MetodoProyeccionForm } from "./form";
 import { normalizeMetodoProyeccionPayload } from "./model";
+import { DuplicateMetodoProyeccionButton } from "./duplicate-button";
 
 export const MetodoProyeccionEdit = ({
   embedded = false,
@@ -21,7 +22,7 @@ export const MetodoProyeccionEdit = ({
     contentClassName="max-w-5xl"
     mutationMode="pessimistic"
     transform={normalizeMetodoProyeccionPayload}
-    actions={false}
+    actions={<DuplicateMetodoProyeccionButton />}
     showBreadcrumb={!embedded}
     showHeader={!embedded}
   >

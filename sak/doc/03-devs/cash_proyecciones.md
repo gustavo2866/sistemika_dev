@@ -135,7 +135,13 @@ Con `P` igual al Proyectado de ese mes y `R` a su Real:
 - Si está ABIERTO o EN_CIERRE, o todavía no hay real: conserva `P`.
 
 El real registrado en cero sí participa. Si falta el Proyectado base, informa
-el período faltante; no lo reemplaza por cero ni por el real. El factor se
+el período faltante; no lo reemplaza por cero ni por el real. Como excepción
+de inicialización, enero de 2026 usa su propio Proyectado como valor inicial
+cuando falta la referencia anterior a enero. Toma el importe editado en la
+previsualización o el guardado, aunque Manual esté desactivado, y lo identifica
+como `PROYECTADO_INICIAL`. Enero conserva ese importe; febrero en adelante
+aplica la fórmula cronológicamente. Si existe la referencia anterior, se usa
+normalmente. Sin valor inicial tampoco se puede calcular. El factor se
 aplica una sola vez y el resultado se redondea a centavos. La previsualización
 incluye el proyectado base y, cuando participa, el real utilizado en su traza.
 Los meses destino manuales conservan sus importes. Calcular, Proyectar,

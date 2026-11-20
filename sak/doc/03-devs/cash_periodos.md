@@ -1,12 +1,20 @@
 # Estados de periodos del Cash Panel
 
-Los estados se administran manualmente en Periodos Cash. No se infieren de la
-fecha actual ni cambian automaticamente al sincronizar.
+Los estados se administran en Periodos Cash y desde Sincronizar ERP. Al iniciar
+la sincronización, un ABIERTO anterior al mes actual de Argentina pasa a
+EN_CIERRE. El mes actual y los futuros permanecen ABIERTO. No hay transición
+automática por el solo paso del tiempo.
 
 La pantalla Sincronizar ERP selecciona el primer periodo EN_CIERRE por fecha
 ascendente. Si no existe ninguno, selecciona el primer ABIERTO. Espera la carga
 de ambos estados antes de habilitar la sincronizacion; sin periodos disponibles
 o ante un error de consulta, el boton permanece deshabilitado.
+
+El Panel Cash abre su primera columna en el inicio del horizonte operativo:
+el primer EN_CIERRE o, si no existe, el primer ABIERTO. Espera la consulta del
+horizonte antes de pedir los datos del panel. La navegación manual permite
+consultar otros meses; el botón **Período operativo** vuelve a ese inicio,
+independientemente de la fecha actual.
 
 | Estado | Saldos del panel | Sincronizacion |
 | --- | --- | --- |
@@ -49,7 +57,10 @@ meses sin movimientos posteriores al último detectado.
 
 La casilla **Cerrar [mes] al finalizar** está desmarcada por defecto. Después
 de validar los CSV, `POST /erp/cash/sync/start` recibe `periodo` y pasa el primer
-mes no cerrado de ABIERTO a EN_CIERRE. Si ya está en cierre, permite reintentar
+mes no cerrado de ABIERTO a EN_CIERRE solo si es anterior al mes actual,
+comparado en `America/Argentina/Buenos_Aires`. Si pertenece al mes actual o a
+uno futuro, permanece ABIERTO y el panel sigue usando proyectados para sus
+saldos, aunque se importen reales. Si ya está en cierre, permite reintentar
 sin cambiarlo. Rechaza meses cerrados, saltos y otros períodos en cierre.
 Importar movimientos de meses posteriores no los pone en cierre.
 
@@ -60,8 +71,13 @@ y tenga ambos libros importados. Cierra únicamente ese mes, registra
 completar 24 meses y recalcula el nuevo horizonte. El cierre y la extensión de
 Cash comparten transacción: si fallan, se revierten y el mes sigue EN_CIERRE.
 Los libros y CSV importados en etapas anteriores conservan sus transacciones.
-Sin la casilla, el mes sigue EN_CIERRE. El siguiente mes pasa a EN_CIERRE recién
-cuando se inicia su propia sincronización. No requiere una migración de esquema.
+Sin la casilla, el mes conserva el estado resultante del inicio: ABIERTO o
+EN_CIERRE. La pantalla informa ese estado y deshabilita el cierre de un abierto
+que no sea anterior al mes actual; el backend exige EN_CIERRE para cerrar.
+El siguiente mes pasa a EN_CIERRE recién cuando se inicia su propia
+sincronización después de finalizar ese mes. Sin ningún EN_CIERRE, la selección
+operativa y el horizonte usan el primer ABIERTO. No requiere migración ni
+modifica retroactivamente los estados existentes.
 
 Al finalizar Sincronizar ERP, la reconstrucción recibe `periodo_reales_hasta`
 con el último mes sincronizado: reconstruye sus reales y calcula las proyecciones

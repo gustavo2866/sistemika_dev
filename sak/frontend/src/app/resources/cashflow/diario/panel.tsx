@@ -90,10 +90,6 @@ type ProjectionEditTarget = {
   startYear?: number;
 };
 const DEFAULT_PERIOD = "2026-01";
-const currentPeriod = () => {
-  const today = new Date();
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-};
 
 const periodToDate = (period: string) => {
   const [year, month] = period.split("-").map(Number);
@@ -295,25 +291,20 @@ const fetchPanel = async (periodo: string): Promise<PanelResponse> => {
 const MonthAmountButton = ({
   value,
   projectedValue,
+  activeValue,
   onClick,
   allowZero = false,
   title = "Ver asientos que componen el importe",
 }: {
   value: number;
   projectedValue?: number;
+  activeValue?: "real" | "projected";
   onClick: () => void;
   allowZero?: boolean;
   title?: string;
 }) => {
   const amount = (
-    <span className="flex flex-col items-end leading-tight">
-      <span>{formatAmount(value)}</span>
-      {projectedValue !== undefined ? (
-        <span className="mt-0.5 text-[8px] font-medium text-sky-700/80 dark:text-sky-300/80">
-          ({formatAmount(projectedValue)})
-        </span>
-      ) : null}
-    </span>
+    <AmountWithProjection value={value} projectedValue={projectedValue} activeValue={activeValue} />
   );
   if (!value && !allowZero) return amount;
   return (
@@ -331,17 +322,28 @@ const MonthAmountButton = ({
 const AmountWithProjection = ({
   value,
   projectedValue,
+  activeValue,
 }: {
   value: number;
   projectedValue?: number;
-}) => (
-  <span className="flex flex-col items-end leading-tight">
-    <span>{formatAmount(value)}</span>
-    {projectedValue !== undefined ? (
-      <span className="mt-0.5 text-[8px] font-medium text-sky-700/80 dark:text-sky-300/80">
-        ({formatAmount(projectedValue)})
-      </span>
-    ) : null}
+  activeValue?: "real" | "projected";
+}) => projectedValue === undefined ? (
+  <span>{formatAmount(value)}</span>
+) : (
+  <span className="grid w-full grid-rows-2 gap-y-0.5 whitespace-nowrap text-[10px] leading-4 tabular-nums">
+    <span title={activeValue === "real" ? "Real utilizado para calcular el saldo" : "Real"} className={cn("h-4 rounded-sm px-0.5 text-right", value < 0 ? "text-rose-700 dark:text-rose-400" : "text-foreground", activeValue === "real" && "bg-slate-200/70 dark:bg-slate-700/60")}>
+      {formatAmount(value).replace(/ M$/, "")}
+    </span>
+    <span title={activeValue === "projected" ? "Proyectado utilizado para calcular el saldo" : "Proyectado"} className={cn("h-4 rounded-sm px-0.5 text-right", projectedValue < 0 ? "text-rose-700 dark:text-rose-400" : "text-foreground", activeValue === "projected" ? "bg-slate-200/70 dark:bg-slate-700/60" : "bg-slate-100/50 dark:bg-slate-800/30")}>
+      {formatAmount(projectedValue).replace(/ M$/, "")}
+    </span>
+  </span>
+);
+
+const ProjectionRowLabels = () => (
+  <span className="ml-auto grid shrink-0 grid-rows-2 gap-y-0.5 pl-2 text-right text-[10px] font-medium leading-4 text-muted-foreground">
+    <span className="h-4">Real</span>
+    <span className="h-4">Pres</span>
   </span>
 );
 
@@ -350,7 +352,10 @@ export const ErpCashPanel = () => {
   const location = useLocation();
   const notify = useNotify();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [periodo, setPeriodo] = useState(DEFAULT_PERIOD);
+  const horizonQuery = useQuery({ queryKey: ["cash-projection-horizon"], queryFn: fetchCashProjectionHorizon });
+  const [selectedPeriod, setPeriodo] = useState<string | null>(null);
+  const operationalPeriod = horizonQuery.data?.proyeccion_desde.slice(0, 7);
+  const periodo = selectedPeriod ?? operationalPeriod ?? DEFAULT_PERIOD;
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildOpen, setRebuildOpen] = useState(false);
@@ -403,9 +408,8 @@ export const ErpCashPanel = () => {
   const query = useQuery({
     queryKey: ["erp-cash-panel", periodo],
     queryFn: () => fetchPanel(periodo),
-    enabled: Boolean(periodo),
+    enabled: Boolean(operationalPeriod),
   });
-  const horizonQuery = useQuery({ queryKey: ["cash-projection-horizon"], queryFn: fetchCashProjectionHorizon });
   const rebuildPeriodsPending = horizonQuery.isPending;
   const defaultRebuildPeriod = horizonQuery.data?.proyeccion_desde.slice(0, 7);
   const data = query.data;
@@ -651,12 +655,6 @@ export const ErpCashPanel = () => {
                 <BalanceIcon className="size-3.5" />
               </span>
               <span className="truncate tracking-[0.015em]">{label}</span>
-              <span className={cn(
-                "ml-auto rounded-full border px-1.5 py-0.5 text-[8px] font-medium",
-                isFinalBalance ? "border-white/25 bg-white/10 text-white" : presentation.badgeClassName,
-              )}>
-                {fondoBalanceAccounts.length} ctas.
-              </span>
             </button>
           </td>
           {data.months.map((month) => {
@@ -748,7 +746,7 @@ export const ErpCashPanel = () => {
           <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">CashFlow</p>
           <h1 className="text-xl font-semibold">Panel Cash</h1>
           <p className="text-[10px] capitalize text-muted-foreground">
-            {formatPeriodLabel(periodo)} a {formatPeriodLabel(movePeriod(periodo, 11))}
+            {operationalPeriod ? `${formatPeriodLabel(periodo)} a ${formatPeriodLabel(movePeriod(periodo, 11))}` : "Cargando período operativo…"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -785,8 +783,11 @@ export const ErpCashPanel = () => {
               <ChevronRight className="size-3" />
             </Button>
           </div>
-          <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => selectPeriod(currentPeriod())}>
-            <RotateCcw className="mr-1 size-3.5" />Hoy
+          <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" disabled={!operationalPeriod} onClick={() => {
+            if (operationalPeriod) selectPeriod(operationalPeriod);
+            setPeriodo(null);
+          }}>
+            <RotateCcw className="mr-1 size-3.5" />Período operativo
           </Button>
           <Button
             type="button"
@@ -891,10 +892,10 @@ export const ErpCashPanel = () => {
             </tr>
           </thead>
           <tbody>
-            {query.isLoading ? (
+            {horizonQuery.isPending || query.isLoading ? (
               <tr><td colSpan={columnCount} className="p-8 text-center text-sm text-muted-foreground">Cargando panel…</td></tr>
-            ) : query.error ? (
-              <tr><td colSpan={columnCount} className="p-8 text-center text-sm text-destructive">{query.error instanceof Error ? query.error.message : "No se pudo cargar el panel"}</td></tr>
+            ) : horizonQuery.error || query.error ? (
+              <tr><td colSpan={columnCount} className="p-8 text-center text-sm text-destructive">{(horizonQuery.error ?? query.error)?.message ?? "No se pudo cargar el panel"}</td></tr>
             ) : !data || (!hasFlowMovements && !hasBalanceData) ? (
               <tr><td colSpan={columnCount} className="p-8 text-center text-sm text-muted-foreground">No hay movimientos Cash para el período.</td></tr>
             ) : (
@@ -910,7 +911,6 @@ export const ErpCashPanel = () => {
                 const groupRowKey = `group:${group.key}`;
                 const isGroupExpanded = expanded.has(groupRowKey);
                 const GroupToggleIcon = isGroupExpanded ? ChevronDown : ChevronRight;
-                const movementCount = group.accounts.reduce((count, account) => count + account.movement_count, 0);
                 const presentation = GROUP_PRESENTATION[group.key];
                 const GroupIcon = presentation.icon;
                 return (
@@ -923,7 +923,7 @@ export const ErpCashPanel = () => {
                             <GroupIcon className="size-3.5" />
                           </span>
                           <span className="truncate tracking-[0.015em]">{group.label}</span>
-                          <span className={cn("ml-auto rounded-full border px-1.5 py-0.5 text-[8px] font-medium", presentation.badgeClassName)}>{movementCount}</span>
+                          {group.key === "INGRESOS" || group.key === "EGRESOS" ? <ProjectionRowLabels /> : null}
                         </button>
                       </td>
                       {data.months.map((month) => (
@@ -931,6 +931,7 @@ export const ErpCashPanel = () => {
                           <MonthAmountButton
                             value={group.months[month.key]}
                             projectedValue={group.key === "INGRESOS" || group.key === "EGRESOS" ? group.projected_months[month.key] : undefined}
+                            activeValue={data.periods?.[month.key]?.estado === "ABIERTO" ? "projected" : data.periods?.[month.key] ? "real" : undefined}
                             onClick={() => setDetailTarget({
                               month: month.key,
                               title: group.label,
@@ -991,9 +992,7 @@ export const ErpCashPanel = () => {
                                     <PencilLine className="size-3.5" />
                                   </Button>
                                 ) : null}
-                                <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                  {account.ledger_accounts.length} ctas.
-                                </span>
+                                {group.key === "INGRESOS" || group.key === "EGRESOS" ? <ProjectionRowLabels /> : null}
                               </div>
                             </td>
                             {data.months.map((month) => (
@@ -1001,6 +1000,7 @@ export const ErpCashPanel = () => {
                                 <MonthAmountButton
                                   value={account.months[month.key]}
                                   projectedValue={group.key === "INGRESOS" || group.key === "EGRESOS" ? account.projected_months[month.key] : undefined}
+                                  activeValue={data.periods?.[month.key]?.estado === "ABIERTO" ? "projected" : data.periods?.[month.key] ? "real" : undefined}
                                   onClick={() => setDetailTarget({
                                     month: month.key,
                                     title: account.cuenta_cash_nombre,
@@ -1029,7 +1029,6 @@ export const ErpCashPanel = () => {
                                   <div className="flex items-center gap-1.5">
                                     <span className="min-w-0 flex-1 truncate" title={ledgerTitle}>{ledgerLabel}</span>
                                     {renderMappingButton(ledgerAccount.cuenta_codigo, ledgerAccount.cuenta_nombre)}
-                                    <span className="shrink-0 text-[8px] text-muted-foreground">{ledgerAccount.movement_count} mov.</span>
                                   </div>
                                 </td>
                                 {data.months.map((month) => (

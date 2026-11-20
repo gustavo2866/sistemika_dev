@@ -291,7 +291,7 @@ def save_projection_quick_edit(
                     raise ValueError(f"El importe comprometido de {month:%Y-%m} debe ser finito")
                 changes["importe_comprometido"] = amount.quantize(Decimal("0.01"))
                 changes["observacion"] = clean_projection_observation(str(description or "").strip() or None)
-            if existing is None or projection_method_id is not None:
+            if existing is None or projection_method_id is not None or calculate:
                 changes.update(method_values)
             if projection_origins is not None:
                 origin = projection_origins[month]

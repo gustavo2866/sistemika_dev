@@ -212,6 +212,7 @@ def _calculate_historical(
 
     base_values: list[ProjectionBaseValue] = []
     weighted = function == FuncionProyeccion.AJUSTE_PONDERADO
+    initial_weighted_base = False
     for month in ((base_end,) if weighted else base_months):
         status = period_statuses.get(month, "ABIERTO")
         if not weighted and status == "CERRADO" and (data.reference_from is None or month < data.reference_from):
@@ -227,6 +228,23 @@ def _calculate_historical(
             elif function == FuncionProyeccion.PROMEDIO:
                 value = Decimal("0")
                 source = "PROYECTADO_FALTANTE_CERO"
+            elif weighted and target_month == HISTORY_START and month < HISTORY_START:
+                initial_key = (cash_account_id, target_month)
+                initial_row = data.stored.get(initial_key)
+                initial_value = data.initial_projection_values.get(
+                    initial_key, initial_row.importe_proyectado if initial_row is not None else None,
+                )
+                if initial_value is None:
+                    raise ProjectionDataError(
+                        f"Definí el Proyectado inicial de {target_month:%Y-%m} para la cuenta Cash "
+                        f"{cash_account_id}: no existe una referencia anterior en {month:%Y-%m}",
+                        cash_account_id=cash_account_id, missing_month=month,
+                    )
+                value = Decimal(str(initial_value))
+                source = "PROYECTADO_INICIAL"
+                initial_weighted_base = True
+                month = target_month
+                status = period_statuses.get(month, "ABIERTO")
             else:
                 raise ProjectionDataError(
                     f"No existe una proyeccion para la cuenta Cash {cash_account_id} "
@@ -246,7 +264,7 @@ def _calculate_historical(
     if weighted:
         base_value = base_values[0].value
         amount = base_value
-        if period_statuses.get(base_end) == "CERRADO" and base_end in real_values:
+        if not initial_weighted_base and period_statuses.get(base_end) == "CERRADO" and base_end in real_values:
             real = real_values[base_end]
             amount += (real - base_value) * factor
             base_values.append(ProjectionBaseValue(base_end, "CERRADO", real_source, real))
@@ -278,7 +296,7 @@ class CashProjectionEngine:
     """Resuelve dependencias del mismo mes una sola vez; no persiste resultados."""
 
     def __init__(self, session: Session, *, method_overrides=None, projected_overrides=None, relational_overrides=None,
-        projection_origins=None, reference_from: date | None = None):
+        projection_origins=None, initial_projection_values=None, reference_from: date | None = None):
         from app.services.cash_projection_configuration import validate_cash_dependencies
         self.session = session
         self.reference_from = reference_from
@@ -298,6 +316,7 @@ class CashProjectionEngine:
         self.real_values = {}
         self.values = dict(projected_overrides or {})
         self.projection_origins = projection_origins or {}
+        self.initial_projection_values = initial_projection_values or {}
         self.manual_overrides = set(self.values)
         self.cache = {}
         self.visiting = []
@@ -410,5 +429,6 @@ def project_cash_account_range(session: Session, *, cash_account_id: int, period
         projected_overrides={(cash_account_id, month): amount for month, (amount, origin) in (preview_values or {}).items()
             if origin == "MANUAL"},
         projection_origins={(cash_account_id, month): origin for month, (_, origin) in (preview_values or {}).items()},
+        initial_projection_values={(cash_account_id, month): amount for month, (amount, _) in (preview_values or {}).items()},
         reference_from=reference_from)
     return [engine.calculate(cash_account_id, month) for month in _iter_months(period_from, period_to)]
